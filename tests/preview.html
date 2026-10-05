@@ -117,6 +117,9 @@
         { role: "agent", text: "Bash: uv run pytest tests/lines -q -x", at_ms: now - 3 * M },
       ];
       if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
+      // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
+      if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
+      if (q.get("ufile") === "err") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [], error: "Line 2: \"spent\" isn't a number (\"lots\")." };
       const listeners = {};
       const emit = () => (listeners.state || []).forEach((f) => f({ payload: structuredClone(state) }));
       window.__TAURI__ = {
@@ -140,6 +143,11 @@
           }
           // Steps (from the transcript): two turns of agent-relay, between its messages.
           if (cmd === "session_steps") {
+            // q2: a quiet session (running, never reported to Cue), mid-turn.
+            if (args.sessionId === "q2") return { version: 1, turns: [
+              { at_ms: now - 40 * M, prompt: "why do partial fills open a second broker session?", more: 0, items: [{ t: "say", text: "The router opens a session per fill. I'll reuse the order's session.", at_ms: now - 39 * M }, { t: "step", id: "q2a", kind: "read", verb: "Read", subject: "router.py", mono: true, result: "318 lines", bad: false, done: true, at_ms: now - 38 * M }, { t: "say", text: "Found it: `open_session()` is called inside the fill loop.", at_ms: now - 36 * M }] },
+              { at_ms: now - 25 * M, prompt: "fix it and run the tests", more: 0, items: [{ t: "step", id: "q2b", kind: "edit", verb: "Edited", subject: "router.py", mono: true, result: "+9 −4", bad: false, done: true, at_ms: now - 24 * M }, { t: "step", id: "q2c", kind: "run", verb: "Running", subject: "pytest tests/router -q", mono: true, result: "", bad: false, done: false, at_ms: now - 1 * M }] },
+            ] };
             if (args.sessionId !== "relay") return { version: 0, turns: [] };
             const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });
             const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
@@ -171,6 +179,8 @@
       if (/hist=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
       if (/settings=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
       if (/open=1/.test(q)) document.querySelector("[data-toggle]")?.click();
+      // ?live=1&quiet=1: open the quiet session q2 (Sessions view → its tile).
+      if (/quiet=1/.test(q)) setTimeout(() => { document.querySelector('[data-view="sessions"]')?.click(); setTimeout(() => document.querySelector('[data-sv="quiet"][data-sid="q2"]')?.click(), 300); }, 300);
       // ?steps=open: open the failed test run and an edit in the Active chat.
       if (/steps=open/.test(q)) setTimeout(() => ["b3", "b5"].forEach((id) => document.querySelector(`[data-step="relay|${id}"]`)?.click()), 2500);
       const rowQ = new URLSearchParams(q).get("row");

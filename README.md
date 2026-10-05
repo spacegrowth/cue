@@ -18,7 +18,8 @@ the card either way.
    open it, and drag **Cue** to Applications. It's signed and notarized by Apple.
 2. Open Cue and click **Connect Claude Code** (Settings has Connect for Codex and Pi too). That adds
    Cue's hooks to `~/.claude/settings.json`; the file is backed up first and your other settings stay.
-   Sessions already open pick it up after a restart (`claude --resume` keeps the conversation).
+   In a session that was already open, type `/hooks` once (or restart it; `claude --resume` keeps the
+   conversation).
 3. The first time Cue jumps to or types into a tab, macOS asks to let Cue control iTerm or
    Terminal: allow it.
 
@@ -27,6 +28,22 @@ Cue updates itself: it checks for a new version now and then, and the menu bar i
 
 From source instead: `./install.sh` builds the app and connects Claude Code, Codex and Pi;
 `./install.sh --uninstall` removes it all again.
+
+## Your own usage meters
+
+Behind a proxy or on a team budget? Keep a small CSV up to date (a cron job, a script, whatever you
+like) and Cue shows it in the usage pill, beside Claude Code's own limits. The default path is
+`~/.cue/usage.csv` (Settings → Usage file changes it):
+
+```csv
+label,spent,limit,unit,resets_at
+Team,42.60,50,$,2026-10-12T00:00:00Z
+Credits,1200,,credits,
+```
+
+Only `spent` is required. An empty `limit` shows the amount without a bar; `unit` defaults to `$`;
+`resets_at` is an ISO date-time or Unix milliseconds. Up to 3 rows. Cue only reads the file, whenever
+it changes, and never runs anything. If it doesn't match this format, the pill says what's wrong.
 
 ## Privacy
 

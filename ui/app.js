@@ -51,8 +51,16 @@ const agentName = (h) => ({ claude: "Claude Code", codex: "Codex", pi: "Pi" }[h]
 /** The agent's mark: a letter in its own colour (Claude's orange, Pi's black), so you can tell them apart at a glance. */
 const badge = (h) => `<span class="badge h-${esc(h || "other")}" title="${esc(agentName(h))}">${h === "pi" ? "π" : h === "codex" ? "X" : esc((h || "?")[0].toUpperCase())}</span>`;
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
+/** Hover on a session's name: what Claude Code titled the conversation (✎ in the chat names it). */
+function nameTip(sid) {
+  const title = state.about?.[sid]?.title || "";
+  return title;
+}
+/** A session's name, with that hover. */
+const nameSpan = (sid, project, cls = "proj") => { const tip = sid ? nameTip(sid) : ""; return `<span class="${cls}"${tip ? ` title="${esc(tip)}"` : ""}>${esc(nameOf(sid, project))}</span>`; };
 /** What Cue calls a session: the name you gave it, else its project. */
-const nameOf = (sid, project) => sessionOf(sid)?.name || project;
+// ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
+const nameOf = (sid, project) => String(sessionOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || state.history.find((i) => i.id === id);
 const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);
 
@@ -642,7 +650,7 @@ const outcomeClass = (i) => (/^(allowed|answered|replied)/.test(i.outcome) ? "ok
 function recentEntry(i) {
   const fresh = now() - (i.resolved_ms || 0) < 8000 ? "fresh" : "";
   return `<div class="tl ${outcomeClass(i)} ${fresh} ${active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}" title="Open">
-    <div class="tl-top"><span style="color:var(--ink);font-weight:650">${esc(nameOf(i.session_id, i.project))}</span><span>${esc(agentName(i.harness))}</span><span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
+    <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}<span>${esc(agentName(i.harness))}</span><span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
 
@@ -686,6 +694,7 @@ function restoreSpot() {
 }
 function setActive(id, sid, exact = false) {
   view = "board";
+  quietOpen = null;
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
   sheet = menuFor = redirectFor = null;
   renderMain();
@@ -940,7 +949,34 @@ function nextBar() {
   return `<div class="next-bar" data-act="next" role="button" tabindex="0" title="Open it (N)"><span class="next-label">Next</span>${badge(n.harness)}<span class="next-proj">${esc(n.project)}</span><span class="next-what">${esc(plain(summary(n)))}</span>${clear}<kbd>N</kbd></div>`;
 }
 
+/** A quiet session open in Active: running, but started before Cue was connected, so it never
+ *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
+let quietOpen = null;
+function quietPane() {
+  const q = (state.live || []).find((x) => x.session_id === quietOpen);
+  if (!q) { quietOpen = null; return activePane(); }   // it ended (or reported in): back to the usual
+  const f = stepFeeds.get(q.session_id);
+  const busy = q.status === "busy";
+  const turns = (f?.turns || []).slice(-8);
+  const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1)).join("");
+  return `<div class="active-pane">
+    <div class="ap-head">${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
+      <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}" title="Go to its terminal tab">Go to tab</button></div>
+    ${subHead(q.cwd, "", "", q.session_id)}
+    <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
+    <div class="ap-chat" data-chat>${chat || `<div class="dim cv-empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`}</div></div>`;
+}
+/** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
+function quietTurn(sid, t, live, latest) {
+  const you = t.prompt ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(t.prompt)).replace(/\n/g, "<br>")}</div><div class="cv-meta">You · ${ago(t.at_ms)} ago</div></div>` : "";
+  // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
+  const tail = [];
+  if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
+  const reply = tail.length ? `<div class="cv-agent"><div class="cv-meta">${esc(agentName("claude"))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
+  return you + stepsBlock(sid, t, live, latest) + reply;
+}
 function activePane() {
+  if (quietOpen) return quietPane();
   const cur = current();
   if (!cur && state.connections && !state.connections.claude?.ok) return `<div class="active-pane empty"><div class="quiet-big">Connect Cue to Claude Code</div><div class="dim">Cue adds its hooks to Claude Code's settings (backed up first), then sessions that need you show up here.</div><button class="btn primary" data-connect="claude">Connect Claude Code</button></div>`;
   if (!cur) return `<div class="active-pane empty"><div class="quiet-big">Nothing waiting.</div><div class="dim">Pick anything on the right to read it or message the session.</div></div>`;
@@ -996,7 +1032,7 @@ function laterRow({ sid, s, it }) {
   const what = it ? "your turn" : s.state === "working" ? "working" : "idle";
   const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    <div class="nrow-top">${badge(it?.harness || s.harness)}<span class="proj">${esc(nameOf(sid, it?.project || s.project))}</span><span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${pinBtn(sid)}<button class="x-clear" data-park="${esc(sid)}:0" title="Back to Waiting" aria-label="Back to Waiting">↩</button></div>
+    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${pinBtn(sid)}<button class="x-clear" data-park="${esc(sid)}:0" title="Back to Waiting" aria-label="Back to Waiting">↩</button></div>
     ${cardCrew(sid)}
     ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}</div>`;
 }
@@ -1005,7 +1041,7 @@ function needRow(it, ghost) {
   const on = active?.id === it.id ? "on" : "";
   if (ghost) {
     const h = state.history.find((x) => x.id === it.id);
-    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}<span class="proj">${esc(nameOf(it.session_id, it.project))}</span></div>
+    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}</div>
       <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : "picked up in the terminal")}</div></div>`;
   }
   const q = it.kind === "question" ? questions(it) : [];
@@ -1015,7 +1051,7 @@ function needRow(it, ghost) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${on} ${it.kind === "waiting" ? "turn" : "ask"}" data-big="${esc(it.id)}">
-    <div class="nrow-top">${badge(it.harness)}<span class="proj">${esc(nameOf(it.session_id, it.project))}</span><span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${pinBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
+    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${pinBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}</div>`;
 }
@@ -1069,13 +1105,40 @@ function usageChip() {
     return `<span class="usage-wrap"><button class="usage-chip soft-warn" data-usage="model" title="${esc(l.text)} Other models still work."><span class="uf-dot"></span>${esc(l.scope)} used up<span class="uo-sub">${l.resets_ms ? ` · ${clockAt(l.resets_ms)}` : ""} · ${paused(model.length)}</span></button>${usagePop()}</span>`;
   }
   const u = state.usage;
-  if (!u || (!u.five_hour && !u.seven_day)) return "";
+  const uf = state.usage_file || {};
+  // Settings → Usage can hide Claude Code's limits (e.g. behind a proxy, where only your file matters).
+  const claude = state.settings?.usage?.claude !== false && u && (u.five_hour || u.seven_day);
+  if (!claude && !(uf.meters || []).length && !uf.error) return "";
   const meter = (label, w) => w ? `<span class="ul">${label}</span><span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : "";
-  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" title="Claude Code usage">${meter("5h", u.five_hour)}${meter("wk", u.seven_day)}</button>${usagePop()}</span>`;
+  // Your own meters (Settings → Usage file) sit beside Claude Code's, drawn the same way.
+  const mine = (uf.meters || []).map((m) => {
+    const pct = m.limit ? (m.spent / m.limit) * 100 : null;
+    return `${m.label ? `<span class="ul">${esc(m.label.length > 12 ? m.label.slice(0, 11) + "…" : m.label)}</span>` : ""}${pct === null ? "" : `<span class="um ${pct >= 100 ? "full" : pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up">${esc(spendText(m))}</span>`;
+  }).join("");
+  const broken = uf.error ? `<span class="ul uf-bad" title="${esc(uf.error)}">usage file ⚠</span>` : "";
+  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" title="Usage">${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${usagePop()}</span>`;
+}
+/** "$12.40/$50", "48/200 credits", "$3.10": an amount from your usage file, in its unit. */
+function spendText(m, long = false) {
+  const n = (x) => Number(x).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(x) ? 0 : 2 });
+  const sym = m.unit.length <= 2 && !/[a-z]/i.test(m.unit);
+  const amt = (x) => (sym ? `${m.unit}${n(x)}` : n(x));
+  const both = m.limit ? `${amt(m.spent)}${long ? " of " : "/"}${amt(m.limit)}` : amt(m.spent);
+  return sym ? both : `${both} ${m.unit}`;
 }
 function usagePop() {
   const u = state.usage;
-  if (!usageOpen || !u) return "";
+  const uf = state.usage_file || {};
+  if (!usageOpen) return "";
+  // Your usage file: its meters with their details, or what's wrong with it.
+  const fileSec = !(uf.meters || []).length && !uf.error ? "" : `<div class="up-group"><div class="up-title">${uf.error ? "Usage file" : "Your usage"}<span> · ${esc(uf.path || "")}${uf.as_of_ms ? `, as of ${clockAt(uf.as_of_ms)}` : ""}</span></div>
+    ${uf.error ? `<div class="up-err">${esc(uf.error)}</div>` : uf.meters.map((m) => {
+      const pct = m.limit ? (m.spent / m.limit) * 100 : null;
+      const lvl = pct === null ? "" : pct >= 100 ? "full" : pct >= 85 ? "high" : "";
+      return `<div class="up-row money ${lvl}"><span class="up-name">${esc(m.label || "Usage")}</span>${pct === null ? `<span class="up-bar none"></span>` : `<span class="up-bar"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up-pct">${esc(spendText(m, true))}</span>${m.resets_ms ? `<span class="up-note">resets ${clockAt(m.resets_ms)}</span>` : ""}</div>`;
+    }).join("")}</div>`;
+  const claude = state.settings?.usage?.claude !== false && u && (u.five_hour || u.seven_day);
+  if (!claude) return `<div class="usage-pop"><div class="up-head">Usage</div>${fileSec}</div>`;
   const lvl = (w) => (w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : "");
   const row = (name, w, note = "") => w ? `<div class="up-row ${lvl(w)}"><span class="up-name">${esc(name)}</span><span class="up-bar"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up-pct">${Math.round(w.pct)}%</span>${note ? `<span class="up-note">${esc(note)}</span>` : ""}</div>` : "";
   // Rows that reset together sit under one heading that says when, instead of repeating it per row.
@@ -1087,7 +1150,7 @@ function usagePop() {
   }).join("");
   return `<div class="usage-pop"><div class="up-head">Claude Code usage<span class="dim">${ago(u.at_ms)} ago</span></div>
     ${group("Session", u.five_hour, row("5 hours", u.five_hour))}${group("Weekly", u.seven_day, row("All models", u.seven_day) + models)}
-    <div class="up-foot">Codex and Pi aren't counted.</div></div>`;
+    ${fileSec}<div class="up-foot">Claude Code's limits don't count Codex and Pi.</div></div>`;
 }
 const idleNote = (s) => s.state === "working" ? "" : s.state === "limited" ? limitNote(s) : s.state === "agent" ? `waiting on ${s.driven_by || "another agent"}` : s.state === "stopped" ? "stopped by you" : "cleared from Waiting";
 
@@ -1104,7 +1167,7 @@ function boardView() {
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
   const card = (s) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${active?.sid === s.session_id && !isPending(findItem(active.id)) ? "on" : ""}" data-session="${esc(s.session_id)}" title="Open">
-      <div class="card-head"><span class="proj">${esc(s.name || s.project)}</span><span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
+      <div class="card-head">${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
       ${bar(s.session_id)}${s.state === "working" && s.doing ? `<div class="doing" title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
@@ -1136,14 +1199,18 @@ function boardView() {
  *  project beside it once it has a name of its own. */
 /** Under the Active header: an executor's lead on the left, the session's folder (~ for your home)
  *  on the right, under the buttons. One small line. */
-function subHead(cwd, crew, sid) {
+function subHead(cwd, crew, sid, titleOf = sid) {
   // The pin sits after the folder: the title row is full.
   const folder = cwd ? `<span class="ap-cwd sel" title="${esc(cwd)}">${esc(String(cwd).replace(/^\/Users\/[^/]+(?=\/|$)/, "~"))}</span>${sid ? pinBtn(sid) : ""}` : "";
-  return folder || crew ? `<div class="ap-sub">${crew}${folder}</div>` : "";
+  // Under the name: what Claude Code titled the conversation (unless that's already the name).
+  const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
+  const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" title="${esc(t)}">${esc(t)}</span>` : "";
+  return folder || crew || title ? `<div class="ap-sub">${title}${crew}${folder}</div>` : "";
 }
 function nameHead(sid, project) {
   if (sid && renaming === sid) return `<input class="rename-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;
   const name = sid ? nameOf(sid, project) : project;
+  // No hover here: the chat shows Claude Code's title as text under the name (subHead).
   return `<span class="proj">${esc(name)}</span>${sid ? `<button class="rename-btn" data-rename="${esc(sid)}" title="Rename this session" aria-label="Rename">✎</button>` : ""}${name !== project ? `<span class="dim">${esc(project)}</span>` : ""}`;
 }
 async function submitRename(sid) {
@@ -1405,12 +1472,12 @@ function livePop(rows) {
       : !r.quiet ? `<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>` : "";
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
-    return `<div class="lv-row ${sel}" role="button" data-sv="${r.quiet ? "tab" : "open"}" data-sid="${esc(r.sid)}" title="${esc(tip || (r.quiet ? "Go to its tab" : "Open its chat"))}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
+    return `<div class="lv-row ${sel}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" title="${esc(tip || (r.quiet ? "Go to its tab" : "Open its chat"))}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
     .sort((a, b) => svRank(a[1][0]) - svRank(b[1][0]));
-  liveShown = ordered.flatMap(([, rs]) => rs.map((r) => ({ sid: r.sid, act: r.quiet ? "tab" : "open" })));
+  liveShown = ordered.flatMap(([, rs]) => rs.map((r) => ({ sid: r.sid, act: r.quiet ? "quiet" : "open" })));
   liveSel = Math.min(Math.max(liveSel, 0), Math.max(liveShown.length - 1, 0));
   const list = ordered
     .map(([cwd, rs]) => `<div class="lv-group"><div class="lv-ghead"><span>${esc(baseName(cwd) || "(no folder)")}</span><span class="sx-branch">${esc(state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`).join("");
@@ -1548,7 +1615,7 @@ function svActs(r) {
   if (r.it) acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`);
   if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff", "Open its staged changes in your browser") + (m.lead_armed ? crewBtn(r.sid, "review", "Review", `Type a review command for it into ${m.lead_name || "its lead"}`, true) : ""));
   if (!r.it && !r.quiet && !r.ghost) acts.push(`<button class="btn" data-sv="open" data-sid="${esc(r.sid)}" title="Open it in Active">Open</button>`);
-  if (!r.ghost) acts.push(`<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}" title="${r.quiet ? "Go to its terminal tab (it hasn't sent Cue anything yet, so there's nothing to open here)" : "Go to its terminal tab"}">Tab</button>`);
+  if (!r.ghost) acts.push(`<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}" title="Go to its terminal tab">Tab</button>`);
   if (svClosable(r)) acts.push(closeBtn(r.sid));
   return acts.join("");
 }
@@ -1570,7 +1637,7 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const lead = crew ? `${crewDot(r.sid)}` : "";
   const leadTag = crew ? `<span class="role lead" title="${crew.plugin === "pilead" ? "pi-lead" : "relay"} lead${crew.auto ? " · auto mode: proceeds on routine steps without asking" : ""}">LEAD</span>` : "";
   // The whole tile opens it: its chat in Active, or (quiet: nothing sent to Cue yet) its terminal tab.
-  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "tab" : "open"}" data-sid="${esc(r.sid)}" title="${r.quiet ? "Go to its terminal tab" : "Open its chat"}"`;
+  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" title="${r.quiet ? "See what it's doing (it started before Cue was connected)" : "Open its chat"}"`;
   return `<div class="sx-item ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
     <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" title="${esc(name)}">${esc(name)}</span>${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
@@ -1649,6 +1716,7 @@ async function svAct(act, sid) {
     return;
   }
   if (act === "open") { const it = state.items.find((i) => i.session_id === sid && i.status === "pending"); return setActive(it?.id || null, sid); }
+  if (act === "quiet") { setActive(null, null); quietOpen = sid; loadSteps(sid); return renderMain(); }
   if (act === "tab") {
     renderMain();
     try { toast(`Jumped to ${await invoke("focus_live", { sessionId: sid })}`); }
@@ -1678,7 +1746,7 @@ function historyView() {
   const row = (i, nested) => {
     const open = histOpen === i.id;
     return `<div class="hrow ${open ? "open" : ""} ${nested ? "nested" : ""}" data-hrow="${esc(i.id)}">
-      <span class="hwho">${nested ? "" : `${badge(i.harness)}<span class="proj">${esc(nameOf(i.session_id, i.project))}</span>`}</span>
+      <span class="hwho">${nested ? "" : `${badge(i.harness)}${nameSpan(i.session_id, i.project)}`}</span>
       <span class="hwhat ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</span>
       <span class="hout ${outcomeClass(i)}">${esc(outcomeText(i))}</span>
       <span class="age">${clock(at(i))}</span></div>${open ? `<div class="hexpand">${histDetail(i)}${/^replied: “/.test(outcomeText(i)) ? "" : resultLine(i)}</div>` : ""}`;
@@ -1697,7 +1765,7 @@ function historyView() {
     if (g.items.length === 1) { html += row(g.items[0], false); continue; }
     const key = `${g.day}|${g.sid}`, open = histSession || histOpenGroups.has(key), top = g.items[0];
     html += `<div class="hrow hsrow ${open ? "open" : ""}" data-hgroup="${esc(key)}">
-      <span class="hwho"><span class="hfold">${open ? "▾" : "▸"}</span>${badge(top.harness)}<span class="proj">${esc(nameOf(g.sid, top.project))}</span><span class="hcount">${g.items.length}</span></span>
+      <span class="hwho"><span class="hfold">${open ? "▾" : "▸"}</span>${badge(top.harness)}${nameSpan(g.sid, top.project)}<span class="hcount">${g.items.length}</span></span>
       <span class="hwhat">${esc(plain(summary(top)))}</span>
       <span class="hout ${outcomeClass(top)}">${esc(outcomeText(top))}</span>
       <span class="age">${clock(at(g.items[g.items.length - 1]))}–${clock(at(top))}</span></div>`;
@@ -1752,7 +1820,7 @@ function agentRows() {
   const conn = (ok) => `<span class="conn ${ok ? "ok" : ""}"><i></i>${ok ? "connected" : "not connected"}</span>`;
   // Not connected but installed: one click does what install.sh does.
   const connBtn = (h, ok, present) => (ok || !present ? conn(ok) : `<button class="btn primary" data-connect="${h}">Connect</button>`);
-  return `${setRow("Claude Code", c.claude?.ok ? "Sessions opened before connecting need a restart (claude --resume keeps the conversation)." : c.claude?.present === false ? "Not installed on this Mac." : "Not connected yet. Connect adds Cue's hooks to <code>~/.claude/settings.json</code> (backed up first; your other settings stay).", connBtn("claude", c.claude?.ok, c.claude?.present !== false))}
+  return `${setRow("Claude Code", c.claude?.ok ? "Sessions already open when you connected: type <code>/hooks</code> in each once (or restart it with claude --resume)." : c.claude?.present === false ? "Not installed on this Mac." : "Not connected yet. Connect adds Cue's hooks to <code>~/.claude/settings.json</code> (backed up first; your other settings stay).", connBtn("claude", c.claude?.ok, c.claude?.present !== false))}
     ${setRow("Codex", c.codex?.ok ? "Hooks installed. In Codex, run <code>/hooks</code> once to trust them." : c.codex?.present ? "Not connected yet. Connect adds Cue's hooks to <code>~/.codex/hooks.json</code> (backed up first)." : "Not installed on this Mac.", connBtn("codex", c.codex?.ok, c.codex?.present))}
     ${setRow("Pi", c.pi?.ok ? "New Pi sessions load the Cue extension. Replies go straight into the session." : c.pi?.present ? "Not connected yet. Connect adds Cue's extension to Pi." : "Not installed on this Mac.", connBtn("pi", c.pi?.ok, c.pi?.present))}`;
 }
@@ -1775,6 +1843,9 @@ function settingsSheet() {
     ${extRows()}
     <div class="set-group">Updates</div>
     ${updateRow()}
+    <div class="set-group">Usage</div>
+    ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
+    ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
     <div class="set-group">Quick phrases</div>
@@ -2101,7 +2172,7 @@ function bindMain() {
     const rn = t.closest("[data-rename]");
     if (rn) {
       renaming = rn.dataset.rename;
-      draft(`rename:${renaming}`).text = sessionOf(renaming)?.name || "";
+      draft(`rename:${renaming}`).text = sessionOf(renaming)?.name || state.about?.[renaming]?.title || "";
       renderMain();
       const el = document.querySelector(".rename-in");
       el?.focus(); el?.select();
@@ -2256,6 +2327,7 @@ function bindMain() {
   });
   app.addEventListener("change", (e) => {
     if (e.target.matches("[data-keep-custom]")) setSetting("history.keep", Math.max(10, Math.round(+e.target.value || 0)));
+    if (e.target.matches("[data-usage-file]")) setSetting("usage.file", e.target.value.trim());
     if (e.target.matches("[data-quick-edit]")) { const list = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value.trim()).filter(Boolean); qpEdit = null; setSetting("quick.phrases", list); }
   });
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
@@ -2350,7 +2422,7 @@ function miniCard(it) {
   const sel = it.id === edgeTarget()?.id;
   const text = sel && it.kind === "waiting" ? plain(finishedText(it)).replace(/^\s*([-*_=]\s*){3,}$/gm, " ").replace(/\s+/g, " ").trim() || summary(it) : summary(it);
   return `<div class="m-card ${sel ? "sel" : ""}" data-id="${esc(it.id)}">
-    <div class="m-top"><span class="p">${esc(nameOf(it.session_id, it.project))}</span><span>${esc(agentName(it.harness))} · ${it.kind === "waiting" ? "your turn" : verb(it)}</span>${sel ? `<span class="m-sel-tag">replying</span>` : ""}<span class="age">${ago(it.created_ms)}</span></div>
+    <div class="m-top">${nameSpan(it.session_id, it.project, "p")}<span>${esc(agentName(it.harness))} · ${it.kind === "waiting" ? "your turn" : verb(it)}</span>${sel ? `<span class="m-sel-tag">replying</span>` : ""}<span class="age">${ago(it.created_ms)}</span></div>
     <div class="m-row"><div class="m-title ${isBash(it) ? "mono" : ""}">${esc(text)}</div>${right}</div>${below}</div>`;
 }
 function renderMini() {
@@ -2571,14 +2643,18 @@ async function boot() {
     await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });
   }
   setInterval(render, 15000); // keep ages and bars moving
-  // The open session's steps: every 0.5 s while it works, else now and then (only new lines are read;
+  // The open session's steps: every 0.5 s while it works, else every 2 s (only new lines are read;
   // nothing new answers with just a version).
   if (!MINI) setInterval(() => {
     const cur = current();
-    const sid = cur?.s?.session_id || cur?.it?.session_id;
+    const q = quietOpen && (state.live || []).find((x) => x.session_id === quietOpen);
+    const sid = q ? q.session_id : cur?.s?.session_id || cur?.it?.session_id;
     if (!sid || document.hidden) return;
     const f = stepFeeds.get(sid);
-    if (!f || cur.s?.state === "working" || Date.now() - f.at > 15000) loadSteps(sid);
+    const working = q ? q.status === "busy" : cur?.s?.state === "working";
+    // Not "working" can still be working: a stop hook or a finished background task sends it back to
+    // work without a new prompt. So it's checked every 2 s anyway (nothing new costs next to nothing).
+    if (!f || working || Date.now() - f.at > 2000) loadSteps(sid);
   }, 500);
   // The live "what it's doing · 3s" counts every second, without redrawing everything.
   setInterval(() => document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); }), 1000);

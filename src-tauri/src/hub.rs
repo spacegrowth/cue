@@ -766,7 +766,7 @@ impl Hub {
             "history": st.history,
             // Every answer of the last day, in brief: today's numbers count these, not the History list.
             "answers": st.answers,
-            "sessions": st.sessions.snapshot(),
+            "sessions": with_registry_names(st.sessions.snapshot()),
             "crew": crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect()),
             "live": live,
             "branches": branches,
@@ -776,6 +776,7 @@ impl Hub {
             "settings": crate::config::effective(),
             "connections": crate::config::connections(),
             "usage": st.rates,
+            "usage_file": crate::usage_file::read(),
         })
     }
 
@@ -978,6 +979,19 @@ fn push_history(st: &mut Store, it: Item) {
 /// Pick what a finished card shows. "answer" (default): the agent's final message from before any
 /// Stop hook sent it back to work (not its mid-turn narration), with the hook's follow-up kept
 /// separately. "last": just the very last message.
+/// A Claude Code session's name as Claude Code has it now: `/rename` in its terminal updates Claude
+/// Code's own list of running sessions (Cue's rename sends `/rename` too), and Cue's record may not know.
+fn with_registry_names(sessions: Vec<crate::sessions::Session>) -> Value {
+    let named: HashMap<String, String> = crate::live::claude().into_iter().filter(|q| !q.name.trim().is_empty()).map(|q| (q.session_id, q.name)).collect();
+    let mut v = serde_json::to_value(sessions).unwrap_or_else(|_| json!([]));
+    for s in v.as_array_mut().into_iter().flatten() {
+        if let Some(name) = s.get("session_id").and_then(Value::as_str).and_then(|id| named.get(id)).cloned() {
+            s["name"] = json!(name);
+        }
+    }
+    v
+}
+
 pub fn split_turn(last: String, turn: &[TurnPart], mode: &str) -> (String, String) {
     if mode == "last" || turn.is_empty() {
         return (last, String::new());

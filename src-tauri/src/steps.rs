@@ -59,6 +59,9 @@ pub enum Item {
 #[derive(Clone, Serialize)]
 pub struct Turn {
     at_ms: u64,
+    /// The message that started it (yours; "" for Claude Code's own hand-overs), shortened.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    prompt: String,
     items: Vec<Item>,
     /// Earlier steps of this turn left out (MAX_ITEMS).
     more: usize,
@@ -166,7 +169,8 @@ impl Feed {
                     return false;
                 }
                 self.close_open("");
-                self.turns.push(Turn { at_ms: at, items: Vec::new(), more: 0 });
+                let prompt = if crate::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
+                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0 });
                 false // an empty turn isn't shown until something happens in it
             }
             Some("assistant") => {
@@ -197,7 +201,7 @@ impl Feed {
         if self.turns.is_empty() {
             // Started mid-file, inside a turn whose prompt is further back.
             let at = match &item { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms };
-            self.turns.push(Turn { at_ms: at, items: Vec::new(), more: 0 });
+            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0 });
         }
         let turn = self.turns.last_mut().unwrap();
         turn.items.push(item);

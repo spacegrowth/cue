@@ -34,6 +34,7 @@ pub fn effective() -> Value {
         "agents": { "show_driven": b("/agents/show_driven", false) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
+        "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
         "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system") },
         "context": { "keep": context_keep() },
@@ -51,6 +52,12 @@ pub fn quick_phrases() -> Vec<String> {
         Some(list) => list.iter().filter_map(Value::as_str).map(String::from).collect(),
         None => ["Commit", "Go ahead", "Think hard"].map(String::from).to_vec(),
     }
+}
+
+/// Where your own usage meters are read from (Settings → Usage file).
+pub const USAGE_FILE_DEFAULT: &str = "~/.cue/usage.csv";
+pub fn usage_file() -> String {
+    load().pointer("/usage/file").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).unwrap_or(USAGE_FILE_DEFAULT).to_string()
 }
 
 pub fn flag(pointer: &str) -> bool {
@@ -73,7 +80,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "panel.enabled", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "panel.enabled", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -92,6 +99,11 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             Some(m @ ("answer" | "last")) => json!(m),
             _ => return Err("turn mode must be answer or last".into()),
         },
+        // Your usage meters' CSV file (a path; ~ is your home folder). Empty: back to the default.
+        "usage.file" => {
+            let p = value.as_str().ok_or("the usage file must be a path")?.trim();
+            json!(if p.is_empty() { USAGE_FILE_DEFAULT } else { p })
+        }
         // Steps in the chat: one line each (open one with a tap), everything open, or hidden.
         "steps.mode" => match value.as_str() {
             Some(m @ ("line" | "all" | "hidden")) => json!(m),
@@ -167,7 +179,7 @@ pub fn connect(harness: &str, pi_ext: &std::path::Path) -> Result<String, String
     match harness {
         "claude" => {
             add_hooks(std::path::Path::new(&format!("{home}/.claude/settings.json")), &hook.to_string_lossy(), "claude")?;
-            Ok("Connected Claude Code. New sessions show up in Cue; one already open needs a restart (claude --resume keeps the conversation).".into())
+            Ok("Connected Claude Code. New sessions show up in Cue; in one already open, type /hooks once (or restart it with claude --resume).".into())
         }
         "codex" => {
             add_hooks(std::path::Path::new(&format!("{home}/.codex/hooks.json")), &hook.to_string_lossy(), "codex")?;

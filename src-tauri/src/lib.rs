@@ -19,6 +19,7 @@ mod server;
 mod sessions;
 mod steps;
 mod transcript;
+mod usage_file;
 mod uploads;
 mod usage;
 mod tray;
@@ -192,9 +193,13 @@ async fn step_detail(hub: State<'_, Arc<Hub>>, session_id: String, ids: Vec<Stri
     let h = hub.inner().clone();
     tauri::async_runtime::spawn_blocking(move || step_detail_for(&h, &session_id, &ids)).await.map_err(|e| e.to_string())
 }
-/// The transcript a session's steps come from: a live Claude Code session's.
+/// The transcript a session's steps come from: a live Claude Code session's, or a quiet one's (running
+/// but never heard from: found through Claude Code's own list of running sessions).
 fn steps_path(h: &Hub, session_id: &str) -> Option<String> {
-    h.session_origin(session_id).filter(|o| o.harness == "claude" && !o.transcript_path.is_empty()).map(|o| o.transcript_path)
+    h.session_origin(session_id)
+        .filter(|o| o.harness == "claude" && !o.transcript_path.is_empty())
+        .map(|o| o.transcript_path)
+        .or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).and_then(|q| live::claude_transcript(&q.cwd, session_id)))
 }
 pub(crate) fn steps_for(h: &Hub, session_id: &str, version: u64) -> serde_json::Value {
     match steps_path(h, session_id) {
@@ -545,6 +550,17 @@ pub fn run() {
             }
             // What was waiting before the restart: the side panel's tab, the icon and the badge show it now.
             waiting.show_waiting();
+            // Your usage file: when it changes, the usage pill shows the new numbers (or what's wrong).
+            let h = waiting.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut every = tokio::time::interval(std::time::Duration::from_secs(3));
+                loop {
+                    every.tick().await;
+                    if usage_file::changed() {
+                        h.redraw();
+                    }
+                }
+            });
             // A newer Cue: looked for a minute after launch, then every 6 hours; the window offers it.
             if std::env::var_os("CUE_QUIET").is_none() {
                 let handle = app.handle().clone();

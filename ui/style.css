@@ -515,6 +515,8 @@ body.mini { background: var(--bg); }
    the right, under the buttons. */
 .ap-sub { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px 0 44px; min-width: 0; }
 .ap-sub .crew-line { min-width: 0; }
+/* Claude Code's title for the conversation, under the name. */
+.ap-title { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 .ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 .crew-strip { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
 .crew-head { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
@@ -947,3 +949,12 @@ body.edge, body.edge #app { background: transparent; }
 /* First launch: connect your agents. */
 .setup-lede { margin: 0 0 6px; font-size: 13.5px; line-height: 1.55; color: var(--muted); max-width: 60ch; }
 .setup-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; }
+/* A quiet session open in Active: why it's read-only, and what to do. */
+.quiet-note { margin: 2px 16px 6px; padding: 9px 12px; border-radius: 10px; background: var(--panel-2); color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+/* Your usage file: a meter that couldn't be read, its error in the details, the path box in Settings. */
+.uf-bad { color: #F0C2B6; }
+.up-err { font-size: 12px; line-height: 1.5; color: var(--deny); padding: 4px 0 2px; }
+.up-bar.none { visibility: hidden; }
+.path-in { width: 280px; height: 32px; border-radius: 9px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 12px var(--mono); flex: none; }
+.up-row.money { grid-template-columns: 72px 1fr auto; }
+.tl-name { color: var(--ink); font-weight: 650; }

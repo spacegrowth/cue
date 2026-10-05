@@ -168,7 +168,7 @@ pub(crate) fn stamp(e: &Value) -> u64 {
     e.get("timestamp").and_then(Value::as_str).and_then(iso_ms).unwrap_or(0)
 }
 
-fn iso_ms(t: &str) -> Option<u64> {
+pub(crate) fn iso_ms(t: &str) -> Option<u64> {
     let num = |a: usize, b: usize| t.get(a..b)?.parse::<i64>().ok();
     let (y, mo, d, h, mi, sec) = (num(0, 4)?, num(5, 7)?, num(8, 10)?, num(11, 13)?, num(14, 16)?, num(17, 19)?);
     let ms = t.get(19..).and_then(|r| r.strip_prefix('.')).map(|r| r.chars().take_while(char::is_ascii_digit).take(3).collect::<String>()).filter(|f| !f.is_empty())
