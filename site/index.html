@@ -60,9 +60,14 @@ picture { display: block; }
 .btn.ghost { color: var(--on-bg); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35); }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.08); }
 .fine { font-size: 13.5px; color: var(--on-bg-muted); margin-top: 14px; }
-.window { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow), 0 0 0 1px rgba(0, 0, 0, 0.18); background: var(--panel); }
-.window .bar { height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 12px; background: rgba(0, 0, 0, 0.22); }
-.window .bar i { width: 11px; height: 11px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+.window { position: relative; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow), 0 0 0 1px rgba(0, 0, 0, 0.18); background: var(--panel); }
+/* macOS's window buttons, in the green above Cue's header where the real window has them; placed in
+   proportion to the screenshot (1360 × 860 points) so they line up at any size. */
+.lights { position: absolute; inset: 0; pointer-events: none; }
+.lights i { position: absolute; top: calc(9 / 860 * 100%); width: calc(12 / 1360 * 100%); aspect-ratio: 1; border-radius: 50%; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25); }
+.lights i:nth-child(1) { left: calc(14 / 1360 * 100%); background: #FF5F57; }
+.lights i:nth-child(2) { left: calc(34 / 1360 * 100%); background: #FEBC2E; }
+.lights i:nth-child(3) { left: calc(54 / 1360 * 100%); background: #28C840; }
 .hero .window { margin-bottom: -120px; position: relative; }
 .after-hero { height: 150px; }
 
@@ -148,11 +153,11 @@ footer .grow { flex: 1; }
       <div class="fine">Free and open source (MIT) · macOS 13 or later · Apple silicon and Intel · Signed and notarized by Apple</div>
     </div>
     <div class="window">
-      <div class="bar"><i></i><i></i><i></i></div>
       <picture>
         <source srcset="shots/board-dark.png" media="(prefers-color-scheme: dark)">
         <img src="shots/board.png" alt="Cue's Board: the session that needs you on the left, everything waiting in the middle, live sessions on the right." width="2720" height="1720">
       </picture>
+      <span class="lights"><i></i><i></i><i></i></span>
     </div>
   </div>
 </header>
@@ -206,7 +211,7 @@ footer .grow { flex: 1; }
         <h2>Connect your agents in one click</h2>
         <p class="sub">On first launch Cue lists the agents it finds on your Mac. Connect adds its hooks to each agent's settings, after backing the file up; your other settings and hooks stay exactly as they were.</p>
       </div>
-      <div class="shot"><img src="shots/setup.png" alt="The first-launch screen: Claude Code and Codex with Connect buttons, Pi already connected." width="2720" height="1720"></div>
+      <div class="shot window"><img src="shots/setup.png" alt="The first-launch screen: Claude Code and Codex with Connect buttons, Pi already connected." width="2720" height="1720"><span class="lights"><i></i><i></i><i></i></span></div>
     </div>
   </section>
 
