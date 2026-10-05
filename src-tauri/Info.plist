@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Cue types your replies into the agent's terminal tab (iTerm or Terminal) and opens tabs for new sessions.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Cue listens while you dictate a message to an agent.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Cue turns what you say into text in its message box, on this Mac.</string>
+</dict>
+</plist>

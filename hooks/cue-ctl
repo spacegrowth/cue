@@ -1,0 +1,75 @@
+#!/usr/bin/python3
+"""Talk to a running Cue from the shell (used by the tests; handy for scripting).
+
+  cue-ctl list                         pending items + recent history (JSON)
+  cue-ctl allow <id>                   allow
+  cue-ctl always <id>                  allow, applying the first "always allow" suggestion
+  cue-ctl deny <id> [message]          deny, optionally telling the agent what to do instead
+  cue-ctl answer <id> '<json answers>' answer a question: {"<question>": "<answer>"}
+  cue-ctl focus <id>                   jump to the item's terminal
+  cue-ctl reply <id> <text>            type a reply into a finished session's terminal
+  cue-ctl wait [kind] [timeout_s]      block until a pending item (of kind) exists; print it
+"""
+import json
+import os
+import socket
+import sys
+import time
+
+SOCK = os.path.join(os.environ.get("CUE_HOME") or os.path.expanduser("~/Library/Application Support/dev.spacegrowth.cue"), "cue.sock")
+
+
+def call(msg):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(30)
+    s.connect(SOCK)
+    s.sendall((json.dumps(msg) + "\n").encode())
+    return json.loads(s.makefile("r").readline())
+
+
+def item(id_):
+    st = call({"type": "list"})
+    return next(i for i in st["items"] + st["history"] if i["id"] == id_)
+
+
+def main(argv):
+    cmd, args = argv[0], argv[1:]
+    if cmd == "list":
+        r = call({"type": "list"})
+    elif cmd == "allow":
+        r = call({"type": "respond", "id": args[0], "decision": {"behavior": "allow"}})
+    elif cmd == "always":
+        sugg = item(args[0]).get("suggestions") or []
+        r = call({"type": "respond", "id": args[0], "decision": {"behavior": "allow_always", "permission": sugg[0] if sugg else None}})
+    elif cmd == "deny":
+        d = {"behavior": "deny"}
+        if len(args) > 1:
+            d["message"] = " ".join(args[1:])
+        r = call({"type": "respond", "id": args[0], "decision": d})
+    elif cmd == "answer":
+        r = call({"type": "respond", "id": args[0], "decision": {"behavior": "allow", "answers": json.loads(args[1])}})
+    elif cmd == "reply":
+        r = call({"type": "reply", "id": args[0], "text": " ".join(args[1:])})
+    elif cmd == "focus":
+        r = call({"type": "focus", "id": args[0]})
+    elif cmd == "wait":
+        kind = args[0] if args else None
+        deadline = time.time() + (float(args[1]) if len(args) > 1 else 60)
+        while time.time() < deadline:
+            items = [i for i in call({"type": "list"})["items"] if kind in (None, "any", i["kind"])]
+            if items:
+                r = items[-1]
+                break
+            time.sleep(0.3)
+        else:
+            print("timeout", file=sys.stderr)
+            return 1
+    else:
+        print(__doc__)
+        return 2
+    print(json.dumps(r, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:] or ["help"]))

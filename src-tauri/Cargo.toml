@@ -1,0 +1,42 @@
+[package]
+name = "cue"
+version = "0.1.0"
+description = "One window for every coding agent that needs a decision from you"
+edition = "2021"
+
+[lib]
+name = "cue_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "protocol-asset", "macos-private-api"] }
+tauri-plugin-notification = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+# preserve_order: Cue edits your agents' settings files (Connect) and keeps their keys where they were.
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt-multi-thread"] }
+libc = "0.2"
+base64 = "0.22"
+# Only for the optional add-on (`ext` feature).
+axum = { version = "0.8", features = ["ws"], optional = true }
+qrcode = { version = "0.14", default-features = false, features = ["svg"], optional = true }
+jsonwebtoken = { version = "9", optional = true }
+
+[profile.release]
+strip = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSError", "NSGeometry"] }
+objc2-user-notifications = { version = "0.3", features = ["UNUserNotificationCenter", "UNNotificationContent", "UNNotificationRequest", "UNNotificationTrigger", "UNNotificationSound", "UNNotification", "UNNotificationResponse", "block2"] }
+block2 = "0.6"
+
+[features]
+# The add-on in src-tauri/ext/ (not part of this repo); install.sh turns it on when that folder is there.
+ext = ["dep:axum", "dep:qrcode", "dep:jsonwebtoken"]

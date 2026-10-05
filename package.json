@@ -1,0 +1,13 @@
+{
+  "name": "cue",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build --bundles app"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

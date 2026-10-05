@@ -1,0 +1,85 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cue",
+  "version": "0.1.0",
+  "identifier": "dev.spacegrowth.cue",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Cue",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 900,
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      },
+      {
+        "label": "mini",
+        "title": "Cue mini",
+        "url": "index.html?mini=1",
+        "width": 46,
+        "height": 96,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false,
+        "shadow": true,
+        "acceptFirstMouse": true,
+        "transparent": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob: asset: http://asset.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/uploads/**",
+          "$HOME/.cue/uploads/**"
+        ]
+      }
+    },
+    "macOSPrivateApi": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzMUI0Njc1M0UxOUM0NzkKUldSNXhCaytkVVliUTJvU0JNM3RoaFMxaVZCbkJmK2NNL3RvZFBaZ2VveUlJdWQxbnFaZlRzRy8K",
+      "endpoints": [
+        "https://github.com/spacegrowth/cue/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": [
+      "app"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": false
+    },
+    "externalBin": [
+      "binaries/cue-listen"
+    ],
+    "resources": {
+      "../pi/cue.ts": "pi/cue.ts"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+src-tauri/target-clean/
+
+# An optional add-on, kept outside this repo (built in with the `ext` feature)
+src-tauri/ext
+
+# Release builds (scripts/release.sh)
+dist/
+# Local release settings (scripts/release.sh)
+.release.env

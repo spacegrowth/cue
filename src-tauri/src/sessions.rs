@@ -1,0 +1,465 @@
+//! Every live agent session and what it has been doing — the source of the Working column and
+//! the 30-minute activity bars (solid = working, striped = waiting on you).
+
+use crate::model::{now_ms, project_of, Exchange, Origin};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// How far back the activity bar reaches.
+pub const WINDOW_MS: u64 = 30 * 60 * 1000;
+/// Segments older than this are dropped from memory.
+const KEEP_MS: u64 = 2 * WINDOW_MS;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Segment {
+    /// "working" | "waiting"
+    pub kind: String,
+    pub start_ms: u64,
+    /// None while it's still going.
+    pub end_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Session {
+    #[serde(flatten)]
+    pub origin: Origin,
+    pub project: String,
+    /// "working" | "waiting" (finished, your turn) | "deciding" (asked for a permission or answer)
+    /// | "agent" (finished, but another agent drives it: waiting on that agent, not you)
+    /// | "stopped" (you interrupted it from Cue; it's at its prompt)
+    pub state: String,
+    /// Who drives it when it's in "agent" state, e.g. "its relay lead (…)".
+    pub driven_by: String,
+    /// What you sent while it was busy, until it picks it up (its next turn starts or ends).
+    pub queued: Option<Exchange>,
+    pub since_ms: u64,
+    /// What you last asked it to do, when the harness tells us.
+    pub prompt: String,
+    pub segments: Vec<Segment>,
+    /// The last few exchanges (how many: Settings → Context).
+    pub thread: Vec<Exchange>,
+    /// The name you gave it in Cue ("" = none: Cue shows the project).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// A rename Claude Code hasn't been told yet: it was mid-turn, so it's typed when the turn ends.
+    #[serde(default, skip_serializing)]
+    pub rename_pending: bool,
+    /// The usage limit its last turn ran into (state "limited"). Kept after the limit lifts, until
+    /// the session runs again, so Cue can offer to resend what didn't run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<crate::usage::Limit>,
+    /// What it's doing right now ("Running: cargo test"): a working Claude Code session's latest step,
+    /// read from its transcript every second; cleared when its state changes. And since when.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub doing: String,
+    #[serde(default)]
+    pub doing_ms: u64,
+}
+
+/// Longest text kept per exchange — enough for a full agent message.
+const EXCHANGE_CHARS: usize = 6000;
+
+#[derive(Default)]
+pub struct Sessions(HashMap<String, Session>);
+
+impl Sessions {
+    /// Record that a session entered `state`. Opens a new bar segment when the kind changes.
+    pub fn mark(&mut self, origin: &Origin, state: &str, prompt: Option<&str>) {
+        if origin.session_id.is_empty() {
+            return;
+        }
+        let now = now_ms();
+        let s = self.0.entry(origin.session_id.clone()).or_insert_with(|| Session {
+            origin: origin.clone(),
+            project: project_of(&origin.cwd),
+            state: String::new(),
+            since_ms: now,
+            prompt: String::new(),
+            segments: vec![],
+            thread: vec![],
+            driven_by: String::new(),
+            queued: None,
+            name: String::new(),
+            rename_pending: false,
+            limit: None,
+            doing: String::new(),
+            doing_ms: 0,
+        });
+        // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
+        if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
+            s.origin = origin.clone();
+        }
+        if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
+            s.prompt = p.trim().to_string();
+        }
+        if s.state != state {
+            s.state = state.to_string();
+            s.doing.clear();
+            s.since_ms = now;
+        }
+        if state != "limited" {
+            s.limit = None;
+        }
+        // Bar segments: solid = working, striped = waiting on you, faint = waiting on another agent.
+        let kind = match state {
+            "working" => "working",
+            "agent" | "stopped" | "limited" => "idle",
+            _ => "waiting",
+        };
+        match s.segments.last_mut() {
+            Some(last) if last.end_ms.is_none() && last.kind == kind => {}
+            Some(last) if last.end_ms.is_none() => {
+                last.end_ms = Some(now);
+                s.segments.push(Segment { kind: kind.into(), start_ms: now, end_ms: None });
+            }
+            _ => s.segments.push(Segment { kind: kind.into(), start_ms: now, end_ms: None }),
+        }
+        s.segments.retain(|g| g.end_ms.map_or(true, |e| now.saturating_sub(e) < KEEP_MS));
+    }
+
+    /// Record one exchange, keeping only the last `keep`.
+    pub fn note(&mut self, session_id: &str, role: &str, text: &str, keep: usize) {
+        self.note_with(session_id, role, text, &[], keep)
+    }
+
+    /// Same, with images. A reply sent from Cue comes back moments later as the agent's prompt
+    /// (with the image paths typed after it): that echo is folded into the entry already noted.
+    pub fn note_with(&mut self, session_id: &str, role: &str, text: &str, images: &[String], keep: usize) {
+        let text = text.trim();
+        let Some(s) = self.0.get_mut(session_id) else { return };
+        if text.is_empty() && images.is_empty() {
+            return;
+        }
+        if let Some(last) = s.thread.last_mut() {
+            let paths: Vec<&str> = images.iter().chain(last.images.iter()).map(String::as_str).collect();
+            if last.role == role && now_ms().saturating_sub(last.at_ms) < 15_000 && same_message(text, &last.text, &paths) {
+                // Keep the first copy; Cue's own copy carries the images, so they move onto it.
+                if last.images.is_empty() && !images.is_empty() {
+                    last.images = images.to_vec();
+                }
+                return;
+            }
+        }
+        let text = if text.chars().count() > EXCHANGE_CHARS { format!("{}…", text.chars().take(EXCHANGE_CHARS).collect::<String>()) } else { text.to_string() };
+        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false });
+        let excess = s.thread.len().saturating_sub(keep);
+        s.thread.drain(..excess);
+    }
+
+    /// A message another agent session sent this one, labelled with who sent it.
+    pub fn note_peer(&mut self, session_id: &str, from: &str, text: &str, keep: usize) {
+        self.note(session_id, "peer", text, keep);
+        if let Some(last) = self.0.get_mut(session_id).and_then(|s| s.thread.last_mut()) {
+            if last.role == "peer" && last.from.is_empty() {
+                last.from = from.to_string();
+            }
+        }
+    }
+
+    /// The project of the live session running as process `pid`.
+    pub fn project_by_pid(&self, pid: i32) -> Option<String> {
+        self.0.values().find(|s| s.origin.agent_pid == Some(pid)).map(|s| s.project.clone())
+    }
+
+    pub fn thread(&self, session_id: &str) -> Vec<Exchange> {
+        self.0.get(session_id).map(|s| s.thread.clone()).unwrap_or_default()
+    }
+
+    pub fn state(&self, session_id: &str) -> Option<String> {
+        self.0.get(session_id).map(|s| s.state.clone())
+    }
+
+    pub fn set_prompt(&mut self, session_id: &str, prompt: &str) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.prompt = prompt.trim().to_string();
+        }
+    }
+
+    /// Your last message to it never went through as a message: flag it, so its bubble says so.
+    pub fn mark_unsent(&mut self, session_id: &str) {
+        if let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you")) {
+            e.unsent = true;
+        }
+    }
+
+    /// Working sessions whose log Cue reads for their latest step: (id, harness, log). Claude Code's
+    /// transcript or Codex's rollout log; Pi reports its steps itself.
+    pub fn working_transcripts(&self) -> Vec<(String, String, String)> {
+        self.0.values()
+            .filter(|s| s.state == "working" && matches!(s.origin.harness.as_str(), "claude" | "codex") && !s.origin.transcript_path.is_empty())
+            .map(|s| (s.origin.session_id.clone(), s.origin.harness.clone(), s.origin.transcript_path.clone()))
+            .collect()
+    }
+
+    /// Its latest step, if it changed and belongs to this turn. `at_ms` is when the step was written
+    /// (0 = now): a step from before it started working is the last turn's, read before the new
+    /// prompt reached the log, so it's ignored. True when it changed.
+    pub fn set_doing(&mut self, session_id: &str, doing: &str, at_ms: u64) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.state == "working" && s.doing != doing && (at_ms == 0 || at_ms + 1500 >= s.since_ms) => {
+                s.doing = doing.to_string();
+                s.doing_ms = if at_ms == 0 { now_ms() } else { at_ms };
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Name a session in Cue. Returns what delivering it needs: (harness, state, where it is).
+    pub fn set_name(&mut self, session_id: &str, name: &str) -> Option<(String, String, Origin)> {
+        let s = self.0.get_mut(session_id)?;
+        s.name = name.to_string();
+        Some((s.origin.harness.clone(), s.state.clone(), s.origin.clone()))
+    }
+
+    /// Remember that the agent still has to be told its new name (it was busy).
+    pub fn defer_rename(&mut self, session_id: &str) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.rename_pending = true;
+        }
+    }
+
+    /// The deferred rename, if any (taken: it's delivered once).
+    pub fn take_rename(&mut self, session_id: &str) -> Option<(String, Origin)> {
+        let s = self.0.get_mut(session_id)?;
+        std::mem::take(&mut s.rename_pending).then(|| (s.name.clone(), s.origin.clone()))
+    }
+
+    /// What you sent it while it was busy, if it hasn't been read yet.
+    pub fn queued_text(&self, session_id: &str) -> Option<String> {
+        self.0.get(session_id)?.queued.as_ref().map(|q| q.text.clone())
+    }
+
+    pub fn set_queued(&mut self, session_id: &str, q: Option<Exchange>) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.queued = q;
+        }
+    }
+
+    pub fn set_limit(&mut self, session_id: &str, limit: Option<crate::usage::Limit>) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.limit = limit;
+        }
+    }
+
+    pub fn set_driven_by(&mut self, session_id: &str, by: &str) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.driven_by = by.to_string();
+        }
+    }
+
+    pub fn origin(&self, session_id: &str) -> Option<Origin> {
+        self.0.get(session_id).map(|s| s.origin.clone())
+    }
+
+    pub fn remove(&mut self, session_id: &str) -> bool {
+        self.0.remove(session_id).is_some()
+    }
+
+    /// Everything, unclipped: what Cue saves so a restart doesn't forget live sessions.
+    pub fn all(&self) -> Vec<Session> {
+        self.0.values().cloned().collect()
+    }
+
+    /// Put saved sessions back after a restart. The watcher drops any whose agent has since exited.
+    pub fn restore(&mut self, saved: Vec<Session>) {
+        for s in saved {
+            if !s.origin.session_id.is_empty() {
+                self.0.insert(s.origin.session_id.clone(), s);
+            }
+        }
+    }
+
+    pub fn pids(&self) -> Vec<(String, i32)> {
+        self.0.values().filter_map(|s| s.origin.agent_pid.map(|p| (s.origin.session_id.clone(), p))).collect()
+    }
+
+    /// Sessions for the window, with segments clipped to the last 30 minutes.
+    pub fn snapshot(&self) -> Vec<Session> {
+        let now = now_ms();
+        let from = now.saturating_sub(WINDOW_MS);
+        let mut out: Vec<Session> = self
+            .0
+            .values()
+            .map(|s| {
+                let mut s = s.clone();
+                s.segments = s
+                    .segments
+                    .into_iter()
+                    .filter(|g| g.end_ms.map_or(true, |e| e > from))
+                    .map(|mut g| {
+                        g.start_ms = g.start_ms.max(from);
+                        g
+                    })
+                    .collect();
+                s
+            })
+            .collect();
+        out.sort_by_key(|s| s.since_ms);
+        out
+    }
+}
+
+/// The same message twice: what Cue typed, then the prompt the agent reports back. They can
+/// differ at the edges: stray keys already in the terminal, image paths typed after it, line
+/// joins. Paths are ignored, and the texts must be nearly the same length, so "ok" and
+/// "ok, ship it" sent back to back stay two messages.
+/// Claude Code hands a long paste to the prompt hook wrapped in `<pasted_content id="…">` tags, and
+/// cut into chunks wherever the terminal split the paste (mid-word too). Take the text back out,
+/// chunks rejoined, so it reads (and matches Cue's own copy of what it typed) as sent.
+pub fn unwrap_pasted(text: &str) -> String {
+    const OPEN: &str = "<pasted_content";
+    const CLOSE: &str = "</pasted_content";
+    let mut out = String::new();
+    let mut rest = text;
+    loop {
+        let Some(i) = [rest.find(OPEN), rest.find(CLOSE)].into_iter().flatten().min() else { break };
+        let Some(len) = rest[i..].find('>') else { break };
+        out.push_str(&rest[..i]);
+        let closing = rest[i..].starts_with(CLOSE);
+        rest = &rest[i + len + 1..];
+        if closing {
+            // "…\n</pasted_content>\n\n\n<pasted_content>\n…": one chunk ends, the next carries on.
+            if out.ends_with('\n') {
+                out.pop();
+            }
+            if rest.trim_start().starts_with(OPEN) {
+                rest = rest.trim_start();
+            }
+        } else if let Some(r) = rest.strip_prefix('\n') {
+            rest = r;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn same_message(a: &str, b: &str, paths: &[&str]) -> bool {
+    // Your own image paths come out first, as typed (escaped) or as reported back (spaces and all):
+    // a path with a space in it would otherwise split into words that don't look like a path.
+    let strip = |t: &str| {
+        paths.iter().fold(t.to_string(), |acc, p| acc.replace(&crate::uploads::escape_path(p), " ").replace(p, " "))
+    };
+    let squash = |t: &str| strip(t).split_whitespace().filter(|w| !w.starts_with('/')).collect::<Vec<_>>().join(" ");
+    let (a, b) = (squash(a), squash(b));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let (short, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
+    long.contains(short.as_str()) && short.len() * 5 >= long.len() * 4
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_paste_split_into_chunks_reads_as_sent() {
+        let wrapped = "<pasted_content id=\"bcfe\">\nIs it ready? ✅ **Naming:** c\n</pasted_content id=\"bcfe\">\n\n\n<pasted_content id=\"bcfe\">\nlaude-relay is public.\n\nNext line.\n</pasted_content id=\"bcfe\">\n";
+        assert_eq!(unwrap_pasted(wrapped).trim(), "Is it ready? ✅ **Naming:** claude-relay is public.\n\nNext line.");
+        assert_eq!(unwrap_pasted("no tags <here>"), "no tags <here>");
+        assert_eq!(unwrap_pasted("cut <pasted_content id=\"x\""), "cut <pasted_content id=\"x\"");
+    }
+
+    fn origin(sid: &str) -> Origin {
+        Origin { session_id: sid.into(), cwd: "/x/proj".into(), harness: "claude".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn state_changes_open_and_close_segments() {
+        let mut s = Sessions::default();
+        let o = origin("a");
+        s.mark(&o, "working", Some("fix the bug"));
+        s.mark(&o, "working", None); // same kind: no new segment
+        s.mark(&o, "waiting", None);
+        s.mark(&o, "deciding", None); // waiting and deciding share the striped kind
+        let snap = s.snapshot();
+        assert_eq!(snap.len(), 1);
+        let a = &snap[0];
+        assert_eq!(a.state, "deciding");
+        assert_eq!(a.prompt, "fix the bug");
+        assert_eq!(a.project, "proj");
+        let kinds: Vec<&str> = a.segments.iter().map(|g| g.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["working", "waiting"]);
+        assert!(a.segments[0].end_ms.is_some() && a.segments[1].end_ms.is_none());
+    }
+
+    #[test]
+    fn thread_keeps_the_last_n_and_skips_repeats() {
+        let mut s = Sessions::default();
+        let o = origin("t");
+        s.mark(&o, "working", None);
+        for n in 0..7 {
+            s.note("t", "agent", &format!("msg {n}"), 5);
+        }
+        s.note("t", "agent", "msg 6", 5); // repeat of the last: ignored
+        s.note("t", "you", "   ", 5); // blank: ignored
+        let t = s.thread("t");
+        assert_eq!(t.len(), 5);
+        assert_eq!(t.first().unwrap().text, "msg 2");
+        assert_eq!(t.last().unwrap().text, "msg 6");
+        s.note("nobody", "you", "x", 5); // unknown session: no-op, no panic
+    }
+
+    #[test]
+    fn a_reply_and_its_echoed_prompt_are_one_exchange() {
+        let mut s = Sessions::default();
+        s.mark(&origin("e"), "waiting", None);
+        s.note_with("e", "you", "look at this", &["/u/1.png".into()], 5);
+        s.note("e", "you", "look at this /u/1.png", 5); // the prompt Claude reports back
+        s.note("e", "you", "o,look at  this", 5); // stray keys already in its prompt: still the same message
+        let t = s.thread("e");
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].images, vec!["/u/1.png".to_string()]);
+    }
+
+    #[test]
+    fn a_long_forward_and_its_wrapped_echo_are_one_exchange() {
+        let mut s = Sessions::default();
+        s.mark(&origin("f"), "waiting", None);
+        s.note("f", "you", "check this\n\n[Forwarded from the backend session]\nIt's well built. claude-relay is public.", 5);
+        let echo = "<pasted_content id=\"a\">\ncheck this\n\n[Forwarded from the backend session]\nIt's well built. c\n</pasted_content id=\"a\">\n\n\n<pasted_content id=\"a\">\nlaude-relay is public.\n</pasted_content id=\"a\">";
+        s.note("f", "you", &unwrap_pasted(echo), 5);
+        assert_eq!(s.thread("f").len(), 1);
+    }
+
+    #[test]
+    fn an_image_path_with_a_space_still_folds_into_one_message() {
+        let mut s = Sessions::default();
+        s.mark(&origin("g"), "waiting", None);
+        let p = "/Users/v/Library/Application Support/dev.spacegrowth.cue/uploads/1-0.png";
+        s.note_with("g", "you", "can you try showing time above the line", &[p.into()], 5);
+        // What Claude reports back: the text plus the path, its space unescaped.
+        s.note("g", "you", &format!("can you try showing time above the line {p}"), 5);
+        // ...or still escaped, as it was typed.
+        s.note("g", "you", &format!("can you try showing time above the line {}", crate::uploads::escape_path(p)), 5);
+        let t = s.thread("g");
+        assert_eq!(t.len(), 1, "{t:?}");
+        assert_eq!(t[0].images, vec![p.to_string()]);
+    }
+
+    #[test]
+    fn an_echo_that_lands_first_still_gets_the_images_and_short_replies_stay_apart() {
+        let mut s = Sessions::default();
+        s.mark(&origin("f"), "waiting", None);
+        s.note("f", "you", "o,show me the diff /u/2.png", 5); // the agent's report arrives first
+        s.note_with("f", "you", "show me the diff", &["/u/2.png".into()], 5);
+        let t = s.thread("f");
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].text, "o,show me the diff /u/2.png", "keeps what the agent actually got");
+        assert_eq!(t[0].images, vec!["/u/2.png".to_string()]);
+        s.note("f", "you", "ok", 5);
+        s.note("f", "you", "ok, ship it", 5);
+        assert_eq!(s.thread("f").len(), 3, "two real messages, not an echo");
+    }
+
+    #[test]
+    fn sessions_without_an_id_are_ignored_and_remove_works() {
+        let mut s = Sessions::default();
+        s.mark(&origin(""), "working", None);
+        assert!(s.snapshot().is_empty());
+        s.mark(&origin("b"), "waiting", None);
+        assert!(s.remove("b"));
+        assert!(s.snapshot().is_empty());
+    }
+}
