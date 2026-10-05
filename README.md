@@ -1,4 +1,14 @@
-# Cue
+<p align="center"><img src="site/icon.png" width="112" height="112" alt="Cue"></p>
+
+<h1 align="center">Cue</h1>
+
+<p align="center">
+  <b>Every coding agent that needs you, in one window.</b><br>
+  <a href="https://spacegrowth.github.io/cue/">Website</a> ·
+  <a href="https://github.com/spacegrowth/cue/releases/latest">Download for Mac</a>
+</p>
+
+<p align="center"><img src="site/shots/board.png" width="860" alt="Cue's Board: the session that needs you, everything waiting, and live sessions."></p>
 
 One window for every coding agent that needs you. When a Claude Code, Codex or Pi session finishes
 its turn, asks permission, or asks a question, it shows up in Cue — so you stop cycling through
