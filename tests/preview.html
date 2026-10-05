@@ -151,7 +151,7 @@
             if (args.sessionId !== "relay") return { version: 0, turns: [] };
             const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });
             const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
-            return { version: 1, turns: [
+            return { version: 1, meta: { model: "claude-opus-5-5", context: 164000, window: 200000, cache_pct: 92, cost: 1.32 }, turns: [
               { at_ms: now - 25 * M, more: 0, items: [st("a1", "read", "Read", "usage.ts", "212 lines", 24.8), st("a2", "search", "Searched", "“tokens_used”", "6 files", 24.6), st("a3", "edit", "Edited", "board.ts", "+48 −3", 22), say("Done with the parser. Sample output:", 18)] },
               { at_ms: now - 17 * M, more: 0, items: [say("Adding the footer total and the list output.", 16.9), st("b1", "edit", "Edited", "board.ts", "+12 −1", 16.5), st("b2", "edit", "Edited", "list.ts", "+9 −0", 16), st("b3", "run", "Ran", "npm test", "exit 1", 15, { bad: true }), say("One test expected the old column order. Updating it.", 14.8), st("b4", "read", "Read", "board.test.ts", "140 lines", 14.6), st("b5", "edit", "Edited", "board.test.ts", "+2 −2", 14), st("b6", "run", "Ran", "npm test", "Tests: 41 passed", 12.5), say(relayMsg, 11)] },
             ] };
@@ -179,6 +179,8 @@
       if (/hist=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
       if (/settings=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
       if (/open=1/.test(q)) document.querySelector("[data-toggle]")?.click();
+      // ?more=1: open the chat header's ⋯ menu.
+      if (/more=1/.test(q)) setTimeout(() => document.querySelector("[data-more]")?.click(), 500);
       // ?live=1&quiet=1: open the quiet session q2 (Sessions view → its tile).
       if (/quiet=1/.test(q)) setTimeout(() => { document.querySelector('[data-view="sessions"]')?.click(); setTimeout(() => document.querySelector('[data-sv="quiet"][data-sid="q2"]')?.click(), 300); }, 300);
       // ?steps=open: open the failed test run and an edit in the Active chat.

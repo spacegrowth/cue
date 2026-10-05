@@ -6,6 +6,10 @@
 //!
 //! A step's full output or diff isn't part of the feed: `detail` fetches it when you open the step.
 //!
+//! Pi's session log (~/.pi/agent/sessions/…) and Codex's (~/.codex/sessions/…/rollout-*.jsonl) are read
+//! the same way: each of their entries is first put in the shape Claude Code's transcript uses
+//! (`from_pi`, `from_codex`), so all three share everything below.
+//!
 //! SHORTCUT: viewers poll (every 0.5 s while the session works) rather than being
 //! pushed new steps. Fine for a few viewers, since a poll with nothing new reads no file and answers
 //! with just a version; push new steps instead if many viewers watch at once.
@@ -67,8 +71,26 @@ pub struct Turn {
     more: usize,
 }
 
+/// What the chat's tab shows about a session, from its log: the model, how full its context is (the
+/// latest reply's tokens of the model's window), how much of that came from the cache, and the cost so far
+/// where the agent logs it (Pi; Claude Code's comes from its status line instead).
+#[derive(Clone, Default, Serialize, PartialEq)]
+pub struct Meta {
+    model: String,
+    context: u64,
+    window: u64,
+    cache_pct: Option<u8>,
+    cost: Option<f64>,
+}
+
 struct Feed {
     path: String,
+    meta: Meta,
+    /// Whose log it is (its first line says): Claude Code's, Pi's or Codex's.
+    kind: Kind,
+    /// Codex: each apply_patch's patch, by call id (its result doesn't repeat it; the step's size and
+    /// diff come from it).
+    patches: HashMap<String, String>,
     offset: u64,
     /// Started mid-file: the first (partial) line still has to be skipped.
     align: bool,
@@ -92,14 +114,26 @@ pub fn steps(path: &str, known: u64) -> Value {
         return json!({ "version": feed.version });
     }
     let turns: Vec<&Turn> = feed.turns.iter().filter(|t| !t.items.is_empty()).collect();
-    json!({ "version": feed.version, "turns": turns })
+    let meta = (!feed.meta.model.is_empty() || feed.meta.context > 0).then_some(&feed.meta);
+    json!({ "version": feed.version, "turns": turns, "meta": meta })
+}
+
+/// How full the session's context is (the latest reply's tokens, as a share of the model's window), 0–100.
+pub fn context_pct(path: &str) -> Option<u8> {
+    let mut guard = FEEDS.lock().unwrap();
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    let m = &feed.meta;
+    (m.window > 0).then(|| (m.context * 100 / m.window).min(100) as u8)
 }
 
 impl Feed {
     fn open(path: &str, version: u64) -> Feed {
         let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let offset = len.saturating_sub(START_BYTES);
-        Feed { path: path.to_string(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now() }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now() }
     }
 
     /// Read what was added since last time (whole lines only; a half-written line waits for the next call).
@@ -130,7 +164,10 @@ impl Feed {
         let text = String::from_utf8_lossy(&buf[from..end]);
         let mut changed = false;
         for e in lines(&text) {
-            changed |= self.take(&e);
+            changed |= self.observe(&e);
+            for c in translate(self.kind, &e, &mut self.patches) {
+                changed |= self.take(&c);
+            }
         }
         self.offset += end as u64;
         if changed {
@@ -139,6 +176,86 @@ impl Feed {
             }
             self.version += 1;
         }
+    }
+
+    /// The model, context, cache and cost from one raw log entry (each agent logs them its own way).
+    /// Returns whether they changed.
+    fn observe(&mut self, e: &Value) -> bool {
+        let before = self.meta.clone();
+        let n = |v: Option<&Value>| v.and_then(Value::as_u64).unwrap_or(0);
+        let m = &mut self.meta;
+        match self.kind {
+            Kind::Claude => {
+                if e.get("type").and_then(Value::as_str) == Some("assistant") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) {
+                    let msg = e.get("message").cloned().unwrap_or(Value::Null);
+                    if let Some(u) = msg.get("usage") {
+                        let (fresh, read, wrote) = (n(u.get("input_tokens")), n(u.get("cache_read_input_tokens")), n(u.get("cache_creation_input_tokens")));
+                        let all = fresh + read + wrote;
+                        if all > 0 {
+                            m.context = all;
+                            m.cache_pct = Some((read * 100 / all) as u8);
+                        }
+                        let model = msg.get("model").and_then(Value::as_str).unwrap_or("");
+                        if !model.is_empty() && !model.starts_with('<') {
+                            m.model = model.to_string();
+                        }
+                        // The transcript doesn't say the window: 200k, or 1M once it's past that (or says so).
+                        m.window = if m.model.contains("[1m]") || m.context > 200_000 || m.window == 1_000_000 { 1_000_000 } else { 200_000 };
+                    }
+                }
+            }
+            Kind::Codex => {
+                let p = e.get("payload").cloned().unwrap_or(Value::Null);
+                if e.get("type").and_then(Value::as_str) == Some("turn_context") {
+                    if let Some(model) = p.get("model").and_then(Value::as_str) {
+                        m.model = model.to_string();
+                    }
+                }
+                if p.get("type").and_then(Value::as_str) == Some("token_count") {
+                    if let Some(info) = p.get("info").filter(|i| i.is_object()) {
+                        let last = info.get("last_token_usage");
+                        let input = n(last.and_then(|l| l.get("input_tokens")));
+                        if input > 0 {
+                            m.context = input;
+                            m.cache_pct = Some((n(last.and_then(|l| l.get("cached_input_tokens"))) * 100 / input) as u8);
+                        }
+                        let w = n(info.get("model_context_window"));
+                        if w > 0 {
+                            m.window = w;
+                        }
+                    }
+                }
+            }
+            Kind::Pi => {
+                let msg = e.get("message").cloned().unwrap_or(Value::Null);
+                if e.get("type").and_then(Value::as_str) == Some("model_change") {
+                    if let Some(model) = e.get("modelId").and_then(Value::as_str) {
+                        m.model = model.to_string();
+                        m.window = pi_window(e.get("provider").and_then(Value::as_str).unwrap_or(""), model).unwrap_or(m.window);
+                    }
+                }
+                if msg.get("role").and_then(Value::as_str) == Some("assistant") {
+                    if let Some(u) = msg.get("usage") {
+                        let (fresh, read, wrote) = (n(u.get("input")), n(u.get("cacheRead")), n(u.get("cacheWrite")));
+                        let all = fresh + read + wrote;
+                        if all > 0 {
+                            m.context = all;
+                            m.cache_pct = Some((read * 100 / all) as u8);
+                        }
+                        if let Some(c) = u.pointer("/cost/total").and_then(Value::as_f64) {
+                            m.cost = Some(m.cost.unwrap_or(0.0) + c);
+                        }
+                    }
+                    if let Some(model) = msg.get("model").and_then(Value::as_str).filter(|x| !x.is_empty()) {
+                        if m.model != model || m.window == 0 {
+                            m.window = pi_window(msg.get("provider").and_then(Value::as_str).unwrap_or(""), model).unwrap_or(m.window);
+                        }
+                        m.model = model.to_string();
+                    }
+                }
+            }
+        }
+        self.meta != before
     }
 
     /// One transcript entry. Returns whether anything shown changed.
@@ -249,6 +366,252 @@ impl Feed {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Kind {
+    Claude,
+    Pi,
+    Codex,
+}
+
+/// Whose log this is, by its first line: Pi's starts `{"type":"session","version":…}`, Codex's
+/// `{"type":"session_meta",…}`; anything else is Claude Code's.
+fn kind_of(path: &str) -> Kind {
+    let Ok(f) = std::fs::File::open(path) else { return Kind::Claude };
+    let mut first = String::new();
+    let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(f.take(256 * 1024)), &mut first);
+    let e: Value = serde_json::from_str(&first).unwrap_or(Value::Null);
+    match e.get("type").and_then(Value::as_str) {
+        Some("session") if e.get("version").is_some() => Kind::Pi,
+        Some("session_meta") => Kind::Codex,
+        _ => Kind::Claude,
+    }
+}
+
+/// One log entry as Claude Code transcript entries (none, one, or a few).
+fn translate(kind: Kind, e: &Value, patches: &mut HashMap<String, String>) -> Vec<Value> {
+    match kind {
+        Kind::Claude => vec![e.clone()],
+        Kind::Pi => from_pi(e),
+        Kind::Codex => from_codex(e, patches),
+    }
+}
+
+/// One Codex rollout entry in the shape of Claude Code's transcript: your message (its `user_message`
+/// event; the instructions Codex puts in as "user" messages aren't yours), its words, commands
+/// (`exec_command`, `shell`) and patches (`apply_patch`), and their results. `write_stdin` (checking on
+/// a command still running) is left out.
+fn from_codex(e: &Value, patches: &mut HashMap<String, String>) -> Vec<Value> {
+    let ts = e.get("timestamp").cloned().unwrap_or(Value::Null);
+    let p = e.get("payload").cloned().unwrap_or(Value::Null);
+    let ptype = p.get("type").and_then(Value::as_str).unwrap_or("");
+    match (e.get("type").and_then(Value::as_str), ptype) {
+        (Some("event_msg"), "user_message") => {
+            let text = p.get("message").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            if text.is_empty() || text.starts_with('<') {
+                return vec![];
+            }
+            vec![json!({ "type": "user", "timestamp": ts, "message": { "content": text } })]
+        }
+        (Some("response_item"), "message") if p.get("role").and_then(Value::as_str) == Some("assistant") => {
+            let text: String = p.get("content").and_then(Value::as_array).into_iter().flatten().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
+            if text.trim().is_empty() {
+                return vec![];
+            }
+            vec![json!({ "type": "assistant", "timestamp": ts, "message": { "content": [{ "type": "text", "text": text }] } })]
+        }
+        (Some("response_item"), "function_call" | "custom_tool_call") => {
+            let name = p.get("name").and_then(Value::as_str).unwrap_or("");
+            let id = p.get("call_id").cloned().unwrap_or(Value::Null);
+            let args: Value = p.get("arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or(Value::Null);
+            let raw = p.get("input").and_then(Value::as_str).unwrap_or("");
+            let (tool, input) = match name {
+                "write_stdin" => return vec![],
+                "exec_command" => ("Bash".to_string(), json!({ "command": args.get("cmd").cloned().unwrap_or(Value::Null) })),
+                "shell" | "local_shell" | "container.exec" => {
+                    let argv: Vec<&str> = args.get("command").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+                    let cmd = if argv.len() >= 3 && argv[1] == "-lc" { argv[2].to_string() } else { argv.join(" ") };
+                    ("Bash".to_string(), json!({ "command": cmd }))
+                }
+                "apply_patch" => {
+                    if let Some(i) = id.as_str() {
+                        patches.insert(i.to_string(), raw.to_string());
+                    }
+                    let file = raw.lines().find_map(|l| ["*** Update File: ", "*** Add File: ", "*** Delete File: "].iter().find_map(|m| l.strip_prefix(m))).unwrap_or("").trim().to_string();
+                    ("Edit".to_string(), json!({ "file_path": file }))
+                }
+                // The Codex app's own tool: a script it runs (JavaScript). Often it only runs a shell
+                // command (`tools.exec_command({"cmd": "…"})`): then it reads as that command.
+                "exec" => match script_command(raw) {
+                    Some(cmd) => ("Bash".to_string(), json!({ "command": cmd })),
+                    None => ("CodexScript".to_string(), json!({ "script": raw })),
+                },
+                n => (n.to_string(), if args.is_null() { json!({ "input": raw }) } else { args }),
+            };
+            vec![json!({ "type": "assistant", "timestamp": ts, "message": { "content": [{ "type": "tool_use", "id": id, "name": tool, "input": input }] } })]
+        }
+        (Some("response_item"), "function_call_output" | "custom_tool_call_output") => {
+            let id = p.get("call_id").and_then(Value::as_str).unwrap_or("").to_string();
+            let text = match p.get("output") {
+                Some(Value::String(t)) => t.clone(),
+                Some(Value::Array(a)) => a.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"),
+                Some(Value::Object(o)) => o.get("output").and_then(Value::as_str).unwrap_or("").to_string(),
+                _ => String::new(),
+            };
+            // "Process exited with code 1" / "Exit code: 1" up top, then "Output:" and what it printed.
+            let code = ["exited with code ", "Exit code: "].iter().find_map(|m| text.split(m).nth(1).map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>())).and_then(|c| c.parse::<i64>().ok());
+            let body = text.split_once("Output:\n").map(|(_, b)| b.to_string()).unwrap_or_else(|| text.clone());
+            let failed = code.is_some_and(|c| c != 0);
+            let extra = match patches.get(&id) {
+                Some(patch) => json!({ "structuredPatch": codex_patch(patch) }),
+                None => json!({ "stdout": body }),
+            };
+            let shown = if failed { format!("Exit code {}\n{body}", code.unwrap_or(1)) } else { body };
+            vec![json!({
+                "type": "user", "timestamp": ts, "toolUseResult": extra,
+                "message": { "content": [{ "type": "tool_result", "tool_use_id": id, "content": shown, "is_error": failed }] },
+            })]
+        }
+        _ => vec![],
+    }
+}
+
+/// The shell command a Codex app script runs, when that's all it is: `exec_command({"cmd": "…"})`.
+fn script_command(script: &str) -> Option<String> {
+    if script.matches("exec_command(").count() != 1 {
+        return None;
+    }
+    let after = &script[script.find("\"cmd\"")? + 5..];
+    let quote = after.find('"')?;
+    let mut strings = serde_json::Deserializer::from_str(&after[quote..]).into_iter::<String>();
+    strings.next()?.ok().filter(|c| !c.trim().is_empty())
+}
+
+/// An apply_patch patch as Claude Code's structured patch: one hunk per "@@" part, its +/−/context lines.
+fn codex_patch(patch: &str) -> Value {
+    let mut hunks: Vec<Vec<String>> = vec![];
+    for l in patch.lines() {
+        if l.starts_with("*** ") {
+            continue;
+        }
+        if l.starts_with("@@") {
+            hunks.push(vec![]);
+            continue;
+        }
+        if hunks.is_empty() {
+            hunks.push(vec![]);
+        }
+        let line = if l.starts_with('+') || l.starts_with('-') || l.starts_with(' ') { l.to_string() } else { format!(" {l}") };
+        hunks.last_mut().unwrap().push(line);
+    }
+    Value::Array(hunks.into_iter().filter(|h| !h.is_empty()).map(|h| json!({ "lines": h })).collect())
+}
+
+/// One Pi log entry in the shape of Claude Code's transcript (so the steps read both alike): your
+/// message, its words and tool calls, a tool's result. Pi's tool names map to Claude Code's.
+fn from_pi(e: &Value) -> Vec<Value> {
+    if e.get("type").and_then(Value::as_str) != Some("message") {
+        return vec![];
+    }
+    let ts = e.get("timestamp").cloned().unwrap_or(Value::Null);
+    let m = e.get("message").cloned().unwrap_or(Value::Null);
+    let blocks = m.get("content").and_then(Value::as_array).cloned().unwrap_or_default();
+    let text_of = |bs: &[Value]| bs.iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
+    match m.get("role").and_then(Value::as_str) {
+        Some("user") => {
+            let text = match m.get("content") {
+                Some(Value::String(t)) => t.clone(),
+                _ => text_of(&blocks),
+            };
+            // What Pi itself puts in as a "user" message (a loaded skill, a reminder) starts with a tag.
+            if text.trim_start().starts_with('<') || text.trim().is_empty() {
+                return vec![];
+            }
+            vec![json!({ "type": "user", "timestamp": ts, "message": { "content": text } })]
+        }
+        Some("assistant") => {
+            let content: Vec<Value> = blocks
+                .iter()
+                .filter_map(|b| match b.get("type").and_then(Value::as_str) {
+                    Some("text") => Some(json!({ "type": "text", "text": b.get("text").cloned().unwrap_or(Value::Null) })),
+                    Some("toolCall") => {
+                        let args = b.get("arguments").cloned().unwrap_or(Value::Null);
+                        let (name, input) = pi_tool(b.get("name").and_then(Value::as_str).unwrap_or(""), &args);
+                        Some(json!({ "type": "tool_use", "id": b.get("id").cloned().unwrap_or(Value::Null), "name": name, "input": input }))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if content.is_empty() {
+                return vec![];
+            }
+            vec![json!({ "type": "assistant", "timestamp": ts, "message": { "content": content } })]
+        }
+        Some("toolResult") => {
+            let text = text_of(&blocks);
+            let tool = m.get("toolName").and_then(Value::as_str).unwrap_or("");
+            let details = m.get("details").cloned().unwrap_or(Value::Null);
+            let extra = match tool {
+                "bash" => json!({ "stdout": text }),
+                "read" => json!({ "type": "text", "file": { "numLines": text.lines().count() } }),
+                "edit" => json!({ "structuredPatch": pi_patch(details.get("diff").and_then(Value::as_str).unwrap_or("")) }),
+                _ => Value::Null,
+            };
+            vec![json!({
+                "type": "user", "timestamp": ts, "toolUseResult": extra,
+                "message": { "content": [{ "type": "tool_result", "tool_use_id": m.get("toolCallId").cloned().unwrap_or(Value::Null), "content": text, "is_error": m.get("isError").and_then(Value::as_bool).unwrap_or(false) }] },
+            })]
+        }
+        _ => vec![],
+    }
+}
+
+/// A model's context window from Pi's own model list (`<Pi's folder>/models-store.json`), read once.
+fn pi_window(provider: &str, model: &str) -> Option<u64> {
+    static STORE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    let store = STORE.get_or_init(|| {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let dir = std::env::var("PI_CODING_AGENT_DIR").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".pi/agent"));
+        std::fs::read_to_string(dir.join("models-store.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null)
+    });
+    let find = |models: &Value| models.as_array()?.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(model))?.get("contextWindow")?.as_u64();
+    store.get(provider).and_then(|p| find(p.get("models")?)).or_else(|| store.as_object()?.values().find_map(|p| find(p.get("models")?)))
+}
+
+/// A Pi tool as the Claude Code tool it matches (its arguments renamed to fit).
+fn pi_tool(name: &str, args: &Value) -> (String, Value) {
+    let a = |k: &str| args.get(k).cloned().unwrap_or(Value::Null);
+    match name {
+        "bash" => ("Bash".into(), json!({ "command": a("command") })),
+        "read" => ("Read".into(), json!({ "file_path": a("path") })),
+        "edit" => ("Edit".into(), json!({ "file_path": a("path") })),
+        "write" => ("Write".into(), json!({ "file_path": a("path") })),
+        "grep" => ("Grep".into(), json!({ "pattern": a("pattern"), "path": a("path") })),
+        "find" => ("Glob".into(), json!({ "pattern": a("pattern") })),
+        "ask_user" => ("AskUserQuestion".into(), json!({ "questions": [{ "question": a("question") }] })),
+        n => (n.to_string(), args.clone()),
+    }
+}
+
+/// Pi's edit diff ("-60  old", "+61  new", " 56  same", "    ..." between parts) as Claude Code's
+/// structured patch: hunks of lines starting with "-", "+" or " ", line numbers dropped.
+fn pi_patch(diff: &str) -> Value {
+    let mut hunks: Vec<Vec<String>> = vec![vec![]];
+    for l in diff.lines() {
+        if l.trim() == "..." {
+            if !hunks.last().unwrap().is_empty() {
+                hunks.push(vec![]);
+            }
+            continue;
+        }
+        let (op, rest) = l.split_at(l.chars().next().map(char::len_utf8).unwrap_or(0));
+        let op = if op == "+" || op == "-" { op } else { " " };
+        // The line number, then one space, then the line as it is (its own indentation kept).
+        let body = rest.trim_start().trim_start_matches(|c: char| c.is_ascii_digit());
+        hunks.last_mut().unwrap().push(format!("{op}{}", body.strip_prefix(' ').unwrap_or(body)));
+    }
+    Value::Array(hunks.into_iter().filter(|h| !h.is_empty()).map(|h| json!({ "lines": h })).collect())
+}
+
 /// A tool call as a step line: its kind, the verb while running and once done, and its subject.
 fn step_of(b: &Value, at: u64) -> Item {
     let tool = b.get("name").and_then(Value::as_str).unwrap_or("").to_string();
@@ -284,6 +647,7 @@ fn describe(tool: &str, input: &Value) -> (&'static str, &'static str, &'static 
         "WebSearch" => ("web", "Searching the web", "Searched the web", cut(&arg("query"), 70), false),
         "WebFetch" => ("web", "Reading", "Read", cut(arg("url").trim_start_matches("https://"), 70), true),
         "Agent" | "Task" => ("agent", "Delegating", "Delegated", cut(&arg("description"), 70), false),
+        "CodexScript" => ("run", "Running a script", "Ran a script", cut(&first(arg("script")), 70), true),
         "TodoWrite" => ("todo", "Updating its to-do list", "Updated its to-do list", String::new(), false),
         "AskUserQuestion" => {
             let q = input.pointer("/questions/0/question").and_then(Value::as_str).unwrap_or("");
@@ -343,7 +707,8 @@ fn outcome(tool: &str, block: &Value, extra: Option<&Value>) -> (String, bool) {
         if low.contains("denied") || low.contains("doesn't want to proceed") || low.contains("rejected") {
             return ("declined".into(), true);
         }
-        if let Some(code) = text.split("Exit code ").nth(1).map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>()).filter(|c| !c.is_empty()) {
+        let code_after = |mark: &str| text.split(mark).nth(1).map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>()).filter(|c| !c.is_empty());
+        if let Some(code) = code_after("Exit code ").or_else(|| code_after("exited with code ")) {
             return (format!("exit {code}"), true);
         }
         return ("failed".into(), true);
@@ -426,6 +791,8 @@ fn clip_lines(text: &str) -> (Vec<String>, usize) {
 /// Opened steps: for each id, its full subject (the whole command, path, pattern), and its output
 /// lines or diff. Read from the transcript on demand, never kept.
 pub fn detail(path: &str, ids: &[String]) -> Value {
+    let kind = kind_of(path);
+    let mut patches = HashMap::new();
     let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let from = len.saturating_sub(START_BYTES);
     let Ok(mut file) = std::fs::File::open(path) else { return json!({}) };
@@ -438,7 +805,8 @@ pub fn detail(path: &str, ids: &[String]) -> Value {
     let mut results: HashMap<&str, (Value, Value)> = HashMap::new();
     for line in text.lines() {
         let Some(id) = ids.iter().find(|id| line.contains(id.as_str())) else { continue };
-        let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
+        let Ok(raw) = serde_json::from_str::<Value>(line) else { continue };
+        for e in translate(kind, &raw, &mut patches) {
         for b in content_blocks(&e) {
             match b.get("type").and_then(Value::as_str) {
                 Some("tool_use") if b.get("id").and_then(Value::as_str) == Some(id) => {
@@ -449,6 +817,7 @@ pub fn detail(path: &str, ids: &[String]) -> Value {
                 }
                 _ => {}
             }
+        }
         }
     }
     let mut out = serde_json::Map::new();
@@ -465,6 +834,7 @@ fn one_detail(tool: &str, input: &Value, block: &Value, extra: &Value) -> Value 
     let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
     let full = match tool {
         "Bash" => cut(&arg("command"), 4000),
+        "CodexScript" => cut(&arg("script"), 4000),
         "Read" | "Edit" | "MultiEdit" | "Write" => arg("file_path"),
         "NotebookEdit" => arg("notebook_path"),
         "Grep" => [arg("pattern"), arg("path")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("  in  "),
@@ -530,7 +900,7 @@ mod tests {
     use super::*;
 
     fn feed_of(jsonl: &str) -> Feed {
-        let mut f = Feed { path: String::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now() };
+        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now() };
         for e in lines(jsonl) {
             f.take(&e);
         }
@@ -565,6 +935,39 @@ mod tests {
         // Still running: the present-tense verb, no result. The helper's words aren't here.
         assert_eq!(step(&items[4]), ("Running", "npm test", "", false, false));
         assert_eq!(items.len(), 5);
+    }
+
+    #[test]
+    fn a_pi_log_reads_as_steps_too() {
+        let log = [
+            r#"{"type":"session","version":3,"id":"P1","timestamp":"2026-10-04T10:00:00.000Z","cwd":"/a"}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"<skill name="x">loaded</skill>"}]}}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"fix the filter"}]}}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hm"},{"type":"text","text":"Looking."},{"type":"toolCall","id":"c1","name":"edit","arguments":{"path":"/a/src/filters.ts"}}]}}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:04.000Z","message":{"role":"toolResult","toolCallId":"c1","toolName":"edit","content":[{"type":"text","text":"ok"}],"isError":false,"details":{"diff":" 56   return [];\n-60 old line\n+60 new line\n+61   added\n    ...\n 90 tail"}}}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:05.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c2","name":"bash","arguments":{"command":"npm test"}}]}}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:09.000Z","message":{"role":"toolResult","toolCallId":"c2","toolName":"bash","content":[{"type":"text","text":"FAIL\n\nCommand exited with code 1"}],"isError":true}}"#,
+        ]
+        .join("\n");
+        let dir = std::env::temp_dir().join(format!("cue-steps-pi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.jsonl");
+        std::fs::write(&path, log + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        assert_eq!(f.kind, Kind::Pi);
+        f.catch_up();
+        assert_eq!(f.turns.len(), 1, "the skill Pi loaded isn't a turn");
+        assert_eq!(f.turns[0].prompt, "fix the filter");
+        let items = &f.turns[0].items;
+        assert!(matches!(&items[0], Item::Say { text, .. } if text == "Looking."));
+        assert_eq!(step(&items[1]), ("Edited", "filters.ts", "+2 −1", false, true));
+        assert_eq!(step(&items[2]), ("Ran", "npm test", "exit 1", true, true));
+        let d = detail(p, &["c1".into()]);
+        assert_eq!(d["c1"]["diff"][0], json!([" ", "  return [];"]));
+        assert_eq!(d["c1"]["diff"][3], json!(["+", "  added"]));
+        assert_eq!(d["c1"]["diff"][4], json!(["…", ""]));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -609,5 +1012,62 @@ mod tests {
         assert_eq!(d["t3"]["full"], "npm test\n");
         assert_eq!(d["t3"]["output"][1], "Tests: 3 failed");
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod codex_tests {
+    use super::*;
+
+    #[test]
+    fn a_codex_log_reads_as_steps_too() {
+        let log = [
+            r#"{"timestamp":"2026-10-05T06:36:45.800Z","type":"session_meta","payload":{"session_id":"X1","cwd":"/a"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:45.816Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"AGENTS.md instructions"}]}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:45.831Z","type":"event_msg","payload":{"type":"user_message","message":"fix the menu"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:46.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Looking at the menu code."}]}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:47.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Looking at the menu code."}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:48.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"cd /a && rg --files\"}","call_id":"k1"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:48.500Z","type":"response_item","payload":{"type":"function_call_output","call_id":"k1","output":"Chunk ID: 1\nWall time: 0.03 seconds\nProcess exited with code 0\nOutput:\napp.py\nREADME.md\n"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:49.000Z","type":"response_item","payload":{"type":"function_call","name":"write_stdin","arguments":"{\"session_id\":1,\"chars\":\"\"}","call_id":"k2"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:50.000Z","type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","input":"*** Begin Patch\n*** Update File: /a/app.py\n@@\n-    old()\n+    new()\n+    more()\n*** End Patch","call_id":"k3"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:50.500Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"k3","output":"Exit code: 0\nWall time: 0.2 seconds\nOutput:\nSuccess. Updated the following files:\nM /a/app.py\n"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:51.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"pytest -q\"}","call_id":"k4"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:55.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"k4","output":"Chunk ID: 2\nProcess exited with code 1\nOutput:\n1 failed\n"}}"#,
+        ]
+        .join("\n");
+        let dir = std::env::temp_dir().join(format!("cue-steps-codex-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rollout.jsonl");
+        std::fs::write(&path, log + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        assert_eq!(f.kind, Kind::Codex);
+        f.catch_up();
+        assert_eq!(f.turns.len(), 1, "Codex's instructions aren't a turn of yours");
+        assert_eq!(f.turns[0].prompt, "fix the menu");
+        let items = &f.turns[0].items;
+        let line = |i: usize| match &items[i] {
+            Item::Step { verb, subject, result, bad, .. } => (verb.as_str(), subject.as_str(), result.as_str(), *bad),
+            Item::Say { text, .. } => ("say", text.as_str(), "", false),
+        };
+        assert_eq!(items.len(), 4, "its words once (not again from agent_message), no write_stdin");
+        assert_eq!(line(0), ("say", "Looking at the menu code.", "", false));
+        assert_eq!(line(1), ("Ran", "rg --files", "README.md", false));
+        assert_eq!(line(2), ("Edited", "app.py", "+2 −1", false));
+        assert_eq!(line(3), ("Ran", "pytest -q", "exit 1", true));
+        let d = detail(p, &["k3".into(), "k4".into()]);
+        assert_eq!(d["k3"]["diff"][1], json!(["+", "    new()"]));
+        assert_eq!(d["k4"]["output"][1], "1 failed");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod script_tests {
+    #[test]
+    fn a_script_that_only_runs_a_command_reads_as_that_command() {
+        assert_eq!(super::script_command(r#"const r = await tools.exec_command({"cmd":"git status --short","yield_time_ms":1000}); text(r);"#).as_deref(), Some("git status --short"));
+        assert_eq!(super::script_command("const m = ALL_TOOLS.filter(x => x); text(m);"), None);
     }
 }

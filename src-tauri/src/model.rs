@@ -101,10 +101,15 @@ pub enum ClientMsg {
         #[serde(default)]
         error_type: String,
     },
-    /// The plan's usage, forwarded from Claude Code's status line (its `rate_limits` object).
+    /// From Claude Code's status line: the plan's usage (its `rate_limits` object, plan users only), and
+    /// that session's cost so far (`cost.total_cost_usd`, everyone).
     Usage {
         #[serde(default)]
         rate_limits: Value,
+        #[serde(default)]
+        session_id: String,
+        #[serde(default)]
+        cost: Option<f64>,
     },
     /// Sent on an open Ask connection when the agent got its answer somewhere else.
     Resolved {

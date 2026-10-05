@@ -384,6 +384,25 @@ pub fn interrupted_at(path: &str) -> Option<u64> {
     at
 }
 
+/// Whether a `/compact` typed at `since_ms` has finished: Claude Code writes the command, then (when the
+/// summary is done, or it couldn't compact) a `<local-command-stdout>` / `-stderr` entry after it.
+pub fn compact_finished(path: &str, since_ms: u64) -> bool {
+    let Some(text) = std::fs::metadata(path).ok().and_then(|m| read_from(path, m.len().saturating_sub(256 * 1024))) else { return false };
+    let mut typed = false;
+    for e in lines(&text) {
+        if e.get("type").and_then(Value::as_str) != Some("user") || stamp(&e) + 2000 < since_ms {
+            continue;
+        }
+        let said = content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str).map(String::from)).collect::<String>();
+        if said.contains("<command-name>/compact</command-name>") {
+            typed = true;
+        } else if typed && (said.contains("<local-command-stdout>") || said.contains("<local-command-stderr>")) {
+            return true;
+        }
+    }
+    false
+}
+
 /// A turn that has ended, by the transcript: Claude Code writes a `turn_duration` entry once a turn is
 /// really over (after its Stop hooks, and not when one sends it back to work). Returns when, and the
 /// turn's last text reply, if nothing has happened since. Catches a Stop hook that never reached Cue
@@ -501,6 +520,21 @@ mod tests {
         assert_eq!(turn_ended(&p.0), None);
         let p = write_transcript(&[json!({"type":"user","message":{"content":"go"}}), reply]);
         assert_eq!(turn_ended(&p.0), None);
+    }
+
+    #[test]
+    fn compact_is_finished_once_claude_code_reports_it() {
+        let at = |t: &str| format!("2026-10-05T13:{t}Z");
+        let typed = json!({"type":"user","timestamp":at("02:30.869"),"message":{"content":"<command-name>/compact</command-name>\n<command-message>compact</command-message>"}});
+        let since = iso_ms(&at("02:30.500")).unwrap();
+        let p = write_transcript(&[json!({"type":"user","timestamp":at("01:00.000"),"message":{"content":"<local-command-stdout>an older one</local-command-stdout>"}}), typed.clone()]);
+        assert!(!compact_finished(&p.0, since), "typed, still summarizing");
+        let done = json!({"type":"user","timestamp":at("03:04.976"),"message":{"content":"<local-command-stdout>Compacted (ctrl+o to see full summary)</local-command-stdout>"}});
+        let p = write_transcript(&[typed.clone(), json!({"type":"system","subtype":"compact_boundary","timestamp":at("03:04.877")}), done]);
+        assert!(compact_finished(&p.0, since));
+        // It couldn't compact: that's the end of it too.
+        let p = write_transcript(&[typed, json!({"type":"user","timestamp":at("02:31.000"),"message":{"content":"<local-command-stderr>Error: Not enough messages to compact.</local-command-stderr>"}})]);
+        assert!(compact_finished(&p.0, since));
     }
 
     // Tiny self-cleaning temp file so tests need no extra crate.

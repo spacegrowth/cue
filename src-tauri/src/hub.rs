@@ -5,7 +5,7 @@ use crate::model::*;
 use crate::transcript;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::sync::oneshot;
@@ -19,6 +19,8 @@ pub enum Reply {
 
 #[derive(Default)]
 struct Store {
+    /// Each Claude Code session's cost so far, from its status line (shown in the chat's tab).
+    costs: HashMap<String, f64>,
     items: Vec<Item>,
     history: VecDeque<Item>,
     /// Every answer of the last day, newest first (History's today numbers; the list above is capped).
@@ -45,6 +47,12 @@ struct Store {
     told_out: HashSet<String>,
     told_back: HashSet<String>,
 }
+
+/// Context this full (percent) at a turn's end: the notification says so and offers Compact.
+pub const CONTEXT_HIGH: u8 = 80;
+/// No new output for this long while running a command, or while only thinking: stuck.
+const STUCK_RUNNING_MS: u64 = 10 * 60_000;
+const STUCK_THINKING_MS: u64 = 5 * 60_000;
 
 pub struct Hub {
     store: Mutex<Store>,
@@ -131,7 +139,7 @@ impl Hub {
         };
         self.changed();
         if crate::config::flag("/notify/decisions") {
-            self.notify(&id, &title.0, &title.1);
+            self.notify(&id, &title.0, &title.1, "");
         }
         (id, rx)
     }
@@ -205,6 +213,7 @@ impl Hub {
             return;
         }
         let sid = origin.session_id.clone();
+        let origin_path = origin.transcript_path.clone();
         match event {
             "stopped" => {
                 let context = if !message.trim().is_empty() {
@@ -237,11 +246,18 @@ impl Hub {
                     (id, t)
                 };
                 self.changed();
+                self.turn_changes(&sid);
+                // Context high (80%+): the notification says so and offers Compact.
+                let full = (!origin_path.is_empty()).then(|| crate::steps::context_pct(&origin_path)).flatten().filter(|p| *p >= CONTEXT_HIGH);
                 if crate::config::flag("/notify/finished") {
-                    self.notify(&id, &title.0, &title.1);
+                    match full {
+                        Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
+                        None => self.notify(&id, &title.0, &title.1, "turn"),
+                    }
                 }
             }
             "active" => {
+                let mut started = false;
                 {
                     let mut st = self.store.lock().unwrap();
                     st.active_at.insert(sid.clone(), now_ms());
@@ -251,12 +267,16 @@ impl Hub {
                     let echo = st.sessions.state(&sid).as_deref() == Some("working")
                         && st.sessions.queued_text(&sid).is_some_and(|q| !q.trim().is_empty() && message.trim().starts_with(q.trim()));
                     if !echo {
+                        started = st.sessions.state(&sid).as_deref() != Some("working");
                         st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
                         // Working again, whoever started it. Whether the prompt was yours (and gets a bubble)
                         // is settled separately: see prompt_from_you.
                         st.sessions.mark(&origin, "working", None);
                         st.sessions.set_queued(&sid, None);
                     }
+                }
+                if started {
+                    self.turn_started(&sid, &origin.cwd);
                 }
                 self.changed();
             }
@@ -312,7 +332,7 @@ impl Hub {
             } else {
                 (format!("{} is used up{when}", limit.scope), "Other models still work: switch with /model.".to_string())
             };
-            self.notify("usage", &title, &body);
+            self.notify("usage", &title, &body, "");
         }
     }
 
@@ -338,6 +358,19 @@ impl Hub {
     }
 
     /// The status line's usage. Only redraws when the numbers move.
+    pub fn set_cost(&self, session_id: &str, cost: f64) {
+        self.store.lock().unwrap().costs.insert(session_id.to_string(), cost);
+    }
+    /// A Claude Code session's cost so far, for API-key and proxy users only. On a plan (Claude Code sends
+    /// its limits only then) it's what the session would cost at API prices, not what you pay.
+    pub fn session_cost(&self, session_id: &str) -> Option<f64> {
+        let st = self.store.lock().unwrap();
+        if st.rates.is_some() {
+            return None;
+        }
+        st.costs.get(session_id).copied()
+    }
+
     pub fn set_rates(&self, rl: &Value) {
         let now = now_ms();
         {
@@ -422,7 +455,7 @@ impl Hub {
         for (scope, n) in back {
             let who = if scope == "all" { "Claude Code".to_string() } else { scope };
             let paused = if n == 1 { "1 session didn't run: resend it from Cue.".to_string() } else { format!("{n} sessions didn't run: resend them from Cue.") };
-            self.notify("usage", &format!("{who} is back"), &paused);
+            self.notify("usage", &format!("{who} is back"), &paused, "");
         }
     }
 
@@ -783,6 +816,9 @@ impl Hub {
     /// Change one setting. History size applies right away (memory and file are trimmed).
     pub fn set_setting(&self, key: &str, value: Value) -> Result<(), String> {
         crate::config::set(key, value)?;
+        if key == "quick.phrases" {
+            crate::notify::set_phrases(&crate::config::quick_phrases());
+        }
         if key == "history.keep" {
             let history = crate::db::history(crate::config::history_keep());
             self.store.lock().unwrap().history = history;
@@ -821,6 +857,72 @@ impl Hub {
     }
 
     /// A Claude Code turn just ended: type the rename it missed while busy (after its Stop hooks settle).
+    /// Type one of the agent's own commands into its session (Compact: `/compact`; a relay lead's Hand off:
+    /// `/relay:handoff`). Not mid-turn: typed then, it would land in the middle of its work.
+    pub fn session_command(&self, session_id: &str, action: &str) -> Result<String, String> {
+        let (origin, state) = {
+            let st = self.store.lock().unwrap();
+            let s = st.sessions.all().into_iter().find(|s| s.origin.session_id == session_id).ok_or("that session is gone")?;
+            (s.origin.clone(), s.state.clone())
+        };
+        if state == "working" {
+            return Err("It's working: do this when its turn ends".into());
+        }
+        let line = match action {
+            "compact" => "/compact",
+            "handoff" => {
+                let lead = crate::leads::view(&std::iter::once(session_id.to_string()).collect()).get(session_id).is_some_and(|m| m["role"] == "lead" && m["plugin"] == "relay");
+                if !lead {
+                    return Err("only a relay lead can hand off".into());
+                }
+                "/relay:handoff"
+            }
+            _ => return Err(format!("Cue doesn't know \"{action}\"")),
+        };
+        crate::focus::type_into(&origin, line)?;
+        if action == "compact" {
+            self.store.lock().unwrap().sessions.set_compacting(session_id, now_ms());
+            self.changed();
+        }
+        Ok(match action {
+            "compact" => "Compacting: it summarizes the conversation to free up context".into(),
+            _ => "Handing off: it writes its notes, opens its successor, then steps down".into(),
+        })
+    }
+
+    /// This hub as the app holds it, for work handed to another thread (none in tests: no app).
+    fn shared(&self) -> Option<Arc<Hub>> {
+        self.app.as_ref().map(|a| a.state::<Arc<Hub>>().inner().clone())
+    }
+
+    /// A turn began: note the folder's git state (in the background: git can take a moment) to tell
+    /// later what this turn changed.
+    fn turn_started(&self, session_id: &str, cwd: &str) {
+        let (Some(me), sid, cwd) = (self.shared(), session_id.to_string(), cwd.to_string()) else { return };
+        std::thread::spawn(move || {
+            let base = crate::changes::base(&cwd);
+            me.store.lock().unwrap().sessions.set_turn_base(&sid, base);
+        });
+    }
+
+    /// A turn ended: what it changed, for the "4 files · +98 −9" pill and Commit.
+    fn turn_changes(&self, session_id: &str) {
+        let Some(base) = self.store.lock().unwrap().sessions.take_turn_base(session_id) else { return };
+        let (Some(me), sid) = (self.shared(), session_id.to_string()) else { return };
+        std::thread::spawn(move || {
+            let changes = crate::changes::since(&base);
+            if me.store.lock().unwrap().sessions.set_changes(&sid, changes) {
+                me.changed();
+            }
+        });
+    }
+
+    /// Compact from a notification (it names the card; Compact goes to its session).
+    pub fn compact_for_item(&self, id: &str) -> Result<String, String> {
+        let sid = self.get(id).map(|i| i.origin.session_id).ok_or("that card is gone")?;
+        self.session_command(&sid, "compact")
+    }
+
     fn deliver_deferred_rename(&self, session_id: &str) {
         if let Some((name, origin)) = self.store.lock().unwrap().sessions.take_rename(session_id) {
             std::thread::spawn(move || {
@@ -859,6 +961,47 @@ impl Hub {
             if let Some(it) = self.store.lock().unwrap().items.iter_mut().find(|i| i.kind == "waiting" && i.origin.session_id == sid) {
                 it.interrupted = true;
             }
+            self.changed();
+        }
+        // Stuck: working, but nothing new in its transcript for 10 minutes while it runs a command (a long
+        // build is fine; one waiting for input in its terminal isn't), or 5 while it's only thinking. Not
+        // while a helper agent works (that writes to its own log). Said once per quiet spell.
+        let quiet: Vec<(String, u64, String, u64, String)> = {
+            let st = self.store.lock().unwrap();
+            st.sessions.all().into_iter().filter(|s| s.state == "working" && s.origin.harness != "pi" && !s.origin.transcript_path.is_empty())
+                .filter_map(|s| {
+                    let at = std::fs::metadata(&s.origin.transcript_path).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
+                    let name = if s.name.is_empty() { s.project.clone() } else { s.name.clone() };
+                    Some((s.origin.session_id.clone(), at.max(s.since_ms), s.doing.clone(), s.stuck_ms, name))
+                }).collect()
+        };
+        for (sid, at, doing, was, name) in quiet {
+            let limit = if doing.starts_with("Delegating") { u64::MAX } else if doing.starts_with("Running") || doing.starts_with("Using") { STUCK_RUNNING_MS } else { STUCK_THINKING_MS };
+            let stuck = now.saturating_sub(at) >= limit;
+            if stuck && was != at {
+                self.store.lock().unwrap().sessions.set_stuck(&sid, at);
+                self.changed();
+                if crate::config::flag("/notify/decisions") {
+                    let what = if doing.is_empty() { "Thinking".to_string() } else { doing.trim_end_matches('…').to_string() };
+                    self.notify(&format!("stuck-{sid}"), &format!("{name} · no new output for {}m", now.saturating_sub(at) / 60_000), &format!("{what}. If it's waiting for input, it's in its terminal."), "");
+                }
+            } else if !stuck && was != 0 {
+                self.store.lock().unwrap().sessions.set_stuck(&sid, 0);
+                crate::notify::remove(&[format!("stuck-{sid}")]);
+                self.changed();
+            }
+        }
+        // Compacting (from Cue's ⋯ menu) until its transcript says it's done; given up after 15 minutes.
+        let compacted: Vec<String> = {
+            let st = self.store.lock().unwrap();
+            st.sessions.compacting().into_iter().filter(|(_, path, at)| now.saturating_sub(*at) > 15 * 60_000 || transcript::compact_finished(path, *at)).map(|(sid, _, _)| sid).collect()
+        };
+        if !compacted.is_empty() {
+            let mut st = self.store.lock().unwrap();
+            for sid in &compacted {
+                st.sessions.set_compacting(sid, 0);
+            }
+            drop(st);
             self.changed();
         }
         let taken: Vec<String> = queued.into_iter().filter(|(_, path, q)| matches!(transcript::queued_state(path, q), Some(transcript::Queued::Absorbed | transcript::Queued::Taken))).map(|(sid, _, _)| sid).collect();
@@ -946,7 +1089,8 @@ impl Hub {
         }
     }
 
-    fn notify(&self, id: &str, title: &str, body: &str) {
+    /// `category`: "turn" puts Reply and the quick phrases on it; "turn-full" adds Compact.
+    fn notify(&self, id: &str, title: &str, body: &str, category: &str) {
         let Some(app) = &self.app else { return };
         // Test instances run with CUE_QUIET=1 so they never ping you.
         if std::env::var_os("CUE_QUIET").is_some() {
@@ -956,7 +1100,7 @@ impl Hub {
         if app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
             return;
         }
-        if crate::notify::post(id, title, body) {
+        if crate::notify::post(id, title, body, category) {
             self.store.lock().unwrap().notified.insert(id.to_string());
         } else {
             // Unbundled dev binary: a plain notification Cue can't take back.

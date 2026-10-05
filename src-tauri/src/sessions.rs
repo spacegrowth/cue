@@ -54,6 +54,24 @@ pub struct Session {
     pub doing: String,
     #[serde(default)]
     pub doing_ms: u64,
+    /// Since when it's compacting (Compact in Cue's ⋯ menu typed `/compact`); 0 = it isn't. Cleared
+    /// when its transcript says the compaction finished, or when it starts a turn.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub compacting_ms: u64,
+    /// The folder's git state when this turn started (to tell what the turn changed).
+    #[serde(skip)]
+    pub turn_base: Option<crate::changes::Base>,
+    /// What the turn that just ended changed (files, lines); none when it changed nothing. Cleared when
+    /// the next turn starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changes: Option<crate::changes::Changes>,
+    /// Working, but nothing new in its transcript since then (a command waiting for input, or hung); 0 = fine.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub stuck_ms: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// Longest text kept per exchange — enough for a full agent message.
@@ -84,6 +102,10 @@ impl Sessions {
             limit: None,
             doing: String::new(),
             doing_ms: 0,
+            compacting_ms: 0,
+            turn_base: None,
+            changes: None,
+            stuck_ms: 0,
         });
         // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
         if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
@@ -91,6 +113,13 @@ impl Sessions {
         }
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             s.prompt = p.trim().to_string();
+        }
+        if state == "working" {
+            s.compacting_ms = 0;
+            s.changes = None;
+        }
+        if s.state != state {
+            s.stuck_ms = 0;
         }
         if s.state != state {
             s.state = state.to_string();
@@ -189,6 +218,51 @@ impl Sessions {
             .filter(|s| s.state == "working" && matches!(s.origin.harness.as_str(), "claude" | "codex") && !s.origin.transcript_path.is_empty())
             .map(|s| (s.origin.session_id.clone(), s.origin.harness.clone(), s.origin.transcript_path.clone()))
             .collect()
+    }
+
+    pub fn set_turn_base(&mut self, session_id: &str, base: Option<crate::changes::Base>) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.turn_base = base;
+        }
+    }
+
+    /// The turn's starting point, taken (each turn's changes are worked out once).
+    pub fn take_turn_base(&mut self, session_id: &str) -> Option<crate::changes::Base> {
+        self.0.get_mut(session_id)?.turn_base.take()
+    }
+
+    /// The finished turn's changes, if it's still that turn (no new one started meanwhile).
+    pub fn set_changes(&mut self, session_id: &str, changes: Option<crate::changes::Changes>) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.state != "working" && s.changes != changes => {
+                s.changes = changes;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Stuck since `at_ms` (0: not, or no longer). True when it changed.
+    pub fn set_stuck(&mut self, session_id: &str, at_ms: u64) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.stuck_ms != at_ms && (at_ms == 0 || s.state == "working") => {
+                s.stuck_ms = at_ms;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Compacting since `at_ms` (0: done).
+    pub fn set_compacting(&mut self, session_id: &str, at_ms: u64) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.compacting_ms = at_ms;
+        }
+    }
+
+    /// The sessions compacting now: (session id, transcript, since when).
+    pub fn compacting(&self) -> Vec<(String, String, u64)> {
+        self.0.values().filter(|s| s.compacting_ms > 0).map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone(), s.compacting_ms)).collect()
     }
 
     /// Its latest step, if it changed and belongs to this turn. `at_ms` is when the step was written

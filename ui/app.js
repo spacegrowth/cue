@@ -753,7 +753,7 @@ async function loadSteps(sid) {
       for (const [k, at] of stepArrived) if (Date.now() - at > REVEAL_MS) stepArrived.delete(k);   // done animating
       for (const t of r.turns) t.items.forEach((x, i) => { const k = itemKey(t, x, i); if (!had.has(k)) stepArrived.set(`${sid}|${k}`, Date.now()); });
     }
-    stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], at: Date.now() });
+    stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], meta: r.turns ? r.meta : f?.meta, at: Date.now() });
     if (r.turns) { renderMain(); wantDetails(sid); }
   } catch {} finally { stepsBusy = false; }
 }
@@ -917,11 +917,19 @@ function chatHtml(it, s, harness) {
   if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stop its current turn so it reads this now (⌘ Enter when sending does the same)">Send now</button></div></div>`);
   return rows.join("") || `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
+/** A turn's changed files, one per line, for the pill's tooltip. */
+const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
 /** One line under the chat: where the session is now. */
 function statusLine(it, s) {
+  // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
+  if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span><button class="btn small" data-act="go-session" data-sid="${esc(s.session_id)}">Go to tab</button></div>`;
+  // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.
+  if (s?.compacting_ms) return `<div class="cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // What it's doing right now (its latest step), else the prompt it's on.
   if (s?.state === "working" && s.doing) return `<div class="cv-status"><span class="dot-live"></span>${esc(s.doing)}<span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span></div>`;
-  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span>Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}</div>`;
+  // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
+  // count since the turn started, so a long think doesn't look stuck.
+  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span>Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span></div>`;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}</div>`;
   if (s?.state === "agent") return `<div class="cv-status">Idle, waiting on ${esc(s.driven_by || "another agent")}</div>`;
   if (s?.state === "limited" && s.limit) {
@@ -944,11 +952,50 @@ function resultLine(it) {
 function nextBar() {
   const n = nextUp();
   if (!n) return "";
-  // Clear only a finished turn; a decision would just hide something the agent is still blocked on.
-  const clear = n.kind === "waiting" ? `<button class="next-clear" data-act="dismiss" data-id="${esc(n.id)}" title="Take it off Waiting without replying">Clear</button>` : "";
+  // × only on a finished turn; a decision would just hide something the agent is still blocked on.
+  const clear = n.kind === "waiting" ? `<button class="next-clear" data-act="dismiss" data-id="${esc(n.id)}" title="Nothing to reply: take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
   return `<div class="next-bar" data-act="next" role="button" tabindex="0" title="Open it (N)"><span class="next-label">Next</span>${badge(n.harness)}<span class="next-proj">${esc(n.project)}</span><span class="next-what">${esc(plain(summary(n)))}</span>${clear}<kbd>N</kbd></div>`;
 }
 
+/** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), a relay lead's Hand
+ *  off (asks once more first: the lead steps down), and Decide later / Back to Waiting. */
+let moreFor = null, handoffArm = null;
+function moreMenu(sid, s) {
+  const open = moreFor === sid;
+  const busy = s?.state === "working";
+  const m = crewOf(sid);
+  const lead = m?.role === "lead" && m?.plugin === "relay";
+  const later = isParked(sid) ? `<button data-park="${esc(sid)}:0">Back to Waiting</button>` : `<button data-park="${esc(sid)}:1">Decide later<span>Move it to Need to decide while you think it over</span></button>`;
+  const items = !open ? "" : `<div class="more-menu">
+      <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
+      ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Hand off? Click again" : "Hand off…"}<span>${busy ? "When this turn ends" : "It writes its notes, opens a successor lead and steps down"}</span></button>` : ""}
+      ${later}</div>`;
+  return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" title="More" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
+}
+/** "claude-opus-5-5" → "Opus 5.5", "gpt-5.6-terra" → "GPT-5.6 Terra", "deepseek-v4-pro" → "DeepSeek V4 Pro". */
+function prettyModel(id) {
+  const m = String(id || "").replace(/\[.*\]$/, "").replace(/^.*\//, "");
+  const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(m);
+  if (claude) return `${claude[1][0].toUpperCase()}${claude[1].slice(1)} ${claude[2]}${claude[3] ? `.${claude[3]}` : ""}`;
+  return m.split("-").map((w) => /^gpt$/i.test(w) ? "GPT" : /^deepseek$/i.test(w) ? "DeepSeek" : /^v\d/i.test(w) ? w.toUpperCase() : w[0] ? w[0].toUpperCase() + w.slice(1) : w)
+    .join(" ").replace(/^GPT (\d)/, "GPT-$1");
+}
+/** The open session's model, how full its context is, how much came from the cache, and its cost so far
+ *  (where the agent logs it): grey text on the chat's title line, after Claude's title. From its log. */
+function metaInline(sid) {
+  const m = sid && stepFeeds.get(sid)?.meta;
+  if (!m || (!m.model && !m.context)) return "";
+  const pct = m.window ? Math.min(100, Math.round((m.context / m.window) * 100)) : null;
+  const lvl = pct === null ? "" : pct >= 95 ? "full" : pct >= 80 ? "high" : "";
+  const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 2 : 0)}M` : `${Math.round(n / 1000)}k`);
+  const money = (c) => `$${c >= 100 ? Math.round(c) : c.toFixed(2)}`;
+  const tip = [m.model && `Model: ${m.model}`, m.window && `Context: ${k(m.context)} of ${k(m.window)} tokens (${pct}%)`, m.cache_pct != null && `Cache: ${m.cache_pct}% of the latest reply's input came from the cache`, m.cost != null && `Cost so far: ${money(m.cost)}`].filter(Boolean).join("\n");
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", pct !== null ? `<span class="mi-ctx ${lvl}">${pct}% context</span>` : "", m.cache_pct != null ? `cache ${m.cache_pct}%` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
+  const s = sessionOf(sid);
+  const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}" title="Summarize the conversation to free up context">Compact</button>` : "";
+  return `<span class="ap-meta" title="${esc(tip)}">${parts.join(" · ")}</span>${chip}`;
+}
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
 let quietOpen = null;
@@ -958,7 +1005,7 @@ function quietPane() {
   const f = stepFeeds.get(q.session_id);
   const busy = q.status === "busy";
   const turns = (f?.turns || []).slice(-8);
-  const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1)).join("");
+  const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane">
     <div class="ap-head">${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
       <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}" title="Go to its terminal tab">Go to tab</button></div>
@@ -967,12 +1014,12 @@ function quietPane() {
     <div class="ap-chat" data-chat>${chat || `<div class="dim cv-empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`}</div></div>`;
 }
 /** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
-function quietTurn(sid, t, live, latest) {
+function quietTurn(sid, t, live, latest, harness = "claude") {
   const you = t.prompt ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(t.prompt)).replace(/\n/g, "<br>")}</div><div class="cv-meta">You · ${ago(t.at_ms)} ago</div></div>` : "";
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
-  const reply = tail.length ? `<div class="cv-agent"><div class="cv-meta">${esc(agentName("claude"))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
+  const reply = tail.length ? `<div class="cv-agent"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
 function activePane() {
@@ -985,8 +1032,11 @@ function activePane() {
   const harness = it?.harness || s?.harness;
   const project = it?.project || s?.project;
   const sid = s?.session_id || it?.session_id;
+  // A finished turn that changed files: the pill says what changed ("4 files · +98 −9"; hover for which), and Commit sits beside it.
+  const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
+  const turnWord = ch ? `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} · +${ch.add} −${ch.del}` : it?.interrupted ? "interrupted" : "your turn";
   const pill = pending
-    ? `<span class="pill ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : it.kind === "question" ? "asks you" : "needs a decision"} · ${ago(it.created_ms)}</span>`
+    ? `<span class="pill ${it.interrupted ? "intr" : ""}"${ch ? ` title="${esc(changesTip(ch))}"` : ""}>${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Nothing to reply: take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
     : `<span class="pill soft">${s ? { working: "working", waiting: "your turn", deciding: "deciding", agent: "on its lead", stopped: "stopped", limited: s.limit && lifted(s.limit) ? "usage is back" : "out of usage" }[s.state] || s.state : "answered"}</span>`;
   let foot;
   if (pending && it.kind !== "waiting") {
@@ -1007,10 +1057,9 @@ function activePane() {
   const cm = crewOf(sid);
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
   return `<div class="active-pane">
-    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid)}<span class="dim">${who}</span>${pill}<span class="grow"></span>
+    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid)}<span class="dim">${who}</span>${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}" title="Send “Commit”">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? crewHeadBtns(sid) : ""}
-      ${pending && it.kind === "waiting" ? `<button class="btn" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting without replying">Clear</button>` : ""}
-      ${sid ? (isParked(sid) ? `<button class="btn" data-park="${esc(sid)}:0" title="Take it out of Need to decide">${lbl("Back to Waiting", "Back")}</button>` : `<button class="btn" data-park="${esc(sid)}:1" title="Move it to Need to decide while you think it over">${lbl("Decide later", "Later")}</button>`) : ""}
+      ${sid ? moreMenu(sid, s) : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${sid ? `<button class="btn" data-act="go-session" data-sid="${esc(sid)}" title="Go to its terminal tab">${lbl("Go to tab", "Tab")}</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
@@ -1023,7 +1072,7 @@ function activePane() {
 }
 
 /** × on a finished turn: nothing to reply, take it off Waiting. Decisions don't get one (the agent is blocked on them). */
-const clearX = (it) => it.kind === "waiting" ? `<button class="x-clear" data-act="dismiss" data-id="${esc(it.id)}" title="Nothing to reply: clear it" aria-label="Clear">×</button>` : "";
+const clearX = (it) => it.kind === "waiting" ? `<button class="x-clear" data-act="dismiss" data-id="${esc(it.id)}" title="Nothing to reply: take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
 /** "Later" on a Waiting row: move the session to Need to decide. */
 const parkBtn = (sid) => `<button class="park-btn" data-park="${esc(sid)}:1" title="Need to decide: move it below while you think">Later</button>`;
 /** A row in Need to decide: the session, its finished turn if any, ↩ to put it back. Click to open it. */
@@ -1170,7 +1219,7 @@ function boardView() {
       <div class="card-head">${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
-      ${bar(s.session_id)}${s.state === "working" && s.doing ? `<div class="doing" title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
+      ${bar(s.session_id)}${s.compacting_ms ? `<div class="doing"><span class="dot-live"></span>Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
   const pins = state.sessions.filter((s) => pinnedIds().has(s.session_id));
   const workCol = (pins.length ? `<div class="col-sub">PINNED · ${pins.length}</div>${pins.map(card).join("")}` : "")
@@ -1205,7 +1254,8 @@ function subHead(cwd, crew, sid, titleOf = sid) {
   // Under the name: what Claude Code titled the conversation (unless that's already the name).
   const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
   const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" title="${esc(t)}">${esc(t)}</span>` : "";
-  return folder || crew || title ? `<div class="ap-sub">${title}${crew}${folder}</div>` : "";
+  const meta = titleOf ? metaInline(titleOf) : "";
+  return folder || crew || title || meta ? `<div class="ap-sub">${title}${meta}${crew}${folder}</div>` : "";
 }
 function nameHead(sid, project) {
   if (sid && renaming === sid) return `<input class="rename-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;
@@ -1560,7 +1610,7 @@ function liveRows() {
   const rows = state.sessions.map((s) => {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
-    const what = st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
+    const what = s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
     return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), cwd: s.cwd || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
   });
   for (const q of state.live || []) {
@@ -2130,6 +2180,20 @@ function bindMain() {
       (async () => { for (const h of todo) { try { toast(await invoke("connect_agent", { harness: h })); } catch (e) { toast(`Couldn't connect ${h}: ${e}`); } } })();
       return;
     }
+    // The ⋯ menu: toggle it, run an item, or close it on a click anywhere else.
+    const mb = t.closest("[data-more]");
+    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = null; return renderMain(); }
+    const mc = t.closest("[data-cmd]");
+    if (mc) {
+      const { cmd, sid } = mc.dataset;
+      if (cmd === "handoff" && handoffArm !== sid) { handoffArm = sid; return renderMain(); }
+      moreFor = handoffArm = null;
+      renderMain();
+      invoke("session_command", { sessionId: sid, action: cmd }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
+      return;
+    }
+    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = null; renderMain(); }
+    if (t.closest(".more-menu [data-park]")) moreFor = handoffArm = null;   // Decide later: done with the menu too
     const cb = t.closest("[data-connect]");
     if (cb) { cb.disabled = true; invoke("connect_agent", { harness: cb.dataset.connect }).then((m) => toast(m), (e) => { toast(`Couldn't connect: ${e}`); cb.disabled = false; }); return; }
     const ub = t.closest("[data-upd]");
@@ -2281,6 +2345,7 @@ function bindMain() {
       if (act === "allow") return allow(it);
       if (act === "deny") return deny(it);
       if (act === "send") return submitText(it);
+      if (act === "commit") return invoke("reply", { id: it.id, text: "Commit", images: [] }).then((r) => toast(`“Commit” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "continue") return invoke("reply", { id: it.id, text: "continue", images: [] }).then((r) => toast(`“continue” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "go") return goTo(it);
       if (act === "dismiss") { cleared.add(it.id); return invoke("dismiss", { id: it.id }); }

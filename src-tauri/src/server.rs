@@ -156,9 +156,15 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text));
             }
         }
-        ClientMsg::Usage { rate_limits } => {
-            let h = hub.clone();
-            let _ = tokio::task::spawn_blocking(move || h.set_rates(&rate_limits)).await;
+        ClientMsg::Usage { rate_limits, session_id, cost } => {
+            // The plan's limits first: whether there are any decides if the session's cost is shown.
+            if rate_limits.is_object() {
+                let h = hub.clone();
+                let _ = tokio::task::spawn_blocking(move || h.set_rates(&rate_limits)).await;
+            }
+            if let (false, Some(c)) = (session_id.is_empty(), cost) {
+                hub.set_cost(&session_id, c);
+            }
         }
         ClientMsg::List => send(&mut w, hub.snapshot()).await?,
         ClientMsg::Respond { id, decision } => {

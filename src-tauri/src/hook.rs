@@ -159,9 +159,14 @@ fn s_or(p: &Value, a: &str, b: &str) -> String {
 
 /// Runs on every status line refresh, so it only forwards what's there and never waits long.
 fn send_usage(p: &Value) -> Option<()> {
-    let rl = p.get("rate_limits").filter(|v| v.is_object())?;
-    let mut s = connect(Duration::from_millis(200))?;
-    s.write_all(format!("{}\n", json!({"type": "usage", "rate_limits": rl})).as_bytes()).ok()
+    let rl = p.get("rate_limits").filter(|v| v.is_object()).cloned().unwrap_or(Value::Null);
+    let cost = p.pointer("/cost/total_cost_usd").and_then(Value::as_f64);
+    let sid = s(p, "session_id");
+    if rl.is_null() && (cost.is_none() || sid.is_empty()) {
+        return None;
+    }
+    let mut c = connect(Duration::from_millis(200))?;
+    c.write_all(format!("{}\n", json!({"type": "usage", "rate_limits": rl, "session_id": sid, "cost": cost})).as_bytes()).ok()
 }
 
 /// Everything the agent wrote since your last prompt, as [{text, hooked}]: `hooked` once a Stop

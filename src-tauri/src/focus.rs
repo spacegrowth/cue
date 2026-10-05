@@ -301,10 +301,10 @@ pub fn focus(o: &Origin) -> Result<String, String> {
                 return Ok("iTerm session".into());
             }
         }
-        return by_tty(&o.tty);
+        return by_tty_now(o);
     }
     if o.term_program == "Apple_Terminal" {
-        return by_tty(&o.tty);
+        return by_tty_now(o);
     }
     if !o.wezterm_pane.is_empty() && run("wezterm", &["cli", "activate-pane", "--pane-id", &o.wezterm_pane]) {
         let _ = activate_app("WezTerm");
@@ -403,6 +403,36 @@ fn iterm_predicate(o: &Origin) -> Option<String> {
     None
 }
 
+/// The tab with the session's terminal; when that terminal's gone (the conversation moved to another
+/// tab, or the terminal app restarted), the one its process is in now.
+fn by_tty_now(o: &Origin) -> Result<String, String> {
+    by_tty(&o.tty).or_else(|e| match current_tty(o) {
+        Some(now) if now != o.tty => by_tty(&now),
+        _ => Err(e),
+    })
+}
+
+/// Do `action` in the agent's iTerm session: the one Cue remembers, else (that one's gone because the
+/// conversation moved to another tab with `claude --resume`, or iTerm restarted) the tab its process
+/// is in now. Claude Code's list of running sessions has the process; its terminal comes from that.
+fn iterm_session_do(o: &Origin, predicate: &str, action: &str) -> Result<bool, String> {
+    if iterm_write(predicate, action)? {
+        return Ok(true);
+    }
+    match current_tty(o) {
+        Some(tty) if tty != o.tty => iterm_write(&format!("(tty of s) is \"{}\"", osa(&tty)), action),
+        _ => Ok(false),
+    }
+}
+
+/// The terminal the session's process runs in now. Claude Code: its list of running sessions has the
+/// session's current process (a `claude --resume` in another tab is a new one). Any agent: the process
+/// its hook last reported (Codex, Pi too), while it's still running.
+fn current_tty(o: &Origin) -> Option<String> {
+    let from_list = crate::live::claude().into_iter().find(|q| q.session_id == o.session_id).map(|q| q.pid);
+    from_list.into_iter().chain(o.agent_pid).filter(|p| *p > 1).map(crate::live::tty_of).find(|t| !t.is_empty())
+}
+
 fn iterm_write(predicate: &str, action: &str) -> Result<bool, String> {
     let script = format!(
         "tell application \"iTerm\"\n\
@@ -441,10 +471,10 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
             osa(text),
             enter_gap(text)
         );
-        if iterm_write(&pred, &action)? {
+        if iterm_session_do(o, &pred, &action)? {
             return Ok("iTerm session".into());
         }
-        return Err("that iTerm session is gone".into());
+        return Err("that iTerm session is gone (its tab was closed?)".into());
     }
     if !o.wezterm_pane.is_empty() {
         if !run("wezterm", &["cli", "send-text", "--pane-id", &o.wezterm_pane, text]) {
@@ -484,9 +514,9 @@ pub fn press_escape(o: &Origin) -> Result<String, String> {
         return if run("tmux", &["send-keys", "-t", &o.tmux_pane, "Escape"]) { Ok(format!("tmux pane {}", o.tmux_pane)) } else { Err("tmux pane is gone".into()) };
     }
     if let Some(pred) = iterm_predicate(o) {
-        return match iterm_write(&pred, "tell s to write text (ASCII character 27) newline NO")? {
+        return match iterm_session_do(o, &pred, "tell s to write text (ASCII character 27) newline NO")? {
             true => Ok("iTerm session".into()),
-            false => Err("that iTerm session is gone".into()),
+            false => Err("that iTerm session is gone (its tab was closed?)".into()),
         };
     }
     if !o.wezterm_pane.is_empty() {
@@ -505,7 +535,7 @@ pub fn press_enter(o: &Origin) -> Result<(), String> {
         return if run("tmux", &["send-keys", "-t", &o.tmux_pane, "Enter"]) { Ok(()) } else { Err("tmux pane is gone".into()) };
     }
     if let Some(pred) = iterm_predicate(o) {
-        return iterm_write(&pred, "tell s to write text \"\"").map(|_| ());
+        return iterm_session_do(o, &pred, "tell s to write text \"\"").map(|_| ());
     }
     if !o.wezterm_pane.is_empty() {
         return if run("wezterm", &["cli", "send-text", "--no-paste", "--pane-id", &o.wezterm_pane, "\r"]) { Ok(()) } else { Err("WezTerm pane is gone".into()) };

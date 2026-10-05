@@ -4,6 +4,7 @@ mod db;
 mod dictation;
 mod focus;
 mod hook;
+mod changes;
 mod hub;
 mod leads;
 mod live;
@@ -42,6 +43,13 @@ async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, harness:
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// The chat's ⋯ menu: Compact, or a relay lead's Hand off (typed into the session; opens no window).
+#[tauri::command]
+async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || h.session_command(&session_id, &action)).await.map_err(|e| e.to_string())?
 }
 
 /// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art? }] }]); none without one.
@@ -193,17 +201,83 @@ async fn step_detail(hub: State<'_, Arc<Hub>>, session_id: String, ids: Vec<Stri
     let h = hub.inner().clone();
     tauri::async_runtime::spawn_blocking(move || step_detail_for(&h, &session_id, &ids)).await.map_err(|e| e.to_string())
 }
-/// The transcript a session's steps come from: a live Claude Code session's, or a quiet one's (running
-/// but never heard from: found through Claude Code's own list of running sessions).
+/// The log a session's steps come from: a Claude Code session's transcript (a quiet one's found through
+/// Claude Code's own list of running sessions), a Codex session's rollout log, or a Pi session's log.
 fn steps_path(h: &Hub, session_id: &str) -> Option<String> {
-    h.session_origin(session_id)
-        .filter(|o| o.harness == "claude" && !o.transcript_path.is_empty())
+    let origin = h.session_origin(session_id);
+    if origin.as_ref().is_some_and(|o| o.harness == "pi") {
+        return pi_log(session_id);
+    }
+    origin
+        .filter(|o| (o.harness == "claude" || o.harness == "codex") && !o.transcript_path.is_empty())
         .map(|o| o.transcript_path)
         .or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).and_then(|q| live::claude_transcript(&q.cwd, session_id)))
+        .or_else(|| pi_log(session_id))
+        .or_else(|| codex_log(session_id))
+}
+
+/// A Codex session's rollout log, `~/.codex/sessions/<year>/<month>/<day>/rollout-<time>-<session id>.jsonl`
+/// (CODEX_HOME moves ~/.codex), newest days first. Looked up once per session.
+fn codex_log(session_id: &str) -> Option<String> {
+    static FOUND: std::sync::Mutex<Option<std::collections::HashMap<String, String>>> = std::sync::Mutex::new(None);
+    if session_id.len() < 8 {
+        return None;
+    }
+    if let Some(p) = FOUND.lock().unwrap().get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
+        return Some(p.clone());
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let root = std::env::var("CODEX_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".codex")).join("sessions");
+    let tail = format!("-{session_id}.jsonl");
+    let sorted = |dir: &std::path::Path| -> Vec<std::path::PathBuf> {
+        let mut v: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).collect();
+        v.sort();
+        v.reverse();
+        v
+    };
+    for year in sorted(&root) {
+        for month in sorted(&year) {
+            for day in sorted(&month) {
+                if let Some(f) = sorted(&day).into_iter().find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&tail))) {
+                    let found = f.to_string_lossy().into_owned();
+                    FOUND.lock().unwrap().get_or_insert_with(Default::default).insert(session_id.to_string(), found.clone());
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// A Pi session's log: `<Pi's folder>/sessions/<its folder>/<time>_<session id>.jsonl` (Pi's folder is
+/// ~/.pi/agent, or PI_CODING_AGENT_DIR). Looked up once per session.
+fn pi_log(session_id: &str) -> Option<String> {
+    static FOUND: std::sync::Mutex<Option<std::collections::HashMap<String, String>>> = std::sync::Mutex::new(None);
+    if session_id.is_empty() {
+        return None;
+    }
+    if let Some(p) = FOUND.lock().unwrap().get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
+        return Some(p.clone());
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let root = std::env::var("PI_CODING_AGENT_DIR").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".pi/agent")).join("sessions");
+    let tail = format!("_{session_id}.jsonl");
+    let found = std::fs::read_dir(root).ok()?.filter_map(Result::ok).filter_map(|d| std::fs::read_dir(d.path()).ok()).flatten().filter_map(Result::ok)
+        .map(|f| f.path()).find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&tail)))?
+        .to_string_lossy().into_owned();
+    FOUND.lock().unwrap().get_or_insert_with(Default::default).insert(session_id.to_string(), found.clone());
+    Some(found)
 }
 pub(crate) fn steps_for(h: &Hub, session_id: &str, version: u64) -> serde_json::Value {
     match steps_path(h, session_id) {
-        Some(path) => steps::steps(&path, version),
+        Some(path) => {
+            let mut v = steps::steps(&path, version);
+            // Claude Code's cost isn't in its transcript: it's what its status line last said.
+            if let (Some(meta), Some(cost)) = (v.get_mut("meta").filter(|m| m.is_object() && m["cost"].is_null()), h.session_cost(session_id)) {
+                meta["cost"] = serde_json::json!(cost);
+            }
+            v
+        }
         None => serde_json::json!({ "version": 0, "turns": [] }),
     }
 }
@@ -413,7 +487,7 @@ fn mini_drag(app: tauri::AppHandle) {
 #[tauri::command]
 fn test_notification(app: tauri::AppHandle) -> String {
     use tauri_plugin_notification::NotificationExt;
-    if notify::post("cue-test", "Cue test", "If you can read this, macOS notifications work.") {
+    if notify::post("cue-test", "Cue test", "If you can read this, macOS notifications work.", "") {
         "sent: check the top right of your screen".into()
     } else {
         let _ = app.notification().builder().title("Cue test").body("Fallback notification (unbundled build).").show();
@@ -505,7 +579,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it (the side panel positions itself).
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().with_denylist(&["mini"]).build())
-        .invoke_handler(tauri::generate_handler![connect_agent, update_check, update_install, session_steps, step_detail, mini_drag, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, agents_installed, search, session_log, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, mini_resize, get_drafts, set_draft, test_notification, mini_close, open_main])
+        .invoke_handler(tauri::generate_handler![session_command, connect_agent, update_check, update_install, session_steps, step_detail, mini_drag, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, agents_installed, search, session_log, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, mini_resize, get_drafts, set_draft, test_notification, mini_close, open_main])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
