@@ -64,6 +64,8 @@ say "version  → $VERSION"
 rustup target add x86_64-apple-darwin aarch64-apple-darwin >/dev/null
 export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/cue.key" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$KEY_PASSWORD"
 RELEASE_CONFIG='{"bundle":{"macOS":{"signingIdentity":"'"$IDENTITY"'","hardenedRuntime":true,"entitlements":"entitlements.plist"}}}'
+# Build paths (this Mac's home folder) are written into the app for error messages: rewrite them.
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/cue --remap-path-prefix=$HOME=/home"
 say "building (both chip types; a few minutes)…"
 npx tauri build --target universal-apple-darwin --bundles app --config "$RELEASE_CONFIG"
 APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Cue.app"
@@ -71,6 +73,9 @@ APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Cue.app"
 # --- checks before anything leaves this Mac -----------------------------------------------------------
 for trace in axum "cue://pair" jsonwebtoken; do
   [ "$(strings "$APP/Contents/MacOS/cue" | grep -c "$trace")" = 0 ] || die "the app contains add-on code ($trace): not releasing it"
+done
+for bin in "$APP"/Contents/MacOS/*; do
+  [ "$(strings "$bin" | grep -c "$HOME")" = 0 ] || die "$(basename "$bin") contains this Mac's home folder path: not releasing it"
 done
 codesign --verify --deep --strict "$APP" || die "the signature doesn't check out"
 lipo -archs "$APP/Contents/MacOS/cue" | grep -q x86_64 || die "not a universal build"

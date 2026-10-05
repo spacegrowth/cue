@@ -554,7 +554,12 @@ pub fn hook_main(args: &[String]) {
 pub fn connect_main(agents: &[String]) -> i32 {
     let exe = std::env::current_exe().unwrap_or_default();
     let bundled = exe.parent().map(|d| d.join("../Resources/pi/cue.ts")).filter(|p| p.exists());
+    // A development build run from this checkout uses the checkout's copy; a release build only its bundle
+    // (so the build machine's paths never end up in a released app).
+    #[cfg(debug_assertions)]
     let pi_ext = bundled.unwrap_or_else(|| std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../pi/cue.ts")));
+    #[cfg(not(debug_assertions))]
+    let pi_ext = bundled.unwrap_or_else(|| exe.with_file_name("pi/cue.ts"));
     if agents.is_empty() {
         eprintln!("usage: cue connect <claude|codex|pi>…");
         return 1;
