@@ -37,7 +37,8 @@ IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer 
 [ -f "$HOME/.tauri/cue.key" ] || die "no update key at ~/.tauri/cue.key"
 KEY_PASSWORD="$(security find-generic-password -s cue-updater-key -w 2>/dev/null)" || die "no 'cue-updater-key' password in Keychain"
 NOTARIZE=1
-if ! xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1; then
+if ! NOTARY_CHECK="$(xcrun notarytool history --keychain-profile "$PROFILE" 2>&1)"; then
+  printf '%s\n' "$NOTARY_CHECK" | head -5 >&2   # what notarytool said (a missing profile, or Apple unreachable)
   [ "$PUBLISH" = "--publish" ] && die "can't publish without notarizing: no working notarytool profile '$PROFILE' (see the top of this script)"
   NOTARIZE=0
   say "no notarytool profile '$PROFILE': signing only, not notarizing"
