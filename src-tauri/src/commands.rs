@@ -1,16 +1,16 @@
 //! The slash commands a Claude Code session can run, for the "/" menu in its message box. Nothing is
 //! picked by hand: Claude Code says which are enabled in a folder (its built-ins, your skills and
-//! commands, plugins'), in the setup line it prints first when run with `-p --output-format
-//! stream-json`. Cue runs it with `/usage`, a command that needs no model (no tokens, nothing
-//! saved), reads that line and stops it. Once per folder, again after 10 minutes.
+//! commands, plugins'), with what each does and what it takes, when it's asked to set up over its SDK
+//! protocol (`-p --input-format stream-json`, an `initialize` request). That needs no model and starts
+//! no conversation. Cue asks, reads the reply and stops it. Once per folder, again after 10 minutes.
 //!
-//! What each skill does comes from the session's transcript: Claude Code lists them there, one line
-//! each. Built-ins get Cue's own short line.
+//! The same reply lists the models and output styles there are, so `/model` and `/output-style` offer
+//! them as choices (a bare `/model` opens a picker in its terminal, where Cue can't show it).
 
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
@@ -19,6 +19,17 @@ pub struct Cmd {
     pub name: String,
     /// "skill": it becomes a prompt (a turn starts, like a message). "command": Claude Code runs it itself.
     pub kind: String,
+    pub desc: String,
+    /// What it takes, in Claude Code's words ("[name]", "<model>"), else "".
+    pub hint: String,
+    /// The values it takes, when there's a set to pick from ("/model sonnet", "/effort high").
+    pub args: Vec<Arg>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Arg {
+    pub value: String,
+    pub label: String,
     pub desc: String,
 }
 
@@ -29,11 +40,9 @@ const KEEP_MS: u64 = 10 * 60_000;
 static LISTS: Mutex<Option<HashMap<String, (u64, Vec<Cmd>)>>> = Mutex::new(None);
 /// Folders being read now.
 static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-/// Skill descriptions by transcript: (its size when read, name -> line).
-static DESCS: Mutex<Option<HashMap<String, (u64, HashMap<String, String>)>>> = Mutex::new(None);
 
 /// The commands for a Claude session in `cwd`, or None while they're being read (ask again shortly).
-pub fn for_session(cwd: &str, transcript: &str) -> Option<Vec<Cmd>> {
+pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
     if cwd.is_empty() {
         return Some(vec![]);
     }
@@ -54,22 +63,16 @@ pub fn for_session(cwd: &str, transcript: &str) -> Option<Vec<Cmd>> {
             });
         }
     }
-    let (_, list) = cached?;
-    let descs = skill_descs(transcript);
-    Some(list.into_iter().map(|mut c| {
-        if let Some(d) = descs.get(&c.name) {
-            c.desc = d.clone();
-        }
-        c
-    }).collect())
+    cached.map(|(_, list)| list)
 }
 
 /// Ask Claude Code in `cwd` (through your login shell, so it's found as in your terminal).
 fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let line = r#"exec claude -p /usage --output-format stream-json --verbose --no-session-persistence --settings '{"disableAllHooks":true}'"#;
-    let mut child = Command::new(shell).args(["-lic", line]).current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let line = r#"exec claude -p --input-format stream-json --output-format stream-json --verbose --no-session-persistence --settings '{"disableAllHooks":true}'"#;
+    let mut child = Command::new(shell).args(["-lic", line]).current_dir(cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
     let out = child.stdout.take()?;
+    let mut input = child.stdin.take()?;
     // Never hang on it: stop it after 30s if it's still going.
     let child = std::sync::Arc::new(Mutex::new(child));
     let watch = child.clone();
@@ -77,101 +80,67 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
         std::thread::sleep(std::time::Duration::from_secs(30));
         let _ = watch.lock().unwrap().kill();
     });
-    let init = BufReader::new(out).lines().map_while(Result::ok).filter_map(|l| serde_json::from_str::<Value>(&l).ok()).find(|v| v.get("subtype").and_then(Value::as_str) == Some("init"));
+    let _ = writeln!(input, r#"{{"type":"control_request","request_id":"cue-commands","request":{{"subtype":"initialize"}}}}"#);
+    let reply = BufReader::new(out)
+        .lines()
+        .map_while(Result::ok)
+        .filter_map(|l| serde_json::from_str::<Value>(&l).ok())
+        .find(|v| v.get("type").and_then(Value::as_str) == Some("control_response"));
+    drop(input);
     {
         let mut c = child.lock().unwrap();
         let _ = c.kill();
         let _ = c.wait();
     }
-    Some(from_init(&init?))
+    let r = reply?;
+    Some(from_setup(r.pointer("/response/response").unwrap_or(&Value::Null)))
 }
 
-/// The list from Claude Code's setup line: `slash_commands`, with `skills` marking which are skills.
-fn from_init(init: &Value) -> Vec<Cmd> {
-    let names = |k: &str| -> Vec<String> { init.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default() };
-    let skills: HashSet<String> = names("skills").into_iter().collect();
-    names("slash_commands")
-        .into_iter()
-        // Claude Code's own plumbing ("__remote-workflow"): not for you to type.
-        .filter(|n| !n.starts_with('_'))
-        .map(|n| {
-            let skill = skills.contains(&n);
-            Cmd { desc: if skill { String::new() } else { builtin_desc(&n).to_string() }, kind: if skill { "skill" } else { "command" }.into(), name: n }
+/// The list from Claude Code's setup reply: `commands` (name, description, argumentHint, builtin), with
+/// `models` and `available_output_styles` as the choices for /model and /output-style.
+fn from_setup(r: &Value) -> Vec<Cmd> {
+    let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let models: Vec<Arg> = r.get("models").and_then(Value::as_array).into_iter().flatten()
+        .map(|m| Arg { value: s(m, "value"), label: s(m, "displayName"), desc: s(m, "description") })
+        .filter(|a| !a.value.is_empty())
+        .collect();
+    let styles: Vec<Arg> = r.get("available_output_styles").and_then(Value::as_array).into_iter().flatten()
+        .filter_map(Value::as_str)
+        .map(|v| Arg { value: v.into(), label: v.into(), desc: String::new() })
+        .collect();
+    r.get("commands").and_then(Value::as_array).into_iter().flatten()
+        .filter_map(|c| {
+            let name = s(c, "name");
+            // Claude Code's own plumbing ("__remote-workflow"): not for you to type.
+            if name.is_empty() || name.starts_with('_') {
+                return None;
+            }
+            let hint = s(c, "argumentHint");
+            let args = match name.as_str() {
+                "model" => models.clone(),
+                "output-style" => styles.clone(),
+                _ => choices(&hint),
+            };
+            let builtin = c.get("builtin").and_then(Value::as_bool) == Some(true);
+            Some(Cmd { kind: if builtin { "command" } else { "skill" }.into(), desc: s(c, "description"), hint, args, name })
         })
         .collect()
 }
 
-/// What each skill does, from the session's transcript ("- name: what it does", one per line, in its
-/// skill listing). Read again when the transcript has grown.
-fn skill_descs(transcript: &str) -> HashMap<String, String> {
-    let Ok(size) = std::fs::metadata(transcript).map(|m| m.len()) else { return HashMap::new() };
-    let mut cache = DESCS.lock().unwrap();
-    let cache = cache.get_or_insert_with(HashMap::new);
-    if let Some((at, d)) = cache.get(transcript) {
-        // A listing is written when the session starts (and when skills change): growing alone needn't re-read.
-        if *at == size || size.saturating_sub(*at) < 5_000_000 {
-            return d.clone();
-        }
+/// The values in an argument hint that lists them ("[on|off]", "<low|medium|high>"); a free-text hint
+/// ("[name]") or a value with more after it ("ultracode [on|off]") isn't one to pick.
+fn choices(hint: &str) -> Vec<Arg> {
+    // One pair of brackets around the whole hint, no more: the "]" of "[on|off]" inside it stays.
+    let h = hint.trim();
+    let inner = h.strip_prefix('[').and_then(|x| x.strip_suffix(']')).or_else(|| h.strip_prefix('<').and_then(|x| x.strip_suffix('>'))).unwrap_or(h);
+    if !inner.contains('|') {
+        return vec![];
     }
-    let mut d = HashMap::new();
-    if let Ok(f) = std::fs::File::open(transcript) {
-        for l in BufReader::new(f).lines().map_while(Result::ok).filter(|l| l.contains("\"skill_listing\"")) {
-            let Ok(v) = serde_json::from_str::<Value>(&l) else { continue };
-            if let Some(text) = v.pointer("/attachment/content").and_then(Value::as_str) {
-                d.extend(parse_listing(text));
-            }
-        }
-    }
-    cache.insert(transcript.to_string(), (size, d.clone()));
-    d
-}
-
-fn parse_listing(text: &str) -> HashMap<String, String> {
-    text.lines()
-        .filter_map(|l| l.strip_prefix("- "))
-        .filter_map(|l| l.split_once(": "))
-        .map(|(n, d)| (n.trim().to_string(), d.trim().to_string()))
+    inner.split('|')
+        .map(str::trim)
+        .filter(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .map(|v| Arg { value: v.into(), label: v.into(), desc: String::new() })
         .collect()
-}
-
-/// A line for Claude Code's built-ins (unknown ones show none).
-fn builtin_desc(name: &str) -> &'static str {
-    match name {
-        "compact" => "Summarize the conversation to free up context",
-        "clear" => "Start over: clear the conversation",
-        "context" => "How full the context is",
-        "model" => "Switch the model (add its name, e.g. /model sonnet)",
-        "effort" => "How hard it thinks (add low, medium or high)",
-        "fast" => "Fast mode on or off",
-        "rename" => "Name this session",
-        "usage" => "Your plan's usage and limits",
-        "init" => "Write a CLAUDE.md for this project",
-        "review" | "code-review" => "Review code changes",
-        "security-review" => "Look for security problems in the changes",
-        "config" => "Settings (opens in its terminal)",
-        "agents" => "Manage subagents (opens in its terminal)",
-        "mcp" => "MCP servers (opens in its terminal)",
-        "output-style" => "How it writes its answers",
-        "color" => "This session's color",
-        "recap" => "A recap of the session so far",
-        "insights" => "A report on how you use Claude Code",
-        "doctor" => "Check Claude Code's install",
-        "reload-plugins" => "Load plugin changes",
-        "reload-skills" => "Load skill changes",
-        "autocompact" => "Automatic compacting on or off",
-        "goal" => "Set a goal it works toward",
-        "advisor" => "Ask a stronger model for advice",
-        "loop" => "Repeat a prompt on an interval",
-        "schedule" => "Run a prompt on a schedule",
-        "batch" => "Run a task across many files in parallel",
-        "ultrareview" => "A multi-agent review of this branch",
-        "extra-usage" | "usage-credits" => "Extra usage",
-        "heapdump" => "Save a memory snapshot (for debugging Claude Code)",
-        "import" => "Import from another tool",
-        "focus" => "Focus mode",
-        "list-agents" => "List the agents you can message",
-        _ => "",
-    }
 }
 
 #[cfg(test)]
@@ -179,21 +148,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_claude_codes_setup_line() {
-        let init = serde_json::json!({ "type": "system", "subtype": "init", "slash_commands": ["compact", "relay:spawn", "__remote-workflow", "mystery"], "skills": ["relay:spawn"] });
-        let got = from_init(&init);
-        let row = |n: &str| got.iter().find(|c| c.name == n).cloned();
-        assert_eq!(got.len(), 3, "plumbing left out: {got:?}");
-        assert_eq!(row("compact").map(|c| (c.kind, c.desc.is_empty())), Some(("command".into(), false)));
-        assert_eq!(row("relay:spawn").map(|c| c.kind), Some("skill".into()));
-        assert_eq!(row("mystery").map(|c| c.desc), Some(String::new()));
-    }
-
-    #[test]
-    fn reads_skill_lines() {
-        let d = parse_listing("- relay:spawn: Start an executor: one: two\n- merge-main: Bring main in\nnot a row");
-        assert_eq!(d.get("relay:spawn").map(String::as_str), Some("Start an executor: one: two"));
-        assert_eq!(d.get("merge-main").map(String::as_str), Some("Bring main in"));
-        assert_eq!(d.len(), 2);
+    fn reads_claude_codes_setup_reply() {
+        let r = serde_json::json!({
+            "commands": [
+                { "name": "model", "description": "Set the AI model", "argumentHint": "<model>", "builtin": true },
+                { "name": "effort", "description": "Set effort", "argumentHint": "<low|medium|high|ultracode [on|off]>", "builtin": true },
+                { "name": "rename", "description": "Rename it", "argumentHint": "[name]", "builtin": true },
+                { "name": "__remote-workflow", "description": "", "argumentHint": "", "builtin": true },
+                { "name": "merge-main", "description": "Bring main in (user)", "argumentHint": "" }
+            ],
+            "models": [{ "value": "sonnet", "displayName": "Sonnet 5.5", "description": "Most efficient" }],
+            "available_output_styles": ["default", "Concise"]
+        });
+        let got = from_setup(&r);
+        let row = |n: &str| got.iter().find(|c| c.name == n).cloned().unwrap();
+        assert_eq!(got.len(), 4, "plumbing left out: {got:?}");
+        assert_eq!(row("model").args, vec![Arg { value: "sonnet".into(), label: "Sonnet 5.5".into(), desc: "Most efficient".into() }]);
+        assert_eq!(row("effort").args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>(), ["low", "medium", "high"]);
+        assert!(row("rename").args.is_empty() && row("rename").hint == "[name]");
+        assert_eq!((row("merge-main").kind.as_str(), row("model").kind.as_str()), ("skill", "command"));
     }
 }

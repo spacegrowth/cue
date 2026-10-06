@@ -57,16 +57,15 @@ async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: S
 /// being read (ask again shortly); empty for agents without a list.
 #[tauri::command]
 fn session_commands(hub: State<Arc<Hub>>, session_id: String) -> Option<Vec<commands::Cmd>> {
-    let origin = hub.session_origin(&session_id);
-    let (cwd, transcript) = match origin {
-        Some(o) if o.harness == "claude" => (o.cwd, o.transcript_path),
+    let cwd = match hub.session_origin(&session_id) {
+        Some(o) if o.harness == "claude" => o.cwd,
         Some(_) => return Some(vec![]),
         None => match live::claude().into_iter().find(|q| q.session_id == session_id) {
-            Some(q) => (q.cwd.clone(), live::claude_transcript(&q.cwd, &session_id).unwrap_or_default()),
+            Some(q) => q.cwd,
             None => return Some(vec![]),
         },
     };
-    commands::for_session(&cwd, &transcript)
+    commands::for_session(&cwd)
 }
 
 /// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art? }] }]); none without one.

@@ -802,11 +802,23 @@ function cmdList(sid) {
 const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
 /** "/comp": the command name being typed (no space yet), else null. A leading space means a message. */
 const typingCmd = (text) => (/^\/[^\s]*$/.test(text) ? text.slice(1).toLowerCase() : null);
-/** Matches for what's typed: names that start with it first, then names that contain it. */
+/** "/model so": the command and the value being typed for it (one word, no space after yet), else null. */
+const typingArg = (text) => { const m = /^\/(\S+) (\S*)$/.exec(text); return m ? { name: m[1], q: m[2].toLowerCase() } : null; };
+/** Matches for what's typed: names that start with it first, then names that contain it. After a command
+ *  that takes a set of values (/model, /effort…), those values, as "model sonnet" (what follows the "/"). */
 function cmdMatches(key) {
-  const q = typingCmd(draft(key).text);
-  if (q === null || cmdShut === key) return [];
+  if (cmdShut === key) return [];
   const list = cmdList(sidOfKey(key));
+  const a = typingArg(draft(key).text);
+  if (a) {
+    const c = list.find((x) => x.name === a.name);
+    const hits = (c?.args || []).filter((v) => [v.value, v.label].some((t) => t.toLowerCase().includes(a.q)));
+    // Typed out in full: nothing left to pick.
+    if (hits.length === 1 && hits[0].value.toLowerCase() === a.q) return [];
+    return hits.map((v) => ({ name: `${c.name} ${v.value}`, label: v.label !== v.value ? v.label : "", desc: v.desc, arg: true }));
+  }
+  const q = typingCmd(draft(key).text);
+  if (q === null) return [];
   const starts = list.filter((c) => c.name.toLowerCase().startsWith(q) || c.name.toLowerCase().split(":").pop().startsWith(q));
   return [...starts, ...list.filter((c) => !starts.includes(c) && c.name.toLowerCase().includes(q))];
 }
@@ -816,7 +828,9 @@ function cmdMenu(key) {
   if (!m.length && typingCmd(draft(key).text) !== null && cmdShut !== key && cmdLists.get(sidOfKey(key)) === null) return `<div class="cmd-menu"><div class="cmd-row cmd-wait">Loading commands…</div></div>`;
   if (!m.length) return "";
   cmdSel = Math.min(cmdSel, m.length - 1);
-  return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd="${esc(c.name)}" role="option"><b>/${esc(c.name)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : ""}</button>`).join("")}</div>`;
+  // A command that takes a value: its hint ("[name]"); one with values to pick says so (→ shows them).
+  const after = (c) => c.arg ? (c.label ? ` <em>${esc(c.label)}</em>` : "") : c.args?.length ? ` <em>…</em>` : c.hint ? ` <em>${esc(c.hint)}</em>` : "";
+  return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd="${esc(c.name)}" role="option"><b>/${esc(c.name)}${after(c)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : ""}</button>`).join("")}</div>`;
 }
 /** The command a box's text runs ("/compact now" -> compact), from the session's list; undefined when
  *  it isn't a command, null when it's one the session doesn't have (or the list isn't in yet: then unknown). */
@@ -835,7 +849,7 @@ function slashHint(key) {
   const c = cmdOf(key), name = t.slice(1).split(/\s/)[0];
   const asText = `<button data-astext="${esc(key)}">Send as a message instead</button>`;
   if (c === null) return `<div class="slash-hint bad">“/${esc(name)}” isn't a command in this session. ${asText}</div>`;
-  return `<div class="slash-hint">${c.desc ? `<b>/${esc(c.name)}</b>: ${esc(c.desc)}` : `Starts with “/”, so the agent runs it as a command. ${asText}`}</div>`;
+  return `<div class="slash-hint">${c.desc ? `<b>/${esc(c.name)}${c.hint ? ` ${esc(c.hint)}` : ""}</b>: ${esc(c.desc)}` : `Starts with “/”, so the agent runs it as a command. ${asText}`}</div>`;
 }
 /** Redraw just a box's menu and hint (typing never rebuilds the box, so the caret stays put). */
 function refreshCmd(key) {
@@ -847,9 +861,13 @@ function refreshCmd(key) {
   f.querySelector(".slash-hint")?.replaceWith(document.createRange().createContextualFragment(slashHint(key)));
   f.querySelector(".cmd-row.on")?.scrollIntoView({ block: "nearest" });
 }
-/** Pick a command: Tab or a click puts "/name " in the box for its arguments; Enter runs it. */
+/** Pick a command: Tab or a click puts "/name " in the box for its arguments; Enter runs it. One with
+ *  values to pick (/model) never runs bare (that opens a picker in its terminal): it shows its values.
+ *  A value ("model sonnet"): Tab or a click puts it in the box, Enter runs it. */
 function pickCmd(key, name, run) {
-  draft(key).text = `/${name}${run ? "" : " "}`;
+  const c = cmdList(sidOfKey(key)).find((x) => x.name === name);
+  if (c?.args?.length) run = false;
+  draft(key).text = `/${name}${run || name.includes(" ") ? "" : " "}`;
   cmdSel = 0;
   saveDrafts();
   const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
