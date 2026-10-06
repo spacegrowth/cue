@@ -771,6 +771,8 @@ function setActive(id, sid, exact = false) {
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
   sheet = menuFor = redirectFor = null;
   renderMain();
+  // Picked a session (any list, a chip, the live list's Enter): ready to type to it.
+  focusComposer();
 }
 /** The next thing waiting on you that isn't on screen. */
 const nextUp = () => needsYou().find((i) => i.id !== active?.id && i.session_id !== active?.sid);
@@ -1628,6 +1630,7 @@ function histStats() {
 /** History: everything you answered, newest first, by day. Click a row to read it in place. */
 // ---------- "N live" in the header: every live session, one click from any screen, and + New ----------
 let liveOpen = false;              // the drop-down is open
+let liveSpot = false;              // …opened with ⌘K: in the middle of the window, like Spotlight
 let liveSel = 0;                   // the highlighted row (↑ ↓ move it, Enter opens it)
 let liveShown = [];                // the rows on screen, in order: [{ sid, act }]
 let newOpen = false;               // its New session form is showing
@@ -1644,7 +1647,7 @@ function recentFolders() {
 }
 function liveChip() {
   const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length;
-  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session, and + New (⌘L)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen ? livePop(rows) : ""}</span>`;
+  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session, and + New (⌘K, ⌘L)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
 }
 function livePop(rows) {
   const q = draft("find-live").text.trim().toLowerCase();
@@ -1674,7 +1677,7 @@ function livePop(rows) {
     <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new">+ New</button></div>
     ${newOpen ? newForm() : ""}
     <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div>
-    <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>⌘L</kbd> open / close</span></div></div>`;
+    <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>${liveSpot ? "⌘K" : "⌘L"}</kbd> open / close</span></div></div>`;
 }
 /** + New session: agent, folder (recent ones offered), an optional first message, and (Claude) a name. */
 function newForm() {
@@ -1705,7 +1708,10 @@ function pickLive() {
 }
 async function lvAct(act, d) {
   if (act === "toggle") {
-    liveOpen = !liveOpen;
+    // Open the other way (⌘K's middle, or under the chip) moves it there rather than closing it.
+    const spot = !!d.spot;
+    liveOpen = !(liveOpen && liveSpot === spot);
+    liveSpot = spot;
     liveSel = 0;
     if (!liveOpen) newOpen = false;
     renderMain();
@@ -2106,7 +2112,7 @@ function renderMain() {
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}`;
+  </div>${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   flipPlay(flipFrom);
@@ -2162,6 +2168,11 @@ function renderMain() {
   saveDrafts();
   if (focusKey) { const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`); if (el) { el.focus(); el.setSelectionRange(...caret); } }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); el.setSelectionRange(...caret); } }
+  // Something over the chat closed (Esc, a click outside, a pick): its text box takes the cursor back,
+  // unless you closed it by clicking into another box.
+  const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming);
+  if (overWas && !over && !document.activeElement?.matches?.("input, textarea, select")) focusComposer();
+  overWas = over;
   fitHead();
   fitTop();
 }
@@ -2235,7 +2246,8 @@ async function loadDrafts() {
 }
 let escArmed = 0;           // when Esc was last pressed on a working session (twice within 1.5s stops it)
 let focusedTarget = null;   // the Active target whose text box last got the cursor
-/** Put the cursor at the end of the Active pane's text box (⌘K, or opening something). */
+let overWas = false;        // something covered the chat at the last draw (a sheet, the live list, an image…)
+/** Put the cursor at the end of the Active pane's text box (opening something, Esc Esc). */
 function focusComposer() {
   const el = document.querySelector(".active-pane textarea[data-text]");
   if (!el) return false;
@@ -2296,6 +2308,8 @@ function grow(el) {
 }
 const picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", multiple: true, hidden: true });
 picker.addEventListener("change", () => attach(picker.dataset.key, [...picker.files]));
+// Closed Finder's picker without one: back to the box you were adding to.
+picker.addEventListener("cancel", () => document.querySelector(`[data-text="${CSS.escape(picker.dataset.key)}"]`)?.focus());
 async function attach(key, files) {
   for (const f of files.slice(0, 6)) {
     if (f.size > 15 * 1024 * 1024) { toast(`${f.name} is over 15 MB`); continue; }
@@ -2619,14 +2633,10 @@ function bindMain() {
     // ⌘, opens Settings, the Mac way (even while typing in a box).
     if (e.metaKey && e.key.toLowerCase() === "f") { e.preventDefault(); return sheet === "search" ? (sheet = null, renderMain()) : openSearch(); }
     if (e.metaKey && e.key === ",") { e.preventDefault(); sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
+    // ⌘K: every live session in the middle of the window, like Spotlight. ⌘L: the same, under its chip.
+    if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); sheet = lightbox = null; return lvAct("toggle", { spot: true }); }
     // ⌘L: every live session (the drop-down by "N live"), even while typing in a box.
     if (e.metaKey && e.key.toLowerCase() === "l") { e.preventDefault(); return lvAct("toggle", {}); }
-    if (e.metaKey && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      sheet = lightbox = null;
-      renderMain();
-      return focusComposer();
-    }
     if (lightbox) {
       if (e.key === "ArrowRight") lightbox.i = (lightbox.i + 1) % lightbox.srcs.length;
       else if (e.key === "ArrowLeft") lightbox.i = (lightbox.i - 1 + lightbox.srcs.length) % lightbox.srcs.length;

@@ -850,6 +850,15 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .lv-chip .hdot { animation: pulse 1.4s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .lv-chip .hdot { animation: none; } }
 .lv-pop { position: absolute; top: 38px; left: 0; z-index: 30; width: 460px; max-height: min(640px, calc(100vh - 80px)); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); overflow: hidden; }
+/* ⌘K: the same list in the middle of the window, like Spotlight. */
+.spot-scrim { padding-top: 14vh; z-index: 30; }
+.lv-wrap.spot { display: block; }
+.spot .lv-pop { position: static; width: min(620px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 14vh - 40px)); border-radius: 16px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line); }
+.spot .lv-top { padding: 12px; }
+.spot .lv-top .sv-search { height: 40px; }
+.spot .sv-search input { font-size: 15px; }
+.spot .lv-top .btn { height: 40px; }
+.spot .lv-row { padding: 6px 8px; margin: 0 -8px; font-size: 13px; }
 .lv-top { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); }
 .lv-top .sv-search { flex: 1; min-width: 0; height: 32px; background: var(--panel-2); }
 .lv-top .btn { height: 32px; }
