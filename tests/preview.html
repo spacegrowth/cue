@@ -122,7 +122,7 @@
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
       if (q.get("ufile") === "err") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [], error: "Line 2: \"spent\" isn't a number (\"lots\")." };
-      const listeners = {};
+      const listeners = (window.__listeners = {});
       const emit = () => (listeners.state || []).forEach((f) => f({ payload: structuredClone(state) }));
       window.__TAURI__ = {
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
@@ -203,6 +203,8 @@
       const sessQ = new URLSearchParams(q).get("sess");
       if (sessQ) document.querySelector(`[data-session="${sessQ}"]`)?.click();
       if (/upop=1/.test(q)) document.querySelector("[data-usage=meter], [data-usage=model], [data-usage=out]")?.dataset.usage === "meter" && document.querySelector("[data-usage=meter]").click();
+      // ?upd=1: the card for a newer Cue.
+      if (/upd=1/.test(q)) (window.__listeners["update-ready"] || []).forEach((f) => f({ payload: { version: "0.1.4", notes: "" } }));
       // ?detail=<id>: open that entry from Recently answered.
       const detailQ = new URLSearchParams(q).get("detail");
       if (detailQ) document.querySelector(`.tl[data-detail="${detailQ}"]`)?.click();

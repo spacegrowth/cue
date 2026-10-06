@@ -2001,7 +2001,7 @@ function updateRow() {
     : `<button class="btn" data-upd="check" ${st === "checking" || st === "installing" ? "disabled" : ""}>Check for updates</button>`;
   return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}Cue also looks by itself every few hours.`, btn);
 }
-/** A newer Cue turned up in the background: a small card, bottom left, until you choose. */
+/** A newer Cue turned up in the background: a small card in the header's middle, until you choose. */
 const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${esc(upd.version)} is out</b>${upd.status === "installing" ? `<div class="dim">Installing… Cue restarts by itself.</div>` : upd.status.startsWith("error:") ? `<div class="dim">${esc(upd.status.slice(6))}</div>` : ""}</div>
   <button class="btn primary small" data-upd="install" ${upd.status === "installing" ? "disabled" : ""}>Update and restart</button><button class="btn small" data-upd="later">Later</button></div>`;
 /** The agents Cue connects to, as Settings rows (also the first-launch setup screen's). */
@@ -2100,13 +2100,13 @@ function renderMain() {
 
   const counts = headerChips();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}</span><span class="grow" data-tauri-drag-region></span>
+    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
       ${usageChip()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${updateCard()}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}`;
+  </div>${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}`;
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   flipPlay(flipFrom);

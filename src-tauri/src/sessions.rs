@@ -175,12 +175,20 @@ impl Sessions {
         }
         if let Some(last) = s.thread.last_mut() {
             let paths: Vec<&str> = images.iter().chain(last.images.iter()).map(String::as_str).collect();
-            if last.role == role && now_ms().saturating_sub(last.at_ms) < 15_000 && same_message(text, &last.text, &paths) {
-                // Keep the first copy; Cue's own copy carries the images, so they move onto it.
-                if last.images.is_empty() && !images.is_empty() {
-                    last.images = images.to_vec();
+            if last.role == role && now_ms().saturating_sub(last.at_ms) < 15_000 {
+                if same_message(text, &last.text, &paths) {
+                    // Keep the first copy; Cue's own copy carries the images, so they move onto it.
+                    if last.images.is_empty() && !images.is_empty() {
+                        last.images = images.to_vec();
+                    }
+                    return;
                 }
-                return;
+                // Typed into a box that still held something (a message you stopped comes back into
+                // Claude Code's box): the agent got both, glued. One bubble, saying what it got.
+                if role == "you" && glued_after(text, &last.text, &paths) {
+                    last.text = text.to_string();
+                    return;
+                }
             }
         }
         let text = if text.chars().count() > EXCHANGE_CHARS { format!("{}…", text.chars().take(EXCHANGE_CHARS).collect::<String>()) } else { text.to_string() };
@@ -480,6 +488,13 @@ fn same_message(a: &str, b: &str, paths: &[&str]) -> bool {
     long.contains(short.as_str()) && short.len() * 5 >= long.len() * 4
 }
 
+/// `long` is `short` with something typed before it (and `short` is more than a word or two).
+fn glued_after(long: &str, short: &str, paths: &[&str]) -> bool {
+    let squash = |t: &str| t.split_whitespace().filter(|w| !w.starts_with('/') && !paths.contains(w)).collect::<Vec<_>>().join(" ");
+    let (long, short) = (squash(long), squash(short));
+    short.len() >= 8 && long.len() > short.len() && long.ends_with(&short)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,6 +545,22 @@ mod tests {
         assert_eq!(t.first().unwrap().text, "msg 2");
         assert_eq!(t.last().unwrap().text, "msg 6");
         s.note("nobody", "you", "x", 5); // unknown session: no-op, no panic
+    }
+
+    #[test]
+    fn a_message_glued_to_one_you_stopped_is_one_bubble() {
+        let mut s = Sessions::default();
+        s.mark(&origin("g"), "working", None);
+        s.note("g", "you", "ok commit , push , release", 9);
+        s.note("g", "you", "after esc esc we are losing text box focus", 9); // sent from Cue
+        // Claude Code had put the stopped message back in its box; it got both, glued.
+        s.note("g", "you", "ok commit , push , releaseafter esc esc we are losing text box focus", 9);
+        let t: Vec<String> = s.thread("g").iter().map(|e| e.text.clone()).collect();
+        assert_eq!(t, ["ok commit , push , release", "ok commit , push , releaseafter esc esc we are losing text box focus"]);
+        // A short reply isn't matched by chance.
+        s.note("g", "you", "yes", 9);
+        s.note("g", "you", "I said yes", 9);
+        assert_eq!(s.thread("g").len(), 4);
     }
 
     #[test]
