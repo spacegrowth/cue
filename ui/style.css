@@ -95,11 +95,19 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .col.split { overflow: hidden; gap: 14px; }
 .sec { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .sec-sessions { flex: 0 1 auto; max-height: 50%; }
-.sec-recent { flex: 1 1 0; }
+.sec-drawer { flex: 1 1 0; }
+.sec-drawer.shut { flex: 0 0 auto; }
 .sec-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; padding-bottom: 4px; }
 /* Recently answered is one card: it keeps its rounded corners and scrolls inside, not off the top. */
 .sec-recent .sec-body { overflow: hidden; }
-.sec-recent .card.recent { min-height: 0; overflow-y: auto; flex: 0 1 auto; }
+.sec-recent .card.recent, .sec-starred .card.recent { min-height: 0; overflow-y: auto; flex: 0 1 auto; }
+.sec-starred .sec-body { overflow: hidden; }
+/* Starred, drawn like Recently answered: amber when stuck; the star unstars it. */
+.tl.star-tl { cursor: pointer; }
+.tl.stuck::before { background: #d99a3a; }
+.tl.stuck .tl-out { color: #b07a22; }
+.star-tl .tl-top { align-items: center; }
+.star-tl .star-btn { width: 18px; height: 18px; margin: -3px -4px -3px 0; }
 
 .card { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); color: var(--ink); }
 .card-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
@@ -354,10 +362,18 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .foot, .active-pane { position: relative; }
 /* What the chat layers on itself (the sweep, the btw panel) stays under sheets opened over it (Settings, Search). */
 .active-pane { isolation: isolate; }
-/* At work: a light sweeps along the chat's top edge (gone while it waits on you). No glow: on the white pane it showed as a pale band. */
-.active-pane.busy::before { content: ""; position: absolute; top: 0; left: 0; width: 60%; height: 3px; z-index: 13; pointer-events: none; background: linear-gradient(90deg, transparent, var(--sel) 15%, color-mix(in srgb, var(--accent) 50%, var(--sel)) 40%, color-mix(in srgb, var(--accent) 50%, var(--sel)) 60%, var(--sel) 85%, transparent); animation: sweep 3.6s ease-in-out infinite; }
+/* At work: a light sweeps along the chat's top edge (gone while it waits on you); sweep() in app.js picks
+   how. A Moss core with lime ends, so it reads on the white pane (lime alone barely showed). No glow. */
+.sweep { position: absolute; top: 0; left: 0; width: 60%; height: 3px; z-index: 13; pointer-events: none; background: linear-gradient(90deg, transparent, var(--sel) 12%, var(--accent) 45%, var(--accent) 55%, var(--sel) 88%, transparent); animation: sweep 1.6s ease-in-out infinite; }
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(170%); } }
-@media (prefers-reduced-motion: reduce) { .active-pane.busy::before { animation: none; width: 100%; opacity: 0.6; } }
+/* A quiet spell (a long think): slower and softer. */
+.sweep.calm { opacity: 0.5; }
+/* A step just landed: one quick, solid flick across. */
+.sweep.flick { width: 35%; z-index: 14; background: linear-gradient(90deg, transparent, var(--accent) 30%, var(--accent) 70%, transparent); animation: flick 0.7s ease-out forwards; }
+@keyframes flick { from { transform: translateX(-100%); opacity: 1; } to { transform: translateX(290%); opacity: 0; } }
+/* Stuck (no new output for minutes): it stops, amber, by the "No new output" line. */
+.sweep.stalled { width: 100%; animation: none; background: #d99a3a; }
+@media (prefers-reduced-motion: reduce) { .sweep { animation: none; width: 100%; opacity: 0.6; } .sweep.flick { display: none; } .sweep.stalled { opacity: 1; } }
 /* By the way: a side question's panel, dropping from the btw button over the top of the chat (the chat
    underneath never changes). Newest answer first, under its own ask box. */
 .btw-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
@@ -735,14 +751,14 @@ button.tm-chip:hover { background: var(--panel-2); }
 .ap-sub .star-btn { align-self: center; width: 20px; height: 20px; margin-left: -8px; color: var(--muted); }
 .ap-sub .star-btn.on { color: var(--star); }
 
-/* Recently answered folds away from its heading; while it's folded, Sessions takes the column. */
+/* Starred and Recently answered fold away under their headings (one open at most); with both folded,
+   Sessions takes the column. */
 .fold-head { width: 100%; text-align: left; cursor: pointer; }
 .fold-head:hover { opacity: 0.8; }
 .fold-arrow { font-size: 10px; opacity: 0.7; margin-right: -3px; }
-.col.split.recent-closed .sec-sessions { max-height: none; flex: 1 1 auto; }
-.col.split.recent-closed .sec-recent { flex: 0 0 auto; }
-/* A faint line above Recently answered, so it reads as its own section (it folds like a drawer). */
-.sec-recent { border-top: 1px solid color-mix(in srgb, var(--on-bg) 16%, transparent); padding-top: 12px; }
+.col.split.drawers-shut .sec-sessions { max-height: none; flex: 1 1 auto; }
+/* A faint line above each drawer, so it reads as its own section. */
+.sec-drawer { border-top: 1px solid color-mix(in srgb, var(--on-bg) 16%, transparent); padding-top: 12px; }
 
 /* A card arriving in Waiting: rises in from below and fades in, with a ring that settles away. */
 @keyframes cardArrive {

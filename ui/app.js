@@ -634,31 +634,43 @@ const starBtn = (sid) => {
   const on = isStarred(sid);
   return `<button class="star-btn ${on ? "on" : ""}" data-star="${esc(sid)}" aria-label="${on ? "Unstar" : "Star"}" aria-pressed="${on}">${STAR_ICON}</button>`;
 };
-/** Recently answered folded away (its heading toggles it; Sessions gets the room). Remembered per window. */
-const recentClosed = () => { try { return localStorage.getItem("cue.recentClosed") === "1"; } catch { return false; } };
-/** Fold or unfold it like a drawer: closing, the section's height shrinks up into its heading while
- *  Sessions grows into the room; opening, it grows back down. (Snaps with Reduce motion.) */
-function foldRecent() {
-  const closing = !recentClosed();
-  const save = () => { try { localStorage.setItem("cue.recentClosed", closing ? "1" : "0"); } catch {} };
+/** Under Sessions, two drawers: Starred, then Recently answered. At most one is open (opening one folds
+ *  the other); with both folded, Sessions takes the column. Starred is open to begin with, Recently
+ *  answered folded. Remembered per window. */
+const DRAWERS = ["starred", "recent"];
+function openDrawer() {
+  try {
+    const d = localStorage.getItem("cue.drawer");
+    if (d !== null) return d;
+    return localStorage.getItem("cue.recentOpen") === "1" ? "recent" : "starred";   // what this window had before
+  } catch { return "starred"; }
+}
+const drawerOpen = (name) => openDrawer() === name;
+/** Open or fold a drawer like a drawer: folding, its height shrinks up into its heading while Sessions
+ *  grows into the room; opening, it grows back down (the other one, if open, folds at once). Snaps with
+ *  Reduce motion. */
+function foldDrawer(name) {
+  const closing = drawerOpen(name);
+  const save = () => { try { localStorage.setItem("cue.drawer", closing ? "" : name); localStorage.removeItem("cue.recentOpen"); localStorage.removeItem("cue.recentClosed"); } catch {} };
   const slide = (sec, col, from, to, done) => {
     let ended = false;
     const end = () => { if (!ended) { ended = true; done(); } };
-    col.classList.add("recent-closed");            // Sessions may use whatever the section gives up
+    col.classList.add("drawers-shut");             // Sessions may use whatever the drawer gives up
     sec.style.flex = "none";
     sec.style.overflow = "hidden";
     sec.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 220, easing: "ease-in-out" }).onfinish = end;
     setTimeout(end, 300);                          // a redraw mid-way drops the animation, and its onfinish
   };
   const closedHeight = (sec) => sec.querySelector(".fold-head").offsetHeight + parseFloat(getComputedStyle(sec).paddingTop);
-  let sec = document.querySelector(".sec-recent");
+  let sec = document.querySelector(`.sec-${name}`);
   if (!sec || matchMedia("(prefers-reduced-motion: reduce)").matches) { save(); return renderMain(); }
   if (closing) return slide(sec, sec.closest(".col.split"), sec.offsetHeight, closedHeight(sec), () => { save(); renderMain(); });
+  const from = closedHeight(sec);
   save();
   renderMain();                                    // open, so we can measure where it ends up
-  sec = document.querySelector(".sec-recent");
+  sec = document.querySelector(`.sec-${name}`);
   const col = sec.closest(".col.split"), to = sec.offsetHeight;
-  slide(sec, col, closedHeight(sec), to, () => { sec.style.flex = sec.style.overflow = ""; col.classList.remove("recent-closed"); });
+  slide(sec, col, from, to, () => { sec.style.flex = sec.style.overflow = ""; col.classList.remove("drawers-shut"); });
 }
 /** Put off for later ("Later"): kept with the session in Cue, not in this window. */
 const parkedIds = () => new Set(state.sessions.filter((s) => s.later_ms).map((s) => s.session_id));
@@ -940,6 +952,19 @@ function recentEntry(i) {
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
 
+/** A starred session in its drawer, drawn like Recently answered: who, what it's on now, and its state
+ *  in words. The dot: pulsing while it works, red when it asks you, Moss on your turn, amber when stuck. */
+function starEntry(s, open) {
+  const sid = s.session_id, it = state.items.find((i) => i.session_id === sid);
+  const stuck = s.state === "working" && s.stuck_ms && !s.compacting_ms;
+  const dot = stuck ? "stuck" : it ? (it.kind === "waiting" ? "ok" : "no") : s.state === "working" || s.compacting_ms ? "live" : "";
+  const what = it ? plain(summary(it)) : s.compacting_ms ? "Compacting…" : s.state === "working" ? s.doing || (s.prompt ? `› ${s.prompt}` : "Thinking") : s.prompt ? `› ${s.prompt}` : plain(firstLine(lastSaid(s)));
+  const st = stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
+  return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" data-session="${esc(sid)}">
+    <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}<span>${esc(agentName(s.harness))}</span><span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
+    <div class="tl-title" data-cut title="${esc(what)}">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
+}
+
 // ---------- Board view: ACTIVE | WAITING | WORKING + RECENTLY ANSWERED ----------
 /** Everything waiting on you, oldest first: finished turns and decisions together. */
 const needsYou = () => [...groups().decide, ...groups().yours].sort((a, b) => a.created_ms - b.created_ms);
@@ -1081,6 +1106,22 @@ const stepDetail = new Map();  // "sid|id" -> { full, output | diff } | "loading
 // there when the chat opened.
 const stepArrived = new Map(); // "sid|item key" -> ms
 const REVEAL_MS = 900;
+/** The working light along the chat's top edge: brisk while steps land (a brighter flick for each new
+ *  one), calmer after a quiet spell (a long think), still and amber once Cue thinks it's stuck. Where it
+ *  is in its pass comes from the clock, so a redraw (they come often while it works) carries it on
+ *  instead of starting it over. */
+const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000, FLICK_MS = 700;
+function sweep(sid, s) {
+  if (!(s?.state === "working" || s?.compacting_ms)) return "";
+  if (s.stuck_ms && !s.compacting_ms) return `<i class="sweep stalled"></i>`;
+  const lastStep = stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1)?.at_ms || 0;
+  const calm = now() - Math.max(s.doing_ms || 0, lastStep, s.compacting_ms || 0, s.since_ms || 0) > QUIET_MS;
+  const period = calm ? CALM_MS : SWEEP_MS;
+  const landed = Math.max(0, ...[...stepArrived].filter(([k]) => k.startsWith(`${sid}|`)).map(([, at]) => at));
+  const since = Date.now() - landed;
+  return `<i class="sweep ${calm ? "calm" : ""}" style="animation-duration:${period}ms;animation-delay:-${Date.now() % period}ms"></i>`
+    + (since < FLICK_MS ? `<i class="sweep flick" style="animation-delay:-${since}ms"></i>` : "");
+}
 const itemKey = (turn, x, i) => (x.t === "step" ? x.id : `${turn.at_ms}:${i}`);
 let stepsBusy = false;
 const stepsMode = () => state.settings?.steps?.mode || "line";
@@ -1417,7 +1458,7 @@ function activePane() {
   const cm = crewOf(sid);
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
-  return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">
+  return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}<span class="dim">${who}</span>${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
@@ -1615,13 +1656,18 @@ function boardView() {
     ? `<div class="card recent">${recent.map(recentEntry).join("")}
         ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
     : `<div class="empty-col">Your answers show up here.</div>`;
+  // Starred, in the order you starred them (so they don't shuffle as they work).
+  const stars = state.sessions.filter((s) => isStarred(s.session_id)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
+  const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
+  const drawer = (name, title, count, body) => { const open = drawerOpen(name); return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`; };
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   return `<div class="board" style="grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)">
     <div class="col main"><div class="col-head">ACTIVE</div>${activePane()}</div>
     <div class="col"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div>${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${laterSec}</div>
-    <div class="col split ${recentClosed() ? "recent-closed" : ""}">
+    <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
       <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length}</span></div><div class="sec-body">${workCol}</div></div>
-      <div class="sec sec-recent"><button class="col-head fold-head" data-act="fold-recent" aria-expanded="${!recentClosed()}"><span class="fold-arrow">${recentClosed() ? "▸" : "▾"}</span>RECENTLY ANSWERED <span>${recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : ""}</span></button>${recentClosed() ? "" : `<div class="sec-body">${recentList()}</div>`}</div>
+      ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => starEntry(s, isOpen(s.session_id))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
+      ${drawer("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList)}
     </div>
   </div>`;
 }
@@ -2721,7 +2767,7 @@ function bindMain() {
       if (el) { el.value = draft(key).text; el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
       return;
     }
-    if (t.closest("[data-act=fold-recent]")) return foldRecent();
+    { const fd = t.closest("[data-fold]"); if (fd) return foldDrawer(fd.dataset.fold); }
     if (t.closest("[data-act=convo-back]")) { sheet = "search"; renderMain(); return document.querySelector(".search-in")?.focus(); }
     const co = t.closest("[data-act=convo-open]");
     if (co) { sheet = null; return setActive(null, co.dataset.sid); }
