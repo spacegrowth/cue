@@ -118,6 +118,16 @@ pub fn steps(path: &str, known: u64) -> Value {
 }
 
 /// How full the session's context is (the latest reply's tokens, as a share of the model's window), 0–100.
+/// The model a session last answered with ("claude-opus-5-5"), from its transcript.
+pub fn model_of(path: &str) -> Option<String> {
+    let mut guard = FEEDS.lock().unwrap();
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    Some(feed.meta.model.clone()).filter(|m| !m.is_empty())
+}
+
 pub fn context_pct(path: &str) -> Option<u8> {
     let mut guard = FEEDS.lock().unwrap();
     let feeds = guard.get_or_insert_with(HashMap::new);

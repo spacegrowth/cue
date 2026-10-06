@@ -130,6 +130,8 @@
           console.log("[cue-preview]", cmd, JSON.stringify(args));
           if (cmd === "get_state") return structuredClone(state);
           if (cmd === "update_check") return { current: "0.1.5" };
+          // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
+          if (cmd === "btw") { await new Promise((r) => setTimeout(r, 600)); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; }
           // Drafts: the real app keeps them in ~/.cue/cue.db; the preview keeps them in this browser.
           if (cmd === "get_drafts") { try { return JSON.parse(localStorage.getItem("preview.drafts") || "{}"); } catch { return {}; } }
           if (cmd === "set_draft") { const all = JSON.parse(localStorage.getItem("preview.drafts") || "{}"); if (args.text.trim() || args.images.length) all[args.key] = { text: args.text, images: args.images }; else delete all[args.key]; localStorage.setItem("preview.drafts", JSON.stringify(all)); return; }

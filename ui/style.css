@@ -348,6 +348,25 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .foot.held { border-top: 0; padding-top: 0; }
 /* Selected text was copied: a Moss pill at the right end, just above the text box; it fades by itself. */
 .foot, .active-pane { position: relative; }
+/* By the way: a side question's panel, dropping from the btw button over the top of the chat (the chat
+   underneath never changes). Newest answer first, under its own ask box. */
+.btw-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.btw-pop { position: absolute; right: 14px; z-index: 12; width: min(440px, calc(100% - 28px)); max-height: min(60%, 460px); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); }
+.btw-head { display: flex; align-items: center; padding: 10px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.btw-clear { margin-left: auto; font-size: 11.5px; font-weight: 650; letter-spacing: 0; color: var(--muted); padding: 2px 6px; border-radius: 6px; }
+.btw-clear:hover { color: var(--ink); background: var(--panel-2); }
+.btw-clear + .btw-x { margin-left: 4px; }
+.btw-x { margin-left: auto; font-size: 16px; line-height: 1; color: var(--muted); padding: 2px 4px; }
+.btw-x:hover { color: var(--ink); }
+.btw-ask { padding: 6px 10px; }
+.btw-ask textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); color: var(--ink); font: 13px/1.4 var(--sans); outline: none; }
+.btw-ask textarea:focus { border-color: var(--accent); }
+.btw-body { overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.btw-q { align-self: flex-end; max-width: 85%; padding: 6px 10px; border-radius: 12px 12px 4px 12px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13px; overflow-wrap: anywhere; }
+.btw-a { font-size: 13px; line-height: 1.5; }
+.btw-a.dim { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.btw-a.bad { color: var(--deny); }
+.btw-empty { font-size: 12px; padding: 2px 0 4px; }
 .copied { position: absolute; right: 12px; bottom: calc(100% + 8px); padding: 3px 10px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 650; pointer-events: none; z-index: 5; animation: copied 1.6s ease forwards; }
 .active-pane > .copied { bottom: 12px; }
 @keyframes copied { 0% { opacity: 0; transform: translateY(4px); } 10%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
@@ -427,6 +446,8 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .tl { display: block; width: 100%; text-align: left; padding: 9px 12px 9px 28px; border-radius: 10px; position: relative; }
 .tl:hover { background: var(--panel-2); }
 .tl::before { content: ""; position: absolute; left: 11px; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+/* Its session is working again: the dot pulses, as a working session's does. */
+.tl.live::before { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .tl.ok::before { background: var(--accent); }
 .tl.no::before { background: var(--deny); }
 .tl-top { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; }
@@ -696,7 +717,7 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 
 /* A working session's latest step ("Running: cargo test"), read live from its transcript. */
 .working .doing { margin-top: 7px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--on-bg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.working .doing .dot-live { flex: none; background: var(--on-bg); }
+.working .card-head .dot-live { flex: none; background: var(--on-bg); }
 
 /* ---------- History: today at a glance ---------- */
 .hstats { margin-top: 14px; display: flex; gap: 10px; align-items: stretch; flex: none; }
@@ -801,7 +822,7 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .sx-st { font-size: 11px; font-weight: 500; color: var(--muted); }
 .sx-st.hot { color: var(--deny); font-weight: 650; }
 .sx-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.sx-dot.busy { background: var(--accent); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 25%, transparent); }
+.sx-dot.busy { background: var(--accent); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 25%, transparent); animation: pulse 1.4s ease-in-out infinite; }
 .sx-dot.idle { box-shadow: inset 0 0 0 1.5px var(--muted); }
 .sx-crew { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .sx-thead + .sx-crew { border-top: 0; padding-top: 0; }

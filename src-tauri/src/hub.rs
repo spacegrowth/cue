@@ -190,6 +190,15 @@ impl Hub {
         }
     }
 
+    /// "Later": put a session off, or back (`on` false). Kept with the session, so anything showing
+    /// Cue's state sees it.
+    pub fn set_later(&self, session_id: &str, on: bool) {
+        let changed = self.store.lock().unwrap().sessions.set_later(session_id, on);
+        if changed {
+            self.changed();
+        }
+    }
+
     /// Answer from the window (or cue-ctl). False if the item is no longer pending.
     pub fn respond(&self, id: &str, d: Decision) -> bool {
         let outcome = describe(&d);
@@ -336,7 +345,9 @@ impl Hub {
                 self.turn_changes(&sid);
                 // Context high (80%+): the notification says so and offers Compact.
                 let full = (!origin_path.is_empty()).then(|| crate::steps::context_pct(&origin_path)).flatten().filter(|p| *p >= CONTEXT_HIGH);
-                if crate::config::flag("/notify/finished") {
+                // Put off for later: it waits under Need to decide, without a notification.
+                let later = self.store.lock().unwrap().sessions.is_later(&sid);
+                if crate::config::flag("/notify/finished") && !later {
                     match full {
                         Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
                         None => self.notify(&id, &title.0, &title.1, "turn"),
@@ -561,6 +572,7 @@ impl Hub {
     pub fn reply(&self, id: &str, text: &str, images: &[Upload]) -> Result<String, String> {
         let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
         let sid = it.origin.session_id.clone();
+        self.set_later(&sid, false); // you replied: decided
         let t0 = now_ms();
         let saved = crate::uploads::save(images)?;
         let cmd_before = command_before(&it.origin, text);
@@ -651,6 +663,7 @@ impl Hub {
         if text.is_empty() && images.is_empty() {
             return Err("nothing to send".into());
         }
+        self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy) = {
             let st = self.store.lock().unwrap();
             // Its terminal is showing a permission prompt or a question: typing now would answer it.
@@ -688,7 +701,9 @@ impl Hub {
             st.sessions.note_with(session_id, "you", text, &paths, crate::config::context_keep());
             if busy {
                 // It's mid-turn: the agent reads this when it finishes its current step.
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images: paths, from: String::new(), unsent: false };
+                // The same message as the thread's copy (same time), so the chat shows it once, as queued.
+                let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
+                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false };
                 st.sessions.set_queued(session_id, Some(q));
             }
             if !submitted {
@@ -1377,6 +1392,32 @@ mod tests {
         hub.event(origin, "stopped", "Done.".into(), vec![], "");
         let kinds: Vec<String> = hub.pending().iter().map(|i| i.kind.clone()).collect();
         assert_eq!(kinds, ["waiting"]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn later_is_kept_with_the_session_and_its_finished_turns_still_wait() {
+        let dir = std::env::temp_dir().join(format!("cue-later-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "s2".into(), harness: "claude".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin.clone(), "stopped", "First.".into(), vec![], "");
+        hub.set_later("s2", true);
+        let later_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.later_ms).unwrap();
+        let at = later_ms(&hub);
+        assert!(at > 0);
+        hub.set_later("s2", true);
+        assert_eq!(later_ms(&hub), at, "putting it off again keeps when it was first put off");
+        // It finishes another turn: still put off, its card still there (the window shows it under Need to decide).
+        hub.event(origin, "stopped", "Second.".into(), vec![], "");
+        assert!(later_ms(&hub) > 0);
+        assert_eq!(hub.pending().iter().filter(|i| i.kind == "waiting").count(), 1);
+        hub.set_later("s2", false);
+        assert_eq!(later_ms(&hub), 0);
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -374,6 +374,9 @@ async function deliver(sid, key, call) {
   if (isParked(sid) && (draft(key).text.trim() || draft(key).images.length)) setParked(sid, false);   // you replied: decided
   const d = draft(key);
   const text = d.text.trim();
+  // "/btw …": a side question, in its panel (the session never sees it).
+  const bt = /^\/btw(?:\s+([\s\S]*))?$/.exec(text);
+  if (bt && sessionOf(sid)?.harness === "claude") { delete drafts[key]; return openBtw(sid, bt[1] || ""); }
   if (!text && !d.images.length) return;
   // " /…" (a leading space) is a message that starts with a slash; "/…" is a command. Keep the space.
   const typed = text.startsWith("/") && /^\s/.test(d.text) ? ` ${text}` : text;
@@ -402,6 +405,36 @@ function landed(o) {
   if (!s) return !!o.via;
   const mine = (e) => e && e.role === "you" && e.at_ms >= o.at - 5000 && e.text.startsWith(o.text);
   return (s.thread || []).some(mine) || mine({ role: "you", ...s.queued });
+}
+// ---------- by the way: side questions about the open session, in a panel under its btw button ----------
+// A copy of the conversation answers (see btw.rs): the session keeps working and its chat never shows them.
+const btwLog = new Map();   // sid -> [{ q, a, err }]: this window's, newest last
+let btwFor = null;          // the session whose panel is open
+function openBtw(sid, q = "") {
+  btwFor = sid;
+  renderMain();
+  document.querySelector(`[data-text="${CSS.escape(`btw:${sid}`)}"]`)?.focus();
+  if (q.trim()) askBtw(sid, q);
+}
+async function askBtw(sid, q) {
+  q = q.trim();
+  if (!q) return;
+  const log = btwLog.get(sid) || btwLog.set(sid, []).get(sid);
+  const e = { q, a: null, err: null };
+  log.push(e);
+  delete drafts[`btw:${sid}`];
+  renderMain();
+  try { e.a = await invoke("btw", { sessionId: sid, question: q }); } catch (x) { e.err = String(x); }
+  renderMain();
+}
+function btwPanel(sid) {
+  if (!sid || btwFor !== sid) return "";
+  const log = btwLog.get(sid) || [];
+  const rows = log.slice().reverse().map((e) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
+  return `<div class="btw-pop">
+    <div class="btw-head">BY THE WAY · NOT PART OF THE CHAT${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
+    <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="Ask without interrupting it…  ↵" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
+    <div class="btw-body">${rows || `<div class="dim btw-empty">A copy of this conversation answers, so the session never sees it. Each question costs about one turn.</div>`}</div></div>`;
 }
 const reply = (it) => deliver(it.session_id, `s:${it.session_id}`, (text, images) => invoke("reply", { id: it.id, text, images }));
 /** The text field: a reply on a finished card, "do this instead" on a permission, your own answer on a question. */
@@ -545,13 +578,20 @@ function foldRecent() {
   const col = sec.closest(".col.split"), to = sec.offsetHeight;
   slide(sec, col, closedHeight(sec), to, () => { sec.style.flex = sec.style.overflow = ""; col.classList.remove("recent-closed"); });
 }
-const parkedIds = () => { try { return new Set(JSON.parse(localStorage.getItem("cue.parked") || "[]")); } catch { return new Set(); } };
+/** Put off for later ("Later"): kept with the session in Cue, not in this window. */
+const parkedIds = () => new Set(state.sessions.filter((s) => s.later_ms).map((s) => s.session_id));
 const isParked = (sid) => parkedIds().has(sid);
+/** This window used to keep its own list: hand it to Cue once, then forget it. */
+function moveOldParked() {
+  let old = [];
+  try { old = JSON.parse(localStorage.getItem("cue.parked") || "[]"); localStorage.removeItem("cue.parked"); } catch {}
+  for (const sid of old) invoke("set_later", { sessionId: sid, on: true }).catch(() => {});
+}
 function setParked(sid, on) {
-  const ids = parkedIds();
-  on ? ids.add(sid) : ids.delete(sid);
-  const live = new Set([...state.sessions.map((s) => s.session_id), ...state.items.map((i) => i.session_id)]);
-  try { localStorage.setItem("cue.parked", JSON.stringify([...ids].filter((x) => live.has(x)))); } catch {}   // forget ended ones
+  if (isParked(sid) === on) return;
+  invoke("set_later", { sessionId: sid, on }).catch((e) => toast(`Couldn't: ${e}`));
+  const s = sessionOf(sid);
+  if (s) s.later_ms = on ? Date.now() : 0;   // shown now; Cue's next update says the same
   const name = nameOf(sid, sessionOf(sid)?.project || state.items.find((i) => i.session_id === sid)?.project || "it");
   if (on && active?.sid === sid) active = null;   // the Active pane moves on to what's still waiting
   renderMain();
@@ -609,6 +649,7 @@ function localImages(text) {
 /** The "/" menu: the commands Claude Code has enabled for a session (its built-ins, your skills,
  *  plugins'), read by the Mac per folder. sid -> list; null while it's being read. */
 const cmdLists = new Map();
+const BTW_CMD = { name: "btw", kind: "cue", desc: "Ask on the side: answered in a panel here, never added to the chat" };
 let cmdSel = 0, cmdShut = null;           // highlighted row; the box whose menu Esc closed (until you type)
 function cmdList(sid) {
   if (!sid) return [];
@@ -620,7 +661,9 @@ function cmdList(sid) {
     }).catch(() => cmdLists.delete(sid));
     ask(0);
   }
-  return cmdLists.get(sid) || [];
+  const list = cmdLists.get(sid) || [];
+  // Cue's own: a side question, answered in a panel (Claude Code's /btw answers only in its terminal).
+  return sessionOf(sid)?.harness === "claude" ? [BTW_CMD, ...list.filter((c) => c.name !== "btw")] : list;
 }
 const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
 /** "/comp": the command name being typed (no space yet), else null. A leading space means a message. */
@@ -768,7 +811,9 @@ const outcomeText = (i) => String(i.outcome || i.status || "").replace(/\s+—\s
 const outcomeClass = (i) => (/^(allowed|answered|replied)/.test(i.outcome) ? "ok" : /^denied/.test(i.outcome) ? "no" : "");
 function recentEntry(i) {
   const fresh = now() - (i.resolved_ms || 0) < 8000 ? "fresh" : "";
-  return `<div class="tl ${outcomeClass(i)} ${fresh} ${!quietOpen && active?.exact && active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
+  // Its session is at work again (on what you answered, or since): its dot pulses, as working ones do.
+  const live = sessionOf(i.session_id)?.state === "working" ? "live" : "";
+  return `<div class="tl ${outcomeClass(i)} ${fresh} ${live} ${!quietOpen && active?.exact && active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
     <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}<span>${esc(agentName(i.harness))}</span><span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
@@ -815,7 +860,7 @@ function setActive(id, sid, exact = false) {
   view = "board";
   quietOpen = null;
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
-  sheet = menuFor = redirectFor = null;
+  sheet = menuFor = redirectFor = btwFor = null;
   renderMain();
   // Picked a session (any list, a chip, the live list's Enter): ready to type to it.
   focusComposer();
@@ -877,7 +922,10 @@ function conversation(it, s) {
     if (first !== Infinity && first > o.anchor && !o.busy) { o.busy = true; queueMicrotask(() => fillOlderGap(s?.session_id || it?.session_id, o, first)); }
     ex = [...o.msgs.filter((e) => e.at_ms < first), ...ex];
   }
-  if (s?.queued) ex = ex.filter((e) => !(e.role === "you" && e.text === s.queued.text && e.at_ms === s.queued.at_ms));
+  // What you queued shows once, as queued: not also as the thread's copy of it (recorded at about the
+  // same time; Claude Code's own report of it may come first, or carry the same words with more around them).
+  const isQueued = (e) => e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === s.queued.text.trim() || e.text.includes(s.queued.text.trim()));
+  if (s?.queued) ex = ex.filter((e) => !isQueued(e));
   if (it?.kind === "waiting") {
     const msg = finishedText(it);
     if (!ex.some((e) => e.role !== "you" && e.text.trim() === msg.trim())) ex.push({ role: "agent", text: msg, at_ms: it.created_ms });
@@ -1248,9 +1296,11 @@ function activePane() {
     <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid)}<span class="dim">${who}</span>${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? crewHeadBtns(sid) : ""}
       ${sid ? moreMenu(sid, s) : ""}
+      ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${sid ? `<button class="btn" data-act="go-session" data-sid="${esc(sid)}" title="Go to its terminal tab">${lbl("Go to tab", "Tab")}</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
+    ${btwPanel(sid)}
     ${subHead(s?.cwd || it?.cwd, cm?.role === "executor" ? crewLine(sid) : "", sid)}
     ${sid ? crewStrip(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey()}</div>` : ""}
@@ -1409,10 +1459,10 @@ function boardView() {
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
   const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
-      <div class="card-head">${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
+      <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
-      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing"><span class="dot-live"></span>Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
+      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
   const pins = state.sessions.filter((s) => pinnedIds().has(s.session_id));
   const workCol = (pins.length ? `<div class="col-sub">PINNED · ${pins.length}</div>${pins.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
@@ -2230,10 +2280,13 @@ function renderMain() {
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); el.setSelectionRange(...caret); } }
   // Something over the chat closed (Esc, a click outside, a pick): its text box takes the cursor back,
   // unless you closed it by clicking into another box.
-  const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming);
+  const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor);
   if (overWas && !over && !document.activeElement?.matches?.("input, textarea, select")) focusComposer();
   overWas = over;
   fitHead();
+  // By the way's panel drops from just under the chat's header (whatever height that has now).
+  const bp = document.querySelector(".btw-pop"), ah = document.querySelector(".ap-head");
+  if (bp && ah) bp.style.top = `${ah.offsetTop + ah.offsetHeight + 2}px`;
   showCopied();
   fitTop();
 }
@@ -2329,11 +2382,10 @@ function headerChips() {
   const chip = (kind, label, extra, cls, dot) => {
     const list = chipList(kind);
     if (!list.length) return "";
-    const tip = list.map((x) => `${x.project} ${ago(x.since)}`).join(" · ");
     // The chip you're stepping through: ‹ 2 of 3 waiting › (← → do the same).
     const at = chipNav === kind ? chipAt(list) : -1;
-    if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}" title="${esc(tip)}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
-    return `<button class="hchip ${cls}" data-chip="${kind}" title="${esc(tip)}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
+    if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
+    return `<button class="hchip ${cls}" data-chip="${kind}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
   };
   const waiting = chipList("waiting");
   const oldest = waiting[0] ? now() - waiting[0].since : 0;
@@ -2436,6 +2488,11 @@ function bindMain() {
     const t = e.target;
     if (lightbox) { lightbox = null; return renderMain(); }
     // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
+    // Clear: forget this session's side questions (they were only ever in this window).
+    const bc = t.closest("[data-act=btw-clear]");
+    if (bc) { btwLog.delete(bc.dataset.sid); renderMain(); return document.querySelector(`[data-text="${CSS.escape(`btw:${bc.dataset.sid}`)}"]`)?.focus(); }
+    const bw = t.closest("[data-act=btw], [data-act=btw-close]");
+    if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) return openBtw(bw.dataset.sid); btwFor = null; return renderMain(); }
     const sn = t.closest("[data-act=send-now]");
     if (sn) return sendQueuedNow(sn.dataset.sid);
     if (t.closest("[data-setup-done]")) { sheet = null; setSetting("setup.done", true); return renderMain(); }
@@ -2701,6 +2758,7 @@ function bindMain() {
       e.preventDefault();
       return renderMain();
     }
+    if (e.key === "Escape" && btwFor) { btwFor = null; return renderMain(); }
     if (e.key === "Escape") {
       // In History, Esc just closes the open row.
       if (view === "history") { histOpen = null; return renderMain(); }
@@ -2723,6 +2781,7 @@ function bindMain() {
       if (e.key === "Enter" && !e.shiftKey && e.target.dataset.text) {
         e.preventDefault();
         const key = e.target.dataset.text;
+        if (key.startsWith("btw:")) return askBtw(key.slice(4), draft(key).text);
         if (key === "fwd") return sendForward();
         if (key === "new-cwd" || key === "new-name" || key === "new-msg") return lvAct("start", {});
         if (key === "search") return pickResult(searchSel);
@@ -2814,6 +2873,7 @@ async function boot() {
     if (s) setActive(null, s.session_id);
   });
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
+  moveOldParked();
   // Which Cue this is (for Settings), without asking GitHub.
   T.app?.getVersion().then((v) => { upd = { ...upd, current: v }; }, () => {});
   await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });

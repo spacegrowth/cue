@@ -75,6 +75,10 @@ pub struct Session {
     /// Working, but nothing new in its transcript since then (a command waiting for input, or hung); 0 = fine.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub stuck_ms: u64,
+    /// You put it off ("Later"): since when; 0 = it isn't. Its finished turns
+    /// wait under Need to decide without a notification, until you reply or put it back.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub later_ms: u64,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -111,6 +115,7 @@ impl Sessions {
             doing_ms: 0,
             compacting_ms: 0,
             compacted_ms: 0,
+            later_ms: 0,
             trust_ms: 0,
             turn_base: None,
             changes: None,
@@ -379,6 +384,20 @@ impl Sessions {
         if let Some(s) = self.0.get_mut(session_id) {
             s.limit = limit;
         }
+    }
+
+    /// Put off for later, or back (`on` false). True if that changed anything.
+    pub fn set_later(&mut self, session_id: &str, on: bool) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        if (s.later_ms > 0) == on {
+            return false;
+        }
+        s.later_ms = if on { crate::model::now_ms() } else { 0 };
+        true
+    }
+
+    pub fn is_later(&self, session_id: &str) -> bool {
+        self.0.get(session_id).is_some_and(|s| s.later_ms > 0)
     }
 
     pub fn set_driven_by(&mut self, session_id: &str, by: &str) {

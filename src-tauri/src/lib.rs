@@ -1,5 +1,6 @@
 mod config;
 mod archive;
+mod btw;
 mod db;
 mod dictation;
 mod focus;
@@ -479,6 +480,20 @@ async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<()
     tauri::async_runtime::spawn_blocking(move || focus::press_enter(&origin)).await.map_err(|e| e.to_string())?
 }
 
+/// "By the way": a side question about a Claude Code session, answered in a panel in Cue. The session
+/// never sees it (Cue asks a copy of its conversation).
+#[tauri::command]
+async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: String) -> Result<String, String> {
+    let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
+    tauri::async_runtime::spawn_blocking(move || btw::ask_about(&origin, &question)).await.map_err(|e| e.to_string())?
+}
+
+/// "Later" on a session: put it off (its finished turns wait under Need to decide), or back.
+#[tauri::command]
+fn set_later(hub: State<Arc<Hub>>, session_id: String, on: bool) {
+    hub.set_later(&session_id, on);
+}
+
 /// The agents "+ New session" can offer (installed on this Mac).
 #[tauri::command]
 async fn agents_installed() -> Vec<String> {
@@ -601,7 +616,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![session_command, session_commands, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![session_command, session_commands, set_later, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
