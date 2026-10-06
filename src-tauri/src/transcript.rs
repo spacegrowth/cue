@@ -79,6 +79,26 @@ pub fn has_result(path: &str, from: u64, tool_use_id: &str) -> bool {
     found
 }
 
+/// The newest tool call still waiting for its result (id, tool, input): what a prompt in the terminal
+/// is about, when Claude Code tells Cue only that one is showing.
+pub fn waiting_tool_use(path: &str) -> Option<(String, String, Value)> {
+    let text = read_from(path, tail_offset(path))?;
+    let (mut calls, mut done) = (Vec::new(), std::collections::HashSet::new());
+    for entry in lines(&text) {
+        for b in content_blocks(&entry) {
+            let id = || b.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+            match b.get("type").and_then(Value::as_str) {
+                Some("tool_use") => calls.push((id(), b.get("name").and_then(Value::as_str).unwrap_or("").to_string(), b.get("input").cloned().unwrap_or(Value::Null))),
+                Some("tool_result") => {
+                    done.insert(b.get("tool_use_id").and_then(Value::as_str).unwrap_or("").to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+    calls.into_iter().rev().find(|(id, ..)| !id.is_empty() && !done.contains(id))
+}
+
 fn clip(s: &str) -> String {
     let s = s.trim();
     if s.chars().count() <= CTX_CHARS {
@@ -578,6 +598,17 @@ mod tests {
             writeln!(f, "{}", l).unwrap();
         }
         p
+    }
+
+    #[test]
+    fn the_tool_call_a_terminal_prompt_is_about_is_the_newest_without_a_result() {
+        let call = |id: &str, cmd: &str| json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":"Bash","input":{"command":cmd}}]}});
+        let result = |id: &str| json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":"ok"}]}});
+        let p = write_transcript(&[call("a", "ls"), result("a"), call("b", "curl -sI https://example.com"), call("c", "echo x"), result("c")]);
+        let (id, name, input) = waiting_tool_use(&p.0).unwrap();
+        assert_eq!((id.as_str(), name.as_str(), input["command"].as_str().unwrap()), ("b", "Bash", "curl -sI https://example.com"));
+        let done = write_transcript(&[call("a", "ls"), result("a")]);
+        assert!(waiting_tool_use(&done.0).is_none(), "every call answered: nothing waiting");
     }
 
     #[test]

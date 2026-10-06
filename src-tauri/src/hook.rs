@@ -8,6 +8,7 @@
 //!   prompt      UserPromptSubmit   -> tell Cue you're back (clears the waiting card)
 //!   end         SessionEnd         -> tell Cue the session is gone
 //!   compact     PreCompact         -> tell Cue it's compacting (Claude Code)
+//!   notice      Notification       -> a prompt is showing in its terminal that never reached Cue (Claude Code)
 //!
 //! Never gets in the agent's way: if Cue isn't running or anything goes wrong, it exits 0 with no
 //! output and the agent carries on with its normal terminal prompt.
@@ -41,6 +42,9 @@ pub fn main(args: &[String]) {
         "prompt" => send_event(&p, harness, "active", &s(&p, "prompt"), None, ""),
         "end" => send_event(&p, harness, "ended", "", None, ""),
         "compact" => send_event(&p, harness, "compacting", &s(&p, "trigger"), None, ""),
+        // A permission prompt has sat in its terminal a few seconds: one Cue can't answer (a sandboxed
+        // command's network access), or one that never came through Cue's permission hook.
+        "notice" if s(&p, "notification_type") == "permission_prompt" => send_event(&p, harness, "terminal_ask", &s(&p, "message"), None, ""),
         // StopFailure: the turn ended on an API error (a usage limit, an outage) instead of finishing.
         "failure" => send_failure(&p, harness),
         // The status line's input, piped here by the status line script: the plan's usage.

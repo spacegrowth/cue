@@ -221,6 +221,20 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
         }
     }
     events.retain(|_, g| g.as_array().is_none_or(|l| !l.is_empty()));
+    for (event, group) in wanted(hook, harness) {
+        let list = events.entry(event).or_insert_with(|| json!([]));
+        if let Some(l) = list.as_array_mut() {
+            l.push(group);
+        }
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, serde_json::to_string_pretty(&cfg).unwrap_or_default() + "\n").map_err(|e| format!("Couldn't write {}: {e}", path.display()))
+}
+
+/// Cue's hook entries for one agent: event name, and the group that goes under it.
+fn wanted(hook: &str, harness: &str) -> Vec<(&'static str, Value)> {
     // Claude Code waits as long as you take; Codex caps hooks (600 s by default).
     let wait = if harness == "claude" { 86400 } else { 3600 };
     // Quoted: the path has a space in it ("Application Support").
@@ -236,17 +250,27 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
         want.push(("StopFailure", json!({ "hooks": [{ "type": "command", "command": cmd("failure"), "timeout": 5 }] })));
         // Compacting (typed /compact, or its context filled up): not waiting on you until it's done.
         want.push(("PreCompact", json!({ "hooks": [{ "type": "command", "command": cmd("compact"), "timeout": 5 }] })));
+        // A permission prompt waiting in its terminal that Cue can't answer (a sandboxed command's network access).
+        want.push(("Notification", json!({ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": cmd("notice"), "timeout": 5 }] })));
     }
-    for (event, group) in want {
-        let list = events.entry(event).or_insert_with(|| json!([]));
-        if let Some(l) = list.as_array_mut() {
-            l.push(group);
+    want
+}
+
+/// At launch: an agent you connected with an older Cue gets the hooks this one added (once; its
+/// settings file is backed up as on Connect). One you never connected is left alone.
+pub fn refresh_hooks() {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let hook = crate::server::cue_dir().join("bin/cue-hook").to_string_lossy().to_string();
+    for (harness, file) in [("claude", format!("{home}/.claude/settings.json")), ("codex", format!("{home}/.codex/hooks.json"))] {
+        let Some(cfg) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { continue };
+        let ours = |e: &str| cfg.pointer(&format!("/hooks/{e}")).is_some_and(|g| g.to_string().contains("cue-hook"));
+        let want = wanted(&hook, harness);
+        if want.iter().any(|(e, _)| ours(e)) && !want.iter().all(|(e, _)| ours(e)) {
+            if let Err(e) = add_hooks(std::path::Path::new(&file), &hook, harness) {
+                eprintln!("cue: couldn't add new hooks for {harness}: {e}");
+            }
         }
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(path, serde_json::to_string_pretty(&cfg).unwrap_or_default() + "\n").map_err(|e| format!("Couldn't write {}: {e}", path.display()))
 }
 
 /// The menu bar icon. On unless you hide it: Cue stays in the Dock either way.

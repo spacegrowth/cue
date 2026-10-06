@@ -44,7 +44,9 @@ const firstLine = (s) => String(s ?? "").split("\n").find((l) => l.trim()) || ""
 const shortPath = (p) => { const parts = String(p).split("/"); return parts.length > 3 ? "…/" + parts.slice(-3).join("/") : p; };
 const questions = (it) => it.tool_input?.questions || [];
 const tool = (it) => (it.tool_name || "").toLowerCase();
-const isBash = (it) => it.kind === "permission" && tool(it) === "bash";
+const isBash = (it) => (it.kind === "permission" || it.kind === "terminal") && tool(it) === "bash";
+/** A prompt waiting in its terminal that Cue can't answer (a sandboxed command's network access): you go there. */
+const inTerminal = (it) => it?.kind === "terminal";
 /** How each agent is named on screen. */
 const agentName = (h) => ({ claude: "Claude Code", codex: "Codex", pi: "Pi" }[h] || h || "agent");
 // Each agent gets a Moss letter. (Anthropic's logo needs their written permission, so it isn't used.)
@@ -162,6 +164,7 @@ function summary(it) {
   const i = it.tool_input || {};
   if (it.kind === "question") return questions(it)[0]?.question || "Question";
   if (it.kind === "waiting") return firstLine(finishedText(it));
+  if (inTerminal(it) && !it.tool_name) return it.message || "Asking in its terminal";
   switch (tool(it)) {
     case "bash": return i.command || "bash";
     case "edit": case "multiedit": case "write": case "notebookedit": return `${it.tool_name} ${shortPath(i.file_path || i.path || "")}`;
@@ -171,6 +174,7 @@ function summary(it) {
 }
 function verb(it) {
   if (it.kind === "question") return "asks";
+  if (inTerminal(it)) return "asks in its terminal";
   return { bash: "wants to run", edit: "wants to edit", multiedit: "wants to edit", write: "wants to write", webfetch: "wants to fetch" }[tool(it)] || `wants ${it.tool_name}`;
 }
 function describeSuggestion(s) {
@@ -271,6 +275,40 @@ function barLabels(sid) {
 const barKey = () => `<div class="bar-key"><span>30 min ago</span><span class="grow"></span><span><i class="sw w"></i>working</span><span><i class="sw z"></i>waiting on you</span><span class="grow"></span><span>now</span></div>`;
 
 let toastTimer;
+// ---------- selecting text: redraws wait while you drag, and letting go copies it ----------
+let mouseDown = false, heldDraw = false, selBefore = "", copied = null;   // copied: { at, words } for the pill   // selBefore: what was selected when you pressed
+const inField = (n) => !!(n?.nodeType === 1 ? n : n?.parentElement)?.closest?.("input, textarea");
+// A selection made by this press (a click on a button leaves an older one in place: not that).
+const dragSelecting = () => mouseDown && !getSelection().isCollapsed && getSelection().toString() !== selBefore;
+addEventListener("mousedown", (e) => { mouseDown = e.button === 0 && !inField(e.target); selBefore = getSelection().toString(); }, true);
+addEventListener("mouseup", () => {
+  if (!mouseDown) return;
+  const sel = getSelection(), text = sel.toString(), fresh = dragSelecting();
+  mouseDown = false;
+  // Selected text in the window (not in a box you type in, where ⌘C works as ever): on your clipboard now.
+  if (fresh && text.trim() && !inField(sel.anchorNode)) {
+    if (!document.execCommand("copy")) navigator.clipboard?.writeText(text);
+    copied = { at: Date.now(), words: text.length > 40 ? text.trim().split(/\s+/).length : 0 };
+    if (!heldDraw && !showCopied()) toast("Copied");
+  }
+  if (heldDraw) { heldDraw = false; renderMain(); }
+}, true);
+// Let go outside the window (no mouseup here): the held redraw happens anyway.
+addEventListener("blur", () => { mouseDown = false; if (heldDraw) { heldDraw = false; renderMain(); } });
+
+/** "Copied", in Moss, at the right end just above the chat's text box (or its bottom, with no box). Put back
+ *  after each redraw, its fade carrying on where it was. False when there's no chat to show it in. */
+const COPIED_MS = 1600;
+function showCopied() {
+  const left = copied ? COPIED_MS - (Date.now() - copied.at) : 0;
+  if (left <= 0) return false;
+  const host = document.querySelector(".active-pane .foot") || document.querySelector(".active-pane");
+  if (!host) return false;
+  host.querySelector(":scope > .copied")?.remove();
+  host.insertAdjacentHTML("beforeend", `<span class="copied" style="animation-delay:-${COPIED_MS - left}ms">Copied${copied.words ? ` · ${copied.words} words` : ""}</span>`);
+  return true;
+}
+
 function toast(msg) {
   let el = document.querySelector(".toast");
   if (!el) { el = document.createElement("div"); el.className = "toast"; document.body.append(el); }
@@ -424,6 +462,13 @@ function submitText(it) {
 }
 /** Say something to a live session from the Active pane (it may be mid-turn). */
 // now (Ctrl+Enter): if it's mid-turn, stop it first so this is handled right away.
+/** Send now (the button on a queued message, or ⌘↵ with nothing new typed): stopping the turn makes the
+ *  agent read what you queued straight away. */
+function sendQueuedNow(sid) {
+  invoke("send_queued_now", { sessionId: sid })
+    .then(() => toast(`Sent now: ${nameOf(sid, sessionOf(sid)?.project || "it")} stopped its current turn and reads your message next`))
+    .catch((e) => toast(`Couldn't send it now: ${e}`));
+}
 const sendTo = (sid, now = false) => sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => invoke("send_to_session", { sessionId: sid, text, images, now }));
 /** Stop a working session mid-turn (Esc in its terminal; Pi aborts directly). */
 async function interrupt(sid) {
@@ -699,6 +744,7 @@ function whyLine(it) {
   return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"} title="${esc(c.text)}">Why: ${esc(firstLine(c.text))}</div>` : "";
 }
 function decisionButtons(it) {
+  if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">Go to tab</button></div>`;
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 && questions(it).filter((q) => !isAnswered(it, q)).length > 1 ? "Next" : "Send") : "Redirect")}</div>`;
   if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button><span class="grow"></span><button class="btn" data-act="go" data-id="${esc(it.id)}">Tab</button></div>`;
   const sugg = it.suggestions || [];
@@ -949,11 +995,13 @@ function stepLine(sid, x, all) {
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
  *  wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
  *  part has the header (its count is the whole turn's). */
-function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }) {
+function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set()) {
   const mode = stepsMode();
   let kept = turn.items;
-  // A finished turn's last words are its reply, already in the chat.
+  // A finished turn's last words are its reply, already in the chat; so are words the chat shows as a
+  // reply mid-turn (the answer, when a Stop hook made it carry on): not twice.
   if (!live) { let end = kept.length; while (end && kept[end - 1].t === "say") end--; kept = kept.slice(0, end); }
+  kept = kept.filter((x) => x.t !== "say" || !said.has(String(x.text || "").trim()));
   const steps = kept.filter((x) => x.t === "step");
   if (!steps.length) return "";
   const first = part.from === -Infinity;
@@ -986,6 +1034,8 @@ function withSteps(sid, s, ex, rows, extra = []) {
   const first = ex[0]?.at_ms ?? 0;
   const turns = f?.turns || [];
   const lastTurn = turns.at(-1);
+  // Its replies, already in the chat: a Stop hook that made it carry on leaves the answer mid-turn.
+  const said = new Set(ex.filter((e) => e.role === "agent").map((e) => e.text.trim()));
   // A turn you wrote into while it ran is split at your messages, so the chat stays in time order.
   const blocks = turns
     .filter((t) => (t.items.at(-1)?.at_ms ?? t.at_ms) >= first || (!ex.length && t === lastTurn))
@@ -995,7 +1045,7 @@ function withSteps(sid, s, ex, rows, extra = []) {
       const bounds = [-Infinity, ...cuts, Infinity];
       return cuts.concat([null]).map((_, k) => ({
         at: k === 0 ? start : cuts[k - 1] + 0.5,
-        html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", t === lastTurn, { from: bounds[k], to: bounds[k + 1] }),
+        html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", t === lastTurn, { from: bounds[k], to: bounds[k + 1] }, said),
       }));
     })
     .concat(extra)
@@ -1115,7 +1165,7 @@ function prettyModel(id) {
     .join(" ").replace(/^GPT (\d)/, "GPT-$1");
 }
 /** The open session's model, how full its context is, and its cost so far
- *  (where the agent logs it): grey text on the chat's title line, after Claude's title. From its log. */
+ *  (where the agent logs it), on the chat's title line after Claude's title; context as a small gauge. From its log. */
 function metaInline(sid) {
   const m = sid && stepFeeds.get(sid)?.meta;
   if (!m || (!m.model && !m.context)) return "";
@@ -1127,7 +1177,7 @@ function metaInline(sid) {
   // Just compacted: its log's last count is from before, so don't show it until a new reply brings a fresh one.
   const s = sessionOf(sid);
   const freed = s?.compacted_ms && s.state !== "working";
-  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}">${pct}% context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
   // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
   const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}" title="Summarize the conversation to free up context">Compact</button>` : "";
   return `<span class="ap-meta" title="${esc(tip)}">${parts.join(" · ")}</span>${chip}`;
@@ -1172,11 +1222,13 @@ function activePane() {
   const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
   const turnWord = ch ? `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} · +${ch.add} −${ch.del}` : it?.interrupted ? "interrupted" : "your turn";
   const pill = pending
-    ? `<span class="pill ${it.interrupted ? "intr" : ""}"${ch ? ` title="${esc(changesTip(ch))}"` : ""}>${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
+    ? `<span class="pill ${it.interrupted ? "intr" : ""}"${ch ? ` title="${esc(changesTip(ch))}"` : ""}>${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : inTerminal(it) ? "asks in its terminal" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
     : `<span class="pill soft">${s ? { working: "working", waiting: "your turn", deciding: "deciding", agent: "on its lead", stopped: "stopped", limited: s.limit && lifted(s.limit) ? "usage is back" : "out of usage" }[s.state] || s.state : "answered"}</span>`;
   let foot;
   if (pending && it.kind !== "waiting") {
-    foot = `<div class="act-card"><div class="act-head">${esc(agentName(harness))} ${esc(verb(it))}</div>${requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it)}</div>`;
+    // In its terminal: what Claude Code said ("A sandboxed command needs network access"), then the call it's about.
+    const head = inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`;
+    foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it)}</div>`;
     // You were typing to this session when it asked: your box stays (cursor and text intact),
     // and sending waits until you've answered, so nothing gets typed into its prompt.
     const key = `s:${sid}`;
@@ -1231,6 +1283,7 @@ function needRow(it, ghost, open = false) {
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
+  else if (inTerminal(it)) quick = `<div class="nrow-acts"><button class="btn primary" data-act="go" data-id="${esc(it.id)}">Go to tab</button></div>`;
   else if (q.length === 1 && !q[0].multiSelect && (q[0].options || []).length <= 4) quick = `<div class="nrow-acts wrap">${q[0].options.map((o, oi) => `<button class="btn" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(o.label)}</button>`).join("")}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
@@ -1368,9 +1421,12 @@ function boardView() {
     + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     || `<div class="quiet-line">No other sessions.</div>`;
 
-  const recentList = (n) => state.history.length
-    ? `<div class="card recent">${state.history.slice(0, n).map(recentEntry).join("")}
-        ${state.history.length > n ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
+  // One entry per session, its latest answer (the rest are in History).
+  const seen = new Set();
+  const recent = state.history.filter((i) => { const k = i.session_id || i.id; return !seen.has(k) && seen.add(k); }).slice(0, RECENT);
+  const recentList = () => recent.length
+    ? `<div class="card recent">${recent.map(recentEntry).join("")}
+        ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
     : `<div class="empty-col">Your answers show up here.</div>`;
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   return `<div class="board" style="grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)">
@@ -1378,7 +1434,7 @@ function boardView() {
     <div class="col"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div>${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${laterSec}</div>
     <div class="col split ${recentClosed() ? "recent-closed" : ""}">
       <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length + pins.length}</span></div><div class="sec-body">${workCol}</div></div>
-      <div class="sec sec-recent"><button class="col-head fold-head" data-act="fold-recent" aria-expanded="${!recentClosed()}"><span class="fold-arrow">${recentClosed() ? "▸" : "▾"}</span>RECENTLY ANSWERED <span>${state.history.length ? `last ${Math.min(RECENT, state.history.length)}` : ""}</span></button>${recentClosed() ? "" : `<div class="sec-body">${recentList(RECENT)}</div>`}</div>
+      <div class="sec sec-recent"><button class="col-head fold-head" data-act="fold-recent" aria-expanded="${!recentClosed()}"><span class="fold-arrow">${recentClosed() ? "▸" : "▾"}</span>RECENTLY ANSWERED <span>${recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : ""}</span></button>${recentClosed() ? "" : `<div class="sec-body">${recentList()}</div>`}</div>
     </div>
   </div>`;
 }
@@ -1390,7 +1446,9 @@ function boardView() {
  *  on the right, under the buttons. One small line. */
 function subHead(cwd, crew, sid, titleOf = sid) {
   // The pin sits after the folder: the title row is full.
-  const folder = cwd ? `<span class="ap-cwd sel" data-cut title="${esc(cwd)}">${esc(String(cwd).replace(/^\/Users\/[^/]+(?=\/|$)/, "~"))}</span>${sid ? pinBtn(sid) : ""}` : "";
+  // Too long: cut in the middle (~/develop…/web-app), so the folder's own name always shows.
+  const path = homeless(cwd), cutAt = Math.max(path.lastIndexOf("/"), 0);
+  const folder = cwd ? `<span class="ap-cwd sel" data-cut title="${esc(cwd)}"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? pinBtn(sid) : ""}` : "";
   // Under the name: what Claude Code titled the conversation (unless that's already the name).
   const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
   const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" data-cut title="${esc(t)}">${esc(t)}</span>` : "";
@@ -1590,7 +1648,7 @@ function histDetail(i) {
   const chat = (i.thread || []).length || i.kind === "waiting" ? `<div class="hdetail">${chatHtml(i, null, i.harness)}${yours}</div>` : "";
   let ask = "";
   if (i.kind === "question") ask = questions(i).map((q) => `<div class="qtext">${esc(q.question)}</div><ul class="hopts">${(q.options || []).map((o) => `<li>${esc(o.label)}${o.description ? `<span class="dim">: ${esc(o.description)}</span>` : ""}</li>`).join("")}</ul>`).join("");
-  else if (i.kind !== "waiting") ask = requestBody(i);
+  else if (i.kind !== "waiting" && !(inTerminal(i) && !i.tool_name)) ask = requestBody(i);
   return chat + (ask ? `<div class="hask"><div class="act-head">${esc(agentName(i.harness))} ${esc(verb(i))}</div>${ask}</div>` : "");
 }
 /** What you replied, in full: from the live session's own log when it's still there (the stored outcome
@@ -1998,14 +2056,14 @@ async function installUpdate() {
   try { await invoke("update_install"); } catch (e) { upd = { ...upd, status: `error:${e}` }; renderMain(); }
 }
 function updateRow() {
-  if (!upd.current && !upd.status) checkUpdate();
+  if (!upd.status) checkUpdate();   // the first time Settings opens
   const st = upd.status;
   const sub = st === "checking" ? "Checking…" : st === "installing" ? `Installing Cue ${esc(upd.version)}. Cue restarts by itself when it's done.`
     : st === "found" ? `Cue ${esc(upd.version)} is out.${upd.notes ? ` ${esc(upd.notes.split("\n")[0].slice(0, 140))}` : ""}`
     : st === "latest" ? "You have the latest version." : st.startsWith("error:") ? esc(st.slice(6)) : "";
   const btn = st === "found" ? `<button class="btn primary" data-upd="install">Update and restart</button>`
     : `<button class="btn" data-upd="check" ${st === "checking" || st === "installing" ? "disabled" : ""}>Check for updates</button>`;
-  return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}Cue also looks by itself every few hours.`, btn);
+  return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}Cue also looks by itself a minute after it opens, then every 6 hours.`, btn);
 }
 /** A newer Cue turned up in the background: a small card in the header's middle, until you choose. */
 const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${esc(upd.version)} is out</b>${upd.status === "installing" ? `<div class="dim">Installing… Cue restarts by itself.</div>` : upd.status.startsWith("error:") ? `<div class="dim">${esc(upd.status.slice(6))}</div>` : ""}</div>
@@ -2033,12 +2091,12 @@ function settingsSheet() {
   const st = state.settings || {};
   const c = state.connections || {};
   const keep = st.history?.keep ?? 300;
-  return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3><span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
+  return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3>${upd.current ? `<span class="set-ver">Cue ${esc(upd.current)}</span>` : ""}<span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
+    <div class="set-group">Updates</div>
+    ${updateRow()}
     <div class="set-group">Connected agents</div>
     ${agentRows()}
     ${extRows()}
-    <div class="set-group">Updates</div>
-    ${updateRow()}
     <div class="set-group">Usage</div>
     ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
     ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}
@@ -2094,6 +2152,8 @@ function flipPlay(from) {
   }
 }
 function renderMain() {
+  // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
+  if (dragSelecting()) { heldDraw = true; return; }
   const focused = document.activeElement;
   const flipFrom = flipRects();
   const focusKey = focused?.dataset?.text;
@@ -2161,10 +2221,10 @@ function renderMain() {
   if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
   else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
   activeKey = key;
-  // Something new opened in Active: its text box takes the cursor, so you can just type.
+  // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
+  // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
-  if (target !== focusedTarget && !sheet && !focusKey) focusComposer();
-  focusedTarget = target;
+  if (target !== focusedTarget && !sheet && !focusKey && focusComposer()) focusedTarget = target;
   saveDrafts();
   if (focusKey) { const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`); if (el) { el.focus(); el.setSelectionRange(...caret); } }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); el.setSelectionRange(...caret); } }
@@ -2174,6 +2234,7 @@ function renderMain() {
   if (overWas && !over && !document.activeElement?.matches?.("input, textarea, select")) focusComposer();
   overWas = over;
   fitHead();
+  showCopied();
   fitTop();
 }
 /** The top bar never pushes Settings off the edge (a usage file adds meters; chips come and go): when it
@@ -2335,7 +2396,9 @@ function bindTips() {
     // Take the title, so the browser's own doesn't show as well.
     if (el.hasAttribute("title")) { el.dataset.tip = el.getAttribute("title"); el.removeAttribute("title"); }
     if (el === on || !el.dataset.tip) return;
-    if (el.hasAttribute("data-cut") && el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1) return hide();
+    // Cut off: the text, or a part of it (a path's start, cut in the middle), doesn't fit.
+    const cut = (x) => x.scrollWidth > x.clientWidth + 1 || x.scrollHeight > x.clientHeight + 1;
+    if (el.hasAttribute("data-cut") && !cut(el) && ![...el.children].some(cut)) return hide();
     on = el;
     tip.textContent = el.dataset.tip;
     const r = el.getBoundingClientRect();
@@ -2374,13 +2437,7 @@ function bindMain() {
     if (lightbox) { lightbox = null; return renderMain(); }
     // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
     const sn = t.closest("[data-act=send-now]");
-    if (sn) {
-      const sid = sn.dataset.sid;
-      invoke("send_queued_now", { sessionId: sid })
-        .then(() => toast(`Sent now: ${nameOf(sid, sessionOf(sid)?.project || "it")} stopped its current turn and reads your message next`))
-        .catch((e) => toast(`Couldn't send it now: ${e}`));
-      return;
-    }
+    if (sn) return sendQueuedNow(sn.dataset.sid);
     if (t.closest("[data-setup-done]")) { sheet = null; setSetting("setup.done", true); return renderMain(); }
     if (t.closest("[data-connect-all]")) {
       const todo = ["claude", "codex", "pi"].filter((h) => { const c = state.connections?.[h]; return c && !c.ok && c.present; });
@@ -2673,12 +2730,20 @@ function bindMain() {
         if (key.startsWith("s:")) {
           const sid = key.slice(2);
           const turn = state.items.find((i) => i.session_id === sid && i.kind === "waiting");
+          // ⌘↵ with nothing new in the box: the message already queued goes now.
+          const fresh = draft(key).text.trim() || draft(key).images.length;
+          if ((e.ctrlKey || e.metaKey) && !fresh && sessionOf(sid)?.queued) return sendQueuedNow(sid);
           return turn ? reply(turn) : sendTo(sid, e.ctrlKey || e.metaKey);
         }
         const it = findItem(key);
         if (it) submitText(it);
       }
       return;
+    }
+    // ⌘↵ outside the box: the open session's queued message goes now.
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      const c = current(), sid = c?.s?.session_id || c?.it?.session_id;
+      if (sid && sessionOf(sid)?.queued) { e.preventDefault(); return sendQueuedNow(sid); }
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); return openSearch(); }   // like GitHub and Gmail (only when not typing)
@@ -2698,7 +2763,7 @@ function bindMain() {
     if (e.key === "a" && it.kind === "permission") allow(it);
     else if (e.key === "d" && it.kind === "permission") deny(it);
     else if (e.key === "g") goTo(it);
-    else if (e.key === "r") { e.preventDefault(); if (it.kind !== "waiting") redirectFor = it.id; renderMain(); document.querySelector(`[data-text="${CSS.escape(it.id)}"]`)?.focus(); }
+    else if (e.key === "r") { e.preventDefault(); if (it.kind !== "waiting" && !inTerminal(it)) redirectFor = it.id; renderMain(); document.querySelector(`[data-text="${CSS.escape(it.id)}"]`)?.focus(); }
     else if (/^[1-9]$/.test(e.key) && it.kind === "question") pick(it, stepOf(it), +e.key - 1);
   });
 }
@@ -2749,6 +2814,8 @@ async function boot() {
     if (s) setActive(null, s.session_id);
   });
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
+  // Which Cue this is (for Settings), without asking GitHub.
+  T.app?.getVersion().then((v) => { upd = { ...upd, current: v }; }, () => {});
   await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });
   setInterval(render, 15000); // keep ages and bars moving
   // The open session's steps: every 0.5 s while it works, else every 2 s (only new lines are read;

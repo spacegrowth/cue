@@ -612,6 +612,10 @@ pub fn run() {
             }
             // Point the hook shim at this copy of Cue (wherever the app lives now).
             hook::write_shim();
+            // Connected with an older Cue: add the hooks this one needs (a test instance leaves yours alone).
+            if std::env::var_os("CUE_QUIET").is_none() && std::env::var_os("CUE_HOME").is_none() {
+                config::refresh_hooks();
+            }
             let hub = Arc::new(Hub::new(Some(app.handle().clone())));
             app.manage(hub.clone());
             let h = hub.clone();

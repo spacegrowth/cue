@@ -144,6 +144,52 @@ impl Hub {
         (id, rx)
     }
 
+    /// Claude Code says a permission prompt is waiting in a session's terminal, one Cue has no card for
+    /// (it can't answer it: a sandboxed command asking for network access). A card that sends you to
+    /// the terminal, naming the tool call it's about (the newest one still without a result). It goes
+    /// once that call gets its result, or the session reports anything else.
+    fn terminal_ask(&self, origin: Origin, message: String) {
+        let sid = origin.session_id.clone();
+        let path = origin.transcript_path.clone();
+        let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
+        let scan_from = if path.is_empty() { 0 } else { transcript::tail_offset(&path) };
+        let (id, title) = {
+            let mut st = self.store.lock().unwrap();
+            // Cue already shows what it's asking.
+            if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
+                return;
+            }
+            st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
+            st.sessions.mark(&origin, "deciding", None);
+            let thread = st.sessions.thread(&sid);
+            let mut it = Self::new_item(&mut st, "terminal", origin);
+            it.thread = thread;
+            it.message = message;
+            it.scan_from = scan_from;
+            if let Some((tool_use_id, name, input)) = call {
+                it.tool_use_id = Some(tool_use_id);
+                it.tool_name = name;
+                it.tool_input = input;
+            }
+            let (head, what) = notify_title(&it);
+            let body = if it.tool_name.is_empty() { what } else { format!("{}: {what}", it.message) };
+            let id = it.id.clone();
+            st.items.push(it);
+            (id, (head, body))
+        };
+        self.changed();
+        if crate::config::flag("/notify/decisions") {
+            self.notify(&id, &title.0, &title.1, "");
+        }
+    }
+
+    fn clear_terminal_asks(&self, session_id: &str) {
+        let ids: Vec<String> = self.store.lock().unwrap().items.iter().filter(|i| i.kind == "terminal" && i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
+        for id in ids {
+            self.finish(&id, "answered_elsewhere", "answered in the terminal");
+        }
+    }
+
     /// Answer from the window (or cue-ctl). False if the item is no longer pending.
     pub fn respond(&self, id: &str, d: Decision) -> bool {
         let outcome = describe(&d);
@@ -207,6 +253,13 @@ impl Hub {
             self.changed();
             return;
         }
+        // A prompt showing in its terminal that never reached Cue (a sandboxed command's network access).
+        if event == "terminal_ask" {
+            self.terminal_ask(origin, message);
+            return;
+        }
+        // Anything else from the session: it got past such a prompt.
+        self.clear_terminal_asks(&origin.session_id);
         if event == "doing" {
             let changed = self.store.lock().unwrap().sessions.set_doing(&origin.session_id, &message, 0);
             if changed {
@@ -1237,6 +1290,8 @@ pub fn summary(it: &Item) -> String {
     match it.kind.as_str() {
         "question" => i.pointer("/questions/0/question").and_then(Value::as_str).map(String::from).unwrap_or_else(|| s("question")),
         "waiting" => it.context.last().map(|c| c.text.clone()).unwrap_or_else(|| "Finished, waiting for you".into()),
+        // Asking in its terminal about a tool call Cue couldn't see: just what Claude Code said.
+        "terminal" if it.tool_name.is_empty() => it.message.clone(),
         _ => match it.tool_name.to_lowercase().as_str() {
             "bash" => s("command"),
             "edit" | "write" | "multiedit" | "notebookedit" => format!("{} {}", it.tool_name, s("file_path")),
@@ -1251,6 +1306,7 @@ fn notify_title(it: &Item) -> (String, String) {
     let what = match it.kind.as_str() {
         "question" => "has a question",
         "waiting" => "finished, waiting for you",
+        "terminal" => "is asking in its terminal",
         _ => "wants permission",
     };
     (format!("{who} {what}"), first_line(&summary(it), 140))
@@ -1296,6 +1352,33 @@ mod tests {
         assert_eq!(split_turn("x".into(), &[part("x", true)], "answer"), ("x".into(), String::new()));
         // Old clients send no turn at all.
         assert_eq!(split_turn("last".into(), &[], "answer"), ("last".into(), String::new()));
+    }
+
+    #[test]
+    fn a_prompt_cue_cant_answer_is_a_card_until_the_session_moves_on() {
+        let dir = std::env::temp_dir().join(format!("cue-term-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let path = dir.join("t.jsonl");
+        std::fs::write(&path, r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu1","name":"Bash","input":{"command":"curl -sI https://example.com"}}]}}"#.to_string() + "\n").unwrap();
+        let origin = Origin { session_id: "s1".into(), harness: "claude".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin.clone(), "terminal_ask", "A sandboxed command needs network access".into(), vec![], "");
+        let items = hub.pending();
+        assert_eq!(items.len(), 1);
+        assert_eq!((items[0].kind.as_str(), summary(&items[0]).as_str()), ("terminal", "curl -sI https://example.com"));
+        assert_eq!(items[0].tool_use_id.as_deref(), Some("tu1"), "the watcher clears it once that call gets its result");
+        // Asked again while it's up: still one card.
+        hub.event(origin.clone(), "terminal_ask", "A sandboxed command needs network access".into(), vec![], "");
+        assert_eq!(hub.pending().len(), 1);
+        // The turn ends: the prompt was answered; it's your turn now.
+        hub.event(origin, "stopped", "Done.".into(), vec![], "");
+        let kinds: Vec<String> = hub.pending().iter().map(|i| i.kind.clone()).collect();
+        assert_eq!(kinds, ["waiting"]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
