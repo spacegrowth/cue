@@ -130,6 +130,11 @@ impl Sessions {
         if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
             s.origin = origin.clone();
         }
+        // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
+        // question is answered, so it's through it, whatever ~/.claude.json says about the folder.
+        if !origin.transcript_path.is_empty() {
+            s.trust_ms = 0;
+        }
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             s.prompt = p.trim().to_string();
             // It went through after all (it waited behind a command, say): its bubble stops saying it didn't.
@@ -674,6 +679,20 @@ mod tests {
         s.mark(&origin("b"), "waiting", None);
         assert!(s.remove("b"));
         assert!(s.snapshot().is_empty());
+    }
+
+    #[test]
+    fn a_hook_from_the_session_means_its_past_the_trust_question() {
+        let mut s = Sessions::default();
+        let started = Origin { session_id: "a".into(), cwd: "/tmp".into(), ..Default::default() };
+        s.mark(&started, "waiting", None);
+        s.set_trust("a", 5);
+        // Cue's own bookkeeping (no transcript) leaves it asking.
+        s.mark(&started, "waiting", None);
+        assert_eq!(s.asking_trust().len(), 1);
+        let hook = Origin { session_id: "a".into(), cwd: "/private/tmp".into(), transcript_path: "/t/a.jsonl".into(), ..Default::default() };
+        s.mark(&hook, "working", Some("hi"));
+        assert!(s.asking_trust().is_empty());
     }
 
     #[test]

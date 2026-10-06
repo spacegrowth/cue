@@ -104,7 +104,19 @@ pub fn claude_trusts(dir: &str) -> bool {
     trusted_in(&v, dir)
 }
 
+/// Claude Code records trust under the folder's real path (/tmp is "/private/tmp" on a Mac), so a
+/// folder counts as trusted if it, its real path, or a parent of either was accepted.
 fn trusted_in(config: &serde_json::Value, dir: &str) -> bool {
+    if trusted_as_written(config, dir) {
+        return true;
+    }
+    match std::fs::canonicalize(dir) {
+        Ok(real) if real.to_string_lossy() != dir => trusted_as_written(config, &real.to_string_lossy()),
+        _ => false,
+    }
+}
+
+fn trusted_as_written(config: &serde_json::Value, dir: &str) -> bool {
     let mut p = Some(std::path::Path::new(dir));
     while let Some(d) = p {
         if config.pointer(&format!("/projects/{}", d.to_string_lossy().replace('~', "~0").replace('/', "~1"))).and_then(|x| x.get("hasTrustDialogAccepted")).and_then(|x| x.as_bool()) == Some(true) {
@@ -582,6 +594,24 @@ mod start_tests {
         assert!(trusted_in(&c, "/a/b/c/d"));
         assert!(!trusted_in(&c, "/a"));
         assert!(!trusted_in(&c, "/x/y"));
+    }
+
+    #[test]
+    fn a_folder_reached_through_a_symlink_is_trusted_under_its_real_path() {
+        // Claude Code stores /private/tmp for a session started in /tmp: the link must still count.
+        let base = std::env::temp_dir().join(format!("cue-trust-{}", std::process::id()));
+        let real = base.join("real");
+        let link = base.join("link");
+        std::fs::create_dir_all(real.join("deeper")).unwrap();
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let real_s = std::fs::canonicalize(&real).unwrap().to_string_lossy().into_owned();
+        let c = serde_json::json!({ "projects": { real_s.clone(): { "hasTrustDialogAccepted": true } } });
+        assert!(trusted_in(&c, &link.to_string_lossy()));
+        assert!(trusted_in(&c, &link.join("deeper").to_string_lossy()), "a child of the link resolves through it too");
+        let none = serde_json::json!({ "projects": {} });
+        assert!(!trusted_in(&none, &link.to_string_lossy()));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

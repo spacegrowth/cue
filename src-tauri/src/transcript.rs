@@ -255,9 +255,10 @@ pub(crate) fn cut(s: &str, max: usize) -> String {
 }
 
 /// How many times Claude Code has logged running "/name". A local command such as /rename logs a
-/// "local_command" entry; /compact logs what you typed ("/compact") the moment it starts, and its own
-/// record only when it's done, a minute later. An unknown command ("/reomte") logs nothing, so a
-/// count that doesn't move means it didn't run.
+/// "local_command" entry; newer Claude Code (2.1.29x) logs it as a "user" entry whose content is the
+/// same "<command-name>/model</command-name>" record; /compact logs what you typed ("/compact") the
+/// moment it starts, and its own record only when it's done, a minute later. An unknown command
+/// ("/reomte") logs nothing, so a count that doesn't move means it didn't run.
 pub fn command_count(path: &str, name: &str) -> usize {
     let Some(text) = read_from(path, tail_offset(path)) else { return 0 };
     let tag = format!("<command-name>/{name}</command-name>");
@@ -265,7 +266,7 @@ pub fn command_count(path: &str, name: &str) -> usize {
     lines(&text)
         .filter(|e| match (e.get("type").and_then(Value::as_str), e.get("subtype").and_then(Value::as_str)) {
             (Some("system"), Some("local_command")) => e.get("content").and_then(Value::as_str).is_some_and(|c| c.contains(&tag)),
-            (Some("user"), _) => e.pointer("/message/content").and_then(Value::as_str).is_some_and(typed),
+            (Some("user"), _) => e.pointer("/message/content").and_then(Value::as_str).is_some_and(|c| typed(c) || c.contains(&tag)),
             _ => false,
         })
         .count()
@@ -884,10 +885,15 @@ mod tests {
         let t = write_transcript(&[
             json!({"type":"system","subtype":"local_command","content":"<command-name>/rename</command-name>\n<command-args>cue-2</command-args>"}),
             json!({"type":"system","subtype":"local_command","content":"<command-name>/rename</command-name>\n<command-args>cue-ios</command-args>"}),
-            json!({"type":"user","message":{"content":"<command-name>/rename</command-name>"}}),
+            // Claude Code 2.1.29x logs a local command as a "user" entry with the same record (and
+            // a caveat/stdout entry around it that must not count).
+            json!({"type":"user","isMeta":true,"message":{"role":"user","content":"<local-command-caveat>The command below was run directly in Claude Code</local-command-caveat>"}}),
+            json!({"type":"user","message":{"role":"user","content":"<command-name>/rename</command-name>\n            <command-message>rename</command-message>\n            <command-args>cue-3</command-args>"}}),
+            json!({"type":"user","message":{"role":"user","content":"<local-command-stdout>Renamed to cue-3</local-command-stdout>"}}),
         ]);
-        assert_eq!(command_count(&t.0, "rename"), 2);
+        assert_eq!(command_count(&t.0, "rename"), 3);
         assert_eq!(command_count(&t.0, "reomte"), 0);
+        assert_eq!(command_count(&t.0, "local"), 0, "the caveat/stdout wrappers aren't commands");
         // /compact: what you typed is logged as it starts.
         let t = write_transcript(&[json!({"type":"user","message":{"role":"user","content":"/compact"}}), json!({"type":"user","message":{"content":"/compacting is a word"}})]);
         assert_eq!(command_count(&t.0, "compact"), 1);
