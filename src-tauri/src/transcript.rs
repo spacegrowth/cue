@@ -316,6 +316,58 @@ pub fn harness_text(text: &str) -> bool {
     text.trim_start().starts_with("<task-notification>")
 }
 
+/// A Claude Code session's transcript, wherever its folder is: ~/.claude/projects/<folder>/<id>.jsonl.
+pub fn find_claude(session_id: &str) -> Option<String> {
+    if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return None;
+    }
+    let home = std::env::var("HOME").ok()?;
+    std::fs::read_dir(format!("{home}/.claude/projects")).ok()?.flatten().map(|d| d.path().join(format!("{session_id}.jsonl"))).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
+}
+
+/// The conversation as Cue's chat shows it, from the transcript: your prompts, and the agent's last
+/// text reply of each turn (not its tool calls or what it said between steps). Only what's before
+/// `before_ms`, the last `limit` of it, oldest first. For what's older than Cue's own log (a session
+/// from before Cue, or one you resumed): read only when you ask for it, from the start of the file,
+/// stopping at `before_ms`.
+pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Value> {
+    use std::io::BufRead;
+    let Ok(f) = File::open(path) else { return vec![] };
+    let mut out: Vec<Value> = vec![];
+    let mut reply: Option<(u64, String)> = None;   // the turn's latest text reply so far
+    let msg = |at: u64, role: &str, text: &str| serde_json::json!({ "at_ms": at, "role": role, "text": cut(text.trim(), 6000), "images": [] });
+    for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
+        let Ok(e) = serde_json::from_str::<Value>(&line) else { continue };
+        let at = stamp(&e);
+        if at >= before_ms {
+            break;
+        }
+        if e.get("isSidechain").and_then(Value::as_bool) == Some(true) || e.get("isMeta").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        let text: String = content_blocks(&e).iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n\n");
+        // Slash-command plumbing, notices and "[Request interrupted…]" aren't conversation.
+        if text.trim().is_empty() || text.starts_with('<') || text.starts_with("[Request interrupted") {
+            continue;
+        }
+        match e.get("type").and_then(Value::as_str) {
+            Some("assistant") => reply = Some((at, text)),
+            Some("user") => {
+                if let Some((t, r)) = reply.take() {
+                    out.push(msg(t, "agent", &r));
+                }
+                out.push(msg(at, "you", &text));
+            }
+            _ => {}
+        }
+    }
+    if let Some((t, r)) = reply {
+        out.push(msg(t, "agent", &r));
+    }
+    let skip = out.len().saturating_sub(limit);
+    out.into_iter().skip(skip).collect()
+}
+
 /// Where a message you queued for a busy Claude Code session stands, by its queue log: still in the
 /// queue, taken into the running turn between two steps, or taken as the next turn's prompt.
 #[derive(Debug, PartialEq)]
@@ -475,6 +527,25 @@ mod tests {
             writeln!(f, "{}", l).unwrap();
         }
         p
+    }
+
+    #[test]
+    fn the_conversation_before_a_time_is_prompts_and_each_turns_last_reply() {
+        let at = |m: u32| format!("2026-10-04T08:{m:02}:00.000Z");
+        let p = write_transcript(&[
+            json!({"type":"user","timestamp":at(1),"message":{"content":"fix the bar"}}),
+            json!({"type":"assistant","timestamp":at(2),"message":{"content":[{"type":"text","text":"Looking at it."},{"type":"tool_use","name":"Read","input":{}}]}}),
+            json!({"type":"user","timestamp":at(3),"message":{"content":[{"type":"tool_result","content":"…"}]}}),
+            json!({"type":"assistant","timestamp":at(4),"message":{"content":[{"type":"text","text":"Fixed: the bar now fills."}]}}),
+            json!({"type":"user","timestamp":at(5),"isMeta":true,"message":{"content":"<local-command-stdout>x</local-command-stdout>"}}),
+            json!({"type":"user","timestamp":at(6),"message":{"content":"thanks, now commit"}}),
+            json!({"type":"assistant","timestamp":at(7),"message":{"content":[{"type":"text","text":"Committed."}]}}),
+            json!({"type":"user","timestamp":at(9),"message":{"content":"later message"}}),
+        ]);
+        let got = |before: &str, limit| conversation_before(&p.0, iso_ms(before).unwrap(), limit).iter().map(|e| format!("{}: {}", e["role"].as_str().unwrap(), e["text"].as_str().unwrap())).collect::<Vec<_>>();
+        assert_eq!(got(&at(8), 10), ["you: fix the bar", "agent: Fixed: the bar now fills.", "you: thanks, now commit", "agent: Committed."]);
+        assert_eq!(got(&at(8), 2), ["you: thanks, now commit", "agent: Committed."], "the last `limit` before that time");
+        assert_eq!(got(&at(1), 10), Vec::<String>::new());
     }
 
     #[test]

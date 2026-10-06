@@ -161,6 +161,9 @@
             : id.startsWith("b") && ["b1", "b2", "b5"].includes(id) ? { full: "/Users/me/code/agent-relay/src/board.ts", diff: [[" ", "  const cols = ['name', 'status'];"], ["-", "  const total = 0;"], ["+", "  const total = rows.reduce((s, r) => s + r.spend, 0);"], ["+", "  footer.push(fmt(total));"]], skipped: 0 }
             : { full: "/Users/me/code/agent-relay/test/board.test.ts" }]));
           if (cmd === "set_setting") { const [a, b] = args.key.split("."); state.settings[a][b] = args.value; setTimeout(emit, 10); return; }
+          // Earlier messages, a page at a time: 75 made-up ones before the thread.
+          if (cmd === "session_log_page") { const all = Array.from({ length: 75 }, (_, n) => ({ at_ms: Date.now() - 3 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
+          if (cmd === "transcript_page") { const all = Array.from({ length: 40 }, (_, n) => ({ at_ms: Date.now() - 9 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `From the transcript ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
           if (cmd === "focus_session") return "iTerm session";
           if (cmd === "close_session") return "Closed its iTerm tab";
           if (cmd === "agents_installed") return ["claude", "pi"];

@@ -11,6 +11,7 @@ let view = "board";         // "board" | "sessions" | "history" — the switch i
 let histOpen = null;        // the History row that's open (one at a time)
 let histShown = null;       // the open row we've already scrolled to (so a redraw doesn't yank it back)
 let active = null;          // { id, sid }: what the Active pane shows. Sticky: it stays after you act.
+let holdChat = null;        // earlier messages just went in above: keep this distance from the chat's bottom
 let activeKey = null;       // last rendered Active target + message count, to scroll the chat on change
 let menuFor = null;         // decision card whose "Always…" menu is open
 let redirectFor = null;     // decision card showing its "tell it instead" field
@@ -703,9 +704,59 @@ function setActive(id, sid, exact = false) {
 const nextUp = () => needsYou().find((i) => i.id !== active?.id && i.session_id !== active?.sid);
 function goNext() { const n = nextUp(); if (n) setActive(n.id, n.session_id); }
 
+// ---------- earlier messages: a page at a time from Cue's log as you scroll up ----------
+const OLDER_PAGE = 30;
+const older = new Map();   // session id -> { msgs (oldest first), anchor (the thread's first message when they loaded), done, tdone, busy }
+/** The next page before the oldest message shown: from Cue's log as you scroll up; past its start, from
+ *  the session's transcript, only when you click for it (`fromTranscript`: a heavier read). */
+async function loadOlder(sid, fromTranscript = false) {
+  const o = older.get(sid) || { msgs: [], anchor: 0, done: false, tdone: false, busy: false };
+  older.set(sid, o);
+  const cur = current();
+  if (o.busy || (fromTranscript ? !o.done || o.tdone : o.done) || !cur || (cur.s?.session_id || cur.it?.session_id) !== sid) return;
+  const first = conversation(cur.it, cur.s)[0]?.at_ms;
+  if (!first) return;
+  o.busy = true;
+  renderMain();
+  let page = await invoke(fromTranscript ? "transcript_page" : "session_log_page", { sessionId: sid, beforeMs: first, limit: OLDER_PAGE }).catch(() => []);
+  if (!Array.isArray(page)) page = [];
+  if (!o.msgs.length) o.anchor = first;
+  o.msgs = [...page, ...o.msgs];
+  if (fromTranscript) o.tdone = page.length < OLDER_PAGE;
+  else o.done = page.length < OLDER_PAGE;
+  o.busy = false;
+  const chat = document.querySelector("[data-chat]");
+  if (chat) holdChat = chat.scrollHeight - chat.scrollTop;
+  renderMain();
+}
+/** The thread keeps only the last few messages, so once earlier ones are loaded, new messages push
+ *  its oldest out: fetch those back from the log so nothing goes missing between the two. */
+async function fillOlderGap(sid, o, upTo) {
+  const page = await invoke("session_log_page", { sessionId: sid, beforeMs: upTo, limit: 200 }).catch(() => []);
+  o.msgs = [...o.msgs, ...page.filter((e) => e.at_ms >= o.anchor)];
+  o.anchor = upTo;
+  o.busy = false;
+  renderMain();
+}
+/** The top of the chat: earlier messages to load, loading, or the start of what Cue has. */
+function olderRow(sid, harness) {
+  const o = older.get(sid);
+  if (o?.busy) return `<div class="cv-older">Loading earlier messages…</div>`;
+  if (o?.tdone) return `<div class="cv-older">Start of the conversation</div>`;
+  // Cue's log starts when Cue first saw the session; anything before is only in Claude Code's transcript.
+  if (o?.done) return `<div class="cv-older">Start of the conversation in Cue${harness === "claude" ? ` · <button data-act="load-transcript" data-sid="${esc(sid)}" title="Read what came before from the session's Claude Code transcript">Load earlier from its transcript</button>` : ""}</div>`;
+  return `<div class="cv-older"><button data-act="load-older" data-sid="${esc(sid)}">Earlier messages</button></div>`;
+}
+
 /** The conversation for the Active pane: the live session's thread, or the item's own copy once the session is gone. */
 function conversation(it, s) {
   let ex = s ? [...(s.thread || [])] : [...(it?.thread || [])];
+  const o = older.get(s?.session_id || it?.session_id);
+  if (o?.msgs.length) {
+    const first = ex[0]?.at_ms ?? Infinity;
+    if (first !== Infinity && first > o.anchor && !o.busy) { o.busy = true; queueMicrotask(() => fillOlderGap(s?.session_id || it?.session_id, o, first)); }
+    ex = [...o.msgs.filter((e) => e.at_ms < first), ...ex];
+  }
   if (s?.queued) ex = ex.filter((e) => !(e.role === "you" && e.text === s.queued.text && e.at_ms === s.queued.at_ms));
   if (it?.kind === "waiting") {
     const msg = finishedText(it);
@@ -885,7 +936,8 @@ function withSteps(sid, s, ex, rows, extra = []) {
 }
 /** Agent: full-width prose. You: a compact tinted bubble on the right. Older agent turns fold to 3 lines.
  *  Another session: a striped bubble saying which one (sent by its agent, or forwarded by you). */
-function chatHtml(it, s, harness) {
+/** `paged`: the Active pane's chat, which loads earlier messages as you scroll up. */
+function chatHtml(it, s, harness, paged = false) {
   const ex = conversation(it, s);
   const lastAgent = ex.map((e) => e.role).lastIndexOf("agent");
   const project = s?.project || it?.project || "";
@@ -915,7 +967,7 @@ function chatHtml(it, s, harness) {
   }), chose);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stop its current turn so it reads this now (⌘ Enter when sending does the same)">Send now</button></div></div>`);
-  return rows.join("") || `<div class="dim cv-empty">No messages yet in this session.</div>`;
+  return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
 const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
@@ -1066,7 +1118,7 @@ function activePane() {
     ${subHead(s?.cwd || it?.cwd, cm?.role === "executor" ? crewLine(sid) : "", sid)}
     ${sid ? crewStrip(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey()}</div>` : ""}
-    <div class="ap-chat" data-chat>${chatHtml(it, s, harness)}${statusLine(it, s)}</div>
+    <div class="ap-chat" data-chat>${chatHtml(it, s, harness, true)}${statusLine(it, s)}</div>
     ${pending ? "" : nextBar()}
     ${foot}</div>`;
 }
@@ -1991,7 +2043,8 @@ function renderMain() {
   const key = chat ? `${active?.id}|${active?.sid}|${chat.children.length}` : null;
   // New target or new message: jump to the end. Same chat, you were at the end: stay there
   // (an image added to the box, or a redraw, mustn't push the last lines out of view).
-  if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
+  if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
+  else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
   activeKey = key;
   // Something new opened in Active: its text box takes the cursor, so you can just type.
   const target = `${active?.id}|${active?.sid}`;
@@ -2160,7 +2213,13 @@ function bindTips() {
 function bindMain() {
   bindTips();
   document.body.append(picker);
-  document.addEventListener("scroll", placeForward, true);   // the send-to menu follows its button
+  document.addEventListener("scroll", placeForward, true);
+  // Near the top of the chat: the next page of earlier messages comes in above.
+  document.addEventListener("scroll", (e) => {
+    if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60) return;
+    const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
+    if (sid) loadOlder(sid);
+  }, true);   // the send-to menu follows its button
   const app = document.getElementById("app");
   app.addEventListener("click", (e) => {
     const t = e.target;
@@ -2337,6 +2396,8 @@ function bindMain() {
     if (act === "test-notify") return invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`));
     if (act === "open-history") { view = "history"; sheet = null; return renderMain(); }
     if (act === "open-search") return openSearch();
+    if (act === "load-older") return loadOlder(actEl.dataset.sid);
+    if (act === "load-transcript") return loadOlder(actEl.dataset.sid, true);
     if (act === "open-settings") { sheet = sheet === "settings" ? null : "settings"; extSections = null; return renderMain(); }
     const it = actEl?.dataset.id ? findItem(actEl.dataset.id) : null;
     if (act && it) {

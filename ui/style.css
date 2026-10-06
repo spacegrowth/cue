@@ -321,8 +321,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .fwd-note { width: 100%; margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: 12.5px; resize: none; }
 .fwd-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
 /* You: a compact tinted bubble on the right. */
-.cv-you { align-self: flex-end; max-width: 72%; display: flex; flex-direction: column; align-items: flex-end; }
-.cv-you-text { padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13.5px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+.cv-you { align-self: flex-end; max-width: 72%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+/* A long word with no spaces (a pasted URL, path or log line) wraps instead of widening the bubble past
+   the chat, where its left edge was cut off. */
+.cv-you-text { overflow-wrap: anywhere; max-width: 100%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13.5px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
 .cv-you .cv-meta { margin: 3px 2px 0; }
 .cv-you.sending { opacity: 0.6; }
 .cv-you.queued .cv-you-text { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
@@ -384,6 +386,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .nrow .dim.intr { color: var(--deny); font-weight: 650; flex: none; }  /* the name truncates, not this */
 .nrow.on .dim.intr { color: var(--on-sel); text-decoration: underline; text-decoration-color: var(--deny); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .pill.intr { background: var(--deny); color: #fff; }
+/* The top of the chat: "Earlier messages", loading, or where Cue's log starts. */
+.cv-older { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0 8px; }
+.cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+.cv-older button:hover { color: var(--ink); border-color: var(--muted); }
 .nrow-done { font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nrow-done.ok { color: var(--accent); }
 .nrow-done.no { color: var(--deny); }

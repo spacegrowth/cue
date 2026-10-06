@@ -292,6 +292,21 @@ fn session_log(session_id: String) -> Vec<serde_json::Value> {
     db::session_log(&session_id)
 }
 
+/// Earlier than Cue's log goes (a session from before Cue, or resumed): the conversation from the
+/// session's Claude Code transcript, the `limit` messages before `before_ms`. Only when you ask for it.
+#[tauri::command]
+async fn transcript_page(session_id: String, before_ms: u64, limit: Option<usize>) -> Vec<serde_json::Value> {
+    tauri::async_runtime::spawn_blocking(move || transcript::find_claude(&session_id).map(|p| transcript::conversation_before(&p, before_ms, limit.unwrap_or(30).min(200))).unwrap_or_default())
+        .await
+        .unwrap_or_default()
+}
+
+/// Earlier messages for the chat, a page at a time as you scroll up: the `limit` before `before_ms`.
+#[tauri::command]
+fn session_log_page(session_id: String, before_ms: u64, limit: Option<usize>) -> Vec<serde_json::Value> {
+    db::session_log_page(&session_id, before_ms, limit.unwrap_or(30).min(200))
+}
+
 /// Rename a session (Cue, and the agent where it can be told). Typing into a terminal blocks: off the UI thread.
 #[tauri::command]
 async fn rename_session(hub: State<'_, Arc<Hub>>, session_id: String, name: String) -> Result<String, String> {
@@ -584,7 +599,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it (the side panel positions itself).
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::new().with_denylist(&["mini"]).build())
-        .invoke_handler(tauri::generate_handler![session_command, connect_agent, update_check, update_install, session_steps, step_detail, mini_drag, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, agents_installed, search, session_log, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, mini_resize, get_drafts, set_draft, test_notification, mini_close, open_main])
+        .invoke_handler(tauri::generate_handler![session_command, connect_agent, update_check, update_install, session_steps, step_detail, mini_drag, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, mini_resize, get_drafts, set_draft, test_notification, mini_close, open_main])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {

@@ -309,13 +309,28 @@ pub fn known_session_ids() -> std::collections::HashSet<String> {
 pub fn session_log(session_id: &str) -> Vec<Value> {
     with(|c| {
         let mut st = c.prepare("SELECT at_ms, role, text, images FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
-        let rows = st.query_map(params![session_id], |r| {
-            let images: Vec<String> = serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or_default();
-            Ok(json!({ "at_ms": r.get::<_, i64>(0)?, "role": r.get::<_, String>(1)?, "text": r.get::<_, String>(2)?, "images": images }))
-        })?;
+        let rows = st.query_map(params![session_id], log_row)?;
         rows.collect()
     })
     .unwrap_or_default()
+}
+
+/// One page of a session's conversation: the `limit` messages before `before_ms`, oldest first (the
+/// chat loads earlier messages a page at a time as you scroll up). Fewer than `limit`: that's the start.
+pub fn session_log_page(session_id: &str, before_ms: u64, limit: usize) -> Vec<Value> {
+    let mut page = with(|c| {
+        let mut st = c.prepare("SELECT at_ms, role, text, images FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
+        let rows = st.query_map(params![session_id, before_ms as i64, limit as i64], log_row)?;
+        rows.collect::<rusqlite::Result<Vec<Value>>>()
+    })
+    .unwrap_or_default();
+    page.reverse();
+    page
+}
+
+fn log_row(r: &rusqlite::Row) -> rusqlite::Result<Value> {
+    let images: Vec<String> = serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or_default();
+    Ok(json!({ "at_ms": r.get::<_, i64>(0)?, "role": r.get::<_, String>(1)?, "text": r.get::<_, String>(2)?, "images": images }))
 }
 
 /// A line of context around the first (case-insensitive) match: ~60 characters before, ~140 after.
@@ -443,6 +458,32 @@ mod tests {
         let s = snippet(&long, "NEEDLE");
         assert!(s.starts_with('…') && s.ends_with('…') && s.contains("needle here"), "{s}");
         assert_eq!(snippet("short text", "text"), "short text");
+    }
+
+    #[test]
+    fn the_log_comes_a_page_at_a_time_oldest_first() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-page-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        reset();
+        with(|c| {
+            for n in 1..=7 {
+                c.execute("INSERT INTO exchanges (session_id, at_ms, role, text) VALUES ('s', ?1, ?2, ?3)", params![n * 10, if n % 2 == 1 { "you" } else { "agent" }, format!("m{n}")])?;
+            }
+            c.execute("INSERT INTO exchanges (session_id, at_ms, role, text) VALUES ('other', 15, 'you', 'x')", [])?;
+            Ok(())
+        })
+        .unwrap();
+        let texts = |v: Vec<Value>| v.iter().map(|e| e["text"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        // The chat shows m6, m7: the page before m6 is the 3 just before it, oldest first.
+        assert_eq!(texts(session_log_page("s", 60, 3)), ["m3", "m4", "m5"]);
+        assert_eq!(texts(session_log_page("s", 30, 3)), ["m1", "m2"], "fewer than asked: the start");
+        assert!(session_log_page("s", 10, 3).is_empty());
+        std::env::remove_var("CUE_HOME");
+        reset();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
