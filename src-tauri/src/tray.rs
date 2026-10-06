@@ -77,8 +77,13 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
 }
 
 /// Keep the count beside the icon current, and the icon shown or hidden as Settings says.
+/// On the main thread only: the icon's handle counts its owners without locks, so a copy made and
+/// dropped on another thread can remove the icon there, and macOS stops Cue for it.
 pub fn sync(app: &AppHandle, items: &[Item]) {
-    let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
-    let _ = tray.set_visible(crate::config::tray_shown());
-    let _ = tray.set_title(if items.is_empty() { None } else { Some(items.len().to_string()) });
+    let (handle, count) = (app.clone(), items.len());
+    let _ = app.run_on_main_thread(move || {
+        let Some(tray) = handle.tray_by_id(TRAY_ID) else { return };
+        let _ = tray.set_visible(crate::config::tray_shown());
+        let _ = tray.set_title(if count == 0 { None } else { Some(count.to_string()) });
+    });
 }
