@@ -329,7 +329,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .cv-you.queued .cv-you-text { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
 .cv-empty { text-align: center; margin: 18px 0; }
 .cv-status { align-self: center; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; padding: 2px 0; }
-.dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+/* flex: none: beside a long line ("Running: …") it keeps its size instead of being squeezed. */
+.dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
@@ -348,9 +349,11 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .foot.held { border-top: 0; padding-top: 0; }
 /* Selected text was copied: a Moss pill at the right end, just above the text box; it fades by itself. */
 .foot, .active-pane { position: relative; }
-/* At work: a soft light sweeps along the chat's top edge (gone while it waits on you). */
-.active-pane.busy::before { content: ""; position: absolute; top: 0; left: 0; width: 35%; height: 2px; z-index: 13; pointer-events: none; background: linear-gradient(90deg, transparent, var(--sel) 30%, var(--accent) 50%, var(--sel) 70%, transparent); box-shadow: 0 1px 10px 1px color-mix(in srgb, var(--sel) 80%, transparent); animation: sweep 1.8s ease-in-out infinite; }
-@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+/* What the chat layers on itself (the sweep, the btw panel) stays under sheets opened over it (Settings, Search). */
+.active-pane { isolation: isolate; }
+/* At work: a light sweeps along the chat's top edge (gone while it waits on you). No glow: on the white pane it showed as a pale band. */
+.active-pane.busy::before { content: ""; position: absolute; top: 0; left: 0; width: 60%; height: 3px; z-index: 13; pointer-events: none; background: linear-gradient(90deg, transparent, var(--sel) 15%, color-mix(in srgb, var(--accent) 50%, var(--sel)) 40%, color-mix(in srgb, var(--accent) 50%, var(--sel)) 60%, var(--sel) 85%, transparent); animation: sweep 3.6s ease-in-out infinite; }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(170%); } }
 @media (prefers-reduced-motion: reduce) { .active-pane.busy::before { animation: none; width: 100%; opacity: 0.6; } }
 /* By the way: a side question's panel, dropping from the btw button over the top of the chat (the chat
    underneath never changes). Newest answer first, under its own ask box. */
@@ -589,6 +592,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 .tn-need { color: var(--deny); font-weight: 650; }
 .tn-x { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tn-x .mono { font: 11.5px var(--mono); }
+.tn-age { flex: none; margin-left: auto; font-size: 11px; opacity: 0.6; }
 .tn-acts { display: flex; gap: 6px; margin-top: 5px; }
 .tn-acts .btn { flex: 1; height: 26px; font-size: 12px; }
 .team-head .nrow-top { cursor: pointer; }
