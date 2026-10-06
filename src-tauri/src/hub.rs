@@ -880,8 +880,7 @@ impl Hub {
         // In Waiting as if Cue had been there all along (no notification: it isn't new). A prompt open in its
         // terminal (one Cue missed): a card that sends you there.
         if q.status == "waiting" {
-            let what = if q.waiting_for.is_empty() { "It's asking you something in its terminal".to_string() } else { format!("Waiting in its terminal: {}", q.waiting_for) };
-            self.terminal_ask(origin, what, false);
+            self.terminal_ask(origin, waiting_words(&q.waiting_for), false);
         } else if q.status == "idle" && crate::leads::resolve_driver(session_id, "").is_empty() {
             // Its last turn ended with its reply and nothing from you since: your turn. (One a lead drives
             // is the lead's to pick up.)
@@ -912,23 +911,36 @@ impl Hub {
         self.changed();
     }
 
-    /// Take in every live Claude session Cue doesn't know yet: at startup (sessions you resumed after a
-    /// restart, or started while Cue was closed) and whenever a new one appears, so each shows on the
-    /// Board with its chat from the start, not only once it has sent Cue something. Also drops a card for
-    /// a prompt in its terminal once you've answered it there.
-    pub fn adopt_all(&self) {
+    /// Every few seconds, from Claude Code's list of live sessions:
+    /// - take in any session Cue doesn't know yet (resumed after a restart, started while Cue was closed),
+    ///   so it shows on the Board with its chat from the start, not only once it has sent Cue something;
+    /// - a prompt open in a session's terminal that Cue has no card for (an MCP server asking for input,
+    ///   a teammate's permission prompt, a dialog: they don't come through Cue's permission hook) gets an
+    ///   "asking in its terminal" card, once it has been open a few seconds;
+    /// - that card goes once Claude Code says the session stopped waiting (you answered it there).
+    pub fn sync_live(&self) {
         let live = crate::live::claude();
-        let (fresh, answered): (Vec<String>, Vec<String>) = {
+        let now = now_ms();
+        let (fresh, answered, asking) = {
             let st = self.store.lock().unwrap();
-            let fresh = live.iter().map(|q| q.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_none()).collect();
-            // A "terminal" card whose prompt is gone: Claude Code says it stopped waiting after the card came.
-            let answered = live.iter().filter(|q| q.status != "waiting")
+            let fresh: Vec<String> = live.iter().map(|q| q.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_none()).collect();
+            let answered: Vec<String> = live.iter().filter(|q| q.status != "waiting")
                 .filter(|q| st.items.iter().any(|i| i.kind == "terminal" && i.origin.session_id == q.session_id && q.since_ms > i.created_ms))
                 .map(|q| q.session_id.clone()).collect();
-            (fresh, answered)
+            // Not one Cue has a card for, and not one you just answered in Cue (the list can lag a moment).
+            let answered_here = |sid: &str| st.history.iter().any(|i| i.origin.session_id == sid && i.resolved_ms.is_some_and(|r| now.saturating_sub(r) < 6_000));
+            let asking: Vec<(Origin, String)> = live.iter()
+                .filter(|q| q.status == "waiting" && now.saturating_sub(q.since_ms) > WAITING_GRACE_MS)
+                .filter(|q| !st.items.iter().any(|i| i.origin.session_id == q.session_id && i.kind != "waiting") && !answered_here(&q.session_id))
+                .filter_map(|q| st.sessions.origin(&q.session_id).map(|o| (o, waiting_words(&q.waiting_for))))
+                .collect();
+            (fresh, answered, asking)
         };
         for sid in answered {
             self.clear_terminal_asks(&sid);
+        }
+        for (origin, what) in asking {
+            self.terminal_ask(origin, what, true);
         }
         for sid in fresh {
             let _ = self.adopt(&sid);   // gone meanwhile: nothing to take in
@@ -1458,6 +1470,15 @@ pub fn summary(it: &Item) -> String {
     }
 }
 
+/// A prompt open this long in a terminal before Cue makes a card for it: its own permission hook (which
+/// asks Cue at once) gets there first.
+const WAITING_GRACE_MS: u64 = 4_000;
+
+/// What a session waits for in its terminal, in Claude Code's words ("approve Bash", "dialog open").
+fn waiting_words(waiting_for: &str) -> String {
+    if waiting_for.is_empty() { "It's asking you something in its terminal".into() } else { format!("Waiting in its terminal: {waiting_for}") }
+}
+
 fn notify_title(it: &Item) -> (String, String) {
     let who = format!("{} · {}", it.origin.harness, if it.project.is_empty() { "?" } else { &it.project });
     let what = match it.kind.as_str() {
@@ -1546,6 +1567,37 @@ mod tests {
         hub.event(origin, "stopped", "Done.".into(), vec![], "");
         let kinds: Vec<String> = hub.pending().iter().map(|i| i.kind.clone()).collect();
         assert_eq!(kinds, ["waiting"]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_prompt_open_in_its_terminal_gets_a_card_until_it_stops_waiting() {
+        let dir = std::env::temp_dir().join(format!("cue-waiting-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "s4".into(), harness: "claude".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin, "active", "use the docs server".into(), vec![], "");
+        let q = |status: &str, since_ms: u64| crate::live::Quiet { session_id: "s4".into(), harness: "claude".into(), name: String::new(), cwd: String::new(), pid: std::process::id() as i32, status: status.into(), waiting_for: "input needed".into(), since_ms };
+        // Just opened: its own permission hook may still be on the way. No card yet.
+        crate::live::set_claude(vec![q("waiting", now_ms())]);
+        hub.sync_live();
+        assert!(hub.pending().is_empty());
+        // Open a while, and Cue has nothing for it: a card that sends you to the terminal.
+        crate::live::set_claude(vec![q("waiting", now_ms() - 10_000)]);
+        hub.sync_live();
+        let items = hub.pending();
+        assert_eq!((items.len(), items[0].kind.as_str(), items[0].message.as_str()), (1, "terminal", "Waiting in its terminal: input needed"));
+        hub.sync_live();
+        assert_eq!(hub.pending().len(), 1, "one card, however often it's seen");
+        // Answered in the terminal: Claude Code says it's busy again, after the card came.
+        crate::live::set_claude(vec![q("busy", now_ms() + 1)]);
+        hub.sync_live();
+        assert!(hub.pending().iter().all(|i| i.kind != "terminal"));
+        crate::live::set_claude(vec![]);
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

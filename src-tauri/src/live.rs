@@ -88,6 +88,12 @@ pub fn claude() -> Vec<Quiet> {
     CLAUDE.lock().unwrap().clone()
 }
 
+/// Tests: stand in for Claude Code's registry.
+#[cfg(test)]
+pub fn set_claude(list: Vec<Quiet>) {
+    *CLAUDE.lock().unwrap() = list;
+}
+
 /// The terminal a process runs in ("/dev/ttys012"), for "Go to tab" on a session that never sent
 /// Cue its own (its hooks report the tty; the registry doesn't).
 pub fn tty_of(pid: i32) -> String {

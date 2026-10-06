@@ -666,9 +666,9 @@ pub fn run() {
                     if tauri::async_runtime::spawn_blocking(|| leads::refresh() | live::refresh()).await.unwrap_or(false) {
                         h.redraw();
                     }
-                    // ...and any of those Cue doesn't know yet joins the Board (adopt says so itself).
+                    // ...and from that list: sessions Cue doesn't know yet, prompts in a terminal it has no card for.
                     let a = h.clone();
-                    let _ = tauri::async_runtime::spawn_blocking(move || a.adopt_all()).await;
+                    let _ = tauri::async_runtime::spawn_blocking(move || a.sync_live()).await;
                 }
             });
             #[cfg(feature = "ext")]
