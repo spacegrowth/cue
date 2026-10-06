@@ -341,6 +341,8 @@ async fn crew_action(hub: State<'_, Arc<Hub>>, session_id: String, action: Strin
 /// What a relay / pi-lead button does.
 pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result<String, String> {
     match leads::act(session_id, action)? {
+        // One review at a time per lead: refused while it's busy (see Hub::review).
+        leads::Act::Send { to, text } if action == "review" => h.review(&to, session_id, &text),
         leads::Act::Send { to, text } => h.send_to_session(&to, &text, &[], false).map(|_| format!("Sent {text}")),
         leads::Act::Run(bin, args, done) => {
             let out = std::process::Command::new(&bin).args(&args).output().map_err(|e| format!("couldn't run relay: {e}"))?;

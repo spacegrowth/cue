@@ -443,6 +443,24 @@ pub fn close_plan(session_id: &str) -> Option<Result<(PathBuf, Vec<String>), Str
     }
 }
 
+/// A relay executor's worktree (where its staged changes are), from relay's session file.
+#[cfg_attr(not(feature = "ext"), allow(dead_code))]
+pub fn worktree(session_id: &str) -> Option<String> {
+    let id = INDEX.lock().unwrap().as_ref()?.get(session_id).filter(|m| m.role == "executor" && m.plugin == "relay")?.id.clone();
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(relay_dir().join(&id).join("session.json")).ok()?).ok()?;
+    v.get("worktree")?.as_str().filter(|w| !w.is_empty()).map(String::from)
+}
+
+/// Whether an executor is done and waiting for its lead's review (relay: reported or idle).
+pub fn is_done(session_id: &str) -> bool {
+    INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle"))
+}
+
+/// A lead's or executor's name (relay's topic), else its session id.
+pub fn name_of(session_id: &str) -> String {
+    INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.to_string())
+}
+
 /// What `action` ("review", "diff", "auto-on", "auto-off") means for this session: an executor's
 /// review goes to its lead, its diff opens as a page; a relay lead's auto mode is switched by relay.
 pub fn act(session_id: &str, action: &str) -> Result<Act, String> {

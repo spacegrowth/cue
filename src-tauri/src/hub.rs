@@ -44,7 +44,17 @@ struct Store {
     /// Limits already announced (scope + reset), so each one notifies once going out and once coming back.
     told_out: HashSet<String>,
     told_back: HashSet<String>,
+    /// Reviews typed into a lead: executor → (its lead, when). "in review" until it's no longer done
+    /// (15 minutes at most). A lead takes one review at a time: Review waits until it's free again.
+    review_sent: HashMap<String, (String, u64)>,
+    /// When a review was last typed into each lead: it takes a moment to show as working.
+    review_last: HashMap<String, u64>,
 }
+
+/// After typing a review into a lead, wait this long before judging it free again.
+const REVIEW_SETTLE_MS: u64 = 8000;
+/// "in review" stops showing after this long even if the executor still reads as done.
+const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
 
 /// Context this full (percent) at a turn's end: the notification says so and offers Compact.
 pub const CONTEXT_HIGH: u8 = 80;
@@ -885,7 +895,8 @@ impl Hub {
     }
 
     pub fn snapshot(&self) -> Value {
-        let st = self.store.lock().unwrap();
+        let mut st = self.store.lock().unwrap();
+        let reviews = Self::reviews_view(&mut st);
         // The Sessions view: live sessions Cue hasn't heard from yet (quiet Claude ones from its
         // registry, Pi ones that only subscribed), and each folder's git branch.
         let known: HashSet<String> = st.sessions.all().iter().map(|s| s.origin.session_id.clone()).chain(st.items.iter().map(|i| i.origin.session_id.clone())).collect();
@@ -911,6 +922,7 @@ impl Hub {
             // Every answer of the last day, in brief: today's numbers count these, not the History list.
             "answers": st.answers,
             "sessions": with_registry_names(st.sessions.snapshot()),
+            "reviews": reviews,
             "crew": crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect()),
             "live": live,
             "branches": branches,
@@ -922,6 +934,56 @@ impl Hub {
             "usage": st.rates,
             "usage_file": crate::usage_file::read(),
         })
+    }
+
+    /// Review, tapped: type `text` into the lead now. Only one review at a time per lead (two typed into
+    /// a busy lead can run together as one message), so while it's busy this refuses and says with what;
+    /// you tap Review again once it's free. Cue never types a review you didn't just ask for.
+    pub fn review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
+        {
+            let mut st = self.store.lock().unwrap();
+            if st.review_sent.contains_key(exec) {
+                return Err("its lead is already reviewing it".into());
+            }
+            if let Some(why) = Self::lead_busy(&st, lead, now_ms()) {
+                return Err(format!("its lead is {why}: tap Review again when it's done"));
+            }
+            st.review_sent.insert(exec.to_string(), (lead.to_string(), now_ms()));
+            st.review_last.insert(lead.to_string(), now_ms());
+        }
+        self.changed(); // "in review" shows now; typing it in takes a moment
+        match self.send_to_session(lead, text, &[], false) {
+            Ok(_) => Ok(format!("Sent {text}")),
+            Err(e) => {
+                self.store.lock().unwrap().review_sent.remove(exec);
+                self.changed();
+                Err(e)
+            }
+        }
+    }
+
+    /// Why a lead can't take a review right now, or None when it's free: working (a review or anything
+    /// else), compacting, asking you something, or a review just typed in (it takes a moment to show as working).
+    fn lead_busy(st: &Store, lead: &str, now: u64) -> Option<String> {
+        let reviewing = || st.review_sent.iter().filter(|(_, (l, _))| l == lead).max_by_key(|(_, (_, at))| *at).map(|(e, _)| crate::leads::name_of(e));
+        let settling = now.saturating_sub(st.review_last.get(lead).copied().unwrap_or(0)) < REVIEW_SETTLE_MS;
+        if settling || st.sessions.state(lead).as_deref() == Some("working") {
+            return Some(reviewing().map_or_else(|| "busy".to_string(), |n| format!("reviewing {n}")));
+        }
+        if st.sessions.compacting_since(lead) > 0 {
+            return Some("compacting".into());
+        }
+        if st.items.iter().any(|i| i.origin.session_id == lead && i.kind != "waiting") {
+            return Some("asking you something".into());
+        }
+        None
+    }
+
+    /// For every screen: each executor whose review you sent, executor → "in review".
+    fn reviews_view(st: &mut Store) -> Value {
+        let now = now_ms();
+        st.review_sent.retain(|exec, (_, at)| now.saturating_sub(*at) < REVIEW_SHOWN_MS && crate::leads::is_done(exec));
+        Value::Object(st.review_sent.keys().map(|e| (e.clone(), json!("in review"))).collect())
     }
 
     /// Change one setting. History size applies right away (memory and file are trimmed).
@@ -1351,6 +1413,18 @@ fn describe(d: &Decision) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lead_just_handed_a_review_is_busy_until_it_settles() {
+        let mut st = Store::default();
+        let t = 1_000_000;
+        assert_eq!(Hub::lead_busy(&st, "L", t), None);
+        st.review_sent.insert("E1".into(), ("L".into(), t));
+        st.review_last.insert("L".into(), t);
+        assert_eq!(Hub::lead_busy(&st, "L", t + 1000), Some("reviewing E1".into()));
+        assert_eq!(Hub::lead_busy(&st, "L", t + REVIEW_SETTLE_MS + 1), None);
+        assert_eq!(Hub::lead_busy(&st, "OTHER", t + 1000), None);
+    }
 
     #[test]
     fn split_turn_shows_the_answer_and_keeps_the_hook_follow_up_aside() {

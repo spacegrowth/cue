@@ -107,7 +107,9 @@ function cardCrew(sid) {
 /** An executor that's done its packet and is waiting on its lead's review. */
 const reported = (status) => status === "reported" || status === "idle";
 /** A relay / pi-lead button: Review types the command into the lead; Diff opens a page. */
-const crewBtn = (sid, action, label, title, primary = false, short = "") => `<button class="btn ${primary ? "primary" : ""}" data-crew="${action}" data-crew-sid="${esc(sid)}" title="${esc(title)}">${short ? lbl(label, short) : esc(label)}</button>`;
+const crewBtn = (sid, action, label, primary = false, short = "") => `<button class="btn ${primary ? "primary" : ""}" data-crew="${action}" data-crew-sid="${esc(sid)}">${short ? lbl(label, short) : esc(label)}</button>`;
+/** "in review" once you've sent an executor's review (Cue tells every screen), else "". */
+const reviewWord = (sid) => state.reviews?.[sid] || "";
 /** relay's auto mode beside a lead's LEAD tag: a switch in its chat (`live`: click to flip it),
  *  and on cards and rows just "auto" while it's on. In the chat, hover says what it means. */
 const autoToggle = (sid, m, live = false) => {
@@ -130,8 +132,8 @@ async function crewAct(sid, action) {
   try {
     toast(await invoke("crew_action", { sessionId: sid, action }));
     // The review happens in the lead: show it there, so its answer arrives in front of you.
-    const lead = crewOf(sid)?.lead;
-    if (action === "review" && lead && sessionOf(lead) && active?.sid !== lead) setActive(null, lead);
+    const lead = action === "review" ? crewOf(sid)?.lead : null;
+    if (lead && sessionOf(lead) && active?.sid !== lead) setActive(null, lead);
   } catch (e) { toast(`Couldn't ${action}: ${e}`); }
 }
 // ---------- teams: a lead and its executors, shown as one ----------
@@ -149,6 +151,9 @@ function teamOf(sid) {
 /** Something an executor asks you (a permission or a question): you, not its lead, answer that. */
 const asksOf = (sid) => state.items.find((i) => i.session_id === sid && i.kind !== "waiting");
 /** An executor's state, in a word or two. */
+/** What a working session is doing right now ("Running: cargo test"), from its transcript, and since
+ *  when: Cue reads it every few seconds, so it follows the agent step by step. Empty when unknown. */
+const liveStep = (sid) => { const s = sessionOf(sid); return s?.state === "working" && s.doing ? { what: s.doing, at: s.doing_ms } : null; };
 function exState(e) {
   if (asksOf(e.session_id)) return { word: "needs you", cls: "need" };
   if (reported(e.status)) return { word: "done", cls: "done" };
@@ -176,9 +181,13 @@ function packetCard(sid) {
   const lead = esc(m.lead_name || "its lead");
   let st, acts = "";
   if (reported(m.status)) {
-    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done, waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
-    acts = crewBtn(sid, "diff", "Diff", "Its staged changes, in your browser") + (m.lead_armed ? crewBtn(sid, "review", "Review in lead", `Types a review command for it into ${m.lead_name || "its lead"}`, true) : "");
-  } else st = m.status === "busy" ? `Working on it · when it reports, ${lead} reviews it` : esc(exState(m).word || m.status || "");
+    const asked = reviewWord(sid);
+    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked ? `${asked} with ${lead}` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
+    acts = crewBtn(sid, "diff", "Diff") + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
+  } else {
+    const now = liveStep(sid);
+    st = now ? `${esc(now.what)} · when it reports, ${lead} reviews it` : m.status === "busy" ? `Working on it · when it reports, ${lead} reviews it` : esc(exState(m).word || m.status || "");
+  }
   const gone = m.lead_armed === false ? `<div class="crew-warn">Its lead (${lead}) isn't running, so ${reported(m.status) ? "its report reaches no one" : "no one will review this"}.</div>` : "";
   return `<div class="team-card"><div class="tc-h">PACKET${m.packet ? ` ${m.packet}` : ""}</div>${m.goal ? `<div class="tc-goal">${esc(m.goal.charAt(0).toUpperCase() + m.goal.slice(1))}</div>` : ""}
     <div class="tc-st">${st}</div>${gone}${acts ? `<div class="tc-acts">${acts}</div>` : ""}</div>`;
@@ -190,7 +199,7 @@ function leadCard(sid) {
   const rows = (m.executors || []).flatMap((e) => {
     const ask = asksOf(e.session_id);
     if (ask) return [`<div class="tc-row need" data-big="${esc(ask.id)}" role="button"><span><b>${esc(e.name)}</b> ${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></span>${ask.kind === "permission" ? `<span class="tc-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></span>` : ""}</div>`];
-    if (reported(e.status)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}</span><span class="tc-acts">${crewBtn(e.session_id, "diff", "Diff", "Its staged changes, in your browser")}${crewBtn(e.session_id, "review", "Review", `Types a review command for ${e.name} into this lead`, true)}</span></div>`];
+    if (reported(e.status) && !reviewWord(e.session_id)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}</span><span class="tc-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review", true)}</span></div>`];
     return [];
   });
   // Its plan: what it sends next, and how many wait. (Auto mode is the switch beside its LEAD tag.)
@@ -208,10 +217,11 @@ function teamTree(lead) {
   for (const e of ex) {
     const ask = asksOf(e.session_id), on = e.session_id === openSid ? "on" : "";
     if (ask) rows.push(`<div class="tn need ${on}" data-big="${esc(ask.id)}"><div class="tn-t"><b>${esc(e.name)}</b><span class="tn-need">needs you</span></div><div class="tn-x">${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></div>${ask.kind === "permission" ? `<div class="tn-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></div>` : ""}</div>`);
-    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, waiting for review</span></div><div class="tn-acts">${crewBtn(e.session_id, "diff", "Diff", "Its staged changes, in your browser")}${crewBtn(e.session_id, "review", "Review in lead", `Types a review command for ${e.name} into its lead`, true)}</div></div>`);
+    else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span></div></div>`);
+    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, waiting for review</span></div><div class="tn-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
     else busy.push(e);
   }
-  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b><span class="tn-x">${esc(exState(e).word)}</span></div></div>`;
+  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div></div>`;
   // A big team: five working lines, then a count.
   const more = busy.length > TREE_BUSY ? [`<div class="tn"><div class="tn-t tn-x">+${busy.length - TREE_BUSY} more working</div></div>`] : [];
   return `<div class="team-tree">${[...rows, ...busy.slice(0, TREE_BUSY).map(line), ...more].join("")}</div>`;
@@ -1990,7 +2000,7 @@ function svClosable(r) {
 function svActs(r) {
   const m = r.crew || crewOf(r.sid), acts = [];
   if (r.it) acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`);
-  if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff", "Open its staged changes in your browser") + (m.lead_armed ? crewBtn(r.sid, "review", "Review", `Type a review command for it into ${m.lead_name || "its lead"}`, true) : ""));
+  if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff") + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
   if (!r.it && !r.quiet && !r.ghost) acts.push(`<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>`);
   if (!r.ghost) acts.push(`<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}" title="Go to its terminal tab">Tab</button>`);
   if (svClosable(r)) acts.push(closeBtn(r.sid));
