@@ -229,6 +229,9 @@
       }, 80);
       if (/choose=1/.test(q)) setTimeout(() => document.querySelector('.active-pane [data-pick="0:1"]')?.click(), 80);
       if (/typelong=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.focus(); ta.value = "line one\nline two\nline three\nline four\nline five"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+      // ?click=<selector>: click that element once the window is drawn (e.g. a card at the bottom of a column).
+      const clickQ = new URLSearchParams(q).get("click");
+      if (clickQ) setTimeout(() => document.querySelector(clickQ)?.click(), 700);
       if (/starred=1/.test(q)) setTimeout(() => document.querySelector("[data-star-chip]")?.click(), 600);
       // ?slash=re: type "/re" into the Active chat's box (the "/" menu); ?slash=reomte%20x: an unknown command.
       const slashQ = new URLSearchParams(q).get("slash");

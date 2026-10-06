@@ -348,6 +348,20 @@ function barLabels(sid) {
 /** Under the big bar: what the stripes mean and which end is now, so you needn't hover. */
 const barKey = () => `<div class="bar-key"><span>30 min ago</span><span class="grow"></span><span><i class="sw w"></i>working</span><span><i class="sw z"></i>waiting on you</span><span class="grow"></span><span>now</span></div>`;
 
+/** The selected card in each list (Waiting, Sessions, Starred, Recently answered), by list, with whether
+ *  it shows in full inside the list's scrolling area. */
+function selectedCards() {
+  const out = new Map();
+  for (const el of document.querySelectorAll(".working.on, .nrow.on, .tl.on")) {
+    const list = el.closest(".sec, .col");
+    let sc = el.parentElement;
+    while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+    const a = el.getBoundingClientRect(), b = (sc && sc !== document.body ? sc : document.documentElement).getBoundingClientRect();
+    out.set(list?.className || "", { el, full: a.top >= b.top - 1 && a.bottom <= b.bottom + 1 });
+  }
+  return out;
+}
+
 let toastTimer;
 // ---------- selecting text: redraws wait while you drag, and letting go copies it ----------
 let mouseDown = false, heldDraw = false, selBefore = "", copied = null;   // copied: { at, words } for the pill   // selBefore: what was selected when you pressed
@@ -2449,6 +2463,7 @@ function renderMain() {
   const caret = focusKey || focusId ? [focused.selectionStart, focused.selectionEnd] : null;
   const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .ap-chat, .sec-body, .card.recent, .hist, .hdetail";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
+  const onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
 
@@ -2474,11 +2489,16 @@ function renderMain() {
     const body = document.querySelector(".convo-body"), hit = body?.querySelector(".cv-hit");
     if (hit) hit.scrollIntoView({ block: "center" }); else if (body) body.scrollTop = body.scrollHeight;
   }
+  // The selected card, cut off at a list's edge, comes into full view: when you pick it, when it moves to
+  // another list (you replied: it went from Waiting to Sessions), or when it outgrew the view while in full
+  // view (a line added as it works). Not when you scrolled it part-way out yourself. At once, not smoothly:
+  // the next redraw (every few seconds while sessions work) would stop a glide part-way. It only moves a little.
   const picked = `${active?.id}|${active?.sid}`;
-  if (picked !== revealed) {
-    revealed = picked;
-    const smooth = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-    document.querySelectorAll(".working.on, .nrow.on").forEach((el) => el.scrollIntoView({ block: "nearest", behavior: smooth }));
+  const repick = picked !== revealed;
+  revealed = picked;
+  for (const [list, { el, full }] of selectedCards()) {
+    const was = onBefore.get(list);
+    if (!full && (repick || !was || was.full)) el.scrollIntoView({ block: "nearest" });
   }
   // Something new in Waiting rises in from below with a brief ring, once.
   document.querySelectorAll(".nrow[data-big]").forEach((el) => {
