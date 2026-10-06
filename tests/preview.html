@@ -16,6 +16,8 @@
     window.onerror = (m, src, l, c) => { document.body.insertAdjacentHTML("beforeend", `<pre style="position:fixed;top:0;left:0;z-index:99;color:red;background:#fff">${m} @${l}:${c}</pre>`); };
     (() => {
       const q = new URLSearchParams(location.search);
+      // ?parked=det,sec: those sessions start in Need to decide.
+      try { localStorage.setItem("cue.parked", JSON.stringify(q.get("parked") ? q.get("parked").split(",") : [])); } catch {}
       const now = Date.now(), M = 60000;
       const seg = (kind, a, b) => ({ kind, start_ms: now - a * M, end_ms: b == null ? null : now - b * M });
       const sess = (sid, project, harness, st, since, segments, prompt = "") => ({ session_id: sid, project, harness, cwd: `/Users/me/code/${project}`, state: st, since_ms: now - since * M, prompt, segments });
@@ -136,7 +138,7 @@
             if (i < 0) return false;
             const [it] = state.items.splice(i, 1);
             const ss = state.sessions.find((x) => x.session_id === it.session_id);
-            if (ss && cmd !== "dismiss") { ss.state = "working"; ss.since_ms = Date.now(); ss.thread = [...(ss.thread || []), { role: "you", text: cmd === "reply" ? args.text : args.decision.behavior === "allow" ? "allowed" : "denied", at_ms: Date.now(), images: [] }]; }
+            if (ss && cmd !== "dismiss") { ss.state = "working"; ss.since_ms = Date.now(); if (cmd === "reply") ss.prompt = args.text; ss.thread = [...(ss.thread || []), { role: "you", text: cmd === "reply" ? args.text : args.decision.behavior === "allow" ? "allowed" : "denied", at_ms: Date.now(), images: [] }]; }
             if (cmd !== "dismiss") state.history.unshift({ ...it, status: "answered", outcome: cmd === "reply" ? `replied — “${args.text}”` : args.decision.behavior, resolved_ms: Date.now() });
             setTimeout(emit, 30);
             return cmd === "reply" ? "sent via tmux pane %1" : true;
@@ -151,7 +153,7 @@
             if (args.sessionId !== "relay") return { version: 0, turns: [] };
             const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });
             const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
-            return { version: 1, meta: { model: "claude-opus-5-5", context: 164000, window: 200000, cache_pct: 92, cost: 1.32 }, turns: [
+            return { version: 1, meta: { model: "claude-opus-5-5", context: 164000, window: 200000, cost: 1.32 }, turns: [
               { at_ms: now - 25 * M, more: 0, items: [st("a1", "read", "Read", "usage.ts", "212 lines", 24.8), st("a2", "search", "Searched", "“tokens_used”", "6 files", 24.6), st("a3", "edit", "Edited", "board.ts", "+48 −3", 22), say("Done with the parser. Sample output:", 18)] },
               { at_ms: now - 17 * M, more: 0, items: [say("Adding the footer total and the list output.", 16.9), st("b1", "edit", "Edited", "board.ts", "+12 −1", 16.5), st("b2", "edit", "Edited", "list.ts", "+9 −0", 16), st("b3", "run", "Ran", "npm test", "exit 1", 15, { bad: true }), say("One test expected the old column order. Updating it.", 14.8), st("b4", "read", "Read", "board.test.ts", "140 lines", 14.6), st("b5", "edit", "Edited", "board.test.ts", "+2 −2", 14), st("b6", "run", "Ran", "npm test", "Tests: 41 passed", 12.5), say(relayMsg, 11)] },
             ] };
@@ -201,6 +203,9 @@
       const sessQ = new URLSearchParams(q).get("sess");
       if (sessQ) document.querySelector(`[data-session="${sessQ}"]`)?.click();
       if (/upop=1/.test(q)) document.querySelector("[data-usage=meter], [data-usage=model], [data-usage=out]")?.dataset.usage === "meter" && document.querySelector("[data-usage=meter]").click();
+      // ?detail=<id>: open that entry from Recently answered.
+      const detailQ = new URLSearchParams(q).get("detail");
+      if (detailQ) document.querySelector(`.tl[data-detail="${detailQ}"]`)?.click();
       const pickId = new URLSearchParams(q).get("pick");
       if (pickId) document.querySelector(`[data-big="${pickId}"]`)?.click();
       const chipQ = new URLSearchParams(q).get("chip");

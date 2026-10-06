@@ -72,14 +72,13 @@ pub struct Turn {
 }
 
 /// What the chat's tab shows about a session, from its log: the model, how full its context is (the
-/// latest reply's tokens of the model's window), how much of that came from the cache, and the cost so far
+/// latest reply's tokens of the model's window), and the cost so far
 /// where the agent logs it (Pi; Claude Code's comes from its status line instead).
 #[derive(Clone, Default, Serialize, PartialEq)]
 pub struct Meta {
     model: String,
     context: u64,
     window: u64,
-    cache_pct: Option<u8>,
     cost: Option<f64>,
 }
 
@@ -178,7 +177,7 @@ impl Feed {
         }
     }
 
-    /// The model, context, cache and cost from one raw log entry (each agent logs them its own way).
+    /// The model, context and cost from one raw log entry (each agent logs them its own way).
     /// Returns whether they changed.
     fn observe(&mut self, e: &Value) -> bool {
         let before = self.meta.clone();
@@ -193,7 +192,6 @@ impl Feed {
                         let all = fresh + read + wrote;
                         if all > 0 {
                             m.context = all;
-                            m.cache_pct = Some((read * 100 / all) as u8);
                         }
                         let model = msg.get("model").and_then(Value::as_str).unwrap_or("");
                         if !model.is_empty() && !model.starts_with('<') {
@@ -217,7 +215,6 @@ impl Feed {
                         let input = n(last.and_then(|l| l.get("input_tokens")));
                         if input > 0 {
                             m.context = input;
-                            m.cache_pct = Some((n(last.and_then(|l| l.get("cached_input_tokens"))) * 100 / input) as u8);
                         }
                         let w = n(info.get("model_context_window"));
                         if w > 0 {
@@ -240,7 +237,6 @@ impl Feed {
                         let all = fresh + read + wrote;
                         if all > 0 {
                             m.context = all;
-                            m.cache_pct = Some((read * 100 / all) as u8);
                         }
                         if let Some(c) = u.pointer("/cost/total").and_then(Value::as_f64) {
                             m.cost = Some(m.cost.unwrap_or(0.0) + c);

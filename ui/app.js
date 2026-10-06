@@ -655,6 +655,8 @@ function box(key, placeholder, label, sendAttrs, images) {
     <button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>`;
 }
 // A finished turn's box is the session's box: one draft per session, whichever card shows it.
+/** What the Active pane shows, in the drop-down lists (where lime is the keyboard highlight). */
+const VIEWING = `<span class="viewing-tag">viewing</span>`;
 const field = (it, placeholder, label) => box(it.kind === "waiting" ? `s:${it.session_id}` : it.id, placeholder, label, `data-act="send" data-id="${esc(it.id)}"`, it.kind === "waiting");
 
 function requestBody(it) {
@@ -720,7 +722,7 @@ const outcomeText = (i) => String(i.outcome || i.status || "").replace(/\s+—\s
 const outcomeClass = (i) => (/^(allowed|answered|replied)/.test(i.outcome) ? "ok" : /^denied/.test(i.outcome) ? "no" : "");
 function recentEntry(i) {
   const fresh = now() - (i.resolved_ms || 0) < 8000 ? "fresh" : "";
-  return `<div class="tl ${outcomeClass(i)} ${fresh} ${active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
+  return `<div class="tl ${outcomeClass(i)} ${fresh} ${!quietOpen && active?.exact && active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
     <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}<span>${esc(agentName(i.harness))}</span><span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
@@ -1110,7 +1112,7 @@ function prettyModel(id) {
   return m.split("-").map((w) => /^gpt$/i.test(w) ? "GPT" : /^deepseek$/i.test(w) ? "DeepSeek" : /^v\d/i.test(w) ? w.toUpperCase() : w[0] ? w[0].toUpperCase() + w.slice(1) : w)
     .join(" ").replace(/^GPT (\d)/, "GPT-$1");
 }
-/** The open session's model, how full its context is, how much came from the cache, and its cost so far
+/** The open session's model, how full its context is, and its cost so far
  *  (where the agent logs it): grey text on the chat's title line, after Claude's title. From its log. */
 function metaInline(sid) {
   const m = sid && stepFeeds.get(sid)?.meta;
@@ -1119,11 +1121,11 @@ function metaInline(sid) {
   const lvl = pct === null ? "" : pct >= 95 ? "full" : pct >= 80 ? "high" : "";
   const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 2 : 0)}M` : `${Math.round(n / 1000)}k`);
   const money = (c) => `$${c >= 100 ? Math.round(c) : c.toFixed(2)}`;
-  const tip = [m.model && `Model: ${m.model}`, m.window && `Context: ${k(m.context)} of ${k(m.window)} tokens (${pct}%)`, m.cache_pct != null && `Cache: ${m.cache_pct}% of the latest reply's input came from the cache`, m.cost != null && `Cost so far: ${money(m.cost)}`].filter(Boolean).join("\n");
+  const tip = [m.model && `Model: ${m.model}`, m.window && `Context: ${k(m.context)} of ${k(m.window)} tokens (${pct}%)`, m.cost != null && `Cost so far: ${money(m.cost)}`].filter(Boolean).join("\n");
   // Just compacted: its log's last count is from before, so don't show it until a new reply brings a fresh one.
   const s = sessionOf(sid);
   const freed = s?.compacted_ms && s.state !== "working";
-  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}">${pct}% context</span>` : "", m.cache_pct != null ? `cache ${m.cache_pct}%` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}">${pct}% context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
   // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
   const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}" title="Summarize the conversation to free up context">Compact</button>` : "";
   return `<span class="ap-meta" title="${esc(tip)}">${parts.join(" · ")}</span>${chip}`;
@@ -1213,13 +1215,12 @@ function laterRow({ sid, s, it }) {
   const what = it ? "your turn" : s.state === "working" ? "working" : "idle";
   const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${pinBtn(sid)}<button class="x-clear" data-park="${esc(sid)}:0" title="Back to Waiting" aria-label="Back to Waiting">↩</button></div>
+    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${pinBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
     ${cardCrew(sid)}
     ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}</div>`;
 }
 /** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
-function needRow(it, ghost) {
-  const on = active?.id === it.id ? "on" : "";
+function needRow(it, ghost, open = false) {
   if (ghost) {
     const h = state.history.find((x) => x.id === it.id);
     return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}</div>
@@ -1231,7 +1232,7 @@ function needRow(it, ghost) {
   else if (q.length === 1 && !q[0].multiSelect && (q[0].options || []).length <= 4) quick = `<div class="nrow-acts wrap">${q[0].options.map((o, oi) => `<button class="btn" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(o.label)}</button>`).join("")}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
-  return `<div class="nrow ${on} ${it.kind === "waiting" ? "turn" : "ask"}" data-big="${esc(it.id)}">
+  return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"}" data-big="${esc(it.id)}">
     <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${pinBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}</div>`;
@@ -1338,26 +1339,31 @@ const idleNote = (s) => s.state === "working" ? "" : s.state === "limited" ? lim
 // The right column: Sessions takes what it needs (up to half), Recently answered scrolls in the rest.
 const RECENT = 30;
 function boardView() {
+  if (!quietOpen) current();   // settles what Active shows before the lists mark it
   const { working, later } = groups();
   const needs = needsYou();
+  // What the Active pane shows stays where it is in its list, lit up (lime): opening
+  // something never moves a row, so the lists don't shift under your pointer.
+  const openSid = quietOpen || active?.sid || null;
+  const isOpen = (sid) => !!openSid && sid === openSid;
   const laterSec = later.length ? `<div class="col-sub later-head">NEED TO DECIDE · ${later.length}</div>${later.map(laterRow).join("")}` : "";
   const live = new Set(needs.map((i) => i.id));
   // A ghost fades in once: every later render (they come often while sessions work) draws it still.
   const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
-  const needRows = [...needs, ...ghostRows].sort((a, b) => a.created_ms - b.created_ms).map((i) => needRow(i, i._ghost)).join("");
+  const needRows = [...needs, ...ghostRows].sort((a, b) => a.created_ms - b.created_ms).map((i) => needRow(i, i._ghost, isOpen(i.session_id))).join("");
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
-  const card = (s) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${active?.sid === s.session_id && !isPending(findItem(active.id)) ? "on" : ""}" data-session="${esc(s.session_id)}">
+  const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
       <div class="card-head">${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
       ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing"><span class="dot-live"></span>Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
   const pins = state.sessions.filter((s) => pinnedIds().has(s.session_id));
-  const workCol = (pins.length ? `<div class="col-sub">PINNED · ${pins.length}</div>${pins.map(card).join("")}` : "")
-    + (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
-    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
-    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
+  const workCol = (pins.length ? `<div class="col-sub">PINNED · ${pins.length}</div>${pins.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
+    + (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
+    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
+    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     || `<div class="quiet-line">No other sessions.</div>`;
 
   const recentList = (n) => state.history.length
@@ -1654,7 +1660,8 @@ function livePop(rows) {
       : !r.quiet ? `<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>` : "";
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
-    return `<div class="lv-row ${sel}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip || r.quiet ? `title="${esc(tip || "Go to its tab")}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
+    const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip || r.quiet ? `title="${esc(tip || "Go to its tab")}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -1820,8 +1827,9 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const leadTag = crew ? `<span class="role lead" title="${crew.plugin === "pilead" ? "pi-lead" : "relay"} lead${crew.auto ? " · auto mode: proceeds on routine steps without asking" : ""}">LEAD</span>` : "";
   // The whole tile opens it: its chat in Active, or (quiet: nothing sent to Cue yet) its terminal tab.
   const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet ? ` title="See what it's doing (it started before Cue was connected)"` : ""}`;
-  return `<div class="sx-item ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" data-cut title="${esc(name)}">${esc(name)}</span>${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+  const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
+  return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" data-cut title="${esc(name)}">${esc(name)}</span>${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");
@@ -2059,8 +2067,29 @@ function applyTheme() {
   else document.documentElement.dataset.theme = mode;
 }
 
+/** Cards that move between redraws (back into Waiting, into Need to decide, or up to
+ *  close a gap) glide from where they were instead of jumping, so you can follow where they went.
+ *  Keyed by what they show: an ask or turn by its id, a session card by its session. */
+const FLIP_SEL = ".board .col:not(.main) .nrow[data-big], .board .col:not(.main) .nrow[data-session], .board .col:not(.main) .working[data-session]";
+const flipKey = (el) => (el.dataset.big ? `i:${el.dataset.big}` : `s:${el.dataset.session}`);
+function flipRects() {
+  const m = new Map();
+  for (const el of document.querySelectorAll(FLIP_SEL)) m.set(flipKey(el), el.getBoundingClientRect());
+  return m;
+}
+function flipPlay(from) {
+  if (!from.size || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const el of document.querySelectorAll(FLIP_SEL)) {
+    const was = from.get(flipKey(el));
+    if (!was) continue;
+    const now = el.getBoundingClientRect(), dx = was.left - now.left, dy = was.top - now.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
+}
 function renderMain() {
   const focused = document.activeElement;
+  const flipFrom = flipRects();
   const focusKey = focused?.dataset?.text;
   const focusId = !focusKey && focused?.matches?.("input[id]") ? focused.id : null;   // e.g. a quick phrase field
   const caret = focusKey || focusId ? [focused.selectionStart, focused.selectionEnd] : null;
@@ -2080,6 +2109,7 @@ function renderMain() {
   </div>${updateCard()}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}`;
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
+  flipPlay(flipFrom);
   placeForward();
   saveSpot();
   // A new selection whose card is scrolled out of its column (under Recently answered, or above):
@@ -2609,9 +2639,12 @@ function bindMain() {
       if (view === "history") { histOpen = null; return renderMain(); }
       // Esc twice on a working session stops it (once only arms it, so a stray Esc can't).
       const s = !sheet && !menuFor && !redirectFor ? sessionOf(active?.sid) : null;
+      // Stopping it is a pause to say something else, so the cursor stays in (or goes to) its box.
       if (s?.state === "working") {
         if (Date.now() - escArmed < 1500) { escArmed = 0; interrupt(s.session_id); }
         else { escArmed = Date.now(); toast(`Esc again to stop ${s.project}`); }
+        renderMain();
+        return focusComposer();
       }
       sheet = null; menuFor = redirectFor = null; document.activeElement?.blur(); return renderMain();
     }

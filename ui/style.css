@@ -392,7 +392,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .nrow-done { font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nrow-done.ok { color: var(--accent); }
 .nrow-done.no { color: var(--deny); }
-.working.on { border-style: solid; border-color: var(--on-bg); }
+/* The session the Active pane shows, where it's listed in Sessions: a solid lime border, not a fill. */
+.working.on, .working.on:hover { border: 1px solid var(--sel); box-shadow: inset 0 0 0 1px var(--sel); opacity: 1; }
+/* In the drop-down the lime fill is the keyboard highlight, so the open session gets a tag instead. */
+.viewing-tag { flex: none; margin: 0 6px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--ink); color: var(--panel); }
 .tl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .queued-note { margin-top: 6px; font-size: 12px; color: var(--on-bg); }
 
@@ -803,14 +806,13 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .sx-crew-h.gone, .sx-crew-h.gone .sx-crew-n { color: var(--deny); }
 .sx-crew-n { font-weight: 500; color: var(--muted); white-space: nowrap; }
 
-/* Recently answered as a list: a hairline between entries, and the one open in Active filled lime like
-   every other selection (a dashed outline already means "working" in Cue). */
+/* Recently answered as a list: a hairline between entries, and the one open in Active outlined in lime
+   (a border, not a fill: a filled lime row is the open session, and an answer is a past event). Solid,
+   never dashed: dashed means "working" in Cue. */
 .recent .tl { border-radius: 8px; }
 .recent .tl + .tl::after { content: ""; position: absolute; top: 0; left: 10px; right: 10px; height: 1px; background: var(--line); }
 .recent .tl.on::after, .recent .tl.on + .tl::after { display: none; }
-.recent .tl.on, .recent .tl.on:hover { background: var(--sel); color: var(--on-sel); }
-.recent .tl.on .tl-top, .recent .tl.on .tl-out { color: color-mix(in srgb, var(--on-sel) 72%, transparent); }
-.recent .tl.on .tl-top span[style] { color: var(--on-sel) !important; }
+.recent .tl.on, .recent .tl.on:hover { background: none; box-shadow: inset 0 0 0 2px var(--sel); }
 
 /* History: filters (kind chips + session picker), and a session's answers folded into one row. */
 .hfilter { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
