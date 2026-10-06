@@ -158,7 +158,7 @@ impl Hub {
     /// (it can't answer it: a sandboxed command asking for network access). A card that sends you to
     /// the terminal, naming the tool call it's about (the newest one still without a result). It goes
     /// once that call gets its result, or the session reports anything else.
-    fn terminal_ask(&self, origin: Origin, message: String) {
+    fn terminal_ask(&self, origin: Origin, message: String, notify: bool) {
         let sid = origin.session_id.clone();
         let path = origin.transcript_path.clone();
         let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
@@ -188,7 +188,7 @@ impl Hub {
             (id, (head, body))
         };
         self.changed();
-        if crate::config::flag("/notify/decisions") {
+        if notify && crate::config::flag("/notify/decisions") {
             self.notify(&id, &title.0, &title.1, "");
         }
     }
@@ -204,6 +204,14 @@ impl Hub {
     /// Cue's state sees it.
     pub fn set_later(&self, session_id: &str, on: bool) {
         let changed = self.store.lock().unwrap().sessions.set_later(session_id, on);
+        if changed {
+            self.changed();
+        }
+    }
+
+    /// Star a session (you're following it), or unstar it. Kept with the session, like Later.
+    pub fn set_starred(&self, session_id: &str, on: bool) {
+        let changed = self.store.lock().unwrap().sessions.set_starred(session_id, on);
         if changed {
             self.changed();
         }
@@ -274,7 +282,7 @@ impl Hub {
         }
         // A prompt showing in its terminal that never reached Cue (a sandboxed command's network access).
         if event == "terminal_ask" {
-            self.terminal_ask(origin, message);
+            self.terminal_ask(origin, message, true);
             return;
         }
         // Anything else from the session: it got past such a prompt.
@@ -839,13 +847,13 @@ impl Hub {
         self.changed();
     }
 
-    /// An older session Cue just resumed: known at once, waiting for you, with its name and the last
-    /// few messages of its conversation so Active shows where it left off.
-    pub fn resumed(&self, origin: Origin, name: &str, recent: &[Ctx]) {
+    /// An older session Cue just resumed (or one it takes in): known at once, waiting for you (or working),
+    /// with its name and the last few messages of its conversation so Active shows where it left off.
+    pub fn resumed(&self, origin: Origin, name: &str, recent: &[Ctx], working: bool) {
         {
             let mut st = self.store.lock().unwrap();
             let sid = origin.session_id.clone();
-            st.sessions.mark(&origin, "waiting", None);
+            st.sessions.mark(&origin, if working { "working" } else { "waiting" }, None);
             if !name.is_empty() {
                 st.sessions.set_name(&sid, name);
             }
@@ -854,6 +862,77 @@ impl Hub {
             }
         }
         self.changed();
+    }
+
+    /// Open a live Claude session Cue hasn't heard from yet (one you resumed in a terminal after a restart,
+    /// say) like any other: its terminal from its process, its last messages from its transcript. Its
+    /// hooks take over from the next thing it does.
+    pub fn adopt(&self, session_id: &str) -> Result<(), String> {
+        if self.store.lock().unwrap().sessions.origin(session_id).is_some() {
+            return Ok(());
+        }
+        let q = crate::live::claude().into_iter().find(|q| q.session_id == session_id).ok_or("that session is gone")?;
+        let origin = crate::live::origin_of(&q);
+        let path = origin.transcript_path.clone();
+        let recent = if path.is_empty() { vec![] } else { crate::transcript::recent_context(&path, 6) };
+        // Its name comes from Claude Code's registry, as for every session.
+        self.resumed(origin.clone(), "", &recent, q.status == "busy");
+        // In Waiting as if Cue had been there all along (no notification: it isn't new). A prompt open in its
+        // terminal (one Cue missed): a card that sends you there.
+        if q.status == "waiting" {
+            let what = if q.waiting_for.is_empty() { "It's asking you something in its terminal".to_string() } else { format!("Waiting in its terminal: {}", q.waiting_for) };
+            self.terminal_ask(origin, what, false);
+        } else if q.status == "idle" && crate::leads::resolve_driver(session_id, "").is_empty() {
+            // Its last turn ended with its reply and nothing from you since: your turn. (One a lead drives
+            // is the lead's to pick up.)
+            if let Some((at, reply)) = (!path.is_empty()).then(|| transcript::turn_ended(&path)).flatten() {
+                self.your_turn_since(origin, reply, at);
+            }
+        }
+        Ok(())
+    }
+
+    /// A finished turn Cue missed, as a "your turn" card dated when it ended.
+    fn your_turn_since(&self, origin: Origin, reply: String, at: u64) {
+        let sid = origin.session_id.clone();
+        {
+            let mut st = self.store.lock().unwrap();
+            if st.items.iter().any(|i| i.origin.session_id == sid) {
+                return;
+            }
+            st.sessions.mark(&origin, "waiting", None);
+            let thread = st.sessions.thread(&sid);
+            let mut it = Self::new_item(&mut st, "waiting", origin);
+            it.thread = thread;
+            it.context = vec![Ctx { role: "assistant".into(), text: reply.clone() }];
+            it.message = reply;
+            it.created_ms = at;
+            st.items.push(it);
+        }
+        self.changed();
+    }
+
+    /// Take in every live Claude session Cue doesn't know yet: at startup (sessions you resumed after a
+    /// restart, or started while Cue was closed) and whenever a new one appears, so each shows on the
+    /// Board with its chat from the start, not only once it has sent Cue something. Also drops a card for
+    /// a prompt in its terminal once you've answered it there.
+    pub fn adopt_all(&self) {
+        let live = crate::live::claude();
+        let (fresh, answered): (Vec<String>, Vec<String>) = {
+            let st = self.store.lock().unwrap();
+            let fresh = live.iter().map(|q| q.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_none()).collect();
+            // A "terminal" card whose prompt is gone: Claude Code says it stopped waiting after the card came.
+            let answered = live.iter().filter(|q| q.status != "waiting")
+                .filter(|q| st.items.iter().any(|i| i.kind == "terminal" && i.origin.session_id == q.session_id && q.since_ms > i.created_ms))
+                .map(|q| q.session_id.clone()).collect();
+            (fresh, answered)
+        };
+        for sid in answered {
+            self.clear_terminal_asks(&sid);
+        }
+        for sid in fresh {
+            let _ = self.adopt(&sid);   // gone meanwhile: nothing to take in
+        }
     }
 
     /// Whether a session can be closed from Cue without losing anything: not while it's working
@@ -907,6 +986,7 @@ impl Hub {
             cwd: o.cwd.clone(),
             pid: o.agent_pid.unwrap_or(0),
             status: "idle".into(),
+            waiting_for: String::new(),
             since_ms: *at,
         });
         let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id)).collect();
@@ -1471,6 +1551,24 @@ mod tests {
     }
 
     #[test]
+    fn a_turn_cue_missed_waits_from_when_it_ended_once() {
+        let dir = std::env::temp_dir().join(format!("cue-missed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "s3".into(), harness: "claude".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.your_turn_since(origin.clone(), "Done: header moved.".into(), 1_000);
+        hub.your_turn_since(origin, "Done: header moved.".into(), 1_000);
+        let items = hub.pending();
+        assert_eq!(items.len(), 1, "one card, however often it's seen");
+        assert_eq!((items[0].kind.as_str(), items[0].created_ms, items[0].message.as_str()), ("waiting", 1_000, "Done: header moved."));
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn later_is_kept_with_the_session_and_its_finished_turns_still_wait() {
         let dir = std::env::temp_dir().join(format!("cue-later-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1492,6 +1590,14 @@ mod tests {
         assert_eq!(hub.pending().iter().filter(|i| i.kind == "waiting").count(), 1);
         hub.set_later("s2", false);
         assert_eq!(later_ms(&hub), 0);
+        let starred_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.starred_ms).unwrap();
+        hub.set_starred("s2", true);
+        let at = starred_ms(&hub);
+        assert!(at > 0);
+        hub.set_starred("s2", true);
+        assert_eq!(starred_ms(&hub), at, "starring it again keeps when it was first starred");
+        hub.set_starred("s2", false);
+        assert_eq!(starred_ms(&hub), 0);
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

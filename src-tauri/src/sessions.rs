@@ -79,6 +79,10 @@ pub struct Session {
     /// wait under Need to decide without a notification, until you reply or put it back.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub later_ms: u64,
+    /// You starred it (you're following it): since when; 0 = it isn't. Starred sessions come first
+    /// wherever Cue lists them.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub starred_ms: u64,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -116,6 +120,7 @@ impl Sessions {
             compacting_ms: 0,
             compacted_ms: 0,
             later_ms: 0,
+            starred_ms: 0,
             trust_ms: 0,
             turn_base: None,
             changes: None,
@@ -393,6 +398,16 @@ impl Sessions {
             return false;
         }
         s.later_ms = if on { crate::model::now_ms() } else { 0 };
+        true
+    }
+
+    /// Star it, or unstar it (`on` false). True if that changed anything.
+    pub fn set_starred(&mut self, session_id: &str, on: bool) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        if (s.starred_ms > 0) == on {
+            return false;
+        }
+        s.starred_ms = if on { crate::model::now_ms() } else { 0 };
         true
     }
 

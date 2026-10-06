@@ -118,6 +118,8 @@
         { role: "you", text: "make the line detector survive data gaps", at_ms: now - 24 * M, images: [] },
         { role: "agent", text: "Bash: uv run pytest tests/lines -q -x", at_ms: now - 3 * M },
       ];
+      // ?starred=1: five sessions starred, their list open under the ★ chip.
+      if (q.has("starred")) state.sessions.slice(0, 5).forEach((x, n) => (x.starred_ms = now - (50 - n) * M));
       if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
@@ -227,6 +229,7 @@
       }, 80);
       if (/choose=1/.test(q)) setTimeout(() => document.querySelector('.active-pane [data-pick="0:1"]')?.click(), 80);
       if (/typelong=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.focus(); ta.value = "line one\nline two\nline three\nline four\nline five"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+      if (/starred=1/.test(q)) setTimeout(() => document.querySelector("[data-star-chip]")?.click(), 600);
       // ?slash=re: type "/re" into the Active chat's box (the "/" menu); ?slash=reomte%20x: an unknown command.
       const slashQ = new URLSearchParams(q).get("slash");
       if (slashQ) setTimeout(() => { const ta = document.querySelector(".active-pane .foot textarea"); ta.focus(); ta.value = `/${slashQ}`; ta.dispatchEvent(new Event("input", { bubbles: true })); if (/down=1/.test(q)) ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); }, 600);

@@ -24,8 +24,11 @@ pub struct Quiet {
     pub name: String,
     pub cwd: String,
     pub pid: i32,
-    /// "busy" or "idle", as Claude Code reports it.
+    /// "busy", "idle", or "waiting" (a prompt is open in its terminal), as Claude Code reports it.
     pub status: String,
+    /// While "waiting": what for, in Claude Code's words ("approve Bash"), else "".
+    #[serde(skip)]
+    pub waiting_for: String,
     /// Since when it's been busy / idle (ms).
     pub since_ms: u64,
 }
@@ -60,6 +63,7 @@ fn scan_claude(dir: &Path) -> Vec<Quiet> {
                 cwd: s("cwd"),
                 pid,
                 status: s("status"),
+                waiting_for: s("waitingFor"),
                 since_ms: [ms("statusUpdatedAt"), ms("startedAt")].into_iter().find(|t| *t > 0).unwrap_or(0),
             })
         })
@@ -95,6 +99,35 @@ pub fn tty_of(pid: i32) -> String {
         .filter(|t| !t.is_empty() && t != "??")
         .map(|t| if t.starts_with("/dev/") { t } else { format!("/dev/{t}") })
         .unwrap_or_default()
+}
+
+/// Where a quiet Claude session runs, as its hooks would have said: its process's terminal (tty) and
+/// the terminal's variables from its environment (`ps -E`, your own processes only), so Cue can type
+/// into it before it has sent Cue anything.
+pub fn origin_of(q: &Quiet) -> crate::model::Origin {
+    let out = std::process::Command::new("/bin/ps").args(["-E", "-ww", "-o", "command=", "-p", &q.pid.to_string()]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let env = parse_env(&out);
+    let get = |k: &str| env.get(k).cloned().unwrap_or_default();
+    crate::model::Origin {
+        harness: q.harness.clone(),
+        session_id: q.session_id.clone(),
+        cwd: q.cwd.clone(),
+        transcript_path: claude_transcript(&q.cwd, &q.session_id).unwrap_or_default(),
+        tty: tty_of(q.pid),
+        agent_pid: Some(q.pid),
+        term_program: get("TERM_PROGRAM"),
+        iterm_session_id: get("ITERM_SESSION_ID"),
+        tmux_pane: if get("TMUX").is_empty() { String::new() } else { get("TMUX_PANE") },
+        wezterm_pane: get("WEZTERM_PANE"),
+        kitty_window_id: get("KITTY_WINDOW_ID"),
+        kitty_listen_on: get("KITTY_LISTEN_ON"),
+    }
+}
+
+/// The terminal's variables in `ps -E` output (the command, then its environment, space-separated).
+fn parse_env(ps: &str) -> HashMap<String, String> {
+    const KEYS: [&str; 7] = ["TERM_PROGRAM", "ITERM_SESSION_ID", "TMUX", "TMUX_PANE", "WEZTERM_PANE", "KITTY_WINDOW_ID", "KITTY_LISTEN_ON"];
+    ps.split_whitespace().filter_map(|w| w.split_once('=')).filter(|(k, _)| KEYS.contains(k)).map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
 /// A Claude session's transcript when Cue never got its path from a hook (a quiet session):
@@ -178,6 +211,14 @@ pub fn branch(cwd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_terminal_from_ps() {
+        let env = parse_env("/usr/local/bin/claude --resume TERM=xterm TERM_PROGRAM=Apple_Terminal TMUX_PANE=%3 SHELL=/bin/zsh");
+        assert_eq!(env.get("TERM_PROGRAM").map(String::as_str), Some("Apple_Terminal"));
+        assert_eq!(env.get("TMUX_PANE").map(String::as_str), Some("%3"));
+        assert!(!env.contains_key("TERM") && !env.contains_key("SHELL"));
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("cue-live-{name}-{}", std::process::id()));

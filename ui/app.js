@@ -228,7 +228,7 @@ function teamTree(lead) {
 }
 const finishedText = (it) => it.message || it.context?.at(-1)?.text || "Finished. Your turn.";
 /** The message as one plain line of prose, for previews (no markdown punctuation). */
-const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/[`*#]/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
+const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/[`*#]/g, "").replace(/^\s*(>\s?)+/gm, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
 
 function summary(it) {
   const i = it.tool_input || {};
@@ -274,7 +274,7 @@ function linkify(h) {
     .replace(/https?:\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => a(u, u))
     .replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
 }
-/** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, code. Escapes first, so it's safe. */
+/** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, quotes, code. Escapes first, so it's safe. */
 function md(text) {
   const out = [];
   const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"));
@@ -289,17 +289,21 @@ function md(text) {
     }
     const LIST = /^\s*([-*•]|\d+[.)])\s+/;
     const TABLE = /^\s*\|.*\|\s*$/;
+    const QUOTE = /^\s*>\s?/;
+    // "> " lines are a quote: a line down its side, as in Slack, with Markdown inside.
     for (const para of chunk.split(/\n\s*\n/)) {
       // A paragraph can mix a heading line, text lines and list lines: split it into runs.
       const runs = [];
       for (const l of para.split("\n").filter((x) => x.trim())) {
-        const kind = TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
+        const kind = QUOTE.test(l) ? "quote" : TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
         const last = runs.at(-1);
         if (last && last.kind === kind && kind !== "head") last.lines.push(l);
         else runs.push({ kind, lines: [l] });
       }
       for (const r of runs) {
-        if (r.kind === "table") {
+        if (r.kind === "quote") {
+          out.push(`<blockquote>${md(r.lines.map((l) => l.replace(QUOTE, "")).join("\n"))}</blockquote>`);
+        } else if (r.kind === "table") {
           out.push(table(r.lines, inline));
         } else if (r.kind === "list") {
           const ordered = /^\s*\d/.test(r.lines[0]);
@@ -607,20 +611,28 @@ function hideIdle(key) {
   renderMain();
 }
 const hideX = (s) => idleNote(s) ? `<button class="x-clear" data-hide-idle="${esc(idleKey(s))}" title="Hide until it does something again" aria-label="Hide">×</button>` : "";
-/** Sessions you pinned: always at the top of Sessions, whatever they're doing. By session id, kept in
- *  this window's storage and tidied as sessions end. */
-const pinnedIds = () => { try { return new Set(JSON.parse(localStorage.getItem("cue.pinned") || "[]")); } catch { return new Set(); } };
-function togglePin(sid) {
-  const p = pinnedIds();
-  p.has(sid) ? p.delete(sid) : p.add(sid);
-  const live = new Set(state.sessions.map((s) => s.session_id));
-  try { localStorage.setItem("cue.pinned", JSON.stringify([...p].filter((x) => live.has(x)))); } catch {}
+/** Sessions you starred: the ones you're following. Marked where they are (a star doesn't move them),
+ *  and counted by the ★ chip in the header. Kept with the session in Cue (so anything showing
+ *  Cue sees the same stars); a star you just clicked shows until Cue's next update says so too. */
+const starNow = new Map();   // sid -> on, clicked here, not yet in Cue's state
+const isStarred = (sid) => starNow.get(sid) ?? !!sessionOf(sid)?.starred_ms;
+const starredIds = () => new Set(state.sessions.map((s) => s.session_id).filter(isStarred));
+function toggleStar(sid) {
+  const on = !isStarred(sid);
+  starNow.set(sid, on);
+  invoke("set_starred", { sessionId: sid, on }).catch((e) => { starNow.delete(sid); toast(`Couldn't: ${e}`); renderMain(); });
   renderMain();
 }
-const PIN_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>`;
-const pinBtn = (sid) => {
-  const on = pinnedIds().has(sid);
-  return `<button class="pin-btn ${on ? "on" : ""}" data-pin="${esc(sid)}" title="${on ? "Unpin" : "Pin to the top of Sessions"}" aria-label="${on ? "Unpin" : "Pin"}">${PIN_ICON}</button>`;
+/** This window used to keep its own stars (and before that, pins): hand them to Cue once, then forget them. */
+function moveOldStars() {
+  let old = [];
+  try { old = [...JSON.parse(localStorage.getItem("cue.starred") || "[]"), ...JSON.parse(localStorage.getItem("cue.pinned") || "[]")]; localStorage.removeItem("cue.starred"); localStorage.removeItem("cue.pinned"); } catch {}
+  for (const sid of new Set(old)) invoke("set_starred", { sessionId: sid, on: true }).catch(() => {});
+}
+const STAR_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z"/></svg>`;
+const starBtn = (sid) => {
+  const on = isStarred(sid);
+  return `<button class="star-btn ${on ? "on" : ""}" data-star="${esc(sid)}" aria-label="${on ? "Unstar" : "Star"}" aria-pressed="${on}">${STAR_ICON}</button>`;
 };
 /** Recently answered folded away (its heading toggles it; Sessions gets the room). Remembered per window. */
 const recentClosed = () => { try { return localStorage.getItem("cue.recentClosed") === "1"; } catch { return false; } };
@@ -669,13 +681,13 @@ function setParked(sid, on) {
 }
 function groups() {
   const parked = parkedIds();
-  const yours = state.items.filter((i) => i.kind === "waiting" && !parked.has(i.session_id)).sort((a, b) => a.created_ms - b.created_ms);
-  const decide = state.items.filter((i) => i.kind !== "waiting").sort((a, b) => a.created_ms - b.created_ms);
+  const oldest = (a, b) => a.created_ms - b.created_ms;
+  const yours = state.items.filter((i) => i.kind === "waiting" && !parked.has(i.session_id)).sort(oldest);
+  const decide = state.items.filter((i) => i.kind !== "waiting").sort(oldest);
   const asking = new Set(state.items.map((i) => i.session_id));
   // Sessions = every live session without a card in Waiting: busy ones, and idle ones (driven by
   // another agent, or cleared from Waiting), so nothing you cleared drops out of sight.
-  const pinned = pinnedIds();
-  const working = state.sessions.filter((s) => !pinned.has(s.session_id) && !asking.has(s.session_id) && !parked.has(s.session_id) && !(idleNote(s) && hiddenIdle.has(idleKey(s))))
+  const working = state.sessions.filter((s) => !asking.has(s.session_id) && !parked.has(s.session_id) && !(idleNote(s) && hiddenIdle.has(idleKey(s))))
     .sort((a, b) => !!idleNote(a) - !!idleNote(b));   // working first, then idle (minus the ones you hid)
   // Need to decide: parked sessions, with their finished turn if one is pending. Something it asks you
   // still goes in Waiting (the agent is blocked on it), so it shows in both.
@@ -690,6 +702,46 @@ const IMAGE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" 
 
 /** A saved upload as something an <img> can show (Tauri's asset protocol). */
 const fileSrc = (path) => (T.core.convertFileSrc ? T.core.convertFileSrc(path) : path);
+// ---------- memory: fast first, with a ceiling ----------
+/** Switching sessions should be instant, so what a session loads stays: its steps for as long as it's
+ *  live (small), and its heavy parts (full tool outputs and diffs, older messages you scrolled back to)
+ *  while they fit a generous budget, the least recently opened going first. The budget is a ceiling
+ *  for a long day, not something normal use reaches. Images, the newest that fit theirs. Anything
+ *  dropped loads again when it's shown. */
+const HEAVY_BYTES = 256 * 2 ** 20;  // heavy parts of the sessions besides the open one, roughly
+const IMAGE_BYTES = 48 * 2 ** 20;   // images (a screenshot is a few MB as a data: URL)
+const recentSids = [];   // most recently opened first
+/** Roughly what a cached value holds: its text (two bytes a character), plus a little per value. */
+const sizeOf = (v) => (typeof v === "string" ? v.length * 2 : v && typeof v === "object" ? Object.values(v).reduce((n, x) => n + sizeOf(x), 16) : 8);
+function seenSession(sid) {
+  if (!sid) return;
+  const at = recentSids.indexOf(sid);
+  if (at >= 0) recentSids.splice(at, 1);
+  recentSids.unshift(sid);
+  recentSids.length = Math.min(recentSids.length, 50);
+  trimCaches();
+}
+function trimCaches() {
+  const sidOf = (k) => String(k).split("|")[0];
+  const open = new Set([active?.sid, quietOpen].filter(Boolean));
+  const live = new Set([...state.sessions.map((s) => s.session_id), ...(state.live || []).map((q) => q.session_id)]);
+  // Steps and commands: kept for every live session (and the ones you opened lately).
+  const near = new Set([...open, ...live, ...recentSids]);
+  for (const m of [stepFeeds, stepArrived, cmdLists]) for (const k of [...m.keys()]) if (!near.has(sidOf(k))) m.delete(k);
+  for (const k of [...btwLog.keys()]) if (!near.has(k)) btwLog.delete(k);
+  // The heavy parts: the open session's always; the rest newest first, while they fit.
+  const heavy = [older, stepDetail];
+  const bytes = (sid) => heavy.reduce((n, m) => n + [...m].reduce((b, [k, v]) => b + (sidOf(k) === sid ? sizeOf(v) : 0), 0), 0);
+  const keep = new Set(open);
+  let total = 0;
+  for (const sid of recentSids) if (!open.has(sid) && (total += bytes(sid)) <= HEAVY_BYTES) keep.add(sid);
+  for (const m of heavy) for (const k of [...m.keys()]) if (!keep.has(sidOf(k))) m.delete(k);
+  // Images: the newest that fit (always the newest few, however big).
+  let img = 0, kept = 0;
+  for (const [k, v] of [...localImgs].reverse()) { img += sizeOf(v); if (++kept > 4 && img > IMAGE_BYTES) localImgs.delete(k); }
+}
+setInterval(trimCaches, 5 * 60000);
+
 /** Thumbnails of sent images; click to open full size (← → between them). */
 function thumbs(paths) {
   if (!paths?.length) return "";
@@ -920,7 +972,7 @@ function restoreSpot() {
   let spot = null;
   try { spot = JSON.parse(localStorage.getItem(SPOT) || "null"); } catch {}
   if (!spot) return;
-  if (typeof spot.view === "string") view = spot.view;
+  if (["board", "sessions", "history"].includes(spot.view)) view = spot.view;
   // Only if that session is still around; otherwise the usual oldest-first pick stands.
   const card = state.items.find((i) => i.session_id === spot.sid);
   if (spot.sid && (card || sessionOf(spot.sid))) active = { id: card?.id || null, sid: spot.sid };
@@ -930,6 +982,8 @@ function setActive(id, sid, exact = false) {
   view = "board";
   quietOpen = null;
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
+  seenSession(active.sid);
+  loadSteps(active.sid);   // now, not on the next tick
   sheet = menuFor = redirectFor = btwFor = null;
   renderMain();
   // Picked a session (any list, a chip, the live list's Enter): ready to type to it.
@@ -1389,7 +1443,7 @@ function laterRow({ sid, s, it }) {
   const what = it ? "your turn" : s.state === "working" ? "working" : "idle";
   const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${pinBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
+    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
     ${cardCrew(sid)}
     ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}</div>`;
 }
@@ -1408,7 +1462,7 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"}" data-big="${esc(it.id)}">
-    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${pinBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
+    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
@@ -1538,19 +1592,18 @@ function boardView() {
   const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
   const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
     .map((l) => ({ _team: l, created_ms: Math.min(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
+  // Oldest first.
   const needRows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows].sort((a, b) => a.created_ms - b.created_ms)
     .map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
   const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
-      <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
+      <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
       ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
-  const pins = state.sessions.filter((s) => pinnedIds().has(s.session_id));
-  const workCol = (pins.length ? `<div class="col-sub">PINNED · ${pins.length}</div>${pins.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    + (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
+  const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     || `<div class="quiet-line">No other sessions.</div>`;
@@ -1567,7 +1620,7 @@ function boardView() {
     <div class="col main"><div class="col-head">ACTIVE</div>${activePane()}</div>
     <div class="col"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div>${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${laterSec}</div>
     <div class="col split ${recentClosed() ? "recent-closed" : ""}">
-      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length + pins.length}</span></div><div class="sec-body">${workCol}</div></div>
+      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length}</span></div><div class="sec-body">${workCol}</div></div>
       <div class="sec sec-recent"><button class="col-head fold-head" data-act="fold-recent" aria-expanded="${!recentClosed()}"><span class="fold-arrow">${recentClosed() ? "▸" : "▾"}</span>RECENTLY ANSWERED <span>${recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : ""}</span></button>${recentClosed() ? "" : `<div class="sec-body">${recentList()}</div>`}</div>
     </div>
   </div>`;
@@ -1579,10 +1632,10 @@ function boardView() {
 /** Under the Active header: an executor's lead on the left, the session's folder (~ for your home)
  *  on the right, under the buttons. One small line. */
 function subHead(cwd, crew, sid, titleOf = sid) {
-  // The pin sits after the folder: the title row is full.
+  // The star sits after the folder: the title row is full.
   // Too long: cut in the middle (~/develop…/web-app), so the folder's own name always shows.
   const path = homeless(cwd), cutAt = Math.max(path.lastIndexOf("/"), 0);
-  const folder = cwd ? `<span class="ap-cwd sel" data-cut title="${esc(cwd)}"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? pinBtn(sid) : ""}` : "";
+  const folder = cwd ? `<span class="ap-cwd sel" data-cut title="${esc(cwd)}"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? starBtn(sid) : ""}` : "";
   // Under the name: what Claude Code titled the conversation (unless that's already the name).
   const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
   const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" data-cut title="${esc(t)}">${esc(t)}</span>` : "";
@@ -1841,6 +1894,35 @@ function liveChip() {
   const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length;
   return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session, and + New (⌘K, ⌘L)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
 }
+// ---------- ★ in the header: the sessions you starred, and which of them need you ----------
+let starOpen = false;              // its list is open
+let starNeeded = null;             // starred sessions that needed you at the last draw
+let starLitTill = 0;               // lit up until then: one of them just started needing you
+function starChip() {
+  const stars = starredIds();
+  const rows = liveRows().filter((r) => stars.has(r.sid));
+  if (!rows.length) { starOpen = false; return ""; }
+  const needs = rows.filter((r) => r.st === "asks" || r.st === "yours");
+  // It lights up when one newly needs you, then goes quiet: lit all the time, you'd stop seeing it.
+  if (starNeeded && needs.some((r) => !starNeeded.has(r.sid))) { starLitTill = now() + 6000; setTimeout(renderMain, 6100); }
+  starNeeded = new Set(needs.map((r) => r.sid));
+  const lit = now() < starLitTill;
+  return `<span class="st-wrap"><button class="hchip st-chip ${starOpen ? "on" : ""} ${lit ? "hot" : ""}" data-star-chip title="Sessions you starred">${STAR_ICON}${rows.length}<span class="hlbl"> starred</span>${needs.length ? `<span class="hsub"> · ${needs.length} need${needs.length === 1 ? "s" : ""} you</span>` : ""}</button>${starOpen ? starPop(rows) : ""}</span>`;
+}
+/** The starred sessions: the ones that need you first. Click one to open it; ★ unstars it. */
+function starPop(rows) {
+  const sorted = [...rows].sort((a, b) => svRank(a) - svRank(b) || a.since - b.since);
+  // Live: under its name, what it's doing now (or asking, or last said), redrawn as it changes; a permission
+  // it asks for can be answered right here.
+  const row = (r) => {
+    const what = r.what || (r.it ? plain(summary(r.it)) : "");   // a finished turn: its message
+    const ask = r.st === "asks" && r.it?.kind === "permission" ? `<span class="st-acts"><button class="btn deny" data-act="deny" data-id="${esc(r.it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(r.it.id)}">Allow</button></span>` : "";
+    return `<div class="lv-row st-row ${r.sid === (quietOpen || active?.sid) ? "on" : ""}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">
+      <div class="st-line">${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${svChipState(r)}<span class="age">${ago(r.since)}</span><span class="lv-acts">${starBtn(r.sid)}</span></div>
+      ${what || ask ? `<div class="st-now ${r.st === "asks" ? "hot" : ""}">${r.run ? `<span class="dot-live"></span>` : ""}<span class="st-what ${r.st === "asks" && r.it && isBash(r.it) ? "mono" : ""}">${esc(what)}</span>${ask}</div>` : ""}</div>`;
+  };
+  return `<div class="lv-pop st-pop"><div class="st-head">Starred<span>${rows.length}</span></div><div class="lv-list">${sorted.map(row).join("")}</div><div class="lv-foot"><span class="lv-keys">Star a session on its card to follow it</span></div></div>`;
+}
 function livePop(rows) {
   const q = draft("find-live").text.trim().toLowerCase();
   const hay = (r) => { const ab = svAbout(r); return [r.name, r.cwd, ab.about, ab.now, (r.crew || crewOf(r.sid))?.lead_name].join(" ").toLowerCase(); };
@@ -1852,11 +1934,11 @@ function livePop(rows) {
     const name = unnamed ? ab.about || ab.now : r.name, tip = [ab.about, ab.now].filter(Boolean).join(" · ");
     const m = r.crew || crewOf(r.sid);
     const main = r.it ? `<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`
-      : !r.quiet ? `<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>` : "";
+      : !r.quiet || r.harness === "claude" ? `<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>` : "";
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip || r.quiet ? `title="${esc(tip || "Go to its tab")}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip ? `title="${esc(tip)}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -1996,12 +2078,12 @@ function svClosable(r) {
   return true;
 }
 /** What you can do with a session, right on it: answer or reply when it needs you, the relay buttons,
- *  open it in Active, or go to its terminal. A quiet session (Cue has no conversation for it) only has the tab. */
+ *  open it in Active, or go to its terminal. A quiet Claude session opens too (Cue takes it in); other quiet ones only have the tab. */
 function svActs(r) {
   const m = r.crew || crewOf(r.sid), acts = [];
   if (r.it) acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`);
   if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff") + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
-  if (!r.it && !r.quiet && !r.ghost) acts.push(`<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>`);
+  if (!r.it && (!r.quiet || r.harness === "claude") && !r.ghost) acts.push(`<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>`);
   if (!r.ghost) acts.push(`<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}" title="Go to its terminal tab">Tab</button>`);
   if (svClosable(r)) acts.push(closeBtn(r.sid));
   return acts.join("");
@@ -2023,8 +2105,8 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const hot = r.st === "asks" || m?.lead_armed === false;
   const lead = crew ? `${crewDot(r.sid)}` : "";
   const leadTag = crew ? `<span class="role lead" title="${crew.plugin === "pilead" ? "pi-lead" : "relay"} lead">LEAD</span>${autoToggle(r.sid, crew)}` : "";
-  // The whole tile opens it: its chat in Active, or (quiet: nothing sent to Cue yet) its terminal tab.
-  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet ? ` title="See what it's doing (it started before Cue was connected)"` : ""}`;
+  // The whole tile opens it: its chat in Active (a quiet Claude session too: Cue takes it in), else what it's doing.
+  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet && r.harness !== "claude" ? ` title="See what it's doing (it started before Cue was connected)"` : ""}`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
     <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" data-cut title="${esc(name)}">${esc(name)}</span>${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
@@ -2104,7 +2186,15 @@ async function svAct(act, sid) {
     return;
   }
   if (act === "open") { const it = state.items.find((i) => i.session_id === sid && i.status === "pending"); return setActive(it?.id || null, sid); }
-  if (act === "quiet") { setActive(null, null); quietOpen = sid; loadSteps(sid); return renderMain(); }
+  if (act === "quiet") {
+    // A Claude session Cue hasn't heard from (resumed after a restart, say): Cue takes it in, so it opens
+    // like any other, with its chat and a box to type in. If it can't, what it can show read-only.
+    if ((state.live || []).find((x) => x.session_id === sid)?.harness === "claude") {
+      try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); return setActive(null, sid); }
+      catch (e) { toast(`Couldn't open it here: ${e}`); }
+    }
+    setActive(null, null); quietOpen = sid; loadSteps(sid); return renderMain();
+  }
   if (act === "tab") {
     renderMain();
     try { toast(`Jumped to ${await invoke("focus_live", { sessionId: sid })}`); }
@@ -2300,7 +2390,7 @@ function renderMain() {
 
   const counts = headerChips();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
+    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}${starChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
       ${usageChip()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
@@ -2639,8 +2729,9 @@ function bindMain() {
     if (sm) { searchMore.add(sm.dataset.srmore); renderMain(); return document.querySelector(".search-in")?.focus(); }
     const sr = t.closest("[data-sr]");
     if (sr) return pickResult(+sr.dataset.sr);
-    const pinEl = t.closest("[data-pin]");
-    if (pinEl) return togglePin(pinEl.dataset.pin);
+    const starEl = t.closest("[data-star]");
+    if (starEl) return toggleStar(starEl.dataset.star);
+    if (t.closest("[data-star-chip]")) { starOpen = !starOpen; liveOpen = newOpen = false; return renderMain(); }
     const rn = t.closest("[data-rename]");
     if (rn) {
       renaming = rn.dataset.rename;
@@ -2713,8 +2804,10 @@ function bindMain() {
     // A team button (auto, Diff, Review) inside a row that opens its session: the button, not the row.
     const ca = t.closest("[data-crew]");
     if (ca) return crewAct(ca.dataset.crewSid, ca.dataset.crew);
-    const sv = t.closest("[data-sv]");
-    if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
+    // A button in the row (Allow / Deny in the starred list) does its own thing, not "open".
+    const sv = t.closest("button[data-act]") ? null : t.closest("[data-sv]");
+    if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; starOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
+    if (starOpen && !t.closest(".st-wrap")) { starOpen = false; renderMain(); }
     if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = false; renderMain(); }
     const tr = t.closest("[data-act=trust]");
     if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Use Go to tab.`)); return; }
@@ -2824,6 +2917,7 @@ function bindMain() {
     }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
     // Esc in the New session form closes just the form (and back to the list), not the whole drop-down.
+    if (starOpen && e.key === "Escape") { starOpen = false; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
       if (newOpen && e.target.closest?.(".nf")) { newOpen = false; renderMain(); return document.querySelector('[data-text="find-live"]')?.focus(); }
       liveOpen = newOpen = false;
@@ -2936,6 +3030,7 @@ function setState(s) {
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
   if (ghosts.size) setTimeout(leaveGhosts, LINGER_MS + 50);
   state = s;
+  for (const [sid, on] of starNow) if (!!sessionOf(sid)?.starred_ms === on || !sessionOf(sid)) starNow.delete(sid);   // Cue says so now
   // First launch: an installed agent isn't connected yet, and you haven't closed the setup screen.
   if (!setupShown && s.settings && !s.settings.setup?.done && ["claude", "codex", "pi"].some((h) => s.connections?.[h]?.present && !s.connections[h].ok)) { setupShown = true; sheet = "setup"; }
   for (let n = outbox.length - 1; n >= 0; n--) if (outbox[n].via && landed(outbox[n])) outbox.splice(n, 1);
@@ -2959,6 +3054,7 @@ async function boot() {
   });
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
   moveOldParked();
+  moveOldStars();
   // Which Cue this is (for Settings), without asking GitHub.
   T.app?.getVersion().then((v) => { upd = { ...upd, current: v }; }, () => {});
   await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });

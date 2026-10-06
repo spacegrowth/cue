@@ -16,6 +16,7 @@
   --on-slab: #ECEFDF;
   --work: #A3AD82;
   --deny: #9B2C1F;
+  --star: #C99A1E;   /* a starred session's star: the one other hue, kept to the star */
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
@@ -25,14 +26,14 @@
   :root:not([data-theme="light"]) {
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
     --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
-    --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F;
+    --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
   --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
-  --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F;
+  --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
 }
 
@@ -201,6 +202,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .msg ul, .msg ol { margin: 0 0 9px; padding-left: 20px; }
 .msg li { margin: 2px 0; }
 .msg h4 { margin: 4px 0 6px; font-size: 13.5px; }
+.msg blockquote { margin: 0 0 9px; padding: 0 0 0 10px; border-left: 3px solid var(--line); color: var(--muted); }
+.msg blockquote > :last-child { margin-bottom: 0; }
 .msg code { font: 12.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
 .msg pre { margin: 0 0 9px; background: var(--slab); color: var(--on-slab); padding: 10px 12px; border-radius: 8px; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg .md-table { margin: 0 0 9px; overflow-x: auto; }
@@ -656,13 +659,33 @@ button.tm-chip:hover { background: var(--panel-2); }
 .set-art { flex: none; width: 150px; height: 150px; padding: 8px; background: #fff; border-radius: 10px; }
 .set-art svg { width: 100%; height: 100%; display: block; }
 
-/* Pin a session to the top of Sessions: shown on hover, and always once it's pinned. */
-.pin-btn { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; color: inherit; opacity: 0; transition: opacity 0.12s; flex: none; }
-.working:hover .pin-btn, .ap-head:hover .pin-btn, .pin-btn:focus-visible { opacity: 0.6; }
-.pin-btn:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
-.pin-btn.on { opacity: 1; color: var(--accent); }
-.pin-btn.on svg { fill: currentColor; }
-.working .pin-btn.on { color: var(--on-bg); }
+/* Star a session to follow it: on every card, always there (faint until it's on), gold once it is. */
+.star-btn { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; color: inherit; opacity: 0.35; transition: opacity 0.12s; flex: none; }
+.star-btn:hover, .star-btn:focus-visible { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+.star-btn.on { opacity: 1; color: var(--star); }
+.star-btn.on svg { fill: currentColor; }
+.star-btn svg { transition: transform 0.15s ease; }
+.star-btn:active svg { transform: scale(0.85); }
+/* The ★ chip by "N live", and its list. */
+.st-wrap { position: relative; display: inline-flex; }
+.st-chip svg { color: var(--star); fill: currentColor; }
+.st-chip.on { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
+.st-head { display: flex; gap: 8px; align-items: baseline; padding: 10px 14px 8px; font-size: 13px; font-weight: 700; border-bottom: 1px solid var(--line); }
+.st-head span { font-weight: 500; color: var(--muted); }
+.st-pop .lv-list { padding-top: 6px; }
+.st-pop .lv-row.on { background: var(--panel-2); }
+.st-pop .lv-acts .star-btn { width: 22px; height: 22px; }
+.st-pop { width: 420px; }
+.st-pop .st-row { flex-direction: column; align-items: stretch; gap: 2px; padding: 6px 6px; }
+.st-line { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.st-line .age { flex: none; margin-left: auto; }
+.st-line .lv-acts { margin-left: 0; }
+.st-now { display: flex; align-items: center; gap: 6px; padding-left: 25px; min-width: 0; font-size: 12px; color: var(--muted); }
+.st-now.hot { color: var(--ink); }
+.st-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.st-what.mono { font: 11.5px var(--mono); }
+.st-acts { display: flex; gap: 4px; flex: none; }
+.st-acts .btn { height: 22px; padding: 0 8px; font-size: 11px; border-radius: 6px; }
 .working .card-head { flex-wrap: nowrap; min-width: 0; }
 .working .card-head .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .working .card-head > span:not(.proj) { white-space: nowrap; }
@@ -706,18 +729,11 @@ button.tm-chip:hover { background: var(--panel-2); }
 .lim-dot.back { background: #7fae5a; }
 .ok-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #7fae5a; }
 .col-sub.lim { color: #d99a3a; }
-/* The pin on Waiting and Need-to-decide cards too (same: on hover, always once pinned). */
-.nrow:hover .pin-btn { opacity: 0.6; }
-.nrow .pin-btn.on { opacity: 1; }
-.nrow.on .pin-btn { color: var(--on-sel); }
-/* Pinned: the pin tilts right, so on and off read at a glance. */
-.pin-btn svg { transition: transform 0.15s ease; }
-.pin-btn.on svg { transform: rotate(40deg); }
-/* In the Active pane ✎ (by the name) and the pin (after the folder) are always there, not just on hover. */
-.ap-head .rename-btn, .ap-sub .pin-btn { opacity: 0.55; }
-.ap-head .rename-btn:hover, .ap-sub .pin-btn:hover, .ap-sub .pin-btn.on { opacity: 1; }
-.ap-sub .pin-btn { align-self: center; width: 20px; height: 20px; margin-left: -8px; color: var(--muted); }
-.ap-sub .pin-btn.on { color: var(--accent); }
+/* In the Active pane ✎ (by the name) and the star (after the folder) are always there. */
+.ap-head .rename-btn, .ap-sub .star-btn { opacity: 0.55; }
+.ap-head .rename-btn:hover, .ap-sub .star-btn:hover, .ap-sub .star-btn.on { opacity: 1; }
+.ap-sub .star-btn { align-self: center; width: 20px; height: 20px; margin-left: -8px; color: var(--muted); }
+.ap-sub .star-btn.on { color: var(--star); }
 
 /* Recently answered folds away from its heading; while it's folded, Sessions takes the column. */
 .fold-head { width: 100%; text-align: left; cursor: pointer; }

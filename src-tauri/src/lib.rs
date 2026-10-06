@@ -145,7 +145,7 @@ pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json:
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
     let tab = focus::open_tab_with(&focus::resume_line(&cwd, session_id)?)?;
     let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, ..Default::default() };
-    h.resumed(origin, &title, &transcript::recent_context(&path, 6));
+    h.resumed(origin, &title, &transcript::recent_context(&path, 6), false);
     Ok(serde_json::json!({ "session_id": session_id, "detail": format!("Resumed in {}", tab.what) }))
 }
 
@@ -397,6 +397,13 @@ fn image_data(path: String) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
+/// Open a session Cue hasn't heard from yet in Cue: its chat and message box, not only its tab.
+#[tauri::command]
+async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || h.adopt(&session_id)).await.map_err(|e| e.to_string())?
+}
+
 /// "Go to tab" in the Sessions view: also for a session Cue hasn't heard from (quiet, or Pi that only connected).
 #[tauri::command]
 async fn focus_live(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
@@ -494,6 +501,12 @@ async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: String) -> 
 #[tauri::command]
 fn set_later(hub: State<Arc<Hub>>, session_id: String, on: bool) {
     hub.set_later(&session_id, on);
+}
+
+/// Star a session (you're following it), or unstar it.
+#[tauri::command]
+fn set_starred(hub: State<Arc<Hub>>, session_id: String, on: bool) {
+    hub.set_starred(&session_id, on);
 }
 
 /// The agents "+ New session" can offer (installed on this Mac).
@@ -618,7 +631,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![session_command, session_commands, set_later, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -654,6 +667,9 @@ pub fn run() {
                     if tauri::async_runtime::spawn_blocking(|| leads::refresh() | live::refresh()).await.unwrap_or(false) {
                         h.redraw();
                     }
+                    // ...and any of those Cue doesn't know yet joins the Board (adopt says so itself).
+                    let a = h.clone();
+                    let _ = tauri::async_runtime::spawn_blocking(move || a.adopt_all()).await;
                 }
             });
             #[cfg(feature = "ext")]
