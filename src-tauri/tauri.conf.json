@@ -18,23 +18,6 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
-      },
-      {
-        "label": "mini",
-        "title": "Cue mini",
-        "url": "index.html?mini=1",
-        "width": 46,
-        "height": 96,
-        "resizable": false,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true,
-        "skipTaskbar": true,
-        "visible": false,
-        "focus": false,
-        "shadow": true,
-        "acceptFirstMouse": true,
-        "transparent": true
       }
     ],
     "security": {
@@ -46,8 +29,7 @@
           "$HOME/.cue/uploads/**"
         ]
       }
-    },
-    "macOSPrivateApi": true
+    }
   },
   "plugins": {
     "updater": {

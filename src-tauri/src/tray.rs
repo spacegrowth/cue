@@ -1,5 +1,5 @@
 //! The menu bar icon: the number waiting on you beside Cue's mark. A click shows a small menu:
-//! which Cue this is, updates, Open Cue, Quit. What's waiting lives in the window and the side panel.
+//! which Cue this is, updates, Open Cue, Quit. What's waiting lives in the window.
 
 use crate::model::Item;
 use tauri::image::Image;
@@ -74,23 +74,6 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .build(app)?
         .set_visible(crate::config::tray_shown())?; // hidden from the start if you turned it off
     Ok(())
-}
-
-/// Show a window in front without making it the key window or activating Cue, so whatever you're
-/// typing in (another app, or Cue's own text box) keeps the keyboard. `show()` would make it key.
-pub fn show_passive(w: &tauri::WebviewWindow) {
-    let w2 = w.clone();
-    let _ = w.run_on_main_thread(move || {
-        let Ok(ptr) = w2.ns_window() else {
-            let _ = w2.show();
-            return;
-        };
-        // SAFETY: ns_window() is this window's live NSWindow; we're on the main thread.
-        unsafe {
-            let win = &*(ptr as *mut objc2::runtime::AnyObject);
-            let _: () = objc2::msg_send![win, orderFrontRegardless];
-        }
-    });
 }
 
 /// Keep the count beside the icon current, and the icon shown or hidden as Settings says.

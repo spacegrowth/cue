@@ -27,8 +27,6 @@ struct Store {
     answers: Vec<Answer>,
     waiters: HashMap<String, oneshot::Sender<Reply>>,
     next: u64,
-    /// You closed the mini panel: keep it hidden until something new arrives.
-    mini_snoozed: bool,
     /// When each session last started a turn — how a typed reply is confirmed as submitted.
     active_at: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
@@ -53,6 +51,9 @@ pub const CONTEXT_HIGH: u8 = 80;
 /// No new output for this long while running a command, or while only thinking: stuck.
 const STUCK_RUNNING_MS: u64 = 10 * 60_000;
 const STUCK_THINKING_MS: u64 = 5 * 60_000;
+/// A queued message taken from the queue this recently was taken as the turn before it ended: it's
+/// the next turn's prompt, not the prompt of the turn now ending.
+const TAKEN_SETTLE_MS: u64 = 3000;
 
 pub struct Hub {
     store: Mutex<Store>,
@@ -134,7 +135,6 @@ impl Hub {
             let title = notify_title(&it);
             st.items.push(it);
             st.waiters.insert(id.clone(), tx);
-            st.mini_snoozed = false;
             (id, title)
         };
         self.changed();
@@ -180,8 +180,33 @@ impl Hub {
         self.changed();
     }
 
+    /// Your message queued during the turn that just ended, unless the turn read it (absorbed between
+    /// steps) or it's this turn's own prompt (taken from the queue a while ago).
+    fn unread_queued(&self, origin: &Origin) -> Option<crate::model::Exchange> {
+        let q = self.store.lock().unwrap().sessions.queued(&origin.session_id)?;
+        if origin.transcript_path.is_empty() {
+            return Some(q);
+        }
+        match transcript::read_state(&origin.harness, &origin.transcript_path, &q.text, q.at_ms) {
+            Some(transcript::Queued::Absorbed) => None,
+            Some(transcript::Queued::Taken(Some(at))) if now_ms().saturating_sub(at) > TAKEN_SETTLE_MS => None,
+            _ => Some(q),
+        }
+    }
+
     pub fn event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str) {
         // Pi's extension says what it's doing as each tool starts ("Running: cargo test").
+        // Claude Code is summarizing the conversation (PreCompact: /compact typed anywhere, or its context
+        // filled up). Until it's done the session isn't waiting on you, whatever it said last.
+        if event == "compacting" {
+            let mut st = self.store.lock().unwrap();
+            if st.sessions.compacting_since(&origin.session_id) == 0 {
+                st.sessions.set_compacting(&origin.session_id, now_ms());
+            }
+            drop(st);
+            self.changed();
+            return;
+        }
         if event == "doing" {
             let changed = self.store.lock().unwrap().sessions.set_doing(&origin.session_id, &message, 0);
             if changed {
@@ -189,9 +214,13 @@ impl Hub {
             }
             return;
         }
+        // What you sent during this turn that it hasn't read yet: the next turn's prompt, so it goes
+        // below this turn's reply (it was noted when you sent it, above where the reply lands).
+        let mut unread = None;
         if event == "stopped" {
             self.deliver_deferred_rename(&origin.session_id);
-            // The turn is over, so whatever you queued during it has been read.
+            unread = self.unread_queued(&origin);
+            // The turn is over: whatever you queued during it has been read, or is read next.
             self.store.lock().unwrap().sessions.set_queued(&origin.session_id, None);
             if origin.harness == "claude" {
                 self.limits_lifted(&origin.session_id);
@@ -208,6 +237,9 @@ impl Hub {
                 st.sessions.mark(&origin, "agent", None);
                 st.sessions.set_driven_by(&sid, driven_by);
                 st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
+                if let Some(q) = &unread {
+                    st.sessions.below_reply(&sid, q);
+                }
             }
             self.changed();
             return;
@@ -234,6 +266,9 @@ impl Hub {
                     st.sessions.set_queued(&sid, None);
                     let thread = st.sessions.thread(&sid);
                     st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
+                    if let Some(q) = &unread {
+                        st.sessions.below_reply(&sid, q);
+                    }
                     let mut it = Self::new_item(&mut st, "waiting", origin);
                     it.thread = thread;
                     it.context = context;
@@ -242,8 +277,7 @@ impl Hub {
                     let t = notify_title(&it);
                     let id = it.id.clone();
                     st.items.push(it);
-                    st.mini_snoozed = false;
-                    (id, t)
+                            (id, t)
                 };
                 self.changed();
                 self.turn_changes(&sid);
@@ -265,7 +299,7 @@ impl Hub {
                     // queue, not when it reads it (that's at its next step). So that's no new turn, and the
                     // message stays queued, with Send now, until the turn ends.
                     let echo = st.sessions.state(&sid).as_deref() == Some("working")
-                        && st.sessions.queued_text(&sid).is_some_and(|q| !q.trim().is_empty() && message.trim().starts_with(q.trim()));
+                        && st.sessions.queued_text(&sid).is_some_and(|q| transcript::is_message(&message, &q));
                     if !echo {
                         started = st.sessions.state(&sid).as_deref() != Some("working");
                         st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
@@ -526,7 +560,7 @@ impl Hub {
             // do instead?") and leave it idle. Esc only while it's still waiting in the queue.
             let queued = self.store.lock().unwrap().sessions.queued_text(session_id).unwrap_or_default();
             let state = if origin.harness == "claude" { transcript::queued_state(&origin.transcript_path, &queued) } else { None };
-            if matches!(state, Some(transcript::Queued::Absorbed | transcript::Queued::Taken)) {
+            if matches!(state, Some(transcript::Queued::Absorbed | transcript::Queued::Taken(_))) {
                 self.store.lock().unwrap().sessions.set_queued(session_id, None);
                 self.changed();
                 return Ok("it already has your message: it took it in between steps".into());
@@ -570,7 +604,9 @@ impl Hub {
             if st.sessions.state(session_id).as_deref() == Some("deciding") {
                 return Err("it's asking you something first: answer that, then send".into());
             }
-            (st.sessions.origin(session_id), st.sessions.state(session_id).as_deref() == Some("working"))
+            // Compacting counts as busy: Claude Code holds what you type until it's done (that can take a minute).
+            let busy = st.sessions.state(session_id).as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;
+            (st.sessions.origin(session_id), busy)
         };
         let saved = crate::uploads::save(images)?;
         // Force-send to a terminal agent: Esc first, give it a moment to stop, then type.
@@ -604,6 +640,10 @@ impl Hub {
             }
             if !submitted {
                 st.sessions.mark_unsent(session_id);
+            }
+            // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
+            if submitted && !busy && is_command(typed, "compact") {
+                st.sessions.set_compacting(session_id, now_ms());
             }
         }
         self.changed();
@@ -705,12 +745,15 @@ impl Hub {
 
     /// A session Cue just started ("+ New session"): known from the start, so it opens in Active and
     /// takes what you type before it has said anything. With a first message it's already working.
-    pub fn started(&self, origin: Origin, message: &str) {
+    pub fn started(&self, origin: Origin, message: &str, asks_trust: bool) {
         {
             let mut st = self.store.lock().unwrap();
             let sid = origin.session_id.clone();
             let msg = message.trim();
             st.sessions.mark(&origin, if msg.is_empty() { "waiting" } else { "working" }, (!msg.is_empty()).then_some(msg));
+            if asks_trust {
+                st.sessions.set_trust(&sid, now_ms());
+            }
             if !msg.is_empty() {
                 st.sessions.note(&sid, "you", msg, crate::config::context_keep());
             }
@@ -827,11 +870,6 @@ impl Hub {
         Ok(())
     }
 
-    pub fn snooze_mini(&self) {
-        self.store.lock().unwrap().mini_snoozed = true;
-        self.changed();
-    }
-
     /// Rename a session: Cue shows the name at once, and the agent is told in its own way. Claude Code:
     /// "/rename <name>" typed at its prompt (deferred to the end of the turn if it's busy). Pi: through
     /// Cue's extension, nothing typed. Codex: Cue only. Returns what happened, for a toast. Blocking.
@@ -938,11 +976,11 @@ impl Hub {
         let todo = self.store.lock().unwrap().sessions.working_transcripts();
         let found: Vec<(String, (String, u64))> =
             todo.into_iter().filter_map(|(sid, harness, path)| crate::transcript::activity_of(&harness, &path).map(|a| (sid, a))).collect();
-        // A message you queued that Claude Code has since taken (into the running turn, or as the
-        // next prompt): it's no longer queued, so no "Queued" bubble and no Send now.
-        let queued: Vec<(String, String, String)> = {
+        // A message you queued that Claude Code or Codex has since taken (into the running turn, or as
+        // the next prompt): it's no longer queued, so no "Queued" bubble pinned below the answer, and no Send now.
+        let queued: Vec<(String, String, String, crate::model::Exchange)> = {
             let st = self.store.lock().unwrap();
-            st.sessions.working_transcripts().into_iter().filter(|(_, h, _)| h == "claude").filter_map(|(sid, _, path)| st.sessions.queued_text(&sid).map(|q| (sid, path, q))).collect()
+            st.sessions.working_transcripts().into_iter().filter_map(|(sid, h, path)| st.sessions.queued(&sid).map(|q| (sid, h, path, q))).collect()
         };
         // Interrupted (Esc, on purpose or not) a few seconds ago with nothing since: no Stop comes for
         // that, so it lands in Waiting as "interrupted", with Continue. A few seconds: ⌘Enter's Esc
@@ -991,20 +1029,58 @@ impl Hub {
                 self.changed();
             }
         }
-        // Compacting (from Cue's ⋯ menu) until its transcript says it's done; given up after 15 minutes.
-        let compacted: Vec<String> = {
+        // Compacting (from Cue, its terminal, or on its own) until its transcript says it's done; given up after 15 minutes.
+        let compacted: Vec<(String, bool)> = {
             let st = self.store.lock().unwrap();
-            st.sessions.compacting().into_iter().filter(|(_, path, at)| now.saturating_sub(*at) > 15 * 60_000 || transcript::compact_finished(path, *at)).map(|(sid, _, _)| sid).collect()
+            st.sessions
+                .compacting()
+                .into_iter()
+                .filter_map(|(sid, path, at)| {
+                    if transcript::compact_finished(&path, at) {
+                        Some((sid, true))
+                    } else {
+                        (now.saturating_sub(at) > 15 * 60_000).then_some((sid, false))
+                    }
+                })
+                .collect()
         };
         if !compacted.is_empty() {
             let mut st = self.store.lock().unwrap();
-            for sid in &compacted {
-                st.sessions.set_compacting(sid, 0);
+            for (sid, done) in &compacted {
+                if *done {
+                    st.sessions.set_compacted(sid, now);
+                } else {
+                    st.sessions.set_compacting(sid, 0);
+                }
             }
             drop(st);
             self.changed();
         }
-        let taken: Vec<String> = queued.into_iter().filter(|(_, path, q)| matches!(transcript::queued_state(path, q), Some(transcript::Queued::Absorbed | transcript::Queued::Taken))).map(|(sid, _, _)| sid).collect();
+        // A session Cue started in a folder Claude Code didn't trust yet: asking in its terminal until
+        // ~/.claude.json says it's trusted (answered there, or with Trust in Cue). Given up after 30 minutes.
+        let done: Vec<String> = {
+            let asking = self.store.lock().unwrap().sessions.asking_trust();
+            asking.into_iter().filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect()
+        };
+        if !done.is_empty() {
+            let mut st = self.store.lock().unwrap();
+            for sid in &done {
+                st.sessions.set_trust(sid, 0);
+            }
+            drop(st);
+            self.changed();
+        }
+        // Taken as the next turn's prompt only counts once the turn before it has had its say: the
+        // queue is read the moment a turn ends, a hair before that turn's Stop, which moves it below the reply.
+        let taken: Vec<String> = queued
+            .into_iter()
+            .filter(|(_, h, path, q)| match transcript::read_state(h, path, &q.text, q.at_ms) {
+                Some(transcript::Queued::Absorbed) => true,
+                Some(transcript::Queued::Taken(at)) => at.map_or(true, |at| now.saturating_sub(at) > TAKEN_SETTLE_MS),
+                _ => false,
+            })
+            .map(|(sid, _, _, _)| sid)
+            .collect();
         let changed = {
             let mut st = self.store.lock().unwrap();
             for sid in &taken {
@@ -1053,7 +1129,7 @@ impl Hub {
         }
     }
 
-    /// Cue just started: show what was already waiting (side panel, menu bar icon, Dock badge) now,
+    /// Cue just started: show what was already waiting (menu bar icon, Dock badge) now,
     /// not at the next change.
     pub fn show_waiting(&self) {
         self.changed();
@@ -1067,15 +1143,15 @@ impl Hub {
             crate::db::sync_live(&st.sessions.all(), &waiting);
         }
         let _ = app.emit("state", self.snapshot());
-        let (decisions, total, snoozed, items, answered) = {
+        let (decisions, items, answered) = {
             let mut st = self.store.lock().unwrap();
             let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
-            // Answered anywhere (Cue, side panel, menu bar, the terminal): take the notification back.
+            // Answered anywhere (Cue, menu bar, the terminal): take the notification back.
             let answered: Vec<String> = st.notified.difference(&live).cloned().collect();
             for id in &answered {
                 st.notified.remove(id);
             }
-            (st.items.iter().filter(|i| i.kind != "waiting").count(), st.items.len(), st.mini_snoozed, st.items.clone(), answered)
+            (st.items.iter().filter(|i| i.kind != "waiting").count(), st.items.clone(), answered)
         };
         crate::notify::remove(&answered);
         if std::env::var_os("CUE_QUIET").is_none() {
@@ -1083,9 +1159,6 @@ impl Hub {
         }
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
-        }
-        if std::env::var_os("CUE_QUIET").is_none() {
-            crate::mini::sync(app, total > 0 && !snoozed && crate::config::panel_enabled());
         }
     }
 
@@ -1286,6 +1359,11 @@ mod tests {
         assert_eq!(cfg["history"]["keep"], 20);
         std::fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+/// Is `text` the command `/name` (with or without arguments)?
+fn is_command(text: &str, name: &str) -> bool {
+    text.strip_prefix('/').and_then(|t| t.split_whitespace().next()) == Some(name)
 }
 
 /// For "/name …" typed into Claude Code: how many times it had already logged running that command,

@@ -94,6 +94,27 @@ pub fn start_line(agent: &str, cwd: &str, session_id: &str, message: &str, name:
     Ok(line)
 }
 
+/// Whether Claude Code trusts `dir` already: it or a folder above it was accepted ("Yes, I trust this
+/// folder"), as recorded in ~/.claude.json. If not, a session started there first asks in its terminal.
+/// Unreadable config: assume it does (no false alarm).
+pub fn claude_trusts(dir: &str) -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let Ok(text) = std::fs::read_to_string(format!("{home}/.claude.json")) else { return true };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return true };
+    trusted_in(&v, dir)
+}
+
+fn trusted_in(config: &serde_json::Value, dir: &str) -> bool {
+    let mut p = Some(std::path::Path::new(dir));
+    while let Some(d) = p {
+        if config.pointer(&format!("/projects/{}", d.to_string_lossy().replace('~', "~0").replace('/', "~1"))).and_then(|x| x.get("hasTrustDialogAccepted")).and_then(|x| x.as_bool()) == Some(true) {
+            return true;
+        }
+        p = d.parent();
+    }
+    false
+}
+
 /// Where a session Cue started runs, so Cue can type into it and jump to it from the start.
 pub struct NewTab {
     pub what: String,
@@ -553,6 +574,15 @@ pub fn press_enter(o: &Origin) -> Result<(), String> {
 #[cfg(test)]
 mod start_tests {
     use super::*;
+
+    #[test]
+    fn a_folder_is_trusted_if_it_or_a_parent_was_accepted() {
+        let c = serde_json::json!({ "projects": { "/a/b": { "hasTrustDialogAccepted": true }, "/x": { "hasTrustDialogAccepted": false } } });
+        assert!(trusted_in(&c, "/a/b"));
+        assert!(trusted_in(&c, "/a/b/c/d"));
+        assert!(!trusted_in(&c, "/a"));
+        assert!(!trusted_in(&c, "/x/y"));
+    }
 
     #[test]
     fn a_start_line_quotes_everything_it_types() {

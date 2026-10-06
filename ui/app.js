@@ -1,8 +1,7 @@
-// Cue UI — everything that needs you, visible at once, on one board,
-// plus the mini side panel (?mini=1). Colors live in style.css (Moss, light + dark).
+// Cue UI — everything that needs you, visible at once, on one board.
+// Colors live in style.css (Moss, light + dark).
 const T = window.__TAURI__;
 const invoke = T.core.invoke;
-const MINI = new URLSearchParams(location.search).has("mini");
 
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
 let clockSkew = 0;          // backend clock − browser clock, so bars line up with the backend's timestamps
@@ -83,7 +82,7 @@ const shortModel = (m) => String(m || "").replace(/\[.*\]$/, "").replace(/^.*\//
 const crewDot = (sid) => `<i class="crew-color" style="--crew:${crewColor(sid)}"></i>`;
 const roleTag = (sid) => { const m = crewOf(sid); return m ? `${m.role === "lead" ? crewDot(sid) : ""}<span class="role ${m.role}" title="${m.role === "lead" ? "Lead: plans, reviews, commits" : "Executor: works one packet, stages, reports"}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""; };
 /** An executor's lead: a link when Cue has that session, else its name. */
-const leadLink = (m) => sessionOf(m.lead) ? `<button class="crew-lead" data-session="${esc(m.lead)}" title="Open its lead">${esc(m.lead_name || "its lead")}</button>` : `<b>${esc(m.lead_name || "its lead")}</b>`;
+const leadLink = (m) => sessionOf(m.lead) ? `<button class="crew-lead" data-session="${esc(m.lead)}">${esc(m.lead_name || "its lead")}</button>` : `<b>${esc(m.lead_name || "its lead")}</b>`;
 const pkt = (n) => n ? `pkt ${n}` : "";
 /** Under an executor's name: whose it is, which packet, and whether anyone's listening. */
 function crewLine(sid, verdict = true) {
@@ -116,7 +115,7 @@ const lbl = (long, short) => `<span class="l-long">${esc(long)}</span><span clas
  *  that every file the report says it changed is staged, not that the work is right. */
 function verifyTag(v) {
   if (!v?.verdict) return "";
-  if (v.verdict === "COUNTS-MATCH") return `<span class="vf ok" title="Report checked (relay verify): every file its report says it changed is staged. It doesn't check the work itself: that's Diff and Review.">✓</span>`;
+  if (v.verdict === "COUNTS-MATCH") return `<span class="vf ok" title="Report matches what's staged">✓</span>`;
   const why = v.verdict === "MALFORMED" ? "its report's summary is missing or broken" : v.note || "its report lists changes that aren't staged";
   return `<span class="vf bad" title="Report doesn't match (relay verify): ${esc(why)}">✕</span>`;
 }
@@ -145,13 +144,13 @@ function crewStrip(sid) {
     const needs = state.items.some((i) => i.session_id === e.session_id && i.kind !== "waiting");
     const st = needs ? "needs you" : e.status || "";
     const acts = !needs && reported(e.status) ? `<div class="crew-acts">${verifyTag(e.verify)}${crewBtn(e.session_id, "diff", "Diff", "Open its staged changes in your browser")}${crewBtn(e.session_id, "review", "Review", `Type a review command for ${e.name} into this lead`, true)}</div>` : "";
-    return `<div class="crew-chip ${needs ? "needs" : ""} ${s ? "" : "unseen"}" ${s ? `data-session="${esc(e.session_id)}" role="button" title="Open"` : `title="Cue hasn't heard from this session"`}>
+    return `<div class="crew-chip ${needs ? "needs" : ""} ${s ? "" : "unseen"}" ${s ? `data-session="${esc(e.session_id)}" role="button"` : `title="Cue hasn't heard from this session"`}>
       <span class="crew-name">${esc(e.name)}</span>${st ? `<span class="crew-st ${esc(st.replace(/\s+/g, "-"))}">${esc(st)}</span>` : ""}
       <span class="crew-meta">${esc([shortModel(e.model), pkt(e.packet)].filter(Boolean).join(" · "))}</span>${acts}</div>`;
   };
   // relay's auto mode (click to switch) and its plan: what it sends next, and how many wait.
-  const auto = m.plugin === "relay" ? `<button class="crew-auto ${m.auto ? "on" : ""}" data-crew="${m.auto ? "auto-off" : "auto-on"}" data-crew-sid="${esc(sid)}" title="${m.auto ? "Auto mode is on: it goes ahead on routine steps without asking. Click to turn it off." : "Auto mode is off: it waits for you. Click to let it go ahead on routine steps."}">auto ${m.auto ? "on" : "off"}</button>` : "";
-  const plan = m.plan_queued ? `<span class="crew-plan" title="Its plan queue (relay plan)">Next: <b>${esc(m.plan_next)}</b> · ${m.plan_queued} queued</span>` : "";
+  const auto = m.plugin === "relay" ? `<button class="crew-auto ${m.auto ? "on" : ""}" data-crew="${m.auto ? "auto-off" : "auto-on"}" data-crew-sid="${esc(sid)}" title="${m.auto ? "Goes ahead on routine steps. Click to turn off." : "Waits for you. Click to let it go ahead on routine steps."}">auto ${m.auto ? "on" : "off"}</button>` : "";
+  const plan = m.plan_queued ? `<span class="crew-plan">Next: <b>${esc(m.plan_next)}</b> · ${m.plan_queued} queued</span>` : "";
   return `<div class="crew-strip"><div class="crew-head">EXECUTORS · ${ex.length}${auto}${plan}</div>
     ${ex.length ? `<div class="crew-chips">${ex.map(chip).join("")}</div>` : `<div class="dim">None working for it right now.</div>`}</div>`;
 }
@@ -340,6 +339,8 @@ async function deliver(sid, key, call) {
   if (!text && !d.images.length) return;
   // " /…" (a leading space) is a message that starts with a slash; "/…" is a command. Keep the space.
   const typed = text.startsWith("/") && /^\s/.test(d.text) ? ` ${text}` : text;
+  // A command this session doesn't have ("/reomte"): it would just fail in the terminal. Say so instead.
+  if (typed.startsWith("/") && cmdOf(key) === null) return toast(`“${typed.split(/\s/)[0]}” isn't a command in this session. Use “Send as a message instead” under the box.`);
   const images = d.images.map(({ name, mime, data }) => ({ name, mime, data }));
   const entry = { sid, text, images, at: now(), via: null };
   outbox.push(entry);
@@ -458,8 +459,6 @@ function hideIdle(key) {
   renderMain();
 }
 const hideX = (s) => idleNote(s) ? `<button class="x-clear" data-hide-idle="${esc(idleKey(s))}" title="Hide until it does something again" aria-label="Hide">×</button>` : "";
-/** Sessions you moved to "Need to decide" to think about, by session id. Read fresh each time, so the
- *  side panel (its own window) sees moves made in the main one. */
 /** Sessions you pinned: always at the top of Sessions, whatever they're doing. By session id, kept in
  *  this window's storage and tidied as sessions end. */
 const pinnedIds = () => { try { return new Set(JSON.parse(localStorage.getItem("cue.pinned") || "[]")); } catch { return new Set(); } };
@@ -562,9 +561,80 @@ function localImages(text) {
   return `<div class="thumbs shots">${paths.map((p, n) => `<button class="thumb" data-local-lb='${esc(JSON.stringify({ paths, i: n }))}' title="${esc(p)}">${localImgs.get(p) ? `<img src="${localImgs.get(p)}" alt=""/>` : ""}</button>`).join("")}</div>`;
 }
 
-/** Under a text box whose text starts with "/": the agent would run it as a command (a typo like
- *  "/reomte …" just fails), so say so, with a one-click way to send it as a message instead. */
-const slashHint = (key) => `<div class="slash-hint" ${draft(key).text.startsWith("/") ? "" : "hidden"}>Starts with “/”, so the agent will run it as a command. <button data-astext="${esc(key)}">Send as a message instead</button></div>`;
+/** The "/" menu: the commands Claude Code has enabled for a session (its built-ins, your skills,
+ *  plugins'), read by the Mac per folder. sid -> list; null while it's being read. */
+const cmdLists = new Map();
+let cmdSel = 0, cmdShut = null;           // highlighted row; the box whose menu Esc closed (until you type)
+function cmdList(sid) {
+  if (!sid) return [];
+  if (!cmdLists.has(sid)) {
+    cmdLists.set(sid, null);
+    const ask = (n) => invoke("session_commands", { sessionId: sid }).then((l) => {
+      if (l) { cmdLists.set(sid, l); return refreshCmd(`s:${sid}`); }
+      if (n < 40) setTimeout(() => ask(n + 1), 600); else cmdLists.delete(sid);
+    }).catch(() => cmdLists.delete(sid));
+    ask(0);
+  }
+  return cmdLists.get(sid) || [];
+}
+const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
+/** "/comp": the command name being typed (no space yet), else null. A leading space means a message. */
+const typingCmd = (text) => (/^\/[^\s]*$/.test(text) ? text.slice(1).toLowerCase() : null);
+/** Matches for what's typed: names that start with it first, then names that contain it. */
+function cmdMatches(key) {
+  const q = typingCmd(draft(key).text);
+  if (q === null || cmdShut === key) return [];
+  const list = cmdList(sidOfKey(key));
+  const starts = list.filter((c) => c.name.toLowerCase().startsWith(q) || c.name.toLowerCase().split(":").pop().startsWith(q));
+  return [...starts, ...list.filter((c) => !starts.includes(c) && c.name.toLowerCase().includes(q))];
+}
+function cmdMenu(key) {
+  const m = cmdMatches(key);
+  // The session's list is still being read (the first "/" in a session): say so rather than show nothing.
+  if (!m.length && typingCmd(draft(key).text) !== null && cmdShut !== key && cmdLists.get(sidOfKey(key)) === null) return `<div class="cmd-menu"><div class="cmd-row cmd-wait">Loading commands…</div></div>`;
+  if (!m.length) return "";
+  cmdSel = Math.min(cmdSel, m.length - 1);
+  return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd="${esc(c.name)}" role="option"><b>/${esc(c.name)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : ""}</button>`).join("")}</div>`;
+}
+/** The command a box's text runs ("/compact now" -> compact), from the session's list; undefined when
+ *  it isn't a command, null when it's one the session doesn't have (or the list isn't in yet: then unknown). */
+function cmdOf(key) {
+  const t = draft(key).text;
+  if (!t.startsWith("/")) return undefined;
+  const name = t.slice(1).split(/\s/)[0];
+  const sid = sidOfKey(key), list = sid ? cmdList(sid) : [];
+  if (!list.length) return { name, desc: "" };
+  return list.find((c) => c.name === name) || null;
+}
+/** Under the box: what the command does, or that it isn't one here (with Send as a message). */
+function slashHint(key) {
+  const t = draft(key).text;
+  if (!t.startsWith("/") || cmdMatches(key).length || cmdLists.get(sidOfKey(key)) === null) return `<div class="slash-hint" hidden></div>`;
+  const c = cmdOf(key), name = t.slice(1).split(/\s/)[0];
+  const asText = `<button data-astext="${esc(key)}">Send as a message instead</button>`;
+  if (c === null) return `<div class="slash-hint bad">“/${esc(name)}” isn't a command in this session. ${asText}</div>`;
+  return `<div class="slash-hint">${c.desc ? `<b>/${esc(c.name)}</b>: ${esc(c.desc)}` : `Starts with “/”, so the agent runs it as a command. ${asText}`}</div>`;
+}
+/** Redraw just a box's menu and hint (typing never rebuilds the box, so the caret stays put). */
+function refreshCmd(key) {
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  const f = el?.closest(".field");
+  if (!f) return;
+  const menu = f.querySelector(".cmd-slot");
+  if (menu) menu.innerHTML = cmdMenu(key);
+  f.querySelector(".slash-hint")?.replaceWith(document.createRange().createContextualFragment(slashHint(key)));
+  f.querySelector(".cmd-row.on")?.scrollIntoView({ block: "nearest" });
+}
+/** Pick a command: Tab or a click puts "/name " in the box for its arguments; Enter runs it. */
+function pickCmd(key, name, run) {
+  draft(key).text = `/${name}${run ? "" : " "}`;
+  cmdSel = 0;
+  saveDrafts();
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  if (el) { el.value = draft(key).text; el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+  refreshCmd(key);
+  if (run) el?.closest(".composer")?.querySelector(".btn.send")?.click();
+}
 /** Quick phrases (Settings → Quick phrases): chips that send their text, after anything typed in the box. */
 const phrases = () => state.settings?.quick?.phrases || [];
 const quickRow = (attrs) => phrases().length ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}</div>` : "";
@@ -578,7 +648,7 @@ function box(key, placeholder, label, sendAttrs, images) {
   const ready = d.text.trim() || (images && d.images.length);
   const chips = images && d.images.length ? `<div class="chips">${d.images.map((im, n) => `<span class="chip"><button class="chip-img" data-draft-lightbox="${esc(key)}:${n}" aria-label="Open ${esc(im.name)}"><img src="${im.data}" alt="${esc(im.name)}"/></button><button class="chip-x" data-unattach="${esc(key)}:${n}" aria-label="Remove image">×</button></span>`).join("")}${d.images.length > 1 ? `<span class="chip-count">${d.images.length} images</span>` : ""}</div>` : "";
   // The send button sits outside the box, as tall as it, so typing never crowds it.
-  return `<div class="composer"><div class="field ${images ? "drop" : ""}" data-drop="${images ? esc(key) : ""}">${images ? quickRow(`data-quick="${esc(key)}"`) : ""}${chips}<div class="field-row">
+  return `<div class="composer"><div class="field ${images ? "drop" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`) : ""}${chips}<div class="field-row">
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
     <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}</div>${slashHint(key)}</div>
@@ -624,7 +694,7 @@ function submitAnswers(it) {
 }
 function whyLine(it) {
   const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
-  return c ? `<div class="why" title="${esc(c.text)}">Why: ${esc(firstLine(c.text))}</div>` : "";
+  return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"} title="${esc(c.text)}">Why: ${esc(firstLine(c.text))}</div>` : "";
 }
 function decisionButtons(it) {
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 && questions(it).filter((q) => !isAnswered(it, q)).length > 1 ? "Next" : "Send") : "Redirect")}</div>`;
@@ -650,7 +720,7 @@ const outcomeText = (i) => String(i.outcome || i.status || "").replace(/\s+—\s
 const outcomeClass = (i) => (/^(allowed|answered|replied)/.test(i.outcome) ? "ok" : /^denied/.test(i.outcome) ? "no" : "");
 function recentEntry(i) {
   const fresh = now() - (i.resolved_ms || 0) < 8000 ? "fresh" : "";
-  return `<div class="tl ${outcomeClass(i)} ${fresh} ${active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}" title="Open">
+  return `<div class="tl ${outcomeClass(i)} ${fresh} ${active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
     <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}<span>${esc(agentName(i.harness))}</span><span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
@@ -679,7 +749,7 @@ function current() {
 const SPOT = "cue.spot";
 let spotRestored = false;   // the first draws (before restoreSpot) mustn't overwrite where you were
 function saveSpot() {
-  if (MINI || !spotRestored) return;
+  if (!spotRestored) return;
   try { localStorage.setItem(SPOT, JSON.stringify({ sid: active?.sid || null, view })); } catch {}
 }
 function restoreSpot() {
@@ -744,7 +814,7 @@ function olderRow(sid, harness) {
   if (o?.busy) return `<div class="cv-older">Loading earlier messages…</div>`;
   if (o?.tdone) return `<div class="cv-older">Start of the conversation</div>`;
   // Cue's log starts when Cue first saw the session; anything before is only in Claude Code's transcript.
-  if (o?.done) return `<div class="cv-older">Start of the conversation in Cue${harness === "claude" ? ` · <button data-act="load-transcript" data-sid="${esc(sid)}" title="Read what came before from the session's Claude Code transcript">Load earlier from its transcript</button>` : ""}</div>`;
+  if (o?.done) return `<div class="cv-older">Start of the conversation in Cue${harness === "claude" ? ` · <button data-act="load-transcript" data-sid="${esc(sid)}">Load earlier from its transcript</button>` : ""}</div>`;
   return `<div class="cv-older"><button data-act="load-older" data-sid="${esc(sid)}">Earlier messages</button></div>`;
 }
 
@@ -934,12 +1004,16 @@ function withSteps(sid, s, ex, rows, extra = []) {
   while (b < blocks.length) out.push(blocks[b++].html);
   return out;
 }
+/** Agent replies left open: the newest few, so the one you were reading doesn't fold the moment the next lands. */
+const OPEN_REPLIES = 3;
 /** Agent: full-width prose. You: a compact tinted bubble on the right. Older agent turns fold to 3 lines.
  *  Another session: a striped bubble saying which one (sent by its agent, or forwarded by you). */
 /** `paged`: the Active pane's chat, which loads earlier messages as you scroll up. */
 function chatHtml(it, s, harness, paged = false) {
   const ex = conversation(it, s);
   const lastAgent = ex.map((e) => e.role).lastIndexOf("agent");
+  const agentAt = ex.flatMap((e, n) => (e.role === "agent" ? [n] : []));
+  const recent = new Set(agentAt.slice(-OPEN_REPLIES));
   const project = s?.project || it?.project || "";
   const sid = s?.session_id || it?.session_id;
   // What you chose on a decision sits in the chat when you chose it (later steps come below it).
@@ -958,25 +1032,29 @@ function chatHtml(it, s, harness, paged = false) {
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
-    const folded = n !== lastAgent && long && !openMsgs.has(key);
+    const folded = !recent.has(n) && long && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${n !== lastAgent && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}" title="Send this message to another session">↗ Send to another session…</button></div>${follow}</div>`;
+      <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
   }), chose);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
-  if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stop its current turn so it reads this now (⌘ Enter when sending does the same)">Send now</button></div></div>`);
+  if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
   return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
 const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
 /** One line under the chat: where the session is now. */
 function statusLine(it, s) {
+  // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
+  if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}" title="Answers “Yes, I trust this folder” in its terminal">Trust folder</button><button class="btn small" data-act="go-session" data-sid="${esc(s.session_id)}">Go to tab</button></div>`;
   // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
   if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span><button class="btn small" data-act="go-session" data-sid="${esc(s.session_id)}">Go to tab</button></div>`;
   // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.
   if (s?.compacting_ms) return `<div class="cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
+  // It finished compacting (until the next turn starts).
+  if (s?.compacted_ms && s.state !== "working") return `<div class="cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
   // What it's doing right now (its latest step), else the prompt it's on.
   if (s?.state === "working" && s.doing) return `<div class="cv-status"><span class="dot-live"></span>${esc(s.doing)}<span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span></div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
@@ -990,7 +1068,7 @@ function statusLine(it, s) {
     const when = l.resets_ms ? ` · resets ${clockAt(l.resets_ms)}${l.resets_ms - now() < 20 * 3600000 ? `, in ${untilText(l.resets_ms - now())}` : ""}` : "";
     const head = l.scope === "all" ? "Out of usage" : `${esc(l.scope)} used up`;
     const tail = l.scope === "all" ? "Cue will tell you when it resets." : "Switch models with /model to keep going.";
-    return `<div class="cv-status limit" title="${esc(l.text)}"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
+    return `<div class="cv-status limit" data-cut title="${esc(l.text)}"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
   }
   if (s?.state === "stopped") return `<div class="cv-status">Stopped by you · it's at its prompt</div>`;
   if (!s && it && !isPending(it)) return `<div class="cv-status">This session has ended.</div>`;
@@ -1005,8 +1083,8 @@ function nextBar() {
   const n = nextUp();
   if (!n) return "";
   // × only on a finished turn; a decision would just hide something the agent is still blocked on.
-  const clear = n.kind === "waiting" ? `<button class="next-clear" data-act="dismiss" data-id="${esc(n.id)}" title="Nothing to reply: take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
-  return `<div class="next-bar" data-act="next" role="button" tabindex="0" title="Open it (N)"><span class="next-label">Next</span>${badge(n.harness)}<span class="next-proj">${esc(n.project)}</span><span class="next-what">${esc(plain(summary(n)))}</span>${clear}<kbd>N</kbd></div>`;
+  const clear = n.kind === "waiting" ? `<button class="next-clear" data-act="dismiss" data-id="${esc(n.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
+  return `<div class="next-bar" data-act="next" role="button" tabindex="0"><span class="next-label">Next</span>${badge(n.harness)}<span class="next-proj">${esc(n.project)}</span><span class="next-what">${esc(plain(summary(n)))}</span>${clear}<kbd>N</kbd></div>`;
 }
 
 /** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), a relay lead's Hand
@@ -1022,7 +1100,7 @@ function moreMenu(sid, s) {
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Hand off? Click again" : "Hand off…"}<span>${busy ? "When this turn ends" : "It writes its notes, opens a successor lead and steps down"}</span></button>` : ""}
       ${later}</div>`;
-  return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" title="More" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
+  return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
 }
 /** "claude-opus-5-5" → "Opus 5.5", "gpt-5.6-terra" → "GPT-5.6 Terra", "deepseek-v4-pro" → "DeepSeek V4 Pro". */
 function prettyModel(id) {
@@ -1042,10 +1120,12 @@ function metaInline(sid) {
   const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 2 : 0)}M` : `${Math.round(n / 1000)}k`);
   const money = (c) => `$${c >= 100 ? Math.round(c) : c.toFixed(2)}`;
   const tip = [m.model && `Model: ${m.model}`, m.window && `Context: ${k(m.context)} of ${k(m.window)} tokens (${pct}%)`, m.cache_pct != null && `Cache: ${m.cache_pct}% of the latest reply's input came from the cache`, m.cost != null && `Cost so far: ${money(m.cost)}`].filter(Boolean).join("\n");
-  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", pct !== null ? `<span class="mi-ctx ${lvl}">${pct}% context</span>` : "", m.cache_pct != null ? `cache ${m.cache_pct}%` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
-  // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
+  // Just compacted: its log's last count is from before, so don't show it until a new reply brings a fresh one.
   const s = sessionOf(sid);
-  const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}" title="Summarize the conversation to free up context">Compact</button>` : "";
+  const freed = s?.compacted_ms && s.state !== "working";
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}">${pct}% context</span>` : "", m.cache_pct != null ? `cache ${m.cache_pct}%` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
+  const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}" title="Summarize the conversation to free up context">Compact</button>` : "";
   return `<span class="ap-meta" title="${esc(tip)}">${parts.join(" · ")}</span>${chip}`;
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
@@ -1060,7 +1140,7 @@ function quietPane() {
   const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane">
     <div class="ap-head">${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
-      <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}" title="Go to its terminal tab">Go to tab</button></div>
+      <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">Go to tab</button></div>
     ${subHead(q.cwd, "", "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
     <div class="ap-chat" data-chat>${chat || `<div class="dim cv-empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`}</div></div>`;
@@ -1088,7 +1168,7 @@ function activePane() {
   const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
   const turnWord = ch ? `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} · +${ch.add} −${ch.del}` : it?.interrupted ? "interrupted" : "your turn";
   const pill = pending
-    ? `<span class="pill ${it.interrupted ? "intr" : ""}"${ch ? ` title="${esc(changesTip(ch))}"` : ""}>${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Nothing to reply: take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
+    ? `<span class="pill ${it.interrupted ? "intr" : ""}"${ch ? ` title="${esc(changesTip(ch))}"` : ""}>${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
     : `<span class="pill soft">${s ? { working: "working", waiting: "your turn", deciding: "deciding", agent: "on its lead", stopped: "stopped", limited: s.limit && lifted(s.limit) ? "usage is back" : "out of usage" }[s.state] || s.state : "answered"}</span>`;
   let foot;
   if (pending && it.kind !== "waiting") {
@@ -1109,7 +1189,7 @@ function activePane() {
   const cm = crewOf(sid);
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
   return `<div class="active-pane">
-    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid)}<span class="dim">${who}</span>${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}" title="Send “Commit”">Commit</button>` : ""}<span class="grow"></span>
+    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid)}<span class="dim">${who}</span>${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? crewHeadBtns(sid) : ""}
       ${sid ? moreMenu(sid, s) : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
@@ -1124,9 +1204,9 @@ function activePane() {
 }
 
 /** × on a finished turn: nothing to reply, take it off Waiting. Decisions don't get one (the agent is blocked on them). */
-const clearX = (it) => it.kind === "waiting" ? `<button class="x-clear" data-act="dismiss" data-id="${esc(it.id)}" title="Nothing to reply: take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
+const clearX = (it) => it.kind === "waiting" ? `<button class="x-clear" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
 /** "Later" on a Waiting row: move the session to Need to decide. */
-const parkBtn = (sid) => `<button class="park-btn" data-park="${esc(sid)}:1" title="Need to decide: move it below while you think">Later</button>`;
+const parkBtn = (sid) => `<button class="park-btn" data-park="${esc(sid)}:1" title="Move it below for now">Later</button>`;
 /** A row in Need to decide: the session, its finished turn if any, ↩ to put it back. Click to open it. */
 function laterRow({ sid, s, it }) {
   const on = active?.sid === sid ? "on" : "";
@@ -1198,7 +1278,7 @@ function usageChip() {
   const paused = (n) => `${n} paused`;
   if (out.length) {
     const r = Math.max(...out.map((s) => s.limit.resets_ms || 0));
-    return `<span class="usage-wrap"><button class="usage-out" data-usage="out" title="Nothing in Claude Code can run until the limit resets. Click to step through the paused sessions."><span class="uo-dot"></span>Claude Code out of usage<span class="uo-sub">${r ? ` · resets ${clockAt(r)}` : ""} · ${paused(out.length)}</span></button>${usagePop()}</span>`;
+    return `<span class="usage-wrap"><button class="usage-out" data-usage="out" title="Click to step through the paused sessions"><span class="uo-dot"></span>Claude Code out of usage<span class="uo-sub">${r ? ` · resets ${clockAt(r)}` : ""} · ${paused(out.length)}</span></button>${usagePop()}</span>`;
   }
   if (back.length) return `<span class="usage-wrap"><span class="usage-back"><span class="ub-dot"></span>${esc(scopeName(back[0].limit))} is back<button class="ub-btn" data-usage="resend" title="Send each paused session the message that didn't run">Resend ${back.length}</button></span></span>`;
   if (model.length) {
@@ -1217,7 +1297,7 @@ function usageChip() {
     return `${m.label ? `<span class="ul">${esc(m.label.length > 12 ? m.label.slice(0, 11) + "…" : m.label)}</span>` : ""}${pct === null ? "" : `<span class="um ${pct >= 100 ? "full" : pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up">${esc(spendText(m))}</span>`;
   }).join("");
   const broken = uf.error ? `<span class="ul uf-bad" title="${esc(uf.error)}">usage file ⚠</span>` : "";
-  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter" title="Usage">${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${usagePop()}</span>`;
+  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter">${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${usagePop()}</span>`;
 }
 /** "$12.40/$50", "48/200 credits", "$3.10": an amount from your usage file, in its unit. */
 function spendText(m, long = false) {
@@ -1267,11 +1347,11 @@ function boardView() {
   const needRows = [...needs, ...ghostRows].sort((a, b) => a.created_ms - b.created_ms).map((i) => needRow(i, i._ghost)).join("");
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
-  const card = (s) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${active?.sid === s.session_id && !isPending(findItem(active.id)) ? "on" : ""}" data-session="${esc(s.session_id)}" title="Open">
+  const card = (s) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${active?.sid === s.session_id && !isPending(findItem(active.id)) ? "on" : ""}" data-session="${esc(s.session_id)}">
       <div class="card-head">${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${pinBtn(s.session_id)}${pinnedIds().has(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
-      ${bar(s.session_id)}${s.compacting_ms ? `<div class="doing"><span class="dot-live"></span>Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
+      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing"><span class="dot-live"></span>Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}"><span class="dot-live"></span>${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
   const pins = state.sessions.filter((s) => pinnedIds().has(s.session_id));
   const workCol = (pins.length ? `<div class="col-sub">PINNED · ${pins.length}</div>${pins.map(card).join("")}` : "")
@@ -1290,7 +1370,7 @@ function boardView() {
     <div class="col"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div>${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${laterSec}</div>
     <div class="col split ${recentClosed() ? "recent-closed" : ""}">
       <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length + pins.length}</span></div><div class="sec-body">${workCol}</div></div>
-      <div class="sec sec-recent"><button class="col-head fold-head" data-act="fold-recent" aria-expanded="${!recentClosed()}" title="${recentClosed() ? "Show" : "Hide"} recently answered"><span class="fold-arrow">${recentClosed() ? "▸" : "▾"}</span>RECENTLY ANSWERED <span>${state.history.length ? `last ${Math.min(RECENT, state.history.length)}` : ""}</span></button>${recentClosed() ? "" : `<div class="sec-body">${recentList(RECENT)}</div>`}</div>
+      <div class="sec sec-recent"><button class="col-head fold-head" data-act="fold-recent" aria-expanded="${!recentClosed()}"><span class="fold-arrow">${recentClosed() ? "▸" : "▾"}</span>RECENTLY ANSWERED <span>${state.history.length ? `last ${Math.min(RECENT, state.history.length)}` : ""}</span></button>${recentClosed() ? "" : `<div class="sec-body">${recentList(RECENT)}</div>`}</div>
     </div>
   </div>`;
 }
@@ -1302,10 +1382,10 @@ function boardView() {
  *  on the right, under the buttons. One small line. */
 function subHead(cwd, crew, sid, titleOf = sid) {
   // The pin sits after the folder: the title row is full.
-  const folder = cwd ? `<span class="ap-cwd sel" title="${esc(cwd)}">${esc(String(cwd).replace(/^\/Users\/[^/]+(?=\/|$)/, "~"))}</span>${sid ? pinBtn(sid) : ""}` : "";
+  const folder = cwd ? `<span class="ap-cwd sel" data-cut title="${esc(cwd)}">${esc(String(cwd).replace(/^\/Users\/[^/]+(?=\/|$)/, "~"))}</span>${sid ? pinBtn(sid) : ""}` : "";
   // Under the name: what Claude Code titled the conversation (unless that's already the name).
   const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
-  const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" title="${esc(t)}">${esc(t)}</span>` : "";
+  const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" data-cut title="${esc(t)}">${esc(t)}</span>` : "";
   const meta = titleOf ? metaInline(titleOf) : "";
   return folder || crew || title || meta ? `<div class="ap-sub">${title}${meta}${crew}${folder}</div>` : "";
 }
@@ -1558,7 +1638,7 @@ function recentFolders() {
 }
 function liveChip() {
   const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length;
-  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session, and + New (⌘L)"><span class="hdot"></span>${rows.length} live${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen ? livePop(rows) : ""}</span>`;
+  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session, and + New (⌘L)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen ? livePop(rows) : ""}</span>`;
 }
 function livePop(rows) {
   const q = draft("find-live").text.trim().toLowerCase();
@@ -1574,7 +1654,7 @@ function livePop(rows) {
       : !r.quiet ? `<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>` : "";
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
-    return `<div class="lv-row ${sel}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" title="${esc(tip || (r.quiet ? "Go to its tab" : "Open its chat"))}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
+    return `<div class="lv-row ${sel}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip || r.quiet ? `title="${esc(tip || "Go to its tab")}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -1662,7 +1742,7 @@ function liveRows() {
   const rows = state.sessions.map((s) => {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
-    const what = s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
+    const what = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
     return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), cwd: s.cwd || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
   });
   for (const q of state.live || []) {
@@ -1701,7 +1781,7 @@ function closeBtn(sid) {
   const m = crewOf(sid);
   const what = m?.role === "executor" ? `Close it through ${m.plugin === "pilead" ? "pilead" : "relay"} (marks it closed, closes its tab)` : "End it and close its tab (its conversation is kept: claude --resume brings it back)";
   return svCloseArm === sid
-    ? `<button class="btn deny sx-close on" data-sv="close" data-sid="${esc(sid)}" title="Click again to close it">Close?</button>`
+    ? `<button class="btn deny sx-close on" data-sv="close" data-sid="${esc(sid)}">Close?</button>`
     : `<button class="btn sx-close" data-sv="close" data-sid="${esc(sid)}" title="Close: ${esc(what)}">Close</button>`;
 }
 function svClosable(r) {
@@ -1716,7 +1796,7 @@ function svActs(r) {
   const m = r.crew || crewOf(r.sid), acts = [];
   if (r.it) acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`);
   if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff", "Open its staged changes in your browser") + (m.lead_armed ? crewBtn(r.sid, "review", "Review", `Type a review command for it into ${m.lead_name || "its lead"}`, true) : ""));
-  if (!r.it && !r.quiet && !r.ghost) acts.push(`<button class="btn" data-sv="open" data-sid="${esc(r.sid)}" title="Open it in Active">Open</button>`);
+  if (!r.it && !r.quiet && !r.ghost) acts.push(`<button class="btn" data-sv="open" data-sid="${esc(r.sid)}">Open</button>`);
   if (!r.ghost) acts.push(`<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}" title="Go to its terminal tab">Tab</button>`);
   if (svClosable(r)) acts.push(closeBtn(r.sid));
   return acts.join("");
@@ -1730,18 +1810,18 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const unnamed = !crew && r.name === baseName(r.cwd) && (ab.about || ab.now);
   const name = unnamed ? ab.about || ab.now : crew ? bareName(crew.name || r.name) : r.name;
   const lines = [];
-  if (!unnamed && ab.about) lines.push(`<div class="sx-l about" title="${esc(ab.about)}">${esc(ab.about)}</div>`);
-  if (ab.outcome) lines.push(`<div class="sx-l out" title="${esc(ab.outcome)}"><span class="sx-k">Outcome</span>${esc(ab.outcome)}</div>`);
-  if (r.st === "working" && r.run) lines.push(`<div class="sx-l run" title="${esc(r.what)}">${esc(r.what)}</div>`);
-  else if (r.st === "asks" && r.what) lines.push(`<div class="sx-l ask" title="${esc(r.what)}">${esc(r.what)}</div>`);
-  else if (ab.now && !(unnamed && name === ab.now)) lines.push(`<div class="sx-l now" title="${esc(ab.now)}">› ${esc(ab.now)}</div>`);
+  if (!unnamed && ab.about) lines.push(`<div class="sx-l about" data-cut title="${esc(ab.about)}">${esc(ab.about)}</div>`);
+  if (ab.outcome) lines.push(`<div class="sx-l out" data-cut title="${esc(ab.outcome)}"><span class="sx-k">Outcome</span>${esc(ab.outcome)}</div>`);
+  if (r.st === "working" && r.run) lines.push(`<div class="sx-l run" data-cut title="${esc(r.what)}">${esc(r.what)}</div>`);
+  else if (r.st === "asks" && r.what) lines.push(`<div class="sx-l ask" data-cut title="${esc(r.what)}">${esc(r.what)}</div>`);
+  else if (ab.now && !(unnamed && name === ab.now)) lines.push(`<div class="sx-l now" data-cut title="${esc(ab.now)}">› ${esc(ab.now)}</div>`);
   const hot = r.st === "asks" || m?.lead_armed === false;
   const lead = crew ? `${crewDot(r.sid)}` : "";
   const leadTag = crew ? `<span class="role lead" title="${crew.plugin === "pilead" ? "pi-lead" : "relay"} lead${crew.auto ? " · auto mode: proceeds on routine steps without asking" : ""}">LEAD</span>` : "";
   // The whole tile opens it: its chat in Active, or (quiet: nothing sent to Cue yet) its terminal tab.
-  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" title="${r.quiet ? "See what it's doing (it started before Cue was connected)" : "Open its chat"}"`;
+  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet ? ` title="See what it's doing (it started before Cue was connected)"` : ""}`;
   return `<div class="sx-item ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" title="${esc(name)}">${esc(name)}</span>${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" data-cut title="${esc(name)}">${esc(name)}</span>${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");
@@ -1791,7 +1871,7 @@ function sessionsView() {
     const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
     const br = state.branches?.[t.cwd];
     const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
-      <div class="sx-thead"><span class="sx-tname" title="${esc(t.cwd)}">${esc(baseName(t.cwd) || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(t.cwd)}" title="New session in ${esc(homeless(t.cwd))}">+</button></div>
+      <div class="sx-thead"><span class="sx-tname" data-cut title="${esc(t.cwd)}">${esc(baseName(t.cwd) || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(t.cwd)}" title="New session in ${esc(homeless(t.cwd))}">+</button></div>
       ${solo.length ? `<div class="sx-solo">${svItems(solo)}</div>` : ""}${crews.join("")}</div>`;
     return { rank, latest, html };
   }).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);
@@ -1951,7 +2031,7 @@ function settingsSheet() {
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
     <div class="set-group">Quick phrases</div>
-    ${setRow("Above the text box", `Click one to send it, after anything you've typed in the box. Up to 4, also on the side panel. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
+    ${setRow("Above the text box", `Click one to send it, after anything you've typed in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
     <div class="set-group">Steps</div>
     ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. One line each: click a step for its output or diff.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "One line each"], ["all", "Everything"], ["hidden", "Hidden"]]))}
     <div class="set-group">Context</div>
@@ -1965,7 +2045,6 @@ function settingsSheet() {
     ${setRow("When an agent needs a decision", "Permissions and questions.", toggle("notify.decisions", st.notify?.decisions ?? true))}
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
     ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}
-    ${setRow("Side panel", "While anything is waiting, a small tab on the edge of the screen: click it to see what's waiting and answer right there. Off by default: notifications and the count on the menu bar icon still tell you.", toggle("panel.enabled", st.panel?.enabled ?? false))}
     <div class="set-group">Agents driving agents</div>
     ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no card or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}
     <div class="set-group">Pi</div>
@@ -1985,14 +2064,14 @@ function renderMain() {
   const focusKey = focused?.dataset?.text;
   const focusId = !focusKey && focused?.matches?.("input[id]") ? focused.id : null;   // e.g. a quick phrase field
   const caret = focusKey || focusId ? [focused.selectionStart, focused.selectionEnd] : null;
-  const SCROLLERS = ".col, .sv-scroll, .sheet-body, .ap-chat, .sec-body, .card.recent, .hist, .hdetail";
+  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .ap-chat, .sec-body, .card.recent, .hist, .hdetail";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
 
   const counts = headerChips();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue" title="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}</span><span class="grow" data-tauri-drag-region></span>
+    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}</span><span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
       ${usageChip()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
@@ -2054,6 +2133,22 @@ function renderMain() {
   if (focusKey) { const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`); if (el) { el.focus(); el.setSelectionRange(...caret); } }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); el.setSelectionRange(...caret); } }
   fitHead();
+  fitTop();
+}
+/** The top bar never pushes Settings off the edge (a usage file adds meters; chips come and go): when it
+ *  doesn't fit, it gives up room step by step: the chips' extras ("· oldest 4m"), the meters' bars, the
+ *  meters' labels, then the chips' words (the number and dot stay; the tooltip still says what they are). */
+const TOP_STEPS = ["tfit1", "tfit2", "tfit3", "tfit4"];
+function fitTop() {
+  const h = document.querySelector(".app > .top");
+  if (!h) return;
+  h.classList.remove(...TOP_STEPS);
+  // Fits: Settings (the last button) ends inside the bar. Measured by it, so an open drop-down doesn't count.
+  const fits = () => !h.lastElementChild || h.lastElementChild.getBoundingClientRect().right <= h.getBoundingClientRect().right + 1;
+  for (const step of TOP_STEPS) {
+    if (fits()) return;
+    h.classList.add(step);
+  }
 }
 /** The chat header's buttons never get cut off: when they don't fit, it gives up room step by step
  *  (short labels, then the agent and model, then the "your turn" pill, then the role tag, and the
@@ -2073,7 +2168,7 @@ function fitHead() {
     h.classList.add(step);
   }
 }
-addEventListener("resize", () => fitHead());
+addEventListener("resize", () => { fitHead(); fitTop(); });
 
 /** Cue's mark (the app icon without its tile): an open C around a dot. */
 const CUE_MARK = `<svg width="28" height="28" viewBox="200 200 624 624" aria-hidden="true"><circle cx="512" cy="512" r="250" fill="none" stroke="currentColor" stroke-width="92" stroke-dasharray="1180 400" stroke-linecap="round" transform="rotate(40 512 512)"/><circle cx="512" cy="512" r="84" fill="#B5C27A"/></svg>`;
@@ -2134,8 +2229,8 @@ function headerChips() {
     const tip = list.map((x) => `${x.project} ${ago(x.since)}`).join(" · ");
     // The chip you're stepping through: ‹ 2 of 3 waiting › (← → do the same).
     const at = chipNav === kind ? chipAt(list) : -1;
-    if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}" title="${esc(tip)}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length} ${label}</button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
-    return `<button class="hchip ${cls}" data-chip="${kind}" title="${esc(tip)}"><span class="hdot ${dot}"></span>${list.length} ${label}${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
+    if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}" title="${esc(tip)}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
+    return `<button class="hchip ${cls}" data-chip="${kind}" title="${esc(tip)}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
   };
   const waiting = chipList("waiting");
   const oldest = waiting[0] ? now() - waiting[0].since : 0;
@@ -2182,7 +2277,8 @@ async function attach(key, files) {
 }
 
 /** Hover text that shows at once, inside Cue's window: the browser's own (from `title`) waits about a
- *  second and doesn't show unless Cue is the app in front. Anything with a title gets it. */
+ *  second and doesn't show unless Cue is the app in front. Anything with a title gets it; with
+ *  `data-cut` (the hover is just the text you see), only when that text is cut off. */
 function bindTips() {
   const tip = document.createElement("div");
   tip.className = "tip";
@@ -2195,6 +2291,7 @@ function bindTips() {
     // Take the title, so the browser's own doesn't show as well.
     if (el.hasAttribute("title")) { el.dataset.tip = el.getAttribute("title"); el.removeAttribute("title"); }
     if (el === on || !el.dataset.tip) return;
+    if (el.hasAttribute("data-cut") && el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1) return hide();
     on = el;
     tip.textContent = el.dataset.tip;
     const r = el.getBoundingClientRect();
@@ -2221,6 +2318,13 @@ function bindMain() {
     if (sid) loadOlder(sid);
   }, true);   // the send-to menu follows its button
   const app = document.getElementById("app");
+  // Where a click began: the live drop-down redraws every few seconds, so a click that began inside it can
+  // end on a fresh copy and reach the page as a click "outside". Only a press that began outside closes it.
+  let downInLive = false;
+  document.addEventListener("mousedown", (e) => { downInLive = !!e.target.closest?.(".lv-wrap"); }, true);
+  // Into a session's box: start reading its "/" commands now (that takes a few seconds the first
+  // time in a folder), so they're usually in by the time you type "/".
+  app.addEventListener("focusin", (e) => { const sid = sidOfKey(e.target.dataset?.text || ""); if (sid) cmdList(sid); });
   app.addEventListener("click", (e) => {
     const t = e.target;
     if (lightbox) { lightbox = null; return renderMain(); }
@@ -2273,12 +2377,15 @@ function bindMain() {
       document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`)?.closest(".composer")?.querySelector(".btn.send")?.click();
       return;
     }
+    const cp = t.closest("[data-cmd-pick]");
+    if (cp) return pickCmd(cp.dataset.cmdPick, cp.dataset.cmd, false);
     const st = t.closest("[data-astext]");
     if (st) {
       const key = st.dataset.astext, el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
       draft(key).text = ` ${draft(key).text.trimStart()}`;
       saveDrafts();
       st.parentElement.hidden = true;
+      refreshCmd(key);
       if (el) { el.value = draft(key).text; el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
       return;
     }
@@ -2363,9 +2470,11 @@ function bindMain() {
     if (lv) return lvAct(lv.dataset.lv, lv.dataset);
     const sv = t.closest("[data-sv]");
     if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
-    if (liveOpen && !t.closest(".lv-wrap")) { liveOpen = false; renderMain(); }
+    if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = false; renderMain(); }
     const ca = t.closest("[data-crew]");
     if (ca) return crewAct(ca.dataset.crewSid, ca.dataset.crew);
+    const tr = t.closest("[data-act=trust]");
+    if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Use Go to tab.`)); return; }
     const goS = t.closest("[data-act=go-session]");
     if (goS) { invoke("focus_session_id", { sessionId: goS.dataset.sid }).then((r) => toast(`Jumped to ${r}`)).catch((e) => toast(`Couldn't jump: ${e}`)); return; }
     const ss = t.closest("[data-session]");
@@ -2424,8 +2533,9 @@ function bindMain() {
     if (id === "find-live") liveSel = 0;
     if (id === "find-sessions" || id === "find-live") return renderMain();
     saveDrafts();
-    const hint = e.target.closest(".field")?.querySelector(".slash-hint");
-    if (hint) hint.hidden = !e.target.value.startsWith("/");
+    if (cmdShut === id) cmdShut = null;
+    cmdSel = 0;
+    refreshCmd(id);
     grow(e.target);
     const b = e.target.closest(".composer")?.querySelector(".btn.send");
     if (b && !b.dataset.held) b.disabled = !e.target.value.trim() && !draft(id).images.length;
@@ -2459,8 +2569,23 @@ function bindMain() {
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
   document.addEventListener("keydown", (e) => {
+    // The "/" menu under a box: arrows move, Tab fills, Enter runs, Esc closes it.
+    const mk = e.target.dataset?.text;
+    if (mk && !e.isComposing && ["ArrowUp", "ArrowDown", "Tab", "Enter", "Escape"].includes(e.key) && cmdMatches(mk).length && !e.shiftKey) {
+      const m = cmdMatches(mk);
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") { cmdShut = mk; return refreshCmd(mk); }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") { cmdSel = (cmdSel + (e.key === "ArrowDown" ? 1 : m.length - 1)) % m.length; return refreshCmd(mk); }
+      return pickCmd(mk, m[cmdSel].name, e.key === "Enter");
+    }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
-    if (liveOpen && e.key === "Escape") { liveOpen = newOpen = false; return renderMain(); }
+    // Esc in the New session form closes just the form (and back to the list), not the whole drop-down.
+    if (liveOpen && e.key === "Escape") {
+      if (newOpen && e.target.closest?.(".nf")) { newOpen = false; renderMain(); return document.querySelector('[data-text="find-live"]')?.focus(); }
+      liveOpen = newOpen = false;
+      return renderMain();
+    }
     // ⌘, opens Settings, the Mac way (even while typing in a box).
     if (e.metaKey && e.key.toLowerCase() === "f") { e.preventDefault(); return sheet === "search" ? (sheet = null, renderMain()) : openSearch(); }
     if (e.metaKey && e.key === ",") { e.preventDefault(); sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
@@ -2499,6 +2624,7 @@ function bindMain() {
         e.preventDefault();
         const key = e.target.dataset.text;
         if (key === "fwd") return sendForward();
+        if (key === "new-cwd" || key === "new-name" || key === "new-msg") return lvAct("start", {});
         if (key === "search") return pickResult(searchSel);
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
         if (key.startsWith("s:")) {
@@ -2534,189 +2660,6 @@ function bindMain() {
   });
 }
 
-// ---------- mini panel ----------
-const MINI_MAX = 4;
-function miniCard(it) {
-  const q = it.kind === "question" ? questions(it) : [];
-  const quick = q.length === 1 && !q[0].multiSelect && (q[0].options || []).length <= 4;
-  let right = "", below = "";
-  if (it.kind === "permission") right = `<button class="rb no" data-act="deny" aria-label="Deny">✕</button><button class="rb yes" data-act="allow" aria-label="Allow">✓</button>`;
-  else if (it.kind === "waiting") right = `<button class="rb open" data-act="go" aria-label="Go to session">→</button><button class="rb open" data-act="dismiss" aria-label="Dismiss">✕</button>`;
-  if (quick) below = `<div class="m-chips">${q[0].options.map((o, oi) => `<button class="m-chip" data-pick="${oi}">${esc(o.label)}</button>`).join("")}</div>`;
-  right = `<button class="rb open" data-act="open" aria-label="Open in Cue">↗</button>` + right;
-  // The one you're replying to shows more: three lines (a finished turn: what it said, not just its first line).
-  const sel = it.id === edgeTarget()?.id;
-  const text = sel && it.kind === "waiting" ? plain(finishedText(it)).replace(/^\s*([-*_=]\s*){3,}$/gm, " ").replace(/\s+/g, " ").trim() || summary(it) : summary(it);
-  return `<div class="m-card ${sel ? "sel" : ""}" data-id="${esc(it.id)}">
-    <div class="m-top">${nameSpan(it.session_id, it.project, "p")}<span>${esc(agentName(it.harness))} · ${it.kind === "waiting" ? "your turn" : verb(it)}</span>${sel ? `<span class="m-sel-tag">replying</span>` : ""}<span class="age">${ago(it.created_ms)}</span></div>
-    <div class="m-row"><div class="m-title ${isBash(it) ? "mono" : ""}">${esc(text)}</div>${right}</div>${below}</div>`;
-}
-function renderMini() {
-  const { yours, decide } = groups();
-  renderEdge(decide, yours);
-}
-
-// ---------- the side panel: a curved tab on the right edge of the screen ----------
-let edgeOpen = false;
-let edgeEnter = false;             // the next render slides its contents in (just opened or closed)
-let edgeCloseTimer = null;
-let edgeLeft = false;              // on the left edge (dragged there): the curve and the slide face right
-let edgeDragged = false;           // that press was a drag: its click doesn't open the panel
-const EDGE_FADE_MS = 80;
-let edgeSel = null;                // the card the box under the list talks to: the one you clicked, else the oldest
-/** What you've already seen in the open panel: the pill counts only what came in since. (This
- *  Mac's own memory: lost, everything waiting just counts as new once.) */
-const EDGE_SEEN_KEY = "cue.edge.seen";
-let edgeSeen = new Set();
-try { edgeSeen = new Set(JSON.parse(localStorage.getItem(EDGE_SEEN_KEY) || "[]")); } catch {}
-function markEdgeSeen(items) {
-  const fresh = items.some((i) => !edgeSeen.has(i.id));
-  // Keep only what still waits, so the list never grows.
-  if (!fresh && edgeSeen.size === items.length) return;
-  edgeSeen = new Set(items.map((i) => i.id));
-  try { localStorage.setItem(EDGE_SEEN_KEY, JSON.stringify([...edgeSeen])); } catch {}
-}
-let edgeDraft = "";                // what's typed there (kept across redraws)
-/** Who the box under the list talks to: the card you clicked while it's still there, else the one
- *  that's waited longest. */
-function edgeTarget() {
-  const { yours, decide } = groups();
-  const shown = [...decide, ...yours].slice(0, MINI_MAX);
-  return shown.find((i) => i.id === edgeSel) || shown.reduce((a, i) => (!a || i.created_ms < a.created_ms ? i : a), null);
-}
-/** What typing does for each kind: your turn, a reply; a permission, "no, do this instead"; a question, your answer. */
-const edgeHint = (it) => !it ? "" : it.kind === "permission" ? "Deny, and tell it what to do instead…" : it.kind === "question" ? "Type your answer…" : "Reply…";
-/** Off until you click a card; then it says who it's for and what Enter will do. */
-function edgeComposer(any) {
-  if (!any) return "";
-  const it = edgeTarget();
-  if (!it) return "";
-  return `<div class="eg-say"><div class="eg-to">To <b>${esc(nameOf(it.session_id, it.project))}</b> · ${it.kind === "waiting" ? "your turn" : esc(verb(it))}<button class="eg-unpick" data-act="edge-unpick" aria-label="Stop replying">✕</button></div>
-    ${it.kind === "waiting" ? quickRow(`data-act="edge-quick"`) : ""}<div class="m-reply"><input class="m-reply-in" data-edge-say placeholder="${esc(edgeHint(it))}" spellcheck="true" autocomplete="off" value="${esc(edgeDraft)}"/><button class="m-reply-send ${it.kind === "permission" ? "deny" : ""}" data-act="edge-send">${it.kind === "permission" ? "Deny" : "Send"}</button></div></div>`;
-}
-/** Closed: a small tab with how many ask you (red) and how many are your turn. Open: the panel, with
- *  what's waiting (Allow / Deny, answers, open, dismiss) and a box to reply to the one you click. */
-function renderEdge(decide, yours) {
-  const all = [...decide, ...yours];
-  const app = document.getElementById("app");
-  const enter = edgeEnter ? "enter" : "";
-  edgeEnter = false;
-  const typing = document.activeElement?.matches?.("[data-edge-say]") ? document.activeElement : null;
-  const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
-  if (!edgeOpen) {
-    // How many came in since you last opened it (not everything waiting: that may never reach 0); red
-    // and softly pulsing when one of those asks you something. Nothing new: a quiet tab, no number.
-    const fresh = all.filter((i) => !edgeSeen.has(i.id));
-    const asks = fresh.some((i) => decide.includes(i));
-    const tip = `${fresh.length ? `${fresh.length} new · ` : ""}${all.length} waiting`;
-    app.innerHTML = `<div class="eg closed ${asks ? "ask" : ""} ${fresh.length ? "" : "quiet"} ${edgeLeft ? "left" : ""} ${enter}" data-act="edge-open" aria-label="${esc(tip)}">${fresh.length || ""}</div>`;
-  } else {
-    markEdgeSeen(all);   // open: everything in it is seen
-    app.innerHTML = `<div class="eg open ${edgeLeft ? "left" : ""} ${enter}">
-      <div class="m-head"><span class="m-count">Cue · ${all.length} waiting</span><span class="grow"></span><button class="m-icon" data-act="open-app">Open Cue</button><button class="m-icon" data-act="edge-fold" aria-label="Fold it back into the tab">✕</button></div>
-      <div class="m-list">${all.length ? all.slice(0, MINI_MAX).map(miniCard).join("") : `<div class="m-empty">Nothing waiting.</div>`}</div>
-      ${edgeComposer(all.length)}
-      ${all.length > MINI_MAX ? `<div class="m-more">+${all.length - MINI_MAX} more · <a href="#" data-act="open-app">open Cue</a></div>` : ""}</div>`;
-  }
-  if (caret) { const box = app.querySelector("[data-edge-say]"); box?.focus(); box?.setSelectionRange(...caret); }
-  // Just opened: ready to type (to the oldest, unless you pick another).
-  else if (enter && edgeOpen) app.querySelector("[data-edge-say]")?.focus();
-  // The window grows (or tucks) to fit, animated by macOS; then the contents slide in.
-  requestAnimationFrame(() => {
-    const el = document.querySelector(".eg");
-    if (!el) return;
-    invoke("mini_resize", { height: el.offsetHeight, open: edgeOpen }).then((left) => { if (typeof left === "boolean" && left !== edgeLeft) { edgeLeft = left; render(); } }, () => {});
-    if (enter) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("enter")));
-  });
-}
-/** Open or close: fade the contents out, then change size (macOS animates it), then slide the new ones in. */
-function setEdge(open) {
-  clearTimeout(edgeCloseTimer);
-  if (edgeOpen === open) return;
-  const el = document.querySelector(".eg");
-  const swap = () => { edgeOpen = open; edgeEnter = true; render(); };
-  if (!el || matchMedia("(prefers-reduced-motion: reduce)").matches) return swap();
-  el.classList.add("leave");
-  edgeCloseTimer = setTimeout(swap, EDGE_FADE_MS);
-}
-
-/** Send what's typed at the bottom to the card it's for: your turn, a reply (typed into its terminal);
- *  a permission, denied with what to do instead; a question, your answer. */
-async function edgeSend() {
-  const it = edgeTarget();
-  const box = document.querySelector("[data-edge-say]");
-  const text = box?.value.trim();
-  if (!it || !text) return;
-  box.disabled = true;
-  try {
-    if (it.kind === "waiting") await invoke("reply", { id: it.id, text, images: [] });
-    else if (it.kind === "permission") await deny(it, text);
-    else {
-      const qs = questions(it);
-      // One question: your words are its answer. Several: it reads them instead.
-      await (qs.length === 1 ? respond(it, { behavior: "allow", answers: { [qs[0].question]: text } }) : deny(it, text));
-    }
-    edgeDraft = ""; edgeSel = null;
-    box.value = ""; box.placeholder = "Sent";
-  } catch (e) { box.placeholder = `Couldn't send: ${e}`; }
-  box.disabled = false;
-}
-function bindMini() {
-  document.body.classList.add("mini");
-  document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing && e.target.matches?.("[data-edge-say]")) { e.preventDefault(); edgeSend(); } });
-  document.addEventListener("input", (e) => { if (e.target.matches?.("[data-edge-say]")) edgeDraft = e.target.value; });
-  {
-    document.body.classList.add("edge");
-    // Click the pill: it slides out. Click anywhere else (the window loses focus), ✕ or Esc: it tucks back
-    // in. Pointing at it only highlights it.
-    window.addEventListener("blur", () => setEdge(false));
-    // Drag it by the pill, or the open panel's header: press and move, and macOS moves the window; let go
-    // and it stays there, against the nearer edge. A press that doesn't move is a click.
-    let press = null;
-    document.addEventListener("mousedown", (e) => {
-      if (e.button !== 0 || !e.target.closest(".eg.closed, .eg.open .m-head") || e.target.closest("button")) return;
-      press = { x: e.screenX, y: e.screenY };
-      edgeDragged = false;
-    });
-    document.addEventListener("mousemove", (e) => {
-      if (!press || !(e.buttons & 1) || Math.hypot(e.screenX - press.x, e.screenY - press.y) < 4) return;
-      press = null;
-      edgeDragged = true;
-      invoke("mini_drag").catch(() => {});
-    });
-    document.addEventListener("mouseup", () => { press = null; });
-    T.event.listen("mini-edge", (e) => { edgeLeft = !!e.payload; render(); });
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") setEdge(false); });
-  }
-  document.getElementById("app").addEventListener("click", (e) => {
-    const el = e.target.closest("[data-act], [data-pick]");
-    // A click on a card (not one of its buttons): the box at the bottom now talks to it.
-    const card = e.target.closest(".m-card");
-    if (!el && card) {
-      edgeSel = edgeSel === card.dataset.id ? null : card.dataset.id; render();
-      return document.querySelector("[data-edge-say]")?.focus();
-    }
-    if (!el) return;
-    e.preventDefault();
-    const act = el.dataset.act;
-    if (act === "edge-fold") return setEdge(false);
-    if (act === "edge-send") return edgeSend();
-    if (act === "edge-quick") { const b = document.querySelector("[data-edge-say]"); if (!b) return; edgeDraft = b.value = withPhrase(b.value, el.dataset.phrase); return edgeSend(); }
-    if (act === "edge-unpick") { edgeSel = null; return render(); }
-    if (act === "edge-open") { if (edgeDragged) return; return setEdge(true); }
-    if (act === "open-app") return invoke("open_main", { id: null });
-    if (act === "close") return invoke("mini_close");
-    const it = findItem(e.target.closest(".m-card")?.dataset.id);
-    if (!it) return;
-    if (el.dataset.pick !== undefined) { const q = questions(it)[0]; return respond(it, { behavior: "allow", answers: { [q.question]: q.options[+el.dataset.pick].label } }); }
-    if (act === "allow") respond(it, { behavior: "allow" });
-    if (act === "deny") respond(it, { behavior: "deny" });
-    if (act === "open") invoke("open_main", { id: it.id });
-    if (act === "go") goTo(it);
-    if (act === "dismiss") invoke("dismiss", { id: it.id });
-  });
-}
-
 // ---------- boot ----------
 const LINGER_MS = 3000;
 /** A "✓ answered" card's time is up: it fades and folds away, and the cards below close the gap. */
@@ -2736,42 +2679,38 @@ function leaveGhosts() {
 let setupShown = false;
 function setState(s) {
   // Anything that just left Waiting lingers there as "✓ answered" for a moment instead of vanishing.
-  if (!MINI) {
-    const ids = new Set(s.items.map((i) => i.id));
-    for (const it of state.items) if (!ids.has(it.id)) ghosts.set(it.id, { it, at: Date.now() });
-    for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
-    if (ghosts.size) setTimeout(leaveGhosts, LINGER_MS + 50);
-  }
+  const ids = new Set(s.items.map((i) => i.id));
+  for (const it of state.items) if (!ids.has(it.id)) ghosts.set(it.id, { it, at: Date.now() });
+  for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
+  if (ghosts.size) setTimeout(leaveGhosts, LINGER_MS + 50);
   state = s;
   // First launch: an installed agent isn't connected yet, and you haven't closed the setup screen.
-  if (!MINI && !setupShown && s.settings && !s.settings.setup?.done && ["claude", "codex", "pi"].some((h) => s.connections?.[h]?.present && !s.connections[h].ok)) { setupShown = true; sheet = "setup"; }
+  if (!setupShown && s.settings && !s.settings.setup?.done && ["claude", "codex", "pi"].some((h) => s.connections?.[h]?.present && !s.connections[h].ok)) { setupShown = true; sheet = "setup"; }
   for (let n = outbox.length - 1; n >= 0; n--) if (outbox[n].via && landed(outbox[n])) outbox.splice(n, 1);
   if (s.now_ms) clockSkew = s.now_ms - Date.now();
   applyTheme();
   render();
 }
-function render() { MINI ? renderMini() : renderMain(); }
+const render = () => renderMain();
 
 async function boot() {
-  if (!MINI) await loadDrafts();
-  if (MINI) bindMini(); else bindMain();
+  await loadDrafts();
+  bindMain();
   setState(await invoke("get_state"));
-  if (!MINI) restoreSpot();
+  restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
-  if (!MINI) {
-    await T.event.listen("select", (e) => {
-      if (e.payload !== "usage") return setActive(e.payload);
-      const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
-      if (s) setActive(null, s.session_id);
-    });
-    await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
-    await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });
-  }
+  await T.event.listen("select", (e) => {
+    if (e.payload !== "usage") return setActive(e.payload);
+    const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
+    if (s) setActive(null, s.session_id);
+  });
+  await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
+  await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });
   setInterval(render, 15000); // keep ages and bars moving
   // The open session's steps: every 0.5 s while it works, else every 2 s (only new lines are read;
   // nothing new answers with just a version).
-  if (!MINI) setInterval(() => {
+  setInterval(() => {
     const cur = current();
     const q = quietOpen && (state.live || []).find((x) => x.session_id === quietOpen);
     const sid = q ? q.session_id : cur?.s?.session_id || cur?.it?.session_id;

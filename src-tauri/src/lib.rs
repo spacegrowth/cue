@@ -5,10 +5,10 @@ mod dictation;
 mod focus;
 mod hook;
 mod changes;
+mod commands;
 mod hub;
 mod leads;
 mod live;
-mod mini;
 mod model;
 mod notify;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
@@ -50,6 +50,22 @@ async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, harness:
 async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
     let h = hub.inner().clone();
     tauri::async_runtime::spawn_blocking(move || h.session_command(&session_id, &action)).await.map_err(|e| e.to_string())?
+}
+
+/// The "/" menu for a session's box: the commands Claude Code has enabled for it. None while they're
+/// being read (ask again shortly); empty for agents without a list.
+#[tauri::command]
+fn session_commands(hub: State<Arc<Hub>>, session_id: String) -> Option<Vec<commands::Cmd>> {
+    let origin = hub.session_origin(&session_id);
+    let (cwd, transcript) = match origin {
+        Some(o) if o.harness == "claude" => (o.cwd, o.transcript_path),
+        Some(_) => return Some(vec![]),
+        None => match live::claude().into_iter().find(|q| q.session_id == session_id) {
+            Some(q) => (q.cwd.clone(), live::claude_transcript(&q.cwd, &session_id).unwrap_or_default()),
+            None => return Some(vec![]),
+        },
+    };
+    commands::for_session(&cwd, &transcript)
 }
 
 /// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art? }] }]); none without one.
@@ -446,12 +462,21 @@ pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str,
         return Err(format!("{dir} isn't a folder"));
     }
     let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
+    let asks_trust = agent == "claude" && !focus::claude_trusts(&dir);
     let tab = focus::open_tab_with(&focus::start_line(agent, &dir, &sid, message, name)?)?;
     if !sid.is_empty() {
         let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, ..Default::default() };
-        h.started(origin, message);
+        h.started(origin, message, asks_trust);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
+}
+
+/// Trust in Cue for a session Claude Code is asking "do you trust this folder?": presses Enter in its
+/// terminal, which picks the question's first choice, "Yes, I trust this folder". Only from your click.
+#[tauri::command]
+async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
+    tauri::async_runtime::spawn_blocking(move || focus::press_enter(&origin)).await.map_err(|e| e.to_string())?
 }
 
 /// The agents "+ New session" can offer (installed on this Mac).
@@ -485,19 +510,6 @@ async fn clipboard_image() -> Option<String> {
     tauri::async_runtime::spawn_blocking(uploads::clipboard_image).await.ok().flatten()
 }
 
-#[tauri::command]
-/// The side panel's page: open (the panel) or closed (the tab), as tall as its content. Sync, so it runs
-/// on the main thread (AppKit).
-fn mini_resize(app: tauri::AppHandle, height: f64, open: Option<bool>) -> bool {
-    mini::size(&app, open.unwrap_or(false), height)
-}
-
-/// You pressed on the side panel's tab (or header) and moved: drag it (on drop it stays at that height, on the nearer edge).
-#[tauri::command]
-fn mini_drag(app: tauri::AppHandle) {
-    mini::drag(&app)
-}
-
 /// Settings → "Send a test notification": the same path a real alert takes, minus the agent.
 #[tauri::command]
 fn test_notification(app: tauri::AppHandle) -> String {
@@ -521,12 +533,7 @@ fn set_draft(key: String, text: String, images: serde_json::Value) {
     db::set_draft(&key, &text, &images)
 }
 
-#[tauri::command]
-fn mini_close(hub: State<Arc<Hub>>) {
-    hub.snooze_mini()
-}
-
-/// Bring up the full window, optionally on one item (side panel's ↗, the menu bar, a notification).
+/// Bring up the full window, optionally on one item (the menu bar, a notification).
 pub(crate) fn show_main(app: &tauri::AppHandle, id: Option<String>) {
     use tauri::Emitter;
     if let Some(w) = app.get_webview_window("main") {
@@ -552,11 +559,6 @@ fn activate_app() {
         }
         None => {}
     }
-}
-
-#[tauri::command]
-fn open_main(app: tauri::AppHandle, id: Option<String>) {
-    show_main(&app, id)
 }
 
 /// The agents' hook (see hook.rs): runs and returns; the caller exits.
@@ -596,10 +598,10 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(dictation::Dictation::default())
         .plugin(tauri_plugin_notification::init())
-        // Cue reopens at the size and place you left it (the side panel positions itself).
+        // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::new().with_denylist(&["mini"]).build())
-        .invoke_handler(tauri::generate_handler![session_command, connect_agent, update_check, update_install, session_steps, step_detail, mini_drag, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, mini_resize, get_drafts, set_draft, test_notification, mini_close, open_main])
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .invoke_handler(tauri::generate_handler![session_command, session_commands, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -642,7 +644,7 @@ pub fn run() {
                 archive::start(); // older Claude Code sessions, indexed by name in the background
                 tray::init(app.handle())?;
             }
-            // What was waiting before the restart: the side panel's tab, the icon and the badge show it now.
+            // What was waiting before the restart: the icon and the badge show it now.
             waiting.show_waiting();
             // Your usage file: when it changes, the usage pill shows the new numbers (or what's wrong).
             let h = waiting.clone();

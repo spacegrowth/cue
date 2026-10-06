@@ -58,6 +58,13 @@ pub struct Session {
     /// when its transcript says the compaction finished, or when it starts a turn.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub compacting_ms: u64,
+    /// When that compaction finished, so the chat can say so; cleared when the next turn starts.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub compacted_ms: u64,
+    /// Started by Cue in a folder Claude Code doesn't trust yet: since when its terminal has been asking
+    /// "do you trust this folder?". 0 once it's trusted.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub trust_ms: u64,
     /// The folder's git state when this turn started (to tell what the turn changed).
     #[serde(skip)]
     pub turn_base: Option<crate::changes::Base>,
@@ -103,6 +110,8 @@ impl Sessions {
             doing: String::new(),
             doing_ms: 0,
             compacting_ms: 0,
+            compacted_ms: 0,
+            trust_ms: 0,
             turn_base: None,
             changes: None,
             stuck_ms: 0,
@@ -113,9 +122,14 @@ impl Sessions {
         }
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             s.prompt = p.trim().to_string();
+            // It went through after all (it waited behind a command, say): its bubble stops saying it didn't.
+            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| e.unsent && e.text.trim() == s.prompt) {
+                e.unsent = false;
+            }
         }
         if state == "working" {
             s.compacting_ms = 0;
+            s.compacted_ms = 0;
             s.changes = None;
         }
         if s.state != state {
@@ -260,6 +274,31 @@ impl Sessions {
         }
     }
 
+    /// Its compaction finished at `at_ms`.
+    pub fn set_compacted(&mut self, session_id: &str, at_ms: u64) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.compacting_ms = 0;
+            s.compacted_ms = at_ms;
+        }
+    }
+
+    /// Waiting for you to trust its folder in its terminal since `at_ms` (0: it isn't).
+    pub fn set_trust(&mut self, session_id: &str, at_ms: u64) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.trust_ms = at_ms;
+        }
+    }
+
+    /// The sessions waiting on a trust question: (session id, folder, since when).
+    pub fn asking_trust(&self) -> Vec<(String, String, u64)> {
+        self.0.values().filter(|s| s.trust_ms > 0).map(|s| (s.origin.session_id.clone(), s.origin.cwd.clone(), s.trust_ms)).collect()
+    }
+
+    /// Since when it's been compacting (0: it isn't).
+    pub fn compacting_since(&self, session_id: &str) -> u64 {
+        self.0.get(session_id).map_or(0, |s| s.compacting_ms)
+    }
+
     /// The sessions compacting now: (session id, transcript, since when).
     pub fn compacting(&self) -> Vec<(String, String, u64)> {
         self.0.values().filter(|s| s.compacting_ms > 0).map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone(), s.compacting_ms)).collect()
@@ -302,6 +341,24 @@ impl Sessions {
     /// What you sent it while it was busy, if it hasn't been read yet.
     pub fn queued_text(&self, session_id: &str) -> Option<String> {
         self.0.get(session_id)?.queued.as_ref().map(|q| q.text.clone())
+    }
+
+    pub fn queued(&self, session_id: &str) -> Option<Exchange> {
+        self.0.get(session_id)?.queued.clone()
+    }
+
+    /// Move your message `q` (sent while it was busy, unread when the turn ended) below the reply just
+    /// noted: that's where it's read, as the next turn's prompt.
+    pub fn below_reply(&mut self, session_id: &str, q: &Exchange) {
+        let Some(s) = self.0.get_mut(session_id) else { return };
+        let head = |t: &str| t.trim().chars().take(200).collect::<String>();
+        let Some(i) = s.thread.iter().rposition(|e| e.role == "you" && e.at_ms.abs_diff(q.at_ms) < 15_000 && head(&e.text) == head(&q.text)) else { return };
+        if i + 1 == s.thread.len() {
+            return;
+        }
+        let mut e = s.thread.remove(i);
+        e.at_ms = s.thread.last().map_or(e.at_ms, |l| l.at_ms + 1).max(e.at_ms);
+        s.thread.push(e);
     }
 
     pub fn set_queued(&mut self, session_id: &str, q: Option<Exchange>) {
@@ -476,6 +533,23 @@ mod tests {
     }
 
     #[test]
+    fn a_message_queued_during_a_turn_goes_below_that_turns_reply() {
+        let mut s = Sessions::default();
+        s.mark(&origin("q"), "working", None);
+        s.note("q", "you", "fix the header", 9);
+        s.note("q", "you", "also the footer", 9); // sent while it worked on the header
+        let q = s.thread("q")[1].clone();
+        s.note("q", "agent", "Header fixed.", 9);
+        s.below_reply("q", &q);
+        let t = s.thread("q");
+        let order: Vec<&str> = t.iter().map(|e| e.text.as_str()).collect();
+        assert_eq!(order, ["fix the header", "Header fixed.", "also the footer"]);
+        assert!(t[2].at_ms > t[1].at_ms, "in time order, so a reload keeps it there");
+        s.below_reply("q", &q); // already last: stays
+        assert_eq!(s.thread("q").len(), 3);
+    }
+
+    #[test]
     fn a_reply_and_its_echoed_prompt_are_one_exchange() {
         let mut s = Sessions::default();
         s.mark(&origin("e"), "waiting", None);
@@ -535,5 +609,17 @@ mod tests {
         s.mark(&origin("b"), "waiting", None);
         assert!(s.remove("b"));
         assert!(s.snapshot().is_empty());
+    }
+
+    #[test]
+    fn a_message_that_went_through_late_stops_saying_it_didnt() {
+        let mut s = Sessions::default();
+        s.mark(&origin("a"), "waiting", None);
+        s.note("a", "you", "run the tests", 10);
+        s.mark_unsent("a");
+        s.mark(&origin("a"), "working", Some("something else"));
+        assert!(s.0["a"].thread.last().unwrap().unsent, "a different prompt leaves it flagged");
+        s.mark(&origin("a"), "working", Some("run the tests"));
+        assert!(!s.0["a"].thread.last().unwrap().unsent);
     }
 }

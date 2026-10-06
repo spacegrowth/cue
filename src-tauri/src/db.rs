@@ -195,6 +195,16 @@ pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
             for e in &s.thread {
                 put_exchange(&tx, &s.origin.session_id, e)?;
             }
+            // A message that moved (one you queued, put below the reply it waited behind) leaves its
+            // old row: within the thread's span, the log keeps only what the thread has.
+            if let Some(first) = s.thread.first() {
+                let mut q = tx.prepare("SELECT at_ms, role FROM exchanges WHERE session_id = ?1 AND at_ms >= ?2")?;
+                let rows: Vec<(i64, String)> = q.query_map(params![s.origin.session_id, first.at_ms as i64], |r| Ok((r.get(0)?, r.get(1)?)))?.filter_map(|r| r.ok()).collect();
+                drop(q);
+                for (at, role) in rows.iter().filter(|(at, role)| !s.thread.iter().any(|e| e.at_ms as i64 == *at && e.role == *role)) {
+                    tx.execute("DELETE FROM exchanges WHERE session_id = ?1 AND at_ms = ?2 AND role = ?3", params![s.origin.session_id, at, role])?;
+                }
+            }
         }
         // Whatever isn't live any more has ended (its agent exited, or it said so).
         let live: Vec<&str> = sessions.iter().map(|s| s.origin.session_id.as_str()).collect();

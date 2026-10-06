@@ -92,7 +92,6 @@ h2 { font: 800 clamp(28px, 4vw, 40px)/1.12 var(--display); letter-spacing: -0.01
 .split li { padding-left: 24px; position: relative; color: var(--ink); }
 .split li::before { content: ""; position: absolute; left: 2px; top: 0.6em; width: 9px; height: 9px; border-radius: 3px; background: var(--accent); }
 .shot { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
-.shot.panel { max-width: 380px; justify-self: center; border-radius: 18px; }
 /* A tall screenshot (steps) stays a readable size instead of filling its column. */
 .shot.tall { max-width: 460px; justify-self: center; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 32px; }
@@ -195,17 +194,6 @@ footer .grow { flex: 1; }
 
   <section>
     <div class="wrap split flip">
-      <div class="text">
-        <p class="eyebrow">The side panel</p>
-        <h2>Answer without leaving what you're doing</h2>
-        <p class="sub">A small tab on the edge of your screen shows how many are waiting. Click it to Allow, Deny, pick an answer or reply in a line, then it tucks back in. Drag it to either edge of any monitor and it stays there.</p>
-      </div>
-      <div class="shot panel"><img src="shots/panel.png" alt="The side panel, open: permissions with Allow and Deny, a question with its options, and a reply box for a finished turn." width="765" height="1130"></div>
-    </div>
-  </section>
-
-  <section>
-    <div class="wrap split">
       <div class="text">
         <p class="eyebrow">Set up</p>
         <h2>Connect your agents in one click</h2>

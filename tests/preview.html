@@ -12,7 +12,7 @@
   <script>
     // Design preview: the real UI code with a fake Tauri bridge and sample data.
     // Serve the repo root (python3 -m http.server) and open /tests/preview.html
-    //   ?mini=1 side panel · ?hist=1 History view · ?settings=1 sheet · ?theme=dark|light
+    //   ?hist=1 History view · ?settings=1 sheet · ?theme=dark|light
     window.onerror = (m, src, l, c) => { document.body.insertAdjacentHTML("beforeend", `<pre style="position:fixed;top:0;left:0;z-index:99;color:red;background:#fff">${m} @${l}:${c}</pre>`); };
     (() => {
       const q = new URLSearchParams(location.search);
@@ -22,7 +22,7 @@
       const relayMsg = "Packet 3 is done and staged (not committed).\n\n**What changed**\n- The board now shows token spend per executor, summed from each session's usage log.\n- A new `spend` column sorts high to low; totals sit in the footer.\n- `relay:list` prints the same number.\n\nTested: unit tests pass, and I opened the board against your live sessions — the numbers match `/cost` in each tab.\n\nOne thing to decide: spend resets when an executor is retired. Keep it per session, or carry it over to the successor? I'd carry it over.";
       const state = {
         now_ms: now, window_ms: 30 * M,
-        settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, panel: { enabled: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] } },
+        settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] } },
         connections: { claude: { ok: true, events: ["PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"] }, pi: { ok: true } },
         // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
         sessions: [
@@ -164,12 +164,13 @@
           // Earlier messages, a page at a time: 75 made-up ones before the thread.
           if (cmd === "session_log_page") { const all = Array.from({ length: 75 }, (_, n) => ({ at_ms: Date.now() - 3 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
           if (cmd === "transcript_page") { const all = Array.from({ length: 40 }, (_, n) => ({ at_ms: Date.now() - 9 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `From the transcript ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
+          // The "/" menu: a few of a session's commands.
+          if (cmd === "session_commands") return [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }, { name: "clear", kind: "command", desc: "Start over: clear the conversation" }, { name: "context", kind: "command", desc: "How full the context is" }, { name: "model", kind: "command", desc: "Switch the model (add its name, e.g. /model sonnet)" }, { name: "commit-push-merge", kind: "skill", desc: "Land in-flight work: commit, push, and merge" }, { name: "relay:spawn", kind: "skill", desc: "Start an executor on a packet" }, { name: "relay:verify", kind: "skill", desc: "Check an executor's report against what it staged" }];
           if (cmd === "focus_session") return "iTerm session";
           if (cmd === "close_session") return "Closed its iTerm tab";
           if (cmd === "agents_installed") return ["claude", "pi"];
           if (cmd === "new_session") return { session_id: "", detail: `Started ${args.agent} in a new iTerm tab` };
           if (cmd === "crew_action") return args.action === "review" ? `Sent /relay:review ${args.sessionId}` : args.action.startsWith("auto-") ? `Auto mode ${args.action.slice(5)}` : "Opened in your browser";
-          if (cmd === "mini_resize") { document.title = `mini h=${Math.round(args.height)}`; return /left=1/.test(location.search); }   // ?left=1: dragged to the left edge
         } },
         event: { listen: async (name, f) => { (listeners[name] ||= []).push(f); } },
       };
@@ -192,9 +193,6 @@
       if (rowQ) { document.querySelector(`[data-row="${rowQ}"]`)?.click(); const second = new URLSearchParams(q).get("row2"); if (second) setTimeout(() => document.querySelector(`[data-row="${second}"]`)?.click(), 50); }
       // ?view=sessions: the Sessions view.
       if (/view=sessions/.test(q)) document.querySelector('[data-view="sessions"]')?.click();
-      // ?mini=1&wall=1[&open=edge]: the side panel on a fake wallpaper (its page is see-through), opened as if clicked.
-      if (/wall=1/.test(q)) document.documentElement.style.background = "linear-gradient(160deg,#6b7a8f,#2a3344)";
-      if (/open=edge/.test(q)) document.querySelector('[data-act="edge-open"]')?.click();
       // ?keys=l,ArrowDown,…: press these keys in order, on whatever has focus (to check shortcuts).
       const keysQ = new URLSearchParams(q).get("keys");
       if (keysQ) keysQ.split(",").forEach((k, i) => setTimeout(() => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: k.replace(/^Meta\+/, ""), metaKey: k.startsWith("Meta+"), bubbles: true })), 100 + i * 60));
@@ -218,6 +216,9 @@
       }, 80);
       if (/choose=1/.test(q)) setTimeout(() => document.querySelector('.active-pane [data-pick="0:1"]')?.click(), 80);
       if (/typelong=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.focus(); ta.value = "line one\nline two\nline three\nline four\nline five"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+      // ?slash=re: type "/re" into the Active chat's box (the "/" menu); ?slash=reomte%20x: an unknown command.
+      const slashQ = new URLSearchParams(q).get("slash");
+      if (slashQ) setTimeout(() => { const ta = document.querySelector(".active-pane .foot textarea"); ta.focus(); ta.value = `/${slashQ}`; ta.dispatchEvent(new Event("input", { bubbles: true })); if (/down=1/.test(q)) ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); }, 600);
       if (/type=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.value = "half-written reply, kept across restarts"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
       if (/send=1/.test(q)) setTimeout(() => { const ta = document.querySelector(".active-pane textarea"); ta.value = "carry it over to the successor"; ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".active-pane .btn.send").click(); }, 100);
       if (/allow=1/.test(q)) setTimeout(() => document.querySelector(".active-pane [data-act=allow]")?.click(), 100);

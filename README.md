@@ -73,9 +73,6 @@ one time it goes online is to check GitHub for a newer version of Cue.
 | `←` `→` | flip through what's waiting |
 | `H` | history |
 
-The **side panel** (top right, always on top) shows up when something's waiting: one click for
-small things, ↗ to open the card in Cue for anything bigger. ✕ hides it until something new.
-
 Everything Cue keeps is in `~/Library/Application Support/dev.spacegrowth.cue/` (the standard place
 for a Mac app's data; `CUE_HOME` overrides it), in one SQLite file, `cue.db`, so a restart or crash
 loses nothing:
@@ -111,7 +108,7 @@ idle, "waiting on its lead", with no notification. (Settings can show them anywa
 ```
 Claude Code ──hook──┐                       ┌── window (spotlight card)
                     ├──► cue.sock ─────────► Cue ──┤
-Pi ──extension──────┘    (one JSON line)    └── side panel + notification
+Pi ──extension──────┘    (one JSON line)    └── notification
 ```
 
 Each harness has a hook that waits for an answer: Claude's `PermissionRequest`, Pi's `tool_call`.

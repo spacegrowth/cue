@@ -234,14 +234,20 @@ pub(crate) fn cut(s: &str, max: usize) -> String {
     if s.chars().count() <= max { s.to_string() } else { format!("{}…", s.chars().take(max).collect::<String>()) }
 }
 
-/// How many times Claude Code has logged running "/name" (a local command such as /rename). An
-/// unknown command ("/reomte") logs nothing, so a count that doesn't move means it didn't run.
+/// How many times Claude Code has logged running "/name". A local command such as /rename logs a
+/// "local_command" entry; /compact logs what you typed ("/compact") the moment it starts, and its own
+/// record only when it's done, a minute later. An unknown command ("/reomte") logs nothing, so a
+/// count that doesn't move means it didn't run.
 pub fn command_count(path: &str, name: &str) -> usize {
     let Some(text) = read_from(path, tail_offset(path)) else { return 0 };
     let tag = format!("<command-name>/{name}</command-name>");
+    let typed = |c: &str| c.strip_prefix('/').and_then(|t| t.split_whitespace().next()) == Some(name);
     lines(&text)
-        .filter(|e| e.get("type").and_then(Value::as_str) == Some("system") && e.get("subtype").and_then(Value::as_str) == Some("local_command"))
-        .filter(|e| e.get("content").and_then(Value::as_str).is_some_and(|c| c.contains(&tag)))
+        .filter(|e| match (e.get("type").and_then(Value::as_str), e.get("subtype").and_then(Value::as_str)) {
+            (Some("system"), Some("local_command")) => e.get("content").and_then(Value::as_str).is_some_and(|c| c.contains(&tag)),
+            (Some("user"), _) => e.pointer("/message/content").and_then(Value::as_str).is_some_and(typed),
+            _ => false,
+        })
         .count()
 }
 
@@ -369,24 +375,32 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
 }
 
 /// Where a message you queued for a busy Claude Code session stands, by its queue log: still in the
-/// queue, taken into the running turn between two steps, or taken as the next turn's prompt.
+/// queue, taken into the running turn between two steps, or taken as the next turn's prompt (when).
 #[derive(Debug, PartialEq)]
 pub enum Queued {
     Waiting,
     Absorbed,
-    Taken,
+    Taken(Option<u64>),
 }
 
 /// The queue log says `enqueue` (with the text), then `remove` (reason "absorbed_mid_turn", with the
 /// text) or `dequeue` (the oldest, no text). None: the log doesn't mention this message.
+/// Whether `got` (what the agent received) is the message `sent`, perhaps with image paths after it.
+/// Only the start is compared, with spacing ignored: a long paste typed into a terminal comes back
+/// with its line breaks, tabs or trailing spaces changed, and must still count as the same message.
+pub fn is_message(got: &str, sent: &str) -> bool {
+    let start = |t: &str| t.chars().filter(|c| !c.is_whitespace()).take(300).collect::<String>();
+    let sent = start(sent);
+    !sent.is_empty() && start(got).starts_with(&sent)
+}
+
 pub fn queued_state(path: &str, text: &str) -> Option<Queued> {
-    let text = text.trim();
-    if text.is_empty() {
+    if text.trim().is_empty() {
         return None;
     }
     let len = std::fs::metadata(path).ok()?.len();
     let log = read_from(path, len.saturating_sub(256 * 1024))?;
-    let mine = |c: &str| c.trim().starts_with(text);
+    let mine = |c: &str| is_message(c, text);
     let (mut pending, mut last): (Vec<String>, Option<Queued>) = (vec![], None);
     for e in lines(&log) {
         if e.get("type").and_then(Value::as_str) != Some("queue-operation") {
@@ -410,13 +424,44 @@ pub fn queued_state(path: &str, text: &str) -> Option<Queued> {
             }
             Some("dequeue") if !pending.is_empty() => {
                 if mine(&pending.remove(0)) {
-                    last = Some(Queued::Taken);
+                    last = Some(Queued::Taken(e.get("timestamp").and_then(Value::as_str).and_then(iso_ms)));
                 }
             }
             _ => {}
         }
     }
     last
+}
+
+/// Where a message you queued for a busy session stands, from its agent's own log: Claude Code's
+/// queue log, or Codex's rollout. None: no log that says (Pi reads it only once its turn is over).
+pub fn read_state(harness: &str, path: &str, text: &str, sent_ms: u64) -> Option<Queued> {
+    match harness {
+        "claude" => queued_state(path, text),
+        "codex" => codex_queued(path, text, sent_ms),
+        _ => None,
+    }
+}
+
+/// Codex logs each message it takes as a `user_message`: right after `task_started` when it's the
+/// next turn's prompt, mid-turn when it was steered into the running turn. Only messages since you
+/// sent it count (an older "yes" isn't this one).
+fn codex_queued(path: &str, text: &str, sent_ms: u64) -> Option<Queued> {
+    let len = std::fs::metadata(path).ok()?.len();
+    let log = read_from(path, len.saturating_sub(512 * 1024))?;
+    let (mut prev, mut state) = (String::new(), Queued::Waiting);
+    for e in lines(&log).filter(|e| e.get("type").and_then(Value::as_str) == Some("event_msg")) {
+        let p = &e["payload"];
+        let kind = p.get("type").and_then(Value::as_str).unwrap_or("").to_string();
+        let at = e.get("timestamp").and_then(Value::as_str).and_then(iso_ms);
+        if kind == "user_message" && at.map_or(true, |a| a + 5000 >= sent_ms) && is_message(p.get("message").and_then(Value::as_str).unwrap_or(""), text) {
+            state = if prev == "task_started" { Queued::Taken(at) } else { Queued::Absorbed };
+        }
+        if kind != "token_count" {
+            prev = kind;
+        }
+    }
+    Some(state)
 }
 
 /// A turn that was interrupted (Esc: "[Request interrupted by user]") with nothing since: Claude Code
@@ -436,14 +481,20 @@ pub fn interrupted_at(path: &str) -> Option<u64> {
     at
 }
 
-/// Whether a `/compact` typed at `since_ms` has finished: Claude Code writes the command, then (when the
-/// summary is done, or it couldn't compact) a `<local-command-stdout>` / `-stderr` entry after it.
+/// Whether a compaction started at `since_ms` has finished: Claude Code writes the command, then (when the
+/// summary is done, or it couldn't compact) a `<local-command-stdout>` / `-stderr` entry after it. One it
+/// started itself (context full) has no command: its `compact_boundary` marks the end.
 pub fn compact_finished(path: &str, since_ms: u64) -> bool {
     let Some(text) = std::fs::metadata(path).ok().and_then(|m| read_from(path, m.len().saturating_sub(256 * 1024))) else { return false };
     let mut typed = false;
     for e in lines(&text) {
-        if e.get("type").and_then(Value::as_str) != Some("user") || stamp(&e) + 2000 < since_ms {
+        if stamp(&e) + 2000 < since_ms {
             continue;
+        }
+        match e.get("type").and_then(Value::as_str) {
+            Some("system") if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") => return true,
+            Some("user") => {}
+            _ => continue,
         }
         let said = content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str).map(String::from)).collect::<String>();
         if said.contains("<command-name>/compact</command-name>") {
@@ -576,8 +627,34 @@ mod tests {
         let p = write_transcript(&[op("enqueue", Some("<task-notification>")), op("enqueue", Some("is it done? /tmp/a.png")), op("dequeue", None)]);
         assert_eq!(queued_state(&p.0, "is it done?"), Some(Queued::Waiting));
         let p = write_transcript(&[op("enqueue", Some("<task-notification>")), op("enqueue", Some("is it done? /tmp/a.png")), op("dequeue", None), op("dequeue", None)]);
-        assert_eq!(queued_state(&p.0, "is it done?"), Some(Queued::Taken));
+        assert_eq!(queued_state(&p.0, "is it done?"), Some(Queued::Taken(None)));
         assert_eq!(queued_state(&p.0, "something else"), None);
+        // A long paste comes back with its spacing changed: still the same message.
+        let long = format!("first line\n\n{}\tend", "word ".repeat(1200));
+        let p = write_transcript(&[op("enqueue", Some(&long.replace('\n', "\r\n").replace('\t', "    "))), json!({"type":"queue-operation","operation":"remove","content":long.replace('\n', "\r\n").replace('\t', "    "),"reason":"absorbed_mid_turn"})]);
+        assert_eq!(queued_state(&p.0, &long), Some(Queued::Absorbed));
+    }
+
+    #[test]
+    fn follows_a_message_queued_for_codex_through_its_rollout() {
+        let ev = |t: &str, kind: &str, msg: Option<&str>| {
+            let mut p = json!({"type": kind});
+            if let Some(m) = msg { p["message"] = json!(m); }
+            json!({"timestamp": format!("2026-10-05T06:{t}Z"), "type":"event_msg", "payload": p})
+        };
+        let sent = iso_ms("2026-10-05T06:40:00.000Z").unwrap();
+        let start = [ev("39:00.000", "task_started", None), ev("39:00.010", "user_message", Some("fix it")), ev("39:30.000", "agent_message", Some("on it"))];
+        let p = write_transcript(&start);
+        assert_eq!(read_state("codex", &p.0, "fix it", sent), Some(Queued::Waiting), "the same words, before you sent this one");
+        // Steered into the running turn.
+        let mut l = start.to_vec();
+        l.push(ev("40:01.000", "user_message", Some("fix it\n")));
+        assert_eq!(read_state("codex", &write_transcript(&l).0, "fix it", sent), Some(Queued::Absorbed));
+        // Or taken as the next turn's prompt.
+        let mut l = start.to_vec();
+        l.extend([ev("40:05.000", "task_complete", None), ev("40:05.100", "task_started", None), ev("40:05.200", "token_count", None), ev("40:05.300", "user_message", Some("fix it"))]);
+        assert_eq!(read_state("codex", &write_transcript(&l).0, "fix it", sent), Some(Queued::Taken(iso_ms("2026-10-05T06:40:05.300Z"))));
+        assert_eq!(read_state("pi", &p.0, "fix it", sent), None);
     }
 
     #[test]
@@ -600,6 +677,9 @@ mod tests {
         let since = iso_ms(&at("02:30.500")).unwrap();
         let p = write_transcript(&[json!({"type":"user","timestamp":at("01:00.000"),"message":{"content":"<local-command-stdout>an older one</local-command-stdout>"}}), typed.clone()]);
         assert!(!compact_finished(&p.0, since), "typed, still summarizing");
+        // One it started itself has no command, only the boundary when it's done.
+        let p2 = write_transcript(&[json!({"type":"system","subtype":"compact_boundary","timestamp":at("03:04.877")})]);
+        assert!(compact_finished(&p2.0, since));
         let done = json!({"type":"user","timestamp":at("03:04.976"),"message":{"content":"<local-command-stdout>Compacted (ctrl+o to see full summary)</local-command-stdout>"}});
         let p = write_transcript(&[typed.clone(), json!({"type":"system","subtype":"compact_boundary","timestamp":at("03:04.877")}), done]);
         assert!(compact_finished(&p.0, since));
@@ -777,6 +857,9 @@ mod tests {
         ]);
         assert_eq!(command_count(&t.0, "rename"), 2);
         assert_eq!(command_count(&t.0, "reomte"), 0);
+        // /compact: what you typed is logged as it starts.
+        let t = write_transcript(&[json!({"type":"user","message":{"role":"user","content":"/compact"}}), json!({"type":"user","message":{"content":"/compacting is a word"}})]);
+        assert_eq!(command_count(&t.0, "compact"), 1);
     }
 
     #[test]

@@ -27,7 +27,6 @@ pub fn effective() -> Value {
     json!({
         "history": { "keep": history_keep() },
         "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true) },
-        "panel": { "enabled": panel_enabled() },
         // Read from macOS, so it matches System Settings → Login Items.
         "login": { "open": login::enabled() },
         "tray": { "show": tray_shown() },
@@ -44,7 +43,7 @@ pub fn effective() -> Value {
     })
 }
 
-/// Quick phrases: chips above a session's text box (the window and its side panel) that send
+/// Quick phrases: chips above a session's text box (in the window) that send
 /// their text, after anything typed in the box. Yours, from Settings, up to `QUICK_MAX`.
 pub const QUICK_MAX: usize = 4;
 pub fn quick_phrases() -> Vec<String> {
@@ -80,7 +79,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "panel.enabled", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -235,6 +234,8 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
     if harness == "claude" {
         // A turn that ends on an API error (a usage limit) fires this, not Stop.
         want.push(("StopFailure", json!({ "hooks": [{ "type": "command", "command": cmd("failure"), "timeout": 5 }] })));
+        // Compacting (typed /compact, or its context filled up): not waiting on you until it's done.
+        want.push(("PreCompact", json!({ "hooks": [{ "type": "command", "command": cmd("compact"), "timeout": 5 }] })));
     }
     for (event, group) in want {
         let list = events.entry(event).or_insert_with(|| json!([]));
@@ -251,26 +252,6 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
 /// The menu bar icon. On unless you hide it: Cue stays in the Dock either way.
 pub fn tray_shown() -> bool {
     load().pointer("/tray/show").and_then(Value::as_bool).unwrap_or(true)
-}
-
-/// The always-on-top side panel. Off unless you turn it on: macOS notifications cover alerts.
-/// Where you dragged the side panel: on the left edge (else the right), its top this far below the top
-/// of the usable screen (None: not dragged yet).
-pub fn panel_edge() -> (bool, Option<f64>) {
-    let c = load();
-    (c.pointer("/panel/side").and_then(Value::as_str) == Some("left"), c.pointer("/panel/top").and_then(Value::as_f64))
-}
-
-/// The monitor you dragged the side panel to: its display number and name (None: not dragged yet).
-pub fn panel_screen() -> Option<(u64, String)> {
-    let c = load();
-    let id = c.pointer("/panel/screen_id").and_then(Value::as_u64);
-    let name = c.pointer("/panel/screen_name").and_then(Value::as_str).map(String::from);
-    (id.is_some() || name.is_some()).then(|| (id.unwrap_or(0), name.unwrap_or_default()))
-}
-
-pub fn panel_enabled() -> bool {
-    load().pointer("/panel/enabled").and_then(Value::as_bool).unwrap_or(false)
 }
 
 #[cfg(test)]

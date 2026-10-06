@@ -1,5 +1,5 @@
 //! macOS notifications through UserNotifications, tagged with the card's id so Cue can take them
-//! back out of Notification Center once the card is answered — in Cue, the side panel, the menu
+//! back out of Notification Center once the card is answered — in Cue, the menu
 //! bar, or the agent's own terminal.
 //!
 //! A finished turn's notification has Reply and your quick phrases on it (hover it; more than one action
