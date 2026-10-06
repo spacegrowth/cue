@@ -353,13 +353,45 @@ const barKey = () => `<div class="bar-key"><span>30 min ago</span><span class="g
 function selectedCards() {
   const out = new Map();
   for (const el of document.querySelectorAll(".working.on, .nrow.on, .tl.on")) {
-    const list = el.closest(".sec, .col");
-    let sc = el.parentElement;
-    while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
-    const a = el.getBoundingClientRect(), b = (sc && sc !== document.body ? sc : document.documentElement).getBoundingClientRect();
-    out.set(list?.className || "", { el, full: a.top >= b.top - 1 && a.bottom <= b.bottom + 1 });
+    const sc = scrollerOf(el);
+    const a = el.getBoundingClientRect(), b = (sc || document.documentElement).getBoundingClientRect();
+    out.set(el.closest(".sec, .col")?.className || "", { el, full: a.top >= b.top - 1 && a.bottom <= b.bottom + 1 });
   }
   return out;
+}
+/** The list that scrolls a card (its nearest scrolling ancestor), or null. */
+function scrollerOf(el) {
+  let sc = el?.parentElement;
+  while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+  return sc && sc !== document.body ? sc : null;
+}
+/** Glide a list just enough to show a card in full (with a little room past it). Driven frame by frame
+ *  and found again each frame: a redraw (every few seconds while sessions work) replaces the list, which
+ *  would stop the browser's own smooth scroll part-way. Your own scrolling stops it. */
+let glide = null;
+addEventListener("wheel", () => { glide = null; }, { capture: true, passive: true });
+function glideIntoView(el) {
+  const sc = scrollerOf(el);
+  if (!sc) return;
+  const a = el.getBoundingClientRect(), b = sc.getBoundingClientRect(), M = 12;
+  // Cut off below: up, but never past its top. Cut off above: down to its top.
+  const delta = a.bottom + M > b.bottom ? Math.min(a.bottom + M - b.bottom, a.top - M - b.top) : a.top - M < b.top ? a.top - M - b.top : 0;
+  if (Math.abs(delta) < 1) return;
+  const from = sc.scrollTop, to = Math.max(0, Math.min(sc.scrollHeight - sc.clientHeight, from + delta));
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { sc.scrollTop = to; return; }
+  // Found again by its list and what it is (a redraw makes new elements).
+  const list = el.closest(".sec, .col"), attr = ["data-session", "data-detail", "data-big"].find((n) => el.hasAttribute(n));
+  const key = list && attr ? `.${[...list.classList].join(".")} [${attr}="${CSS.escape(el.getAttribute(attr))}"]` : null;
+  const g = (glide = { t0: performance.now() });
+  const step = (t) => {
+    if (glide !== g) return;
+    const s = key ? scrollerOf(document.querySelector(key)) : sc;
+    if (!s) { glide = null; return; }
+    const k = Math.min(1, (t - g.t0) / 280);
+    s.scrollTop = from + (to - from) * (1 - Math.pow(1 - k, 3));   // eases out
+    if (k < 1) requestAnimationFrame(step); else glide = null;
+  };
+  requestAnimationFrame(step);
 }
 
 let toastTimer;
@@ -2491,14 +2523,13 @@ function renderMain() {
   }
   // The selected card, cut off at a list's edge, comes into full view: when you pick it, when it moves to
   // another list (you replied: it went from Waiting to Sessions), or when it outgrew the view while in full
-  // view (a line added as it works). Not when you scrolled it part-way out yourself. At once, not smoothly:
-  // the next redraw (every few seconds while sessions work) would stop a glide part-way. It only moves a little.
+  // view (a line added as it works). Not when you scrolled it part-way out yourself. It glides, just enough.
   const picked = `${active?.id}|${active?.sid}`;
   const repick = picked !== revealed;
   revealed = picked;
   for (const [list, { el, full }] of selectedCards()) {
     const was = onBefore.get(list);
-    if (!full && (repick || !was || was.full)) el.scrollIntoView({ block: "nearest" });
+    if (!full && (repick || !was || was.full)) glideIntoView(el);
   }
   // Something new in Waiting rises in from below with a brief ring, once.
   document.querySelectorAll(".nrow[data-big]").forEach((el) => {
