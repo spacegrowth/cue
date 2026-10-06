@@ -1,6 +1,6 @@
 [package]
 name = "cue"
-version = "0.1.9"
+version = "0.1.10"
 description = "One window for every coding agent that needs a decision from you"
 edition = "2021"
 
