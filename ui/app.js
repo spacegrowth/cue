@@ -519,12 +519,19 @@ async function deliver(sid, key, call) {
     renderMain();
   }
 }
-/** Has the session's own thread (or queue) caught up with this outbox entry? */
+/** Has the session's own thread (or queue) caught up with this outbox entry? Once Cue says it's sent
+ *  (`via`), Cue has noted it: a message of yours since you pressed send is this one, whatever became of
+ *  its text (what the agent got is what the chat shows). Before that, by how it starts: the first 300
+ *  characters that aren't spaces (a terminal may join lines; a long one may be cut short). */
+const msgStart = (t) => String(t ?? "").replace(/\s+/g, "").slice(0, 300);
 function landed(o) {
   const s = sessionOf(o.sid);
   if (!s) return !!o.via;
-  const mine = (e) => e && e.role === "you" && e.at_ms >= o.at - 5000 && e.text.startsWith(o.text);
-  return (s.thread || []).some(mine) || mine({ role: "you", ...s.queued });
+  const want = msgStart(o.text);
+  const since = (e) => e && e.role === "you" && e.at_ms >= o.at - 5000;
+  const mine = (e) => since(e) && msgStart(e.text).startsWith(want);
+  if ((s.thread || []).some(mine) || mine({ role: "you", ...s.queued })) return true;
+  return !!o.via && (s.thread || []).some((e) => e.role === "you" && e.at_ms >= o.at - 1000);
 }
 // ---------- by the way: side questions about the open session, in a panel under its btw button ----------
 // A copy of the conversation answers (see btw.rs): the session keeps working and its chat never shows them.

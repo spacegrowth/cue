@@ -413,12 +413,14 @@ fn terminal_app_script(tty: &str, text: &str) -> Result<bool, String> {
 
 // ---------- typing a reply into the agent's terminal ----------
 // Learned the hard way: text + newline in one burst reads as a paste and sits
-// unsubmitted in Claude Code's input box. So: type the text with no newline, pause (longer for
-// longer text), then send a separate Enter.
+// unsubmitted in Claude Code's input box. So: put the text in as one paste with no newline, pause
+// (longer for longer text), then send a separate Enter. One paste means bracketed (the markers the
+// agent asked its terminal for): everything between them is text, however it arrives in pieces, so
+// an Enter can't land in the middle of a long one and send half of it.
 
-/// Pause between typing and Enter, in seconds: 0.6s plus 0.05s per 100 characters, at most 2s.
+/// Pause between typing and Enter, in seconds: 0.6s plus 0.05s per 100 characters, at most 4s.
 pub fn enter_gap(text: &str) -> f64 {
-    (0.6 + 0.05 * text.chars().count() as f64 / 100.0).min(2.0)
+    (0.6 + 0.05 * text.chars().count() as f64 / 100.0).min(4.0)
 }
 
 fn iterm_predicate(o: &Origin) -> Option<String> {
@@ -499,8 +501,10 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
         return Ok(format!("tmux pane {pane}"));
     }
     if let Some(pred) = iterm_predicate(o) {
+        // iTerm types what it's given: the paste markers go around it by hand (ESC [200~ … ESC [201~), as
+        // tmux, kitty and WezTerm do themselves.
         let action = format!(
-            "tell s to write text \"{}\" newline NO\n                   delay {:.2}\n                   tell s to write text \"\"",
+            "tell s to write text ((character id 27) & \"[200~\" & \"{}\" & (character id 27) & \"[201~\") newline NO\n                   delay {:.2}\n                   tell s to write text \"\"",
             osa(text),
             enter_gap(text)
         );

@@ -609,7 +609,7 @@ impl Hub {
         {
             let mut st = self.store.lock().unwrap();
             st.items.retain(|i| i.id != id);
-            st.sessions.note_with(&sid, "you", text, &paths, crate::config::context_keep());
+            st.sessions.note_sent(&sid, text, &paths, t0, crate::config::context_keep());
             if !submitted {
                 st.sessions.mark_unsent(&sid);
             }
@@ -716,7 +716,7 @@ impl Hub {
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         {
             let mut st = self.store.lock().unwrap();
-            st.sessions.note_with(session_id, "you", text, &paths, crate::config::context_keep());
+            st.sessions.note_sent(session_id, text, &paths, t0, crate::config::context_keep());
             if busy {
                 // It's mid-turn: the agent reads this when it finishes its current step.
                 // The same message as the thread's copy (same time), so the chat shows it once, as queued.
@@ -778,7 +778,9 @@ impl Hub {
     /// trace, so it's caught). A command in an agent Cue can't check: assume it ran.
     fn took(&self, session_id: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> bool {
         if !text.starts_with('/') {
-            return self.wait_active(session_id, t0, 5000);
+            // A long paste takes a while to land and submit: Enter again too soon would send what's left of
+            // it as a second message.
+            return self.wait_active(session_id, t0, (5000 + text.len() as u64 / 2).min(15_000));
         }
         let Some(before) = cmd_before else { return true };
         let name = text[1..].split_whitespace().next().unwrap_or("");

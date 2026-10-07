@@ -89,8 +89,13 @@ fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
-/// Longest text kept per exchange — enough for a full agent message.
+/// Longest text kept per agent message: enough for a full one.
 const EXCHANGE_CHARS: usize = 6000;
+/// Your own messages are kept whole (up to this): a copy cut short can't be matched with what the
+/// agent got, so a long paste used to show twice.
+const YOURS_CHARS: usize = 200_000;
+/// A long message's echo can come well after it was sent (a big paste takes a while to land).
+const LONG_ECHO_MS: u64 = 120_000;
 
 #[derive(Default)]
 pub struct Sessions(HashMap<String, Session>);
@@ -190,7 +195,8 @@ impl Sessions {
         }
         if let Some(last) = s.thread.last_mut() {
             let paths: Vec<&str> = images.iter().chain(last.images.iter()).map(String::as_str).collect();
-            if last.role == role && now_ms().saturating_sub(last.at_ms) < 15_000 {
+            let age = now_ms().saturating_sub(last.at_ms);
+            if last.role == role && (age < 15_000 || (role == "you" && age < LONG_ECHO_MS && is_long(text))) {
                 if same_message(text, &last.text, &paths) {
                     // Keep the first copy; Cue's own copy carries the images, so they move onto it.
                     if last.images.is_empty() && !images.is_empty() {
@@ -206,10 +212,26 @@ impl Sessions {
                 }
             }
         }
-        let text = if text.chars().count() > EXCHANGE_CHARS { format!("{}…", text.chars().take(EXCHANGE_CHARS).collect::<String>()) } else { text.to_string() };
+        let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
+        let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
         s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
+    }
+
+    /// Cue's own copy of a message it just sent (at `since`). The agent reports what it got (Claude Code's
+    /// prompt hook) usually before the send even returns: any message of yours noted since then is that
+    /// one, whatever its text (what the agent got is what counts), so it only takes the images. Matched
+    /// by the send, not by comparing text: comparing is what let a long paste show twice. Otherwise
+    /// noted as usual (the agent's report, if it comes later, folds into it).
+    pub fn note_sent(&mut self, session_id: &str, text: &str, images: &[String], since: u64, keep: usize) {
+        if let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you" && e.at_ms >= since)) {
+            if e.images.is_empty() && !images.is_empty() {
+                e.images = images.to_vec();
+            }
+            return;
+        }
+        self.note_with(session_id, "you", text, images, keep);
     }
 
     /// A message another agent session sent this one, labelled with who sent it.
@@ -523,8 +545,18 @@ fn same_message(a: &str, b: &str, paths: &[&str]) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
     }
+    // Long ones (a paste): the same start is the same message, whatever became of its whitespace (a
+    // terminal may join its lines) or its end (an older copy was cut short, with "…").
+    if is_long(&a) && is_long(&b) {
+        return crate::transcript::is_message(&a, &b) || crate::transcript::is_message(&b, &a);
+    }
     let (short, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
     long.contains(short.as_str()) && short.len() * 5 >= long.len() * 4
+}
+
+/// Long enough that its start alone tells it apart: 300 characters that aren't spaces.
+fn is_long(t: &str) -> bool {
+    t.chars().filter(|c| !c.is_whitespace()).nth(299).is_some()
 }
 
 /// `long` is `short` with something typed before it (and `short` is more than a word or two).
@@ -537,6 +569,64 @@ fn glued_after(long: &str, short: &str, paths: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn long_text() -> String {
+        (0..1600).map(|n| format!("word{n} ")).collect::<String>() + "\nthe end"   // ~10k characters
+    }
+
+    #[test]
+    fn a_long_message_is_kept_whole_and_shows_once() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "f".into(), ..Default::default() }, "waiting", None);
+        let long = long_text();
+        let t0 = now_ms();
+        s.note("f", "you", &long, 50); // the agent's report of what it got, during the send
+        s.note_sent("f", &long, &["/u/1.png".into()], t0, 50); // Cue's own copy, once the send returns
+        let t = s.thread("f");
+        assert_eq!(t.len(), 1, "one bubble for one message");
+        assert_eq!(t[0].text, long.trim(), "kept whole, not cut at 6000");
+        assert_eq!(t[0].images, ["/u/1.png"], "Cue's copy brings its images");
+    }
+
+    #[test]
+    fn what_the_agent_got_is_the_message_however_its_text_came_out() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "g".into(), ..Default::default() }, "waiting", None);
+        let t0 = now_ms();
+        // Typed into a box that still held something: the agent got both, glued.
+        s.note("g", "you", "leftover from before and then what you sent", 50);
+        s.note_sent("g", "what you sent", &[], t0, 50);
+        let t = s.thread("g");
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].text, "leftover from before and then what you sent");
+    }
+
+    #[test]
+    fn a_long_message_reported_after_cues_copy_folds_in_even_with_its_lines_joined() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "h".into(), ..Default::default() }, "waiting", None);
+        let long = long_text();
+        s.note_sent("h", &long, &[], now_ms(), 50); // nothing reported yet: Cue's copy goes in
+        s.note("h", "you", &long.replace('\n', " "), 50); // then the agent's report, lines joined
+        assert_eq!(s.thread("h").len(), 1);
+        // An older copy cut short ("…") is still the same message.
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "i".into(), ..Default::default() }, "waiting", None);
+        let cut = format!("{}…", long.chars().take(6000).collect::<String>());
+        s.note("i", "you", &cut, 50);
+        s.note("i", "you", &long, 50);
+        assert_eq!(s.thread("i").len(), 1);
+    }
+
+    #[test]
+    fn the_same_short_reply_twice_is_two_messages() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "j".into(), ..Default::default() }, "waiting", None);
+        s.note("j", "you", "yes", 50);
+        s.note("j", "agent", "done", 50);
+        s.note_sent("j", "yes", &[], now_ms() + 1, 50); // a second send, after the reply
+        assert_eq!(s.thread("j").iter().filter(|e| e.role == "you").count(), 2);
+    }
 
     #[test]
     fn a_paste_split_into_chunks_reads_as_sent() {
