@@ -52,6 +52,18 @@ pub fn save(images: &[Upload]) -> Result<Vec<Saved>, String> {
         .collect()
 }
 
+/// An image's type from its file name ("" when it isn't one Cue takes).
+pub fn mime_of(path: &str) -> &'static str {
+    let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => "",
+    }
+}
+
 fn prune(d: &std::path::Path) {
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(KEEP_DAYS * 86_400);
     if let Ok(entries) = std::fs::read_dir(d) {

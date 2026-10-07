@@ -83,6 +83,11 @@ pub struct Session {
     /// wherever Cue lists them.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub starred_ms: u64,
+    /// What you sent while it was working, kept in Cue (not typed into its terminal) and sent when the
+    /// turn ends: until then you can take it back into the box (Esc, Edit) or send it now. Its images
+    /// are already saved (their paths).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<Exchange>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -130,6 +135,7 @@ impl Sessions {
             turn_base: None,
             changes: None,
             stuck_ms: 0,
+            held: None,
         });
         // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
         if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
@@ -381,6 +387,27 @@ impl Sessions {
     pub fn take_rename(&mut self, session_id: &str) -> Option<(String, Origin)> {
         let s = self.0.get_mut(session_id)?;
         std::mem::take(&mut s.rename_pending).then(|| (s.name.clone(), s.origin.clone()))
+    }
+
+    /// Keep a message for when its turn ends; one already kept gets this one added after it.
+    pub fn hold(&mut self, session_id: &str, text: &str, images: Vec<String>) {
+        let Some(s) = self.0.get_mut(session_id) else { return };
+        match &mut s.held {
+            Some(h) => {
+                h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
+                h.images.extend(images);
+            }
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false }),
+        }
+    }
+
+    pub fn held(&self, session_id: &str) -> Option<Exchange> {
+        self.0.get(session_id)?.held.clone()
+    }
+
+    /// The kept message, taken (to send it, or back into your box).
+    pub fn take_held(&mut self, session_id: &str) -> Option<Exchange> {
+        self.0.get_mut(session_id)?.held.take()
     }
 
     /// What you sent it while it was busy, if it hasn't been read yet.

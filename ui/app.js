@@ -525,6 +525,7 @@ async function deliver(sid, key, call) {
  *  characters that aren't spaces (a terminal may join lines; a long one may be cut short). */
 const msgStart = (t) => String(t ?? "").replace(/\s+/g, "").slice(0, 300);
 function landed(o) {
+  if (/^kept in Cue/.test(o.via || "")) return true;   // shown as the kept bubble
   const s = sessionOf(o.sid);
   if (!s) return !!o.via;
   const want = msgStart(o.text);
@@ -630,6 +631,21 @@ function sendQueuedNow(sid) {
     .catch((e) => toast(`Couldn't send it now: ${e}`));
 }
 const sendTo = (sid, now = false) => sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => invoke("send_to_session", { sessionId: sid, text, images, now }));
+/** The message Cue kept for a working session, back into its box to change (before anything you've typed
+ *  there since), images and all. */
+async function pullHeld(sid) {
+  const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
+  if (!h) return;
+  const key = `s:${sid}`, d = draft(key);
+  d.text = d.text.trim() ? `${h.text}\n\n${d.text}` : h.text;
+  for (const path of h.images || []) {
+    const data = await invoke("image_data", { path }).catch(() => null);
+    if (data) d.images.push({ name: path.split("/").pop(), mime: data.slice(5, data.indexOf(";")), data });
+  }
+  saveDrafts();
+  renderMain();
+  focusComposer();
+}
 /** Stop a working session mid-turn (Esc in its terminal; Pi aborts directly). */
 async function interrupt(sid) {
   try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }
@@ -1378,6 +1394,8 @@ function chatHtml(it, s, harness, paged = false) {
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
   }), chose);
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
+  // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
+  if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}" title="Stops its turn and sends this now">Send now</button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
   return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
@@ -1524,7 +1542,9 @@ function activePane() {
   } else if (s) {
     const busy = s.state === "working";
     // Working: what you send waits for its current step (⌘ Enter stops it and sends now, said on the button).
-    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… it reads this after its current step` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"${busy ? ` title="It reads this when it finishes its current step. ⌘ Enter stops it and sends now."` : ""}`)}</div>`;
+    // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
+    const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
+    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"${busy ? ` title="${harness === "pi" ? "It reads this when it finishes its current step" : "Kept in Cue until this turn ends (Esc takes it back)"}. ⌘ Enter stops it and sends now."` : ""}`)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
@@ -1712,7 +1732,7 @@ function boardView() {
   const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
       <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
-      ${s.queued ? `<div class="queued-note">Queued: “${esc(s.queued.text.length > 80 ? s.queued.text.slice(0, 80) + "…" : s.queued.text)}”</div>` : ""}
+      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
       ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
   const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
@@ -2787,10 +2807,21 @@ function bindMain() {
     // Clear: forget this session's side questions (they were only ever in this window).
     const bc = t.closest("[data-act=btw-clear]");
     if (bc) { btwLog.delete(bc.dataset.sid); renderMain(); return document.querySelector(`[data-text="${CSS.escape(`btw:${bc.dataset.sid}`)}"]`)?.focus(); }
+    const tm = t.closest("[data-act=term], [data-act=term-open], [data-act=term-card]");
+    if (tm) {
+      if (tm.dataset.act === "term") return termSid === tm.dataset.sid ? closeTerm() : openTerm(tm.dataset.sid);
+      // From a Waiting card: open its session, then its terminal.
+      if (tm.dataset.act === "term-card") { const it = findItem(tm.dataset.id); setActive(tm.dataset.id); return it && openTerm(it.session_id); }
+      return termSid === tm.dataset.sid ? termObj?.focus() : openTerm(tm.dataset.sid);
+    }
     const bw = t.closest("[data-act=btw], [data-act=btw-close]");
     if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) return openBtw(bw.dataset.sid); btwFor = null; return renderMain(); }
     const sn = t.closest("[data-act=send-now]");
     if (sn) return sendQueuedNow(sn.dataset.sid);
+    const he = t.closest("[data-act=held-edit]");
+    if (he) return pullHeld(he.dataset.sid);
+    const hn = t.closest("[data-act=held-now]");
+    if (hn) return invoke("send_held_now", { sessionId: hn.dataset.sid }).then(() => toast("Sent now: it stopped its turn and reads your message next")).catch((e) => toast(`Couldn't send it now: ${e}`));
     if (t.closest("[data-setup-done]")) { sheet = null; setSetting("setup.done", true); return renderMain(); }
     if (t.closest("[data-connect-all]")) {
       const todo = ["claude", "codex", "pi"].filter((h) => { const c = state.connections?.[h]; return c && !c.ok && c.present; });
@@ -3065,6 +3096,8 @@ function bindMain() {
       if (view === "history") { histOpen = null; return renderMain(); }
       // Esc twice on a working session stops it (once only arms it, so a stray Esc can't).
       const s = !sheet && !menuFor && !redirectFor ? sessionOf(active?.sid) : null;
+      // A message Cue kept for it (sent while it worked): Esc takes it back into the box first.
+      if (s?.held) { escArmed = 0; return pullHeld(s.session_id); }
       // Stopping it is a pause to say something else, so the cursor stays in (or goes to) its box.
       if (s?.state === "working") {
         if (Date.now() - escArmed < 1500) { escArmed = 0; interrupt(s.session_id); }

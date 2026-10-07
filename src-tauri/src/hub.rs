@@ -268,6 +268,16 @@ impl Hub {
     }
 
     pub fn event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str) {
+        // Its turn is over: the message you kept for it (sent while it worked) goes now.
+        let sid = origin.session_id.clone();
+        let held = event == "stopped" && self.store.lock().unwrap().sessions.held(&sid).is_some();
+        self.on_event(origin, event, message, turn, driven_by);
+        if held {
+            self.send_held_soon(&sid, 0);
+        }
+    }
+
+    fn on_event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str) {
         // Pi's extension says what it's doing as each tool starts ("Running: cargo test").
         // Claude Code is summarizing the conversation (PreCompact: /compact typed anywhere, or its context
         // filled up). Until it's done the session isn't waiting on you, whatever it said last.
@@ -365,7 +375,9 @@ impl Hub {
                 let full = (!origin_path.is_empty()).then(|| crate::steps::context_pct(&origin_path)).flatten().filter(|p| *p >= CONTEXT_HIGH);
                 // Put off for later: it waits under Need to decide, without a notification.
                 let later = self.store.lock().unwrap().sessions.is_later(&sid);
-                if crate::config::flag("/notify/finished") && !later {
+                // A message you kept for it goes now: nothing to tell you, it's working again in a moment.
+                let held = self.store.lock().unwrap().sessions.held(&sid).is_some();
+                if crate::config::flag("/notify/finished") && !later && !held {
                     match full {
                         Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
                         None => self.notify(&id, &title.0, &title.1, "turn"),
@@ -671,16 +683,27 @@ impl Hub {
             st.sessions.note(session_id, "you", "⏹ stopped it", crate::config::context_keep());
         }
         self.changed();
+        // A message you kept for it goes now, as Claude Code sends its queue once you stop it.
+        if self.store.lock().unwrap().sessions.held(session_id).is_some() {
+            self.send_held_soon(session_id, 700);
+        }
         Ok(format!("stopped via {via}"))
     }
 
     /// `now`: if it's mid-turn, interrupt it first so this is handled right away (Ctrl+Enter).
     pub fn send_to_session(&self, session_id: &str, text: &str, images: &[Upload], now: bool) -> Result<String, String> {
-        let typed = text; // " /…" keeps its space: a message, not a command (see with_paths)
-        let text = text.trim();
-        if text.is_empty() && images.is_empty() {
+        if text.trim().is_empty() && images.is_empty() {
             return Err("nothing to send".into());
         }
+        let saved = crate::uploads::save(images)?;
+        self.send_saved(session_id, text, saved, now)
+    }
+
+    /// Send `typed` (and images already saved) to a session. Mid-turn, to an agent Cue types into: Cue
+    /// keeps it and sends it when the turn ends (see `held`), unless `now`.
+    fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool) -> Result<String, String> {
+        // " /…" keeps its space in `typed`: a message, not a command (see with_paths).
+        let text = typed.trim();
         self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy) = {
             let st = self.store.lock().unwrap();
@@ -692,9 +715,16 @@ impl Hub {
             let busy = st.sessions.state(session_id).as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;
             (st.sessions.origin(session_id), busy)
         };
-        let saved = crate::uploads::save(images)?;
         // Force-send to a terminal agent: Esc first, give it a moment to stop, then type.
         let direct = self.store.lock().unwrap().subscribers.contains_key(session_id);
+        // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
+        // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
+        // only Claude Code could give it back.)
+        if busy && !now && !direct && origin.is_some() {
+            self.store.lock().unwrap().sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect());
+            self.changed();
+            return Ok("kept in Cue: it goes when this turn ends".into());
+        }
         let busy = if now && busy && !direct {
             crate::focus::press_escape(origin.as_ref().ok_or("that session is gone")?)?;
             std::thread::sleep(std::time::Duration::from_millis(700));
@@ -737,6 +767,40 @@ impl Hub {
             return Ok(format!("typed into {via}, but it didn't go through as a message. Check the tab"));
         }
         Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
+    }
+
+    /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
+    /// can't be sent it's kept again, so nothing you wrote is lost.
+    pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
+        let h = self.store.lock().unwrap().sessions.take_held(session_id).ok_or("nothing kept for it")?;
+        let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
+        self.send_saved(session_id, &h.text, saved, now).inspect_err(|_| {
+            self.store.lock().unwrap().sessions.hold(session_id, &h.text, h.images.clone());
+            self.changed();
+        })
+    }
+
+    /// The kept message goes off this thread (it types into a terminal): after `wait_ms`, for a
+    /// terminal that was just stopped to settle.
+    fn send_held_soon(&self, session_id: &str, wait_ms: u64) {
+        let Some(app) = &self.app else { return };
+        let hub = app.state::<Arc<Hub>>().inner().clone();
+        let sid = session_id.to_string();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+            if let Err(e) = hub.send_held(&sid, false) {
+                eprintln!("cue: couldn't send the message kept for {sid}: {e}");
+            }
+        });
+    }
+
+    /// The kept message, back to you (into the box, to change it): Esc, or Edit.
+    pub fn unhold(&self, session_id: &str) -> Option<Exchange> {
+        let h = self.store.lock().unwrap().sessions.take_held(session_id);
+        if h.is_some() {
+            self.changed();
+        }
+        h
     }
 
     /// Hand a message (and saved images) to a session that listens directly (Pi). False if none does.
@@ -1600,6 +1664,29 @@ mod tests {
         hub.sync_live();
         assert!(hub.pending().iter().all(|i| i.kind != "terminal"));
         crate::live::set_claude(vec![]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_message_sent_while_it_works_is_kept_in_cue_until_taken_back() {
+        let dir = std::env::temp_dir().join(format!("cue-held-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        // No terminal to type into: anything typed would fail, so a pass means nothing was typed.
+        let origin = Origin { session_id: "s5".into(), harness: "claude".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin, "active", "refactor the router".into(), vec![], "");
+        assert!(hub.send_to_session("s5", "also keep the old session", &[], false).unwrap().starts_with("kept in Cue"));
+        hub.send_to_session("s5", "and run the tests", &[], false).unwrap();
+        let held = |h: &Hub| h.store.lock().unwrap().sessions.held("s5");
+        assert_eq!(held(&hub).map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()), "one kept message, the second after the first");
+        assert!(hub.store.lock().unwrap().sessions.thread("s5").iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
+        // Esc / Edit: back to you, and nothing kept any more.
+        assert_eq!(hub.unhold("s5").map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()));
+        assert!(held(&hub).is_none() && hub.unhold("s5").is_none());
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

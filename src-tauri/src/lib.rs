@@ -381,13 +381,9 @@ fn open_link(url: String) -> Result<(), String> {
 fn image_data(path: String) -> Result<String, String> {
     use base64::Engine;
     let p = std::path::Path::new(&path);
-    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-    let mime = match ext.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        _ => return Err("not an image".into()),
+    let mime = match uploads::mime_of(&path) {
+        "" => return Err("not an image".into()),
+        m => m,
     };
     if !p.is_absolute() || std::fs::metadata(p).map_err(|e| e.to_string())?.len() > 20 * 1024 * 1024 {
         return Err("not a readable image".into());
@@ -401,6 +397,19 @@ fn image_data(path: String) -> Result<String, String> {
 async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let h = hub.inner().clone();
     tauri::async_runtime::spawn_blocking(move || h.adopt(&session_id)).await.map_err(|e| e.to_string())?
+}
+
+/// The message Cue kept for a session while it worked, back into your box (Esc, Edit): its text and images.
+#[tauri::command]
+fn unhold_message(hub: State<Arc<Hub>>, session_id: String) -> Option<model::Exchange> {
+    hub.unhold(&session_id)
+}
+
+/// Send the kept message now: stops the turn first (as Send now on a queued one).
+#[tauri::command]
+async fn send_held_now(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || h.send_held(&session_id, true)).await.map_err(|e| e.to_string())?
 }
 
 /// "Go to tab" in the Sessions view: also for a session Cue hasn't heard from (quiet, or Pi that only connected).
@@ -630,7 +639,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![unhold_message, send_held_now, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
