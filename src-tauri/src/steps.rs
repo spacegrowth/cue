@@ -106,10 +106,15 @@ pub fn steps(path: &str, known: u64) -> Value {
     let mut guard = FEEDS.lock().unwrap();
     let feeds = guard.get_or_insert_with(HashMap::new);
     feeds.retain(|_, f| f.used.elapsed() < FORGET);
+    // A feed nobody asked for in a while is dropped: a fresh one starts mid-file and counts its version
+    // from 1 again. Its count can land exactly on the version the caller already has, and the "nothing
+    // changed" answer would leave the caller's model and steps stale forever. A fresh feed answers in
+    // full, whatever its count, so the caller redraws from what's there now.
+    let fresh = !feeds.contains_key(path);
     let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
     feed.used = Instant::now();
     feed.catch_up();
-    if feed.version == known {
+    if feed.version == known && !fresh {
         return json!({ "version": feed.version });
     }
     let turns: Vec<&Turn> = feed.turns.iter().filter(|t| !t.items.is_empty()).collect();
@@ -1017,6 +1022,49 @@ mod tests {
         assert_eq!(d["t2"]["diff"][1], json!(["-", "b"]));
         assert_eq!(d["t3"]["full"], "npm test\n");
         assert_eq!(d["t3"]["output"][1], "Tests: 3 failed");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_fresh_feed_answers_in_full_even_when_its_count_matches() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-fresh-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let user = |text: &str| format!("{{\"type\":\"user\",\"timestamp\":\"2026-10-04T10:00:00.000Z\",\"message\":{{\"content\":\"{text}\"}}}}\n");
+        let line = |model: &str| {
+            format!(
+                "{{\"type\":\"assistant\",\"timestamp\":\"2026-10-04T10:00:02.000Z\",\"message\":{{\"model\":\"{model}\",\"content\":[{{\"type\":\"text\",\"text\":\"Hello.\"}}],\"usage\":{{\"input_tokens\":10,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}}}}\n"
+            )
+        };
+        let append = |path: &std::path::Path| {
+            let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+            std::io::Write::write_all(&mut file, format!("{}", user("switch")).as_bytes()).unwrap();
+            std::io::Write::write_all(&mut file, line("claude-opus-5-5").as_bytes()).unwrap();
+        };
+        // While the feed lives, a model change is read and answered.
+        let live = dir.join("live.jsonl");
+        std::fs::write(&live, format!("{}{}", user("hi"), line("claude-sonnet-5-5"))).unwrap();
+        let l1 = steps(live.to_str().unwrap(), 0);
+        assert_eq!(l1["meta"]["model"], "claude-sonnet-5-5");
+        append(&live);
+        let l2 = steps(live.to_str().unwrap(), l1["version"].as_u64().unwrap());
+        assert_eq!(l2["meta"]["model"], "claude-opus-5-5", "the model change is read while the feed lives");
+        // A feed nobody asked for in a while is dropped: the caller still has its version, 2 here (the
+        // first read). A fresh feed reads the whole file in one go and counts 2 again, so the "nothing
+        // changed" answer would leave the caller on the old model. It must answer in full.
+        let path = dir.join("t.jsonl");
+        std::fs::write(&path, format!("{}{}", user("hi"), line("claude-sonnet-5-5"))).unwrap();
+        let p = path.to_str().unwrap();
+        let r1 = steps(p, 0);
+        assert_eq!(r1["version"].as_u64(), Some(2));
+        append(&path);
+        FEEDS.lock().unwrap().get_or_insert_with(HashMap::new).remove(p);
+        let r2 = steps(p, r1["version"].as_u64().unwrap());
+        assert_eq!(r2["version"].as_u64(), r1["version"].as_u64());
+        assert_eq!(r2["meta"]["model"], "claude-opus-5-5", "a fresh feed answers with what's there now, whatever its count");
+        assert!(r2["turns"].as_array().is_some_and(|t| !t.is_empty()));
+        // Once it has answered, a feed that still counts the same answers with just the version.
+        let r3 = steps(p, r2["version"].as_u64().unwrap());
+        assert!(r3.get("turns").is_none() && r3.get("meta").is_none(), "only the version comes back when nothing changed");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
