@@ -261,7 +261,8 @@ pub fn search(q: &str, limit: usize) -> Vec<Value> {
     if q.is_empty() {
         return vec![];
     }
-    let pat = format!("%{}%", q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
+    let lit = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    let (pat, starts) = (format!("%{lit}%"), format!("{lit}%"));
     with(|c| {
         let meta = |data: &str| serde_json::from_str::<Value>(data).unwrap_or(Value::Null);
         let who = |m: &Value, row_project: String| {
@@ -275,9 +276,13 @@ pub fn search(q: &str, limit: usize) -> Vec<Value> {
             "SELECT s.id, s.project, s.data, s.updated_ms, s.ended_ms,
                     (SELECT role || char(31) || text FROM exchanges e WHERE e.session_id = s.id ORDER BY e.at_ms DESC LIMIT 1)
              FROM sessions s
-             WHERE s.project LIKE ?1 ESCAPE '\\' OR json_extract(s.data, '$.name') LIKE ?1 ESCAPE '\\' ORDER BY s.updated_ms DESC LIMIT 10",
+             WHERE s.project LIKE ?1 ESCAPE '\\' OR json_extract(s.data, '$.name') LIKE ?1 ESCAPE '\\'
+             ORDER BY CASE WHEN lower(COALESCE(json_extract(s.data, '$.name'), '')) = lower(?2) OR lower(s.project) = lower(?2) THEN 0
+                           WHEN COALESCE(json_extract(s.data, '$.name'), '') LIKE ?3 ESCAPE '\\' OR s.project LIKE ?3 ESCAPE '\\' THEN 1
+                           ELSE 2 END, s.updated_ms DESC LIMIT 20",
         )?;
-        for r in st.query_map(params![pat], |r| {
+        // The best name matches first (the whole name, then its start), so the 20 kept are the ones you meant.
+        for r in st.query_map(params![pat, q, starts], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?, r.get::<_, Option<i64>>(4)?, r.get::<_, Option<String>>(5)?))
         })? {
             let (id, project, data, at, ended, last) = r?;
@@ -468,6 +473,34 @@ mod tests {
         let s = snippet(&long, "NEEDLE");
         assert!(s.starts_with('…') && s.ends_with('…') && s.contains("needle here"), "{s}");
         assert_eq!(snippet("short text", "text"), "short text");
+    }
+
+    #[test]
+    fn a_session_named_what_you_typed_is_found_however_many_newer_ones_mention_it() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-find-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        reset();
+        with(|c| {
+            // The oldest is named exactly "web"; 25 newer ones only have "web" somewhere in their names.
+            let add = |id: &str, name: &str, at: i64| c.execute("INSERT INTO sessions (id, project, started_ms, updated_ms, ended_ms, data) VALUES (?1, 'x', 1, ?2, ?2, ?3)", params![id, at, json!({ "name": name }).to_string()]);
+            add("exact", "web", 1)?;
+            add("start", "web-shop", 2)?;
+            for n in 0..25 {
+                add(&format!("in{n}"), &format!("my-cobweb-{n}"), 100 + n)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        let found: Vec<String> = search("Web", 10).iter().filter(|r| r["kind"] == "session").map(|r| r["session_id"].as_str().unwrap().to_string()).collect();
+        std::env::remove_var("CUE_HOME");
+        reset();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(found.first().map(String::as_str), Some("exact"), "the whole name first: {found:?}");
+        assert_eq!(found.get(1).map(String::as_str), Some("start"), "then one it starts: {found:?}");
+        assert_eq!(found.len(), 20);
     }
 
     #[test]

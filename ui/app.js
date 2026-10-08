@@ -2018,31 +2018,79 @@ async function submitRename(sid) {
   catch (e) { toast(`Couldn't rename: ${e}`); }
 }
 /** Search: every session Cue has seen, ended ones too (session names, your messages, the agents'
- *  replies), newest first. A live session opens in Active; an ended one's message opens in place. */
+ *  replies). Running sessions match at once, from what the window already has, by the names you see
+ *  (as ⌘K does); the best name match comes first. Then closed and older sessions by name, then what was
+ *  said. A live session opens in Active; an ended one's message opens in place. */
 let searchResults = [], searchSeq = 0, searchTimer = 0, searchSel = 0;
 let searchVisible = [];        // result indexes in screen order (↓ / ↑ walk these)
+let searchLive = [], searchFound = [];   // running sessions (matched here) and what Cue's log found (asked for)
 const searchMore = new Set();  // sessions whose every match you asked to see
+/** How well a name matches what you typed, best first: 0 the whole name, 1 its start, 2 the start of a
+ *  word in it, 3 anywhere in it, 4 every word you typed somewhere in it; null: it doesn't. */
+function nameScore(name, q) {
+  const n = String(name || "").toLowerCase();
+  if (!q || !n) return null;
+  if (n === q) return 0;
+  if (n.startsWith(q)) return 1;
+  if (n.split(/[\s\-_./:]+/).some((w) => w.startsWith(q))) return 2;
+  if (n.includes(q)) return 3;
+  return q.split(/\s+/).every((w) => n.includes(w)) ? 4 : null;
+}
+/** Running sessions matching `q`, as ⌘K matches them: by name first, then by folder or what they're on. */
+function liveMatches(q) {
+  q = q.trim().toLowerCase();
+  if (!q) return [];
+  return liveRows().map((r) => {
+    const ab = svAbout(r), unnamed = r.name === baseName(r.cwd) && (ab.about || ab.now);
+    const name = unnamed ? ab.about || ab.now : r.name;
+    const byName = Math.min(...[nameScore(name, q), nameScore(r.name, q)].map((x) => x ?? 9));
+    const rest = [r.cwd, ab.about, ab.now, (r.crew || crewOf(r.sid))?.lead_name].join(" ").toLowerCase();
+    const score = byName < 9 ? byName : q.split(/\s+/).every((w) => rest.includes(w)) ? 5 : null;
+    return score === null ? null : { kind: "session", live: true, quiet: r.quiet, session_id: r.sid, name, project: baseName(r.cwd), harness: r.harness, at_ms: r.since, last: r.what || ab.now || "", score, rank: svRank(r) };
+  }).filter(Boolean).sort((a, b) => a.score - b.score || a.rank - b.rank || b.at_ms - a.at_ms);
+}
+/** The results in the order they're shown: running sessions, closed ones (best name match first), older
+ *  ones, then what was said, grouped by session (the session with the newest match first). */
+function combineSearch(q) {
+  q = q.trim().toLowerCase();
+  const live = new Set(searchLive.map((r) => r.session_id));
+  const byName = (a, b) => (nameScore(a.name, q) ?? nameScore(a.project, q) ?? 9) - (nameScore(b.name, q) ?? nameScore(b.project, q) ?? 9) || b.at_ms - a.at_ms;
+  const closed = searchFound.filter((x) => x.kind === "session" && !live.has(x.session_id) && !sessionOf(x.session_id)).sort(byName);
+  const older = searchFound.filter((x) => x.kind === "older").sort(byName);
+  const msgs = searchFound.filter((x) => x.kind === "message");
+  const order = [...new Set(msgs.map((m) => m.session_id))];
+  searchResults = [...searchLive, ...closed, ...older, ...order.flatMap((sid) => msgs.filter((m) => m.session_id === sid))];
+}
 function runSearch(q) {
+  // Running sessions: at once, as you type.
+  searchLive = liveMatches(q);
+  if (!q.trim()) searchFound = [];
+  combineSearch(q);
+  searchMore.clear();
+  searchSel = 0;
+  renderMain();
+  // Everything else Cue has logged: once you pause.
   clearTimeout(searchTimer);
   searchTimer = setTimeout(async () => {
     const n = ++searchSeq;
     const r = q.trim() ? await invoke("search", { q }).catch(() => []) : [];
     if (n !== searchSeq) return;   // a newer search already started
-    // Sessions first, then history grouped by session (the session with the newest match first):
-    // the order they're shown in.
-    const all = Array.isArray(r) ? r : [], msgs = all.filter((x) => x.kind === "message");
-    const order = [...new Set(msgs.map((m) => m.session_id))];
-    const sessions = all.filter((x) => x.kind === "session");
-    searchResults = [...sessions.filter((x) => sessionOf(x.session_id)), ...sessions.filter((x) => !sessionOf(x.session_id)),
-      ...all.filter((x) => x.kind === "older"), ...order.flatMap((sid) => msgs.filter((m) => m.session_id === sid))];
-    searchMore.clear();
-    searchSel = 0;
+    searchFound = Array.isArray(r) ? r : [];
+    const sel = searchResults[searchSel];
+    combineSearch(q);
+    // What you'd picked stays picked when the rest arrives.
+    searchSel = Math.max(0, searchResults.findIndex((x) => x === sel));
     renderMain();
   }, 140);
 }
 function openSearch() {
   sheet = "search";
+  // Text left from last time: search it again, so running sessions are as they are now.
+  if (draft("search").text.trim()) return runSearch(draft("search").text), focusSearch();
   renderMain();
+  focusSearch();
+}
+function focusSearch() {
   const el = document.querySelector(".search-in");
   el?.focus(); el?.select();
 }
@@ -2052,7 +2100,7 @@ function searchSheet() {
   searchVisible = [];
   const row = (r, i, inGroup = false) => {
     searchVisible.push(i);
-    const top = inGroup ? `<span class="dim">${r.role === "you" ? "you said" : "agent"}</span><span class="grow"></span><span class="age">${ago(r.at_ms)}</span>` : `${badge(r.harness)}<span class="proj">${esc(r.name || r.project || "session")}</span>${r.name && r.project && r.name !== r.project ? `<span class="dim">${esc(r.project)}</span>` : ""}
+    const top = inGroup ? `<span class="dim">${r.role === "you" ? "you said" : "agent"}</span><span class="grow"></span><span class="age">${ago(r.at_ms)}</span>` : `${badge(r.harness)}<span class="proj">${mark(esc(r.name || r.project || "session"))}</span>${r.name && r.project && r.name !== r.project ? `<span class="dim">${esc(r.project)}</span>` : ""}
       <span class="dim">${r.kind === "older" ? "" : r.kind === "session" ? sessionState(r) : r.role === "you" ? "you said" : "agent"}</span>${r.kind === "older" ? `<span class="sr-resume">Resume</span>` : ""}${r.ended && r.kind === "message" ? `<span class="sr-ended">ended</span>` : ""}<span class="grow"></span><span class="age">${ago(r.at_ms)}</span>`;
     const body = r.kind === "message" ? `<div class="sr-snip">${mark(esc(r.snippet))}</div>`
       : r.last ? `<div class="sr-snip sr-last">${r.last_role === "you" ? "<b>You:</b> " : ""}${mark(esc(r.last))}</div>` : "";
@@ -2087,8 +2135,8 @@ function searchSheet() {
   };
   const list = !q ? `<div class="dim sr-hint">Live and closed sessions, older Claude Code sessions by name (Resume them), and everything said in sessions Cue has seen.</div>`
     : searchResults.length
-      ? section("Live", "running now", (r) => r.kind === "session" && sessionOf(r.session_id))
-        + section("Closed", "ended; Cue has the conversation", (r) => r.kind === "session" && !sessionOf(r.session_id))
+      ? section("Live", "running now", (r) => r.kind === "session" && r.live)
+        + section("Closed", "ended; Cue has the conversation", (r) => r.kind === "session" && !r.live)
         + section("Older", "from Claude Code, before Cue; matched by name", (r) => r.kind === "older")
         + history()
       : `<div class="dim sr-hint">Nothing found for “${esc(q)}”.</div>`;
@@ -2115,6 +2163,7 @@ function sessionState(r) {
 function pickResult(i) {
   const r = searchResults[i];
   if (!r) return;
+  if (r.kind === "session" && r.live && r.quiet) { sheet = null; return svAct("quiet", r.session_id); }
   if (r.kind === "session" && sessionOf(r.session_id)) { sheet = null; return setActive(null, r.session_id); }
   if (r.kind === "older") return resumeOlder(r);
   openConvo(r, r.kind === "message" ? r.at_ms : null);
@@ -2149,7 +2198,7 @@ function convoSheet() {
   }).join("");
   return `<div class="sheet convo-sheet"><div class="sheet-head"><button class="btn" data-act="convo-back">← Results</button>${badge(c.harness)}<h3>${esc(c.name)}</h3>
       <span class="dim" style="font-size:12px">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>
-      ${live ? `<button class="btn primary" data-act="convo-open" data-sid="${esc(c.sid)}">Open in Active</button>` : ""}<kbd>Esc</kbd></div>
+      ${live ? `<button class="btn primary" data-act="convo-open" data-sid="${esc(c.sid)}">Open in Active</button>` : c.harness === "claude" ? `<button class="btn primary" data-act="convo-resume" title="claude --resume: the conversation comes back whole, ready to go on">Resume</button>` : ""}<kbd>Esc</kbd></div>
     <div class="sheet-body convo-body">${msgs || `<div class="dim">Nothing logged for this session.</div>`}</div></div>`;
 }
 /** "Send to another session": a small menu right above the button. Pick a session, add a note if you like. */
@@ -3278,6 +3327,8 @@ function bindMain() {
       return;
     }
     { const fd = t.closest("[data-fold]"); if (fd) return foldDrawer(fd.dataset.fold); }
+    // An ended Claude Code session, opened from search: back to work, as an older one resumes.
+    if (t.closest("[data-act=convo-resume]")) return resumeOlder({ session_id: convo.sid, name: convo.name });
     if (t.closest("[data-act=convo-back]")) { sheet = "search"; renderMain(); return document.querySelector(".search-in")?.focus(); }
     const co = t.closest("[data-act=convo-open]");
     if (co) { sheet = null; return setActive(null, co.dataset.sid); }

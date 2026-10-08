@@ -595,14 +595,23 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     let name = h.session_name(session_id);
     let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
     let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
+    let label = if name.is_empty() { model::project_of(&cwd) } else { name };
+    let line = focus::resume_line(&cwd, session_id)?;
+    // Its window in Cue first, empty: only once that's there does the old one end, so a tmux that won't
+    // cooperate never leaves the session ended and nowhere.
+    let mut tab = focus::open_in_tmux("", &cwd, &label)?;
     // Ended as Close does (SIGTERM, its tab closed). One that doesn't take the signal within 3 s is asked
     // to leave the way you would, with /exit typed into it, and given a few seconds more.
     if let Err(e) = end_session(h, session_id) {
         if !e.contains("didn't quit") {
+            focus::tmux_kill_pane(&tab.tmux_pane);
             return Err(e);
         }
         let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-        focus::type_into(&origin, "/exit")?;
+        if let Err(e) = focus::type_into(&origin, "/exit") {
+            focus::tmux_kill_pane(&tab.tmux_pane);
+            return Err(e);
+        }
         let alive = || pid > 0 && unsafe { libc::kill(pid, 0) == 0 };
         for _ in 0..60 {
             if !alive() {
@@ -611,6 +620,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
         if alive() {
+            focus::tmux_kill_pane(&tab.tmux_pane);
             return Err("it didn't quit, even to /exit: close it in its tab, then Resume it here".into());
         }
         let _ = focus::close_tab(&origin);
@@ -622,14 +632,23 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    let label = if name.is_empty() { model::project_of(&cwd) } else { name };
-    let tab = focus::open_in_tmux(&focus::resume_line(&cwd, session_id)?, &cwd, &label)?;
+    // It has ended: from here it always comes back somewhere. In Cue's window if it can be typed into,
+    // else in a terminal tab, as Resume would.
+    let mut fell_back = None;
+    if let Err(e) = focus::tmux_type_line(&tab.tmux_pane, &line) {
+        focus::tmux_kill_pane(&tab.tmux_pane);
+        tab = focus::open_tab_with(&line)?;
+        fell_back = Some(e);
+    }
     let recent = if path.is_empty() { Vec::new() } else { transcript::recent_context(&path, 6) };
-    let moved = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path, term_program: tab.term_program, tty: tab.tty, tmux_pane: tab.tmux_pane.clone(), ..Default::default() };
+    let moved = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane.clone(), ..Default::default() };
     // In the window at once, as working (loading), so its screen can be watched while it comes up.
     h.resumed(moved.clone(), &label, &recent, true);
     if star > 0 {
         h.restore_star(session_id, star);
+    }
+    if let Some(e) = fell_back {
+        return Ok(format!("Couldn't open it in Cue ({e}), so it was resumed in {} instead", tab.what));
     }
     // Until Claude Code is up in it with the conversation loaded: its prompt (or a question of its own)
     // on the screen. Up to 60 s (a long conversation takes a while); then it's left to finish on its own.

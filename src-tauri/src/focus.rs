@@ -218,6 +218,20 @@ pub fn tmux_installed() -> bool {
     std::path::Path::new(&bin("tmux")).is_absolute()
 }
 
+/// Type `line` into a tmux pane and press Enter.
+pub fn tmux_type_line(pane: &str, line: &str) -> Result<(), String> {
+    if run("tmux", &["send-keys", "-t", pane, "-l", line]) && run("tmux", &["send-keys", "-t", pane, "Enter"]) {
+        Ok(())
+    } else {
+        Err(format!("tmux pane {pane} is gone"))
+    }
+}
+
+/// Close a tmux pane Cue opened (its window goes with it, and its session if that was the last one).
+pub fn tmux_kill_pane(pane: &str) {
+    let _ = run("tmux", &["kill-pane", "-t", pane]);
+}
+
 /// tmux's answer, trimmed; None if it failed.
 fn tmux_out(args: &[&str]) -> Option<String> {
     let out = Command::new(bin("tmux")).args(args).output().ok()?;
@@ -320,11 +334,13 @@ fn open_in_tmux_session(session: &str, line: &str, dir: &str, name: &str) -> Res
     }
     .ok_or("tmux couldn't open a window")?;
     let (pane, tty) = out.split_once('|').unwrap_or((out.as_str(), ""));
-    if pane.is_empty() {
-        return Err("tmux didn't say which pane it opened".into());
+    // The pane it named is really there (an answer Cue misread would name one that isn't).
+    if pane.is_empty() || tmux_out(&["display-message", "-p", "-t", pane, "#{pane_id}"]).as_deref() != Some(pane) {
+        return Err(format!("tmux opened a window, but Cue can't find its pane (tmux said {out:?})"));
     }
-    if !run("tmux", &["send-keys", "-t", pane, "-l", line]) || !run("tmux", &["send-keys", "-t", pane, "Enter"]) {
-        return Err(format!("tmux pane {pane} is gone"));
+    // Nothing to type: the window waits, ready, for `tmux_type_line`.
+    if !line.is_empty() {
+        tmux_type_line(pane, line)?;
     }
     // It shows in Cue's own terminal (the drawer over the reply box): no terminal window opens for it.
     Ok(NewTab { what: "Cue".into(), term_program: "tmux".into(), tty: tty.to_string(), tmux_pane: pane.to_string(), ..Default::default() })
@@ -874,5 +890,29 @@ mod tests {
         let _ = run("tmux", &["kill-session", "-t", &session]);
         assert!(tab.tmux_pane.starts_with('%') && tab.tmux_pane[1..].chars().all(|c| c.is_ascii_digit()), "a pane id alone: {:?}", tab.tmux_pane);
         assert!(tab.tty.starts_with("/dev/"), "its tty: {:?}", tab.tty);
+    }
+
+    #[test]
+    fn a_window_can_be_opened_empty_typed_into_later_and_closed() {
+        if !tmux_installed() {
+            return;
+        }
+        let session = format!("cue-empty-test-{}", std::process::id());
+        let tab = open_in_tmux_session(&session, "", "/tmp", "t").unwrap();
+        tmux_type_line(&tab.tmux_pane, "echo typed-$((40+2))").unwrap();
+        let mut screen = String::new();
+        for _ in 0..100 {
+            screen = tmux_screen(&tab.tmux_pane).unwrap_or_default();
+            if screen.contains("typed-42") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        tmux_kill_pane(&tab.tmux_pane);
+        let gone = !run("tmux", &["has-session", "-t", &format!("={session}")]);
+        let _ = run("tmux", &["kill-session", "-t", &format!("={session}")]);
+        assert!(screen.contains("typed-42"), "what's typed later runs: {screen:?}");
+        assert!(gone, "closing its only pane closes it");
+        assert!(tmux_type_line(&tab.tmux_pane, "x").is_err(), "a closed pane says so");
     }
 }
