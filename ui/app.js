@@ -2113,7 +2113,7 @@ function searchSheet() {
   const row = (r, i, inGroup = false) => {
     searchVisible.push(i);
     const top = inGroup ? `<span class="dim">${r.role === "you" ? "you said" : "agent"}</span><span class="grow"></span><span class="age">${ago(r.at_ms)}</span>` : `${badge(r.harness)}<span class="proj">${mark(esc(r.name || r.project || "session"))}</span>${r.name && r.project && r.name !== r.project ? `<span class="dim">${esc(r.project)}</span>` : ""}
-      <span class="dim">${r.kind === "older" ? "" : r.kind === "session" ? sessionState(r) : r.role === "you" ? "you said" : "agent"}</span>${r.kind === "older" ? `<span class="sr-resume">Resume</span>` : ""}${r.ended && r.kind === "message" ? `<span class="sr-ended">ended</span>` : ""}<span class="grow"></span><span class="age">${ago(r.at_ms)}</span>`;
+      <span class="dim">${r.kind === "older" ? "" : r.kind === "session" ? sessionState(r) : r.role === "you" ? "you said" : "agent"}</span>${r.kind === "older" ? `<span class="sr-resume">Resume</span>` : r.kind === "session" && !r.live && r.harness === "claude" ? `<span class="sr-resume act" role="button" data-resume="${esc(r.session_id)}" data-name="${esc(r.name || r.project || "")}" title="claude --resume: back to work, the whole conversation">Resume</span>` : ""}${r.ended && r.kind === "message" ? `<span class="sr-ended">ended</span>` : ""}<span class="grow"></span><span class="age">${ago(r.at_ms)}</span>`;
     const body = r.kind === "message" ? `<div class="sr-snip">${mark(esc(r.snippet))}</div>`
       : r.last ? `<div class="sr-snip sr-last">${r.last_role === "you" ? "<b>You:</b> " : ""}${mark(esc(r.last))}</div>` : "";
     // Under its session's name, one line is enough: who, what, when.
@@ -2470,8 +2470,9 @@ async function lvAct(act, d) {
       newPerm = "ask";   // skipping permissions is for that one session, never carried over
       newWhere = null;
       newOpen = liveOpen = false;
-      // Cue knows the new session already (it picked the id): open it here, with its terminal when it runs in Cue.
-      if (r.session_id) { setActive(null, r.session_id); if (inTmux(r.session_id)) openTerm(r.session_id); return; }
+      // Cue knows the new session already (it picked the id): open it here. Its terminal stays closed
+      // (the strip, or ⌃`) until you open it — the reply box comes first.
+      if (r.session_id) { setActive(null, r.session_id); return; }
       renderMain();
     } catch (e) { toast(`Couldn't start it: ${e}`); }
   }
@@ -3346,6 +3347,9 @@ function bindMain() {
     if (co) { sheet = null; return setActive(null, co.dataset.sid); }
     const sm = t.closest("[data-srmore]");
     if (sm) { searchMore.add(sm.dataset.srmore); renderMain(); return document.querySelector(".search-in")?.focus(); }
+    // Resume on a closed session's row: back to work at once (the row itself opens its conversation).
+    const rsm = t.closest("[data-resume]");
+    if (rsm) return resumeOlder({ session_id: rsm.dataset.resume, name: rsm.dataset.name });
     const sr = t.closest("[data-sr]");
     if (sr) return pickResult(+sr.dataset.sr);
     const starEl = t.closest("[data-star]");

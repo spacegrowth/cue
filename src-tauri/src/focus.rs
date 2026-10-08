@@ -381,6 +381,52 @@ pub fn end_agent(pid: i32) -> Result<(), String> {
     Err("it didn't quit within 3 seconds (its tab is left open)".into())
 }
 
+/// End a session's agent on its machine, where it runs in tmux and Cue knows no pid. One SIGTERM to
+/// every process in its pane, not one process group: the agent can be in a group of its own (Claude
+/// Code makes one), and its shell ignores SIGTERM while it waits on its child. The shell then stays,
+/// for close_tab's kill-pane to sweep up, as it does for a pane here. One script on the machine does
+/// the walk, the signal and the wait: nothing to poll over SSH.
+pub fn end_machine_agent(o: &Origin) -> Result<(), String> {
+    let m = crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
+    let pane_pid = match crate::machines::tmux(&m.host, &["list-panes", "-t", &o.tmux_pane, "-F", "#{pane_pid}"]) {
+        Ok(p) => p.trim().to_string(),
+        Err(_) => return Ok(()), // its pane is gone already: nothing to end
+    };
+    if pane_pid.is_empty() || pane_pid == "0" {
+        return Ok(());
+    }
+    let script = r#"
+p='PANE_PID'
+# The pane's processes, the first one and everything below it (its shell is the first).
+next=" $p"; all=""
+while [ -n "$next" ]; do
+  prev="$next"; next=""
+  for q in $prev; do
+    all="$all $q"
+    for r in $(ps -eo pid=,ppid= | awk -v q="$q" '$2==q {print $1}'); do next="$next $r"; done
+  done
+done
+# All of them at once, so nothing is reparented before it gets the signal.
+kill -TERM $all 2>/dev/null
+# Wait for everything but the shell to go (its children are gone when the agent is), up to 3 s.
+i=0
+while [ $i -lt 15 ]; do
+  n=0
+  for q in $all; do
+    for r in $(ps -eo pid=,ppid= | awk -v q="$q" '$2==q {print $1}'); do n=$((n+1)); done
+  done
+  [ "$n" -eq 0 ] && { echo GONE; exit 0; }
+  sleep 0.2 2>/dev/null || sleep 1
+  i=$((i+1))
+done
+echo STILL
+"#.replace("PANE_PID", &pane_pid);
+    match crate::machines::run(&m.host, &script)?.trim() {
+        "GONE" => Ok(()),
+        _ => Err("it didn't quit within 3 seconds (its pane is left open)".into()),
+    }
+}
+
 /// Close a session's terminal tab (after its agent has ended): its tmux pane, its iTerm session (by
 /// id, else tty), or a Terminal window whose only tab it is. Terminal can't close one tab of several
 /// from a script: that's an error the caller reports.

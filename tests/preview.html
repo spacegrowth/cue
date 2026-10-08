@@ -138,6 +138,9 @@
           if (cmd === "get_state") return structuredClone(state);
           // + New → Machine: one connected, one that needs a login.
           if (cmd === "machine_setup") return ["Set up Cue's hooks for Claude Code (~/.claude/settings.json, backed up first)"];
+          // ⌘F: one closed session matching (a Claude Code one, so it offers Resume).
+          if (cmd === "search") return [{ kind: "session", session_id: "old-1", name: "checkout-flow", project: "web-shop", harness: "claude", at_ms: Date.now() - 86400000, ended: true, last_role: "agent", last: "Merged the coupon fix." }];
+          if (cmd === "resume_session") return { session_id: args.sessionId, detail: "Resumed in Cue" };
           if (cmd === "machine_rename") return { name: args.name, host: args.name === "build-box" ? "me@build-box" : args.name, label: args.label.trim() };
           if (cmd === "machine_add") return { name: args.host.replace(/^[^@]*@/, ""), host: args.host };
           if (cmd === "machines_list") return [{ name: "build-box", host: "me@build-box" }, { name: "gpu-1", host: "gpu-1" }];

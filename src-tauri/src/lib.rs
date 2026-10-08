@@ -428,7 +428,8 @@ async fn focus_live(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<Stri
 
 /// Close a session from the Sessions view: an executor through relay / pilead (they mark it closed and
 /// close its tab); anything else by ending its agent (SIGTERM: the conversation is saved, `--resume`
-/// brings it back) and closing its tab. Never while it works or asks you something.
+/// brings it back; on a machine, one SIGTERM to everything in its tmux pane there) and closing its tab.
+/// Never while it works or asks you something.
 #[tauri::command]
 async fn close_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
@@ -451,8 +452,14 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
             };
         }
         let origin = h.live_origin(&session_id).ok_or("that session is gone")?;
-        let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-        focus::end_agent(pid)?;
+        // On this Mac, the agent's process. On a machine, there is no pid here (it runs there): its
+        // pane is ended on the machine instead.
+        if origin.machine.is_empty() {
+            let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
+            focus::end_agent(pid)?;
+        } else {
+            focus::end_machine_agent(&origin)?;
+        }
         Ok(match focus::close_tab(&origin) {
             Ok(t) => format!("Closed its {t}"),
             // Many tabs close by themselves when the agent they run exits (relay launches its tabs so).
