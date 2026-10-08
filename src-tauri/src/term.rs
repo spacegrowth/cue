@@ -130,6 +130,18 @@ mod tests {
         String::from_utf8_lossy(&o.stdout).trim().to_string()
     }
 
+    /// Wait until `ok` holds (checked every 50 ms), up to 10 s: a busy Mac takes longer, never too long.
+    fn until(mut ok: impl FnMut() -> bool) -> bool {
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < end {
+            if ok() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        ok()
+    }
+
     #[test]
     fn the_built_in_terminal_shows_a_session_takes_what_you_type_and_leaves_it_running() {
         if !crate::focus::tmux_installed() {
@@ -150,21 +162,22 @@ mod tests {
             }
         })
         .unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(700));
+        // Its viewer is up (it has drawn something) before anything is typed into it.
+        let views_open = until(|| tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")) && !seen.lock().unwrap().is_empty());
         write("t", "hello from cue\r").unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(700));
-        let views = tmux(&["list-sessions", "-F", "#{session_name}"]);
+        let shown = until(|| seen.lock().unwrap().contains("hello from cue"));
+        let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("hello from cue"));
         close("t");
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        let views_gone = until(|| !tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")));
+        let heard_end = until(|| *ended.lock().unwrap());
         let after = tmux(&["list-sessions", "-F", "#{session_name}"]);
-        let screen = tmux(&["capture-pane", "-p", "-t", &pane]);
         tmux(&["kill-session", "-t", &name]);
-        assert!(seen.lock().unwrap().contains("hello from cue"), "it shows what the session prints: {:?}", seen.lock().unwrap());
-        assert!(screen.contains("hello from cue"), "what you type reaches the session: {screen:?}");
-        assert!(views.lines().any(|l| l.starts_with("cue-view-")), "a viewer of Cue's own while open: {views:?}");
-        assert!(!after.lines().any(|l| l.starts_with("cue-view-")), "gone once closed: {after:?}");
+        assert!(views_open, "a viewer of Cue's own while open");
+        assert!(shown, "it shows what the session prints: {:?}", seen.lock().unwrap());
+        assert!(reached, "what you type reaches the session");
+        assert!(views_gone, "the viewer is gone once closed: {after:?}");
         assert!(after.lines().any(|l| l == name), "the session keeps running: {after:?}");
-        assert!(*ended.lock().unwrap(), "the window hears it ended");
+        assert!(heard_end, "the window hears it ended");
         assert!(write("t", "x").is_err(), "nothing open any more");
     }
 }

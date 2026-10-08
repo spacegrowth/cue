@@ -922,6 +922,16 @@ impl Hub {
         self.changed();
     }
 
+    /// When a session was starred; 0 if it isn't.
+    pub fn session_star(&self, session_id: &str) -> u64 {
+        self.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == session_id).map(|s| s.starred_ms).unwrap_or(0)
+    }
+
+    pub fn restore_star(&self, session_id: &str, starred_ms: u64) {
+        self.store.lock().unwrap().sessions.restore_star(session_id, starred_ms);
+        self.changed();
+    }
+
     /// The name a session shows under (yours, or the one it gave itself); "" if it has none.
     pub fn session_name(&self, session_id: &str) -> String {
         self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| s.name).unwrap_or_default()

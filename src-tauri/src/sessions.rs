@@ -456,6 +456,13 @@ impl Sessions {
     }
 
     /// Star it, or unstar it (`on` false). True if that changed anything.
+    /// A star carried over to a session's new record (Move to Cue), with when it was first starred.
+    pub fn restore_star(&mut self, session_id: &str, starred_ms: u64) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.starred_ms = starred_ms;
+        }
+    }
+
     pub fn set_starred(&mut self, session_id: &str, on: bool) -> bool {
         let Some(s) = self.0.get_mut(session_id) else { return false };
         if (s.starred_ms > 0) == on {

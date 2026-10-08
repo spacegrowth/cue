@@ -593,6 +593,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
         return Err("Cue doesn't know which folder it runs in".into());
     }
     let name = h.session_name(session_id);
+    let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
     let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
     // Ended as Close does (SIGTERM, its tab closed). One that doesn't take the signal within 3 s is asked
     // to leave the way you would, with /exit typed into it, and given a few seconds more.
@@ -627,6 +628,9 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     let moved = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path, term_program: tab.term_program, tty: tab.tty, tmux_pane: tab.tmux_pane.clone(), ..Default::default() };
     // In the window at once, as working (loading), so its screen can be watched while it comes up.
     h.resumed(moved.clone(), &label, &recent, true);
+    if star > 0 {
+        h.restore_star(session_id, star);
+    }
     // Until Claude Code is up in it with the conversation loaded: its prompt (or a question of its own)
     // on the screen. Up to 60 s (a long conversation takes a while); then it's left to finish on its own.
     for _ in 0..300 {
