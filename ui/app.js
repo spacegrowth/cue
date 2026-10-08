@@ -516,15 +516,15 @@ const ranLog = new Map();   // sid | "new" -> [{ line, cwd, output, code, ms, at
 const isBang = (text) => /^!\s+\S/.test(text.trimStart());
 /** Already a "!" line as you type it (the hint and the Run button show once you've typed "! "). */
 const bangTyped = (text) => /^!\s/.test(text.trimStart());
-async function runLine(who, line, cwd = null) {
+async function runLine(who, line, cwd = null, machine = null) {
   line = line.replace(/^\s*!\s+/, "").trim();
   if (!line) return;
   const log = ranLog.get(who) || ranLog.set(who, []).get(who);
-  const e = { line, cwd: cwd || sessionOf(who)?.cwd || "", output: "", code: 0, ms: 0, at: now(), running: true, err: null };
+  const e = { line, cwd: cwd || sessionOf(who)?.cwd || "", machine: machine ?? (who === "new" ? newMachine : sessionOf(who)?.machine || ""), output: "", code: 0, ms: 0, at: now(), running: true, err: null };
   log.push(e);
   renderMain();
   try {
-    const r = await invoke("run_line", who === "new" ? { cwd, line } : { sessionId: who, line });
+    const r = await invoke("run_line", who === "new" ? { cwd, line, machine: e.machine } : { sessionId: who, line });
     Object.assign(e, r, { running: false });
   } catch (x) { e.err = String(x); e.running = false; }
   renderMain();
@@ -533,10 +533,10 @@ async function runLine(who, line, cwd = null) {
 function ranCard(who, e, n) {
   const status = e.running ? `<span class="dot-live"></span>Running…` : e.err ? esc(e.err) : `${e.timed_out ? "stopped after 2 min" : e.code === 0 ? "ok" : `exit ${e.code}`} · ${e.ms < 1000 ? `${e.ms} ms` : `${(e.ms / 1000).toFixed(1)} s`}`;
   const acts = e.running || e.err ? "" : ` · <button class="q-now" data-act="ran-again" data-who="${esc(who)}" data-n="${n}">Run again</button>${who !== "new" ? ` · <button class="q-now" data-act="ran-send" data-who="${esc(who)}" data-n="${n}" title="The line and what it printed, as your message">Send to ${esc(agentName(sessionOf(who)?.harness))}</button> · <button class="q-now" data-act="ran-term" data-who="${esc(who)}" data-n="${n}" title="Types it into the session's terminal, as a “!” line, for a command that needs one">Run in its terminal</button>` : ""}`;
-  return `<div class="cv-you cv-ran"><pre class="ran-out"><span class="ran-cmd">${esc(e.line)}</span>${e.output ? `\n${esc(e.output)}` : e.running || e.err ? "" : `\n<span class="ran-dim">(no output)</span>`}</pre><div class="cv-meta">You ran · in ${esc(homeless(e.cwd))} · ${status}${acts}</div></div>`;
+  return `<div class="cv-you cv-ran"><pre class="ran-out"><span class="ran-cmd">${esc(e.line)}</span>${e.output ? `\n${esc(e.output)}` : e.running || e.err ? "" : `\n<span class="ran-dim">(no output)</span>`}</pre><div class="cv-meta">You ran · in ${esc(homeless(e.cwd))}${e.machine ? ` on ${esc(machShort(e.machine))}` : ""} · ${status}${acts}</div></div>`;
 }
 /** The line and its output, as a message: what you checked becomes context for the agent. */
-const ranAsMessage = (e) => `I ran \`${e.line}\` in ${homeless(e.cwd)}${e.code ? ` (exit ${e.code})` : ""}:\n\`\`\`\n${e.output || "(no output)"}\n\`\`\``;
+const ranAsMessage = (e) => `I ran \`${e.line}\` in ${homeless(e.cwd)}${e.machine ? ` on ${e.machine}` : ""}${e.code ? ` (exit ${e.code})` : ""}:\n\`\`\`\n${e.output || "(no output)"}\n\`\`\``;
 async function deliver(sid, key, call) {
   endDictation(key);
   if (isParked(sid) && (draft(key).text.trim() || draft(key).images.length)) setParked(sid, false);   // you replied: decided
@@ -1092,7 +1092,7 @@ function cmdOf(key) {
 /** Under the box: what the command does, or that it isn't one here (with Send as a message). */
 function slashHint(key) {
   const t = draft(key).text;
-  if (bangTyped(t)) { const c = sessionOf(sidOfKey(key))?.cwd; return `<div class="slash-hint"><b>!</b> Cue runs this in ${esc(homeless(c || draft("new-cwd").text || "the folder"))}, in your shell. The agent doesn't see it unless you send it the result.</div>`; }
+  if (bangTyped(t)) { const s = sessionOf(sidOfKey(key)); const c = s?.cwd; return `<div class="slash-hint"><b>!</b> Cue runs this in ${esc(homeless(c || draft("new-cwd").text || "the folder"))}${s?.machine || newMachine ? ` on ${esc(machShort(s?.machine || newMachine))}` : ""}, in your shell. The agent doesn't see it unless you send it the result.</div>`; }
   if (!t.startsWith("/") || cmdMatches(key).length || cmdLists.get(sidOfKey(key)) === null) return `<div class="slash-hint" hidden></div>`;
   const c = cmdOf(key), name = t.slice(1).split(/\s/)[0];
   const asText = `<button data-astext="${esc(key)}">Send as a message instead</button>`;
@@ -3475,7 +3475,7 @@ function bindMain() {
     if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
       const who = actEl.dataset.who, e = (ranLog.get(who) || [])[+actEl.dataset.n];
       if (!e) return;
-      if (act === "ran-again") return runLine(who, e.line, e.cwd);
+      if (act === "ran-again") return runLine(who, e.line, e.cwd, e.machine);
       if (act === "ran-send") return invoke("send_to_session", { sessionId: who, text: ranAsMessage(e), images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
       return invoke("send_to_session", { sessionId: who, text: `! ${e.line}`, images: [], now: false }).then(() => toast("Typed into its terminal")).catch((x) => toast(`Couldn't: ${x}`));
     }

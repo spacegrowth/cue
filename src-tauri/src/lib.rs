@@ -556,20 +556,43 @@ async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<()
 }
 
 /// "!" in a box: run the rest of the line in the session's folder (or `cwd`, for the + New session box),
-/// in your shell. What it printed, its exit code and how long it took: shown as a card, never sent to the
-/// agent unless you choose to.
+/// in your shell — on this Mac, or on the machine the session runs on (the folder is there). What it
+/// printed, its exit code and how long it took: shown as a card, never sent to the agent unless you
+/// choose to.
 #[tauri::command]
-async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String>, cwd: Option<String>, line: String) -> Result<shell::Ran, String> {
-    let dir = match session_id.filter(|s| !s.is_empty()) {
-        Some(sid) => hub.live_origin(&sid).map(|o| o.cwd).filter(|c| !c.is_empty()).ok_or("Cue doesn't know that session's folder")?,
+async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String>, cwd: Option<String>, machine: Option<String>, line: String) -> Result<shell::Ran, String> {
+    let (dir, machine) = match session_id.filter(|s| !s.is_empty()) {
+        Some(sid) => {
+            let o = hub.live_origin(&sid).ok_or("Cue doesn't know that session's folder")?;
+            let dir = o.cwd.trim().to_string();
+            if dir.is_empty() {
+                return Err("Cue doesn't know that session's folder".into());
+            }
+            (dir, o.machine)
+        }
         None => {
-            let c = cwd.unwrap_or_default();
-            let c = c.trim();
-            if c.is_empty() { return Err("pick a folder first".into()); }
-            match c.strip_prefix('~') { Some(rest) => format!("{}{rest}", std::env::var("HOME").unwrap_or_default()), None => c.to_string() }
+            let c = cwd.unwrap_or_default().trim().to_string();
+            if c.is_empty() {
+                return Err("pick a folder first".into());
+            }
+            let m = machine.unwrap_or_default();
+            // On this Mac a `~` becomes your home here; on a machine it stays, for the shell there.
+            let c = if m.is_empty() {
+                match c.strip_prefix('~') { Some(rest) => format!("{}{rest}", std::env::var("HOME").unwrap_or_default()), None => c }
+            } else {
+                c
+            };
+            (c, m)
         }
     };
-    tauri::async_runtime::spawn_blocking(move || shell::run(&dir, &line)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        if machine.is_empty() {
+            shell::run(&dir, &line)
+        } else {
+            let m = machines::get(&machine).ok_or(format!("{machine} isn't one of your machines any more (+ New → Machine)"))?;
+            shell::run_on_machine(&m, &dir, &line)
+        }
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// "Move to Cue": a Claude Code session in a terminal tab, ended (its tab closed with it) and resumed in

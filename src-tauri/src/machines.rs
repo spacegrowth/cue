@@ -122,12 +122,7 @@ pub fn run(host: &str, script: &str) -> Result<String, String> {
     if !valid_host(host) {
         return Err("that isn't an SSH host".into());
     }
-    let remote = remote_command(script);
-    let out = Command::new("/usr/bin/ssh")
-        .args(shared())
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let out = ssh_command(host, script).output().map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
@@ -142,9 +137,7 @@ pub fn run_with_input(host: &str, script: &str, input: &str) -> Result<String, S
     if !valid_host(host) {
         return Err("that isn't an SSH host".into());
     }
-    let mut child = Command::new("/usr/bin/ssh")
-        .args(shared())
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command(script)])
+    let mut child = ssh_command(host, script)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -159,10 +152,32 @@ pub fn run_with_input(host: &str, script: &str, input: &str) -> Result<String, S
     }
 }
 
+/// The `ssh` behind `run` and its sibling, for you to spawn yourself (ssh passes the script's exit code
+/// through): the shared connection, never asking for anything, the script's stderr silenced.
+pub(crate) fn ssh_command(host: &str, script: &str) -> Command {
+    let mut c = Command::new("/usr/bin/ssh");
+    c.args(shared())
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command(script)]);
+    c
+}
+
+/// `ssh_command` keeping the script's stderr: a "!" line's card shows it, as it does on this Mac.
+pub(crate) fn ssh_command_err(host: &str, script: &str) -> Command {
+    let mut c = Command::new("/usr/bin/ssh");
+    c.args(shared())
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command_err(script)]);
+    c
+}
+
 /// What ssh runs on the machine for `script`: your login shell there sets things up (your PATH), then
-/// /bin/sh runs the script.
+/// /bin/sh runs the script. The login shell's own noise is silenced, so only ssh's failures come back.
 pub fn remote_command(script: &str) -> String {
-    format!("exec \"${{SHELL:-/bin/sh}}\" -lic {} 2>/dev/null", shq(&format!("exec /bin/sh -c {}", shq(script))))
+    format!("{} 2>/dev/null", remote_command_err(script))
+}
+
+/// `remote_command` keeping the script's stderr, for a script whose output is the point.
+pub(crate) fn remote_command_err(script: &str) -> String {
+    format!("exec \"${{SHELL:-/bin/sh}}\" -lic {}", shq(&format!("exec /bin/sh -c {}", shq(script))))
 }
 
 /// `tmux` with these arguments on the machine (each one quoted).
@@ -171,7 +186,7 @@ pub fn tmux(host: &str, args: &[&str]) -> Result<String, String> {
 }
 
 /// A folder on the machine as the shell there should read it: `~` stays your home there.
-fn remote_dir(dir: &str) -> String {
+pub(crate) fn remote_dir(dir: &str) -> String {
     match dir.trim().strip_prefix('~') {
         Some(rest) => format!("\"$HOME\"{}", shq(rest)),
         None => shq(dir.trim()),
@@ -216,7 +231,7 @@ echo "DIR:$PWD""#,
 
 /// Whether ssh failed for want of a login (a password, a new host key to accept, a locked key): the
 /// kind you fix by logging in once yourself.
-fn wants_login(err: &str) -> bool {
+pub(crate) fn wants_login(err: &str) -> bool {
     let e = err.to_lowercase();
     ["permission denied", "host key verification failed", "authentication", "passphrase", "keyboard-interactive"].iter().any(|k| e.contains(k))
 }

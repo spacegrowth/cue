@@ -24,6 +24,46 @@ pub struct Ran {
     pub timed_out: bool,
 }
 
+/// The card's `Ran`, from what a shell said: stdout, then stderr (after a blank line), trimmed and cut.
+fn finish(stdout: &str, stderr: &str, code: i32, ms: u64, timed_out: bool, cwd: &str) -> Ran {
+    let mut output = stdout.trim_end().to_string();
+    if !stderr.is_empty() {
+        if !output.is_empty() {
+            output.push_str("\n\n");
+        }
+        output.push_str(stderr);
+    }
+    if output.len() > MAX_OUTPUT {
+        let mut cut = MAX_OUTPUT;
+        while !output.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let more = output.len() - cut;
+        output.truncate(cut);
+        output.push_str(&format!("\n… {more} more bytes not shown"));
+    }
+    Ran { output, code, ms, cwd: cwd.to_string(), timed_out }
+}
+
+/// Wait for `child`, stopped after the longest a line may run: what it said, and whether Cue stopped it.
+fn wait_capped(child: std::process::Child) -> Result<(std::process::Output, bool), String> {
+    let pid = child.id();
+    let done = Arc::new(Mutex::new(false));
+    let timed_out = Arc::new(Mutex::new(false));
+    let (watch, flag) = (done.clone(), timed_out.clone());
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(TIMEOUT_SECS));
+        if !*watch.lock().unwrap() {
+            *flag.lock().unwrap() = true;
+            let _ = Command::new("/bin/kill").arg(pid.to_string()).status();
+        }
+    });
+    let out = child.wait_with_output().map_err(|e| e.to_string());
+    *done.lock().unwrap() = true;
+    let timed_out = *timed_out.lock().unwrap();
+    Ok((out?, timed_out))
+}
+
 /// Run `line` in `cwd`. Err only when it couldn't start (no such folder, no shell): a command that fails
 /// is an Ok with its code and what it said.
 pub fn run(cwd: &str, line: &str) -> Result<Ran, String> {
@@ -47,39 +87,51 @@ pub fn run(cwd: &str, line: &str) -> Result<Ran, String> {
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start {shell}: {e}"))?;
-    let pid = child.id();
-    let done = Arc::new(Mutex::new(false));
-    let timed_out = Arc::new(Mutex::new(false));
-    let (watch, flag) = (done.clone(), timed_out.clone());
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(TIMEOUT_SECS));
-        if !*watch.lock().unwrap() {
-            *flag.lock().unwrap() = true;
-            let _ = Command::new("/bin/kill").arg(pid.to_string()).status();
-        }
-    });
-    let out = child.wait_with_output().map_err(|e| e.to_string());
-    *done.lock().unwrap() = true;
-    let out = out?;
-    let timed_out = *timed_out.lock().unwrap();
-    let mut output = String::from_utf8_lossy(&out.stdout).trim_end().to_string();
-    let err = String::from_utf8_lossy(&out.stderr).trim_end().to_string();
-    if !err.is_empty() {
-        if !output.is_empty() {
-            output.push_str("\n\n");
-        }
-        output.push_str(&err);
+    let (out, timed_out) = wait_capped(child)?;
+    Ok(finish(&String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr).trim_end(), out.status.code().unwrap_or(-1), started.elapsed().as_millis() as u64, timed_out, cwd))
+}
+
+/// The script `run_on_machine` sends: into the folder there (saying NODIR rather than failing, as
+/// `open_in_tmux` does), the line in a subshell of its own (an `exit` in it only ends that), and Cue's
+/// own last line with its exit code — the proof the script ran, an ssh failure having none.
+fn remote_script(cwd: &str, line: &str) -> String {
+    format!("cd {dir} 2>/dev/null || {{ echo NODIR; exit 0; }}\n({line})\nprintf '\\n__CUE_EXIT__:%d\\n' \"$?\"", dir = crate::machines::remote_dir(cwd))
+}
+
+/// `run`, on a machine Cue knows (the session runs there): the same timeout and cut, over Cue's shared
+/// SSH connection, in the folder as it is there, with your login shell's setup there. ssh passes the
+/// script's exit code through. Err only when it couldn't start there: a command that fails is an Ok.
+pub fn run_on_machine(m: &crate::machines::Machine, cwd: &str, line: &str) -> Result<Ran, String> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Err("nothing to run".into());
     }
-    if output.len() > MAX_OUTPUT {
-        let mut cut = MAX_OUTPUT;
-        while !output.is_char_boundary(cut) {
-            cut -= 1;
-        }
-        let more = output.len() - cut;
-        output.truncate(cut);
-        output.push_str(&format!("\n… {more} more bytes not shown"));
+    let started = Instant::now();
+    let child = crate::machines::ssh_command_err(&m.host, &remote_script(cwd, line))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't start ssh: {e}"))?;
+    let (out, timed_out) = wait_capped(child)?;
+    let ms = started.elapsed().as_millis() as u64;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).trim_end().to_string();
+    if timed_out {
+        return Ok(finish(&stdout, &stderr, -1, ms, true, cwd));
     }
-    Ok(Ran { output, code: out.status.code().unwrap_or(-1), ms: started.elapsed().as_millis() as u64, cwd: cwd.to_string(), timed_out })
+    // Cue's own last line, when the script ran (its code, so an `exit` in the line still counts).
+    if let Some((head, code)) = stdout.rsplit_once("\n__CUE_EXIT__:") {
+        return Ok(finish(head, &stderr, code.parse().unwrap_or(-1), ms, false, cwd));
+    }
+    if stdout.trim() == "NODIR" {
+        return Err(format!("{cwd} isn't a folder on {}", m.name));
+    }
+    let err = if stderr.is_empty() { format!("exit {}", out.status.code().unwrap_or(-1)) } else { stderr };
+    if crate::machines::wants_login(&err) {
+        return Err(format!("{err} — log in through + New → Machine"));
+    }
+    Err(err)
 }
 
 #[cfg(test)]
@@ -106,5 +158,16 @@ mod tests {
         let r = run("/tmp", "head -c 100000 /dev/zero | tr '\\0' x").unwrap();
         assert!(r.output.len() < MAX_OUTPUT + 64);
         assert!(r.output.ends_with("more bytes not shown"), "{:?}", &r.output[r.output.len() - 40..]);
+    }
+
+    #[test]
+    fn a_line_on_a_machine_runs_in_the_folder_there_and_says_its_exit_code() {
+        let script = remote_script("~", "echo hi; exit 3");
+        let out = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&script)]).output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        assert!(stdout.starts_with("hi\n"), "{stdout:?}");
+        assert!(stdout.ends_with("\n__CUE_EXIT__:3\n"), "an `exit` in the line still says its code: {stdout:?}");
+        let bad = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&remote_script("/no/such/dir", "true"))]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&bad.stdout).trim(), "NODIR", "a folder that isn't one there says so");
     }
 }
