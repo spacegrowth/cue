@@ -46,8 +46,10 @@ fn open_with(sid: &str, pane: &str, host: Option<&str>, cols: u16, rows: u16, ou
             None => std::process::Command::new(&tmux).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default(),
         }
     };
-    let where_ = tmux_say(&["display-message", "-p", "-t", pane, "#{session_name}\t#{window_id}"]).trim().to_string();
-    let (session, window) = where_.split_once('\t').filter(|(s, w)| !s.is_empty() && !w.is_empty()).ok_or(format!("tmux pane {pane} is gone"))?;
+    let where_ = tmux_say(&["display-message", "-p", "-t", pane, "#{session_name}|#{window_id}"]).trim().to_string();
+    // Split at the last "|": a session's name may have one, a window id ("@3") never does. Not a tab: some
+    // tmux versions print it as "_".
+    let (session, window) = where_.rsplit_once('|').filter(|(s, w)| !s.is_empty() && !w.is_empty()).ok_or(format!("tmux pane {pane} is gone"))?;
     let gen = next_gen();
     let view = format!("cue-view-{gen}");
     // The window follows the size of whichever terminal was used last (this one while you type here).

@@ -308,7 +308,9 @@ pub fn open_in_tmux_tab(line: &str, dir: &str, name: &str) -> Result<NewTab, Str
 }
 
 fn open_in_tmux_session(session: &str, line: &str, dir: &str, name: &str) -> Result<NewTab, String> {
-    const FMT: &str = "#{pane_id}\t#{pane_tty}";
+    // "|", not a tab: some tmux versions print a tab in -F output as "_" ("%1_/dev/ttys003", one pane id
+    // that isn't there). Neither a pane id nor a tty path has a "|". (The start script on a machine does the same.)
+    const FMT: &str = "#{pane_id}|#{pane_tty}";
     let exists = run("tmux", &["has-session", "-t", session]);
     let out = if exists {
         tmux_out(&["new-window", "-t", &format!("{session}:"), "-n", name, "-c", dir, "-P", "-F", FMT])
@@ -317,7 +319,7 @@ fn open_in_tmux_session(session: &str, line: &str, dir: &str, name: &str) -> Res
         tmux_out(&["new-session", "-d", "-s", session, "-n", name, "-c", dir, "-x", "200", "-y", "50", "-P", "-F", FMT])
     }
     .ok_or("tmux couldn't open a window")?;
-    let (pane, tty) = out.split_once('\t').unwrap_or((out.as_str(), ""));
+    let (pane, tty) = out.split_once('|').unwrap_or((out.as_str(), ""));
     if pane.is_empty() {
         return Err("tmux didn't say which pane it opened".into());
     }
@@ -855,5 +857,22 @@ mod iterm_tests {
         assert_eq!(iterm_predicate(&o), None);
         let o = Origin { term_program: "iTerm.app".into(), iterm_session_id: "w0t1p0:ABC".into(), tty: "/dev/ttys004".into(), ..Default::default() };
         assert_eq!(iterm_predicate(&o).as_deref(), Some("(id of s) is \"ABC\""));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_tmux_window_is_read_back_as_its_pane_and_its_tty() {
+        if !tmux_installed() {
+            return;
+        }
+        let session = format!("cue-fmt-test-{}", std::process::id());
+        let tab = open_in_tmux_session(&session, "true", "/tmp", "t").unwrap();
+        let _ = run("tmux", &["kill-session", "-t", &session]);
+        assert!(tab.tmux_pane.starts_with('%') && tab.tmux_pane[1..].chars().all(|c| c.is_ascii_digit()), "a pane id alone: {:?}", tab.tmux_pane);
+        assert!(tab.tty.starts_with("/dev/"), "its tty: {:?}", tab.tty);
     }
 }
