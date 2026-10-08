@@ -643,9 +643,18 @@ function placeTab(sid) {
   if (!s) return "";
   // In Cue: the same corner opens (or closes) its terminal above the box.
   if (inTmux(sid)) return `<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">${termSid === sid ? "Close" : "Open"} ${s.machine ? esc(machShort(s.machine)) : "Cue"} <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button>`;
-  // A terminal app's: its tab, and (idle, Claude Code, tmux here) Move to Cue: resumed in Cue's terminal.
-  const movable = s.harness === "claude" && !["working", "deciding"].includes(s.state) && state.settings?.sessions?.tmux_installed;
-  return `<span class="tplace">${movable ? `<button class="tplace-btn move" data-act="move-cue" data-sid="${esc(sid)}" title="Ends it in its tab and resumes it here, in Cue's terminal (the conversation comes back whole)">Move to Cue</button>` : ""}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
+  // A terminal app's: its tab, and for Claude Code, Move to Cue (resumed in Cue's terminal).
+  return `<span class="tplace">${moveBtn(sid, s.harness, s.state, "tplace-btn move")}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
+}
+/** Move to Cue, for a Claude Code session in a terminal app's tab: ended there, resumed in Cue's terminal.
+ *  Shown even when it can't run yet, greyed, and a click says why, so it never just isn't there. */
+function moveBtn(sid, harness, st, cls) {
+  if (harness !== "claude") return "";
+  const why = !state.settings?.sessions?.tmux_installed ? "Needs tmux on this Mac (brew install tmux), then reopen Cue"
+    : st === "working" ? "Available once it finishes what it's doing (or Esc it in its tab)"
+    : st === "deciding" ? "Answer what it's asking first"
+    : "";
+  return `<button class="${cls}" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : `title="Ends it in its tab and resumes it here, in Cue's terminal (the conversation comes back whole)"`}>Move to Cue</button>`;
 }
 /** "Open in iTerm ↗": where a terminal-app session's own tab is, for the places that have no reply box. */
 const openInLabel = (s) => `Open in ${esc(s ? termAppName(s) : "its terminal")} <span aria-hidden="true">↗</span>`;
@@ -1680,7 +1689,7 @@ function quietPane() {
   const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane ${busy ? "busy" : ""}">
     <div class="ap-head">${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
-      <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
+      ${moveBtn(q.session_id, q.harness, busy ? "working" : "idle", "btn primary")}<button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
     ${subHead(q.cwd, "", "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
     <div class="ap-chat" data-chat>${chat || `<div class="dim cv-empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`}</div></div>`;
@@ -1708,8 +1717,11 @@ function movingDialog() {
   </div></div>`;
 }
 async function moveToCue(sid) {
-  const s = sessionOf(sid);
+  // A quiet one (Cue hasn't heard from it yet) is only in the live list: its name and folder from there.
+  const q = (state.live || []).find((x) => x.session_id === sid);
+  const s = sessionOf(sid) || (q && { name: bareName(q.name) || baseName(q.cwd), harness: q.harness, project: baseName(q.cwd) });
   if (!s || moving) return;
+  if (quietOpen === sid) quietOpen = null;   // it opens in Active as it moves
   moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "" };
   renderMain();
   // Every second: the clock, and once it's in its new window, that window's last line.
@@ -3453,7 +3465,7 @@ function bindMain() {
     if (act === "load-transcript") return loadOlder(actEl.dataset.sid, true);
     if (act === "open-settings") { sheet = sheet === "settings" ? null : "settings"; extSections = null; return renderMain(); }
     // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
-    if (act === "move-cue") return moveToCue(actEl.dataset.sid);
+    if (act === "move-cue") return actEl.dataset.why ? toast(`Move to Cue: ${actEl.dataset.why}`) : moveToCue(actEl.dataset.sid);
     if (act === "move-dismiss") { moving = null; return renderMain(); }
     if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.msg, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
     if (act === "ran-again" || act === "ran-send" || act === "ran-term") {

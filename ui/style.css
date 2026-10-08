@@ -429,6 +429,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .tplace .tplace-btn:last-child { border-top-right-radius: 8px; }
 .tplace-btn.move { background: color-mix(in srgb, var(--accent) 78%, var(--panel)); }
 .tplace-btn:disabled { opacity: .7; cursor: default; }
+/* Move to Cue when it can't run yet: there, faded; a click says why. */
+.tplace-btn[aria-disabled="true"], .btn[data-act="move-cue"][aria-disabled="true"] { opacity: .45; cursor: default; }
 /* "Move to Cue" under way: a small dialog over the window, the screen behind it untouched. */
 .move-scrim { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(0, 0, 0, 0.28); }
 .move-dialog { width: min(420px, calc(100% - 40px)); padding: 18px 20px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 10px; }

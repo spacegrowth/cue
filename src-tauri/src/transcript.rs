@@ -531,6 +531,21 @@ pub fn compact_finished(path: &str, since_ms: u64) -> bool {
 /// really over (after its Stop hooks, and not when one sends it back to work). Returns when, and the
 /// turn's last text reply, if nothing has happened since. Catches a Stop hook that never reached Cue
 /// (Cue was restarting at that moment).
+/// A command you ran in Claude Code itself (/login, /model, /resume…) or a note it adds (isMeta): written
+/// as "user" entries, but no turn: the agent isn't working on anything because of them.
+fn local_command(e: &Value) -> bool {
+    if e.get("isMeta").and_then(Value::as_bool) == Some(true) {
+        return true;
+    }
+    let text = match e.pointer("/message/content") {
+        Some(Value::String(t)) => t.clone(),
+        Some(Value::Array(blocks)) => blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join(""),
+        _ => return false,
+    };
+    let t = text.trim_start();
+    ["<command-name>", "<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>"].iter().any(|tag| t.starts_with(tag))
+}
+
 pub fn turn_ended(path: &str) -> Option<(u64, String)> {
     let len = std::fs::metadata(path).ok()?.len();
     let text = read_from(path, len.saturating_sub(256 * 1024))?;
@@ -541,6 +556,8 @@ pub fn turn_ended(path: &str) -> Option<(u64, String)> {
                 ended = Some(stamp(&e));
                 last_reply = reply.clone();
             }
+            // A command you ran in Claude Code since (/login, /model…) starts no turn: still ended.
+            Some("user") if local_command(&e) => {}
             Some("user" | "assistant") if e.get("isSidechain").and_then(Value::as_bool) != Some(true) => {
                 ended = None; // a new turn (or more of this one) since
                 if e.get("type").and_then(Value::as_str) == Some("assistant") {
@@ -698,7 +715,16 @@ mod tests {
         // A Stop hook sent it back to work, or you sent the next message: not ended.
         let p = write_transcript(&[reply.clone(), end.clone(), json!({"type":"user","message":{"content":"next"}})]);
         assert_eq!(turn_ended(&p.0), None);
-        let p = write_transcript(&[json!({"type":"user","message":{"content":"go"}}), reply]);
+        let p = write_transcript(&[json!({"type":"user","message":{"content":"go"}}), reply.clone()]);
+        assert_eq!(turn_ended(&p.0), None);
+        // Commands you ran in Claude Code since (/login, /model, a resume's notes) start no turn: still ended.
+        let caveat = json!({"type":"user","isMeta":true,"message":{"content":"<local-command-caveat>The command below was run directly in Claude Code</local-command-caveat>"}});
+        let login = json!({"type":"user","message":{"content":"<command-name>/login</command-name>\n<command-message>login</command-message>"}});
+        let out = json!({"type":"user","message":{"content":[{"type":"text","text":"<local-command-stdout>Login interrupted</local-command-stdout>"}]}});
+        let p = write_transcript(&[reply.clone(), end.clone(), caveat, login.clone(), out]);
+        assert_eq!(turn_ended(&p.0).map(|(at, _)| at), iso_ms("2026-10-04T13:35:01.000Z"), "still the turn that ended");
+        // One that sets it to work (a custom command it answers) is a new turn.
+        let p = write_transcript(&[reply.clone(), end, login, reply]);
         assert_eq!(turn_ended(&p.0), None);
     }
 
