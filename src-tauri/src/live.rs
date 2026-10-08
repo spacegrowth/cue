@@ -127,6 +127,7 @@ pub fn origin_of(q: &Quiet) -> crate::model::Origin {
         wezterm_pane: get("WEZTERM_PANE"),
         kitty_window_id: get("KITTY_WINDOW_ID"),
         kitty_listen_on: get("KITTY_LISTEN_ON"),
+        machine: String::new(), // a session Claude Code lists on this Mac
     }
 }
 

@@ -123,6 +123,8 @@
       if (q.has("starred")) state.sessions.slice(0, 5).forEach((x, n) => (x.starred_ms = now - (50 - n) * M));
       // ?held=1: the working order-engine session has a message kept in Cue, open in Active.
       if (q.has("held")) { const x = state.sessions.find((y) => y.project === "order-engine"); if (x) { x.held = { role: "you", text: "also keep the old broker session open while you test", at_ms: now - M, images: [] }; try { localStorage.setItem("cue.spot", JSON.stringify({ sid: x.session_id, view: "board" })); } catch {} } }
+      // Two sessions run on other machines (+ New → Machine): one name shortened, one short already.
+      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box" }[x.session_id] || "";
       if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
@@ -134,6 +136,12 @@
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           console.log("[cue-preview]", cmd, JSON.stringify(args));
           if (cmd === "get_state") return structuredClone(state);
+          // + New → Machine: one connected, one that needs a login.
+          if (cmd === "machine_setup") return ["Set up Cue's hooks for Claude Code (~/.claude/settings.json, backed up first)"];
+          if (cmd === "machine_rename") return { name: args.name, host: args.name === "build-box" ? "me@build-box" : args.name, label: args.label.trim() };
+          if (cmd === "machine_add") return { name: args.host.replace(/^[^@]*@/, ""), host: args.host };
+          if (cmd === "machines_list") return [{ name: "build-box", host: "me@build-box" }, { name: "gpu-1", host: "gpu-1" }];
+          if (cmd === "machine_check") return args.name === "build-box" ? { ok: true, os: "Linux", tools: { claude: true, codex: false, pi: false, tmux: true, node: true, npm: true }, help: { codex: "npm install -g @openai/codex", pi: "npm install -g @earendil-works/pi-coding-agent" } } : { ok: false, needs_login: true, error: "gpu-1: Permission denied (publickey,password)." };
           // ?term=1: agent-relay runs in tmux; its built-in terminal shows a Claude Code permission menu.
           if (cmd === "session_screen") return "  Do you want to proceed?\n  ❯ 1. Yes\n    2. Yes, and don't ask again\n    3. No (esc)";
           if (cmd === "term_open") {

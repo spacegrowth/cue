@@ -149,7 +149,10 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 hub.failed(origin, &error_type, &message);
                 return Ok(());
             }
-            let prompt = (event == "active").then(|| (origin.session_id.clone(), origin.transcript_path.clone(), message.clone()));
+            // A session on a machine keeps its transcript there: nothing to look up here, so it's yours
+            // straight away (waiting on a file that never shows let its reply land first).
+            let path = if origin.machine.is_empty() { origin.transcript_path.clone() } else { String::new() };
+            let prompt = (event == "active").then(|| (origin.session_id.clone(), path, message.clone()));
             let driven_by = crate::leads::resolve_driver(&origin.session_id, &driven_by);
             hub.event(origin, &event, message, turn, &driven_by);
             if let Some((sid, path, text)) = prompt {

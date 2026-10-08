@@ -205,7 +205,7 @@ pub fn connect(harness: &str, pi_ext: &std::path::Path) -> Result<String, String
 
 /// Cue's hook entries in an agent's settings file: earlier Cue entries replaced, everything else kept.
 fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), String> {
-    let mut cfg: Value = match std::fs::read_to_string(path) {
+    let cfg: Value = match std::fs::read_to_string(path) {
         Ok(text) if !text.trim().is_empty() => serde_json::from_str(&text).map_err(|e| format!("{} isn't valid JSON ({e}). Fix it, then connect again.", path.display()))?,
         _ => json!({}),
     };
@@ -213,11 +213,21 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
         let backup = format!("{}.cue-backup-{}", path.display(), crate::model::now_ms());
         std::fs::copy(path, &backup).map_err(|e| format!("Couldn't back up {}: {e}", path.display()))?;
     }
+    let cfg = merge_hooks(cfg, hook, harness).map_err(|e| format!("{e} in {}", path.display()))?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, serde_json::to_string_pretty(&cfg).unwrap_or_default() + "\n").map_err(|e| format!("Couldn't write {}: {e}", path.display()))
+}
+
+/// An agent's settings with Cue's hook entries in: earlier Cue entries replaced, everything else kept.
+/// (No files: Connect writes the result here, + New → Machine on a machine.)
+pub fn merge_hooks(mut cfg: Value, hook: &str, harness: &str) -> Result<Value, String> {
     if !cfg.is_object() {
-        return Err(format!("{} isn't a settings object", path.display()));
+        return Err("the settings aren't an object".into());
     }
     let hooks = cfg.as_object_mut().unwrap().entry("hooks").or_insert_with(|| json!({}));
-    let Some(events) = hooks.as_object_mut() else { return Err(format!("\"hooks\" in {} isn't an object", path.display())) };
+    let Some(events) = hooks.as_object_mut() else { return Err("\"hooks\" isn't an object".into()) };
     let ours = |cmd: &str| cmd.contains("cue-hook") || cmd.contains("cue-claude-hook");
     for groups in events.values_mut() {
         if let Some(list) = groups.as_array_mut() {
@@ -236,10 +246,7 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
             l.push(group);
         }
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(path, serde_json::to_string_pretty(&cfg).unwrap_or_default() + "\n").map_err(|e| format!("Couldn't write {}: {e}", path.display()))
+    Ok(cfg)
 }
 
 /// Cue's hook entries for one agent: event name, and the group that goes under it.

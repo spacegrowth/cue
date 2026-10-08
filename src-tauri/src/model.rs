@@ -60,6 +60,8 @@ pub struct Origin {
     pub wezterm_pane: String,
     pub kitty_window_id: String,
     pub kitty_listen_on: String,
+    /// The machine it runs on (+ New → Machine), reached over SSH; empty for this Mac.
+    pub machine: String,
 }
 
 /// Every message a client sends on the socket. One JSON object per line.

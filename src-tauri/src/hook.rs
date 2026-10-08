@@ -35,22 +35,33 @@ pub fn main(args: &[String]) {
     let Ok(p) = serde_json::from_str::<Value>(&input) else { return };
     let _ = match event {
         "permission" => ask(&p, harness),
-        "stop" => {
-            let last = s(&p, "last_assistant_message");
-            send_event(&p, harness, "stopped", &last, Some(final_turn(&p)), &driven_by())
-        }
-        "prompt" => send_event(&p, harness, "active", &s(&p, "prompt"), None, ""),
-        "end" => send_event(&p, harness, "ended", "", None, ""),
-        "compact" => send_event(&p, harness, "compacting", &s(&p, "trigger"), None, ""),
-        // A permission prompt has sat in its terminal a few seconds: one Cue can't answer (a sandboxed
-        // command's network access), or one that never came through Cue's permission hook.
-        "notice" if s(&p, "notification_type") == "permission_prompt" => send_event(&p, harness, "terminal_ask", &s(&p, "message"), None, ""),
+        // A finished turn carries its last exchange and who drives it; the rest are just the event.
+        // ("notice": a permission prompt has sat in its terminal a few seconds, one Cue can't answer, a
+        // sandboxed command's network access, or one that never came through Cue's permission hook.)
+        "stop" | "prompt" | "end" | "compact" | "notice" => match event_for(event, &p) {
+            Some(("stopped", last)) => send_event(&p, harness, "stopped", &last, Some(final_turn(&p)), &driven_by()),
+            Some((name, message)) => send_event(&p, harness, name, &message, None, ""),
+            None => None,
+        },
         // StopFailure: the turn ended on an API error (a usage limit, an outage) instead of finishing.
         "failure" => send_failure(&p, harness),
         // The status line's input, piped here by the status line script: the plan's usage.
         "usage" => send_usage(&p),
         _ => None,
     };
+}
+
+/// Which Cue event a hook event is, and its message: the one table both the Mac's hook and a machine's
+/// (machine_hooks) use. None for the ones that aren't plain events (permission, usage) or that Cue skips.
+pub(crate) fn event_for(event: &str, p: &Value) -> Option<(&'static str, String)> {
+    Some(match event {
+        "stop" => ("stopped", s(p, "last_assistant_message")),
+        "prompt" => ("active", s(p, "prompt")),
+        "end" => ("ended", String::new()),
+        "compact" => ("compacting", s(p, "trigger")),
+        "notice" if s(p, "notification_type") == "permission_prompt" => ("terminal_ask", s(p, "message")),
+        _ => return None,
+    })
 }
 
 fn s(p: &Value, key: &str) -> String {
@@ -122,7 +133,7 @@ fn origin(p: &Value, harness: &str) -> Map<String, Value> {
     m
 }
 
-fn connect(timeout: Duration) -> Option<UnixStream> {
+pub(crate) fn connect(timeout: Duration) -> Option<UnixStream> {
     let s = UnixStream::connect(sock()).ok()?;
     s.set_read_timeout(Some(timeout)).ok()?;
     s.set_write_timeout(Some(timeout)).ok()?;
@@ -264,7 +275,7 @@ fn read_tail(path: &str) -> Vec<Value> {
 }
 
 /// Cue's harness-neutral decision -> the PermissionRequest output (Claude and Codex share it).
-fn to_claude(d: &Value, p: &Value) -> Value {
+pub(crate) fn to_claude(d: &Value, p: &Value) -> Value {
     let out = if d.get("behavior").and_then(Value::as_str) == Some("deny") {
         let m = d.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or("Denied in Cue.");
         json!({ "behavior": "deny", "message": m })

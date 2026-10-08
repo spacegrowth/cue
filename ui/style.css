@@ -112,6 +112,18 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .card { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); color: var(--ink); }
 .card-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
 .badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--accent); color: var(--on-accent); font: 700 10px var(--mono); flex: none; }
+/* Where a session runs when it isn't this Mac: one small outlined label in the theme's accent (moss in light, lime in dark): border and text only.
+   On a selected row (lime) or a working card (drawn on the background) it takes their text color. */
+.mach { display: inline-flex; align-items: center; gap: 4px; height: 17px; padding: 0 6px 0 5px; margin-left: 4px; border-radius: 5px; font: 650 10.5px/1 var(--sans); white-space: nowrap; vertical-align: middle; flex: none;
+  color: var(--accent); background: transparent; border: 1px solid var(--accent); }
+.nrow.on .mach, .tl.on .mach { color: var(--on-sel); border-color: var(--on-sel); }
+.working .mach { color: var(--on-bg); border-color: var(--on-bg); }
+.mach::before { content: ""; width: 8px; height: 6px; border: 1.3px solid currentColor; border-radius: 1.5px; margin-bottom: 2px; box-shadow: 0 2.6px 0 -1.3px currentColor; opacity: 0.75; }
+/* In the narrow rows (Waiting, Need to decide, the drawers) every pixel goes to the session's name: no icon, no extra gap. */
+/* When the row is still too tight, the status words give way first, then this label, and the name last. */
+.nrow-top .mach, .tl-top .mach { margin-left: 0; padding: 0 5px; display: block; line-height: 15px; flex: 0 10 auto; min-width: 24px; overflow: hidden; text-overflow: ellipsis; }
+.nrow-top .mach::before, .tl-top .mach::before { display: none; }
+.nrow-top:has(.mach) .proj, .tl-top:has(.mach) .tl-name { flex-shrink: 0.01; }
 .proj { font-weight: 650; }
 .dim { color: var(--muted); }
 .age { font: 11px var(--mono); color: var(--muted); }
@@ -410,6 +422,23 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
    box's own corner on the outside, rounded where it meets the inside). Moss with white text in light
    mode; lime with dark moss text in dark (the accent's own pair). */
 .tplace-btn { position: absolute; top: 0; right: 0; height: 22px; padding: 0 10px; border-radius: 0 8px 0 8px; font-size: 11px; font-weight: 650; white-space: nowrap; color: var(--on-accent); background: var(--accent); z-index: 1; }
+/* Two in the corner (Move to Cue, then Open iTerm): side by side, the pair keeping the corner's shape. */
+.tplace { position: absolute; top: 0; right: 0; display: flex; gap: 1px; z-index: 1; }
+.tplace .tplace-btn { position: static; border-radius: 0; }
+.tplace .tplace-btn:first-child { border-bottom-left-radius: 8px; }
+.tplace .tplace-btn:last-child { border-top-right-radius: 8px; }
+.tplace-btn.move { background: color-mix(in srgb, var(--accent) 78%, var(--panel)); }
+.tplace-btn:disabled { opacity: .7; cursor: default; }
+/* "Move to Cue" under way: a small dialog over the window, the screen behind it untouched. */
+.move-scrim { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(0, 0, 0, 0.28); }
+.move-dialog { width: min(420px, calc(100% - 40px)); padding: 18px 20px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 10px; }
+.move-title { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 650; }
+.move-steps { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.move-steps li.done { color: var(--muted); text-decoration: line-through; }
+.move-steps li.now { color: var(--ink); font-weight: 600; }
+.move-err { font-size: 13px; color: var(--deny); line-height: 1.45; }
+.move-secs { font: 12px var(--mono); color: var(--muted); }
+.move-screen { font: 11.5px var(--mono); color: var(--on-slab); background: var(--slab); border-radius: 8px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tplace-btn:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-accent)); }
 .tplace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quick:has(.tplace-btn) { padding-right: 130px; }
@@ -498,6 +527,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .sheet { width: min(760px, calc(100vw - 40px)); max-height: calc(100vh - 100px); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 18px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6); overflow: hidden; }
 .sheet-head { display: flex; align-items: center; gap: 10px; padding: 18px 22px 10px; }
 .sheet-head h3 { margin: 0; font-size: 16px; }
+/* Settings' tabs, under its title. */
+.set-tabs { margin: 0 22px 4px; align-self: flex-start; }
 .set-ver { font: 12px var(--mono); color: var(--muted); }
 .sheet-body { overflow-y: auto; padding: 0 22px 18px; }
 kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--panel-2); color: var(--muted); box-shadow: inset 0 -1px 0 var(--line); }
@@ -511,6 +542,23 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .tl-top { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; }
 .tl-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-out { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* + New → Machine: the picked machine's panel (status, agents there, Log in / Check / Remove). */
+.nf-mpanel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.nf-mhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.nf-mhead .mono { font-size: 11.5px; overflow-wrap: anywhere; }
+.mc-st { font-size: 12px; font-weight: 650; color: var(--muted); }
+.mc-st.ok { color: var(--accent); }
+.mc-st.warn { color: #b07a22; }
+.mc-st.bad { color: var(--deny); }
+.mc-tools { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+.mc-tool.has { color: var(--ink); }
+.mc-report { margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.mc-add { display: flex; gap: 6px; align-items: center; }
+.mc-add .nf-in { width: 200px; }
+/* + New → Machine → + Add: the host field, then what Cue will and won't do, under it. */
+.nf-addm { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.nf-addm .mc-add .nf-in { flex: 1; width: auto; min-width: 0; }
+.nf-hint.wrap { white-space: normal; overflow: visible; }
 .set-group { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 2px; }
 .set-row { display: flex; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .set-text { flex: 1; min-width: 0; }
@@ -520,6 +568,8 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel-2); flex: none; }
 .seg button { padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; }
 .seg button.on { background: var(--accent); color: var(--on-accent); }
+.seg button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+.seg button.with-icon svg { flex: none; }
 .toggle { position: relative; width: 40px; height: 24px; border-radius: 999px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); flex: none; }
 .toggle span { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: left 0.15s ease; }
 .toggle.on { background: var(--accent); box-shadow: none; }
@@ -969,7 +1019,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .recent .tl.on::after, .recent .tl.on + .tl::after { display: none; }
 /* The open one in a white list (Starred, Recently answered): filled lime, as the open card in Waiting is. */
 .recent .tl.on, .recent .tl.on:hover { background: var(--sel); color: var(--on-sel); box-shadow: none; }
-.recent .tl.on .dim, .recent .tl.on .tl-out { color: inherit; opacity: 0.75; }
+.recent .tl.on .dim, .recent .tl.on .tl-out, .recent .tl.on .tl-top { color: inherit; opacity: 0.75; }
+.recent .tl.on .tl-name { color: inherit; opacity: 1; }
 
 /* History: filters (kind chips + session picker), and a session's answers folded into one row. */
 .hfilter { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
@@ -1028,6 +1079,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .lv-row.sel .sx-st:not(.hot) { color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
 .lv-row .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
 .lv-row .role { flex: none; }
+.lv-place { flex: none; display: inline-flex; color: var(--muted); opacity: .8; }
+.lv-row.on .lv-place { color: inherit; }
 .lv-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .lv-row .sx-st, .lv-row .sx-dot { flex: none; }
 .lv-acts { margin-left: auto; display: flex; gap: 4px; flex: none; }

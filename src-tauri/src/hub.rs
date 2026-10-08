@@ -916,6 +916,17 @@ impl Hub {
         self.store.lock().unwrap().sessions.origin(session_id)
     }
 
+    /// A session's state set by hand (a moved one: "working" while it loads, "waiting" once its prompt is up).
+    pub fn mark_state(&self, origin: &Origin, state: &str) {
+        self.store.lock().unwrap().sessions.mark(origin, state, None);
+        self.changed();
+    }
+
+    /// The name a session shows under (yours, or the one it gave itself); "" if it has none.
+    pub fn session_name(&self, session_id: &str) -> String {
+        self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| s.name).unwrap_or_default()
+    }
+
     /// A session Cue just started ("+ New session"): known from the start, so it opens in Active and
     /// takes what you type before it has said anything. With a first message it's already working.
     pub fn started(&self, origin: Origin, message: &str, asks_trust: bool) {
@@ -1567,7 +1578,10 @@ fn waiting_words(waiting_for: &str) -> String {
 }
 
 fn notify_title(it: &Item) -> (String, String) {
-    let who = format!("{} · {}", it.origin.harness, if it.project.is_empty() { "?" } else { &it.project });
+    let mut who = format!("{} · {}", it.origin.harness, if it.project.is_empty() { "?" } else { &it.project });
+    if !it.origin.machine.is_empty() {
+        who = format!("{who} on {}", crate::machines::display_name(&it.origin.machine));
+    }
     let what = match it.kind.as_str() {
         "question" => "has a question",
         "waiting" => "finished, waiting for you",

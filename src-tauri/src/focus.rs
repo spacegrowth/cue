@@ -57,7 +57,7 @@ fn iterm(predicate: &str) -> Result<bool, String> {
 }
 
 /// Single-quoted for the shell: 'it'\''s' (a typed command line, so a message can't run as code).
-fn shq(s: &str) -> String {
+pub fn shq(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
@@ -237,17 +237,34 @@ pub fn tmux_screen(pane: &str) -> Result<String, String> {
 /// out), nothing that types text.
 pub const SCREEN_KEYS: [&str; 15] = ["Up", "Down", "Left", "Right", "Enter", "Escape", "Tab", "BTab", "Space", "1", "2", "3", "4", "y", "n"];
 
-/// Press `keys` in a tmux pane, in order. Only ones from SCREEN_KEYS.
-pub fn tmux_keys(pane: &str, keys: &[String]) -> Result<(), String> {
+/// Press `keys` in a session's tmux pane, in order. Only ones from SCREEN_KEYS.
+pub fn tmux_keys(o: &Origin, keys: &[String]) -> Result<(), String> {
     if let Some(k) = keys.iter().find(|k| !SCREEN_KEYS.contains(&k.as_str())) {
         return Err(format!("{k} isn't a key Cue presses"));
     }
     for k in keys {
-        if !run("tmux", &["send-keys", "-t", pane, k]) {
-            return Err(format!("tmux pane {pane} is gone"));
+        if !tmux_for(o, &["send-keys", "-t", &o.tmux_pane, k]) {
+            return Err(format!("tmux pane {} is gone", o.tmux_pane));
         }
     }
     Ok(())
+}
+
+/// tmux for a session: this Mac's, or the one on the machine it runs on (over SSH).
+fn tmux_for(o: &Origin, args: &[&str]) -> bool {
+    if o.machine.is_empty() {
+        return run("tmux", args);
+    }
+    crate::machines::get(&o.machine).is_some_and(|m| crate::machines::tmux(&m.host, args).is_ok())
+}
+
+/// What a session's tmux pane shows right now (this Mac's or a machine's).
+pub fn session_screen(o: &Origin) -> Result<String, String> {
+    if o.machine.is_empty() {
+        return tmux_screen(&o.tmux_pane);
+    }
+    let m = crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
+    crate::machines::tmux(&m.host, &["capture-pane", "-p", "-J", "-t", &o.tmux_pane]).map(|s| s.trim_end().to_string())
 }
 
 /// Start `line` in a new window of Cue's tmux session (creating the session if it isn't running), named
@@ -328,7 +345,7 @@ pub fn end_agent(pid: i32) -> Result<(), String> {
 /// from a script: that's an error the caller reports.
 pub fn close_tab(o: &Origin) -> Result<String, String> {
     if !o.tmux_pane.is_empty() {
-        return if run("tmux", &["kill-pane", "-t", &o.tmux_pane]) { Ok(format!("tmux pane {}", o.tmux_pane)) } else { Err(format!("tmux pane {} is gone", o.tmux_pane)) };
+        return if tmux_for(o, &["kill-pane", "-t", &o.tmux_pane]) { Ok(format!("tmux pane {}", o.tmux_pane)) } else { Err(format!("tmux pane {} is gone", o.tmux_pane)) };
     }
     let uuid = o.iterm_session_id.split(':').nth(1).unwrap_or("");
     if app_running("iTerm2") && (!uuid.is_empty() || !o.tty.is_empty()) {
@@ -431,6 +448,9 @@ fn activate_app(term_program: &str) -> Result<String, String> {
 }
 
 pub fn focus(o: &Origin) -> Result<String, String> {
+    if !o.machine.is_empty() {
+        return Err(format!("It runs on {}: open its terminal in Cue (Runs in Cue, over the reply box)", o.machine));
+    }
     if !o.tmux_pane.is_empty() {
         let pane = o.tmux_pane.as_str();
         run("tmux", &["select-window", "-t", pane]);
@@ -629,7 +649,7 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     if !o.tmux_pane.is_empty() {
         let pane = o.tmux_pane.as_str();
         // One paste (bracketed when the app asked for it), so a multi-line reply can't submit early.
-        if !run("tmux", &["set-buffer", "-b", "cue", text]) || !run("tmux", &["paste-buffer", "-p", "-d", "-b", "cue", "-t", pane]) {
+        if !tmux_for(o, &["set-buffer", "-b", "cue", text]) || !tmux_for(o, &["paste-buffer", "-p", "-d", "-b", "cue", "-t", pane]) {
             return Err(format!("tmux pane {pane} is gone"));
         }
         pause();
@@ -684,7 +704,7 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
 /// Esc, the key that interrupts Claude Code and Codex mid-turn.
 pub fn press_escape(o: &Origin) -> Result<String, String> {
     if !o.tmux_pane.is_empty() {
-        return if run("tmux", &["send-keys", "-t", &o.tmux_pane, "Escape"]) { Ok(format!("tmux pane {}", o.tmux_pane)) } else { Err("tmux pane is gone".into()) };
+        return if tmux_for(o, &["send-keys", "-t", &o.tmux_pane, "Escape"]) { Ok(format!("tmux pane {}", o.tmux_pane)) } else { Err("tmux pane is gone".into()) };
     }
     if let Some(pred) = iterm_predicate(o) {
         return match iterm_session_do(o, &pred, "tell s to write text (ASCII character 27) newline NO")? {
@@ -705,7 +725,7 @@ pub fn press_escape(o: &Origin) -> Result<String, String> {
 
 pub fn press_enter(o: &Origin) -> Result<(), String> {
     if !o.tmux_pane.is_empty() {
-        return if run("tmux", &["send-keys", "-t", &o.tmux_pane, "Enter"]) { Ok(()) } else { Err("tmux pane is gone".into()) };
+        return if tmux_for(o, &["send-keys", "-t", &o.tmux_pane, "Enter"]) { Ok(()) } else { Err("tmux pane is gone".into()) };
     }
     if let Some(pred) = iterm_predicate(o) {
         return iterm_session_do(o, &pred, "tell s to write text \"\"").map(|_| ());
@@ -792,10 +812,11 @@ mod iterm_tests {
         let name = format!("cue-test-{}", std::process::id());
         let pane = tmux_out(&["new-session", "-d", "-s", &name, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(300));
-        tmux_keys(&pane, &["y".into(), "Enter".into(), "2".into()]).unwrap();
+        let o = Origin { tmux_pane: pane.clone(), ..Default::default() };
+        tmux_keys(&o, &["y".into(), "Enter".into(), "2".into()]).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(300));
-        let screen = tmux_screen(&pane);
-        assert!(tmux_keys(&pane, &["rm -rf /".into()]).is_err(), "only the screen's keys");
+        let screen = session_screen(&o);
+        assert!(tmux_keys(&o, &["rm -rf /".into()]).is_err(), "only the screen's keys");
         run("tmux", &["kill-session", "-t", &name]);
         let screen = screen.unwrap();
         assert!(screen.lines().any(|l| l.trim() == "y"), "{screen:?}");

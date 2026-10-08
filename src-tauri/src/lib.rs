@@ -26,6 +26,9 @@ mod uploads;
 mod usage;
 mod tray;
 mod term;
+mod machines;
+mod machine_hooks;
+mod machine_logs;
 mod shell;
 
 use hub::Hub;
@@ -463,9 +466,9 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
 /// optional first message and name. Cue picks the session id, so it knows the session at once (it
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
-async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>) -> Result<serde_json::Value, String> {
+async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default() };
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default() };
     let res = tauri::async_runtime::spawn_blocking(move || start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await
         .map_err(|e| e.to_string())?;
@@ -489,9 +492,14 @@ pub(crate) struct StartOpts {
     pub tmux: Option<bool>,
     pub perm: String,
     pub extra: String,
+    /// A machine from + New → Machine to run it on (empty: this Mac). Always in tmux there.
+    pub machine: String,
 }
 
 pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
+    if !opts.machine.is_empty() {
+        return start_on_machine(h, agent, cwd, message, name, opts);
+    }
     let dir = cwd.trim();
     let dir = if let Some(rest) = dir.strip_prefix("~") { format!("{}{rest}", std::env::var("HOME").unwrap_or_default()) } else { dir.to_string() };
     if !std::path::Path::new(&dir).is_dir() {
@@ -515,6 +523,21 @@ pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: 
         h.started(origin, message, asks_trust);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
+}
+
+/// + New session on a machine: in tmux there (Cue's terminal shows it, over SSH), in `cwd` there.
+fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
+    let m = machines::get(&opts.machine).ok_or(format!("{} isn't one of your machines (+ New → Machine)", opts.machine))?;
+    let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
+    // It starts where tmux opens the window (`cwd`): the line itself stays in that folder.
+    let line = focus::start_line_with(agent, ".", &sid, message, name, &opts.perm, &opts.extra)?;
+    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::project_of(cwd.trim()));
+    let (pane, tty, dir) = machines::open_in_tmux(&m, &line, cwd, &label)?;
+    if !sid.is_empty() {
+        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
+        h.started(origin, message, false);
+    }
+    Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} on {}", agent, m.name) }))
 }
 
 /// Trust in Cue for a session Claude Code is asking "do you trust this folder?": presses Enter in its
@@ -542,6 +565,80 @@ async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String>, cwd: Opt
     tauri::async_runtime::spawn_blocking(move || shell::run(&dir, &line)).await.map_err(|e| e.to_string())?
 }
 
+/// "Move to Cue": a Claude Code session in a terminal tab, ended (its tab closed with it) and resumed in
+/// Cue's tmux session, where its terminal shows in Cue. Idle sessions only: the conversation comes back
+/// whole (claude --resume), but anything mid-turn would be cut off. Shell state in the old tab is gone.
+#[tauri::command]
+async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || move_session_to_cue(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
+    if !focus::tmux_installed() {
+        return Err("tmux isn't installed".into());
+    }
+    let origin = h.live_origin(session_id).ok_or("that session is gone")?;
+    if origin.harness != "claude" {
+        return Err("only a Claude Code session can be resumed in Cue".into());
+    }
+    if !origin.tmux_pane.is_empty() {
+        return Err("it already runs in Cue".into());
+    }
+    if leads::close_plan(session_id).is_some() {
+        return Err("a relay lead: close it through relay, then resume it in Cue".into());
+    }
+    let cwd = origin.cwd.clone();
+    if cwd.is_empty() {
+        return Err("Cue doesn't know which folder it runs in".into());
+    }
+    let name = h.session_name(session_id);
+    let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
+    // Ended as Close does (SIGTERM, its tab closed). One that doesn't take the signal within 3 s is asked
+    // to leave the way you would, with /exit typed into it, and given a few seconds more.
+    if let Err(e) = end_session(h, session_id) {
+        if !e.contains("didn't quit") {
+            return Err(e);
+        }
+        let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
+        focus::type_into(&origin, "/exit")?;
+        let alive = || pid > 0 && unsafe { libc::kill(pid, 0) == 0 };
+        for _ in 0..60 {
+            if !alive() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if alive() {
+            return Err("it didn't quit, even to /exit: close it in its tab, then Resume it here".into());
+        }
+        let _ = focus::close_tab(&origin);
+    }
+    // Its SessionEnd hook drops Cue's record of it as it exits: let that land before the new one is made.
+    for _ in 0..20 {
+        if h.session_origin(session_id).is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let label = if name.is_empty() { model::project_of(&cwd) } else { name };
+    let tab = focus::open_in_tmux(&focus::resume_line(&cwd, session_id)?, &cwd, &label)?;
+    let recent = if path.is_empty() { Vec::new() } else { transcript::recent_context(&path, 6) };
+    let moved = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path, term_program: tab.term_program, tty: tab.tty, tmux_pane: tab.tmux_pane.clone(), ..Default::default() };
+    // In the window at once, as working (loading), so its screen can be watched while it comes up.
+    h.resumed(moved.clone(), &label, &recent, true);
+    // Until Claude Code is up in it with the conversation loaded: its prompt (or a question of its own)
+    // on the screen. Up to 60 s (a long conversation takes a while); then it's left to finish on its own.
+    for _ in 0..300 {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        if focus::tmux_screen(&tab.tmux_pane).map(|sc| sc.contains('❯')).unwrap_or(false) {
+            break;
+        }
+    }
+    h.mark_state(&moved, "waiting");
+    Ok("Moved to Cue: resumed in its terminal here".into())
+}
+
 /// "By the way": a side question about a Claude Code session, answered in a panel in Cue. The session
 /// never sees it (Cue asks a copy of its conversation).
 #[tauri::command]
@@ -559,31 +656,31 @@ fn set_later(hub: State<Arc<Hub>>, session_id: String, on: bool) {
 /// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
 #[tauri::command]
 async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    let pane = tmux_pane_of(&hub, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || focus::tmux_screen(&pane)).await.map_err(|e| e.to_string())?
+    let o = tmux_origin_of(&hub, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || focus::session_screen(&o)).await.map_err(|e| e.to_string())?
 }
 
 /// Keys pressed in that view (↑ ↓ Enter Esc 1 2 3…). Only from your click.
 #[tauri::command]
 async fn session_keys(hub: State<'_, Arc<Hub>>, session_id: String, keys: Vec<String>) -> Result<(), String> {
-    let pane = tmux_pane_of(&hub, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || focus::tmux_keys(&pane, &keys)).await.map_err(|e| e.to_string())?
+    let o = tmux_origin_of(&hub, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || focus::tmux_keys(&o, &keys)).await.map_err(|e| e.to_string())?
 }
 
-/// A session's tmux pane, for the commands that only work in tmux.
-fn tmux_pane_of(hub: &Hub, session_id: &str) -> Result<String, String> {
-    let pane = hub.session_origin(session_id).ok_or("that session is gone")?.tmux_pane;
-    if pane.is_empty() {
+/// Where a session is, for the commands that only work in tmux (on this Mac or a machine).
+fn tmux_origin_of(hub: &Hub, session_id: &str) -> Result<model::Origin, String> {
+    let o = hub.session_origin(session_id).ok_or("that session is gone")?;
+    if o.tmux_pane.is_empty() {
         return Err("that session isn't in tmux".into());
     }
-    Ok(pane)
+    Ok(o)
 }
 
 /// The built-in terminal (sessions in tmux): open it at its size; its output comes as "term" events.
 #[tauri::command]
 async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, cols: u16, rows: u16) -> Result<u64, String> {
-    let pane = tmux_pane_of(&hub, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || term::open(app, &session_id, &pane, cols, rows)).await.map_err(|e| e.to_string())?
+    let o = tmux_origin_of(&hub, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || term::open(app, &session_id, &o, cols, rows)).await.map_err(|e| e.to_string())?
 }
 
 /// What you type in the built-in terminal.
@@ -601,6 +698,51 @@ fn term_resize(session_id: String, cols: u16, rows: u16) -> Result<(), String> {
 #[tauri::command]
 fn term_close(session_id: String) {
     term::close(&session_id);
+}
+
+/// + New → Machine: the machines you added, to run sessions on over SSH.
+#[tauri::command]
+fn machines_list() -> Vec<machines::Machine> {
+    machines::list()
+}
+
+#[tauri::command]
+fn machine_add(host: String, name: String) -> Result<machines::Machine, String> {
+    let m = machines::add(&host, &name)?;
+    machine_hooks::watch(&m);
+    Ok(m)
+}
+
+#[tauri::command]
+fn machine_rename(name: String, label: String) -> Result<machines::Machine, String> {
+    machines::rename(&name, &label)
+}
+
+#[tauri::command]
+fn machine_remove(name: String) -> Result<(), String> {
+    machine_hooks::unwatch(&name);
+    machines::remove(&name)
+}
+
+/// Set up Cue's hooks there, for the agents its check found (never installing any): what it did.
+#[tauri::command]
+async fn machine_setup(name: String, tools: serde_json::Value) -> Result<Vec<String>, String> {
+    let m = machines::get(&name).ok_or("that machine isn't added")?;
+    tauri::async_runtime::spawn_blocking(move || machine_hooks::setup(&m, &tools)).await.map_err(|e| e.to_string())?
+}
+
+/// Can Cue reach it, and what's installed there (it connects, so it takes a moment).
+#[tauri::command]
+async fn machine_check(name: String) -> Result<serde_json::Value, String> {
+    let m = machines::get(&name).ok_or("that machine isn't added")?;
+    tauri::async_runtime::spawn_blocking(move || machines::check(&m)).await.map_err(|e| e.to_string())
+}
+
+/// Log in yourself, in a terminal tab; Cue uses the connection you open.
+#[tauri::command]
+async fn machine_login(name: String) -> Result<String, String> {
+    let m = machines::get(&name).ok_or("that machine isn't added")?;
+    tauri::async_runtime::spawn_blocking(move || machines::login(&m)).await.map_err(|e| e.to_string())?
 }
 
 /// Star a session (you're following it), or unstar it.
@@ -731,7 +873,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -748,6 +890,14 @@ pub fn run() {
             }
             let hub = Arc::new(Hub::new(Some(app.handle().clone())));
             app.manage(hub.clone());
+            // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
+            if std::env::var_os("CUE_HOME").is_none() {
+                machine_hooks::watch_all();
+                let known: Vec<(String, String)> = hub.snapshot()["sessions"].as_array().into_iter().flatten()
+                    .filter_map(|s| Some((s["machine"].as_str().filter(|m| !m.is_empty())?.to_string(), s["transcript_path"].as_str()?.to_string())))
+                    .collect();
+                std::thread::spawn(move || machine_logs::resume(&known));
+            }
             let h = hub.clone();
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

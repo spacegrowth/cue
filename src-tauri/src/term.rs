@@ -26,33 +26,58 @@ fn next_gen() -> u64 {
     N.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
 }
 
-/// Open session `sid`'s terminal (its tmux `pane`) at `cols`×`rows`. Its output arrives as "term" events
+/// Open session `sid`'s terminal (its tmux pane, on this Mac or over SSH on its machine) at `cols`×`rows`. Its output arrives as "term" events
 /// ({sid, gen, data: base64} and finally {sid, gen, end: true}); `gen` tells this opening from an earlier one.
-pub fn open(app: AppHandle, sid: &str, pane: &str, cols: u16, rows: u16) -> Result<u64, String> {
-    open_with(sid, pane, cols, rows, move |v| {
+pub fn open(app: AppHandle, sid: &str, o: &crate::model::Origin, cols: u16, rows: u16) -> Result<u64, String> {
+    let host = if o.machine.is_empty() { None } else { Some(crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?.host) };
+    open_with(sid, &o.tmux_pane, host.as_deref(), cols, rows, move |v| {
         let _ = app.emit("term", v);
     })
 }
 
 /// The same, handing each event to `out` (the window's, or a test's).
-fn open_with(sid: &str, pane: &str, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<u64, String> {
+fn open_with(sid: &str, pane: &str, host: Option<&str>, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<u64, String> {
     close(sid);
     let tmux = crate::focus::tmux_bin();
-    let where_ = std::process::Command::new(&tmux).args(["display-message", "-p", "-t", pane, "#{session_name}\t#{window_id}"]).output().map_err(|e| e.to_string())?;
-    let where_ = String::from_utf8_lossy(&where_.stdout).trim().to_string();
+    // tmux here, or on the machine (over SSH).
+    let tmux_say = |args: &[&str]| -> String {
+        match host {
+            Some(h) => crate::machines::tmux(h, args).unwrap_or_default(),
+            None => std::process::Command::new(&tmux).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default(),
+        }
+    };
+    let where_ = tmux_say(&["display-message", "-p", "-t", pane, "#{session_name}\t#{window_id}"]).trim().to_string();
     let (session, window) = where_.split_once('\t').filter(|(s, w)| !s.is_empty() && !w.is_empty()).ok_or(format!("tmux pane {pane} is gone"))?;
     let gen = next_gen();
     let view = format!("cue-view-{gen}");
     // The window follows the size of whichever terminal was used last (this one while you type here).
-    let _ = std::process::Command::new(&tmux).args(["set-option", "-w", "-t", window, "window-size", "latest"]).status();
+    tmux_say(&["set-option", "-w", "-t", window, "window-size", "latest"]);
     let pair = native_pty_system().openpty(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())?;
-    let mut cmd = CommandBuilder::new(&tmux);
     // One client launch: a session grouped with the session's (its windows, its own current window), set
     // up for a pane inside Cue, gone once this client detaches.
     let view_window = format!("{view}:{window}");
-    for a in ["new-session", "-t", session, "-s", &view, ";", "set-option", "status", "off", ";", "set-option", "mouse", "on", ";", "set-option", "destroy-unattached", "on", ";", "select-window", "-t", &view_window, ";", "select-pane", "-t", pane] {
-        cmd.arg(a);
-    }
+    let chain = ["new-session", "-t", session, "-s", &view, ";", "set-option", "status", "off", ";", "set-option", "mouse", "on", ";", "set-option", "destroy-unattached", "on", ";", "select-window", "-t", &view_window, ";", "select-pane", "-t", pane];
+    let mut cmd = match host {
+        None => {
+            let mut c = CommandBuilder::new(&tmux);
+            for a in chain {
+                c.arg(a);
+            }
+            c
+        }
+        // On a machine: the same client, through ssh (with a terminal of its own).
+        Some(h) => {
+            let mut c = CommandBuilder::new("/usr/bin/ssh");
+            for a in crate::machines::shared() {
+                c.arg(a);
+            }
+            for a in ["-o", "BatchMode=yes", "-tt", h] {
+                c.arg(a);
+            }
+            c.arg(crate::machines::remote_command(&format!("exec tmux {}", chain.iter().map(|a| crate::machines::shq(a)).collect::<Vec<_>>().join(" "))));
+            c
+        }
+    };
     cmd.env("TERM", "xterm-256color");
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
@@ -115,7 +140,7 @@ mod tests {
         let seen = Arc::new(M::new(String::new()));
         let ended = Arc::new(M::new(false));
         let (s2, e2) = (seen.clone(), ended.clone());
-        open_with("t", &pane, 80, 12, move |v| {
+        open_with("t", &pane, None, 80, 12, move |v| {
             if let Some(d) = v["data"].as_str() {
                 let bytes = base64::engine::general_purpose::STANDARD.decode(d).unwrap();
                 s2.lock().unwrap().push_str(&String::from_utf8_lossy(&bytes));

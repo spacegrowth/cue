@@ -62,6 +62,17 @@ function nameTip(sid) {
 }
 /** A session's name, with that hover. */
 const nameSpan = (sid, project, cls = "proj") => { const tip = sid ? nameTip(sid) : ""; return `<span class="${cls}"${tip ? ` title="${esc(tip)}"` : ""}>${esc(nameOf(sid, project))}</span>`; };
+/** A machine's name, short enough for a card: its first part (no user@, no domain), and past 10 characters
+ *  its first 5 and last 5. What you renamed it to comes first. (Notifications do the same: machines::display_name.) */
+const machShort = (m) => {
+  const label = machinesList?.find((x) => x.name === m)?.label;
+  if (label) return label.length > 10 ? `${label.slice(0, 5)}…${label.slice(-5)}` : label;
+  const h = String(m || "").replace(/^[^@]*@/, "");
+  const n = /^[\d.]+$/.test(h) ? h : h.split(".")[0] || h;
+  return n.length > 10 ? `${n.slice(0, 5)}…${n.slice(-5)}` : n;
+};
+/** The label on everything about a session that runs on another machine (none for this Mac). */
+const machTag = (m) => m ? `<span class="mach" title="Runs on ${esc(m)}">${esc(machShort(m))}</span>` : "";
 /** What Cue calls a session: the name you gave it, else its project. */
 // ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
 const nameOf = (sid, project) => String(sessionOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || project;
@@ -432,13 +443,13 @@ function showCopied() {
   return true;
 }
 
-function toast(msg) {
+function toast(msg, ms = 2600) {
   let el = document.querySelector(".toast");
   if (!el) { el = document.createElement("div"); el.className = "toast"; document.body.append(el); }
   el.textContent = msg;
   el.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+  toastTimer = setTimeout(() => el.classList.remove("show"), ms);
 }
 
 // ---------- actions ----------
@@ -615,6 +626,12 @@ const termLast = new Map();    // sid -> its screen's last line, for the closed 
 const waitsInTerminal = (sid) => state.items.some((i) => i.session_id === sid && inTerminal(i));
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 /** The terminal app a session runs in, by name (from what its hooks reported). */
+/** Where a session runs, as a small icon for the lists: Cue's mark (in Cue, tmux underneath) or a terminal. */
+function placeIcon(sid) {
+  const s = sessionOf(sid);
+  if (!s) return "";
+  return inTmux(sid) ? `<span class="lv-place" title="Runs in Cue">${CUE_MARK_SM}</span>` : `<span class="lv-place" title="Runs in ${esc(termAppName(s))}">${TERM_ICON}</span>`;
+}
 function termAppName(s) {
   const t = s?.term_program || "";
   return { "iTerm.app": "iTerm", Apple_Terminal: "Terminal", WezTerm: "WezTerm", ghostty: "Ghostty", vscode: "VS Code", kitty: "kitty" }[t] || (s?.kitty_window_id ? "kitty" : s?.wezterm_pane ? "WezTerm" : "its terminal");
@@ -625,8 +642,10 @@ function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
   // In Cue: the same corner opens (or closes) its terminal above the box.
-  if (inTmux(sid)) return `<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">Runs in Cue <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button>`;
-  return `<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Runs in ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button>`;
+  if (inTmux(sid)) return `<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">${termSid === sid ? "Close" : "Open"} ${s.machine ? esc(machShort(s.machine)) : "Cue"} <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button>`;
+  // A terminal app's: its tab, and (idle, Claude Code, tmux here) Move to Cue: resumed in Cue's terminal.
+  const movable = s.harness === "claude" && !["working", "deciding"].includes(s.state) && state.settings?.sessions?.tmux_installed;
+  return `<span class="tplace">${movable ? `<button class="tplace-btn move" data-act="move-cue" data-sid="${esc(sid)}" title="Ends it in its tab and resumes it here, in Cue's terminal (the conversation comes back whole)">Move to Cue</button>` : ""}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
 }
 /** "Open in iTerm ↗": where a terminal-app session's own tab is, for the places that have no reply box. */
 const openInLabel = (s) => `Open in ${esc(s ? termAppName(s) : "its terminal")} <span aria-hidden="true">↗</span>`;
@@ -635,7 +654,7 @@ function termDock(sid) {
   if (!inTmux(sid)) return "";   // where it runs instead: a tab on its reply box (placeTab)
   const open = termSid === sid, waiting = waitsInTerminal(sid);
   return `<div class="tdock ${open ? "open" : ""} ${waiting ? "waiting" : ""}">
-    <button class="tstrip" data-act="term" data-sid="${esc(sid)}" aria-expanded="${open}" title="${open ? "Close" : "Open"} its terminal (⌃\`)"><span class="tlive"></span><span class="tlbl">${waiting ? "Waiting in its terminal" : "Terminal"}</span><span class="tlast">${esc(termLast.get(sid) || "")}</span><span class="tchev">▴</span></button>
+    <button class="tstrip" data-act="term" data-sid="${esc(sid)}" aria-expanded="${open}" aria-label="${open ? "Close" : "Open"} its terminal (⌃\`)"><span class="tlive"></span><span class="tlbl">${waiting ? "Waiting in its terminal" : "Terminal"}</span><span class="tlast">${esc(termLast.get(sid) || "")}</span><span class="tchev">▴</span></button>
     ${open ? `<div class="tslot" data-term-slot></div>` : ""}</div>`;
 }
 async function openTerm(sid) {
@@ -1196,8 +1215,9 @@ function recentEntry(i) {
   const fresh = now() - (i.resolved_ms || 0) < 8000 ? "fresh" : "";
   // Its session is at work again (on what you answered, or since): its dot pulses, as working ones do.
   const live = sessionOf(i.session_id)?.state === "working" ? "live" : "";
-  return `<div class="tl ${outcomeClass(i)} ${fresh} ${live} ${!quietOpen && active?.exact && active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
-    <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}<span>${esc(agentName(i.harness))}</span><span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
+  // Lit when the Active pane shows this answer, however you got there (its row here, Sessions, Next…).
+  return `<div class="tl ${outcomeClass(i)} ${fresh} ${live} ${!quietOpen && active?.id === i.id ? "on" : ""}" data-detail="${esc(i.id)}">
+    <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}<span>${esc(agentName(i.harness))}</span>${machTag(i.machine)}<span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
     <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
 
@@ -1210,7 +1230,7 @@ function starEntry(s, open) {
   const what = it ? plain(summary(it)) : s.compacting_ms ? "Compacting…" : s.state === "working" ? s.doing || (s.prompt ? `› ${s.prompt}` : "Thinking") : s.prompt ? `› ${s.prompt}` : plain(firstLine(lastSaid(s)));
   const st = stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
   return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" data-session="${esc(sid)}">
-    <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}<span>${esc(agentName(s.harness))}</span><span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
+    <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}<span>${esc(agentName(s.harness))}</span>${machTag(s.machine)}<span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
     <div class="tl-title" data-cut title="${esc(what)}">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
 }
 
@@ -1553,7 +1573,7 @@ function chatHtml(it, s, harness, paged = false) {
     const folded = !recent.has(n) && long && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
-    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(e.at_ms)} ago</div>
+    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
   }), chose.concat(ran));
@@ -1674,6 +1694,46 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
   const reply = tail.length ? `<div class="cv-agent"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
+// "Move to Cue" in progress: a dialog over the window says what's happening, step by step, and the screen
+// behind it stays as it is (the session vanishes from the lists while it's ended and resumed). When it's
+// done the moved session is the selected one; its terminal stays closed until you open it.
+let moving = null;   // { sid, name, harness, project, step, err, at, last }
+function movingDialog() {
+  const m = moving;
+  const steps = ["Ending it in its tab", "Resuming it in Cue: loading the conversation", "Ready"];
+  const secs = Math.round((now() - m.at) / 1000);
+  return `<div class="move-scrim"><div class="move-dialog" role="dialog" aria-live="polite">${m.err
+    ? `<div class="move-title">Couldn't move ${esc(m.name || m.project)} to Cue</div><div class="move-err">${esc(m.err)}</div><div class="row-btns"><span class="grow"></span><button class="btn primary" data-act="move-dismiss">OK</button></div>`
+    : `<div class="move-title"><span class="dot-live"></span>Moving ${esc(m.name || m.project)} to Cue…<span class="grow"></span><span class="move-secs">${secs}s</span></div><ol class="move-steps">${steps.map((t, n) => `<li class="${n < m.step ? "done" : n === m.step ? "now" : ""}">${t}</li>`).join("")}</ol>${m.step === 1 && m.last ? `<div class="move-screen">${esc(m.last)}</div>` : ""}<div class="dim">${m.step === 1 ? "A long conversation takes a while to load." : "Its conversation comes back whole."}</div>`}
+  </div></div>`;
+}
+async function moveToCue(sid) {
+  const s = sessionOf(sid);
+  if (!s || moving) return;
+  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "" };
+  renderMain();
+  // Every second: the clock, and once it's in its new window, that window's last line.
+  const watch = setInterval(async () => {
+    if (!moving || moving.sid !== sid) return clearInterval(watch);
+    if (inTmux(sid)) {
+      moving.step = Math.max(moving.step, 1);
+      try { const sc = await invoke("session_screen", { sessionId: sid }); moving.last = (sc.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 120); } catch {}
+    }
+    renderMain();
+  }, 1000);
+  try {
+    await invoke("move_to_cue", { sessionId: sid });
+    clearInterval(watch);
+    moving.step = 2; renderMain();
+    for (let n = 0; n < 40 && !inTmux(sid); n++) await new Promise((r) => setTimeout(r, 100));
+    moving = null;
+    if (sessionOf(sid)) setActive(null, sid); else renderMain();
+  } catch (e) {
+    clearInterval(watch);
+    moving.err = String(e);
+    renderMain();
+  }
+}
 function activePane() {
   if (quietOpen) return quietPane();
   const cur = current();
@@ -1693,7 +1753,7 @@ function activePane() {
   let foot;
   if (pending && it.kind !== "waiting") {
     // In its terminal: what Claude Code said ("A sandboxed command needs network access"), then the call it's about.
-    const head = inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`;
+    const head = (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`) + machTag(it.machine);
     foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it)}</div>`;
     // You were typing to this session when it asked: your box stays (cursor and text intact),
     // and sending waits until you've answered, so nothing gets typed into its prompt.
@@ -1712,9 +1772,10 @@ function activePane() {
   } else foot = "";
   const cm = crewOf(sid);
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
+  const onMachine = machTag(s?.machine || it?.machine);
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
-    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}<span class="dim">${who}</span>${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}<span class="dim">${who}</span>${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
@@ -1738,7 +1799,7 @@ function laterRow({ sid, s, it }) {
   const what = it ? "your turn" : s.state === "working" ? "working" : "idle";
   const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
+    <div class="nrow-top">${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
     ${cardCrew(sid)}
     ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}</div>`;
 }
@@ -1746,7 +1807,7 @@ function laterRow({ sid, s, it }) {
 function needRow(it, ghost, open = false) {
   if (ghost) {
     const h = state.history.find((x) => x.id === it.id);
-    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}</div>
+    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}</div>
       <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : "picked up in the terminal")}</div></div>`;
   }
   const q = it.kind === "question" ? questions(it) : [];
@@ -1757,7 +1818,7 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
+    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
@@ -1893,7 +1954,7 @@ function boardView() {
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
   const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
-      <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span><span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) ? "" : hideX(s)}</div>
+      <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span>${machTag(s.machine)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
       ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
@@ -2084,7 +2145,7 @@ function convoSheet() {
   const msgs = c.items.map((e) => {
     const hit = e.at_ms === c.hitAt ? " cv-hit" : "";
     if (e.role === "you") return `<div class="cv-you${hit}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${when(e.at_ms)}</div></div>`;
-    return `<div class="cv-agent${hit}"><div class="cv-meta">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))} · ${when(e.at_ms)}</div><div class="msg cv-text">${md(e.text)}</div></div>`;
+    return `<div class="cv-agent${hit}"><div class="cv-meta">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))}${e.role === "peer" ? "" : machTag(live?.machine)} · ${when(e.at_ms)}</div><div class="msg cv-text">${md(e.text)}</div></div>`;
   }).join("");
   return `<div class="sheet convo-sheet"><div class="sheet-head"><button class="btn" data-act="convo-back">← Results</button>${badge(c.harness)}<h3>${esc(c.name)}</h3>
       <span class="dim" style="font-size:12px">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>
@@ -2136,7 +2197,7 @@ function histDetail(i) {
   let ask = "";
   if (i.kind === "question") ask = questions(i).map((q) => `<div class="qtext">${esc(q.question)}</div><ul class="hopts">${(q.options || []).map((o) => `<li>${esc(o.label)}${o.description ? `<span class="dim">: ${esc(o.description)}</span>` : ""}</li>`).join("")}</ul>`).join("");
   else if (i.kind !== "waiting" && !(inTerminal(i) && !i.tool_name)) ask = requestBody(i);
-  return chat + (ask ? `<div class="hask"><div class="act-head">${esc(agentName(i.harness))} ${esc(verb(i))}</div>${ask}</div>` : "");
+  return chat + (ask ? `<div class="hask"><div class="act-head">${esc(agentName(i.harness))} ${esc(verb(i))}${machTag(i.machine)}</div>${ask}</div>` : "");
 }
 /** What you replied, in full: from the live session's own log when it's still there (the stored outcome
  *  keeps only the first line), else the outcome's quote. */
@@ -2218,7 +2279,7 @@ function starPop(rows) {
     const what = r.what || (r.it ? plain(summary(r.it)) : "");   // a finished turn: its message
     const ask = r.st === "asks" && r.it?.kind === "permission" ? `<span class="st-acts"><button class="btn deny" data-act="deny" data-id="${esc(r.it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(r.it.id)}">Allow</button></span>` : "";
     return `<div class="lv-row st-row ${r.sid === (quietOpen || active?.sid) ? "on" : ""}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">
-      <div class="st-line">${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${svChipState(r)}<span class="age">${ago(r.since)}</span><span class="lv-acts">${starBtn(r.sid)}</span></div>
+      <div class="st-line">${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${svChipState(r)}${placeIcon(r.sid)}<span class="age">${ago(r.since)}</span><span class="lv-acts">${starBtn(r.sid)}</span></div>
       ${what || ask ? `<div class="st-now ${r.st === "asks" ? "hot" : ""}">${r.run ? `<span class="dot-live"></span>` : ""}<span class="st-what ${r.st === "asks" && r.it && isBash(r.it) ? "mono" : ""}">${esc(what)}</span>${ask}</div>` : ""}</div>`;
   };
   return `<div class="lv-pop st-pop"><div class="st-head">Starred<span>${rows.length}</span></div><div class="lv-list">${sorted.map(row).join("")}</div><div class="lv-foot"><span class="lv-keys">Star a session on its card to follow it</span></div></div>`;
@@ -2238,7 +2299,7 @@ function livePop(rows) {
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip ? `title="${esc(tip)}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}<span class="lv-acts">${main}</span></div>`;
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip ? `title="${esc(tip)}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -2264,17 +2325,33 @@ let newPerm = "ask";
 let newWhere = null;   // this session: tmux or not (null: Settings' default)
 const newTmux = () => newWhere ?? !!state.settings?.sessions?.tmux;
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
+/** + New session: which machine (this Mac, or one from + New → Machine). Remembered. */
+let newMachine = (() => { try { return localStorage.getItem("cue.newMachine") || ""; } catch { return ""; } })();
+/** + New: the "+ Add" field for a new machine is open. */
+let nfAdding = false;
+const setNewMachine = (m) => { newMachine = m; try { localStorage.setItem("cue.newMachine", m); } catch {} };
+/** Folders you started sessions in on a machine, most recent first (this window keeps them). */
+const machineFolders = (m) => { try { return JSON.parse(localStorage.getItem(`cue.folders.${m}`) || "[]"); } catch { return []; } };
+const rememberFolder = (m, dir) => { try { localStorage.setItem(`cue.folders.${m}`, JSON.stringify([dir, ...machineFolders(m).filter((d) => d !== dir)].slice(0, 10))); } catch {} };
 function newForm() {
-  const agents = agentsAvail || ["claude"];
-  if (!agents.includes(newAgent)) newAgent = agents[0];
-  const folders = recentFolders();
+  if (machinesList === null) loadMachines();
+  if (newMachine && !(machinesList || []).some((m) => m.name === newMachine)) newMachine = machinesList === null ? newMachine : "";
+  const remote = newMachine ? machineState.get(newMachine) : null;
+  // On a machine: the agents its check found there (all three until it's been checked).
+  const agents = newMachine ? ["claude", "codex", "pi"].filter((a) => !remote?.tools || remote.tools[a]) : agentsAvail || ["claude"];
+  if (agents.length && !agents.includes(newAgent)) newAgent = agents[0];
+  const folders = newMachine ? machineFolders(newMachine) : recentFolders().map(homeless);
+  const machines = machinesList || [];
   return `<div class="nf">
+    <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add" title="Add a machine you reach over SSH">+ Add</button></div></div></div>
+    ${nfAdding ? "" : machinePanel(newMachine)}
+    ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there; it sets up its hooks for the agents it finds.</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Agent</span><div class="seg">${agents.map((a) => `<button class="${newAgent === a ? "on" : ""}" data-lv="agent" data-agent="${a}">${esc(agentName(a))}</button>`).join("")}</div></div>
-    <div class="nf-row"><span class="nf-k">Folder</span><input class="nf-in mono" data-text="new-cwd" list="nf-folders" placeholder="~/development/…" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>
-      <datalist id="nf-folders">${folders.map((f) => `<option value="${esc(homeless(f))}"></option>`).join("")}</datalist></div>
+    <div class="nf-row"><span class="nf-k">Folder</span><input class="nf-in mono" data-text="new-cwd" list="nf-folders" placeholder="${newMachine ? `~/code/… on ${esc(machShort(newMachine))}` : "~/development/…"}" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>
+      <datalist id="nf-folders">${folders.map((f) => `<option value="${esc(f)}"></option>`).join("")}</datalist></div>
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
     <div class="nf-row top"><span class="nf-k">Message</span><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on">${esc(draft("new-msg").text)}</textarea></div>
-    ${state.settings?.sessions?.tmux_installed ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""}" data-lv="where" data-tmux="${v}">${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
+    ${state.settings?.sessions?.tmux_installed && !newMachine ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v ? CUE_MARK_SM : TERM_ICON}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you, for this session only</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --model opus" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
     <div class="nf-acts"><button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>${(ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : ""}</div>`;
@@ -2309,13 +2386,15 @@ async function lvAct(act, d) {
   if (act === "all") { liveOpen = newOpen = false; view = "sessions"; return renderMain(); }
   if (act === "new") {
     liveOpen = newOpen = true;
-    draft("new-cwd").text = homeless(d.cwd || draft("new-cwd").text || recentFolders()[0] || "");
+    draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || recentFolders()[0] || "");
     if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
     renderMain();
     return document.querySelector('[data-text="new-msg"]')?.focus();
   }
   if (act === "agent") { newAgent = d.agent; if (!PERMS[newAgent].some(([v]) => v === newPerm)) newPerm = "ask"; return renderMain(); }
   if (act === "where") { newWhere = d.tmux === "true"; return renderMain(); }
+  if (act === "machine-add") { nfAdding = !nfAdding; renderMain(); return nfAdding && document.querySelector('[data-text="mc-host"]')?.focus(); }
+  if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : homeless(recentFolders()[0] || ""); return renderMain(); }
   if (act === "perm") { newPerm = d.perm; return renderMain(); }
   if (act === "cancel") { newOpen = false; return renderMain(); }
   if (act === "start") {
@@ -2323,7 +2402,8 @@ async function lvAct(act, d) {
     if (!cwd) return toast("Pick a folder first");
     if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
     try {
-      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra: draft("new-flags").text });
+      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra: draft("new-flags").text, machine: newMachine });
+      if (newMachine) rememberFolder(newMachine, cwd);
       toast(r.detail);
       draft("new-msg").text = draft("new-name").text = draft("new-flags").text = "";
       newPerm = "ask";   // skipping permissions is for that one session, never carried over
@@ -2628,22 +2708,143 @@ function setupSheet() {
     <div class="setup-foot">${todo.length > 1 ? `<button class="btn" data-connect-all>Connect all</button>` : ""}<button class="btn primary" data-setup-done>Done</button></div>
   </div></div>`;
 }
+// ---------- + New → Machine: other machines to run sessions on, over SSH ----------
+let machinesList = null;            // null until asked
+const machineState = new Map();     // name -> what its check found, or "checking"
+const TOOL_NAMES = { claude: "Claude Code", codex: "Codex", pi: "Pi", tmux: "tmux" };
+function loadMachines() {
+  machinesList = machinesList || [];
+  invoke("machines_list").then((l) => {
+    machinesList = l;
+    for (const m of l) if (!machineState.has(m.name)) checkMachine(m.name);
+    renderMain();
+  }).catch(() => {});
+}
+function checkMachine(name) {
+  machineState.set(name, "checking");
+  renderMain();
+  return invoke("machine_check", { name }).then((r) => machineState.set(name, r), (e) => machineState.set(name, { ok: false, error: String(e) })).then(() => {
+    const st = machineState.get(name);
+    // Connected, with Claude Code or Codex there: Cue's hooks for them (only those; it installs nothing).
+    if (st?.ok && (st.tools?.claude || st.tools?.codex)) setupHooks(name, st.tools);
+    renderMain();
+    return st;
+  });
+}
+/** What setting up Cue's hooks on a machine did (shown under it): lines, or an error. */
+const machineHooks = new Map();
+async function setupHooks(name, tools) {
+  try {
+    const did = await invoke("machine_setup", { name, tools });
+    if (did.length) {
+      machineHooks.set(name, [...did, "Sessions already open there pick them up after /hooks (or a restart)"]);
+      toast(`${name}: ${did.join("; ")}`);
+    } else if (!machineHooks.has(name)) machineHooks.set(name, ["Cue's hooks are set up there"]);
+  } catch (e) { machineHooks.set(name, [`Couldn't set up Cue's hooks there: ${e}`]); }
+  renderMain();
+}
+/** After Log in: check every 3 s (for 2 minutes) until the connection you opened is there. */
+async function watchLogin(name) {
+  for (let n = 0; n < 40; n++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    if (!machinesList?.some((m) => m.name === name)) return;
+    if ((await checkMachine(name))?.ok) return toast(`Connected to ${name}`);
+  }
+}
+async function machAct(act, name) {
+  try {
+    if (act === "add") {
+      const host = draft("mc-host").text.trim();
+      if (!host) return toast("Type its SSH alias or user@host first");
+      const m = await invoke("machine_add", { host, name: "" });
+      draft("mc-host").text = "";
+      machinesList = [...(machinesList || []), m];
+      toast(`Added ${machShort(m.name)}`);
+      // Added from + New: it's the machine this session starts on.
+      if (nfAdding) { nfAdding = false; setNewMachine(m.name); draft("new-cwd").text = machineFolders(m.name)[0] || ""; }
+      return checkMachine(m.name);
+    }
+    if (act === "remove") {
+      await invoke("machine_remove", { name });
+      machinesList = (machinesList || []).filter((m) => m.name !== name);
+      machineState.delete(name);
+      if (newMachine === name) setNewMachine("");
+      toast(`Removed ${machShort(name)}`);
+      return renderMain();
+    }
+    if (act === "check") return checkMachine(name);
+    if (act === "rename") {
+      machRenaming = machRenaming === name ? null : name;
+      draft("mc-label").text = (machinesList || []).find((m) => m.name === name)?.label || "";
+      renderMain();
+      return machRenaming && document.querySelector('[data-text="mc-label"]')?.focus();
+    }
+    if (act === "rename-save") {
+      const m = await invoke("machine_rename", { name, label: draft("mc-label").text });
+      machinesList = (machinesList || []).map((x) => x.name === name ? m : x);
+      machRenaming = null;
+      toast(`Shown as ${machShort(name)} from now on`);
+      return renderMain();
+    }
+    if (act === "login") {
+      await invoke("machine_login", { name });
+      toast(`Log in to ${name} in the terminal tab Cue opened. Cue never sees what you type there.`);
+      return watchLogin(name);
+    }
+  } catch (e) { toast(`Couldn't: ${e}`); }
+}
+/** + New, under the Machine row when a machine is picked: how it stands, what's installed there (and how
+ *  you'd install the rest yourself: Cue never installs anything on a machine), and Log in / Check / Remove. */
+/** The machine whose Rename field is open in + New (null: none). */
+let machRenaming = null;
+function machinePanel(name) {
+  const m = (machinesList || []).find((x) => x.name === name);
+  if (!m) return "";
+  const st = machineState.get(name);
+  const checking = !st || st === "checking";
+  const status = checking ? `<span class="mc-st">Checking…</span>`
+    : st.ok ? `<span class="mc-st ok">Connected${st.os ? ` · ${esc(st.os)}` : ""}</span>`
+    : st.needs_login ? `<span class="mc-st warn">Needs you to log in once</span>`
+    : `<span class="mc-st bad">Can't reach it</span>`;
+  const tools = !checking && st.ok ? `<div class="mc-tools">${Object.entries(TOOL_NAMES).map(([k, l]) => `<span class="mc-tool ${st.tools?.[k] ? "has" : ""}">${st.tools?.[k] ? "✓" : "–"} ${l}</span>`).join("")}</div>`
+    : !checking && st.error ? `<div class="set-sub mono">${esc(st.error)}</div>` : "";
+  const missing = !checking && st.ok ? Object.keys(TOOL_NAMES).filter((k) => !st.tools?.[k]) : [];
+  const lines = [...(machineHooks.get(name) || []).map(esc), ...missing.map((k) => `${esc(TOOL_NAMES[k])} isn't installed there. To install it, run there: <code>${esc(st.help?.[k] || "")}</code>`)];
+  const report = lines.length ? `<ul class="mc-report">${lines.map((l) => `<li>${l}</li>`).join("")}</ul>` : "";
+  return `<div class="nf-row nf-note"><span></span><div class="nf-mpanel"><div class="nf-mhead"><span class="dim mono">${esc(m.host)}</span>${status}<span class="grow"></span>${!checking && st.needs_login ? `<button class="btn small primary" data-mach="login" data-name="${esc(name)}">Log in</button>` : ""}<button class="btn small" data-mach="rename" data-name="${esc(name)}">Rename</button><button class="btn small" data-mach="check" data-name="${esc(name)}">Check</button><button class="btn small" data-mach="remove" data-name="${esc(name)}">Remove</button></div>${machRenaming === name ? `<div class="mc-add"><input class="nf-in" data-text="mc-label" placeholder="${esc(m.name)}" spellcheck="false" autocomplete="off" value="${esc(draft("mc-label").text)}"/><button class="btn small primary" data-mach="rename-save" data-name="${esc(name)}">Save</button><button class="btn small" data-mach="rename" data-name="${esc(name)}">Cancel</button></div><span class="nf-hint wrap">What Cue shows for it everywhere. Empty: back to its own name.</span>` : ""}${tools}${report}</div></div>`;
+}
+/** Settings, in tabs so no one page runs long. The last tab you looked at opens next time. */
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["usage", "Usage"]];
+let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
   const c = state.connections || {};
   const keep = st.history?.keep ?? 300;
-  return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3>${upd.current ? `<span class="set-ver">Cue ${esc(upd.current)}</span>` : ""}<span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
+  const tab = SET_TABS.some(([k]) => k === setTab) ? setTab : "general";
+  const pane = {
+    general: `
     <div class="set-group">Updates</div>
     ${updateRow()}
+    <div class="set-group">Look</div>
+    ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
+    <div class="set-group">Notifications</div>
+    ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
+    ${setRow("When an agent finishes its turn", "Tells you which session is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
+    ${setRow("When an agent needs a decision", "Permissions and questions.", toggle("notify.decisions", st.notify?.decisions ?? true))}
+    <div class="set-group">Mac</div>
+    ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
+    ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}`,
+    agents: `
     <div class="set-group">Connected agents</div>
     ${agentRows()}
     ${extRows()}
-    <div class="set-group">Usage</div>
-    ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
-    ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}
-    <div class="set-group">Look</div>
+    <div class="set-group">New sessions</div>
     ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
-    ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
+    <div class="set-group">Pi</div>
+    ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
+    <div class="set-group">Agents driving agents</div>
+    ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no card or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}`,
+    chat: `
     <div class="set-group">Quick phrases</div>
     ${setRow("Above the text box", `Click one to send it, after anything you've typed in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
     <div class="set-group">Steps</div>
@@ -2652,17 +2853,14 @@ function settingsSheet() {
     ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each card keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
     ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
     <div class="set-group">History</div>
-    ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}
-    <div class="set-group">Notifications</div>
-    ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
-    ${setRow("When an agent finishes its turn", "Tells you which session is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
-    ${setRow("When an agent needs a decision", "Permissions and questions.", toggle("notify.decisions", st.notify?.decisions ?? true))}
-    ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
-    ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}
-    <div class="set-group">Agents driving agents</div>
-    ${setRow("Show sessions another agent drives in Waiting", "Off: when a helper agent finishes (one another agent started and labelled with CUE_DRIVEN_BY), its lead handles it, so it stays in Working as \"waiting on its lead\" with no card or notification. Turn on to treat them like your own sessions.", toggle("agents.show_driven", st.agents?.show_driven ?? false))}
-    <div class="set-group">Pi</div>
-    ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
+    ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
+    usage: `
+    <div class="set-group">Usage</div>
+    ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
+    ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}`,
+  }[tab];
+  return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3>${upd.current ? `<span class="set-ver">Cue ${esc(upd.current)}</span>` : ""}<span class="grow"></span><kbd>Esc</kbd></div><div class="set-tabs seg" role="tablist">${SET_TABS.map(([k, l]) => `<button role="tab" class="${tab === k ? "on" : ""}" aria-selected="${tab === k}" data-act="set-tab" data-tab="${k}">${l}</button>`).join("")}</div><div class="sheet-body">
+    ${pane}
   </div></div>`;
 }
 
@@ -2715,7 +2913,7 @@ function renderMain() {
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
+  </div>${moving ? movingDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   flipPlay(flipFrom);
@@ -2831,6 +3029,9 @@ function fitHead() {
 addEventListener("resize", () => { fitHead(); fitTop(); });
 
 /** Cue's mark (the app icon without its tile): an open C around a dot. */
+/** The mark at 14px, and a terminal (a prompt in a window), for the "Runs in" choice. */
+const CUE_MARK_SM = `<svg width="14" height="14" viewBox="200 200 624 624" aria-hidden="true"><circle cx="512" cy="512" r="250" fill="none" stroke="currentColor" stroke-width="92" stroke-dasharray="1180 400" stroke-linecap="round" transform="rotate(40 512 512)"/><circle cx="512" cy="512" r="84" fill="currentColor"/></svg>`;
+const TERM_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="3"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></svg>`;
 const CUE_MARK = `<svg width="28" height="28" viewBox="200 200 624 624" aria-hidden="true"><circle cx="512" cy="512" r="250" fill="none" stroke="currentColor" stroke-width="92" stroke-dasharray="1180 400" stroke-linecap="round" transform="rotate(40 512 512)"/><circle cx="512" cy="512" r="84" fill="#B5C27A"/></svg>`;
 // Drafts survive a restart: each session's unsent text and images are saved in ~/.cue/cue.db.
 const savedDrafts = {};     // key -> what the database last got, so only changes are written
@@ -3007,6 +3208,8 @@ function bindMain() {
     // Clear: forget this session's side questions (they were only ever in this window).
     const bc = t.closest("[data-act=btw-clear]");
     if (bc) { btwLog.delete(bc.dataset.sid); renderMain(); return document.querySelector(`[data-text="${CSS.escape(`btw:${bc.dataset.sid}`)}"]`)?.focus(); }
+    const mach = t.closest("[data-mach]");
+    if (mach) return machAct(mach.dataset.mach, mach.dataset.name);
     const tm = t.closest("[data-act=term], [data-act=term-open], [data-act=term-card]");
     if (tm) {
       if (tm.dataset.act === "term") return termSid === tm.dataset.sid ? closeTerm() : openTerm(tm.dataset.sid);
@@ -3191,12 +3394,24 @@ function bindMain() {
     const actEl = t.closest("[data-act]");
     const act = actEl?.dataset.act;
     if (act === "next") return goNext();
+    if (act === "set-tab") { setTab = actEl.dataset.tab; try { localStorage.setItem("cue.setTab", setTab); } catch {} const b = document.querySelector(".sheet-body"); if (b) b.scrollTop = 0; return renderMain(); }
     if (act === "test-notify") return invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`));
     if (act === "open-history") { view = "history"; sheet = null; return renderMain(); }
     if (act === "open-search") return openSearch();
     if (act === "load-older") return loadOlder(actEl.dataset.sid);
     if (act === "load-transcript") return loadOlder(actEl.dataset.sid, true);
     if (act === "open-settings") { sheet = sheet === "settings" ? null : "settings"; extSections = null; return renderMain(); }
+    // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
+    if (act === "move-cue") return moveToCue(actEl.dataset.sid);
+    if (act === "move-dismiss") { moving = null; return renderMain(); }
+    if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.msg, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
+    if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
+      const who = actEl.dataset.who, e = (ranLog.get(who) || [])[+actEl.dataset.n];
+      if (!e) return;
+      if (act === "ran-again") return runLine(who, e.line, e.cwd);
+      if (act === "ran-send") return invoke("send_to_session", { sessionId: who, text: ranAsMessage(e), images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
+      return invoke("send_to_session", { sessionId: who, text: `! ${e.line}`, images: [], now: false }).then(() => toast("Typed into its terminal")).catch((x) => toast(`Couldn't: ${x}`));
+    }
     const it = actEl?.dataset.id ? findItem(actEl.dataset.id) : null;
     if (act && it) {
       if (it.status === "pending" && act !== "dismiss") active = { id: it.id, sid: it.session_id };
@@ -3204,14 +3419,6 @@ function bindMain() {
       if (act === "allow") return allow(it);
       if (act === "deny") return deny(it);
       if (act === "send") return submitText(it);
-      if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.msg, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
-    if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
-        const who = t.dataset.who, e = (ranLog.get(who) || [])[+t.dataset.n];
-        if (!e) return;
-        if (act === "ran-again") return runLine(who, e.line, e.cwd);
-        if (act === "ran-send") return invoke("send_to_session", { sessionId: who, text: ranAsMessage(e), images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
-        return invoke("send_to_session", { sessionId: who, text: `! ${e.line}`, images: [], now: false }).then(() => toast("Typed into its terminal")).catch((x) => toast(`Couldn't: ${x}`));
-      }
       if (act === "commit") return invoke("reply", { id: it.id, text: "Commit", images: [] }).then((r) => toast(`“Commit” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "continue") return invoke("reply", { id: it.id, text: "continue", images: [] }).then((r) => toast(`“continue” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "go") return goTo(it);
@@ -3266,6 +3473,9 @@ function bindMain() {
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
   document.addEventListener("keydown", (e) => {
+    // Enter in + New's Add machine field adds it.
+    if (e.key === "Enter" && e.target.dataset?.text === "mc-host") { e.preventDefault(); return machAct("add"); }
+    if (e.key === "Enter" && e.target.dataset?.text === "mc-label" && machRenaming) { e.preventDefault(); return machAct("rename-save", machRenaming); }
     // ⌃`: the open session's terminal, open or closed (from inside it too).
     if (e.ctrlKey && e.key === "`") {
       e.preventDefault();
@@ -3430,6 +3640,7 @@ async function boot() {
   await loadDrafts();
   bindMain();
   setState(await invoke("get_state"));
+  loadMachines();   // their names (and what you renamed them to) for every label, before + New is opened
   restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
