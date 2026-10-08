@@ -267,10 +267,33 @@ pub fn session_screen(o: &Origin) -> Result<String, String> {
     crate::machines::tmux(&m.host, &["capture-pane", "-p", "-J", "-t", &o.tmux_pane]).map(|s| s.trim_end().to_string())
 }
 
-/// Start `line` in a new window of Cue's tmux session (creating the session if it isn't running), named
-/// `name`, in `dir`; typed into its shell, so the window stays when the agent exits, as a tab would.
+/// Start `line` in a tmux session of its own, named after the session (`name`, made safe for tmux and
+/// unique: "cue-bug-fixes", then "cue-bug-fixes-2"), in `dir`; typed into its shell, so the window stays
+/// when the agent exits, as a tab would. One tmux session each, so `tmux ls` reads like the session list
+/// and each keeps its own size. Tagged (@cue) as Cue's own: "Go to tab" knows its terminal is in Cue.
 pub fn open_in_tmux(line: &str, dir: &str, name: &str) -> Result<NewTab, String> {
-    open_in_tmux_session(TMUX_SESSION, line, dir, name)
+    let base = tmux_name(name);
+    let taken: Vec<String> = tmux_out(&["list-sessions", "-F", "#{session_name}"]).map(|o| o.lines().map(String::from).collect()).unwrap_or_default();
+    let mut session = base.clone();
+    let mut n = 2;
+    while taken.iter().any(|t| *t == session) {
+        session = format!("{base}-{n}");
+        n += 1;
+    }
+    let tab = open_in_tmux_session(&session, line, dir, name)?;
+    let _ = run("tmux", &["set-option", "-t", &format!("={session}"), "@cue", "1"]);
+    Ok(tab)
+}
+
+/// A tmux session name from a session's name: no '.', ':' or whitespace (tmux's rules), never empty.
+fn tmux_name(name: &str) -> String {
+    let s: String = name.trim().chars().map(|c| if c == '.' || c == ':' || c.is_whitespace() { '-' } else { c }).collect();
+    if s.is_empty() { "cue".into() } else { s }
+}
+
+/// Whether a tmux session is one Cue made for a session (its terminal is Cue's own, not a window to open).
+fn tmux_is_cues(session: &str) -> bool {
+    session == TMUX_SESSION || tmux_out(&["show-option", "-v", "-t", &format!("={session}"), "@cue"]).map(|v| v.trim() == "1").unwrap_or(false)
 }
 
 /// "Runs in iTerm" with tmux installed: the same, in the tabs session, shown in a terminal tab. iTerm is
@@ -471,7 +494,7 @@ pub fn focus(o: &Origin) -> Result<String, String> {
             if name.is_empty() {
                 return Err(format!("tmux pane {pane} is gone"));
             }
-            if name == TMUX_SESSION {
+            if tmux_is_cues(&name) {
                 return Err("it runs in Cue: its terminal is here, above the reply box (⌃`)".into());
             }
             return attach_in_new_window(&name).map(|app| format!("tmux session \"{name}\" (wasn't open in any window; opened it in {app})"));
