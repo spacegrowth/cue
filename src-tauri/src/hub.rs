@@ -605,6 +605,27 @@ impl Hub {
         self.set_later(&sid, false); // you replied: decided
         let t0 = now_ms();
         let saved = crate::uploads::save(images)?;
+        // The card is stale (the session went on to another turn since): typed now, the reply would land
+        // mid-turn and could be lost. Kept in Cue instead, as the box does, and sent when the turn ends.
+        let busy = {
+            let st = self.store.lock().unwrap();
+            (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid)
+        };
+        if busy {
+            let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
+            let mut st = self.store.lock().unwrap();
+            st.items.retain(|i| i.id != id);
+            st.sessions.hold(&sid, text, paths.clone());
+            let mut h = it;
+            h.images = paths;
+            h.status = "answered".into();
+            h.outcome = format!("replied: “{}” (kept in Cue until its turn ends)", first_line(text, 200));
+            h.resolved_ms = Some(now_ms());
+            push_history(&mut st, h);
+            drop(st);
+            self.changed();
+            return Ok("kept in Cue: it goes when this turn ends".into());
+        }
         let cmd_before = command_before(&it.origin, text);
         // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
         let direct = self.send_direct(&sid, text, &saved, false);

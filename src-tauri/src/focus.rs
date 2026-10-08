@@ -74,14 +74,43 @@ pub fn new_session_id() -> String {
 
 /// The command line that starts an agent in a folder: `cd <folder> && claude --session-id <id> -n <name> <message>`.
 /// Claude and Pi take the session id Cue picked; Pi has no name option; Codex takes the message only.
+#[cfg(test)]
 pub fn start_line(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str) -> Result<String, String> {
+    start_line_with(agent, cwd, session_id, message, name, "ask", "")
+}
+
+/// How much a new session may do without asking you (+ New session → Permissions), per agent, as its
+/// flags. "ask": as it normally does. Pi asks through Cue's own gate (Settings → Pi), so "skip" turns
+/// that off for this session alone.
+fn permission_flags(agent: &str, perm: &str) -> Result<(&'static str, &'static str), String> {
+    // (environment before the program, flags after it)
+    Ok(match (agent, perm) {
+        (_, "ask" | "") => ("", ""),
+        ("claude", "auto") => ("", " --permission-mode auto"),
+        ("claude", "edits") => ("", " --permission-mode acceptEdits"),
+        ("claude", "plan") => ("", " --permission-mode plan"),
+        ("claude", "skip") => ("", " --dangerously-skip-permissions"),
+        ("codex", "edits") => ("", " --sandbox workspace-write"),
+        ("codex", "skip") => ("", " --dangerously-bypass-approvals-and-sandbox"),
+        ("pi", "skip") => ("CUE_PI_GATE=off ", ""),
+        _ => return Err(format!("{agent} has no “{perm}” permission mode")),
+    })
+}
+
+/// The same, with permissions (`perm`, see permission_flags) and any extra flags you typed (each word
+/// quoted on its own, so it's flags, never more shell).
+pub fn start_line_with(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str, perm: &str, extra: &str) -> Result<String, String> {
     let program = match agent {
         "claude" => "claude",
         "pi" => "pi",
         "codex" => "codex",
         other => return Err(format!("unknown agent {other}")),
     };
-    let mut line = format!("cd {} && {program}", shq(cwd));
+    let (env, flags) = permission_flags(agent, perm)?;
+    let mut line = format!("cd {} && {env}{program}{flags}", shq(cwd));
+    for word in extra.split_whitespace() {
+        line += &format!(" {}", shq(word));
+    }
     if agent != "codex" && !session_id.is_empty() {
         line += &format!(" --session-id {}", shq(session_id));
     }
@@ -128,11 +157,13 @@ fn trusted_as_written(config: &serde_json::Value, dir: &str) -> bool {
 }
 
 /// Where a session Cue started runs, so Cue can type into it and jump to it from the start.
+#[derive(Default)]
 pub struct NewTab {
     pub what: String,
     pub term_program: String,
     pub iterm_session_id: String,
     pub tty: String,
+    pub tmux_pane: String,
 }
 
 /// Open a new terminal tab in the background (Cue stays in front) and type `line` into it: iTerm (a
@@ -157,10 +188,104 @@ pub fn open_tab_with(line: &str) -> Result<NewTab, String> {
         let out = run_osascript(&script)?;
         let (id, tty) = out.split_once('\t').unwrap_or((out.as_str(), ""));
         // The same shape as $ITERM_SESSION_ID ("w0t1p0:<uuid>"): focus and typing read the part after ':'.
-        return Ok(NewTab { what: "a new iTerm tab".into(), term_program: "iTerm.app".into(), iterm_session_id: format!("cue:{id}"), tty: tty.to_string() });
+        return Ok(NewTab { what: "a new iTerm tab".into(), term_program: "iTerm.app".into(), iterm_session_id: format!("cue:{id}"), tty: tty.to_string(), ..Default::default() });
     }
     let tty = run_osascript(&format!("tell application \"Terminal\"\nset t to do script \"{}\"\nreturn tty of t\nend tell", osa(line)))?;
-    Ok(NewTab { what: "a new Terminal window".into(), term_program: "Apple_Terminal".into(), iterm_session_id: String::new(), tty })
+    Ok(NewTab { what: "a new Terminal window".into(), term_program: "Apple_Terminal".into(), tty, ..Default::default() })
+}
+
+// ---------- sessions in tmux ----------
+/// The tmux session Cue starts sessions in (Settings → New sessions in tmux): one tmux window each, so
+/// one terminal window shows them all (in iTerm, attached with `tmux -CC`, as ordinary tabs). They keep
+/// running when the terminal, or Cue, quits.
+pub const TMUX_SESSION: &str = "cue";
+/// The tmux session for sessions you chose to see in a terminal tab ("Runs in iTerm"): tmux underneath
+/// all the same (they outlive the terminal and Cue, and Cue's terminal can show them), with iTerm attached
+/// to this session alone (`tmux -CC`, each window an ordinary tab), so "Runs in Cue" sessions never show
+/// up there.
+pub const TMUX_TABS_SESSION: &str = "cue-tabs";
+
+/// The terminal a new session's tab opens in when it isn't in tmux: iTerm if it's installed, else Terminal.
+pub fn terminal_name() -> &'static str {
+    if std::path::Path::new("/Applications/iTerm.app").exists() { "iTerm" } else { "Terminal" }
+}
+
+pub fn tmux_bin() -> String {
+    bin("tmux")
+}
+
+pub fn tmux_installed() -> bool {
+    std::path::Path::new(&bin("tmux")).is_absolute()
+}
+
+/// tmux's answer, trimmed; None if it failed.
+fn tmux_out(args: &[&str]) -> Option<String> {
+    let out = Command::new(bin("tmux")).args(args).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// What a tmux pane shows right now, as plain text (wrapped lines joined), blank lines at the end dropped.
+pub fn tmux_screen(pane: &str) -> Result<String, String> {
+    let out = Command::new(bin("tmux")).args(["capture-pane", "-p", "-J", "-t", pane]).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(format!("tmux pane {pane} is gone"));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+}
+
+/// The keys Cue's screen view offers: enough to answer any menu or prompt (move, pick, confirm, back
+/// out), nothing that types text.
+pub const SCREEN_KEYS: [&str; 15] = ["Up", "Down", "Left", "Right", "Enter", "Escape", "Tab", "BTab", "Space", "1", "2", "3", "4", "y", "n"];
+
+/// Press `keys` in a tmux pane, in order. Only ones from SCREEN_KEYS.
+pub fn tmux_keys(pane: &str, keys: &[String]) -> Result<(), String> {
+    if let Some(k) = keys.iter().find(|k| !SCREEN_KEYS.contains(&k.as_str())) {
+        return Err(format!("{k} isn't a key Cue presses"));
+    }
+    for k in keys {
+        if !run("tmux", &["send-keys", "-t", pane, k]) {
+            return Err(format!("tmux pane {pane} is gone"));
+        }
+    }
+    Ok(())
+}
+
+/// Start `line` in a new window of Cue's tmux session (creating the session if it isn't running), named
+/// `name`, in `dir`; typed into its shell, so the window stays when the agent exits, as a tab would.
+pub fn open_in_tmux(line: &str, dir: &str, name: &str) -> Result<NewTab, String> {
+    open_in_tmux_session(TMUX_SESSION, line, dir, name)
+}
+
+/// "Runs in iTerm" with tmux installed: the same, in the tabs session, shown in a terminal tab. iTerm is
+/// attached to that session once (then each new window is a new tab of its own accord); without iTerm,
+/// a Terminal window attached to it.
+pub fn open_in_tmux_tab(line: &str, dir: &str, name: &str) -> Result<NewTab, String> {
+    let attached = tmux_out(&["list-clients", "-t", TMUX_TABS_SESSION]).map(|c| !c.trim().is_empty()).unwrap_or(false);
+    let mut tab = open_in_tmux_session(TMUX_TABS_SESSION, line, dir, name)?;
+    let app = if attached { terminal_name().to_string() } else { attach_in_new_window(TMUX_TABS_SESSION)? };
+    tab.what = format!("{app} (kept running by tmux)");
+    Ok(tab)
+}
+
+fn open_in_tmux_session(session: &str, line: &str, dir: &str, name: &str) -> Result<NewTab, String> {
+    const FMT: &str = "#{pane_id}\t#{pane_tty}";
+    let exists = run("tmux", &["has-session", "-t", session]);
+    let out = if exists {
+        tmux_out(&["new-window", "-t", &format!("{session}:"), "-n", name, "-c", dir, "-P", "-F", FMT])
+    } else {
+        // Detached, so it needs a size until a terminal attaches.
+        tmux_out(&["new-session", "-d", "-s", session, "-n", name, "-c", dir, "-x", "200", "-y", "50", "-P", "-F", FMT])
+    }
+    .ok_or("tmux couldn't open a window")?;
+    let (pane, tty) = out.split_once('\t').unwrap_or((out.as_str(), ""));
+    if pane.is_empty() {
+        return Err("tmux didn't say which pane it opened".into());
+    }
+    if !run("tmux", &["send-keys", "-t", pane, "-l", line]) || !run("tmux", &["send-keys", "-t", pane, "Enter"]) {
+        return Err(format!("tmux pane {pane} is gone"));
+    }
+    // It shows in Cue's own terminal (the drawer over the reply box): no terminal window opens for it.
+    Ok(NewTab { what: "Cue".into(), term_program: "tmux".into(), tty: tty.to_string(), tmux_pane: pane.to_string(), ..Default::default() })
 }
 
 /// Which agents this Mac can start (a login shell's PATH: the one your terminal has), asked once.
@@ -319,10 +444,15 @@ pub fn focus(o: &Origin) -> Result<String, String> {
         };
         let client = ask("#{client_tty}");
         if client.is_empty() {
-            // No window shows this tmux session (it's detached): open one attached to it.
+            // No window shows this tmux session (it's detached): open one attached to it. Not for a
+            // "Runs in Cue" session: its terminal is the one in Cue's window, and attaching iTerm to that
+            // session would mirror every such session into iTerm tabs.
             let name = ask("#{session_name}");
             if name.is_empty() {
                 return Err(format!("tmux pane {pane} is gone"));
+            }
+            if name == TMUX_SESSION {
+                return Err("it runs in Cue: its terminal is here, above the reply box (⌃`)".into());
             }
             return attach_in_new_window(&name).map(|app| format!("tmux session \"{name}\" (wasn't open in any window; opened it in {app})"));
         }
@@ -353,6 +483,12 @@ pub fn focus(o: &Origin) -> Result<String, String> {
 /// A new terminal window attached to a detached tmux session.
 fn attach_in_new_window(session: &str) -> Result<String, String> {
     let tmux = bin("tmux");
+    // Cue's tabs session in iTerm: attached with -CC (iTerm's tmux mode, its windows as ordinary iTerm tabs),
+    // from a new tab of the window you have rather than a window of its own. With iTerm's "Open tmux windows
+    // as tabs in the attaching window" and "Bury the tmux client session", that's where they all go.
+    if session == TMUX_TABS_SESSION && std::path::Path::new("/Applications/iTerm.app").exists() {
+        return open_tab_with(&format!("{tmux} -CC attach -t {TMUX_TABS_SESSION}")).map(|t| t.what);
+    }
     // Single-quoted for the shell inside the window; tmux names can't contain quotes we'd need to escape further.
     run_in_new_window(&format!("{} attach -t '{}'", tmux, session.replace('\'', "")))
 }
@@ -625,6 +761,21 @@ mod start_tests {
         assert_eq!(start_line("pi", "/x", "P1", "hello $(rm -rf ~)", "ignored").unwrap(), "cd '/x' && pi --session-id 'P1' 'hello $(rm -rf ~)'");
         assert_eq!(start_line("codex", "/x", "C1", "go", "").unwrap(), "cd '/x' && codex 'go'");
         assert!(start_line("bash", "/x", "", "", "").is_err());
+    }
+
+    #[test]
+    fn a_new_sessions_permissions_and_extra_flags_go_on_its_command_line() {
+        let l = |agent, perm, extra| start_line_with(agent, "/x", "", "", "", perm, extra);
+        assert_eq!(l("claude", "skip", "").unwrap(), "cd '/x' && claude --dangerously-skip-permissions");
+        assert_eq!(l("claude", "plan", "--model opus").unwrap(), "cd '/x' && claude --permission-mode plan '--model' 'opus'");
+        assert_eq!(l("codex", "skip", "").unwrap(), "cd '/x' && codex --dangerously-bypass-approvals-and-sandbox");
+        assert_eq!(l("codex", "edits", "").unwrap(), "cd '/x' && codex --sandbox workspace-write");
+        // Pi asks through Cue's gate: skipping turns it off for this session only.
+        assert_eq!(l("pi", "skip", "").unwrap(), "cd '/x' && CUE_PI_GATE=off pi");
+        assert_eq!(l("pi", "ask", "").unwrap(), "cd '/x' && pi");
+        assert!(l("pi", "plan", "").is_err(), "a mode the agent doesn't have");
+        // Extra flags are words, quoted: never more shell.
+        assert_eq!(l("claude", "", "; rm -rf ~").unwrap(), "cd '/x' && claude ';' 'rm' '-rf' '~'");
         let id = new_session_id();
         assert_eq!((id.len(), &id[14..15]), (36, "4"), "a UUID v4: {id}");
         assert_ne!(id, new_session_id());
@@ -633,6 +784,25 @@ mod start_tests {
 
 #[cfg(test)]
 mod iterm_tests {
+    #[test]
+    fn cues_screen_view_reads_a_tmux_pane_and_presses_only_its_keys() {
+        if !tmux_installed() {
+            return;
+        }
+        let name = format!("cue-test-{}", std::process::id());
+        let pane = tmux_out(&["new-session", "-d", "-s", &name, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        tmux_keys(&pane, &["y".into(), "Enter".into(), "2".into()]).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let screen = tmux_screen(&pane);
+        assert!(tmux_keys(&pane, &["rm -rf /".into()]).is_err(), "only the screen's keys");
+        run("tmux", &["kill-session", "-t", &name]);
+        let screen = screen.unwrap();
+        assert!(screen.lines().any(|l| l.trim() == "y"), "{screen:?}");
+        assert!(screen.ends_with('2'), "{screen:?}");
+        assert!(tmux_screen(&pane).is_err(), "a pane that's gone says so");
+    }
+
     use super::*;
 
     #[test]

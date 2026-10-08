@@ -30,6 +30,8 @@ pub fn effective() -> Value {
         // Read from macOS, so it matches System Settings → Login Items.
         "login": { "open": login::enabled() },
         "tray": { "show": tray_shown() },
+        // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
+        "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::focus::tmux_installed(), "terminal": crate::focus::terminal_name() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
@@ -63,6 +65,12 @@ pub fn flag(pointer: &str) -> bool {
     effective().pointer(pointer).and_then(Value::as_bool).unwrap_or(true)
 }
 
+/// New sessions run in Cue (in tmux, shown in Cue's own terminal) unless Settings says a terminal tab;
+/// only when tmux is installed.
+pub fn tmux_sessions() -> bool {
+    load().pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true) && crate::focus::tmux_installed()
+}
+
 /// What a finished card shows when a Stop hook made the agent continue: "answer" | "last".
 pub fn turn_mode() -> String {
     load().pointer("/turn/mode").and_then(Value::as_str).filter(|m| *m == "last").unwrap_or("answer").to_string()
@@ -79,12 +87,13 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
     let value = match key {
         "history.keep" => json!(value.as_u64().ok_or("keep must be a number")?.max(10)),
+        "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
         "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
         "pi.gate" => match value.as_str() {
             Some(g @ ("dangerous" | "all" | "off")) => json!(g),

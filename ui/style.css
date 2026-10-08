@@ -148,7 +148,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .btn.flex { flex: 1; }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .composer { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: flex-end; }
-.btn.send { height: 54px; min-width: 84px; padding: 0 20px; border-radius: 10px; font-size: 13.5px; }
+/* Send sits inside the box, at the end of its row with the mic and image buttons, so the box runs the
+   full width (its right edge is the terminal dock's). */
+.btn.send { height: 30px; min-width: 64px; padding: 0 14px; border-radius: 8px; font-size: 13px; margin-left: 2px; }
 .field { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); padding: 3px 4px 3px 10px; }
 .field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
 .field-row { display: flex; align-items: flex-end; gap: 4px; }
@@ -387,6 +389,33 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .btw-ask { padding: 6px 10px; }
 .btw-ask textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); color: var(--ink); font: 13px/1.4 var(--sans); outline: none; }
 .btw-ask textarea:focus { border-color: var(--accent); }
+/* The built-in terminal, docked on top of the reply box (sessions in tmux). Closed: one dark strip with
+   its screen's last line, amber while it waits on something only the terminal can answer. Open: the real
+   terminal (xterm.js) rises above the box; the chat makes room. */
+.tdock { margin: 0 12px; display: flex; flex-direction: column; border-radius: 12px 12px 0 0; overflow: hidden; background: var(--slab); color: var(--on-slab); flex: none; }
+.tstrip { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 12px; font: 600 11.5px var(--sans); color: inherit; width: 100%; text-align: left; cursor: pointer; }
+.tstrip:hover { background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
+.tstrip:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
+.tlive { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); flex: none; }
+.tlbl { flex: none; }
+.tlast { font: 11.5px var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.tchev { opacity: .8; transition: transform .2s; }
+.tdock.open .tchev { transform: rotate(180deg); }
+.tdock.waiting .tstrip { background: color-mix(in srgb, #d99a3a 32%, var(--slab)); }
+.tdock.waiting .tlive { background: #d99a3a; }
+.tslot { height: min(360px, 42vh); padding: 4px 6px 6px 10px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+.term-host { width: 100%; height: 100%; }
+.term-host .xterm-viewport { background: var(--slab) !important; }
+/* A session in a terminal app instead: where it runs, set into the reply box's top right corner (the
+   box's own corner on the outside, rounded where it meets the inside). Moss with white text in light
+   mode; lime with dark moss text in dark (the accent's own pair). */
+.tplace-btn { position: absolute; top: 0; right: 0; height: 22px; padding: 0 10px; border-radius: 0 8px 0 8px; font-size: 11px; font-weight: 650; white-space: nowrap; color: var(--on-accent); background: var(--accent); z-index: 1; }
+.tplace-btn:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-accent)); }
+.tplace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.quick:has(.tplace-btn) { padding-right: 130px; }
+/* The reply box joins the strip above it. */
+.tdock + .foot { padding-top: 0; }
+@media (prefers-reduced-motion: reduce) { .tchev { transition: none; } }
 .btw-body { overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
 .btw-q { align-self: flex-end; max-width: 85%; padding: 6px 10px; border-radius: 12px 12px 4px 12px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13px; overflow-wrap: anywhere; }
 .btw-a { font-size: 13px; line-height: 1.5; }
@@ -431,6 +460,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .nrow-acts.wrap .btn { flex: 0 1 auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .nrow.ghost { opacity: 0.6; cursor: pointer; box-shadow: none; }
 .nrow.ghost.fresh { animation: sentIn 0.25s ease; }
+/* You answered it: faded at once (it took), until Cue confirms and it becomes its ✓ row, already faded. */
+.nrow.answering { opacity: 0.6; pointer-events: none; transition: opacity 0.15s ease; }
+.nrow.ghost.fresh.soft { animation: none; }
 /* An interrupted turn: the one card state that's easy to miss and costs you the most. */
 .nrow .dim.intr { color: var(--deny); font-weight: 650; flex: none; }  /* the name truncates, not this */
 .nrow.on .dim.intr { color: var(--on-sel); text-decoration: underline; text-decoration-color: var(--deny); text-decoration-thickness: 2px; text-underline-offset: 2px; }
@@ -579,10 +611,12 @@ button.auto-tg:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; }
 button.tm-chip:hover { background: var(--panel-2); }
 .tm-chip.me { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.tm-chip.me .tm-sub { color: inherit; opacity: 0.75; }
 .tm-chip.gone { opacity: 0.6; }
 .tm-sub { font-weight: 500; color: var(--muted); }
-.tm-chip.me .tm-sub { color: inherit; opacity: 0.75; }
 .tm-chip.need .tm-sub { color: var(--deny); font-weight: 650; }
+.tm-chip.need .tm-role { color: var(--muted); font-weight: 500; }
+.tm-chip.me .tm-role { color: inherit; }
 .tm-chip .dot-live { width: 6px; height: 6px; }
 .team-card { margin: 0 16px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); padding: 9px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 .tc-h { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
@@ -660,6 +694,22 @@ button.tm-chip:hover { background: var(--panel-2); }
 .cv-you.unsent .cv-you-text { box-shadow: inset 0 0 0 1.5px var(--deny); }
 .cv-unsent { max-width: 340px; margin-top: 4px; font-size: 11.5px; line-height: 1.4; color: var(--deny); text-align: right; }
 .cv-unsent button { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+/* A "! " line in the box: the box itself says so (monospace, accent outline), not just the hint under it. */
+.field.bang, .field.bang:focus-within { background: #16171a; box-shadow: inset 0 0 0 1px #3a3c44; }
+.field.bang:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+.field.bang textarea { color: #f2f3f5; caret-color: #f2f3f5; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+.field.bang .slash-hint { color: #a3a7b3; }
+.field.bang .icon-btn { color: #8b8f99; }
+
+/* "You ran": a "!" line and what it printed, as a card from you (dark, like a terminal). */
+.cv-ran { max-width: 86%; }
+.ran-out { margin: 0; max-width: 100%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: #16171a; color: #d8dae0; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.ran-cmd { color: #fff; font-weight: 600; }
+.ran-cmd::before { content: "❯ "; color: #8b8f99; font-weight: 400; }
+.ran-dim { color: #8b8f99; }
+.nf-ran { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-top: 4px; }
+.nf-ran .cv-ran { max-width: 100%; }
 
 /* "Send now" on a queued message. */
 .q-now { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
@@ -917,7 +967,9 @@ button.tm-chip:hover { background: var(--panel-2); }
 .recent .tl { border-radius: 8px; }
 .recent .tl + .tl::after { content: ""; position: absolute; top: 0; left: 10px; right: 10px; height: 1px; background: var(--line); }
 .recent .tl.on::after, .recent .tl.on + .tl::after { display: none; }
-.recent .tl.on, .recent .tl.on:hover { background: none; box-shadow: inset 0 0 0 2px var(--sel); }
+/* The open one in a white list (Starred, Recently answered): filled lime, as the open card in Waiting is. */
+.recent .tl.on, .recent .tl.on:hover { background: var(--sel); color: var(--on-sel); box-shadow: none; }
+.recent .tl.on .dim, .recent .tl.on .tl-out { color: inherit; opacity: 0.75; }
 
 /* History: filters (kind chips + session picker), and a session's answers folded into one row. */
 .hfilter { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
@@ -993,8 +1045,16 @@ button.tm-chip:hover { background: var(--panel-2); }
 .btn.primary.sv-new { height: 32px; background: var(--panel); color: var(--ink); border-color: var(--panel); }
 /* The New session form. */
 .nf { padding: 10px 12px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); display: flex; flex-direction: column; gap: 8px; }
-.nf-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; }
+.nf-row { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px; }
 .nf-row.top { align-items: start; }
+/* Runs in: a terminal tab or tmux, and what tmux buys you. */
+.nf-where { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; }
+.nf-where .seg { flex-wrap: wrap; }
+/* Skip all: red once picked, with a plain warning beside it. */
+.seg button.danger.on { background: var(--deny); color: #fff; }
+.nf-hint.warn { color: var(--deny); font-weight: 600; }
+.nf-note { margin-top: -4px; }
+.nf-hint { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .nf-k { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .nf-row.top .nf-k { padding-top: 7px; }
 .nf-in { width: 100%; border: 0; border-radius: 8px; padding: 6px 9px; background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 500 12.5px var(--sans); outline: none; resize: vertical; }

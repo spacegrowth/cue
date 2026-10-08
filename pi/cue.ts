@@ -37,6 +37,9 @@ const DANGEROUS = [
 type Gate = "dangerous" | "all" | "off";
 
 function gateMode(): Gate {
+	// One session started with its permissions skipped (Cue's + New session → Skip all): off for it alone.
+	const own = process.env.CUE_PI_GATE;
+	if (own === "all" || own === "off" || own === "dangerous") return own;
 	try {
 		const g = JSON.parse(fs.readFileSync(path.join(CUE_HOME, "config.json"), "utf8"))?.pi?.gate;
 		if (g === "all" || g === "off" || g === "dangerous") return g;

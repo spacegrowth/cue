@@ -25,6 +25,8 @@ mod usage_file;
 mod uploads;
 mod usage;
 mod tray;
+mod term;
+mod shell;
 
 use hub::Hub;
 use model::Decision;
@@ -142,8 +144,10 @@ async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session
 /// The work behind Resume (the window's search). Blocking: it opens a terminal tab.
 pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
-    let tab = focus::open_tab_with(&focus::resume_line(&cwd, session_id)?)?;
-    let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, ..Default::default() };
+    let line = focus::resume_line(&cwd, session_id)?;
+    let name = model::project_of(&cwd);
+    let tab = if config::tmux_sessions() { focus::open_in_tmux(&line, &cwd, &name)? } else if focus::tmux_installed() { focus::open_in_tmux_tab(&line, &cwd, &name)? } else { focus::open_tab_with(&line)? };
+    let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
     h.resumed(origin, &title, &transcript::recent_context(&path, 6), false);
     Ok(serde_json::json!({ "session_id": session_id, "detail": format!("Resumed in {}", tab.what) }))
 }
@@ -459,9 +463,10 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
 /// optional first message and name. Cue picks the session id, so it knows the session at once (it
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
-async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String) -> Result<serde_json::Value, String> {
+async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    let res = tauri::async_runtime::spawn_blocking(move || start_session(&h, &agent, &cwd, &message, &name))
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default() };
+    let res = tauri::async_runtime::spawn_blocking(move || start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await
         .map_err(|e| e.to_string())?;
     // Cue stays in front: the terminal tab opened behind it.
@@ -474,6 +479,19 @@ async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: Str
 /// The work behind "+ New session": open a terminal tab in `cwd`
 /// and start `agent` there. Blocking: it types into a terminal.
 pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str) -> Result<serde_json::Value, String> {
+    start_session_with(h, agent, cwd, message, name, &StartOpts::default())
+}
+
+/// What + New session can choose beyond the folder: where it runs (None: Settings' default), how much it
+/// may do without asking, and any extra flags.
+#[derive(Default)]
+pub(crate) struct StartOpts {
+    pub tmux: Option<bool>,
+    pub perm: String,
+    pub extra: String,
+}
+
+pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
     let dir = cwd.trim();
     let dir = if let Some(rest) = dir.strip_prefix("~") { format!("{}{rest}", std::env::var("HOME").unwrap_or_default()) } else { dir.to_string() };
     if !std::path::Path::new(&dir).is_dir() {
@@ -481,9 +499,19 @@ pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str,
     }
     let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
     let asks_trust = agent == "claude" && !focus::claude_trusts(&dir);
-    let tab = focus::open_tab_with(&focus::start_line(agent, &dir, &sid, message, name)?)?;
+    let line = focus::start_line_with(agent, &dir, &sid, message, name, &opts.perm, &opts.extra)?;
+    let in_tmux = opts.tmux.map_or_else(config::tmux_sessions, |t| t && focus::tmux_installed());
+    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::project_of(&dir));
+    // In tmux either way when it's installed: "Runs in iTerm" only adds a terminal tab showing it.
+    let tab = if in_tmux {
+        focus::open_in_tmux(&line, &dir, &label)?
+    } else if focus::tmux_installed() {
+        focus::open_in_tmux_tab(&line, &dir, &label)?
+    } else {
+        focus::open_tab_with(&line)?
+    };
     if !sid.is_empty() {
-        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, ..Default::default() };
+        let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
         h.started(origin, message, asks_trust);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
@@ -495,6 +523,23 @@ pub(crate) fn start_session(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str,
 async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
     tauri::async_runtime::spawn_blocking(move || focus::press_enter(&origin)).await.map_err(|e| e.to_string())?
+}
+
+/// "!" in a box: run the rest of the line in the session's folder (or `cwd`, for the + New session box),
+/// in your shell. What it printed, its exit code and how long it took: shown as a card, never sent to the
+/// agent unless you choose to.
+#[tauri::command]
+async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String>, cwd: Option<String>, line: String) -> Result<shell::Ran, String> {
+    let dir = match session_id.filter(|s| !s.is_empty()) {
+        Some(sid) => hub.live_origin(&sid).map(|o| o.cwd).filter(|c| !c.is_empty()).ok_or("Cue doesn't know that session's folder")?,
+        None => {
+            let c = cwd.unwrap_or_default();
+            let c = c.trim();
+            if c.is_empty() { return Err("pick a folder first".into()); }
+            match c.strip_prefix('~') { Some(rest) => format!("{}{rest}", std::env::var("HOME").unwrap_or_default()), None => c.to_string() }
+        }
+    };
+    tauri::async_runtime::spawn_blocking(move || shell::run(&dir, &line)).await.map_err(|e| e.to_string())?
 }
 
 /// "By the way": a side question about a Claude Code session, answered in a panel in Cue. The session
@@ -509,6 +554,53 @@ async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: String) -> 
 #[tauri::command]
 fn set_later(hub: State<Arc<Hub>>, session_id: String, on: bool) {
     hub.set_later(&session_id, on);
+}
+
+/// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
+#[tauri::command]
+async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let pane = tmux_pane_of(&hub, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || focus::tmux_screen(&pane)).await.map_err(|e| e.to_string())?
+}
+
+/// Keys pressed in that view (↑ ↓ Enter Esc 1 2 3…). Only from your click.
+#[tauri::command]
+async fn session_keys(hub: State<'_, Arc<Hub>>, session_id: String, keys: Vec<String>) -> Result<(), String> {
+    let pane = tmux_pane_of(&hub, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || focus::tmux_keys(&pane, &keys)).await.map_err(|e| e.to_string())?
+}
+
+/// A session's tmux pane, for the commands that only work in tmux.
+fn tmux_pane_of(hub: &Hub, session_id: &str) -> Result<String, String> {
+    let pane = hub.session_origin(session_id).ok_or("that session is gone")?.tmux_pane;
+    if pane.is_empty() {
+        return Err("that session isn't in tmux".into());
+    }
+    Ok(pane)
+}
+
+/// The built-in terminal (sessions in tmux): open it at its size; its output comes as "term" events.
+#[tauri::command]
+async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, cols: u16, rows: u16) -> Result<u64, String> {
+    let pane = tmux_pane_of(&hub, &session_id)?;
+    tauri::async_runtime::spawn_blocking(move || term::open(app, &session_id, &pane, cols, rows)).await.map_err(|e| e.to_string())?
+}
+
+/// What you type in the built-in terminal.
+#[tauri::command]
+fn term_write(session_id: String, data: String) -> Result<(), String> {
+    term::write(&session_id, &data)
+}
+
+#[tauri::command]
+fn term_resize(session_id: String, cols: u16, rows: u16) -> Result<(), String> {
+    term::resize(&session_id, cols, rows)
+}
+
+/// Close it (the session keeps running).
+#[tauri::command]
+fn term_close(session_id: String) {
+    term::close(&session_id);
 }
 
 /// Star a session (you're following it), or unstar it.
@@ -639,7 +731,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![unhold_message, send_held_now, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {

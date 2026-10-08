@@ -22,6 +22,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt-multi-thread"] }
 libc = "0.2"
 base64 = "0.22"
+# The built-in terminal: a pseudo-terminal Cue attaches to a session's tmux with.
+portable-pty = "0.9"
 # Only for the optional add-on (`ext` feature).
 axum = { version = "0.8", features = ["ws"], optional = true }
 qrcode = { version = "0.14", default-features = false, features = ["svg"], optional = true }

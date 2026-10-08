@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Cue preview</title>
+  <link rel="stylesheet" href="../ui/vendor/xterm/xterm.css" />
   <link rel="stylesheet" href="../ui/style.css" />
   <!-- ?still=1: no animations, so offscreen snapshots catch the final frame -->
   <script>if (/still=1/.test(location.search)) document.write("<style>*,*::before{animation:none!important;transition:none!important}</style>");</script>
@@ -133,6 +134,14 @@
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           console.log("[cue-preview]", cmd, JSON.stringify(args));
           if (cmd === "get_state") return structuredClone(state);
+          // ?term=1: agent-relay runs in tmux; its built-in terminal shows a Claude Code permission menu.
+          if (cmd === "session_screen") return "  Do you want to proceed?\n  ❯ 1. Yes\n    2. Yes, and don't ask again\n    3. No (esc)";
+          if (cmd === "term_open") {
+            const screen = "\x1b[2m╭──────────────────────────────────────────────────────────╮\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[33mBash command\x1b[0m\r\n\x1b[2m│\x1b[0m   rm -rf build && make release\r\n\x1b[2m│\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[1mDo you want to proceed?\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[32m❯ 1. Yes\x1b[0m\r\n\x1b[2m│\x1b[0m   2. Yes, and don't ask again for rm commands here\r\n\x1b[2m│\x1b[0m   3. No, and tell Claude what to do differently (esc)\r\n\x1b[2m╰──────────────────────────────────────────────────────────╯\x1b[0m\r\n";
+            const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(screen)));
+            setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b64 } })), 150);
+            return 1;
+          }
           if (cmd === "update_check") return { current: "0.1.5" };
           // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
           if (cmd === "btw") { await new Promise((r) => setTimeout(r, 600)); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; }
@@ -188,6 +197,8 @@
       };
     })();
   </script>
+  <script src="../ui/vendor/xterm/xterm.js"></script>
+  <script src="../ui/vendor/xterm/addon-fit.js"></script>
   <script src="../ui/app.js"></script>
   <script>
     setTimeout(() => {
@@ -243,6 +254,25 @@
       if (/type=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.value = "half-written reply, kept across restarts"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
       if (/send=1/.test(q)) setTimeout(() => { const ta = document.querySelector(".active-pane textarea"); ta.value = "carry it over to the successor"; ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".active-pane .btn.send").click(); }, 100);
       if (/allow=1/.test(q)) setTimeout(() => document.querySelector(".active-pane [data-act=allow]")?.click(), 100);
+      // ?term=1: agent-relay is in tmux (&open=term: its terminal open; &wait=1: waiting in it).
+      if (/term=1/.test(q)) {
+        const r = state.sessions.find((x) => x.session_id === "relay");
+        if (r) r.tmux_pane = "%1";
+        if (/wait=1/.test(q)) state.items.unshift({ id: "tw", kind: "terminal", harness: "claude", session_id: "relay", cwd: r.cwd, project: "agent-relay", message: "Waiting in its terminal: approve Bash", context: [], created_ms: Date.now() - 60000, status: "pending", outcome: "" });
+        termLast.set("relay", /wait=1/.test(q) ? "❯ 1. Yes   2. Yes, and don't ask again   3. No (esc)" : "✻ Baking… (12s) · Bash(make release)");
+        setActive(null, "relay");
+        if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
+      }
+      // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
+      if (/new=1/.test(q)) setTimeout(() => {
+        state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };
+        agentsAvail = ["claude", "codex", "pi"];
+        const p = new URLSearchParams(q);
+        if (p.get("agent")) newAgent = p.get("agent");
+        if (p.get("perm")) newPerm = p.get("perm");
+        liveSpot = true;
+        lvAct("new", {});
+      }, 100);
     }, 300);
   </script>
 </body>

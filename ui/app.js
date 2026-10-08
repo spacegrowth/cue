@@ -15,7 +15,9 @@ let activeKey = null;       // last rendered Active target + message count, to s
 let menuFor = null;         // decision card whose "Always…" menu is open
 let redirectFor = null;     // decision card showing its "tell it instead" field
 const cleared = new Set();  // finished turns you cleared here (their fading row says so)
-const ghosts = new Map();   // id -> { it, at }: just-answered rows that linger in Waiting
+const ghosts = new Map();   // id -> { it, at, h }: just-answered rows that linger in Waiting (h: the card's height before)
+let folding = false;        // a ✓ row is folding away: redraws wait, or they'd pop it back mid-fold
+const answering = new Map(); // id -> when you answered it here: it fades at once, and folds LINGER_MS after that
 const openMsgs = new Set(); // older agent messages unfolded in the Active chat
 const openFollow = new Set();  // cards whose "After a stop hook" is expanded
 let dictating = null;       // { key, base, stopping } — the text box you're dictating into, and what it held before
@@ -160,13 +162,14 @@ function exState(e) {
   if (e.status === "busy") return { word: "working", cls: "busy" };
   return { word: { stalled: "stalled", closed: "closed", superseded: "replaced", dead: "gone" }[e.status] || e.status || "", cls: "" };
 }
-/** Under the chat's header, lead's or executor's: the whole team, this one lit; a chip opens that chat. */
+/** Under the chat's header, lead's or executor's: the whole team, this one lit; each chip ends with its role
+ *  (lead / exec); a chip opens that chat. */
 function teamBar(sid) {
   const t = teamOf(sid);
   if (!t) return "";
   const chip = (id, name, word, cls) => {
     const me = id === sid, go = !me && sessionOf(id);
-    return `<${go ? "button" : "span"} class="tm-chip ${cls} ${me ? "me" : ""}" ${go ? `data-session="${esc(id)}"` : ""}>${cls === "busy" ? `<span class="dot-live"></span>` : ""}${esc(name)}${word ? ` <span class="tm-sub">${esc(word)}</span>` : ""}</${go ? "button" : "span"}>`;
+    return `<${go ? "button" : "span"} class="tm-chip ${cls} ${me ? "me" : ""}" ${go ? `data-session="${esc(id)}"` : ""}>${cls === "busy" ? `<span class="dot-live"></span>` : ""}${esc(name)}${word ? ` <span class="tm-sub">${esc(word)}</span>` : ""}${cls !== "lead" ? ` <span class="tm-sub tm-role">exec</span>` : ""}</${go ? "button" : "span"}>`;
   };
   const lead = sessionOf(t.lead) || t.lead === sid ? chip(t.lead, t.leadName, "lead", "lead") : `<span class="tm-chip gone">${esc(t.leadName)} <span class="tm-sub">lead · not running</span></span>`;
   return `<div class="team-bar"><span class="tm-label">${crewDot(sid)}${esc(t.leadName)}${/s$/i.test(t.leadName) ? "'" : "'s"} team</span>${lead}${t.ex.map((e) => { const st = exState(e); return chip(e.session_id, e.name, st.word, st.cls); }).join("")}</div>`;
@@ -439,9 +442,15 @@ function toast(msg) {
 }
 
 // ---------- actions ----------
+/** You answered a card: it fades right away (so you know it took), before Cue confirms. Undone if it didn't go. */
+function answered(id, on = true) {
+  on ? answering.set(id, Date.now()) : answering.delete(id);
+  renderMain();
+}
 async function respond(it, decision) {
-  const ok = await invoke("respond", { id: it.id, decision });
-  if (!ok) toast("Already answered somewhere else");
+  answered(it.id);
+  const ok = await invoke("respond", { id: it.id, decision }).catch(() => false);
+  if (!ok) { answered(it.id, false); toast("Already answered somewhere else"); }
   delete drafts[it.id];
   menuFor = redirectFor = null;
 }
@@ -489,6 +498,34 @@ function pick(it, qi, oi) {
  * and it settles to "Sent · via …" once delivered. On failure the text goes back in the box.
  */
 const outbox = [];          // { sid, text, images, at, via } until the session's thread shows it
+// ---------- "!": a shell line Cue runs for you, in the session's folder, shown as a card (shell.rs) ----------
+// Never sent to the agent: the card offers that. For the + New session box, in its folder ("new").
+const ranLog = new Map();   // sid | "new" -> [{ line, cwd, output, code, ms, at, running, err }]: this window's, oldest first
+// "! " (a space after it) makes it one; "!!!" or "!important" is still a message.
+const isBang = (text) => /^!\s+\S/.test(text.trimStart());
+/** Already a "!" line as you type it (the hint and the Run button show once you've typed "! "). */
+const bangTyped = (text) => /^!\s/.test(text.trimStart());
+async function runLine(who, line, cwd = null) {
+  line = line.replace(/^\s*!\s+/, "").trim();
+  if (!line) return;
+  const log = ranLog.get(who) || ranLog.set(who, []).get(who);
+  const e = { line, cwd: cwd || sessionOf(who)?.cwd || "", output: "", code: 0, ms: 0, at: now(), running: true, err: null };
+  log.push(e);
+  renderMain();
+  try {
+    const r = await invoke("run_line", who === "new" ? { cwd, line } : { sessionId: who, line });
+    Object.assign(e, r, { running: false });
+  } catch (x) { e.err = String(x); e.running = false; }
+  renderMain();
+}
+/** The card: the line, what it printed, and what to do with it. */
+function ranCard(who, e, n) {
+  const status = e.running ? `<span class="dot-live"></span>Running…` : e.err ? esc(e.err) : `${e.timed_out ? "stopped after 2 min" : e.code === 0 ? "ok" : `exit ${e.code}`} · ${e.ms < 1000 ? `${e.ms} ms` : `${(e.ms / 1000).toFixed(1)} s`}`;
+  const acts = e.running || e.err ? "" : ` · <button class="q-now" data-act="ran-again" data-who="${esc(who)}" data-n="${n}">Run again</button>${who !== "new" ? ` · <button class="q-now" data-act="ran-send" data-who="${esc(who)}" data-n="${n}" title="The line and what it printed, as your message">Send to ${esc(agentName(sessionOf(who)?.harness))}</button> · <button class="q-now" data-act="ran-term" data-who="${esc(who)}" data-n="${n}" title="Types it into the session's terminal, as a “!” line, for a command that needs one">Run in its terminal</button>` : ""}`;
+  return `<div class="cv-you cv-ran"><pre class="ran-out"><span class="ran-cmd">${esc(e.line)}</span>${e.output ? `\n${esc(e.output)}` : e.running || e.err ? "" : `\n<span class="ran-dim">(no output)</span>`}</pre><div class="cv-meta">You ran · in ${esc(homeless(e.cwd))} · ${status}${acts}</div></div>`;
+}
+/** The line and its output, as a message: what you checked becomes context for the agent. */
+const ranAsMessage = (e) => `I ran \`${e.line}\` in ${homeless(e.cwd)}${e.code ? ` (exit ${e.code})` : ""}:\n\`\`\`\n${e.output || "(no output)"}\n\`\`\``;
 async function deliver(sid, key, call) {
   endDictation(key);
   if (isParked(sid) && (draft(key).text.trim() || draft(key).images.length)) setParked(sid, false);   // you replied: decided
@@ -497,6 +534,8 @@ async function deliver(sid, key, call) {
   // "/btw …": a side question, in its panel (the session never sees it).
   const bt = /^\/btw(?:\s+([\s\S]*))?$/.exec(text);
   if (bt && sessionOf(sid)?.harness === "claude") { delete drafts[key]; return openBtw(sid, bt[1] || ""); }
+  // "! …": a shell line, run by Cue in the session's folder (the card offers to send it on).
+  if (isBang(text) && !d.images.length) { delete drafts[key]; return runLine(sid, text); }
   if (!text && !d.images.length) return;
   // " /…" (a leading space) is a message that starts with a slash; "/…" is a command. Keep the space.
   const typed = text.startsWith("/") && /^\s/.test(d.text) ? ` ${text}` : text;
@@ -564,7 +603,113 @@ function btwPanel(sid) {
     <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="Ask without interrupting it…  ↵" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
     <div class="btw-body">${rows || `<div class="dim btw-empty">A copy of this conversation answers, so the session never sees it. Each question costs about one turn.</div>`}</div></div>`;
 }
-const reply = (it) => deliver(it.session_id, `s:${it.session_id}`, (text, images) => invoke("reply", { id: it.id, text, images }));
+// ---------- the built-in terminal: a session's real screen, docked above its reply box (sessions in tmux) ----------
+/** Closed: one strip showing its screen's last line, amber while it waits on something only the terminal
+ *  can answer. Open: xterm.js draws the real terminal, streamed from a tmux client of Cue's own (term.rs),
+ *  and what you type goes straight to it. Its element lives outside the redraws: each one puts it back. */
+const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane;
+let termSid = null;            // whose terminal is open
+let termGen = 0;               // which opening its output belongs to (0: not known yet)
+let termObj = null, termFit = null, termHost = null, termWatch = null;
+const termLast = new Map();    // sid -> its screen's last line, for the closed strip
+const waitsInTerminal = (sid) => state.items.some((i) => i.session_id === sid && inTerminal(i));
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/** The terminal app a session runs in, by name (from what its hooks reported). */
+function termAppName(s) {
+  const t = s?.term_program || "";
+  return { "iTerm.app": "iTerm", Apple_Terminal: "Terminal", WezTerm: "WezTerm", ghostty: "Ghostty", vscode: "VS Code", kitty: "kitty" }[t] || (s?.kitty_window_id ? "kitty" : s?.wezterm_pane ? "WezTerm" : "its terminal");
+}
+/** Where a session runs, set into its reply box's top right corner: a terminal app's (a click goes to its
+ *  tab), or Cue's own (a click opens its terminal above the box, as the strip does). */
+function placeTab(sid) {
+  const s = sid && sessionOf(sid);
+  if (!s) return "";
+  // In Cue: the same corner opens (or closes) its terminal above the box.
+  if (inTmux(sid)) return `<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">Runs in Cue <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button>`;
+  return `<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Runs in ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button>`;
+}
+/** "Open in iTerm ↗": where a terminal-app session's own tab is, for the places that have no reply box. */
+const openInLabel = (s) => `Open in ${esc(s ? termAppName(s) : "its terminal")} <span aria-hidden="true">↗</span>`;
+function termDock(sid) {
+  if (!sid) return "";
+  if (!inTmux(sid)) return "";   // where it runs instead: a tab on its reply box (placeTab)
+  const open = termSid === sid, waiting = waitsInTerminal(sid);
+  return `<div class="tdock ${open ? "open" : ""} ${waiting ? "waiting" : ""}">
+    <button class="tstrip" data-act="term" data-sid="${esc(sid)}" aria-expanded="${open}" title="${open ? "Close" : "Open"} its terminal (⌃\`)"><span class="tlive"></span><span class="tlbl">${waiting ? "Waiting in its terminal" : "Terminal"}</span><span class="tlast">${esc(termLast.get(sid) || "")}</span><span class="tchev">▴</span></button>
+    ${open ? `<div class="tslot" data-term-slot></div>` : ""}</div>`;
+}
+async function openTerm(sid) {
+  if (!inTmux(sid)) return;
+  if (termSid) closeTerm(true);
+  termSid = sid;
+  termGen = 0;
+  renderMain();                     // the slot appears
+  const slot = document.querySelector("[data-term-slot]");
+  if (!slot || typeof Terminal === "undefined") { termSid = null; return renderMain(); }
+  termHost = document.createElement("div");
+  termHost.className = "term-host";
+  slot.appendChild(termHost);
+  termObj = new Terminal({
+    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    theme: { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" },
+  });
+  termFit = new FitAddon.FitAddon();
+  termObj.loadAddon(termFit);
+  termObj.open(termHost);
+  try { termFit.fit(); } catch {}
+  termObj.onData((d) => { if (termSid) invoke("term_write", { sessionId: termSid, data: d }).catch(() => {}); });
+  termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); });
+  termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
+  termWatch.observe(termHost);
+  termObj.focus();
+  try {
+    const gen = await invoke("term_open", { sessionId: sid, cols: termObj.cols, rows: termObj.rows });
+    if (termSid === sid) termGen = gen;
+  } catch (e) { toast(`Couldn't open its terminal: ${e}`); if (termSid === sid) closeTerm(); }
+}
+/** Close it (the session keeps running in tmux). `quiet`: no redraw, another opening follows. */
+function closeTerm(quiet = false) {
+  const sid = termSid;
+  termSid = null;
+  termGen = 0;
+  termWatch?.disconnect();
+  termObj?.dispose();
+  termHost?.remove();
+  termWatch = termObj = termFit = termHost = null;
+  if (sid) invoke("term_close", { sessionId: sid }).catch(() => {});
+  if (!quiet) renderMain();
+}
+function onTermOutput(p) {
+  if (p.sid !== termSid || (termGen && p.gen !== termGen)) return;
+  if (p.end) return closeTerm();
+  termObj?.write(Uint8Array.from(atob(p.data), (c) => c.charCodeAt(0)));
+}
+/** After a redraw: the terminal back in its slot, sized, and focused again if it had the keyboard. */
+function placeTerm(hadFocus) {
+  if (!termHost) return;
+  const slot = document.querySelector("[data-term-slot]");
+  if (!slot) return;
+  if (termHost.parentNode !== slot) slot.appendChild(termHost);
+  try { termFit?.fit(); } catch {}
+  if (hadFocus) termObj?.focus();
+}
+/** The closed strip's line: the open session's screen, every 2 s (its last line with anything on it). */
+setInterval(async () => {
+  const sid = active?.sid;
+  if (!sid || document.hidden || termSid === sid || !inTmux(sid)) return;
+  try {
+    const screen = await invoke("session_screen", { sessionId: sid });
+    const last = (screen.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 200);
+    if (termLast.get(sid) === last) return;
+    termLast.set(sid, last);
+    const el = document.querySelector(`.tstrip[data-sid="${CSS.escape(sid)}"] .tlast`);
+    if (el) el.textContent = last;
+  } catch {}
+}, 2000);
+const reply = (it) => deliver(it.session_id, `s:${it.session_id}`, (text, images) => {
+  answered(it.id);
+  return invoke("reply", { id: it.id, text, images }).catch((e) => { answered(it.id, false); throw e; });
+});
 /** The text field: a reply on a finished card, "do this instead" on a permission, your own answer on a question. */
 /** Dictation: the mic in a text box. Your words land in the box as you talk (after anything already
  *  typed); click the mic again, or send, to stop. Apple's on-device recognition, via cue-listen. */
@@ -605,6 +750,7 @@ function submitText(it) {
   const text = draft(it.id).text.trim();
   if (it.kind === "waiting") return reply(it);
   if (!text) return;
+  if (isBang(text)) { delete drafts[it.id]; return runLine(it.session_id, text); }
   if (it.kind === "question") {
     const qs = questions(it);
     if (qs.length <= 1) return respond(it, { behavior: "allow", answers: Object.fromEntries(qs.map((q) => [q.question, text])) });
@@ -661,7 +807,11 @@ function sent(sid, text, images, via) {
 
 async function goTo(it) {
   try { toast(`Jumped to ${await invoke("focus_session", { id: it.id })}`); }
-  catch (e) { toast(`Couldn't jump: ${e}`); }
+  catch (e) {
+    // A "Runs in Cue" session has no tab: its terminal is the one here.
+    if (inTmux(it.session_id)) { setActive(it.id); return openTerm(it.session_id); }
+    toast(`Couldn't jump: ${e}`);
+  }
 }
 async function setSetting(key, value) {
   try { await invoke("set_setting", { key, value }); } catch (e) { toast(`Couldn't save: ${e}`); }
@@ -914,6 +1064,7 @@ function cmdOf(key) {
 /** Under the box: what the command does, or that it isn't one here (with Send as a message). */
 function slashHint(key) {
   const t = draft(key).text;
+  if (bangTyped(t)) { const c = sessionOf(sidOfKey(key))?.cwd; return `<div class="slash-hint"><b>!</b> Cue runs this in ${esc(homeless(c || draft("new-cwd").text || "the folder"))}, in your shell. The agent doesn't see it unless you send it the result.</div>`; }
   if (!t.startsWith("/") || cmdMatches(key).length || cmdLists.get(sidOfKey(key)) === null) return `<div class="slash-hint" hidden></div>`;
   const c = cmdOf(key), name = t.slice(1).split(/\s/)[0];
   const asText = `<button data-astext="${esc(key)}">Send as a message instead</button>`;
@@ -928,6 +1079,10 @@ function refreshCmd(key) {
   const menu = f.querySelector(".cmd-slot");
   if (menu) menu.innerHTML = cmdMenu(key);
   f.querySelector(".slash-hint")?.replaceWith(document.createRange().createContextualFragment(slashHint(key)));
+  // The button beside it says Run for a "!" line (and its own word again once that's gone).
+  f.classList.toggle("bang", bangTyped(draft(key).text));
+  const btn = f.querySelector(".btn.send");
+  if (btn) { btn.dataset.label ??= btn.textContent; btn.textContent = bangTyped(draft(key).text) ? "Run" : btn.dataset.label; }
   f.querySelector(".cmd-row.on")?.scrollIntoView({ block: "nearest" });
 }
 /** Pick a command: Tab or a click puts "/name " in the box for its arguments; Enter runs it. One with
@@ -946,7 +1101,11 @@ function pickCmd(key, name, run) {
 }
 /** Quick phrases (Settings → Quick phrases): chips that send their text, after anything typed in the box. */
 const phrases = () => state.settings?.quick?.phrases || [];
-const quickRow = (attrs) => phrases().length ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}</div>` : "";
+/** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
+const quickRow = (attrs, sid = "") => {
+  const place = placeTab(sid);
+  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
+};
 /** Settings → Quick phrases as you type them (redraws keep them); saved when you leave a field. */
 let qpEdit = null;
 const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
@@ -955,13 +1114,14 @@ const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
 function box(key, placeholder, label, sendAttrs, images) {
   const d = draft(key);
   const ready = d.text.trim() || (images && d.images.length);
+  if (bangTyped(d.text) && !d.images.length) label = "Run";
   const chips = images && d.images.length ? `<div class="chips">${d.images.map((im, n) => `<span class="chip"><button class="chip-img" data-draft-lightbox="${esc(key)}:${n}" aria-label="Open ${esc(im.name)}"><img src="${im.data}" alt="${esc(im.name)}"/></button><button class="chip-x" data-unattach="${esc(key)}:${n}" aria-label="Remove image">×</button></span>`).join("")}${d.images.length > 1 ? `<span class="chip-count">${d.images.length} images</span>` : ""}</div>` : "";
-  // The send button sits outside the box, as tall as it, so typing never crowds it.
-  return `<div class="composer"><div class="field ${images ? "drop" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`) : ""}${chips}<div class="field-row">
+  // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
+  return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
     <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
-    ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}</div>${slashHint(key)}</div>
-    <button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>`;
+    ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
+    <button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
 }
 // A finished turn's box is the session's box: one draft per session, whichever card shows it.
 /** What the Active pane shows, in the drop-down lists (where lime is the keyboard highlight). */
@@ -1008,9 +1168,11 @@ function whyLine(it) {
   return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"} title="${esc(c.text)}">Why: ${esc(firstLine(c.text))}</div>` : "";
 }
 function decisionButtons(it) {
-  if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">Go to tab</button></div>`;
+  if (inTerminal(it) && inTmux(it.session_id) && termSid === it.session_id) return `<div class="row-btns"><span class="dim">Answer it in the terminal above.</span></div>`;
+  if (inTerminal(it) && inTmux(it.session_id)) return `<div class="row-btns"><span class="dim">It's waiting in its terminal: answer it there.</span><span class="grow"></span><button class="btn primary" data-act="term-open" data-sid="${esc(it.session_id)}">Answer in terminal</button></div>`;
+  if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 && questions(it).filter((q) => !isAnswered(it, q)).length > 1 ? "Next" : "Send") : "Redirect")}</div>`;
-  if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button><span class="grow"></span><button class="btn" data-act="go" data-id="${esc(it.id)}">Tab</button></div>`;
+  if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button></div>`;
   const sugg = it.suggestions || [];
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
   return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">Deny</button>
@@ -1095,6 +1257,7 @@ function setActive(id, sid, exact = false) {
   quietOpen = null;
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
   seenSession(active.sid);
+  if (termSid && termSid !== active.sid) closeTerm(true);
   loadSteps(active.sid);   // now, not on the next tick
   sheet = menuFor = redirectFor = btwFor = null;
   renderMain();
@@ -1372,6 +1535,7 @@ function chatHtml(it, s, harness, paged = false) {
   const sid = s?.session_id || it?.session_id;
   // What you chose on a decision sits in the chat when you chose it (later steps come below it).
   const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: resultLine(it) }] : [];
+  const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: ranCard(sid, e, n) })) : [];
   const rows = withSteps(sid, s, ex, ex.map((e, n) => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
@@ -1381,7 +1545,7 @@ function chatHtml(it, s, harness, paged = false) {
       // "queued via iTerm session: it reads this…" read as "via queued via…": say it plainly.
       const via = !how ? "" : /^queued/.test(how) ? " · queued, it reads this at its next step" : ` · via ${esc(how)}`;
       // Typed into its terminal, but it never became a message: say so where you'll see it.
-      const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box. ${sid ? `<button data-act="go-session" data-sid="${esc(sid)}">Go to tab</button>` : ""}</div>` : "";
+      const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-msg="${esc(e.text)}">Send again</button>` : ""}</div>` : "";
       return `<div class="cv-you ${e.unsent ? "unsent" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}</div>${unsent}</div>`;
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
@@ -1392,21 +1556,21 @@ function chatHtml(it, s, harness, paged = false) {
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
-  }), chose);
+  }), chose.concat(ran));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}" title="Stops its turn and sends this now">Send now</button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
-  return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
+  return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
 const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
 /** One line under the chat: where the session is now. */
 function statusLine(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
-  if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}" title="Answers “Yes, I trust this folder” in its terminal">Trust folder</button><button class="btn small" data-act="go-session" data-sid="${esc(s.session_id)}">Go to tab</button></div>`;
+  if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}" title="Answers “Yes, I trust this folder” in its terminal">Trust folder</button></div>`;
   // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
-  if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span><button class="btn small" data-act="go-session" data-sid="${esc(s.session_id)}">Go to tab</button></div>`;
+  if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span></div>`;
   // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.
   if (s?.compacting_ms) return `<div class="cv-status"><span class="dot-live"></span>Compacting: summarizing the conversation to free up context<span class="dim"> · <span data-ago="${s.compacting_ms}">${ago(s.compacting_ms)}</span></span></div>`;
   // It finished compacting (until the next turn starts).
@@ -1496,7 +1660,7 @@ function quietPane() {
   const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane ${busy ? "busy" : ""}">
     <div class="ap-head">${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
-      <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">Go to tab</button></div>
+      <button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
     ${subHead(q.cwd, "", "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
     <div class="ap-chat" data-chat>${chat || `<div class="dim cv-empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`}</div></div>`;
@@ -1554,7 +1718,6 @@ function activePane() {
       ${sid ? moreMenu(sid, s) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
-      ${sid ? `<button class="btn" data-act="go-session" data-sid="${esc(sid)}" title="Go to its terminal tab">${lbl("Go to tab", "Tab")}</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
     ${btwPanel(sid)}
     ${subHead(s?.cwd || it?.cwd, "", sid)}
@@ -1562,7 +1725,7 @@ function activePane() {
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey()}</div>` : ""}
     <div class="ap-chat" data-chat>${chatHtml(it, s, harness, true)}${statusLine(it, s)}</div>
     ${pending ? "" : nextBar()}
-    ${foot}</div>`;
+    ${termDock(sid)}${foot}</div>`;
 }
 
 /** × on a finished turn: nothing to reply, take it off Waiting. Decisions don't get one (the agent is blocked on them). */
@@ -1583,17 +1746,17 @@ function laterRow({ sid, s, it }) {
 function needRow(it, ghost, open = false) {
   if (ghost) {
     const h = state.history.find((x) => x.id === it.id);
-    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}</div>
+    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}</div>
       <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : "picked up in the terminal")}</div></div>`;
   }
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
-  else if (inTerminal(it)) quick = `<div class="nrow-acts"><button class="btn primary" data-act="go" data-id="${esc(it.id)}">Go to tab</button></div>`;
+  else if (inTerminal(it)) quick = `<div class="nrow-acts">${inTmux(it.session_id) ? `<button class="btn primary" data-act="term-card" data-id="${esc(it.id)}">Answer in terminal</button>` : `<button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
   else if (q.length === 1 && !q[0].multiSelect && (q[0].options || []).length <= 4) quick = `<div class="nrow-acts wrap">${q[0].options.map((o, oi) => `<button class="btn" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(o.label)}</button>`).join("")}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
-  return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"}" data-big="${esc(it.id)}">
+  return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
     <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
@@ -2029,7 +2192,7 @@ function recentFolders() {
 }
 function liveChip() {
   const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length;
-  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session, and + New (⌘K, ⌘L)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
+  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
 }
 // ---------- ★ in the header: the sessions you starred, and which of them need you ----------
 let starOpen = false;              // its list is open
@@ -2075,7 +2238,7 @@ function livePop(rows) {
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip ? `title="${esc(tip)}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}<span class="lv-acts">${main}<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}">Tab</button></span></div>`;
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip ? `title="${esc(tip)}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}<span class="lv-acts">${main}</span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -2085,12 +2248,22 @@ function livePop(rows) {
   const list = ordered
     .map(([cwd, rs]) => `<div class="lv-group"><div class="lv-ghead"><span>${esc(baseName(cwd) || "(no folder)")}</span><span class="sx-branch">${esc(state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`).join("");
   return `<div class="lv-pop">
-    <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new">+ New</button></div>
+    <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
     ${newOpen ? newForm() : ""}
     <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div>
     <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>${liveSpot ? "⌘K" : "⌘L"}</kbd> open / close</span></div></div>`;
 }
 /** + New session: agent, folder (recent ones offered), an optional first message, and (Claude) a name. */
+/** + New session: how much it may do without asking, per agent (Rust turns these into its flags). */
+const PERMS = {
+  claude: [["ask", "Ask"], ["auto", "Auto"], ["edits", "Accept edits"], ["plan", "Plan"], ["skip", "Skip all"]],
+  codex: [["ask", "Ask"], ["edits", "Edits in folder"], ["skip", "Skip all"]],
+  pi: [["ask", "Ask"], ["skip", "Skip all"]],
+};
+let newPerm = "ask";
+let newWhere = null;   // this session: tmux or not (null: Settings' default)
+const newTmux = () => newWhere ?? !!state.settings?.sessions?.tmux;
+const termName = () => state.settings?.sessions?.terminal || "Terminal";
 function newForm() {
   const agents = agentsAvail || ["claude"];
   if (!agents.includes(newAgent)) newAgent = agents[0];
@@ -2100,8 +2273,11 @@ function newForm() {
     <div class="nf-row"><span class="nf-k">Folder</span><input class="nf-in mono" data-text="new-cwd" list="nf-folders" placeholder="~/development/…" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>
       <datalist id="nf-folders">${folders.map((f) => `<option value="${esc(homeless(f))}"></option>`).join("")}</datalist></div>
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
-    <div class="nf-row top"><span class="nf-k">Message</span><textarea class="nf-in" data-text="new-msg" rows="2" placeholder="optional: what it should start on">${esc(draft("new-msg").text)}</textarea></div>
-    <div class="nf-acts"><button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">Start ${esc(agentName(newAgent))}</button></div></div>`;
+    <div class="nf-row top"><span class="nf-k">Message</span><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on">${esc(draft("new-msg").text)}</textarea></div>
+    ${state.settings?.sessions?.tmux_installed ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""}" data-lv="where" data-tmux="${v}">${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
+    <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you, for this session only</span></div>` : ""}
+    <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --model opus" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
+    <div class="nf-acts"><button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>${(ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : ""}</div>`;
 }
 /** ↓ / ↑ in the drop-down: move the highlight, keeping it in view. */
 function stepLive(by) {
@@ -2138,18 +2314,23 @@ async function lvAct(act, d) {
     renderMain();
     return document.querySelector('[data-text="new-msg"]')?.focus();
   }
-  if (act === "agent") { newAgent = d.agent; return renderMain(); }
+  if (act === "agent") { newAgent = d.agent; if (!PERMS[newAgent].some(([v]) => v === newPerm)) newPerm = "ask"; return renderMain(); }
+  if (act === "where") { newWhere = d.tmux === "true"; return renderMain(); }
+  if (act === "perm") { newPerm = d.perm; return renderMain(); }
   if (act === "cancel") { newOpen = false; return renderMain(); }
   if (act === "start") {
     const cwd = draft("new-cwd").text.trim();
     if (!cwd) return toast("Pick a folder first");
+    if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
     try {
-      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "" });
+      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra: draft("new-flags").text });
       toast(r.detail);
-      draft("new-msg").text = draft("new-name").text = "";
+      draft("new-msg").text = draft("new-name").text = draft("new-flags").text = "";
+      newPerm = "ask";   // skipping permissions is for that one session, never carried over
+      newWhere = null;
       newOpen = liveOpen = false;
-      // Cue knows the new session already (it picked the id): open it here; its terminal tab stays behind.
-      if (r.session_id) return setActive(null, r.session_id);
+      // Cue knows the new session already (it picked the id): open it here, with its terminal when it runs in Cue.
+      if (r.session_id) { setActive(null, r.session_id); if (inTmux(r.session_id)) openTerm(r.session_id); return; }
       renderMain();
     } catch (e) { toast(`Couldn't start it: ${e}`); }
   }
@@ -2221,7 +2402,6 @@ function svActs(r) {
   if (r.it) acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`);
   if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff") + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
   if (!r.it && (!r.quiet || r.harness === "claude") && !r.ghost) acts.push(`<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>`);
-  if (!r.ghost) acts.push(`<button class="btn" data-sv="tab" data-sid="${esc(r.sid)}" title="Go to its terminal tab">Tab</button>`);
   if (svClosable(r)) acts.push(closeBtn(r.sid));
   return acts.join("");
 }
@@ -2462,6 +2642,7 @@ function settingsSheet() {
     ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
     ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}
     <div class="set-group">Look</div>
+    ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
     <div class="set-group">Quick phrases</div>
     ${setRow("Above the text box", `Click one to send it, after anything you've typed in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
@@ -2514,7 +2695,7 @@ function flipPlay(from) {
 }
 function renderMain() {
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
-  if (dragSelecting()) { heldDraw = true; return; }
+  if (dragSelecting() || folding) { heldDraw = true; return; }
   const focused = document.activeElement;
   const flipFrom = flipRects();
   const focusKey = focused?.dataset?.text;
@@ -2538,6 +2719,13 @@ function renderMain() {
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   flipPlay(flipFrom);
+  // A card just answered: its ✓ row eases from the card's height down to its own.
+  for (const el of document.querySelectorAll(".nrow.ghost.fresh")) {
+    const g = ghosts.get(el.dataset.detail);
+    if (!g?.h || matchMedia("(prefers-reduced-motion: reduce)").matches) continue;
+    const to = el.offsetHeight;
+    if (Math.abs(g.h - to) > 2) el.animate([{ height: `${g.h}px`, overflow: "hidden" }, { height: `${to}px`, overflow: "hidden" }], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
   placeForward();
   saveSpot();
   // A new selection whose card is scrolled out of its column (under Recently answered, or above):
@@ -2603,6 +2791,7 @@ function renderMain() {
   // By the way's panel drops from just under the chat's header (whatever height that has now).
   const bp = document.querySelector(".btw-pop"), ah = document.querySelector(".ap-head");
   if (bp && ah) bp.style.top = `${ah.offsetTop + ah.offsetHeight + 2}px`;
+  placeTerm(!!termHost && termHost.contains(focused));
   showCopied();
   fitTop();
 }
@@ -2726,13 +2915,24 @@ function openFromChip(kind, dir = 1) {
 }
 
 /** Text boxes grow with their content, up to ~8 lines, then scroll. */
+const BOX_MAX = 180;   // the text box's tallest (px); past it, it scrolls (style.css says the same)
 function grow(el) {
+  // Already as tall as it gets and still overflowing: nothing to measure. (Measuring collapses it for a
+  // moment, which moved what you were reading and jolted the chat above on every key in a long message.)
+  if (el.clientHeight >= BOX_MAX - 1 && el.scrollHeight > el.clientHeight) {
+    if (el.selectionEnd >= el.value.length) el.scrollTop = el.scrollHeight;   // typing at the end: the end in view
+    return;
+  }
   // Growing the box shrinks the chat above it. If you were reading the end of the chat, keep the
   // end in view (the conversation moves up with the box) instead of letting the box cover it.
   const chat = el.closest(".active-pane")?.querySelector("[data-chat]");
   const pinned = chat && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 24;
+  const top = el.scrollTop, atEnd = el.selectionEnd >= el.value.length;
   el.style.height = "auto";
-  el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  el.style.height = `${Math.min(el.scrollHeight, BOX_MAX)}px`;
+  // The moment collapsed resets where it was scrolled (WebKit doesn't always put it back): with the cursor
+  // at the end, the end stays in view; else where you were.
+  el.scrollTop = atEnd ? el.scrollHeight : top;
   if (pinned) chat.scrollTop = chat.scrollHeight;
 }
 const picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", multiple: true, hidden: true });
@@ -2963,7 +3163,7 @@ function bindMain() {
     if (starOpen && !t.closest(".st-wrap")) { starOpen = false; renderMain(); }
     if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = false; renderMain(); }
     const tr = t.closest("[data-act=trust]");
-    if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Use Go to tab.`)); return; }
+    if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Answer it in its terminal.`)); return; }
     const goS = t.closest("[data-act=go-session]");
     if (goS) { invoke("focus_session_id", { sessionId: goS.dataset.sid }).then((r) => toast(`Jumped to ${r}`)).catch((e) => toast(`Couldn't jump: ${e}`)); return; }
     const ss = t.closest("[data-session]");
@@ -3004,6 +3204,14 @@ function bindMain() {
       if (act === "allow") return allow(it);
       if (act === "deny") return deny(it);
       if (act === "send") return submitText(it);
+      if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.msg, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
+    if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
+        const who = t.dataset.who, e = (ranLog.get(who) || [])[+t.dataset.n];
+        if (!e) return;
+        if (act === "ran-again") return runLine(who, e.line, e.cwd);
+        if (act === "ran-send") return invoke("send_to_session", { sessionId: who, text: ranAsMessage(e), images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
+        return invoke("send_to_session", { sessionId: who, text: `! ${e.line}`, images: [], now: false }).then(() => toast("Typed into its terminal")).catch((x) => toast(`Couldn't: ${x}`));
+      }
       if (act === "commit") return invoke("reply", { id: it.id, text: "Commit", images: [] }).then((r) => toast(`“Commit” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "continue") return invoke("reply", { id: it.id, text: "continue", images: [] }).then((r) => toast(`“continue” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "go") return goTo(it);
@@ -3058,6 +3266,14 @@ function bindMain() {
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
   document.addEventListener("keydown", (e) => {
+    // ⌃`: the open session's terminal, open or closed (from inside it too).
+    if (e.ctrlKey && e.key === "`") {
+      e.preventDefault();
+      if (termSid) return closeTerm();
+      return active?.sid && inTmux(active.sid) ? openTerm(active.sid) : undefined;
+    }
+    // Inside the terminal every key is the terminal's (Esc included); only ⌘ shortcuts stay Cue's.
+    if (e.target.closest?.(".term-host") && !e.metaKey) return;
     // The "/" menu under a box: arrows move, Tab fills, Enter runs, Esc closes it.
     const mk = e.target.dataset?.text;
     if (mk && !e.isComposing && ["ArrowUp", "ArrowDown", "Tab", "Enter", "Escape"].includes(e.key) && cmdMatches(mk).length && !e.shiftKey) {
@@ -3083,6 +3299,8 @@ function bindMain() {
     if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); sheet = lightbox = null; return lvAct("toggle", { spot: true }); }
     // ⌘L: every live session (the drop-down by "N live"), even while typing in a box.
     if (e.metaKey && e.key.toLowerCase() === "l") { e.preventDefault(); return lvAct("toggle", {}); }
+    // ⌘N: + New session, in the middle of the window like ⌘K (even while typing in a box).
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); sheet = lightbox = null; liveSpot = true; return lvAct("new", {}); }
     if (lightbox) {
       if (e.key === "ArrowRight") lightbox.i = (lightbox.i + 1) % lightbox.srcs.length;
       else if (e.key === "ArrowLeft") lightbox.i = (lightbox.i - 1 + lightbox.srcs.length) % lightbox.srcs.length;
@@ -3162,28 +3380,41 @@ function bindMain() {
 }
 
 // ---------- boot ----------
-const LINGER_MS = 3000;
+const LINGER_MS = 1500;
 /** A "✓ answered" card's time is up: it fades and folds away, and the cards below close the gap. */
 function leaveGhosts() {
   const gone = [...ghosts].filter(([, g]) => Date.now() - g.at >= LINGER_MS).map(([id]) => id);
   if (!gone.length) return;
-  const finish = () => { gone.forEach((id) => ghosts.delete(id)); render(); };
+  const finish = () => { folding = false; heldDraw = false; gone.forEach((id) => ghosts.delete(id)); render(); };
   const els = gone.map((id) => document.querySelector(`.nrow.ghost[data-detail="${CSS.escape(id)}"]`)).filter(Boolean);
   if (!els.length || matchMedia("(prefers-reduced-motion: reduce)").matches) return finish();
+  // Fades out first, then closes up, eating the column's 10px gap too, so nothing below jumps at the end.
+  // Redraws wait meanwhile (sessions at work redraw often): one mid-fold would pop the row back.
+  folding = true;
   for (const el of els) {
+    const cs = getComputedStyle(el), h = `${el.offsetHeight}px`;
     el.style.overflow = "hidden";
-    // Down to nothing, eating the column's 10px gap too, so nothing below jumps at the end.
-    el.animate([{ height: `${el.offsetHeight}px`, opacity: 0.6 }, { height: "0px", opacity: 0, paddingTop: "0px", paddingBottom: "0px", marginBottom: "-10px" }], { duration: 260, easing: "ease-in", fill: "forwards" });
+    el.animate([
+      { height: h, opacity: 0.6, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: "0px", offset: 0 },
+      { height: h, opacity: 0, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: "0px", offset: 0.4 },
+      { height: "0px", opacity: 0, paddingTop: "0px", paddingBottom: "0px", marginBottom: "-10px", offset: 1 },
+    ], { duration: 420, easing: "ease-in-out", fill: "forwards" });
   }
-  setTimeout(finish, 270);
+  setTimeout(finish, 430);
 }
 let setupShown = false;
 function setState(s) {
   // Anything that just left Waiting lingers there as "✓ answered" for a moment instead of vanishing.
   const ids = new Set(s.items.map((i) => i.id));
-  for (const it of state.items) if (!ids.has(it.id)) ghosts.set(it.id, { it, at: Date.now() });
+  // Its card's height now, so the ✓ row can ease down from it instead of snapping shorter.
+  // Answered here: its time runs from your click (though it shows as ✓ for a moment at least).
+  for (const it of state.items) if (!ids.has(it.id)) {
+    const clicked = answering.get(it.id);
+    answering.delete(it.id);
+    ghosts.set(it.id, { it, at: clicked ? Math.max(clicked, Date.now() - LINGER_MS + 400) : Date.now(), soft: !!clicked, h: document.querySelector(`.nrow[data-big="${CSS.escape(it.id)}"]`)?.offsetHeight });
+  }
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
-  if (ghosts.size) setTimeout(leaveGhosts, LINGER_MS + 50);
+  for (const g of ghosts.values()) setTimeout(leaveGhosts, Math.max(0, g.at + LINGER_MS - Date.now()) + 50);
   state = s;
   for (const [sid, on] of starNow) if (!!sessionOf(sid)?.starred_ms === on || !sessionOf(sid)) starNow.delete(sid);   // Cue says so now
   // First launch: an installed agent isn't connected yet, and you haven't closed the setup screen.
@@ -3207,6 +3438,7 @@ async function boot() {
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);
   });
+  await T.event.listen("term", (e) => onTermOutput(e.payload));
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
   moveOldParked();
   moveOldStars();
