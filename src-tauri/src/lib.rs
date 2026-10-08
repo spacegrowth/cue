@@ -870,7 +870,21 @@ pub fn connect_main(agents: &[String]) -> i32 {
     code
 }
 
+/// Whether these locale settings (LC_ALL, LC_CTYPE, LANG, in the order that wins) say UTF-8.
+fn utf8_locale(get: impl Fn(&str) -> Option<String>) -> bool {
+    ["LC_ALL", "LC_CTYPE", "LANG"].iter().find_map(|k| get(k).filter(|v| !v.is_empty())).is_some_and(|v| {
+        let v = v.to_ascii_uppercase();
+        v.contains("UTF-8") || v.contains("UTF8")
+    })
+}
+
 pub fn run() {
+    // Opened from the Finder or the Dock, an app gets no locale, and tmux without UTF-8 rewrites what it
+    // prints (a tab in its answers as "_", "❯" as "_" in the terminal it draws). Cue and everything it
+    // starts (tmux, agents, shells) get UTF-8, as they would from a terminal. Set before any thread starts.
+    if !utf8_locale(|k| std::env::var(k).ok()) {
+        std::env::set_var("LC_CTYPE", "UTF-8");
+    }
     let app = tauri::Builder::default()
         .manage(dictation::Dictation::default())
         .plugin(tauri_plugin_notification::init())
@@ -991,4 +1005,19 @@ pub fn run() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_utf8_locale_is_recognised_whichever_setting_says_so() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());
+        assert!(!utf8_locale(env(&[])), "none at all (opened from the Finder)");
+        assert!(utf8_locale(env(&[("LANG", "en_US.UTF-8")])));
+        assert!(utf8_locale(env(&[("LC_CTYPE", "C.UTF-8"), ("LANG", "C")])), "LC_CTYPE wins over LANG");
+        assert!(!utf8_locale(env(&[("LC_ALL", "C"), ("LANG", "en_US.UTF-8")])), "LC_ALL wins over both");
+        assert!(utf8_locale(env(&[("LC_ALL", ""), ("LANG", "de_DE.utf8")])), "an empty one doesn't count");
+    }
 }
