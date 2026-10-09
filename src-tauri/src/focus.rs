@@ -238,6 +238,15 @@ fn tmux_out(args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// Whether a pane still lives in the tmux session a Cue session of this name opened: its
+/// session's name, asked of tmux, must be the one `name` makes (a reboot starts pane ids
+/// over, so an id alone isn't proof it's the same pane).
+pub(crate) fn pane_in_its_session(pane: &str, name: &str) -> bool {
+    let base = tmux_name(name);
+    tmux_out(&["display-message", "-p", "-t", pane, "#{session_name}"])
+        .is_some_and(|s| s == base || s.starts_with(&format!("{base}-")))
+}
+
 /// What a tmux pane shows right now, as plain text (wrapped lines joined), blank lines at the end dropped.
 pub fn tmux_screen(pane: &str) -> Result<String, String> {
     let out = Command::new(bin("tmux")).args(["capture-pane", "-p", "-J", "-t", pane]).output().map_err(|e| e.to_string())?;
@@ -960,5 +969,23 @@ mod tests {
         assert!(screen.contains("typed-42"), "what's typed later runs: {screen:?}");
         assert!(gone, "closing its only pane closes it");
         assert!(tmux_type_line(&tab.tmux_pane, "x").is_err(), "a closed pane says so");
+    }
+
+    #[test]
+    fn a_pane_in_its_session_says_so_and_one_elsewhere_doesnt() {
+        if !tmux_installed() {
+            return;
+        }
+        let pid = std::process::id();
+        let label = format!("alive test {pid}");
+        let session = tmux_name(&label);
+        let pane = tmux_out(&["new-session", "-d", "-s", &session, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
+        assert!(pane_in_its_session(&pane, &label), "its session carries the name from the label");
+        let other = tmux_name(&format!("other test {pid}"));
+        let other_pane = tmux_out(&["new-session", "-d", "-s", &other, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
+        assert!(!pane_in_its_session(&other_pane, &label), "a live pane of another session isn't this one's");
+        let _ = run("tmux", &["kill-session", "-t", &session]);
+        let _ = run("tmux", &["kill-session", "-t", &other]);
+        assert!(!pane_in_its_session(&pane, &label), "a pane that's gone says so");
     }
 }

@@ -916,6 +916,12 @@ impl Hub {
         self.store.lock().unwrap().sessions.origin(session_id)
     }
 
+    /// Every live session as it was when Cue last ran (each with its name): what a reboot may
+    /// have left without a tmux pane.
+    pub fn saved_sessions(&self) -> Vec<crate::sessions::Session> {
+        self.store.lock().unwrap().sessions.all()
+    }
+
     /// A session's state set by hand (a moved one: "working" while it loads, "waiting" once its prompt is up).
     pub fn mark_state(&self, origin: &Origin, state: &str) {
         self.store.lock().unwrap().sessions.mark(origin, state, None);

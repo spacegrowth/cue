@@ -234,7 +234,7 @@ fn log(machine: &str, id: &str, ev: &Value) {
     }
 }
 
-fn log_raw(machine: &str, line: &str) {
+pub(crate) fn log_raw(machine: &str, line: &str) {
     let path = crate::server::cue_dir().join("machines.log");
     let cut: String = line.chars().take(600).collect();
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {

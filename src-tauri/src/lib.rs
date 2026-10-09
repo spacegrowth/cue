@@ -155,6 +155,103 @@ pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json:
     Ok(serde_json::json!({ "session_id": session_id, "detail": format!("Resumed in {}", tab.what) }))
 }
 
+/// Would a reboot have left this session without its pane, so Cue rebuilds it? Claude only:
+/// it's the only harness with `--resume`. A session without a pane (a plain Terminal one) is left alone.
+fn rebuildable(o: &model::Origin) -> bool {
+    o.harness == "claude" && !o.tmux_pane.is_empty() && !o.cwd.is_empty()
+}
+
+/// Run `f` (blocking) at most `secs`: None when it hasn't finished (its thread keeps going).
+fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static, secs: u64) -> Option<T> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || { let _ = tx.send(f()); });
+    rx.recv_timeout(std::time::Duration::from_secs(secs)).ok()
+}
+
+/// One session again in tmux, as Resume does: `claude --resume` typed into its new pane,
+/// the new pane recorded (its old one died with the reboot). Failures skip it, quietly.
+fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
+    let Ok(line) = focus::resume_line(&o.cwd, &o.session_id) else { return };
+    let Ok(tab) = focus::open_in_tmux(&line, &o.cwd, label) else { return };
+    hub.mark_state(&model::Origin {
+        session_id: o.session_id.clone(),
+        harness: "claude".into(),
+        cwd: o.cwd.clone(),
+        transcript_path: o.transcript_path.clone(),
+        term_program: tab.term_program,
+        tty: tab.tty,
+        tmux_pane: tab.tmux_pane,
+        ..Default::default()
+    }, "waiting");
+}
+
+/// Machine sessions, on their own thread (an unreachable host mustn't hold up launch), each
+/// call time-boxed at 8s. A failure goes in machines.log; a host that can't be reached is
+/// skipped (Cue can't tell whether its pane survived).
+fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)>) {
+    for (machine, o, name) in sessions {
+        let sid = o.session_id.clone();
+        let mn = machine.clone();
+        let h = hub.clone();
+        let done = with_timeout(move || {
+            let Some(m) = machines::get(&machine) else { return };
+            match machines::tmux(&m.host, &["display-message", "-p", "-t", o.tmux_pane.as_str(), "#{session_name}"]) {
+                Ok(s) if s.trim() == crate::focus::TMUX_SESSION => return, // still alive: only Cue restarted
+                Err(e) => { machine_hooks::log_raw(&machine, &format!("rebuild {} skipped: {e}", o.session_id)); return; }
+                _ => {}
+            }
+            let Ok(line) = focus::resume_line(&o.cwd, &o.session_id) else { return };
+            let label = if !name.is_empty() { name.clone() } else { model::project_of(&o.cwd) };
+            let (pane, tty, dir) = match machines::open_in_tmux(&m, &line, &o.cwd, &label) {
+                Ok(t) => t,
+                Err(e) => { machine_hooks::log_raw(&machine, &format!("rebuild {} failed: {e}", o.session_id)); return; }
+            };
+            h.mark_state(&model::Origin {
+                session_id: o.session_id.clone(),
+                harness: "claude".into(),
+                cwd: dir,
+                transcript_path: o.transcript_path.clone(),
+                term_program: "tmux".into(),
+                tty,
+                tmux_pane: pane,
+                machine: m.name.clone(),
+                ..Default::default()
+            }, "waiting");
+        }, 8);
+        if done.is_none() {
+            machine_hooks::log_raw(&mn, &format!("rebuild {sid} timed out"));
+        }
+    }
+}
+
+/// At launch: a reboot killed every tmux pane, so live sessions' panes are gone. Open each
+/// again (its own tmux session, `claude --resume` typed in), like Resume does for one.
+/// Skipped in a quiet test instance, or when Settings says sessions don't run in tmux.
+fn restore_sessions(hub: &Arc<Hub>) {
+    if std::env::var_os("CUE_QUIET").is_some() || !config::tmux_sessions() {
+        return;
+    }
+    let mut remote = vec![];
+    for s in hub.saved_sessions() {
+        if !rebuildable(&s.origin) {
+            continue;
+        }
+        if !s.origin.machine.is_empty() {
+            remote.push((s.origin.machine.clone(), s.origin, s.name));
+            continue;
+        }
+        let label = if !s.name.is_empty() { s.name.clone() } else { model::project_of(&s.origin.cwd) };
+        if focus::pane_in_its_session(&s.origin.tmux_pane, &label) {
+            continue; // Cue restarted, the reboot didn't: its pane is still there
+        }
+        rebuild(hub, &s.origin, &label);
+    }
+    if !remote.is_empty() {
+        let h = hub.clone();
+        std::thread::spawn(move || remote_restores(&h, remote));
+    }
+}
+
 /// Search, as the window's: Cue's own sessions and messages, then Claude Code's older sessions by name.
 pub(crate) fn search_all(q: &str) -> Vec<serde_json::Value> {
     let mut out = db::search(q, 60);
@@ -957,6 +1054,9 @@ pub fn run() {
             }
             let hub = Arc::new(Hub::new(Some(app.handle().clone())));
             app.manage(hub.clone());
+            // A reboot killed every tmux pane: open each live session again (before the watcher, so a
+            // stale pid can't drop it before its new pane is recorded).
+            restore_sessions(&hub);
             // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
             if std::env::var_os("CUE_HOME").is_none() {
                 machine_hooks::watch_all();
@@ -1068,5 +1168,12 @@ mod tests {
         assert!(utf8_locale(env(&[("LC_CTYPE", "C.UTF-8"), ("LANG", "C")])), "LC_CTYPE wins over LANG");
         assert!(!utf8_locale(env(&[("LC_ALL", "C"), ("LANG", "en_US.UTF-8")])), "LC_ALL wins over both");
         assert!(utf8_locale(env(&[("LC_ALL", ""), ("LANG", "de_DE.utf8")])), "an empty one doesn't count");
+    }
+
+    #[test]
+    fn rebuildable_takes_claude_sessions_with_a_pane_and_a_folder() {
+        assert!(rebuildable(&model::Origin { harness: "claude".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }));
+        assert!(!rebuildable(&model::Origin { harness: "codex".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }), "only claude has --resume");
+        assert!(!rebuildable(&model::Origin { harness: "claude".into(), cwd: "/tmp/x".into(), ..Default::default() }), "the Apple Terminal one: no pane");
     }
 }
