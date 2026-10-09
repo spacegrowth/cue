@@ -541,7 +541,7 @@ mod tests {
         let card = Item {
             id: "w1".into(), kind: "waiting".into(), origin: Origin { session_id: "lead".into(), ..Default::default() }, project: "proj".into(),
             tool_name: String::new(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: "done".into(),
-            created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, images: vec![],
+            created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         sync_live(&[session("lead", ""), session("exec", "its relay lead")], &[&card]);
         set_draft("s:lead", "half a thought", &json!([]));
@@ -579,7 +579,7 @@ mod tests {
         let it = Item {
             id: "h1".into(), kind: "permission".into(), origin: Origin { session_id: "s".into(), ..Default::default() }, project: "p".into(),
             tool_name: "Bash".into(), tool_input: json!({"command": "ls"}), suggestions: Value::Null, context: vec![], message: String::new(),
-            created_ms: 5, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(6), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, images: vec![],
+            created_ms: 5, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(6), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         std::fs::write(dir.join("history.jsonl"), format!("{}\n", serde_json::to_string(&it).unwrap())).unwrap();
         let h = history(100);

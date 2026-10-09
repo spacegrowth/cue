@@ -940,7 +940,7 @@ function setParked(sid, on) {
 }
 function groups() {
   const parked = parkedIds();
-  const oldest = (a, b) => a.created_ms - b.created_ms;
+  const oldest = (a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms);
   const yours = state.items.filter((i) => i.kind === "waiting" && !parked.has(i.session_id)).sort(oldest);
   const decide = state.items.filter((i) => i.kind !== "waiting").sort(oldest);
   const asking = new Set(state.items.map((i) => i.session_id));
@@ -1245,7 +1245,7 @@ function starEntry(s, open) {
 
 // ---------- Board view: ACTIVE | WAITING | WORKING + RECENTLY ANSWERED ----------
 /** Everything waiting on you, oldest first: finished turns and decisions together. */
-const needsYou = () => [...groups().decide, ...groups().yours].sort((a, b) => a.created_ms - b.created_ms);
+const needsYou = () => [...groups().decide, ...groups().yours].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms));
 const isPending = (it) => !!it && state.items.some((i) => i.id === it.id);
 
 /** What the Active pane shows: your pick (kept after you act), else the oldest thing waiting on you. */
@@ -1805,6 +1805,7 @@ function activePane() {
 const clearX = (it) => it.kind === "waiting" ? `<button class="x-clear" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
 /** "Later" on a Waiting row: move the session to Need to decide. */
 const parkBtn = (sid) => `<button class="park-btn" data-park="${esc(sid)}:1" title="Move it below for now">Later</button>`;
+const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc(it.id)}" title="Send to back of the queue" aria-label="Send to back of the queue">↓</button>`;
 /** A row in Need to decide: the session, its finished turn if any, ↩ to put it back. Click to open it. */
 function laterRow({ sid, s, it }) {
   const on = active?.sid === sid ? "on" : "";
@@ -1830,7 +1831,7 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? parkBtn(it.session_id) : ""}${clearX(it)}</div>
+    <div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
@@ -1959,9 +1960,9 @@ function boardView() {
   const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) ? m.lead : null; };
   const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
   const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
-    .map((l) => ({ _team: l, created_ms: Math.min(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
+    .map((l) => ({ _team: l, created_ms: Math.min(...needs.filter((i) => leadOf(i) === l).map((i) => i.back_ms ?? i.created_ms)) }));
   // Oldest first.
-  const needRows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows].sort((a, b) => a.created_ms - b.created_ms)
+  const needRows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms))
     .map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
@@ -3481,7 +3482,7 @@ function bindMain() {
     }
     const it = actEl?.dataset.id ? findItem(actEl.dataset.id) : null;
     if (act && it) {
-      if (it.status === "pending" && act !== "dismiss") active = { id: it.id, sid: it.session_id };
+      if (it.status === "pending" && act !== "dismiss" && act !== "back") active = { id: it.id, sid: it.session_id };
       if (act === "submit-answers") { const a = answersFor(it); return a && respond(it, { behavior: "allow", answers: a }); }
       if (act === "allow") return allow(it);
       if (act === "deny") return deny(it);
@@ -3490,6 +3491,7 @@ function bindMain() {
       if (act === "continue") return invoke("reply", { id: it.id, text: "continue", images: [] }).then((r) => toast(`“continue” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "go") return goTo(it);
       if (act === "dismiss") { cleared.add(it.id); return invoke("dismiss", { id: it.id }); }
+      if (act === "back") return invoke("send_to_back", { id: it.id }).catch((e) => toast(`Couldn't send to back: ${e}`));
       if (act === "menu") { menuFor = menuFor === it.id ? null : it.id; return renderMain(); }
       if (act === "redirect") { redirectFor = it.id; renderMain(); return document.querySelector(`[data-text="${CSS.escape(it.id)}"]`)?.focus(); }
     }

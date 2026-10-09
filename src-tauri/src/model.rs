@@ -210,6 +210,10 @@ pub struct Item {
     /// at "What should Claude do instead?" until you say something ("continue" picks it back up).
     #[serde(default)]
     pub interrupted: bool,
+    /// Sent to the back of the queue: the card sorts by this instead of created_ms. Its row still
+    /// shows created_ms (the age) — sending it back doesn't make the turn any younger.
+    #[serde(default)]
+    pub back_ms: Option<u64>,
     pub created_ms: u64,
     /// "pending" | "answered" | "answered_elsewhere" | "gone"
     pub status: String,

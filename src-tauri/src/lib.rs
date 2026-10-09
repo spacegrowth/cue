@@ -98,6 +98,11 @@ fn dismiss(hub: State<Arc<Hub>>, id: String) {
 }
 
 #[tauri::command]
+fn send_to_back(hub: State<Arc<Hub>>, id: String) -> Result<(), String> {
+    hub.send_to_back(&id)
+}
+
+#[tauri::command]
 fn focus_session(hub: State<Arc<Hub>>, id: String) -> Result<String, String> {
     let it = hub.get(&id).ok_or("no such item")?;
     focus::focus(&it.origin)
@@ -173,7 +178,7 @@ fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static, secs:
 fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
     let Ok(line) = focus::resume_line(&o.cwd, &o.session_id) else { return };
     let Ok(tab) = focus::open_in_tmux(&line, &o.cwd, label) else { return };
-    hub.mark_state(&model::Origin {
+    let fresh = model::Origin {
         session_id: o.session_id.clone(),
         harness: "claude".into(),
         cwd: o.cwd.clone(),
@@ -182,7 +187,10 @@ fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
         tty: tab.tty,
         tmux_pane: tab.tmux_pane,
         ..Default::default()
-    }, "waiting");
+    };
+    hub.mark_state(&fresh, "waiting");
+    // Its card comes back too: the turn it finished is still the turn to answer.
+    hub.waiting_card(&fresh);
 }
 
 /// Machine sessions, on their own thread (an unreachable host mustn't hold up launch), each
@@ -206,7 +214,7 @@ fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)
                 Ok(t) => t,
                 Err(e) => { machine_hooks::log_raw(&machine, &format!("rebuild {} failed: {e}", o.session_id)); return; }
             };
-            h.mark_state(&model::Origin {
+            let fresh = model::Origin {
                 session_id: o.session_id.clone(),
                 harness: "claude".into(),
                 cwd: dir,
@@ -216,7 +224,10 @@ fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)
                 tmux_pane: pane,
                 machine: m.name.clone(),
                 ..Default::default()
-            }, "waiting");
+            };
+            h.mark_state(&fresh, "waiting");
+            // Its card comes back too: the turn it finished is still the turn to answer.
+            h.waiting_card(&fresh);
         }, 8);
         if done.is_none() {
             machine_hooks::log_raw(&mn, &format!("rebuild {sid} timed out"));
@@ -249,6 +260,29 @@ fn restore_sessions(hub: &Arc<Hub>) {
     if !remote.is_empty() {
         let h = hub.clone();
         std::thread::spawn(move || remote_restores(&h, remote));
+    }
+}
+
+/// Launch: every session saved as waiting comes back with its card, however it lost it. The card
+/// is the turn it finished, and its saved thread still has it. (A rebuild makes one right away;
+/// anything else that's waiting with no card gets it here.)
+fn bring_back_cards(hub: &Arc<Hub>) {
+    if std::env::var_os("CUE_QUIET").is_some() {
+        return;
+    }
+    let pending = hub.pending();
+    for s in hub.saved_sessions() {
+        if s.state != "waiting" {
+            continue;
+        }
+        if pending.iter().any(|i| i.kind == "waiting" && i.origin.session_id == s.origin.session_id) {
+            continue;
+        }
+        // The saved pid is stale at best (it died with whatever ended its agent); the card
+        // must not carry it, or the watcher would take it for the session's end.
+        let mut o = s.origin.clone();
+        o.agent_pid = None;
+        hub.waiting_card(&o);
     }
 }
 
@@ -1037,7 +1071,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -1057,6 +1091,9 @@ pub fn run() {
             // A reboot killed every tmux pane: open each live session again (before the watcher, so a
             // stale pid can't drop it before its new pane is recorded).
             restore_sessions(&hub);
+            // Waiting sessions always come back with their card (a rebuilt one gets it above; the
+            // rest, whose card vanished another way, get it here).
+            bring_back_cards(&hub);
             // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
             if std::env::var_os("CUE_HOME").is_none() {
                 machine_hooks::watch_all();
@@ -1175,5 +1212,26 @@ mod tests {
         assert!(rebuildable(&model::Origin { harness: "claude".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }));
         assert!(!rebuildable(&model::Origin { harness: "codex".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }), "only claude has --resume");
         assert!(!rebuildable(&model::Origin { harness: "claude".into(), cwd: "/tmp/x".into(), ..Default::default() }), "the Apple Terminal one: no pane");
+    }
+
+    #[test]
+    fn a_waiting_session_comes_back_with_its_card_at_launch() {
+        let dir = std::env::temp_dir().join(format!("cue-back-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = model::Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x/proj".into(), ..Default::default() };
+        let hub = Arc::new(Hub::new(None));
+        hub.event(origin.clone(), "stopped", "Here's the fix.".into(), vec![], "");
+        let id = hub.pending()[0].id.clone();
+        hub.remove_waiting(&id); // its card is gone (however it went)
+        bring_back_cards(&hub);
+        let items = hub.pending();
+        assert_eq!(items.len(), 1, "the waiting session's card is back, from its saved thread");
+        assert_eq!(items[0].message, "Here's the fix.");
+        assert_eq!(items[0].origin.agent_pid, None, "no stale pid for the watcher to take for its end");
+        bring_back_cards(&hub);
+        assert_eq!(hub.pending().len(), 1, "twice doesn't stack a second card");
     }
 }

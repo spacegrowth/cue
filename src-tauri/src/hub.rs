@@ -95,7 +95,7 @@ impl Hub {
             suggestions: Value::Null,
             context: vec![],
             message: String::new(),
-            followup: String::new(), interrupted: false,
+            followup: String::new(), interrupted: false, back_ms: None,
             images: vec![],
             created_ms: now_ms(),
             status: "pending".into(),
@@ -597,6 +597,20 @@ impl Hub {
         }
     }
 
+    /// A waiting card goes to the end of the queue: from now on it sorts by back_ms, so every card
+    /// still on its original order comes first. Its age stays when the turn finished.
+    pub fn send_to_back(&self, id: &str) -> Result<(), String> {
+        let mut st = self.store.lock().unwrap();
+        let it = st.items.iter_mut().find(|i| i.id == id).ok_or("that card is gone")?;
+        if it.kind != "waiting" || it.status != "pending" {
+            return Err("that card isn't waiting".into());
+        }
+        it.back_ms = Some(now_ms());
+        drop(st);
+        self.changed();
+        Ok(())
+    }
+
     /// Type your reply into a finished session's terminal and confirm it submitted.
     /// Blocking (typing takes ~1-2s): call off the UI thread.
     pub fn reply(&self, id: &str, text: &str, images: &[Upload]) -> Result<String, String> {
@@ -925,6 +939,34 @@ impl Hub {
     /// A session's state set by hand (a moved one: "working" while it loads, "waiting" once its prompt is up).
     pub fn mark_state(&self, origin: &Origin, state: &str) {
         self.store.lock().unwrap().sessions.mark(origin, state, None);
+        self.changed();
+    }
+
+    /// A rebuilt session sits at its finished turn again: its waiting card comes back (the reboot
+    /// lost it), built from the session's saved thread exactly as a fresh "stopped" would.
+    pub fn waiting_card(&self, origin: &Origin) {
+        let sid = origin.session_id.clone();
+        let (thread, message) = {
+            let st = self.store.lock().unwrap();
+            let thread = st.sessions.thread(&sid);
+            let message = thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.clone()).unwrap_or_default();
+            (thread, message)
+        };
+        let context = if !message.trim().is_empty() {
+            vec![Ctx { role: "assistant".into(), text: message.clone() }]
+        } else if !origin.transcript_path.is_empty() {
+            transcript::recent_context(&origin.transcript_path, 2)
+        } else {
+            vec![]
+        };
+        let mut st = self.store.lock().unwrap();
+        st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
+        let mut it = Self::new_item(&mut st, "waiting", origin.clone());
+        it.thread = thread;
+        it.context = context;
+        it.message = message;
+        st.items.push(it);
+        drop(st);
         self.changed();
     }
 
@@ -1662,6 +1704,51 @@ mod tests {
     }
 
     #[test]
+    fn a_rebuilt_session_gets_its_waiting_card_back_from_its_saved_thread() {
+        let dir = std::env::temp_dir().join(format!("cue-wcard-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x/proj".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin.clone(), "stopped", "Here's the fix.".into(), vec![], "");
+        assert_eq!(hub.pending().len(), 1, "the finished turn's card is up");
+        // The reboot: the pane came back fresh, and the card comes back from the saved thread.
+        let fresh = Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x/proj".into(), tmux_pane: "%9".into(), ..Default::default() };
+        hub.mark_state(&fresh, "waiting");
+        hub.waiting_card(&fresh);
+        let items = hub.pending();
+        assert_eq!(items.len(), 1, "still one card: it follows the session into its new pane");
+        assert_eq!((items[0].kind.as_str(), items[0].message.as_str()), ("waiting", "Here's the fix."));
+        assert_eq!(items[0].origin.tmux_pane, "%9");
+        assert!(!items[0].thread.is_empty(), "the card keeps the saved thread");
+    }
+
+    #[test]
+    fn sending_a_waiting_card_to_the_back_reorders_it_without_reaging_it() {
+        let dir = std::env::temp_dir().join(format!("cue-back-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x/proj".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin, "stopped", "Here's the fix.".into(), vec![], "");
+        let it = hub.pending().remove(0);
+        assert!(it.back_ms.is_none());
+        let created = it.created_ms;
+        hub.send_to_back(&it.id).unwrap();
+        let it = hub.pending().remove(0);
+        assert!(it.back_ms.is_some(), "the card now sorts by its back_ms");
+        assert_eq!(it.created_ms, created, "created_ms untouched: the row's age stays honest");
+        // A card that's not a waiting turn can't be sent to back, and neither can a missing one.
+        hub.finish(&it.id, "answered", "replied");
+        assert!(hub.send_to_back(&it.id).is_err(), "an answered card isn't waiting any more");
+        assert!(hub.send_to_back("nope").is_err());
+    }
+
+    #[test]
     fn a_prompt_cue_cant_answer_is_a_card_until_the_session_moves_on() {
         let dir = std::env::temp_dir().join(format!("cue-term-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1806,7 +1893,7 @@ mod tests {
         let item = |n: u64, at: u64| Item {
             id: format!("t{n}"), kind: "waiting".into(), origin: Origin::default(), project: "cue".into(),
             tool_name: String::new(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: String::new(),
-            created_ms: at - 1000, status: "answered".into(), outcome: "replied".into(), resolved_ms: Some(at), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, images: vec![],
+            created_ms: at - 1000, status: "answered".into(), outcome: "replied".into(), resolved_ms: Some(at), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         let mut st = Store::default();
         push_history(&mut st, item(0, now - crate::db::DAY_MS - 60_000)); // yesterday, beyond the cap: goes
@@ -1834,7 +1921,7 @@ mod tests {
         let item = |n: u64| Item {
             id: format!("h{n}"), kind: "permission".into(), origin: Origin::default(), project: String::new(),
             tool_name: "Bash".into(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: String::new(),
-            created_ms: n, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(n), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, images: vec![],
+            created_ms: n, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(n), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         let mut st = Store::default();
         for n in 1..=15 {
