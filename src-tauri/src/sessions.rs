@@ -48,6 +48,17 @@ pub struct Session {
     /// A rename Claude Code hasn't been told yet: it was mid-turn, so it's typed when the turn ends.
     #[serde(default, skip_serializing)]
     pub rename_pending: bool,
+    /// What Claude Code's own list of sessions last called it (None: not looked yet). A change there
+    /// is a rename made in its terminal (/rename), and Cue's name follows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_name: Option<String>,
+    /// A rename Cue typed into Claude Code, until its list shows it: the name, and by when it must.
+    #[serde(skip)]
+    pub rename_check: Option<(String, u64)>,
+    /// Why the agent didn't take the name you gave it in Cue ("": it did, or nothing was tried).
+    /// Cue keeps your name either way; the chat says so, with Try again.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rename_error: String,
     /// The usage limit its last turn ran into (state "limited"). Kept after the limit lifts, until
     /// the session runs again, so Cue can offer to resend what didn't run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,6 +141,7 @@ impl Parked {
         s.changes = None;
         s.turn_base = None;
         s.rename_pending = false;
+        s.rename_check = None;
         s
     }
 }
@@ -174,6 +186,9 @@ impl Sessions {
             queued: None,
             name: String::new(),
             rename_pending: false,
+            claude_name: None,
+            rename_check: None,
+            rename_error: String::new(),
             limit: None,
             doing: String::new(),
             doing_ms: 0,
@@ -440,10 +455,91 @@ impl Sessions {
     }
 
     /// Name a session in Cue. Returns what delivering it needs: (harness, state, where it is).
+    /// You named it in Cue ("" clears the name). Shown at once; telling the agent is the caller's job,
+    /// and any earlier rename still on its way is dropped.
     pub fn set_name(&mut self, session_id: &str, name: &str) -> Option<(String, String, Origin)> {
         let s = self.0.get_mut(session_id)?;
         s.name = name.to_string();
+        s.rename_pending = false;
+        s.rename_check = None;
+        s.rename_error.clear();
         Some((s.origin.harness.clone(), s.state.clone(), s.origin.clone()))
+    }
+
+    /// Cue typed `/rename <name>` into Claude Code: its list must show `name` by `by_ms`.
+    pub fn expect_rename(&mut self, session_id: &str, name: &str, by_ms: u64) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.rename_check = Some((name.to_string(), by_ms));
+        }
+    }
+
+    /// The agent didn't get the name: Cue keeps it, and says why.
+    pub fn rename_failed(&mut self, session_id: &str, why: &str) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.rename_check = None;
+            s.rename_error = why.to_string();
+        }
+    }
+
+    /// × on the rename notice. True when there was one.
+    pub fn dismiss_rename_error(&mut self, session_id: &str) -> bool {
+        self.0.get_mut(session_id).is_some_and(|s| !std::mem::take(&mut s.rename_error).is_empty())
+    }
+
+    /// Claude Code's own list of its running sessions on this Mac (id → name), as of `now`. Settles each
+    /// rename Cue typed (the name showed up: done; the time ran out: it failed, Cue keeps your name and
+    /// says so), and follows a rename made in the agent itself (/rename in its terminal: the name there
+    /// changed). A session Cue sees there for the first time takes the name it has there, if any (as the
+    /// window always showed it).
+    /// True when anything changed.
+    pub fn sync_agent_names(&mut self, listed: &HashMap<String, String>, now: u64) -> bool {
+        let mut changed = false;
+        for s in self.0.values_mut() {
+            if s.origin.harness != "claude" || !s.origin.machine.is_empty() {
+                continue;
+            }
+            let Some(there) = listed.get(&s.origin.session_id).map(|n| n.trim().to_string()) else { continue };
+            if let Some((want, by)) = s.rename_check.clone() {
+                if there == want {
+                    s.rename_check = None;
+                    s.rename_error.clear();
+                } else if now >= by {
+                    s.rename_check = None;
+                    s.rename_error = if there.is_empty() {
+                        "Claude Code didn't take the new name".into()
+                    } else {
+                        format!("Claude Code didn't take the new name: it still calls it “{there}”")
+                    };
+                } else {
+                    continue; // still on its way
+                }
+                s.claude_name = Some(there);
+                changed = true;
+                continue;
+            }
+            if s.rename_pending {
+                continue; // typed when its turn ends; until then the old name there is expected
+            }
+            match &s.claude_name {
+                None => {
+                    if !there.is_empty() {
+                        s.name = there.clone();
+                    }
+                    s.claude_name = Some(there);
+                    changed = true;
+                }
+                Some(was) if *was != there => {
+                    if !there.is_empty() {
+                        s.name = there.clone();
+                        s.rename_error.clear();
+                    }
+                    s.claude_name = Some(there);
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        changed
     }
 
     /// Remember that the agent still has to be told its new name (it was busy).
@@ -690,6 +786,165 @@ fn glued_after(long: &str, short: &str, paths: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn named(sessions: &mut Sessions, sid: &str, harness: &str, machine: &str) {
+        sessions.mark(&Origin { session_id: sid.into(), harness: harness.into(), cwd: "/x/cue".into(), machine: machine.into(), ..Default::default() }, "waiting", None);
+    }
+    fn listed(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
+    }
+    fn get<'a>(sessions: &'a Sessions, sid: &str) -> &'a Session {
+        sessions.0.get(sid).unwrap()
+    }
+
+    #[test]
+    fn a_rename_shows_at_once_and_is_settled_when_claude_codes_list_shows_it() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.sync_agent_names(&listed(&[("a", "old-name")]), 0);
+        assert_eq!(get(&s, "a").name, "old-name", "first seen: Cue takes the name it has there");
+        s.set_name("a", "fix the login page");
+        s.expect_rename("a", "fix the login page", 15_000);
+        assert_eq!(get(&s, "a").name, "fix the login page", "shown at once, before the agent has it");
+        // Not there yet, still in time: nothing changes, no error, the old name there doesn't win.
+        assert!(!s.sync_agent_names(&listed(&[("a", "old-name")]), 5_000));
+        assert_eq!((get(&s, "a").name.as_str(), get(&s, "a").rename_error.as_str()), ("fix the login page", ""));
+        // There now: settled.
+        assert!(s.sync_agent_names(&listed(&[("a", "fix the login page")]), 6_000));
+        let a = get(&s, "a");
+        assert_eq!((a.name.as_str(), a.rename_error.as_str(), a.rename_check.is_none()), ("fix the login page", "", true));
+        assert_eq!(a.claude_name.as_deref(), Some("fix the login page"));
+        // And it stays settled: the same name next time changes nothing.
+        assert!(!s.sync_agent_names(&listed(&[("a", "fix the login page")]), 7_000));
+    }
+
+    #[test]
+    fn a_rename_claude_code_never_took_keeps_your_name_and_says_so() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.sync_agent_names(&listed(&[("a", "old-name")]), 0);
+        s.set_name("a", "new-name");
+        s.expect_rename("a", "new-name", 15_000);
+        assert!(s.sync_agent_names(&listed(&[("a", "old-name")]), 15_000));
+        let a = get(&s, "a");
+        assert_eq!(a.name, "new-name", "your name stays");
+        assert_eq!(a.rename_error, "Claude Code didn't take the new name: it still calls it “old-name”");
+        // The old name there is now known: it doesn't come back as if renamed in the terminal.
+        assert!(!s.sync_agent_names(&listed(&[("a", "old-name")]), 20_000));
+        assert_eq!(get(&s, "a").name, "new-name");
+        // Try again (a fresh rename) clears the notice; × does too.
+        s.set_name("a", "new-name");
+        assert_eq!(get(&s, "a").rename_error, "");
+        s.rename_failed("a", "Pi isn't connected");
+        assert!(s.dismiss_rename_error("a"));
+        assert!(!s.dismiss_rename_error("a"), "nothing left to dismiss");
+        // Never named there at all: says so without quoting an empty name.
+        let mut s = Sessions::default();
+        named(&mut s, "b", "claude", "");
+        s.set_name("b", "x");
+        s.expect_rename("b", "x", 10);
+        s.sync_agent_names(&listed(&[("b", "")]), 10);
+        assert_eq!(get(&s, "b").rename_error, "Claude Code didn't take the new name");
+    }
+
+    #[test]
+    fn a_rename_made_in_claude_codes_terminal_becomes_cues_name() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.set_name("a", "cue-name");
+        s.sync_agent_names(&listed(&[("a", "cue-name")]), 0);
+        // /rename typed in its terminal: the name there changes, Cue follows.
+        assert!(s.sync_agent_names(&listed(&[("a", "typed-in-terminal")]), 1_000));
+        assert_eq!(get(&s, "a").name, "typed-in-terminal");
+        // A failed rename's notice goes once the name there changes to something you chose.
+        s.rename_failed("a", "Claude Code didn't take the new name");
+        s.sync_agent_names(&listed(&[("a", "another")]), 2_000);
+        assert_eq!((get(&s, "a").name.as_str(), get(&s, "a").rename_error.as_str()), ("another", ""));
+        // Its name there emptied: Cue keeps the one it has.
+        s.sync_agent_names(&listed(&[("a", "")]), 3_000);
+        assert_eq!(get(&s, "a").name, "another");
+    }
+
+    #[test]
+    fn first_seen_in_claude_codes_list_its_name_there_wins() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.set_name("a", "d2clabs-web"); // e.g. a folder name an old resume stored as its name
+        assert!(s.sync_agent_names(&listed(&[("a", "[Lead] chart-lines")]), 0));
+        assert_eq!(get(&s, "a").name, "[Lead] chart-lines", "as the window showed it before");
+        // No name there: Cue's stays.
+        named(&mut s, "n", "claude", "");
+        s.set_name("n", "mine");
+        s.sync_agent_names(&listed(&[("n", "")]), 0);
+        assert_eq!(get(&s, "n").name, "mine");
+        // No name in Cue: it takes the one there (started with -n, or named in its terminal before Cue saw it).
+        named(&mut s, "b", "claude", "");
+        s.sync_agent_names(&listed(&[("b", "from-claude")]), 0);
+        assert_eq!(get(&s, "b").name, "from-claude");
+        // Not in the list (not running here): untouched.
+        named(&mut s, "c", "claude", "");
+        assert!(!s.sync_agent_names(&listed(&[]), 0));
+        assert_eq!(get(&s, "c").claude_name, None);
+    }
+
+    #[test]
+    fn a_rename_waiting_for_the_turn_to_end_isnt_undone_by_the_old_name() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.sync_agent_names(&listed(&[("a", "old")]), 0);
+        s.set_name("a", "new");
+        s.defer_rename("a");
+        for t in [1_000, 60_000, 600_000] {
+            assert!(!s.sync_agent_names(&listed(&[("a", "old")]), t));
+            assert_eq!((get(&s, "a").name.as_str(), get(&s, "a").rename_error.as_str()), ("new", ""));
+        }
+        // The turn ends: delivered, then watched like any other.
+        assert_eq!(s.take_rename("a").map(|(n, _)| n), Some("new".into()));
+        s.expect_rename("a", "new", 700_000);
+        s.sync_agent_names(&listed(&[("a", "new")]), 650_000);
+        assert_eq!((get(&s, "a").name.as_str(), get(&s, "a").rename_error.as_str(), get(&s, "a").rename_check.is_none()), ("new", "", true));
+    }
+
+    #[test]
+    fn only_claude_sessions_on_this_mac_are_matched_with_its_list() {
+        let mut s = Sessions::default();
+        named(&mut s, "x", "codex", "");
+        named(&mut s, "p", "pi", "");
+        named(&mut s, "m", "claude", "box");
+        for sid in ["x", "p", "m"] {
+            s.set_name(sid, "mine");
+        }
+        assert!(!s.sync_agent_names(&listed(&[("x", "other"), ("p", "other"), ("m", "other")]), 0));
+        assert!(["x", "p", "m"].iter().all(|sid| get(&s, sid).name == "mine"));
+    }
+
+    #[test]
+    fn a_new_rename_drops_one_still_on_its_way() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.set_name("a", "first");
+        s.defer_rename("a");
+        s.expect_rename("a", "first", 100);
+        s.rename_failed("a", "x");
+        s.set_name("a", "second");
+        let a = get(&s, "a");
+        assert_eq!((a.rename_pending, a.rename_check.is_none(), a.rename_error.as_str()), (false, true, ""));
+        // A parked session coming back has no rename in flight.
+        s.expect_rename("a", "second", 100);
+        let back = Parked { parked_ms: 0, session: get(&s, "a").clone() }.into_session(Origin::default());
+        assert!(back.rename_check.is_none() && back.name == "second");
+    }
+
+    #[test]
+    fn the_agent_name_and_rename_notice_survive_a_restart_but_a_check_in_flight_does_not() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.sync_agent_names(&listed(&[("a", "there")]), 0);
+        s.rename_failed("a", "nope");
+        s.expect_rename("a", "z", 5);
+        let back: Session = serde_json::from_value(serde_json::to_value(get(&s, "a")).unwrap()).unwrap();
+        assert_eq!((back.claude_name.as_deref(), back.rename_error.as_str(), back.rename_check.is_none()), (Some("there"), "nope", true));
+    }
 
     fn long_text() -> String {
         (0..1600).map(|n| format!("word{n} ")).collect::<String>() + "\nthe end"   // ~10k characters

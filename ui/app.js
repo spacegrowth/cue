@@ -2051,7 +2051,7 @@ function activePane() {
     ${subHead(s?.cwd || it?.cwd, "", sid)}
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey()}</div>` : ""}
-    <div class="ap-chat" data-chat>${chatHtml(it, s, harness, true)}${statusLine(it, s)}</div>
+    <div class="ap-chat" data-chat>${chatHtml(it, s, harness, true)}${renameNotice(s)}${statusLine(it, s)}</div>
     ${pending ? "" : nextBar()}
     ${termDock(sid)}${foot}</div>`;
 }
@@ -2280,14 +2280,27 @@ function nameHead(sid, project) {
   // Just the name: its folder's full path is on the line under it (subHead).
   return `<span class="proj">${esc(name)}</span>${sid ? `<button class="rename-btn" data-rename="${esc(sid)}" title="Rename this session" aria-label="Rename">✎</button>` : ""}`;
 }
-async function submitRename(sid) {
-  const key = `rename:${sid}`, name = draft(key).text.trim();
+/** Renames shown before Cue's next update has them: sid → { name, at }. */
+const renamedNow = new Map();
+async function submitRename(sid, again = false) {
+  const key = `rename:${sid}`, name = again ? sessionOf(sid)?.name || "" : draft(key).text.trim().replace(/\s+/g, " ").slice(0, 60);
   renaming = null;
   delete drafts[key];
+  // Shown at once, everywhere: the agent hears of it after. If it doesn't take it, the chat says so.
+  const s = sessionOf(sid);
+  if (s) { s.name = name; delete s.rename_error; renamedNow.set(sid, { name, at: Date.now() }); }
   renderMain();
   try { toast(await invoke("rename_session", { sessionId: sid, name })); }
-  catch (e) { toast(`Couldn't rename: ${e}`); }
+  catch (e) { toast(String(e)); }
 }
+/** The agent didn't take the name you gave it: Cue keeps it, says why, and offers it again. */
+function renameNotice(s) {
+  if (!s?.rename_error) return "";
+  return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>${esc(s.rename_error)}.</b> Cue keeps “${esc(s.name)}”.</span><button class="btn small" data-act="rename-again" data-sid="${esc(s.session_id)}">Try again</button><button class="btn small" data-act="rename-dismiss" data-sid="${esc(s.session_id)}" aria-label="Dismiss">×</button></div>`;
+}
+/** Rename notices already announced (a toast once, wherever you are; the chat keeps showing it). */
+const renameErrSeen = new Set();
+let renameErrPrimed = false;
 /** Search: every session Cue has seen, ended ones too (session names, your messages, the agents'
  *  replies). Running sessions match at once, from what the window already has, by the names you see
  *  (as ⌘K does); the best name match comes first. Then closed and older sessions by name, then what was
@@ -2560,7 +2573,11 @@ let liveSpot = false;              // …opened with ⌘K: in the middle of the 
 let liveSel = 0;                   // the highlighted row (↑ ↓ move it, Enter opens it)
 let liveShown = [];                // the rows on screen, in order: [{ sid, act }]
 let newOpen = false;               // its New session form is showing
-let newAgent = "claude";
+/** + New starts as you last left it: agent, permissions (per agent), where it runs, flags, folder
+ *  (per machine) and machine. Only the name and the message start empty. */
+const remembered = (k) => { try { return localStorage.getItem(`cue.${k}`); } catch { return null; } };
+const remember = (k, v) => { try { localStorage.setItem(`cue.${k}`, v); } catch {} };
+let newAgent = remembered("newAgent") || "claude";
 let agentsAvail = null;            // the agents installed on this Mac (asked once)
 /** Folders you've worked in, most recent first: live sessions, then answered history. */
 function recentFolders() {
@@ -2649,12 +2666,10 @@ const PERMS = {
   codex: [["ask", "Ask"], ["edits", "Edits in folder"], ["skip", "Skip all"]],
   pi: [["ask", "Ask"], ["skip", "Skip all"]],
 };
-/** The permission you last picked for each agent stays picked for the next + New, until you change it.
- *  Skip all never does: that's for the one session. */
-const savedPerm = (a) => { try { const p = localStorage.getItem(`cue.newPerm.${a}`); return PERMS[a]?.some(([v]) => v === p) ? p : "ask"; } catch { return "ask"; } };
-const savePerm = (a, p) => { try { localStorage.setItem(`cue.newPerm.${a}`, p); } catch {} };
+/** The permission you last picked for each agent stays picked for the next + New, until you change it. */
+const savedPerm = (a) => { const p = remembered(`newPerm.${a}`); return PERMS[a]?.some(([v]) => v === p) ? p : "ask"; };
 let newPerm = savedPerm(newAgent);
-let newWhere = null;   // this session: tmux or not (null: Settings' default)
+let newWhere = { true: true, false: false }[remembered("newWhere")] ?? null;   // tmux or not (null: Settings' default)
 const newTmux = () => newWhere ?? !!state.settings?.sessions?.tmux;
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
 /** + New session: which machine (this Mac, or one from + New → Machine). Remembered. */
@@ -2697,7 +2712,8 @@ function newForm() {
   const remote = newMachine ? machineState.get(newMachine) : null;
   // On a machine: the agents its check found there (all three until it's been checked).
   const agents = newMachine ? ["claude", "codex", "pi"].filter((a) => !remote?.tools || remote.tools[a]) : agentsAvail || ["claude"];
-  if (agents.length && !agents.includes(newAgent)) { newAgent = agents[0]; newPerm = savedPerm(newAgent); }
+  // Only once Cue knows what's installed: before that, the agent you last used stays picked.
+  if ((newMachine ? remote?.tools : agentsAvail) && agents.length && !agents.includes(newAgent)) { newAgent = agents[0]; newPerm = savedPerm(newAgent); }
   const folders = nfFolders();
   const machines = machinesList || [];
   return `<div class="nf">
@@ -2709,7 +2725,7 @@ function newForm() {
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
     <div class="nf-row top"><span class="nf-k">Message</span><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on">${esc(draft("new-msg").text)}</textarea></div>
     ${state.settings?.sessions?.tmux_installed && !newMachine ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v ? CUE_MARK_SM : TERM_ICON}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
-    <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you, for this session only</span></div>` : ""}
+    <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --model opus" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
     <div class="nf-acts"><button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>${(ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : ""}</div>`;
 }
@@ -2744,16 +2760,16 @@ async function lvAct(act, d) {
   if (act === "new") {
     if (d.spot) { sheet = lightbox = null; liveSpot = true; }   // the header's + New: in the middle, like ⌘N
     liveOpen = newOpen = true;
-    draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || recentFolders()[0] || "");
+    draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || machineFolders("")[0] || recentFolders()[0] || "");
     if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
     renderMain();
     return document.querySelector('[data-text="new-msg"]')?.focus();
   }
-  if (act === "agent") { newAgent = d.agent; newPerm = savedPerm(newAgent); return renderMain(); }
-  if (act === "where") { newWhere = d.tmux === "true"; return renderMain(); }
+  if (act === "agent") { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); return renderMain(); }
+  if (act === "where") { newWhere = d.tmux === "true"; remember("newWhere", String(newWhere)); return renderMain(); }
   if (act === "machine-add") { nfAdding = !nfAdding; renderMain(); return nfAdding && document.querySelector('[data-text="mc-host"]')?.focus(); }
-  if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : homeless(recentFolders()[0] || ""); return renderMain(); }
-  if (act === "perm") { newPerm = d.perm; if (newPerm !== "skip") savePerm(newAgent, newPerm); return renderMain(); }
+  if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); return renderMain(); }
+  if (act === "perm") { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); return renderMain(); }
   if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
   if (act === "folder") return pickFolder(d.cwd);
   if (act === "cancel") { liveOpen = newOpen = false; closeFolders(); return renderMain(); }
@@ -2763,11 +2779,9 @@ async function lvAct(act, d) {
     if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
     try {
       const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra: draft("new-flags").text, machine: newMachine });
-      if (newMachine) rememberFolder(newMachine, cwd);
+      rememberFolder(newMachine, cwd);
       toast(r.detail);
-      draft("new-msg").text = draft("new-name").text = draft("new-flags").text = "";
-      if (newPerm === "skip") newPerm = savedPerm(newAgent);   // skipping permissions is for that one session, never carried over
-      newWhere = null;
+      draft("new-msg").text = draft("new-name").text = "";   // the rest stays as you set it, for the next one
       newOpen = liveOpen = false;
       // Cue knows the new session already (it picked the id): open it here. Its terminal stays closed
       // (the strip, or ⌃`) until you open it — the reply box comes first.
@@ -3902,6 +3916,15 @@ function bindMain() {
     if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; starOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
     if (starOpen && !t.closest(".st-wrap")) { starOpen = false; renderMain(); }
     if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = newOpen = false; renderMain(); }
+    const rn2 = t.closest("[data-act=rename-again], [data-act=rename-dismiss]");
+    if (rn2) {
+      const sid = rn2.dataset.sid;
+      if (rn2.dataset.act === "rename-again") return submitRename(sid, true);
+      const x = sessionOf(sid);
+      if (x) delete x.rename_error;
+      renderMain();
+      return invoke("rename_dismiss", { sessionId: sid }).catch(() => {});
+    }
     const tr = t.closest("[data-act=trust]");
     if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Answer it in its terminal.`)); return; }
     const goS = t.closest("[data-act=go-session]");
@@ -4200,6 +4223,20 @@ function setState(s) {
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
   for (const g of ghosts.values()) setTimeout(leaveGhosts, Math.max(0, g.at + LINGER_MS - Date.now()) + 50);
   state = s;
+  // A rename Cue's update doesn't have yet keeps showing (no flash of the old name).
+  for (const [sid, r] of renamedNow) {
+    const x = sessionOf(sid);
+    if (!x || x.name === r.name || Date.now() - r.at > 5000) renamedNow.delete(sid);
+    else { x.name = r.name; delete x.rename_error; }
+  }
+  // An agent that didn't take a rename: said once, as it happens (not for old ones at launch).
+  for (const x of s.sessions) {
+    const k = `${x.session_id}|${x.rename_error || ""}`;
+    if (!x.rename_error) { for (const seen of renameErrSeen) if (seen.startsWith(`${x.session_id}|`)) renameErrSeen.delete(seen); continue; }
+    if (!renameErrSeen.has(k) && renameErrPrimed) toast(`${nameOf(x.session_id, x.project)}: ${x.rename_error}`);
+    renameErrSeen.add(k);
+  }
+  renameErrPrimed = true;
   for (const [sid, on] of starNow) if (!!sessionOf(sid)?.starred_ms === on || !sessionOf(sid)) starNow.delete(sid);   // Cue says so now
   // First launch: an installed agent isn't connected yet, and you haven't closed the setup screen.
   if (!setupShown && s.settings && !s.settings.setup?.done && ["claude", "codex", "pi"].some((h) => s.connections?.[h]?.present && !s.connections[h].ok)) { setupShown = true; sheet = "setup"; }

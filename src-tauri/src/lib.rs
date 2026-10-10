@@ -661,6 +661,12 @@ async fn rename_session(hub: State<'_, Arc<Hub>>, session_id: String, name: Stri
     tauri::async_runtime::spawn_blocking(move || h.rename(&session_id, &name)).await.map_err(|e| e.to_string())?
 }
 
+/// × on the chat's "didn't take the new name" notice.
+#[tauri::command]
+fn rename_dismiss(hub: State<'_, Arc<Hub>>, session_id: String) {
+    hub.dismiss_rename_error(&session_id);
+}
+
 /// A relay / pi-lead button (Review, Diff, Auto): type the command into the lead, open the page, or run relay.
 #[tauri::command]
 async fn crew_action(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
@@ -928,6 +934,7 @@ pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: 
     if !sid.is_empty() {
         let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
         h.started(origin, message, asks_trust);
+        h.name_new(&sid, name);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
 }
@@ -943,6 +950,7 @@ fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &
     if !sid.is_empty() {
         let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
         h.started(origin, message, false);
+        h.name_new(&sid, name);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} on {}", agent, m.name) }))
 }
@@ -1362,7 +1370,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {

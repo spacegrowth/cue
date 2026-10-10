@@ -1466,7 +1466,7 @@ impl Hub {
             "history": st.history,
             // Every answer of the last day, in brief: today's numbers count these, not the History list.
             "answers": st.answers,
-            "sessions": with_registry_names(st.sessions.snapshot()),
+            "sessions": st.sessions.snapshot(),
             "parked": st.parked,
             "reviews": reviews,
             "review_queue": Self::review_queue_view(&st),
@@ -1634,6 +1634,9 @@ impl Hub {
     /// Rename a session: Cue shows the name at once, and the agent is told in its own way. Claude Code:
     /// "/rename <name>" typed at its prompt (deferred to the end of the turn if it's busy). Pi: through
     /// Cue's extension, nothing typed. Codex: Cue only. Returns what happened, for a toast. Blocking.
+    /// Rename a session: Cue shows the new name at once, then tells the agent. If the agent doesn't take
+    /// it (Pi isn't connected, typing into Claude Code failed, or Claude Code's list never shows it), Cue
+    /// keeps your name and the chat says so (`rename_error`), with Try again. Codex has no names: Cue's only.
     pub fn rename(&self, session_id: &str, name: &str) -> Result<String, String> {
         let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect();
         let (harness, state, origin) = self.store.lock().unwrap().sessions.set_name(session_id, &name).ok_or("that session is gone")?;
@@ -1644,14 +1647,56 @@ impl Hub {
         match harness.as_str() {
             "pi" => {
                 let sent = self.store.lock().unwrap().subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "rename", "name": name })).is_ok()).unwrap_or(false);
-                Ok(if sent { "Renamed in Cue and Pi".into() } else { "Renamed in Cue (Pi isn't connected to Cue right now)".into() })
+                if sent { Ok("Renamed".into()) } else { Err(self.rename_failed(session_id, "Pi isn't connected to Cue, so it didn't get the new name")) }
             }
             "claude" if state == "working" => {
                 self.store.lock().unwrap().sessions.defer_rename(session_id);
-                Ok("Renamed in Cue · Claude Code gets it when this turn ends".into())
+                Ok("Renamed · Claude Code gets it when this turn ends".into())
             }
-            "claude" => crate::focus::type_into(&origin, &format!("/rename {name}")).map(|_| "Renamed in Cue and Claude Code".into()),
-            _ => Ok("Renamed in Cue".into()),
+            "claude" => match crate::focus::type_into(&origin, &format!("/rename {name}")) {
+                Ok(_) => {
+                    // Claude Code's list shows a rename within a few seconds: give it 15.
+                    if origin.machine.is_empty() {
+                        self.store.lock().unwrap().sessions.expect_rename(session_id, &name, now_ms() + RENAME_WITHIN_MS);
+                    }
+                    Ok("Renamed".into())
+                }
+                Err(e) => Err(self.rename_failed(session_id, &format!("Couldn't give Claude Code the new name: {e}"))),
+            },
+            "codex" => Ok("Named in Cue (Codex has no names of its own)".into()),
+            _ => Ok("Named in Cue".into()),
+        }
+    }
+
+    /// The agent didn't get the name: Cue keeps it, and the chat says why. Returns `why`.
+    fn rename_failed(&self, session_id: &str, why: &str) -> String {
+        self.store.lock().unwrap().sessions.rename_failed(session_id, why);
+        self.changed();
+        why.to_string()
+    }
+
+    /// × on the chat's rename notice.
+    pub fn dismiss_rename_error(&self, session_id: &str) {
+        if self.store.lock().unwrap().sessions.dismiss_rename_error(session_id) {
+            self.changed();
+        }
+    }
+
+    /// A session + New just started with a name: Cue shows it from the start (the agent got it on its
+    /// command line where it takes one).
+    pub fn name_new(&self, session_id: &str, name: &str) {
+        let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect();
+        if !name.is_empty() && self.store.lock().unwrap().sessions.set_name(session_id, &name).is_some() {
+            self.changed();
+        }
+    }
+
+    /// Every second: Claude Code's own names for its sessions here, to settle Cue's renames and follow
+    /// the ones made in its terminal.
+    fn sync_agent_names(&self) {
+        let listed: HashMap<String, String> = crate::live::claude().into_iter().map(|q| (q.session_id, q.name)).collect();
+        if self.store.lock().unwrap().sessions.sync_agent_names(&listed, now_ms()) {
+            self.changed();
         }
     }
 
@@ -1723,17 +1768,23 @@ impl Hub {
     }
 
     fn deliver_deferred_rename(&self, session_id: &str) {
-        if let Some((name, origin)) = self.store.lock().unwrap().sessions.take_rename(session_id) {
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(2));
-                let _ = crate::focus::type_into(&origin, &format!("/rename {name}"));
-            });
+        let Some((name, origin)) = self.store.lock().unwrap().sessions.take_rename(session_id) else { return };
+        if origin.machine.is_empty() {
+            self.store.lock().unwrap().sessions.expect_rename(session_id, &name, now_ms() + 2_000 + RENAME_WITHIN_MS);
         }
+        let (me, sid) = (self.shared(), session_id.to_string());
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if let (Err(e), Some(me)) = (crate::focus::type_into(&origin, &format!("/rename {name}")), me) {
+                me.rename_failed(&sid, &format!("Couldn't give Claude Code the new name: {e}"));
+            }
+        });
     }
 
     /// Every second: what each working Claude Code session is doing now, read from the end of its
     /// transcript (no hook involved, so it costs the agent nothing).
     pub fn refresh_activity(&self) {
+        self.sync_agent_names();
         let todo = self.store.lock().unwrap().sessions.working_transcripts();
         let found: Vec<(String, (String, u64))> =
             todo.into_iter().filter_map(|(sid, harness, path)| crate::transcript::activity_of(&harness, &path).map(|a| (sid, a))).collect();
@@ -1995,17 +2046,6 @@ fn push_history(st: &mut Store, it: Item) {
 /// separately. "last": just the very last message.
 /// A Claude Code session's name as Claude Code has it now: `/rename` in its terminal updates Claude
 /// Code's own list of running sessions (Cue's rename sends `/rename` too), and Cue's record may not know.
-fn with_registry_names(sessions: Vec<crate::sessions::Session>) -> Value {
-    let named: HashMap<String, String> = crate::live::claude().into_iter().filter(|q| !q.name.trim().is_empty()).map(|q| (q.session_id, q.name)).collect();
-    let mut v = serde_json::to_value(sessions).unwrap_or_else(|_| json!([]));
-    for s in v.as_array_mut().into_iter().flatten() {
-        if let Some(name) = s.get("session_id").and_then(Value::as_str).and_then(|id| named.get(id)).cloned() {
-            s["name"] = json!(name);
-        }
-    }
-    v
-}
-
 pub fn split_turn(last: String, turn: &[TurnPart], mode: &str) -> (String, String) {
 /// How long Cue keeps looking for a typed message to be taken before its bubble says it may not have gone.
 /// SHORTCUT: outside tmux (iTerm, Terminal) Cue can't see the input box, so this timer is the only
@@ -2295,6 +2335,113 @@ mod tests {
         hub.event(origin, "stopped", "Done.".into(), vec![], "");
         let kinds: Vec<String> = hub.pending().iter().map(|i| i.kind.clone()).collect();
         assert_eq!(kinds, ["waiting"]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn renaming_shows_at_once_for_every_agent_and_says_when_the_agent_didnt_get_it() {
+        let dir = std::env::temp_dir().join(format!("cue-rename-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        // No terminal Cue can type into (so nothing is typed anywhere real).
+        let o = |sid: &str, h: &str| Origin { session_id: sid.into(), harness: h.into(), cwd: "/x/cue".into(), ..Default::default() };
+        hub.event(o("cx", "codex"), "stopped", "done".into(), vec![], "");
+        hub.event(o("pi", "pi"), "stopped", "done".into(), vec![], "");
+        hub.event(o("cl", "claude"), "stopped", "done".into(), vec![], "");
+        hub.event(o("busy", "claude"), "active", "working on it".into(), vec![], "");
+        let shown = |sid: &str| hub.snapshot()["sessions"].as_array().unwrap().iter().find(|s| s["session_id"] == sid).cloned().unwrap();
+
+        // Codex: Cue's name only, nothing to fail.
+        assert_eq!(hub.rename("cx", "  tidy   up ").unwrap(), "Named in Cue (Codex has no names of its own)");
+        assert_eq!(shown("cx")["name"], "tidy up");
+        // Pi not connected: the name shows, and so does why Pi didn't get it.
+        let e = hub.rename("pi", "pi-name").unwrap_err();
+        assert_eq!(shown("pi")["name"], "pi-name");
+        assert_eq!(shown("pi")["rename_error"], e);
+        // Claude, idle, but Cue can't type into its terminal: the name shows, with the reason.
+        let e = hub.rename("cl", "claude-name").unwrap_err();
+        assert!(e.starts_with("Couldn't give Claude Code the new name"), "{e}");
+        assert_eq!((shown("cl")["name"].as_str(), shown("cl")["rename_error"].as_str()), (Some("claude-name"), Some(e.as_str())));
+        hub.dismiss_rename_error("cl");
+        assert!(shown("cl").get("rename_error").is_none());
+        // Claude, mid-turn: shown now, given to Claude Code when the turn ends; its old name doesn't win meanwhile.
+        crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "old".into(), cwd: "/x/cue".into(), pid: 1, status: "busy".into(), waiting_for: String::new(), since_ms: 0 }]);
+        hub.sync_agent_names();
+        assert_eq!(shown("busy")["name"], "old", "Claude Code's name, Cue having none");
+        hub.rename("busy", "later-name").unwrap();
+        hub.sync_agent_names();
+        assert_eq!(shown("busy")["name"], "later-name");
+        assert!(shown("busy").get("rename_error").is_none());
+        // Claude Code renamed in its own terminal: Cue follows.
+        hub.store.lock().unwrap().sessions.take_rename("busy");
+        crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "renamed-there".into(), cwd: "/x/cue".into(), pid: 1, status: "idle".into(), waiting_for: String::new(), since_ms: 0 }]);
+        hub.sync_agent_names();
+        assert_eq!(shown("busy")["name"], "renamed-there");
+        // Gone: an error, nothing changed.
+        assert!(hub.rename("nope", "x").is_err());
+        crate::live::set_claude(vec![]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// End to end against a real Claude Code in tmux: `CUE_RENAME_PANE=%12 CUE_RENAME_SID=<id> cargo test
+    /// -- --ignored renames_a_real_claude_code_session`. Renames that session (use a throwaway one).
+    #[test]
+    #[ignore]
+    fn renames_a_real_claude_code_session() {
+        let (Ok(pane), Ok(sid)) = (std::env::var("CUE_RENAME_PANE"), std::env::var("CUE_RENAME_SID")) else { return };
+        let dir = std::env::temp_dir().join(format!("cue-rename-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = std::env::var("HOME").unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let origin = Origin { session_id: sid.clone(), harness: "claude".into(), cwd: dir.to_string_lossy().into(), term_program: "tmux".into(), tmux_pane: pane, ..Default::default() };
+        hub.event(origin, "stopped", "ready".into(), vec![], "");
+        let wait_for = |want: &dyn Fn(&Value) -> bool| {
+            for _ in 0..40 {
+                std::env::set_var("HOME", &home);
+                crate::live::refresh();
+                hub.sync_agent_names();
+                let s = hub.snapshot()["sessions"].as_array().unwrap().iter().find(|s| s["session_id"] == sid.as_str()).cloned().unwrap();
+                if want(&s) {
+                    return s;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            panic!("timed out");
+        };
+        let name = format!("cue e2e “{}” #{}", "quoted", now_ms() % 1000);
+        hub.rename(&sid, &name).unwrap();
+        let s = hub.snapshot()["sessions"].as_array().unwrap().iter().find(|s| s["session_id"] == sid.as_str()).cloned().unwrap();
+        assert_eq!(s["name"], name.as_str(), "shown at once");
+        let s = wait_for(&|s| s["claude_name"] == name.as_str());
+        assert!(s.get("rename_error").is_none(), "{s}");
+        // Mid-turn: shown at once, typed only when the turn ends, then settled the same way.
+        hub.event(Origin { session_id: sid.clone(), harness: "claude".into(), ..Default::default() }, "active", "a turn".into(), vec![], "");
+        let name2 = format!("{name} mid-turn");
+        hub.rename(&sid, &name2).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        crate::live::refresh();
+        hub.sync_agent_names();
+        let s = hub.snapshot()["sessions"].as_array().unwrap().iter().find(|s| s["session_id"] == sid.as_str()).cloned().unwrap();
+        assert_eq!((s["name"].as_str(), s["claude_name"].as_str()), (Some(name2.as_str()), Some(name.as_str())), "not typed during the turn");
+        hub.event(Origin { session_id: sid.clone(), harness: "claude".into(), ..Default::default() }, "stopped", "done".into(), vec![], "");
+        let s = wait_for(&|s| s["claude_name"] == name2.as_str());
+        assert!(s.get("rename_error").is_none(), "{s}");
+        let name = name2;
+        // A deadline already passed with Claude Code still on the old name: the notice.
+        let old = name.clone();
+        hub.store.lock().unwrap().sessions.set_name(&sid, "never-typed");
+        hub.store.lock().unwrap().sessions.expect_rename(&sid, "never-typed", now_ms());
+        let s = wait_for(&|s| s.get("rename_error").is_some());
+        assert_eq!(s["name"], "never-typed");
+        assert!(s["rename_error"].as_str().unwrap().contains(&old), "{s}");
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
