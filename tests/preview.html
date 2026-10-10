@@ -19,6 +19,8 @@
       const q = new URLSearchParams(location.search);
       // ?parked=det,sec: those sessions start in Need to decide.
       try { localStorage.setItem("cue.parked", JSON.stringify(q.get("parked") ? q.get("parked").split(",") : [])); } catch {}
+      // ?later=1: Need to decide open (it starts folded).
+      try { localStorage.setItem("cue.laterOpen", q.get("later") === "1" ? "1" : "0"); } catch {}
       const now = Date.now(), M = 60000;
       const seg = (kind, a, b) => ({ kind, start_ms: now - a * M, end_ms: b == null ? null : now - b * M });
       const sess = (sid, project, harness, st, since, segments, prompt = "") => ({ session_id: sid, project, harness, cwd: `/Users/me/code/${project}`, state: st, since_ms: now - since * M, prompt, segments });
@@ -135,7 +137,8 @@
         app: { getVersion: async () => "0.1.5" },
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           console.log("[cue-preview]", cmd, JSON.stringify(args));
-          if (cmd === "get_state") return structuredClone(state);
+          if (cmd === "get_state") { for (const sid of (q.get("parked") || "").split(",")) { const s = state.sessions.find((x) => x.session_id === sid); if (s && !s.later_ms) s.later_ms = now; } return structuredClone(state); }
+          if (cmd === "set_later") { const s = state.sessions.find((x) => x.session_id === args.sessionId); if (s) s.later_ms = args.on ? Date.now() : 0; return null; }
           // + New → Machine: one connected, one that needs a login.
           if (cmd === "machine_setup") return ["Set up Cue's hooks for Claude Code (~/.claude/settings.json, backed up first)"];
           // ⌘F: one closed session matching (a Claude Code one, so it offers Resume).

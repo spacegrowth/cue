@@ -61,7 +61,7 @@ function nameTip(sid) {
   return title;
 }
 /** A session's name, with that hover. */
-const nameSpan = (sid, project, cls = "proj") => { const tip = sid ? nameTip(sid) : ""; return `<span class="${cls}"${tip ? ` title="${esc(tip)}"` : ""}>${esc(nameOf(sid, project))}</span>`; };
+const nameSpan = (sid, project, cls = "proj") => { const tip = sid ? nameTip(sid) : ""; return `<span class="${cls}">${esc(nameOf(sid, project))}</span>`; };
 /** A machine's name, short enough for a card: its first part (no user@, no domain), and past 10 characters
  *  its first 5 and last 5. What you renamed it to comes first. (Notifications do the same: machines::display_name.) */
 const machShort = (m) => {
@@ -95,7 +95,7 @@ function crewColor(sid) {
 const shortModel = (m) => String(m || "").replace(/\[.*\]$/, "").replace(/^.*\//, "").replace(/^claude-/, "");
 /** A dot in the lead's color (its iTerm tab color): beside a lead's name, and before the lead's name on its executors. */
 const crewDot = (sid) => `<i class="crew-color" style="--crew:${crewColor(sid)}"></i>`;
-const roleTag = (sid, live = false) => { const m = crewOf(sid); return m ? `${m.role === "lead" ? crewDot(sid) : ""}<span class="role ${m.role}" title="${m.role === "lead" ? "Lead: plans, reviews, commits" : "Executor: works one packet, stages, reports"}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>${m.role === "lead" ? autoToggle(sid, m, live) : ""}` : ""; };
+const roleTag = (sid, live = false) => { const m = crewOf(sid); return m ? `${m.role === "lead" ? crewDot(sid) : ""}<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>${m.role === "lead" ? autoToggle(sid, m, live) : ""}` : ""; };
 /** An executor's lead: a link when Cue has that session, else its name. */
 const leadLink = (m) => sessionOf(m.lead) ? `<button class="crew-lead" data-session="${esc(m.lead)}">${esc(m.lead_name || "its lead")}</button>` : `<b>${esc(m.lead_name || "its lead")}</b>`;
 const pkt = (n) => n ? `packet ${n}` : "";
@@ -128,7 +128,7 @@ const reviewWord = (sid) => state.reviews?.[sid] || "";
 const autoToggle = (sid, m, live = false) => {
   if (m?.plugin !== "relay") return "";
   const why = m.auto ? "Goes ahead on routine steps without asking. Commits still wait for you." : "Waits for you at every step.";
-  return live ? `<button class="auto-tg ${m.auto ? "on" : ""}" data-crew="${m.auto ? "auto-off" : "auto-on"}" data-crew-sid="${esc(sid)}" title="${why}"><i></i>auto</button>`
+  return live ? `<button class="auto-tg ${m.auto ? "on" : ""}" data-crew="${m.auto ? "auto-off" : "auto-on"}" data-crew-sid="${esc(sid)}"><i></i>auto</button>`
     : m.auto ? `<span class="auto-tag">auto</span>` : "";
 };
 /** A button label with a shorter form the chat's header switches to when the pane is narrow (see .active-pane in the CSS). */
@@ -283,11 +283,11 @@ function table(lines, inline) {
  *  are set aside first so the bare-URL pass can't reach into their attributes. */
 function linkify(h) {
   const links = [];
-  const a = (u, label) => `<a href="#" data-href="${u}" title="${u}">${label}</a>`;
+  const a = (u, label) => `<a href="#" data-href="${u}">${label}</a>`;
   // A path in a message is not a link on a plain click (paths are everywhere in agent text), but
   // ⌘-click opens it (a document in its app; a script or an app only shown in Finder): the click
   // handler sends data-path to open_link.
-  const pa = (u) => `<a href="#" data-path="${u}" title="⌘-click to open: ${u}">${u}</a>`;
+  const pa = (u) => `<a href="#" data-path="${u}">${u}</a>`;
   return h.replace(/\[([^\]\n]+)\]\(((?:https?|file):\/\/[^\s)]+)\)/g, (_, label, u) => `\u0000${links.push(a(u, label)) - 1}\u0000`)
     .replace(/(?:https?|file):\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => a(u, u))
     .replace(/(^|[^\w@/\\<])(\/[\w.@~+-]+(?:\/[\w.@~+-]+)*\/?|~\/[^\s<>"'`]+)/g, (m, pre, raw) => {
@@ -546,7 +546,7 @@ async function runLine(who, line, cwd = null, machine = null) {
 /** The card: the line, what it printed, and what to do with it. */
 function ranCard(who, e, n) {
   const status = e.running ? `<span class="dot-live"></span>Running…` : e.err ? esc(e.err) : `${e.timed_out ? "stopped after 2 min" : e.code === 0 ? "ok" : `exit ${e.code}`} · ${e.ms < 1000 ? `${e.ms} ms` : `${(e.ms / 1000).toFixed(1)} s`}`;
-  const acts = e.running || e.err ? "" : ` · <button class="q-now" data-act="ran-again" data-who="${esc(who)}" data-n="${n}">Run again</button>${who !== "new" ? ` · <button class="q-now" data-act="ran-send" data-who="${esc(who)}" data-n="${n}" title="The line and what it printed, as your message">Send to ${esc(agentName(sessionOf(who)?.harness))}</button> · <button class="q-now" data-act="ran-term" data-who="${esc(who)}" data-n="${n}" title="Types it into the session's terminal, as a “!” line, for a command that needs one">Run in its terminal</button>` : ""}`;
+  const acts = e.running || e.err ? "" : ` · <button class="q-now" data-act="ran-again" data-who="${esc(who)}" data-n="${n}">Run again</button>${who !== "new" ? ` · <button class="q-now" data-act="ran-send" data-who="${esc(who)}" data-n="${n}">Send to ${esc(agentName(sessionOf(who)?.harness))}</button> · <button class="q-now" data-act="ran-term" data-who="${esc(who)}" data-n="${n}">Run in its terminal</button>` : ""}`;
   return `<div class="cv-you cv-ran"><pre class="ran-out"><span class="ran-cmd">${esc(e.line)}</span>${e.output ? `\n${esc(e.output)}` : e.running || e.err ? "" : `\n<span class="ran-dim">(no output)</span>`}</pre><div class="cv-meta">You ran · in ${esc(homeless(e.cwd))}${e.machine ? ` on ${esc(machShort(e.machine))}` : ""} · ${status}${acts}</div></div>`;
 }
 /** The line and its output, as a message: what you checked becomes context for the agent. */
@@ -668,7 +668,7 @@ function moveBtn(sid, harness, st, cls) {
     : st === "working" ? "Available once it finishes what it's doing (or Esc it in its tab)"
     : st === "deciding" ? "Answer what it's asking first"
     : "";
-  return `<button class="${cls}" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : `title="Ends it in its tab and resumes it here, in Cue's terminal (the conversation comes back whole)"`}>Move to Cue</button>`;
+  return `<button class="${cls}" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to Cue</button>`;
 }
 /** "Open in iTerm ↗": where a terminal-app session's own tab is, for the places that have no reply box. */
 const openInLabel = (s) => `Open in ${esc(s ? termAppName(s) : "its terminal")} <span aria-hidden="true">↗</span>`;
@@ -871,7 +871,7 @@ function hideIdle(key) {
   try { localStorage.setItem("cue.hiddenIdle", JSON.stringify([...hiddenIdle])); } catch {}
   renderMain();
 }
-const hideX = (s) => idleNote(s) ? `<button class="x-clear" data-hide-idle="${esc(idleKey(s))}" title="Hide until it does something again" aria-label="Hide">×</button>` : "";
+const hideX = (s) => idleNote(s) ? `<button class="x-clear" data-hide-idle="${esc(idleKey(s))}" aria-label="Hide">×</button>` : "";
 /** Sessions you starred: the ones you're following. Marked where they are (a star doesn't move them),
  *  and counted by the ★ chip in the header. Kept with the session in Cue (so anything showing
  *  Cue sees the same stars); a star you just clicked shows until Cue's next update says so too. */
@@ -906,13 +906,22 @@ function openDrawer() {
     return localStorage.getItem("cue.recentOpen") === "1" ? "recent" : "starred";   // what this window had before
   } catch { return "starred"; }
 }
-const drawerOpen = (name) => openDrawer() === name;
+/** Need to decide, under Waiting: a drawer of its own, folded unless you opened it (remembered). */
+function laterOpen() {
+  try { return localStorage.getItem("cue.laterOpen") === "1"; } catch { return false; }
+}
+const drawerOpen = (name) => name === "later" ? laterOpen() : openDrawer() === name;
 /** Open or fold a drawer like a drawer: folding, its height shrinks up into its heading while Sessions
  *  grows into the room; opening, it grows back down (the other one, if open, folds at once). Snaps with
  *  Reduce motion. */
 function foldDrawer(name) {
   const closing = drawerOpen(name);
-  const save = () => { try { localStorage.setItem("cue.drawer", closing ? "" : name); localStorage.removeItem("cue.recentOpen"); localStorage.removeItem("cue.recentClosed"); } catch {} };
+  const save = () => {
+    try {
+      if (name === "later") return localStorage.setItem("cue.laterOpen", closing ? "0" : "1");
+      localStorage.setItem("cue.drawer", closing ? "" : name); localStorage.removeItem("cue.recentOpen"); localStorage.removeItem("cue.recentClosed");
+    } catch {}
+  };
   const slide = (sec, col, from, to, done) => {
     let ended = false;
     const end = () => { if (!ended) { ended = true; done(); } };
@@ -931,7 +940,8 @@ function foldDrawer(name) {
   renderMain();                                    // open, so we can measure where it ends up
   sec = document.querySelector(`.sec-${name}`);
   const col = sec.closest(".col.split"), to = sec.offsetHeight;
-  slide(sec, col, from, to, () => { sec.style.flex = sec.style.overflow = ""; col.classList.remove("drawers-shut"); });
+  // Mid-slide, Sessions had the room the drawer was taking: once it's open, the lists' "N more" are re-placed.
+  slide(sec, col, from, to, () => { sec.style.flex = sec.style.overflow = ""; col.classList.remove("drawers-shut"); markMore(); });
 }
 /** Put off for later ("Later"): kept with the session in Cue, not in this window. */
 const parkedIds = () => new Set(state.sessions.filter((s) => s.later_ms).map((s) => s.session_id));
@@ -1038,7 +1048,7 @@ function localImages(text) {
     invoke("image_data", { path: p }).then((d) => localImgs.set(p, d), () => localImgs.set(p, false)).then(render);
   }
   if (!paths.length) return "";
-  return `<div class="thumbs shots">${paths.map((p, n) => `<button class="thumb" data-local-lb='${esc(JSON.stringify({ paths, i: n }))}' title="${esc(p)}">${localImgs.get(p) ? `<img src="${localImgs.get(p)}" alt=""/>` : ""}</button>`).join("")}</div>`;
+  return `<div class="thumbs shots">${paths.map((p, n) => `<button class="thumb" data-local-lb='${esc(JSON.stringify({ paths, i: n }))}'>${localImgs.get(p) ? `<img src="${localImgs.get(p)}" alt=""/>` : ""}</button>`).join("")}</div>`;
 }
 
 /** The "/" menu: the commands Claude Code has enabled for a session (its built-ins, your skills,
@@ -1183,7 +1193,7 @@ function requestBody(it) {
     if (qs.length === 1) return `<div class="qtext">${esc(qs[0].question)}</div>${opts(qs[0], 0)}${qs[0].multiSelect ? submitAnswers(it) : ""}`;
     // Several questions: one at a time, with tabs to move between them (like Claude Code's own prompt).
     const cur = stepOf(it);
-    const tabs = qs.map((q, n) => `<button class="qtab ${n === cur ? "on" : ""} ${isAnswered(it, q) ? "done" : ""}" data-qstep="${esc(it.id)}:${n}" title="${esc(q.question)}">${isAnswered(it, q) ? "✓ " : ""}${esc(q.header || `Question ${n + 1}`)}</button>`).join("");
+    const tabs = qs.map((q, n) => `<button class="qtab ${n === cur ? "on" : ""} ${isAnswered(it, q) ? "done" : ""}" data-qstep="${esc(it.id)}:${n}">${isAnswered(it, q) ? "✓ " : ""}${esc(q.header || `Question ${n + 1}`)}</button>`).join("");
     const q = qs[cur];
     const nav = q.multiSelect && cur < qs.length - 1 ? `<button class="btn" data-qstep="${esc(it.id)}:${cur + 1}">Next question</button>` : "";
     // An answer you typed yourself (not one of the options) shows under the question.
@@ -1207,7 +1217,7 @@ function submitAnswers(it) {
 }
 function whyLine(it) {
   const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
-  return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"} title="${esc(c.text)}">Why: ${esc(firstLine(c.text))}</div>` : "";
+  return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"}>Why: ${esc(firstLine(c.text))}</div>` : "";
 }
 function decisionButtons(it) {
   if (inTerminal(it) && inTmux(it.session_id) && termSid === it.session_id) return `<div class="row-btns"><span class="dim">Answer it in the terminal above.</span></div>`;
@@ -1219,7 +1229,7 @@ function decisionButtons(it) {
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
   return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">Deny</button>
     ${sugg.length ? `<span class="always">${menu}<button class="btn" data-act="menu" data-id="${esc(it.id)}">Always…</button></span>` : ""}
-    <button class="btn" data-act="redirect" data-id="${esc(it.id)}" title="Deny and tell it what to do instead">↪</button>
+    <button class="btn" data-act="redirect" data-id="${esc(it.id)}">↪</button>
     <button class="btn primary flex" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
 }
 
@@ -1254,7 +1264,7 @@ function starEntry(s, open) {
   const st = stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
   return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" data-session="${esc(sid)}">
     <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}<span>${esc(agentName(s.harness))}</span>${machTag(s.machine)}<span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
-    <div class="tl-title" data-cut title="${esc(what)}">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
+    <div class="tl-title">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
 }
 
 // ---------- Board view: ACTIVE | WAITING | WORKING + RECENTLY ANSWERED ----------
@@ -1602,7 +1612,7 @@ function chatHtml(it, s, harness, paged = false) {
   }), chose.concat(ran));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
-  if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}" title="Stops its turn and sends this now">Send now</button></div></div>`);
+  if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
   return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
@@ -1611,7 +1621,7 @@ const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}
 /** One line under the chat: where the session is now. */
 function statusLine(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
-  if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}" title="Answers “Yes, I trust this folder” in its terminal">Trust folder</button></div>`;
+  if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
   // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
   if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span></div>`;
   // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.
@@ -1631,7 +1641,7 @@ function statusLine(it, s) {
     const when = l.resets_ms ? ` · resets ${clockAt(l.resets_ms)}${l.resets_ms - now() < 20 * 3600000 ? `, in ${untilText(l.resets_ms - now())}` : ""}` : "";
     const head = l.scope === "all" ? "Out of usage" : `${esc(l.scope)} used up`;
     const tail = l.scope === "all" ? "Cue will tell you when it resets." : "Switch models with /model to keep going.";
-    return `<div class="cv-status limit" data-cut title="${esc(l.text)}"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
+    return `<div class="cv-status limit"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
   }
   if (s?.state === "stopped") return `<div class="cv-status">Stopped by you · it's at its prompt</div>`;
   if (!s && it && !isPending(it)) return `<div class="cv-status">This session has ended.</div>`;
@@ -1688,8 +1698,8 @@ function metaInline(sid) {
   const freed = s?.compacted_ms && s.state !== "working";
   const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
   // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
-  const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}" title="Summarize the conversation to free up context">Compact</button>` : "";
-  return `<span class="ap-meta" title="${esc(tip)}">${parts.join(" · ")}</span>${chip}`;
+  const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
+  return `<span class="ap-meta">${parts.join(" · ")}</span>${chip}`;
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
@@ -1774,7 +1784,7 @@ function activePane() {
   const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
   const turnWord = ch ? `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} · +${ch.add} −${ch.del}` : it?.interrupted ? "interrupted" : "your turn";
   const pill = pending
-    ? `<span class="pill ${it.interrupted ? "intr" : ""}"${ch ? ` title="${esc(changesTip(ch))}"` : ""}>${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : inTerminal(it) ? "asks in its terminal" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
+    ? `<span class="pill ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : inTerminal(it) ? "asks in its terminal" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
     : `<span class="pill soft">${s ? { working: "working", waiting: "your turn", deciding: "deciding", agent: "on its lead", stopped: "stopped", limited: s.limit && lifted(s.limit) ? "usage is back" : "out of usage" }[s.state] || s.state : "answered"}</span>`;
   let foot;
   if (pending && it.kind !== "waiting") {
@@ -1794,7 +1804,7 @@ function activePane() {
     // Working: what you send waits for its current step (⌘ Enter stops it and sends now, said on the button).
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"${busy ? ` title="${harness === "pi" ? "It reads this when it finishes its current step" : "Kept in Cue until this turn ends (Esc takes it back)"}. ⌘ Enter stops it and sends now."` : ""}`)}</div>`;
+    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
@@ -1818,7 +1828,7 @@ function activePane() {
 /** × on a finished turn: nothing to reply, take it off Waiting. Decisions don't get one (the agent is blocked on them). */
 const clearX = (it) => it.kind === "waiting" ? `<button class="x-clear" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : "";
 /** "Later" on a Waiting row: move the session to Need to decide. */
-const parkBtn = (sid) => `<button class="park-btn" data-park="${esc(sid)}:1" title="Move it below for now">Later</button>`;
+const parkBtn = (sid) => `<button class="park-btn" data-park="${esc(sid)}:1">Later</button>`;
 const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc(it.id)}" title="Send to back of the queue" aria-label="Send to back of the queue">↓</button>`;
 /** A row in Need to decide: the session, its finished turn if any, ↩ to put it back. Click to open it. */
 function laterRow({ sid, s, it }) {
@@ -1898,12 +1908,12 @@ function usageChip() {
   const paused = (n) => `${n} paused`;
   if (out.length) {
     const r = Math.max(...out.map((s) => s.limit.resets_ms || 0));
-    return `<span class="usage-wrap"><button class="usage-out" data-usage="out" title="Click to step through the paused sessions"><span class="uo-dot"></span>Claude Code out of usage<span class="uo-sub">${r ? ` · resets ${clockAt(r)}` : ""} · ${paused(out.length)}</span></button>${usagePop()}</span>`;
+    return `<span class="usage-wrap"><button class="usage-out" data-usage="out"><span class="uo-dot"></span>Claude Code out of usage<span class="uo-sub">${r ? ` · resets ${clockAt(r)}` : ""} · ${paused(out.length)}</span></button>${usagePop()}</span>`;
   }
-  if (back.length) return `<span class="usage-wrap"><span class="usage-back"><span class="ub-dot"></span>${esc(scopeName(back[0].limit))} is back<button class="ub-btn" data-usage="resend" title="Send each paused session the message that didn't run">Resend ${back.length}</button></span></span>`;
+  if (back.length) return `<span class="usage-wrap"><span class="usage-back"><span class="ub-dot"></span>${esc(scopeName(back[0].limit))} is back<button class="ub-btn" data-usage="resend">Resend ${back.length}</button></span></span>`;
   if (model.length) {
     const l = model[0].limit;
-    return `<span class="usage-wrap"><button class="usage-chip soft-warn" data-usage="model" title="${esc(l.text)} Other models still work."><span class="uf-dot"></span>${esc(l.scope)} used up<span class="uo-sub">${l.resets_ms ? ` · ${clockAt(l.resets_ms)}` : ""} · ${paused(model.length)}</span></button>${usagePop()}</span>`;
+    return `<span class="usage-wrap"><button class="usage-chip soft-warn" data-usage="model"><span class="uf-dot"></span>${esc(l.scope)} used up<span class="uo-sub">${l.resets_ms ? ` · ${clockAt(l.resets_ms)}` : ""} · ${paused(model.length)}</span></button>${usagePop()}</span>`;
   }
   const u = state.usage;
   const uf = state.usage_file || {};
@@ -1965,7 +1975,6 @@ function boardView() {
   // something never moves a row, so the lists don't shift under your pointer.
   const openSid = quietOpen || active?.sid || null;
   const isOpen = (sid) => !!openSid && sid === openSid;
-  const laterSec = later.length ? `<div class="col-sub later-head">NEED TO DECIDE · ${later.length}</div>${later.map(laterRow).join("")}` : "";
   const live = new Set(needs.map((i) => i.id));
   // A ghost fades in once: every later render (they come often while sessions work) draws it still.
   const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
@@ -1984,7 +1993,7 @@ function boardView() {
       <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span>${machTag(s.machine)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing" data-cut title="${esc(s.doing)}">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt" data-cut title="${esc(s.prompt)}">› ${esc(s.prompt)}</div>` : ""}</div>`;
+      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}</div>`;
   const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
   const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
@@ -2005,7 +2014,10 @@ function boardView() {
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   return `<div class="board" style="grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)">
     <div class="col main"><div class="col-head">ACTIVE</div>${activePane()}</div>
-    <div class="col"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div>${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${laterSec}</div>
+    <div class="col split col-waiting">
+      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}</div></div>
+      ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
+    </div>
     <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
       <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length}</span></div><div class="sec-body">${workCol}</div></div>
       ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => starEntry(s, isOpen(s.session_id))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
@@ -2023,10 +2035,10 @@ function subHead(cwd, crew, sid, titleOf = sid) {
   // The star sits after the folder: the title row is full.
   // Too long: cut in the middle (~/develop…/web-app), so the folder's own name always shows.
   const path = homeless(cwd), cutAt = Math.max(path.lastIndexOf("/"), 0);
-  const folder = cwd ? `<span class="ap-cwd sel" data-cut title="${esc(cwd)}"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? starBtn(sid) : ""}` : "";
+  const folder = cwd ? `<span class="ap-cwd sel"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? starBtn(sid) : ""}` : "";
   // Under the name: what Claude Code titled the conversation (unless that's already the name).
   const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
-  const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title" data-cut title="${esc(t)}">${esc(t)}</span>` : "";
+  const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title">${esc(t)}</span>` : "";
   const meta = titleOf ? metaInline(titleOf) : "";
   return folder || crew || title || meta ? `<div class="ap-sub">${title}${meta}${crew}${folder}</div>` : "";
 }
@@ -2128,7 +2140,7 @@ function searchSheet() {
   const row = (r, i, inGroup = false) => {
     searchVisible.push(i);
     const top = inGroup ? `<span class="dim">${r.role === "you" ? "you said" : "agent"}</span><span class="grow"></span><span class="age">${ago(r.at_ms)}</span>` : `${badge(r.harness)}<span class="proj">${mark(esc(r.name || r.project || "session"))}</span>${r.name && r.project && r.name !== r.project ? `<span class="dim">${esc(r.project)}</span>` : ""}
-      <span class="dim">${r.kind === "older" ? "" : r.kind === "session" ? sessionState(r) : r.role === "you" ? "you said" : "agent"}</span>${r.kind === "older" ? `<span class="sr-resume">Resume</span>` : r.kind === "session" && !r.live && r.harness === "claude" ? `<span class="sr-resume act" role="button" data-resume="${esc(r.session_id)}" data-name="${esc(r.name || r.project || "")}" title="claude --resume: back to work, the whole conversation">Resume</span>` : ""}${r.ended && r.kind === "message" ? `<span class="sr-ended">ended</span>` : ""}<span class="grow"></span><span class="age">${ago(r.at_ms)}</span>`;
+      <span class="dim">${r.kind === "older" ? "" : r.kind === "session" ? sessionState(r) : r.role === "you" ? "you said" : "agent"}</span>${r.kind === "older" ? `<span class="sr-resume">Resume</span>` : r.kind === "session" && !r.live && r.harness === "claude" ? `<span class="sr-resume act" role="button" data-resume="${esc(r.session_id)}" data-name="${esc(r.name || r.project || "")}">Resume</span>` : ""}${r.ended && r.kind === "message" ? `<span class="sr-ended">ended</span>` : ""}<span class="grow"></span><span class="age">${ago(r.at_ms)}</span>`;
     const body = r.kind === "message" ? `<div class="sr-snip">${mark(esc(r.snippet))}</div>`
       : r.last ? `<div class="sr-snip sr-last">${r.last_role === "you" ? "<b>You:</b> " : ""}${mark(esc(r.last))}</div>` : "";
     // Under its session's name, one line is enough: who, what, when.
@@ -2225,7 +2237,7 @@ function convoSheet() {
   }).join("");
   return `<div class="sheet convo-sheet"><div class="sheet-head"><button class="btn" data-act="convo-back">← Results</button>${badge(c.harness)}<h3>${esc(c.name)}</h3>
       <span class="dim" style="font-size:12px">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>
-      ${live ? `<button class="btn primary" data-act="convo-open" data-sid="${esc(c.sid)}">Open in Active</button>` : c.harness === "claude" ? `<button class="btn primary" data-act="convo-resume" title="claude --resume: the conversation comes back whole, ready to go on">Resume</button>` : ""}<kbd>Esc</kbd></div>
+      ${live ? `<button class="btn primary" data-act="convo-open" data-sid="${esc(c.sid)}">Open in Active</button>` : c.harness === "claude" ? `<button class="btn primary" data-act="convo-resume">Resume</button>` : ""}<kbd>Esc</kbd></div>
     <div class="sheet-body convo-body">${msgs || `<div class="dim">Nothing logged for this session.</div>`}</div></div>`;
 }
 /** "Send to another session": a small menu right above the button. Pick a session, add a note if you like. */
@@ -2298,7 +2310,7 @@ function histStats() {
     return { label: `${d.getHours() % 12 || 12}${d.getHours() < 12 ? "am" : "pm"}`, n: all.filter((i) => (i.resolved_ms || 0) >= from && (i.resolved_ms || 0) < from + 3600000).length };
   });
   const peak = Math.max(1, ...hours.map((h) => h.n));
-  const tile = (value, label, title = "") => `<div class="hs-tile" title="${esc(title)}"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
+  const tile = (value, label, title = "") => `<div class="hs-tile"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
   return `<div class="hstats">
     ${tile(String(today.length), "answered today")}
     ${tile(waits.length ? fmt(waits[Math.floor(waits.length / 2)].w) : "–", "median wait", "From when it asked to when you answered")}
@@ -2375,7 +2387,7 @@ function livePop(rows) {
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${tip ? `title="${esc(tip)}"` : ""}>${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -2571,19 +2583,19 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const unnamed = !crew && r.name === baseName(r.cwd) && (ab.about || ab.now);
   const name = unnamed ? ab.about || ab.now : crew ? bareName(crew.name || r.name) : r.name;
   const lines = [];
-  if (!unnamed && ab.about) lines.push(`<div class="sx-l about" data-cut title="${esc(ab.about)}">${esc(ab.about)}</div>`);
-  if (ab.outcome) lines.push(`<div class="sx-l out" data-cut title="${esc(ab.outcome)}"><span class="sx-k">Outcome</span>${esc(ab.outcome)}</div>`);
-  if (r.st === "working" && r.run) lines.push(`<div class="sx-l run" data-cut title="${esc(r.what)}">${esc(r.what)}</div>`);
-  else if (r.st === "asks" && r.what) lines.push(`<div class="sx-l ask" data-cut title="${esc(r.what)}">${esc(r.what)}</div>`);
-  else if (ab.now && !(unnamed && name === ab.now)) lines.push(`<div class="sx-l now" data-cut title="${esc(ab.now)}">› ${esc(ab.now)}</div>`);
+  if (!unnamed && ab.about) lines.push(`<div class="sx-l about">${esc(ab.about)}</div>`);
+  if (ab.outcome) lines.push(`<div class="sx-l out"><span class="sx-k">Outcome</span>${esc(ab.outcome)}</div>`);
+  if (r.st === "working" && r.run) lines.push(`<div class="sx-l run">${esc(r.what)}</div>`);
+  else if (r.st === "asks" && r.what) lines.push(`<div class="sx-l ask">${esc(r.what)}</div>`);
+  else if (ab.now && !(unnamed && name === ab.now)) lines.push(`<div class="sx-l now">› ${esc(ab.now)}</div>`);
   const hot = r.st === "asks" || m?.lead_armed === false;
   const lead = crew ? `${crewDot(r.sid)}` : "";
-  const leadTag = crew ? `<span class="role lead" title="${crew.plugin === "pilead" ? "pi-lead" : "relay"} lead">LEAD</span>${autoToggle(r.sid, crew)}` : "";
+  const leadTag = crew ? `<span class="role lead">LEAD</span>${autoToggle(r.sid, crew)}` : "";
   // The whole tile opens it: its chat in Active (a quiet Claude session too: Cue takes it in), else what it's doing.
-  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet && r.harness !== "claude" ? ` title="See what it's doing (it started before Cue was connected)"` : ""}`;
+  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet && r.harness !== "claude" ? `` : ""}`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name" data-cut title="${esc(name)}">${esc(name)}</span>${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name">${esc(name)}</span>${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");
@@ -2633,7 +2645,7 @@ function sessionsView() {
     const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
     const br = state.branches?.[t.cwd];
     const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
-      <div class="sx-thead"><span class="sx-tname" data-cut title="${esc(t.cwd)}">${esc(baseName(t.cwd) || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(t.cwd)}" title="New session in ${esc(homeless(t.cwd))}">+</button></div>
+      <div class="sx-thead"><span class="sx-tname">${esc(baseName(t.cwd) || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(t.cwd)}" title="New session in ${esc(homeless(t.cwd))}">+</button></div>
       ${solo.length ? `<div class="sx-solo">${svItems(solo)}</div>` : ""}${crews.join("")}</div>`;
     return { rank, latest, html };
   }).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);
@@ -3103,7 +3115,63 @@ function fitHead() {
     h.classList.add(step);
   }
 }
-addEventListener("resize", () => { fitHead(); fitTop(); });
+addEventListener("resize", () => { fitHead(); fitTop(); markMore(); });
+
+/** A list cut off at the bottom says so, quietly: "3 more" on its last card's bottom edge, counting
+ *  the cards not in view below, and a click takes the list to its end. And no card shows half: the list
+ *  ends on the last card that fits whole. Every list that scrolls: Waiting, Need to
+ *  decide, Sessions, Starred, Recently answered. `trim` re-fits the lists (a redraw, a resize); scrolling
+ *  only recounts. */
+const MORE_LISTS = ".sec-waiting .sec-body, .sec-later .sec-body, .sec-sessions .sec-body, .sec-starred .card.recent, .sec-recent .card.recent";
+const moreCards = (sc) => [...sc.children].filter((c) => !c.matches(".col-sub, button"));
+// Where a card ends inside its list, by layout (the list is its offsetParent), not by what's on screen:
+// cards that moved slide to their new place after a redraw, and mid-slide they're elsewhere.
+const cardEnd = (c) => c.offsetTop + c.offsetHeight;
+function markMore(trim = true) {
+  const lists = [...document.querySelectorAll(MORE_LISTS)].map((sc) => ({ sc, host: sc.closest(".sec") }));
+  if (trim) {
+    // Lists share their column: trimming one gives the next more room, and a section can spill past
+    // the column's bottom. So: from scratch, then a few passes until nothing changes, each list ending
+    // on its last whole card above its own edge and the column's (less room for "N more").
+    for (const { sc } of lists) sc.style.maxHeight = "";
+    for (let pass = 0; pass < 4; pass++) {
+      let changed = false;
+      for (const { sc, host } of lists) {
+        const r = sc.getBoundingClientRect(), colBottom = sc.closest(".col").getBoundingClientRect().bottom;
+        if (sc.scrollHeight - sc.clientHeight <= 4 && r.bottom <= colBottom + 1) continue;
+        const room = Math.min(r.bottom, colBottom) - r.top;   // the list's own height it can use
+        const whole = moreCards(sc).filter((c) => cardEnd(c) - sc.scrollTop <= room + 1).at(-1);
+        const h = whole ? cardEnd(whole) - sc.scrollTop + 2 : 0;
+        if (h > 40 && (!sc.style.maxHeight || h < parseFloat(sc.style.maxHeight) - 0.5)) { sc.style.maxHeight = `${h}px`; changed = true; }
+      }
+      if (!changed) break;
+    }
+  }
+  for (const { sc, host } of lists) {
+    let pill = host.querySelector(":scope > .more-below");
+    const bottom = sc.getBoundingClientRect().bottom;
+    const n = sc.scrollHeight - sc.scrollTop - sc.clientHeight > 4 ? moreCards(sc).filter((c) => cardEnd(c) > sc.scrollTop + sc.clientHeight + 1).length : 0;
+    if (!n) { pill?.remove(); continue; }
+    if (!pill) {
+      pill = document.createElement("button");
+      pill.className = "more-below";
+      host.append(pill);
+    }
+    pill.list = sc;
+    pill.textContent = `${n} more ↓`;
+    pill.style.top = `${bottom - host.getBoundingClientRect().top - 10}px`;   // on the last card's bottom edge
+  }
+}
+// Scrolling a list changes what's below it: once a frame at most.
+let moreFrame = 0;
+document.addEventListener("scroll", () => { if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
+document.addEventListener("click", (e) => {
+  const pill = e.target.closest?.(".more-below");
+  if (!pill) return;
+  e.stopPropagation();
+  const sc = pill.list;
+  sc?.scrollTo({ top: sc.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}, true);
 
 /** Cue's mark (the app icon without its tile): an open C around a dot. */
 /** The mark at 14px, and a terminal (a prompt in a window), for the "Runs in" choice. */
@@ -3122,6 +3190,7 @@ function saveDrafts() {
       const now = draftJson(drafts[key]);
       if (now === (savedDrafts[key] ?? draftJson(null))) continue;
       savedDrafts[key] = now;
+  markMore();   // lists end on whole cards before anything measures where cards landed
       const { text, images } = JSON.parse(now);
       invoke("set_draft", { key, text, images }).catch(() => {});
     }

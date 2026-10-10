@@ -780,7 +780,12 @@ button.tm-chip:hover { background: var(--panel-2); }
 .q-now { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 
 /* ---------- Need to decide: sessions you parked under Waiting to think about ---------- */
-.col-sub.later-head { margin-top: 10px; }
+/* Waiting takes what it needs and scrolls inside; Need to decide folds under it (like Starred), its
+   heading always in the column, never pushed out of the window. Open, it takes up to half. */
+.sec-waiting { flex: 0 1 auto; }
+.sec-waiting .sec-body { padding: 0 2px 4px; margin: 0 -2px; }
+.sec-drawer.sec-later { flex: 0 1 auto; max-height: 50%; }
+.sec-drawer.sec-later.shut { flex: 0 0 auto; max-height: none; }
 .nrow.later { box-shadow: none; background: color-mix(in srgb, var(--panel) 70%, transparent); }
 .park-btn { height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); flex: none; }
 .park-btn:hover { background: var(--panel-2); color: var(--ink); }
@@ -1185,3 +1190,13 @@ button.tm-chip:hover { background: var(--panel-2); }
 .more-menu button:hover:not(:disabled) { background: var(--panel-2); }
 .more-menu button:disabled { opacity: .5; cursor: default; }
 .more-menu button.armed { color: var(--deny); }
+
+/* "3 more ↓" over the bottom edge of a list that's cut off: small, quiet, out of the way until wanted. */
+.sec { position: relative; }
+/* Its cards' offsets count from the list itself (for "N more" and ending on a whole card). */
+.sec-body, .card.recent { position: relative; }
+.more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; padding: 0 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; color: var(--on-bg);
+  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 2px 8px -2px rgba(0,0,0,0.35); opacity: 0.8; transition: opacity 0.15s; }
+.more-below:hover { opacity: 1; }
