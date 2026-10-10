@@ -3,7 +3,7 @@
 //! 2. "Answered in the terminal": Claude never tells the hook when you answer in the terminal,
 //!    but the transcript gets a tool_result for that tool_use within about a second.
 
-use crate::model::Ctx;
+use crate::model::{Ctx, TurnPart};
 use serde_json::Value;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -546,29 +546,56 @@ fn local_command(e: &Value) -> bool {
 }
 
 pub fn turn_ended(path: &str) -> Option<(u64, String)> {
+    turn_ended_parts(path).map(|(at, reply, _)| (at, reply))
+}
+
+/// The same, with everything the agent wrote in that turn as parts, `hooked` once a Stop hook sent it
+/// back to work (as the Stop hook reports it): so a turn Cue learns of from the transcript alone (after a
+/// restart, or a Stop that never reached it) folds the hook's follow-up the same way.
+pub fn turn_ended_parts(path: &str) -> Option<(u64, String, Vec<TurnPart>)> {
     let len = std::fs::metadata(path).ok()?.len();
     let text = read_from(path, len.saturating_sub(256 * 1024))?;
     let (mut ended, mut reply, mut last_reply) = (None, String::new(), String::new());
+    let (mut parts, mut last_parts, mut hooked): (Vec<TurnPart>, Vec<TurnPart>, bool) = (vec![], vec![], false);
     for e in lines(&text) {
         match e.get("type").and_then(Value::as_str) {
             Some("system") if e.get("subtype").and_then(Value::as_str) == Some("turn_duration") => {
                 ended = Some(stamp(&e));
                 last_reply = reply.clone();
+                last_parts = parts.clone();
+            }
+            // A Stop hook sent it back to work (a meta entry, as a command's is): what follows is its follow-up.
+            Some("user") if content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).next().is_some_and(|t| t.starts_with(STOP_HOOK_MARK)) => {
+                ended = None;
+                hooked = true;
             }
             // A command you ran in Claude Code since (/login, /model…) starts no turn: still ended.
             Some("user") if local_command(&e) => {}
             Some("user" | "assistant") if e.get("isSidechain").and_then(Value::as_bool) != Some(true) => {
                 ended = None; // a new turn (or more of this one) since
                 if e.get("type").and_then(Value::as_str) == Some("assistant") {
-                    if let Some(t) = content_blocks(&e).iter().filter_map(|b| (b.get("type").and_then(Value::as_str) == Some("text")).then(|| b.get("text").and_then(Value::as_str).unwrap_or(""))).filter(|t| !t.trim().is_empty()).last() {
+                    for t in content_blocks(&e).iter().filter_map(|b| (b.get("type").and_then(Value::as_str) == Some("text")).then(|| b.get("text").and_then(Value::as_str).unwrap_or(""))).filter(|t| !t.trim().is_empty()) {
                         reply = t.to_string();
+                        parts.push(TurnPart { text: t.trim().to_string(), hooked });
+                    }
+                } else {
+                    let blocks = content_blocks(&e);
+                    if blocks.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) {
+                        continue;
+                    }
+                    let t: String = blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect();
+                    if harness_text(&t) {
+                        hooked = false;
+                    } else if !t.trim().is_empty() && !t.trim_start().starts_with('<') {
+                        parts.clear(); // your next prompt: a new turn
+                        hooked = false;
                     }
                 }
             }
             _ => {}
         }
     }
-    ended.filter(|t| *t > 0).map(|t| (t, last_reply))
+    ended.filter(|t| *t > 0).map(|t| (t, last_reply, last_parts))
 }
 
 /// The last `n` human-readable turns: your prompts and Claude's text replies (no tool noise).
@@ -725,6 +752,22 @@ mod tests {
         // One that sets it to work (a custom command it answers) is a new turn.
         let p = write_transcript(&[reply.clone(), end, login, reply]);
         assert_eq!(turn_ended(&p.0), None);
+    }
+
+    #[test]
+    fn a_turn_read_from_the_transcript_marks_what_came_after_a_stop_hook() {
+        let say = |at: &str, text: &str| json!({"type":"assistant","timestamp":at,"message":{"content":[{"type":"text","text":text}]}});
+        let p = write_transcript(&[
+            json!({"type":"user","message":{"content":"move the header"}}),
+            say("2026-10-04T13:35:00.000Z", "Done: header moved."),
+            json!({"type":"user","isMeta":true,"message":{"content":"Stop hook feedback:\nAnswer the checklist"}}),
+            say("2026-10-04T13:35:20.000Z", "1. SHAPE: fine."),
+            json!({"type":"system","subtype":"turn_duration","timestamp":"2026-10-04T13:35:21.000Z"}),
+        ]);
+        let (at, reply, parts) = turn_ended_parts(&p.0).unwrap();
+        assert_eq!((at, reply.as_str()), (iso_ms("2026-10-04T13:35:21.000Z").unwrap(), "1. SHAPE: fine."));
+        assert_eq!(parts, vec![TurnPart { text: "Done: header moved.".into(), hooked: false }, TurnPart { text: "1. SHAPE: fine.".into(), hooked: true }]);
+        assert_eq!(crate::hub::split_turn(reply, &parts, "answer"), ("Done: header moved.".to_string(), "1. SHAPE: fine.".to_string()), "the answer is the card; the checklist folds");
     }
 
     #[test]

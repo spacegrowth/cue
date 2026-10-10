@@ -718,13 +718,13 @@ impl Hub {
         for o in stuck {
             if let Some((kind, text)) = crate::usage::last_api_error(&o.transcript_path) {
                 self.failed(o, &kind, &text);
-            } else if let Some((at, reply)) = transcript::turn_ended(&o.transcript_path).filter(|(at, _)| now.saturating_sub(*at) > 5_000) {
+            } else if let Some((at, reply, parts)) = transcript::turn_ended_parts(&o.transcript_path).filter(|(at, _, _)| now.saturating_sub(*at) > 5_000) {
                 // Its turn ended but the Stop never reached Cue (Cue was restarting): finish it now.
                 // Only a turn that ended after it started working, and seconds ago (the hook is faster).
                 let since = self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == o.session_id).map(|s| s.since_ms).unwrap_or(u64::MAX);
                 if at >= since {
                     let driver = crate::leads::resolve_driver(&o.session_id, "");
-                    self.event(o, "stopped", reply, vec![], &driver);
+                    self.event(o, "stopped", reply, parts, &driver);
                 }
             }
         }
@@ -1207,16 +1207,18 @@ impl Hub {
         } else if q.status == "idle" && crate::leads::resolve_driver(session_id, "").is_empty() {
             // Its last turn ended with its reply and nothing from you since: your turn. (One a lead drives
             // is the lead's to pick up.)
-            if let Some((at, reply)) = (!path.is_empty()).then(|| transcript::turn_ended(&path)).flatten() {
-                self.your_turn_since(origin, reply, at);
+            if let Some((at, reply, parts)) = (!path.is_empty()).then(|| transcript::turn_ended_parts(&path)).flatten() {
+                self.your_turn_since(origin, reply, parts, at);
             }
         }
         Ok(())
     }
 
     /// A finished turn Cue missed, as a "your turn" card dated when it ended.
-    fn your_turn_since(&self, origin: Origin, reply: String, at: u64) {
+    fn your_turn_since(&self, origin: Origin, reply: String, parts: Vec<TurnPart>, at: u64) {
         let sid = origin.session_id.clone();
+        // As the Stop hook would have split it: the answer is the card, a hook's follow-up folds under it.
+        let (reply, followup) = split_turn(reply, &parts, &crate::config::turn_mode());
         {
             let mut st = self.store.lock().unwrap();
             if st.items.iter().any(|i| i.origin.session_id == sid) {
@@ -1228,6 +1230,7 @@ impl Hub {
             it.thread = thread;
             it.context = vec![Ctx { role: "assistant".into(), text: reply.clone() }];
             it.message = reply;
+            it.followup = followup;
             it.created_ms = at;
             st.items.push(it);
         }
@@ -1862,8 +1865,8 @@ impl Hub {
                 let Some(me) = me else { return };
                 let still = me.store.lock().unwrap().sessions.state(&sid).as_deref() == Some("agent");
                 if still {
-                    if let Some((at, reply)) = transcript::turn_ended(&o.transcript_path) {
-                        me.your_turn_since(o, reply, at);
+                    if let Some((at, reply, parts)) = transcript::turn_ended_parts(&o.transcript_path) {
+                        me.your_turn_since(o, reply, parts, at);
                         me.changed();
                     }
                 }
@@ -2509,8 +2512,8 @@ mod tests {
         crate::db::reset();
         let origin = Origin { session_id: "s3".into(), harness: "claude".into(), ..Default::default() };
         let hub = Hub::new(None);
-        hub.your_turn_since(origin.clone(), "Done: header moved.".into(), 1_000);
-        hub.your_turn_since(origin, "Done: header moved.".into(), 1_000);
+        hub.your_turn_since(origin.clone(), "Done: header moved.".into(), vec![], 1_000);
+        hub.your_turn_since(origin, "Done: header moved.".into(), vec![], 1_000);
         let items = hub.pending();
         assert_eq!(items.len(), 1, "one card, however often it's seen");
         assert_eq!((items[0].kind.as_str(), items[0].created_ms, items[0].message.as_str()), ("waiting", 1_000, "Done: header moved."));
