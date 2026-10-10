@@ -180,9 +180,48 @@ pub(crate) fn remote_command_err(script: &str) -> String {
     format!("exec \"${{SHELL:-/bin/sh}}\" -lic {}", shq(&format!("exec /bin/sh -c {}", shq(script))))
 }
 
-/// `tmux` with these arguments on the machine (each one quoted).
+/// `tmux` with these arguments on the machine (each one quoted). Run straight from tmux's full path once
+/// Cue knows it: your login shell there can take a second to start, and the window asks often.
 pub fn tmux(host: &str, args: &[&str]) -> Result<String, String> {
-    run(host, &format!("tmux {}", args.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ")))
+    let args = args.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ");
+    match tmux_path(host) {
+        Some(p) => run_direct(host, &format!("{} {args}", shq(&p))),
+        None => run(host, &format!("tmux {args}")),
+    }
+}
+
+/// Where tmux is on the machine (a full path), asked once of your login shell there (your PATH) and kept
+/// while Cue runs. None when it can't say (not reachable, no tmux): ask again next time.
+pub fn tmux_path(host: &str) -> Option<String> {
+    static PATHS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> = std::sync::OnceLock::new();
+    let paths = PATHS.get_or_init(Default::default);
+    if let Some(p) = paths.lock().unwrap().get(host) {
+        return Some(p.clone());
+    }
+    let p = run(host, "command -v tmux").ok()?.lines().last()?.trim().to_string();
+    if !p.starts_with('/') {
+        return None;
+    }
+    paths.lock().unwrap().insert(host.to_string(), p.clone());
+    Some(p)
+}
+
+/// `run` without your login shell: for a script that names its programs by full path.
+fn run_direct(host: &str, script: &str) -> Result<String, String> {
+    if !valid_host(host) {
+        return Err("that isn't an SSH host".into());
+    }
+    let out = Command::new("/usr/bin/ssh")
+        .args(shared())
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &format!("exec /bin/sh -c {}", shq(script))])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(if err.is_empty() { format!("exit {}", out.status.code().unwrap_or(-1)) } else { err })
+    }
 }
 
 /// A folder on the machine as the shell there should read it: `~` stays your home there.
@@ -217,13 +256,15 @@ fn open_script(s: &str, line: &str, dir: &str, name: &str) -> String {
     format!(
         r#"cd {dir} 2>/dev/null || {{ echo "NODIR"; exit 0; }}
 command -v tmux >/dev/null 2>&1 || {{ echo "NOTMUX"; exit 0; }}
-if tmux has-session -t {s} 2>/dev/null; then p=$(tmux new-window -t {s}: -n {name} -c "$PWD" -P -F '#{{pane_id}}|#{{pane_tty}}'); else p=$(tmux new-session -d -s {s} -n {name} -c "$PWD" -x 200 -y 50 -P -F '#{{pane_id}}|#{{pane_tty}}'); fi
+if tmux has-session -t {xs} 2>/dev/null; then p=$(tmux new-window -t {xs}: -n {name} -c "$PWD" -P -F '#{{pane_id}}|#{{pane_tty}}'); else p=$(tmux new-session -d -s {s} -n {name} -c "$PWD" -x 200 -y 50 -P -F '#{{pane_id}}|#{{pane_tty}}'); fi
 pane=${{p%%|*}}
 tmux send-keys -t "$pane" -l {line} && tmux send-keys -t "$pane" Enter
 echo "PANE:$p"
 echo "DIR:$PWD""#,
         dir = remote_dir(dir),
         s = shq(s),
+        // "=cue": that session exactly (tmux would take "cue" to mean "cue-smoke", say, when there's no "cue").
+        xs = shq(&format!("={s}")),
         name = shq(name),
         line = shq(line),
     )
@@ -331,6 +372,25 @@ mod tests {
         assert_eq!(windows.trim(), "my app");
         let bad = std::process::Command::new("/bin/sh").args(["-c", &remote_command(&open_script(&s, "x", "/no/such/dir", "n"))]).output().unwrap();
         assert!(String::from_utf8_lossy(&bad.stdout).contains("NODIR"));
+    }
+
+    #[test]
+    fn a_session_whose_name_only_starts_the_same_is_never_used() {
+        if !crate::focus::tmux_installed() {
+            return;
+        }
+        let tmux = |args: &[&str]| std::process::Command::new(crate::focus::tmux_bin()).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+        let s = format!("cue-ptest-{}", std::process::id());
+        let other = format!("{s}-smoke");
+        tmux(&["new-session", "-d", "-s", &other, "-n", "theirs", "sleep 30"]);
+        let out = std::process::Command::new("/bin/sh").args(["-c", &remote_command(&open_script(&s, "true", "~", "mine"))]).output().unwrap();
+        let theirs = tmux(&["list-windows", "-t", &format!("={other}"), "-F", "#{window_name}"]);
+        let mine = tmux(&["list-windows", "-t", &format!("={s}"), "-F", "#{window_name}"]);
+        tmux(&["kill-session", "-t", &format!("={s}")]);
+        tmux(&["kill-session", "-t", &format!("={other}")]);
+        assert!(String::from_utf8_lossy(&out.stdout).contains("PANE:"), "it opened");
+        assert_eq!(theirs, "theirs", "nothing added to {other}");
+        assert_eq!(mine, "mine", "a session of its own");
     }
 
     #[test]

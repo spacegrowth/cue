@@ -46,19 +46,20 @@ fn open_with(sid: &str, pane: &str, host: Option<&str>, cols: u16, rows: u16, ou
             None => std::process::Command::new(&tmux).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default(),
         }
     };
-    let where_ = tmux_say(&["display-message", "-p", "-t", pane, "#{session_name}|#{window_id}"]).trim().to_string();
+    // Where the pane is, and (the same call) its window follows the size of whichever terminal was used
+    // last (this one while you type here): one trip to the machine, not two.
+    let where_ = tmux_say(&["display-message", "-p", "-t", pane, "#{session_name}|#{window_id}", ";", "set-option", "-w", "-t", pane, "window-size", "latest"]).trim().to_string();
     // Split at the last "|": a session's name may have one, a window id ("@3") never does. Not a tab: some
     // tmux versions print it as "_".
     let (session, window) = where_.rsplit_once('|').filter(|(s, w)| !s.is_empty() && !w.is_empty()).ok_or(format!("tmux pane {pane} is gone"))?;
     let gen = next_gen();
     let view = format!("cue-view-{gen}");
-    // The window follows the size of whichever terminal was used last (this one while you type here).
-    tmux_say(&["set-option", "-w", "-t", window, "window-size", "latest"]);
     let pair = native_pty_system().openpty(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())?;
     // One client launch: a session grouped with the session's (its windows, its own current window), set
     // up for a pane inside Cue, gone once this client detaches.
     let view_window = format!("{view}:{window}");
-    let chain = ["new-session", "-t", session, "-s", &view, ";", "set-option", "status", "off", ";", "set-option", "mouse", "on", ";", "set-option", "destroy-unattached", "on", ";", "select-window", "-t", &view_window, ";", "select-pane", "-t", pane];
+    // -u: the view speaks UTF-8 whatever the locale where it starts (the window's terminal always does).
+    let chain = ["-u", "new-session", "-t", session, "-s", &view, ";", "set-option", "status", "off", ";", "set-option", "mouse", "on", ";", "set-option", "destroy-unattached", "on", ";", "select-window", "-t", &view_window, ";", "select-pane", "-t", pane];
     let mut cmd = match host {
         None => {
             let mut c = CommandBuilder::new(&tmux);
@@ -76,7 +77,12 @@ fn open_with(sid: &str, pane: &str, host: Option<&str>, cols: u16, rows: u16, ou
             for a in ["-o", "BatchMode=yes", "-tt", h] {
                 c.arg(a);
             }
-            c.arg(crate::machines::remote_command(&format!("exec tmux {}", chain.iter().map(|a| crate::machines::shq(a)).collect::<Vec<_>>().join(" "))));
+            // tmux by its full path when Cue knows it (no login shell to wait for), else through your shell.
+            let args = chain.iter().map(|a| crate::machines::shq(a)).collect::<Vec<_>>().join(" ");
+            c.arg(match crate::machines::tmux_path(h) {
+                Some(p) => format!("exec /bin/sh -c {}", crate::machines::shq(&format!("exec {} {args}", crate::machines::shq(&p)))),
+                None => crate::machines::remote_command(&format!("exec tmux {args}")),
+            });
             c
         }
     };
@@ -181,5 +187,58 @@ mod tests {
         assert!(after.lines().any(|l| l == name), "the session keeps running: {after:?}");
         assert!(heard_end, "the window hears it ended");
         assert!(write("t", "x").is_err(), "nothing open any more");
+    }
+}
+
+/// Timing on a real machine, by hand: CUE_PERF_HOST=user@host cargo test -q perf -- --ignored --nocapture.
+/// A throwaway tmux session there (removed after), opened in the built-in terminal five times: how long
+/// until its screen shows; then the closed strip's screen check, five times.
+#[cfg(test)]
+mod perf {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    #[ignore]
+    fn remote_terminal_timing() {
+        let Ok(host) = std::env::var("CUE_PERF_HOST") else { return };
+        let name = format!("cue-perf-{}", std::process::id());
+        // CUE_PERF_PANE: an existing pane instead (left as it is), until its screen shows CUE_PERF_SEE.
+        let own = std::env::var("CUE_PERF_PANE").is_err();
+        let pane = match std::env::var("CUE_PERF_PANE") {
+            Ok(p) => p,
+            Err(_) => crate::machines::tmux(&host, &["new-session", "-d", "-s", &name, "-x", "80", "-y", "12", "-P", "-F", "#{pane_id}", "sh", "-c", "echo PERF-MARK; cat"]).unwrap().trim().to_string(),
+        };
+        let mark = std::env::var("CUE_PERF_SEE").unwrap_or("PERF-MARK".into());
+        let mut opens = vec![];
+        for _ in 0..5 {
+            let seen = Arc::new(Mutex::new(String::new()));
+            let s2 = seen.clone();
+            let t0 = Instant::now();
+            open_with("p", &pane, Some(&host), 80, 12, move |v| {
+                if let Some(d) = v["data"].as_str() {
+                    s2.lock().unwrap().push_str(&String::from_utf8_lossy(&base64::engine::general_purpose::STANDARD.decode(d).unwrap()));
+                }
+            })
+            .unwrap();
+            while !seen.lock().unwrap().contains(&mark) && t0.elapsed() < Duration::from_secs(15) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            opens.push(t0.elapsed().as_millis());
+            close("p");
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        let mut checks = vec![];
+        for _ in 0..5 {
+            let t0 = Instant::now();
+            let _ = crate::machines::tmux(&host, &["capture-pane", "-p", "-J", "-t", &pane]);
+            checks.push(t0.elapsed().as_millis());
+        }
+        if own {
+            let _ = crate::machines::tmux(&host, &["kill-session", "-t", &name]);
+        }
+        println!("PERF open terminal until its screen shows (ms): {opens:?}");
+        println!("PERF screen check (ms): {checks:?}");
     }
 }

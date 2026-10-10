@@ -334,9 +334,10 @@ fn open_in_tmux_session(session: &str, line: &str, dir: &str, name: &str) -> Res
     // "|", not a tab: some tmux versions print a tab in -F output as "_" ("%1_/dev/ttys003", one pane id
     // that isn't there). Neither a pane id nor a tty path has a "|". (The start script on a machine does the same.)
     const FMT: &str = "#{pane_id}|#{pane_tty}";
-    let exists = run("tmux", &["has-session", "-t", session]);
+    // "=": that session exactly, never another whose name starts with it.
+    let exists = run("tmux", &["has-session", "-t", &format!("={session}")]);
     let out = if exists {
-        tmux_out(&["new-window", "-t", &format!("{session}:"), "-n", name, "-c", dir, "-P", "-F", FMT])
+        tmux_out(&["new-window", "-t", &format!("={session}:"), "-n", name, "-c", dir, "-P", "-F", FMT])
     } else {
         // Detached, so it needs a size until a terminal attaches.
         tmux_out(&["new-session", "-d", "-s", session, "-n", name, "-c", dir, "-x", "200", "-y", "50", "-P", "-F", FMT])

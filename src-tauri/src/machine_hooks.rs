@@ -134,17 +134,34 @@ pub fn unwatch(name: &str) {
     }
 }
 
+/// What runs each time a machine is reached again (Cue started, or it came back from a reboot or a
+/// dropped line): given the machine's name, on the watcher's own thread.
+static ON_REACHED: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
+
+pub fn on_reached(f: impl Fn(&str) + Send + Sync + 'static) {
+    let _ = ON_REACHED.set(Box::new(f));
+}
+
 /// One SSH stream: runs until the connection drops or the machine is removed.
 fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
     let mut child = machines::stream_command(&m.host, WATCH).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = child.stdout.take().ok_or("no output")?;
+    let mut reached = false;
     for line in BufReader::new(out).lines() {
         if stop.load(std::sync::atomic::Ordering::Relaxed) {
             break;
         }
         let Ok(line) = line else { break };
         if line == "@@hb" {
-            continue; // it's alive
+            // It's alive. The first beat of a stream: the machine is reached (again).
+            if !reached {
+                reached = true;
+                if let Some(f) = ON_REACHED.get() {
+                    let name = m.name.clone();
+                    std::thread::spawn(move || f(&name));
+                }
+            }
+            continue;
         }
         match parse(&line) {
             Some((id, ev)) => handle(m, &id, ev),

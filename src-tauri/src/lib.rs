@@ -351,9 +351,8 @@ fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
     hub.waiting_card(&fresh);
 }
 
-/// Machine sessions, on their own thread (an unreachable host mustn't hold up launch), each
-/// call time-boxed at 8s. A failure goes in machines.log; a host that can't be reached is
-/// skipped (Cue can't tell whether its pane survived).
+/// Machine sessions, each call time-boxed at 8s. A failure goes in machines.log; a host that can't be
+/// reached is skipped (Cue can't tell whether its pane survived) until it's reached again.
 fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)>) {
     for (machine, o, name) in sessions {
         let sid = o.session_id.clone();
@@ -416,13 +415,9 @@ fn restore_sessions(hub: &Arc<Hub>) {
     // Claude Code's own registry of the sessions running now, read fresh (the watcher hasn't yet).
     live::refresh();
     let running: std::collections::HashSet<String> = live::claude().into_iter().map(|q| q.session_id).collect();
-    let mut remote = vec![];
     for s in hub.saved_sessions() {
-        if !rebuildable(&s.origin) {
-            continue;
-        }
-        if !s.origin.machine.is_empty() {
-            remote.push((s.origin.machine.clone(), s.origin, s.name));
+        // A machine's sessions come back when Cue reaches the machine (restore_machine), not here.
+        if !rebuildable(&s.origin) || !s.origin.machine.is_empty() {
             continue;
         }
         let label = if !s.name.is_empty() { s.name.clone() } else { model::project_of(&s.origin.cwd) };
@@ -433,10 +428,25 @@ fn restore_sessions(hub: &Arc<Hub>) {
         }
         rebuild(hub, &s.origin, &label);
     }
-    if !remote.is_empty() {
-        let h = hub.clone();
-        std::thread::spawn(move || remote_restores(&h, remote));
+}
+
+/// A machine reached (Cue started, or the machine came back from a reboot or a dropped line): its live
+/// sessions whose agent no longer runs there are opened again. One pass per machine at a time.
+fn restore_machine(hub: &Arc<Hub>, machine: &str) {
+    if std::env::var_os("CUE_QUIET").is_some() || !config::tmux_sessions() {
+        return;
     }
+    static BUSY: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    if BUSY.lock().unwrap().iter().any(|m| m == machine) {
+        return;
+    }
+    let sessions: Vec<_> = hub.saved_sessions().into_iter().filter(|s| s.origin.machine == machine && rebuildable(&s.origin)).map(|s| (s.origin.machine.clone(), s.origin, s.name)).collect();
+    if sessions.is_empty() {
+        return;
+    }
+    BUSY.lock().unwrap().push(machine.to_string());
+    remote_restores(hub, sessions);
+    BUSY.lock().unwrap().retain(|m| m != machine);
 }
 
 /// Launch: every session saved as waiting comes back with its card, however it lost it. The card
@@ -1359,6 +1369,8 @@ pub fn run() {
             bring_back_cards(&hub);
             // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
             if std::env::var_os("CUE_HOME").is_none() {
+                let h = hub.clone();
+                machine_hooks::on_reached(move |m| restore_machine(&h, m));
                 machine_hooks::watch_all();
                 let known: Vec<(String, String)> = hub.snapshot()["sessions"].as_array().into_iter().flatten()
                     .filter_map(|s| Some((s["machine"].as_str().filter(|m| !m.is_empty())?.to_string(), s["transcript_path"].as_str()?.to_string())))
