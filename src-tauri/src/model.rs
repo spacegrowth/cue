@@ -112,6 +112,9 @@ pub enum ClientMsg {
         session_id: String,
         #[serde(default)]
         cost: Option<f64>,
+        /// Its context window in tokens (`context_window.context_window_size`).
+        #[serde(default)]
+        window: Option<u64>,
     },
     /// Sent on an open Ask connection when the agent got its answer somewhere else.
     Resolved {

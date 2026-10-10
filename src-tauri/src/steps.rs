@@ -133,6 +133,34 @@ pub fn model_of(path: &str) -> Option<String> {
     Some(feed.meta.model.clone()).filter(|m| !m.is_empty())
 }
 
+/// Each Claude session's context window as its status line last said (by session id). Its transcript
+/// doesn't say, and the model's name doesn't always either (a 1M window without "[1m]").
+static WINDOWS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
+
+fn known_window(path: &str) -> Option<u64> {
+    let sid = std::path::Path::new(path).file_stem()?.to_str()?;
+    WINDOWS.lock().unwrap().as_ref()?.get(sid).copied()
+}
+
+/// What Claude Code's status line says a session's window is. A feed that has it open takes it at
+/// once (and counts a new version, so the window redraws its context).
+pub fn set_window(session_id: &str, window: u64) {
+    if window == 0 {
+        return;
+    }
+    let prev = WINDOWS.lock().unwrap().get_or_insert_with(HashMap::new).insert(session_id.to_string(), window);
+    if prev == Some(window) {
+        return;
+    }
+    let mut guard = FEEDS.lock().unwrap();
+    for f in guard.get_or_insert_with(HashMap::new).values_mut() {
+        if f.kind == Kind::Claude && std::path::Path::new(&f.path).file_stem().and_then(|s| s.to_str()) == Some(session_id) && f.meta.window != window {
+            f.meta.window = window;
+            f.version += 1;
+        }
+    }
+}
+
 pub fn context_pct(path: &str) -> Option<u8> {
     let mut guard = FEEDS.lock().unwrap();
     let feeds = guard.get_or_insert_with(HashMap::new);
@@ -212,8 +240,13 @@ impl Feed {
                         if !model.is_empty() && !model.starts_with('<') {
                             m.model = model.to_string();
                         }
-                        // The transcript doesn't say the window: 200k, or 1M once it's past that (or says so).
-                        m.window = if m.model.contains("[1m]") || m.context > 200_000 || m.window == 1_000_000 { 1_000_000 } else { 200_000 };
+                        // The transcript doesn't say the window. Claude Code's status line does (once it has
+                        // run for this session); until then 200k, or 1M once it's past that (or says so).
+                        m.window = match known_window(&self.path) {
+                            Some(w) => w,
+                            None if m.model.contains("[1m]") || m.context > 200_000 || m.window == 1_000_000 => 1_000_000,
+                            None => 200_000,
+                        };
                     }
                 }
             }
@@ -1022,6 +1055,24 @@ mod tests {
         assert_eq!(d["t2"]["diff"][1], json!(["-", "b"]));
         assert_eq!(d["t3"]["full"], "npm test\n");
         assert_eq!(d["t3"]["output"][1], "Tests: 3 failed");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_window_claude_code_reports_sets_the_context_share() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-window-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sid = format!("win-{}", std::process::id());
+        let path = dir.join(format!("{sid}.jsonl"));
+        // 174k tokens on a model whose name doesn't say its window is 1M.
+        std::fs::write(&path, "{\"type\":\"user\",\"timestamp\":\"2026-10-04T10:00:00.000Z\",\"message\":{\"content\":\"hi\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2026-10-04T10:00:02.000Z\",\"message\":{\"model\":\"claude-opus-5-5\",\"content\":[{\"type\":\"text\",\"text\":\"Hello.\"}],\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":173376,\"cache_creation_input_tokens\":710}}}\n").unwrap();
+        let p = path.to_str().unwrap();
+        assert_eq!(context_pct(p), Some(87), "without word from Claude Code: the 200k guess");
+        let before = steps(p, 0)["version"].as_u64().unwrap();
+        set_window(&sid, 1_000_000);
+        assert_eq!(context_pct(p), Some(17), "Claude Code's own window, as its status line shows");
+        let after = steps(p, before);
+        assert!(after["version"].as_u64().unwrap() > before && after["meta"]["window"] == 1_000_000, "the window redraws: {after}");
         std::fs::remove_dir_all(&dir).ok();
     }
 

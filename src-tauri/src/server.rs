@@ -159,7 +159,10 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text));
             }
         }
-        ClientMsg::Usage { rate_limits, session_id, cost } => {
+        ClientMsg::Usage { rate_limits, session_id, cost, window } => {
+            if let (false, Some(w)) = (session_id.is_empty(), window) {
+                crate::steps::set_window(&session_id, w);
+            }
             // The plan's limits first: whether there are any decides if the session's cost is shown.
             if rate_limits.is_object() {
                 let h = hub.clone();
