@@ -736,8 +736,17 @@ button.tm-chip:hover { background: var(--panel-2); }
 .tn::after { content: ""; position: absolute; left: 5px; top: 13px; width: 9px; border-top: 2px solid color-mix(in srgb, currentColor 30%, transparent); }
 .tn.on { background: color-mix(in srgb, var(--sel) 45%, transparent); }
 .tn-t { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.tn-t b { font-size: 12.5px; }
+/* the name ellipsizes, but only after the status (which may wrap, never clips) has given what it can */
+.tn-t b { font-size: 12.5px; flex: 0 0.1 auto; min-width: min(7ch, 100%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tn-need { color: var(--deny); font-weight: 650; }
+.tn-g { font-size: 11.5px; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role.vt { border: 1px solid var(--muted); color: var(--muted); }
+.role.vt.bad { border-color: var(--deny); color: var(--deny); }
+/* in the team tree: the card's own text color for MATCH; the selected card is light in dark mode too, where
+   --deny (pale) wouldn't read on it, so a bad verdict is a filled tag there (--panel on --deny reads in both themes) */
+.tn .role.vt { border-color: currentColor; color: inherit; opacity: 0.7; }
+.tn .role.vt.bad { border-color: var(--deny); color: var(--deny); opacity: 1; }
+.nrow.on .tn .role.vt.bad { background: var(--deny); color: var(--panel); }
 .tn-x { opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tn-x .mono { font: 11.5px var(--mono); }
 .tn-age { flex: none; margin-left: auto; font-size: 11px; opacity: 0.6; }
@@ -988,6 +997,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-iline .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
 .sx-iline .crew-color { margin: 0; }
 .sx-iline .role, .sx-iline .sx-st, .sx-iline .sx-crew-n { flex: none; }
+/* a done executor's long state words ("done, its lead hasn't picked this up") give way before its name does */
+.sx-iline .sx-st.long { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sx-age { font: 11px var(--mono); color: var(--muted); flex: none; }
 .sx-acts { margin-left: auto; display: flex; gap: 4px; flex: none; }

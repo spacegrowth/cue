@@ -100,13 +100,15 @@
       }
       if (q.has("crew")) state.crew = {
         relay: { role: "lead", plugin: "relay", name: "agent-relay", color: [132, 180, 180], model: "claude-opus-5-5", auto: true, plan_next: "docs + deck refresh", plan_queued: 3, executors: [
-          { session_id: "pipe", name: "lines-gaps", model: "claude-sonnet-5-5[1m]", status: "busy", packet: 3 },
+          { session_id: "pipe", name: "lines-gaps", model: "claude-sonnet-5-5[1m]", status: "busy", packet: 3, goal: "find the gaps in the 5-minute series where the feed dropped bars, and fill them from the daily file" },
           { session_id: "x-spend", name: "board-spend", model: "claude-sonnet-5-5", status: "reported", packet: 1, goal: "show token spend per executor on the board, summed from each usage log", outcome: "A spend column sorts high to low; totals in the footer; relay:list prints the same.", verify: { verdict: "COUNTS-MATCH" } },
-          { session_id: "x-docs", name: "readme-pass", model: "claude-haiku-4-5", status: "busy", packet: 2 },
+          { session_id: "x-docs", name: "readme-pass", model: "claude-haiku-4-5", status: "busy", packet: 2, goal: "bring the README up to date with the board and spend column" },
+          // Reported, but what it lists as changed is not all staged: MISMATCH in the warning color; a long outcome stays on one line.
+          { session_id: "x-mm", name: "tz-fix", model: "claude-sonnet-5-5", status: "reported", packet: 1, goal: "read another machine's report times in that machine's zone", outcome: "Times are read in the machine's own zone, and a machine that does not say its offset falls back to this Mac's, with a test for each of the two", verify: { verdict: "MISMATCH", note: "2 mismatches" } },
           // Reported minutes ago, its lead listening and free, never seen: relay's wake-up didn't come.
           { session_id: "x-miss", name: "export-csv", model: "claude-sonnet-5-5", status: "reported", packet: 1, goal: "add CSV export to the trades table", outcome: "Export button writes trades.csv; 4 tests added.", verify: { verdict: "COUNTS-MATCH" } },
           // Its agent exited before it reported (stuck at Claude's folder-trust prompt): Close removes it.
-          { session_id: "relay:x-stall", name: "fix-tz", model: "claude-sonnet-5-5", status: "stalled", packet: 1 },
+          { session_id: "relay:x-stall", name: "fix-tz", model: "claude-sonnet-5-5", status: "stalled", packet: 1, goal: "make the tz offset line optional" },
           // Had a session, then its process died without reporting.
           { session_id: "x-dead", name: "lint-sweep", model: "claude-haiku-4-5", status: "dead", packet: 2 } ] },
         pipe: { role: "executor", plugin: "relay", name: "lines-gaps", color: [132, 180, 180], model: "claude-sonnet-5-5[1m]", status: "busy", packet: 3, lead: "relay", lead_name: "agent-relay", lead_armed: true },
@@ -114,6 +116,13 @@
         eng: { role: "executor", plugin: "relay", name: "router-fills", color: [132, 180, 180], model: "claude-sonnet-5-5", status: "busy", packet: 1, lead: "relay", lead_name: "agent-relay", lead_armed: true },
         web: { role: "executor", plugin: "pilead", name: "cart-limit", model: "deepseek/deepseek-flash", status: "busy", packet: 1, lead: "pi-lead-1", lead_name: "shop", lead_armed: true },
       };
+      // A pi-lead crew on another machine (build-box), listed over SSH: same rows; no Diff (pilead has none Cue can fetch there).
+      if (q.has("crew")) {
+        state.sessions.push(sess("plr", "shop", "pi", "working", 6, [seg("working", 20, null)]));
+        state.crew.plr = { role: "lead", plugin: "pilead", name: "shop", machine: "build-box", model: "deepseek/deepseek-flash", executors: [
+          { session_id: "pe-1", name: "parser", model: "deepseek/deepseek-flash", status: "reported", packet: 2, plugin: "pilead", machine: "build-box", goal: "write the cart parser", outcome: "Parser handles nested lists and empty carts" },
+          { session_id: "pe-2", name: "wire-up", model: "deepseek/deepseek-flash", status: "busy", packet: 1, plugin: "pilead", machine: "build-box", goal: "wire the parser into the checkout page" } ] };
+      }
       if (q.has("crew")) state.reviews = { "x-miss": "not picked up" };
       // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.
       if (q.has("crew") && q.has("rq")) { state.review_queue = { relay: [{ exec: "x-spend", name: "board-spend", at_ms: now - 2 * M }, { exec: "x-docs", name: "readme-pass", at_ms: now - M }] }; state.reviews = { ...state.reviews, "x-spend": "review queued", "x-docs": "review queued" }; }
@@ -139,7 +148,7 @@
       // ?held=1: the working order-engine session has a message kept in Cue, open in Active.
       if (q.has("held")) { const x = state.sessions.find((y) => y.project === "order-engine"); if (x) { x.held = { role: "you", text: "also keep the old broker session open while you test", at_ms: now - M, images: [] }; try { localStorage.setItem("cue.spot", JSON.stringify({ sid: x.session_id, view: "board" })); } catch {} } }
       // Two sessions run on other machines (+ New → Machine): one name shortened, one short already.
-      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box" }[x.session_id] || "";
+      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", plr: "build-box" }[x.session_id] || "";
       if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };

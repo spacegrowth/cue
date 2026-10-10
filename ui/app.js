@@ -138,6 +138,9 @@ function cardCrew(sid) {
 const reported = (status) => status === "reported" || status === "idle";
 /** A relay / pi-lead button: Review types the command into the lead; Diff opens a page. */
 const crewBtn = (sid, action, label, primary = false, short = "") => `<button class="btn ${primary ? "primary" : ""}" data-crew="${action}" data-crew-sid="${esc(sid)}">${short ? lbl(label, short) : esc(label)}</button>`;
+/** Diff: relay's diff page comes from relay's command, here or on its machine; pi-lead writes its page on the
+ *  machine it runs on and Cue can't bring that one here, so a pi-lead executor on another machine has no Diff. */
+const diffBtn = (sid, m) => m?.plugin === "pilead" && m.machine ? "" : crewBtn(sid, "diff", "Diff");
 /** "in review" once you've sent an executor's review, "review queued" while it waits for its lead,
  *  "reviewed" once its lead has seen the report (Cue tells every screen), else "". */
 const reviewWord = (sid) => { const w = state.reviews?.[sid] || ""; return w === "not picked up" ? "" : w; };
@@ -149,6 +152,7 @@ const NOT_PICKED_UP = "its lead hasn't picked this up";
 /** An executor whose agent exited before it reported (stalled: it never got past a trust prompt, say; dead:
  *  its process is gone): nothing will ever report, so its row says so and offers Close. */
 const stalled = (status) => status === "stalled" || status === "dead";
+const stalledWord = (status) => status === "dead" ? "stopped: its agent is gone" : "stalled: its agent exited";
 /** relay's auto mode beside a lead's LEAD tag: a switch in its chat (`live`: click to flip it),
  *  and on cards and rows just "auto" while it's on. In the chat, hover says what it means. */
 const autoToggle = (sid, m, live = false) => {
@@ -167,6 +171,10 @@ function verifyTag(v) {
   const why = v.verdict === "MALFORMED" ? "its report's summary is missing or broken" : v.note || "its report lists changes that aren't staged";
   return `<span class="vf bad" title="Report doesn't match (relay verify): ${esc(why)}">✕</span>`;
 }
+/** The verdict as a small tag (the executor tag's look): MATCH, or MISMATCH / MALFORMED in the warning color. */
+const verdictTag = (v) => !v?.verdict ? "" : `<span class="role vt${v.verdict === "COUNTS-MATCH" ? "" : " bad"}">${esc(v.verdict === "COUNTS-MATCH" ? "MATCH" : v.verdict)}</span>`;
+/** Under an executor's name in the tree: its report's first line once it has reported, else its packet's goal. One line. */
+const goalLine = (e) => { const t = e.outcome || e.goal; return t ? `<div class="tn-g">${esc(t)}</div>` : ""; };
 async function crewAct(sid, action) {
   try {
     toast(await invoke("crew_action", { sessionId: sid, action }));
@@ -223,7 +231,7 @@ function packetCard(sid) {
   if (reported(m.status)) {
     const asked = reviewWord(sid);
     st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : asked ? `${asked} with ${lead}` : missedWake(sid) ? `${lead} hasn't picked this up` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
-    acts = crewBtn(sid, "diff", "Diff") + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
+    acts = diffBtn(sid, m) + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
   } else {
     const now = liveStep(sid);
     st = now ? `${esc(now.what)} · when it reports, ${lead} reviews it` : m.status === "busy" ? `Working on it · when it reports, ${lead} reviews it` : esc(exState(m).word || m.status || "");
@@ -239,7 +247,7 @@ function leadCard(sid) {
   const rows = (m.executors || []).flatMap((e) => {
     const ask = asksOf(e.session_id);
     if (ask) return [`<div class="tc-row need" data-big="${esc(ask.id)}" role="button"><span><b>${esc(e.name)}</b> ${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></span>${ask.kind === "permission" ? `<span class="tc-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></span>` : ""}</div>`];
-    if (reported(e.status) && !reviewWord(e.session_id)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}${missedWake(e.session_id) ? ` · ${NOT_PICKED_UP}` : ""}</span><span class="tc-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review", true)}</span></div>`];
+    if (reported(e.status) && !reviewWord(e.session_id)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}${missedWake(e.session_id) ? ` · ${NOT_PICKED_UP}` : ""}</span><span class="tc-acts">${diffBtn(e.session_id, e)}${crewBtn(e.session_id, "review", "Review", true)}</span></div>`];
     return [];
   });
   // Its plan: what it sends next, and how many wait. (Auto mode is the switch beside its LEAD tag.)
@@ -257,12 +265,12 @@ function teamTree(lead) {
   for (const e of ex) {
     const ask = asksOf(e.session_id), on = e.session_id === openSid ? "on" : "";
     if (ask) rows.push(`<div class="tn need ${on}" data-big="${esc(ask.id)}"><div class="tn-t"><b>${esc(e.name)}</b><span class="tn-need">needs you</span></div><div class="tn-x">${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></div>${ask.kind === "permission" ? `<div class="tn-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></div>` : ""}</div>`);
-    else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span></div></div>`);
-    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, ${missedWake(e.session_id) ? "not picked up" : "waiting for review"}</span></div><div class="tn-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
-    else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>${e.status === "dead" ? "stopped: its agent is gone" : "stalled: its agent exited"}</span></div><div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
+    else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span>${verdictTag(e.verify)}</div>${goalLine(e)}</div>`);
+    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, ${missedWake(e.session_id) ? "not picked up" : "waiting for review"}</span>${verdictTag(e.verify)}</div>${goalLine(e)}<div class="tn-acts">${diffBtn(e.session_id, e)}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
+    else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>${stalledWord(e.status)}</span></div>${goalLine(e)}<div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
     else busy.push(e);
   }
-  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div></div>`;
+  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div>${goalLine(e)}</div>`;
   // A big team: five working lines, then a count.
   const more = busy.length > TREE_BUSY ? [`<div class="tn"><div class="tn-t tn-x">+${busy.length - TREE_BUSY} more working</div></div>`] : [];
   return `<div class="team-tree">${[...rows, ...busy.slice(0, TREE_BUSY).map(line), ...more].join("")}</div>`;
@@ -2851,7 +2859,8 @@ function svChipState(r) {
   if (r.st === "asks") return `<span class="sx-st hot">asks you</span>`;
   if (r.st === "yours") return `<span class="sx-st">your turn</span>`;
   if (m?.role === "executor" && m.lead_armed === false) return `<span class="sx-st hot">orphaned</span>`;
-  if (m?.role === "executor" && reported(m.status)) return `<span class="sx-st">done${reviewWord(r.sid) ? ` · ${reviewWord(r.sid)}` : missedWake(r.sid) ? `, ${NOT_PICKED_UP}` : ", waiting for review"}</span>`;
+  if (m?.role === "executor" && reported(m.status)) return `<span class="sx-st long">done${reviewWord(r.sid) ? ` · ${reviewWord(r.sid)}` : missedWake(r.sid) ? `, ${NOT_PICKED_UP}` : ", waiting for review"}</span>`;
+  if (m?.role === "executor" && stalled(m.status)) return `<span class="sx-st hot">${stalledWord(m.status)}</span>`;
   if (r.quiet && r.st !== "working") return `<span class="sx-st">quiet</span>`;
   if (r.st === "limited") return `<span class="sx-st">out of usage</span>`;
   return `<i class="sx-dot ${r.st === "working" ? "busy" : "idle"}" title="${r.st === "working" ? "working" : "idle"}"></i>`;
@@ -2887,9 +2896,11 @@ function svActs(r) {
   const m = r.crew || crewOf(r.sid), acts = [];
   // No Reply: the tile opens it. Answer stays, for what's blocked on you.
   if (r.it && r.st === "asks") acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">Answer</button>`);
-  if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff") + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
+  if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + diffBtn(r.sid, m) + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
   if (!r.it && (!r.quiet || r.harness === "claude") && !r.ghost) acts.push(`<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>`);
-  if (svClosable(r)) acts.push(closeBtn(r.sid));
+  // A stalled or stopped executor Cue has no session for: the board tree's Close (through its lead's plugin).
+  if (m?.role === "executor" && stalled(m.status) && r.ghost) acts.push(crewBtn(r.sid, "close", "Close"));
+  else if (svClosable(r)) acts.push(closeBtn(r.sid));
   return acts.join("");
 }
 /** One session, everything visible: name and state, what it's about, what it's on now, and its buttons.
@@ -2981,7 +2992,7 @@ function sessionsView() {
     const execs = (m.executors || []).map((e) => {
       placed.add(e.session_id);
       return bySid.get(e.session_id) || { sid: e.session_id, harness: m.plugin === "pilead" ? "pi" : "claude", name: e.name, cwd: "", st: e.status === "busy" ? "working" : "idle", since: 0, what: "", ghost: true,
-        crew: { role: "executor", plugin: m.plugin, status: e.status, model: e.model, packet: e.packet, goal: e.goal, outcome: e.outcome, verify: e.verify, lead: lead.sid, lead_name: m.name, lead_armed: true } };
+        crew: { role: "executor", plugin: e.plugin || m.plugin, machine: e.machine, status: e.status, model: e.model, packet: e.packet, goal: e.goal, outcome: e.outcome, verify: e.verify, lead: lead.sid, lead_name: m.name, lead_armed: true } };
     });
     tile(lead.cwd, lead.machine).crews.push({ lead, m, execs });
   }

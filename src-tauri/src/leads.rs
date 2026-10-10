@@ -61,6 +61,10 @@ pub struct Member {
     pub goal: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub outcome: String,
+    /// Executor: relay's last `relay verify` verdict on this packet's report, as read from relay's
+    /// ledger here or from `list --json` on a machine (the window gets it as `verify`, see `view`).
+    #[serde(skip)]
+    pub verify: Option<Verdict>,
     /// Executor: its id in relay / pi-lead (what their commands take), not Cue's session id.
     #[serde(skip)]
     pub id: String,
@@ -94,6 +98,8 @@ static INDEX: Mutex<Option<HashMap<String, Member>>> = Mutex::new(None);
 static LOCAL: Mutex<Option<HashMap<String, Member>>> = Mutex::new(None);
 /// Each machine's part: its relay command there, and its leads and executors.
 static REMOTE: Mutex<Option<HashMap<String, (String, HashMap<String, Member>)>>> = Mutex::new(None);
+/// Each machine's pilead command ("" when it has none).
+static REMOTE_PILEAD: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// Each file's last parse, by path, with the modification time it was parsed at. relay never deletes
 /// executor records (hundreds of closed ones pile up), and a closed record never changes again: a
@@ -280,6 +286,7 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
         };
         put(index, sid, lead);
     }
+    let verdicts = ledger_verdicts(&root.join("sessions.jsonl"));
     for d in subdirs(root) {
         let Some(e) = read_json(&d.join("session.json")) else { continue };
         if !s(&e, "agent").starts_with("relay-executor") {
@@ -289,10 +296,12 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
         let lead = leads.get(&owner);
         let packet = e.get("current_packet").and_then(Value::as_u64);
         // Goal and outcome only for executors still at work: closed ones pile up by the hundred.
-        let (goal, outcome) = match packet.filter(|_| !GONE.contains(&s(&e, "status").as_str())) {
+        let open = packet.filter(|_| !GONE.contains(&s(&e, "status").as_str()));
+        let (goal, outcome) = match open {
             Some(n) => (first_line(&d.join(format!("packets/{n:03}-packet.md"))), first_line(&d.join(format!("packets/{n:03}-report.md")))),
             None => (String::new(), String::new()),
         };
+        let verify = open.and_then(|n| verdicts.get(&(s(&e, "session_id"), n)).cloned());
         let m = Member {
             role: "executor".into(),
             plugin: "relay".into(),
@@ -306,6 +315,7 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
             lead: owner,
             goal,
             outcome,
+            verify,
             reviewed: seen_report(&e),
             ready_late: ready_late(&e, now_secs(), None),
             id: s(&e, "session_id"),
@@ -430,8 +440,75 @@ fn verify_reported(index: &HashMap<String, Member>, root: &Path) {
     }
 }
 
-fn verdict_of(id: &str) -> Option<Verdict> {
-    VERIFY.lock().unwrap().as_ref()?.get(id)?.1.clone()
+/// The verdict Cue's own `relay verify` run came up with, else the one relay already had on record.
+fn verdict_of(m: &Member) -> Option<Verdict> {
+    VERIFY.lock().unwrap().as_ref().and_then(|c| c.get(&m.id)).and_then(|(_, v)| v.clone()).or_else(|| m.verify.clone())
+}
+
+/// A verdict from relay's `list --json` (`verify`: {verdict, mismatches, …}), if it gave one.
+fn verdict_from_json(v: &Value) -> Option<Verdict> {
+    let verdict = s(v.get("verify")?, "verdict");
+    if verdict.is_empty() {
+        return None;
+    }
+    let n = v["verify"].get("mismatches").and_then(Value::as_u64).unwrap_or(0);
+    let note = Some(s(&v["verify"], "note")).filter(|t| !t.is_empty()).unwrap_or_else(|| if verdict == "MISMATCH" && n > 0 { format!("{n} mismatch{}", if n == 1 { "" } else { "es" }) } else { String::new() });
+    Some(Verdict { verdict, note })
+}
+
+/// relay's ledger (`sessions.jsonl`): the last `report_verify` event per (executor id, packet), the
+/// same rule relay's own `list --json` uses. The ledger only grows (megabytes of it), so Cue keeps
+/// how far it has read and the verdicts found so far, and each tick reads just the new bytes. A last
+/// line that isn't finished yet is left for the next tick; a ledger that shrank or is a different
+/// file (its inode changed) is read again from the start.
+type Verdicts = std::sync::Arc<HashMap<(String, u64), Verdict>>;
+struct Ledger {
+    inode: u64,
+    /// Bytes read so far: the end of the last complete line seen.
+    offset: u64,
+    verdicts: Verdicts,
+}
+/// By path (Cue reads one ledger; tests read several).
+static LEDGER: Mutex<Option<HashMap<PathBuf, Ledger>>> = Mutex::new(None);
+
+fn ledger_verdicts(path: &Path) -> Verdicts {
+    use std::io::{Read, Seek, SeekFrom};
+    use std::os::unix::fs::MetadataExt;
+    let Ok(meta) = std::fs::metadata(path) else { return Default::default() };
+    let mut cache = LEDGER.lock().unwrap();
+    let cache = cache.get_or_insert_with(HashMap::new);
+    let same = cache.get(path).is_some_and(|l| l.inode == meta.ino() && l.offset <= meta.len());
+    if !same {
+        cache.insert(path.to_path_buf(), Ledger { inode: meta.ino(), offset: 0, verdicts: Default::default() });
+    }
+    let ledger = cache.get_mut(path).unwrap();
+    if meta.len() == ledger.offset {
+        return ledger.verdicts.clone();
+    }
+    let mut bytes = Vec::new();
+    let read = std::fs::File::open(path).and_then(|mut f| {
+        f.seek(SeekFrom::Start(ledger.offset))?;
+        f.read_to_end(&mut bytes)
+    });
+    if read.is_err() {
+        return ledger.verdicts.clone();
+    }
+    // Only whole lines: what follows the last newline may still be being written.
+    let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else { return ledger.verdicts.clone() };
+    ledger.offset += end as u64 + 1;
+    let map = std::sync::Arc::make_mut(&mut ledger.verdicts);
+    for line in String::from_utf8_lossy(&bytes[..end]).lines().filter(|l| l.contains("\"report_verify\"")) {
+        let Ok(d) = serde_json::from_str::<Value>(line) else { continue };
+        let (sid, n) = (s(&d, "session_id"), d.get("packet").and_then(Value::as_u64));
+        if s(&d, "event") != "report_verify" || sid.is_empty() {
+            continue;
+        }
+        let (Some(n), Some(verdict)) = (n, Some(s(&d, "verdict")).filter(|v| !v.is_empty())) else { continue };
+        let k = d.get("mismatches").and_then(Value::as_u64).unwrap_or(0);
+        let note = if verdict == "MISMATCH" && k > 0 { format!("{k} mismatch{}", if k == 1 { "" } else { "es" }) } else { String::new() };
+        map.insert((sid, n), Verdict { verdict, note });
+    }
+    ledger.verdicts.clone()
 }
 
 fn scan(relay: &Path, pilead: &Path, claude_sessions: &Path) -> HashMap<String, Member> {
@@ -472,13 +549,17 @@ fn merge() -> bool {
 }
 
 /// What runs on a machine to list its crews: relay's command there (from Claude Code's installed
-/// plugins, else on PATH), its JSON listing, then the Claude sessions open in a live process there
+/// plugins, else on PATH), its JSON listing, pi-lead's (when `pilead` is there), then the Claude sessions open in a live process there
 /// (a lead counts as listening only while one is), then its UTC offset (relay writes its timestamps
 /// in the machine's local time).
 const REMOTE_LIST: &str = r#"c="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 r=$(sed -n 's/.*"installPath": *"\([^"]*\)".*/\1/p' "$c/plugins/installed_plugins.json" 2>/dev/null | grep -i relay | head -1)
 if [ -n "$r" ] && [ -x "$r/bin/relay" ]; then r="$r/bin/relay"; else r=$(command -v relay 2>/dev/null || echo "$HOME/.local/bin/relay"); fi
 if [ -x "$r" ]; then echo "BIN:$r"; "$r" list --all --json 2>/dev/null; else echo NORELAY; fi
+# pi-lead's crews, when pilead is on this machine (its own marker, then PBIN: and its JSON).
+echo "__CUE_PILEAD__"
+p=$(command -v pilead 2>/dev/null || echo "$HOME/.local/bin/pilead")
+if [ -x "$p" ]; then echo "PBIN:$p"; "$p" list --json 2>/dev/null; else echo NOPILEAD; fi
 echo "__CUE_LIVE__"
 for f in "$c"/sessions/*.json; do
   # Claude Code writes these without a final newline, and sed then prints none: one id per line regardless.
@@ -493,6 +574,7 @@ exit 0"#;
 pub fn refresh_remote(machine: &str, host: &str) -> (bool, Option<HashSet<String>>) {
     let Ok(out) = crate::machines::run(host, REMOTE_LIST) else { return (false, None) };
     let parsed = parse_remote(&out, machine);
+    REMOTE_PILEAD.lock().unwrap().get_or_insert_with(HashMap::new).insert(machine.to_string(), pilead_bin_of(&out));
     REMOTE.lock().unwrap().get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
     (merge(), Some(live_of(&out)))
 }
@@ -522,6 +604,9 @@ fn tz_of(out: &str) -> Option<i64> {
 
 /// Forget a machine's crews (it has no sessions in Cue any more, or was removed).
 pub fn forget_remote(machine: &str) -> bool {
+    if let Some(p) = REMOTE_PILEAD.lock().unwrap().as_mut() {
+        p.remove(machine);
+    }
     let gone = REMOTE.lock().unwrap().as_mut().and_then(|r| r.remove(machine)).is_some();
     gone && merge()
 }
@@ -529,8 +614,8 @@ pub fn forget_remote(machine: &str) -> bool {
 /// REMOTE_LIST's answer: relay's command there, and its leads and executors keyed by Cue session id.
 fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
     let bin = out.lines().find_map(|l| l.strip_prefix("BIN:")).unwrap_or("").trim().to_string();
-    let after_bin = out.split_once('\n').filter(|_| !bin.is_empty()).map(|(_, rest)| rest).unwrap_or("");
-    let json = after_bin.split_once("__CUE_LIVE__").map_or(after_bin, |(j, _)| j);
+    let (relay_part, pilead) = remote_sections(out);
+    let json = relay_part.split_once('\n').filter(|_| !bin.is_empty()).map(|(_, rest)| rest).unwrap_or("");
     let live = live_of(out);
     let zone = tz_of(out);
     let v: Value = serde_json::from_str(json.trim()).unwrap_or(Value::Null);
@@ -558,6 +643,9 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
         }
         let owner = s(e, "owner_lead");
         let lead = leads.get(&owner);
+        // goal / outcome / verify are newer than the rest of relay's listing: a machine on an older
+        // relay doesn't send them, and that's no error, just nothing to show.
+        let open = !GONE.contains(&s(e, "status").as_str());
         let m = Member {
             role: "executor".into(),
             plugin: "relay".into(),
@@ -565,6 +653,9 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
             color: lead.and_then(|l| l.1),
             model: s(e, "model"),
             status: s(e, "status"),
+            goal: if open { clip(&s(e, "goal")) } else { String::new() },
+            outcome: if open { clip(&s(e, "outcome")) } else { String::new() },
+            verify: if open { verdict_from_json(e) } else { None },
             packet: e.get("current_packet").and_then(Value::as_u64),
             lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
             lead_armed: Some(lead.is_some() && live.contains(&owner)),
@@ -578,7 +669,70 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
         };
         put(&mut index, exec_key(e), m);
     }
+    parse_pilead(pilead, machine, &mut index);
     (bin, index)
+}
+
+/// REMOTE_LIST's answer up to the live-sessions marker, split into relay's part (its `BIN:` line and
+/// JSON) and pilead's (what follows `__CUE_PILEAD__`; "" when the machine's answer has none, an older one).
+fn remote_sections(out: &str) -> (&str, &str) {
+    let head = out.split_once("__CUE_LIVE__").map_or(out, |(j, _)| j);
+    head.split_once(PILEAD_MARK).unwrap_or((head, ""))
+}
+
+const PILEAD_MARK: &str = "__CUE_PILEAD__";
+
+/// A machine's pilead command, from its section's `PBIN:` line ("" when it has none).
+fn pilead_bin_of(out: &str) -> String {
+    out.split_once(PILEAD_MARK).and_then(|(_, p)| p.lines().find_map(|l| l.strip_prefix("PBIN:"))).unwrap_or("").trim().to_string()
+}
+
+/// At most 300 characters, as relay clips the lines it lists.
+fn clip(t: &str) -> String {
+    let t = t.trim();
+    if t.chars().count() > 300 { format!("{}…", t.chars().take(299).collect::<String>()) } else { t.to_string() }
+}
+
+/// A machine's pi-lead crews (`pilead list --json`: {"leads": […], "executors": […]}) into the same
+/// tree as relay's. A machine without pilead (or an answer that isn't JSON) adds nothing.
+fn parse_pilead(section: &str, machine: &str, index: &mut HashMap<String, Member>) {
+    let json = section.lines().skip_while(|l| !l.starts_with("PBIN:")).skip(1).collect::<Vec<_>>().join("\n");
+    let Ok(v) = serde_json::from_str::<Value>(json.trim()) else { return };
+    let mut leads: HashMap<String, (String, bool)> = HashMap::new();
+    for l in v.get("leads").and_then(Value::as_array).into_iter().flatten() {
+        let sid = s(l, "sid");
+        // "ghost": its record outlived its session. Every other state is a lead that's there.
+        leads.insert(sid.clone(), (s(l, "project"), s(l, "live") != "ghost"));
+        let lead = Member { role: "lead".into(), plugin: "pilead".into(), name: s(l, "project"), model: s(l, "model"), updated: s(l, "started"), machine: machine.into(), ..Default::default() };
+        put(index, sid, lead);
+    }
+    for e in v.get("executors").and_then(Value::as_array).into_iter().flatten() {
+        let sid = s(e, "sid");
+        let status = s(e, "status");
+        let lead = s(e, "lead");
+        let known = leads.get(&lead);
+        let open = !GONE.contains(&status.as_str());
+        let packet = e.get("packet").or_else(|| e.get("packets")).and_then(|p| p.as_u64().or_else(|| p.as_str()?.parse().ok()));
+        let m = Member {
+            role: "executor".into(),
+            plugin: "pilead".into(),
+            name: Some(s(e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| sid.clone()),
+            model: s(e, "model"),
+            status,
+            packet,
+            lead_name: known.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "project")),
+            lead_armed: Some(known.is_some_and(|l| l.1)),
+            lead,
+            goal: if open { clip(&s(e, "goal")) } else { String::new() },
+            outcome: if open { clip(&s(e, "outcome")) } else { String::new() },
+            verify: if open { verdict_from_json(e) } else { None },
+            id: sid.clone(),
+            updated: s(e, "created"),
+            machine: machine.into(),
+            ..Default::default()
+        };
+        put(index, sid, m);
+    }
 }
 
 /// A relay / pi-lead command, on this Mac or on the machine the session runs on.
@@ -621,6 +775,16 @@ fn relay_for(m: &Member) -> Result<Cmd, String> {
     }
     let bin = REMOTE.lock().unwrap().as_ref().and_then(|r| r.get(&m.machine)).map(|(b, _)| b.clone()).filter(|b| !b.is_empty());
     bin.map(|bin| Cmd { bin, args: vec![], machine: m.machine.clone() }).ok_or_else(|| format!("can't find relay's command on {}", m.machine))
+}
+
+/// pilead's command where this executor runs: where it was launched (this Mac), or its machine's
+/// (as last listed there).
+fn pilead_for(m: &Member) -> Result<Cmd, String> {
+    if m.machine.is_empty() {
+        return pilead_bin(&m.id).map(|b| Cmd::here(b, vec![])).ok_or_else(|| "can't find pilead's command".to_string());
+    }
+    let bin = REMOTE_PILEAD.lock().unwrap().as_ref().and_then(|r| r.get(&m.machine)).cloned().filter(|b| !b.is_empty());
+    bin.map(|bin| Cmd { bin, args: vec![], machine: m.machine.clone() }).ok_or_else(|| format!("can't find pilead's command on {}", m.machine))
 }
 
 /// Who handles this session's finished turn, given what its hook said (`hooked`). An executor
@@ -691,7 +855,7 @@ pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
     let m = index.get(session_id)?;
     match (m.plugin.as_str(), m.role.as_str()) {
         ("relay", "executor") => Some(relay_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
-        ("pilead", "executor") => Some(pilead_bin(&m.id).map(|b| Cmd::here(b, vec!["close".into(), m.id.clone()])).ok_or_else(|| "can't find pilead's command".to_string())),
+        ("pilead", "executor") => Some(pilead_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
         (_, "lead") => {
             let n = index.values().filter(|e| e.role == "executor" && e.lead == session_id && !GONE.contains(&e.status.as_str())).count();
             (n > 0).then(|| Err(format!("it leads {n} executor{} still open: close them, or hand the lead off, first", if n == 1 { "" } else { "s" })))
@@ -765,6 +929,9 @@ pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
         // An executor whose agent exited before it reported: relay closes its record where it runs.
         ("relay", "executor", "close") if matches!(m.status.as_str(), "stalled" | "dead") => Ok(Act::Run(relay(&["close", &m.id])?, "Closed".into())),
         ("relay", "executor", "close") => Err("only an executor whose agent exited can be closed from here".into()),
+        // pilead writes its diff page on the machine it runs on and Cue has no way to bring it here yet.
+        ("pilead", "executor", "diff") if !m.machine.is_empty() => Err(format!("pilead's diff page is written on {}; Cue can't bring it here yet", m.machine)),
+        ("pilead", "executor", "close") if matches!(m.status.as_str(), "stalled" | "dead") => Ok(Act::Run(pilead_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })?, "Closed".into())),
         ("pilead", "executor", "diff") => pilead_diff_page(&pilead_dir(), &m.id).map(Act::Open).ok_or_else(|| "it hasn't written a diff page yet".into()),
         _ => Err(format!("no {action} for this session")),
     }
@@ -779,7 +946,7 @@ pub fn view(known: &HashSet<String>) -> Value {
     for sid in known {
         let Some(m) = index.get(sid) else { continue };
         let mut v = serde_json::to_value(m).unwrap_or_default();
-        if let Some(vf) = (m.role == "executor").then(|| verdict_of(&m.id)).flatten() {
+        if let Some(vf) = (m.role == "executor").then(|| verdict_of(m)).flatten() {
             v["verify"] = serde_json::to_value(vf).unwrap_or_default();
         }
         if m.role == "lead" {
@@ -787,7 +954,7 @@ pub fn view(known: &HashSet<String>) -> Value {
             execs.sort_by(|a, b| a.1.updated.cmp(&b.1.updated));
             v["executors"] = execs
                 .into_iter()
-                .map(|(esid, e)| serde_json::json!({ "session_id": esid, "name": e.name, "model": e.model, "status": e.status, "packet": e.packet, "goal": e.goal, "outcome": e.outcome, "verify": verdict_of(&e.id) }))
+                .map(|(esid, e)| serde_json::json!({ "session_id": esid, "name": e.name, "model": e.model, "status": e.status, "packet": e.packet, "goal": e.goal, "outcome": e.outcome, "verify": verdict_of(e), "plugin": e.plugin, "machine": e.machine }))
                 .collect();
         }
         out.insert(sid.clone(), v);
@@ -839,8 +1006,9 @@ C9
         std::fs::write(home.join(format!("sessions/{me}.json")), r#"{"pid":1,"sessionId":"L1","cwd":"/tmp"}"#).unwrap();
         std::fs::write(home.join(format!("sessions/{}.json", std::os::unix::process::parent_id())), r#"{"pid":2,"sessionId":"C1","cwd":"/tmp"}"#).unwrap();
         std::fs::write(home.join("sessions/999999.json"), r#"{"pid":3,"sessionId":"DEAD"}"#).unwrap();
-        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).args(["-c", REMOTE_LIST]).output().unwrap();
+        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("HOME", &home).args(["-c", REMOTE_LIST]).output().unwrap();
         let out = String::from_utf8_lossy(&out.stdout).to_string();
+        assert!(out.contains("NOPILEAD") && pilead_bin_of(&out).is_empty(), "no pilead there: {out:?}");
         let (bin, index) = parse_remote(&out, "box");
         assert_eq!(bin, relay.display().to_string());
         assert_eq!(index["C1"].lead_armed, Some(true), "its lead is live there: {out:?}");
@@ -848,6 +1016,20 @@ C9
         assert_eq!(live.len(), 2, "one id per line, the dead one left out: {live:?}");
         assert!(tz_of(&out).is_some_and(|z| z.abs() <= 14 * 3600), "it says its UTC offset: {out:?}");
         assert_eq!(live_of(&out).len(), 2, "the offset line isn't a session");
+
+        // The same machine with pilead on its PATH: its crews come in the same answer.
+        let pilead = home.join("bin/pilead");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::write(&pilead, format!("#!/bin/sh\ncat <<'EOF'\n{PI_LISTING}\nEOF\n")).unwrap();
+        std::fs::set_permissions(&pilead, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let path = format!("{}:/usr/bin:/bin", home.join("bin").display());
+        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("HOME", &home).env("PATH", path).args(["-c", REMOTE_LIST]).output().unwrap();
+        let out = String::from_utf8_lossy(&out.stdout).to_string();
+        assert_eq!(pilead_bin_of(&out), pilead.display().to_string(), "{out:?}");
+        let (bin, index) = parse_remote(&out, "box");
+        assert_eq!(bin, relay.display().to_string(), "relay is still found");
+        assert!(index.contains_key("C1") && index["pe-1"].plugin == "pilead" && index["PL1"].role == "lead", "both tools' crews: {:?}", index.keys());
+        assert_eq!(live_of(&out).len(), 2);
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -1126,5 +1308,179 @@ BUSY
         assert_eq!(lead_stop("X1"), None, "an executor is closed by close_plan");
         assert_eq!(lead_stop("nobody"), None);
         assert_eq!(close_plan("EMPTY"), None, "close_plan itself is unchanged for it");
+    }
+
+    #[test]
+    fn a_machines_relay_may_or_may_not_list_goal_outcome_and_verify() {
+        let out = r#"BIN:/r/relay
+{"leads": [{"session_id": "L1", "project": "p"}],
+ "executors": [{"agent": "relay-executor", "session_id": "new-1", "topic": "new", "status": "reported", "current_packet": 1, "owner_lead": "L1", "claude_session": "C1",
+                "goal": "add CSV export", "outcome": "Export writes trades.csv", "verify": {"verdict": "MISMATCH", "ts": "2026-10-10T10:00:00", "rerun": false, "mismatches": 2}},
+               {"agent": "relay-executor", "session_id": "new-2", "topic": "pending", "status": "busy", "current_packet": 1, "owner_lead": "L1", "claude_session": "C2", "goal": "tune it", "outcome": "", "verify": null},
+               {"agent": "relay-executor", "session_id": "old-1", "topic": "older", "status": "reported", "current_packet": 1, "owner_lead": "L1", "claude_session": "C3"},
+               {"agent": "relay-executor", "session_id": "bad-1", "topic": "odd", "status": "busy", "owner_lead": "L1", "claude_session": "C4", "goal": 7, "verify": "COUNTS-MATCH"},
+               {"agent": "relay-executor", "session_id": "gone-1", "topic": "gone", "status": "closed", "owner_lead": "L1", "claude_session": "C5", "goal": "stale"}]}
+__CUE_LIVE__
+"#;
+        let index = parse_remote(out, "box").1;
+        let c1 = &index["C1"];
+        assert_eq!((c1.goal.as_str(), c1.outcome.as_str()), ("add CSV export", "Export writes trades.csv"));
+        assert_eq!(c1.verify, Some(Verdict { verdict: "MISMATCH".into(), note: "2 mismatches".into() }));
+        assert_eq!((index["C2"].goal.as_str(), index["C2"].outcome.as_str(), index["C2"].verify.clone()), ("tune it", "", None), "no report yet, verify null");
+        let o = &index["C3"];
+        assert_eq!((o.goal.as_str(), o.outcome.as_str(), o.verify.clone(), o.status.as_str()), ("", "", None, "reported"), "an older relay sends none of them: nothing to show, no error");
+        assert_eq!((index["C4"].goal.as_str(), index["C4"].verify.clone()), ("", None), "a field of the wrong type is ignored");
+        assert_eq!(index["C5"].goal, "", "a closed executor's isn't kept");
+        let long = format!(r#"BIN:/r/relay
+{{"leads": [], "executors": [{{"agent": "relay-executor", "session_id": "l", "claude_session": "CL", "status": "busy", "goal": "{}"}}]}}
+"#, "x".repeat(400));
+        assert_eq!(parse_remote(&long, "box").1["CL"].goal.chars().count(), 300, "clipped, however long a machine sends it");
+    }
+
+    const PI_LISTING: &str = r#"{"leads": [{"sid": "PL1", "project": "pi-proj", "live": "live", "model": "deepseek/flash", "started": "2026-10-10T09:00:00Z", "waiting": 0, "wake": "on"},
+                                       {"sid": "PL2", "project": "dead-proj", "live": "ghost", "started": "2026-10-01T09:00:00Z"}],
+ "executors": [{"sid": "pe-1", "lead": "PL1", "project": "pi-proj", "status": "reported", "topic": "parser", "label": "[Exec] pe-1", "packet": 2, "goal": "write the parser", "outcome": "Parser handles nested lists", "reported": true, "worktree": "/w/1", "model": "deepseek/flash", "created": "2026-10-10T09:05:00Z"},
+               {"sid": "pe-2", "lead": "PL1", "project": "pi-proj", "status": "busy", "topic": "", "packet": "1", "goal": "wire it up", "outcome": "", "reported": false},
+               {"sid": "pe-3", "lead": "PL2", "project": "dead-proj", "status": "busy", "topic": "orphan", "packet": 1},
+               {"sid": "pe-4", "lead": "PL1", "project": "pi-proj", "status": "closed", "topic": "done", "goal": "old goal"}]}"#;
+
+    #[test]
+    fn a_machines_pilead_crews_sit_beside_relays_in_the_same_tree() {
+        let out = format!("BIN:/r/relay\n{{\"leads\": [{{\"session_id\": \"L1\", \"project\": \"rl\"}}], \"executors\": []}}\n__CUE_PILEAD__\nPBIN:/home/me/pi-lead/bin/pilead\n{PI_LISTING}\n__CUE_LIVE__\nL1\n__CUE_TZ__:+0000\n");
+        let (bin, index) = parse_remote(&out, "build-box");
+        assert_eq!(bin, "/r/relay", "relay's command is relay's");
+        assert_eq!(pilead_bin_of(&out), "/home/me/pi-lead/bin/pilead");
+        assert_eq!(index["L1"].plugin, "relay");
+        let l = &index["PL1"];
+        assert_eq!((l.role.as_str(), l.plugin.as_str(), l.name.as_str(), l.machine.as_str()), ("lead", "pilead", "pi-proj", "build-box"));
+        let e = &index["pe-1"];
+        assert_eq!((e.role.as_str(), e.plugin.as_str(), e.name.as_str(), e.lead.as_str(), e.lead_name.as_str(), e.lead_armed, e.packet, e.machine.as_str(), e.id.as_str()),
+            ("executor", "pilead", "parser", "PL1", "pi-proj", Some(true), Some(2), "build-box", "pe-1"));
+        assert_eq!((e.status.as_str(), e.goal.as_str(), e.outcome.as_str()), ("reported", "write the parser", "Parser handles nested lists"));
+        assert_eq!((index["pe-2"].name.as_str(), index["pe-2"].packet, index["pe-2"].outcome.as_str()), ("pe-2", Some(1), ""), "no topic: its id; packet as a string reads too");
+        assert_eq!(index["pe-3"].lead_armed, Some(false), "its lead is a ghost record");
+        assert_eq!(index["pe-4"].goal, "", "closed: no goal kept");
+        assert_eq!(live_of(&out), HashSet::from(["L1".to_string()]), "the live list is still what follows its own marker");
+
+        // pilead alone (no relay there).
+        let only = format!("NORELAY\n__CUE_PILEAD__\nPBIN:/p/pilead\n{PI_LISTING}\n__CUE_LIVE__\n");
+        let (bin, index) = parse_remote(&only, "box");
+        assert_eq!(bin, "");
+        assert!(index.contains_key("pe-1") && index.contains_key("PL1") && !index.contains_key("L1"));
+    }
+
+    #[test]
+    fn a_machine_without_pilead_lists_exactly_as_before() {
+        let relay = r#"BIN:/r/relay
+{"leads": [{"session_id": "L1", "project": "p"}], "executors": [{"agent": "relay-executor", "session_id": "e1", "claude_session": "C1", "owner_lead": "L1", "status": "busy"}]}
+"#;
+        let before = parse_remote(&format!("{relay}__CUE_LIVE__\nL1\n"), "box");
+        let without = parse_remote(&format!("{relay}__CUE_PILEAD__\nNOPILEAD\n__CUE_LIVE__\nL1\n"), "box");
+        assert_eq!(before, without, "the new marker adds nothing");
+        assert_eq!(without.1.keys().cloned().collect::<HashSet<_>>(), HashSet::from(["L1".to_string(), "C1".to_string()]));
+        assert_eq!(pilead_bin_of(&format!("{relay}__CUE_PILEAD__\nNOPILEAD\n")), "");
+        assert_eq!(pilead_bin_of(relay), "");
+        let neither = parse_remote("NORELAY\n__CUE_PILEAD__\nNOPILEAD\n__CUE_LIVE__\n__CUE_TZ__:+0000\n", "box");
+        assert!(neither.1.is_empty() && neither.0.is_empty());
+        // pilead that printed something that isn't JSON (a traceback, an older CLI): no crews, no error.
+        assert!(parse_remote("NORELAY\n__CUE_PILEAD__\nPBIN:/p/pilead\nTraceback (most recent call last):\n__CUE_LIVE__\n", "box").1.is_empty());
+    }
+
+    #[test]
+    fn only_the_buttons_pilead_has_a_command_for_are_wired_for_its_remote_executors() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let out = format!("NORELAY\n__CUE_PILEAD__\nPBIN:/p/pilead\n{PI_LISTING}\n__CUE_LIVE__\n");
+        let index = parse_remote(&out, "box").1;
+        *INDEX.lock().unwrap() = Some(index);
+        *REMOTE_PILEAD.lock().unwrap() = Some(HashMap::from([("box".to_string(), "/p/pilead".to_string())]));
+        assert_eq!(act("pe-1", "review"), Ok(Act::Send { to: "PL1".into(), text: "/pilead:review pe-1".into() }));
+        assert!(act("pe-1", "diff").unwrap_err().contains("can't bring it here"), "no remote diff page for pilead");
+        assert_eq!(close_plan("pe-1"), Some(Ok(Cmd { bin: "/p/pilead".into(), args: vec!["close".into(), "pe-1".into()], machine: "box".into() })));
+        *REMOTE_PILEAD.lock().unwrap() = None;
+        assert!(close_plan("pe-1").unwrap().unwrap_err().contains("can't find pilead's command on box"));
+        *INDEX.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn the_ledger_is_read_incrementally() {
+        let dir = std::env::temp_dir().join(format!("cue-ledger-inc-{}", std::process::id()));
+        let path = dir.join("sessions.jsonl");
+        let ev = |sid: &str, n: u64, v: &str| format!("{{\"event\":\"report_verify\",\"session_id\":\"{sid}\",\"packet\":{n},\"verdict\":\"{v}\",\"mismatches\":0}}\n");
+        let get = |sid: &str, n: u64| ledger_verdicts(&path).get(&(sid.to_string(), n)).map(|v| v.verdict.clone());
+        let offset = || LEDGER.lock().unwrap().as_ref().and_then(|c| c.get(&path)).map(|l| l.offset).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(get("a", 1), None, "no ledger yet: no verdicts");
+
+        // First read: everything there.
+        let first = format!("{}{}", ev("a", 1, "MISMATCH"), ev("b", 1, "COUNTS-MATCH"));
+        write(&path, &first);
+        assert_eq!((get("a", 1).as_deref(), get("b", 1).as_deref()), (Some("MISMATCH"), Some("COUNTS-MATCH")));
+        assert_eq!(offset(), first.len() as u64);
+
+        // Appended lines: only they are read, and a later verdict for the same packet wins.
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut f, format!("{}{}", ev("a", 1, "COUNTS-MATCH"), ev("c", 2, "MALFORMED")).as_bytes()).unwrap();
+        assert_eq!((get("a", 1).as_deref(), get("c", 2).as_deref()), (Some("COUNTS-MATCH"), Some("MALFORMED")));
+        // Proof it didn't start over: corrupt the already-read part in place (same length); the old verdict stands.
+        let len = std::fs::metadata(&path).unwrap().len();
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[..first.len()].fill(b' ');
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), len);
+        assert_eq!(get("b", 1).as_deref(), Some("COUNTS-MATCH"), "the bytes already read aren't read again");
+        let after_appends = offset();
+
+        // A partial last line waits, then counts once it's finished.
+        let line = ev("d", 3, "MISMATCH");
+        let (head, tail) = line.split_at(line.len() / 2);
+        let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut f, head.as_bytes()).unwrap();
+        assert_eq!(get("d", 3), None, "half a line isn't a verdict");
+        assert_eq!(offset(), after_appends, "the partial line isn't consumed");
+        std::io::Write::write_all(&mut f, tail.as_bytes()).unwrap();
+        assert_eq!(get("d", 3).as_deref(), Some("MISMATCH"));
+        assert_eq!(get("a", 1).as_deref(), Some("COUNTS-MATCH"));
+
+        // The ledger shrinks (replaced by a shorter one, same file): start over from its beginning.
+        write(&path, &ev("z", 9, "COUNTS-MATCH"));
+        assert_eq!((get("z", 9).as_deref(), get("a", 1)), (Some("COUNTS-MATCH"), None), "only what's in the new ledger");
+
+        // A different file at the same path (a new inode, even a longer one) is read from the start too.
+        std::fs::remove_file(&path).unwrap();
+        write(&path, &format!("{}{}{}", ev("y", 1, "MALFORMED"), ev("y", 2, "MALFORMED"), ev("y", 3, "MALFORMED")));
+        assert_eq!((get("y", 3).as_deref(), get("z", 9)), (Some("MALFORMED"), None));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_a_local_executors_verdict_from_relays_ledger() {
+        let root = std::env::temp_dir().join(format!("cue-ledger-{}", std::process::id()));
+        let (relay, pi, cs) = (root.join("relay"), root.join("pi"), root.join("cs"));
+        write(&relay.join("sessions.jsonl"), concat!(
+            r#"{"ts":"2026-10-10T10:00:00","event":"spawn","session_id":"ex-1"}"#, "\n",
+            r#"{"ts":"2026-10-10T10:05:00","event":"report_verify","session_id":"ex-1","packet":2,"verdict":"MISMATCH","rerun":false,"mismatches":1}"#, "\n",
+            "not json but mentions \"report_verify\"\n",
+            r#"{"ts":"2026-10-10T10:09:00","event":"report_verify","session_id":"ex-1","packet":2,"verdict":"COUNTS-MATCH","rerun":false,"mismatches":0}"#, "\n",
+            r#"{"ts":"2026-10-10T10:09:00","event":"report_verify","session_id":"ex-2","packet":1,"verdict":"MALFORMED","rerun":false,"mismatches":0}"#, "\n"));
+        write(&relay.join("ex-1/session.json"), r#"{"session_id":"ex-1","agent":"relay-executor","claude_session":"C1","owner_lead":"L","topic":"one","status":"reported","current_packet":2}"#);
+        write(&relay.join("ex-1/packets/002-packet.md"), "GOAL: first\n");
+        write(&relay.join("ex-2/session.json"), r#"{"session_id":"ex-2","agent":"relay-executor","claude_session":"C2","owner_lead":"L","topic":"two","status":"reported","current_packet":1}"#);
+        write(&relay.join("ex-3/session.json"), r#"{"session_id":"ex-3","agent":"relay-executor","claude_session":"C3","owner_lead":"L","topic":"three","status":"busy","current_packet":4}"#);
+        write(&relay.join("ex-4/session.json"), r#"{"session_id":"ex-4","agent":"relay-executor","claude_session":"C4","owner_lead":"L","topic":"four","status":"closed","current_packet":2}"#);
+        let index = scan(&relay, &pi, &cs);
+        assert_eq!(index["C1"].verify, Some(Verdict { verdict: "COUNTS-MATCH".into(), note: String::new() }), "the last verdict for the packet wins");
+        assert_eq!(index["C2"].verify.as_ref().map(|v| v.verdict.as_str()), Some("MALFORMED"));
+        assert_eq!(index["C3"].verify, None, "no verdict for packet 4 yet");
+        assert_eq!(index["C4"].verify, None, "closed: not read");
+        assert_eq!((index["C1"].goal.as_str(), index["C1"].outcome.as_str()), ("first", ""), "goal from the packet; no report yet");
+        // The ledger grows: the next scan sees the new line.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut text = std::fs::read_to_string(relay.join("sessions.jsonl")).unwrap();
+        text.push_str("{\"event\":\"report_verify\",\"session_id\":\"ex-3\",\"packet\":4,\"verdict\":\"MISMATCH\",\"mismatches\":3}\n");
+        write(&relay.join("sessions.jsonl"), &text);
+        assert_eq!(scan(&relay, &pi, &cs)["C3"].verify, Some(Verdict { verdict: "MISMATCH".into(), note: "3 mismatches".into() }));
+        // The window gets it as `verify`, on the executor and in its lead's list.
+        assert_eq!(verdict_of(&index["C2"]).map(|v| v.verdict), Some("MALFORMED".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
