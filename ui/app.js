@@ -885,6 +885,9 @@ async function interrupt(sid) {
 }
 const box_ = (key, placeholder, label, attrs) => box(key, placeholder, label, attrs, true);
 
+/** A waiting message's tracing outline: the window redraws every few seconds, so each copy starts where
+ *  the clock says the trace is, and it goes round smoothly instead of jumping back to the start. */
+const qPhase = () => `--qd:-${Date.now() % 4000}ms`;
 /** Remember how the last message went out ("typed via tmux", "queued"), shown in the Active pane. */
 function sent(sid, text, images, via) {
   lastSent = { sid, text, images, via: String(via || "").replace(/^sent via /, ""), at: Date.now() };
@@ -1659,9 +1662,9 @@ function chatHtml(it, s, harness, paged = false) {
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
-  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q"><div class="cv-you-text">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
-  if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
-  if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
+  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
+  if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
+  if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
   return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
@@ -2612,6 +2615,32 @@ const setNewMachine = (m) => { newMachine = m; try { localStorage.setItem("cue.n
 /** Folders you started sessions in on a machine, most recent first (this window keeps them). */
 const machineFolders = (m) => { try { return JSON.parse(localStorage.getItem(`cue.folders.${m}`) || "[]"); } catch { return []; } };
 const rememberFolder = (m, dir) => { try { localStorage.setItem(`cue.folders.${m}`, JSON.stringify([dir, ...machineFolders(m).filter((d) => d !== dir)].slice(0, 10))); } catch {} };
+/** + New's Folder field: Cue's own list of recent folders (a native one can't be picked with ↑ ↓ Enter,
+ *  since Enter starts the session, and a redraw closes it). Open: ▾, ↓, or typing (which narrows it). */
+let nfFolderOpen = false, nfFolderQ = "", nfFolderSel = -1;
+const folderMatches = (folders) => { const q = nfFolderQ.toLowerCase(); return q ? folders.filter((f) => f.toLowerCase().includes(q) && f !== nfFolderQ) : folders; };
+const nfFolders = () => newMachine ? machineFolders(newMachine) : recentFolders().map(homeless);
+function folderDrop(folders) {
+  const m = nfFolderOpen ? folderMatches(folders) : [];
+  return m.length ? `<div class="nf-drop">${m.map((f, i) => `<button class="nf-dopt mono ${i === nfFolderSel ? "on" : ""}" data-lv="folder" data-cwd="${esc(f)}">${esc(f)}</button>`).join("")}</div>` : "";
+}
+const closeFolders = () => { nfFolderOpen = false; nfFolderQ = ""; nfFolderSel = -1; };
+function pickFolder(f) {
+  draft("new-cwd").text = f;
+  closeFolders();
+  renderMain();
+  const el = document.querySelector('[data-text="new-cwd"]');
+  if (el) { el.focus(); el.setSelectionRange(f.length, f.length); }
+}
+/** ↓ / ↑ in the Folder field: open the list, move the highlight. */
+function stepFolder(by) {
+  if (!nfFolderOpen) { nfFolderOpen = true; nfFolderQ = ""; nfFolderSel = -1; }
+  const n = folderMatches(nfFolders()).length;
+  if (!n) return;
+  nfFolderSel = nfFolderSel < 0 ? (by > 0 ? 0 : n - 1) : (nfFolderSel + by + n) % n;
+  renderMain();
+  document.querySelector(".nf-dopt.on")?.scrollIntoView({ block: "nearest" });
+}
 function newForm() {
   if (machinesList === null) loadMachines();
   if (newMachine && !(machinesList || []).some((m) => m.name === newMachine)) newMachine = machinesList === null ? newMachine : "";
@@ -2619,15 +2648,14 @@ function newForm() {
   // On a machine: the agents its check found there (all three until it's been checked).
   const agents = newMachine ? ["claude", "codex", "pi"].filter((a) => !remote?.tools || remote.tools[a]) : agentsAvail || ["claude"];
   if (agents.length && !agents.includes(newAgent)) newAgent = agents[0];
-  const folders = newMachine ? machineFolders(newMachine) : recentFolders().map(homeless);
+  const folders = nfFolders();
   const machines = machinesList || [];
   return `<div class="nf">
     <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add" title="Add a machine you reach over SSH">+ Add</button></div></div></div>
     ${nfAdding ? "" : machinePanel(newMachine)}
     ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there; it sets up its hooks for the agents it finds.</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Agent</span><div class="seg">${agents.map((a) => `<button class="${newAgent === a ? "on" : ""}" data-lv="agent" data-agent="${a}">${esc(agentName(a))}</button>`).join("")}</div></div>
-    <div class="nf-row"><span class="nf-k">Folder</span><input class="nf-in mono" data-text="new-cwd" list="nf-folders" placeholder="${newMachine ? `~/code/… on ${esc(machShort(newMachine))}` : "~/development/…"}" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>
-      <datalist id="nf-folders">${folders.map((f) => `<option value="${esc(f)}"></option>`).join("")}</datalist></div>
+    <div class="nf-row"><span class="nf-k">Folder</span><div class="nf-fwrap"><input class="nf-in mono" data-text="new-cwd" placeholder="${newMachine ? `~/code/… on ${esc(machShort(newMachine))}` : "~/development/…"}" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>${folders.length ? `<button class="nf-fbtn" data-lv="folders" aria-label="Recent folders">▾</button>` : ""}${folderDrop(folders)}</div></div>
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
     <div class="nf-row top"><span class="nf-k">Message</span><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on">${esc(draft("new-msg").text)}</textarea></div>
     ${state.settings?.sessions?.tmux_installed && !newMachine ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v ? CUE_MARK_SM : TERM_ICON}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
@@ -2676,7 +2704,9 @@ async function lvAct(act, d) {
   if (act === "machine-add") { nfAdding = !nfAdding; renderMain(); return nfAdding && document.querySelector('[data-text="mc-host"]')?.focus(); }
   if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : homeless(recentFolders()[0] || ""); return renderMain(); }
   if (act === "perm") { newPerm = d.perm; return renderMain(); }
-  if (act === "cancel") { liveOpen = newOpen = false; return renderMain(); }
+  if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
+  if (act === "folder") return pickFolder(d.cwd);
+  if (act === "cancel") { liveOpen = newOpen = false; closeFolders(); return renderMain(); }
   if (act === "start") {
     const cwd = draft("new-cwd").text.trim();
     if (!cwd) return toast("Pick a folder first");
@@ -3786,6 +3816,7 @@ function bindMain() {
     if (stop) return interrupt(stop.dataset.sid);
     const st_ = t.closest("[data-act=send-to]");
     if (st_) return sendTo(st_.dataset.sid);
+    if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); }
     const lv = t.closest("[data-lv]");
     if (lv) return lvAct(lv.dataset.lv, lv.dataset);
     // A team button (auto, Diff, Review) inside a row that opens its session: the button, not the row.
@@ -3887,6 +3918,7 @@ function bindMain() {
     if (id === "search") return runSearch(e.target.value);
     if (id === "find-live") liveSel = 0;
     if (id === "find-sessions" || id === "find-live") return renderMain();
+    if (id === "new-cwd") { nfFolderOpen = true; nfFolderQ = e.target.value; nfFolderSel = -1; saveDrafts(); return renderMain(); }
     saveDrafts();
     if (cmdShut === id) cmdShut = null;
     cmdSel = 0;
@@ -3945,6 +3977,20 @@ function bindMain() {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") { cmdSel = (cmdSel + (e.key === "ArrowDown" ? 1 : m.length - 1)) % m.length; return refreshCmd(mk); }
       return pickCmd(mk, m[cmdSel].name, e.key === "Enter");
     }
+    if (e.target.dataset?.text === "new-cwd") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); return stepFolder(e.key === "ArrowDown" ? 1 : -1); }
+      // Enter here only ever picks a folder (the highlighted one, else the list's first), never starts the
+      // session. Nothing to pick: on to the Message box.
+      if (e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        const m = nfFolderOpen ? folderMatches(nfFolders()) : [], f = m[nfFolderSel] || m[0];
+        if (f) return pickFolder(f);
+        closeFolders(); renderMain();
+        return document.querySelector('[data-text="new-msg"]')?.focus();
+      }
+      if (nfFolderOpen && e.key === "Escape") { e.preventDefault(); closeFolders(); return renderMain(); }
+      if (nfFolderOpen && e.key === "Tab") { closeFolders(); renderMain(); }
+    }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
     if (starOpen && e.key === "Escape") { starOpen = false; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
@@ -3994,7 +4040,7 @@ function bindMain() {
         const key = e.target.dataset.text;
         if (key.startsWith("btw:")) return askBtw(key.slice(4), draft(key).text);
         if (key === "fwd") return sendForward();
-        if (key === "new-cwd" || key === "new-name" || key === "new-msg") return lvAct("start", {});
+        if (key === "new-name" || key === "new-msg") return lvAct("start", {});
         if (key === "search") return pickResult(searchSel);
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
         // A parked session's box: Enter resumes it with the message (Resume & send).
