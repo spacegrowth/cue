@@ -869,9 +869,9 @@ mod tests {
     fn first_seen_in_claude_codes_list_its_name_there_wins() {
         let mut s = Sessions::default();
         named(&mut s, "a", "claude", "");
-        s.set_name("a", "d2clabs-web"); // e.g. a folder name an old resume stored as its name
-        assert!(s.sync_agent_names(&listed(&[("a", "[Lead] chart-lines")]), 0));
-        assert_eq!(get(&s, "a").name, "[Lead] chart-lines", "as the window showed it before");
+        s.set_name("a", "web-shop"); // e.g. a folder name an old resume stored as its name
+        assert!(s.sync_agent_names(&listed(&[("a", "[Lead] checkout-flow")]), 0));
+        assert_eq!(get(&s, "a").name, "[Lead] checkout-flow", "as the window showed it before");
         // No name there: Cue's stays.
         named(&mut s, "n", "claude", "");
         s.set_name("n", "mine");
