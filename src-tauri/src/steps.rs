@@ -133,13 +133,34 @@ pub fn model_of(path: &str) -> Option<String> {
     Some(feed.meta.model.clone()).filter(|m| !m.is_empty())
 }
 
-/// Each Claude session's context window as its status line last said (by session id). Its transcript
-/// doesn't say, and the model's name doesn't always either (a 1M window without "[1m]").
-static WINDOWS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
+/// Each Claude session's context window as its status line last said (by session id), and each model's
+/// as a session on it last said. Its transcript doesn't say, and the model's name doesn't always either
+/// (a 1M window without "[1m]"). Kept on disk: a status line only runs when its session does something,
+/// so after Cue restarts an idle session would otherwise read as on the 200k guess (196k → 98%).
+#[derive(Default, Serialize, serde::Deserialize)]
+struct Windows {
+    #[serde(default)]
+    sessions: HashMap<String, u64>,
+    #[serde(default)]
+    models: HashMap<String, u64>,
+}
+static WINDOWS: Mutex<Option<Windows>> = Mutex::new(None);
 
-fn known_window(path: &str) -> Option<u64> {
+fn windows_file() -> std::path::PathBuf {
+    crate::server::cue_dir().join("windows.json")
+}
+
+/// The windows Cue knows (read from disk the first time; tests never touch the real one).
+fn with_windows<R>(f: impl FnOnce(&mut Windows) -> R) -> R {
+    let mut g = WINDOWS.lock().unwrap();
+    let w = g.get_or_insert_with(|| if cfg!(test) { Windows::default() } else { std::fs::read(windows_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() });
+    f(w)
+}
+
+/// A session's window: what its status line said, else what one on the same model said.
+fn known_window(path: &str, model: &str) -> Option<u64> {
     let sid = std::path::Path::new(path).file_stem()?.to_str()?;
-    WINDOWS.lock().unwrap().as_ref()?.get(sid).copied()
+    with_windows(|w| w.sessions.get(sid).or_else(|| w.models.get(model)).copied())
 }
 
 /// What Claude Code's status line says a session's window is. A feed that has it open takes it at
@@ -148,13 +169,26 @@ pub fn set_window(session_id: &str, window: u64) {
     if window == 0 {
         return;
     }
-    let prev = WINDOWS.lock().unwrap().get_or_insert_with(HashMap::new).insert(session_id.to_string(), window);
-    if prev == Some(window) {
-        return;
-    }
     let mut guard = FEEDS.lock().unwrap();
-    for f in guard.get_or_insert_with(HashMap::new).values_mut() {
-        if f.kind == Kind::Claude && std::path::Path::new(&f.path).file_stem().and_then(|s| s.to_str()) == Some(session_id) && f.meta.window != window {
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    let mine = |f: &Feed| f.kind == Kind::Claude && std::path::Path::new(&f.path).file_stem().and_then(|s| s.to_str()) == Some(session_id);
+    let model = feeds.values().find(|f| mine(f)).map(|f| f.meta.model.clone()).unwrap_or_default();
+    with_windows(|w| {
+        // Old sessions' entries go now and then; the models' stay.
+        if w.sessions.len() > 2000 {
+            w.sessions.clear();
+        }
+        let new_session = w.sessions.insert(session_id.to_string(), window) != Some(window);
+        let new_model = !model.is_empty() && w.models.insert(model, window) != Some(window);
+        if (new_session || new_model) && !cfg!(test) {
+            let tmp = windows_file().with_extension("json.tmp");
+            if serde_json::to_vec(&*w).ok().is_some_and(|b| std::fs::write(&tmp, b).is_ok()) {
+                let _ = std::fs::rename(&tmp, windows_file());
+            }
+        }
+    });
+    for f in feeds.values_mut() {
+        if mine(f) && f.meta.window != window {
             f.meta.window = window;
             f.version += 1;
         }
@@ -240,9 +274,9 @@ impl Feed {
                         if !model.is_empty() && !model.starts_with('<') {
                             m.model = model.to_string();
                         }
-                        // The transcript doesn't say the window. Claude Code's status line does (once it has
-                        // run for this session); until then 200k, or 1M once it's past that (or says so).
-                        m.window = match known_window(&self.path) {
+                        // The transcript doesn't say the window. Claude Code's status line does (for this
+                        // session, or another on its model); until then 200k, or 1M once it's past that (or says so).
+                        m.window = match known_window(&self.path, &m.model) {
                             Some(w) => w,
                             None if m.model.contains("[1m]") || m.context > 200_000 || m.window == 1_000_000 => 1_000_000,
                             None => 200_000,
@@ -1073,6 +1107,14 @@ mod tests {
         assert_eq!(context_pct(p), Some(17), "Claude Code's own window, as its status line shows");
         let after = steps(p, before);
         assert!(after["version"].as_u64().unwrap() > before && after["meta"]["window"] == 1_000_000, "the window redraws: {after}");
+        // Another session on that model, before its own status line has run: the model's window, not the guess.
+        let other = dir.join("win-other.jsonl");
+        std::fs::write(&other, std::fs::read_to_string(&path).unwrap().replace("claude-opus-5-5", "claude-test-model-w")).unwrap();
+        let path2 = dir.join(format!("{sid}-2.jsonl"));
+        std::fs::write(&path2, std::fs::read_to_string(&path).unwrap().replace("claude-opus-5-5", "claude-test-model-w")).unwrap();
+        assert_eq!(context_pct(path2.to_str().unwrap()), Some(87), "a model nobody has reported yet: the guess");
+        set_window(&format!("{sid}-2"), 1_000_000);
+        assert_eq!(context_pct(other.to_str().unwrap()), Some(17), "the window another session on its model reported");
         std::fs::remove_dir_all(&dir).ok();
     }
 
