@@ -2902,7 +2902,7 @@ function sessionsView() {
   const rest = [...(state.parked || []).map((p) => ({ ...p, kind: "parked", at: p.parked_ms })),
     ...(closedList || []).filter((c) => !(state.parked || []).some((p) => p.session_id === c.session_id)).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }))]
     .filter((p) => !liveSids.has(p.session_id) && match({ name: p.name || p.project, cwd: p.cwd, harness: p.harness }));
-  if (!closedLoading && !closedList) queueMicrotask(loadClosed);
+  if (!closedLoading && (!closedList || now() - closedAt > 60000)) queueMicrotask(loadClosed);   // what ended since, once a minute
   // Sections, each under a heading: This Mac, then each other machine (its live tiles), then Parked
   // and Closed (one slim line each, machine tag on the ones from elsewhere; Closed folds).
   const newest = (a, b) => b.at - a.at;
