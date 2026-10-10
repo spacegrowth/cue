@@ -97,6 +97,12 @@ fn dismiss(hub: State<Arc<Hub>>, id: String) {
     hub.dismiss(&id)
 }
 
+/// × on a session whose machine can't be reached: take it out of Cue.
+#[tauri::command]
+fn forget_session(hub: State<Arc<Hub>>, session_id: String) {
+    hub.forget(&session_id)
+}
+
 /// × on a queued review in its lead's chat: take it back.
 #[tauri::command]
 fn unqueue_review(hub: State<Arc<Hub>>, exec: String) {
@@ -835,6 +841,11 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
     let session_id = session_id.to_string();
     {
         h.closable(&session_id)?;
+        // Its machine can't be reached: nothing to end there now; it's taken out of Cue.
+        if h.unreachable(&session_id) {
+            h.forget(&session_id);
+            return Ok("Removed from Cue (its machine can't be reached)".into());
+        }
         // An executor: relay / pi-lead close it, where it runs (on its machine, over SSH).
         if let Some(plan) = leads::close_plan(&session_id) {
             return plan?.run().map(|_| "Closed".into());
@@ -1344,7 +1355,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -1396,6 +1407,9 @@ pub fn run() {
                     if tauri::async_runtime::spawn_blocking(|| leads::refresh() | live::refresh()).await.unwrap_or(false) {
                         h.redraw();
                     }
+                    // Claude sessions here whose agent is gone (no process Cue can watch: Cue's own terminal, a lost tab).
+                    let s = h.clone();
+                    let _ = tauri::async_runtime::spawn_blocking(move || s.sweep("", Some(&live::claude().into_iter().map(|q| q.session_id).collect()))).await;
                     // ...and from that list: sessions Cue doesn't know yet, prompts in a terminal it has no card for.
                     let a = h.clone();
                     let _ = tauri::async_runtime::spawn_blocking(move || a.sync_live()).await;
@@ -1413,7 +1427,14 @@ pub fn run() {
                         let busy: std::collections::HashSet<String> = a.saved_sessions().into_iter().map(|s| s.origin.machine).filter(|m| !m.is_empty()).collect();
                         let mut changed = false;
                         for m in machines::list() {
-                            changed |= if busy.contains(&m.name) { leads::refresh_remote(&m.name, &m.host) } else { leads::forget_remote(&m.name) };
+                            if busy.contains(&m.name) {
+                                let (c, live) = leads::refresh_remote(&m.name, &m.host);
+                                changed |= c;
+                                // ...and its sessions that ended there while Cue wasn't looking.
+                                a.sweep(&m.name, live.as_ref());
+                            } else {
+                                changed |= leads::forget_remote(&m.name);
+                            }
                         }
                         changed
                     })

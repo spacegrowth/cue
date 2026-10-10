@@ -54,7 +54,16 @@ struct Store {
     /// Reviews asked for while their lead was busy, oldest first: each goes when its lead is free,
     /// one at a time. Saved, so a restart doesn't drop them.
     review_queue: Vec<QueuedReview>,
+    /// Claude sessions missing from Claude Code's own list of running sessions, and since when: gone
+    /// for GONE_AFTER_MS, they're ended in Cue (see `sweep`).
+    missing: HashMap<String, u64>,
+    /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
+    unreachable: HashSet<String>,
 }
+
+/// A Claude session missing this long from Claude Code's running list (here, or on its machine),
+/// with nothing written to its conversation meanwhile, is gone.
+const GONE_AFTER_MS: u64 = 45_000;
 
 /// A review waiting for its lead.
 #[derive(Clone)]
@@ -1143,6 +1152,10 @@ impl Hub {
     /// Whether a session can be closed from Cue without losing anything: not while it's working
     /// (its turn would be cut off) or asking you something (the question would go unanswered).
     pub fn closable(&self, session_id: &str) -> Result<(), String> {
+        // Its machine can't be reached: nothing there to wait for, Close just takes it out of Cue.
+        if self.unreachable(session_id) {
+            return Ok(());
+        }
         let st = self.store.lock().unwrap();
         match st.sessions.state(session_id).as_deref() {
             Some("working") => return Err("it's working: stop it first, or let it finish".into()),
@@ -1243,6 +1256,60 @@ impl Hub {
         self.changed();
     }
 
+    /// End Claude sessions whose agent isn't running any more, by Claude Code's own list of running
+    /// sessions (`live`) on this Mac (`machine` "") or on one of your machines. Missing for
+    /// GONE_AFTER_MS, with its conversation untouched that long, a session is ended in Cue, cards and
+    /// all: a tab closed while Cue wasn't looking, a machine restarted, a session Cue lost track of.
+    /// `live` None: the machine couldn't be reached; its sessions are marked so, not ended.
+    pub fn sweep(&self, machine: &str, live: Option<&HashSet<String>>) {
+        let now = now_ms();
+        let (gone, reach_changed) = {
+            let mut st = self.store.lock().unwrap();
+            let reach_changed = match live {
+                None => st.unreachable.insert(machine.to_string()),
+                Some(_) => st.unreachable.remove(machine),
+            };
+            let mine: Vec<(String, String)> = st.sessions.all().into_iter().filter(|s| s.origin.machine == machine && s.origin.harness == "claude").map(|s| (s.origin.session_id, s.origin.transcript_path)).collect();
+            let mut gone = vec![];
+            for (sid, transcript) in mine {
+                let written = std::fs::metadata(&transcript).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|e| (e.as_millis() as u64) < GONE_AFTER_MS);
+                if live.is_some_and(|l| !l.contains(&sid)) && !written {
+                    let since = *st.missing.entry(sid.clone()).or_insert(now);
+                    if now.saturating_sub(since) > GONE_AFTER_MS {
+                        gone.push(sid);
+                    }
+                } else {
+                    st.missing.remove(&sid);
+                }
+            }
+            for sid in &gone {
+                st.missing.remove(sid);
+            }
+            (gone, reach_changed)
+        };
+        for sid in gone {
+            self.forget(&sid);
+        }
+        if reach_changed {
+            self.changed();
+        }
+    }
+
+    /// A session Cue can't reach or that's gone, taken out of Cue: its cards finish as gone, its row goes.
+    pub fn forget(&self, session_id: &str) {
+        let ids: Vec<String> = self.store.lock().unwrap().items.iter().filter(|i| i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
+        for id in ids {
+            self.finish(&id, "gone", "session ended");
+        }
+        self.drop_session(session_id);
+    }
+
+    /// Whether this session's machine couldn't be reached on Cue's last try.
+    pub fn unreachable(&self, session_id: &str) -> bool {
+        let st = self.store.lock().unwrap();
+        st.sessions.all().iter().find(|s| s.origin.session_id == session_id).is_some_and(|s| !s.origin.machine.is_empty() && st.unreachable.contains(&s.origin.machine))
+    }
+
     pub fn drop_session(&self, session_id: &str) {
         let removed = self.store.lock().unwrap().sessions.remove(session_id);
         if removed {
@@ -1282,6 +1349,7 @@ impl Hub {
             "parked": st.parked,
             "reviews": reviews,
             "review_queue": Self::review_queue_view(&st),
+            "unreachable": st.unreachable,
             "crew": crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect()),
             "live": live,
             "branches": branches,
@@ -1308,6 +1376,10 @@ impl Hub {
             }
             if st.review_queue.iter().any(|q| q.exec == exec) {
                 return Ok("Already queued: it goes when its lead is free".into());
+            }
+            // relay woke the lead for it already (or you reviewed it): a second review is the same work twice.
+            if crate::leads::is_reviewed(exec) {
+                return Ok("Its lead already reviewed this report".into());
             }
             // Behind another queued review, or the lead is busy: queue it.
             let ahead = st.review_queue.iter().any(|q| q.lead == lead);
@@ -1351,7 +1423,8 @@ impl Hub {
     pub fn drain_reviews(&self) {
         let due: Vec<QueuedReview> = {
             let mut st = self.store.lock().unwrap();
-            let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec)).map(|q| q.exec.clone()).collect();
+            // Moot: no longer waiting for a review, or its lead got to it already (relay wakes it).
+            let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec)).map(|q| q.exec.clone()).collect();
             for e in &stale {
                 crate::db::unqueue_review(e);
             }
@@ -1402,9 +1475,15 @@ impl Hub {
     /// for its lead, → "review queued".
     fn reviews_view(st: &mut Store) -> Value {
         let now = now_ms();
-        st.review_sent.retain(|exec, (_, at)| now.saturating_sub(*at) < REVIEW_SHOWN_MS && crate::leads::is_done(exec));
+        // "in review" until its lead has seen the report and finished its turn (or 15 minutes).
+        let working = |s: &Store, lead: &str| s.sessions.state(lead).as_deref() == Some("working");
+        let done: Vec<String> = st.review_sent.iter().filter(|(e, (lead, _))| crate::leads::is_reviewed(e) && !working(st, lead)).map(|(e, _)| e.clone()).collect();
+        st.review_sent.retain(|exec, (_, at)| now.saturating_sub(*at) < REVIEW_SHOWN_MS && crate::leads::is_done(exec) && !done.contains(exec));
+        // Later words win: reviewed, then in review, then queued.
+        let reviewed = crate::leads::reviewed().into_iter().map(|(e, _)| (e, json!("reviewed")));
+        let sent = st.review_sent.keys().map(|e| (e.clone(), json!("in review"))).collect::<Vec<_>>();
         let queued = st.review_queue.iter().map(|q| (q.exec.clone(), json!("review queued")));
-        Value::Object(st.review_sent.keys().map(|e| (e.clone(), json!("in review"))).chain(queued).collect())
+        Value::Object(reviewed.chain(sent).chain(queued).collect())
     }
 
     /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×).
@@ -1875,6 +1954,41 @@ mod tests {
         assert_eq!(Hub::lead_busy(&st, "L", t + 1000), Some("reviewing E1".into()));
         assert_eq!(Hub::lead_busy(&st, "L", t + REVIEW_SETTLE_MS + 1), None);
         assert_eq!(Hub::lead_busy(&st, "OTHER", t + 1000), None);
+    }
+
+    #[test]
+    fn a_session_gone_from_claude_codes_running_list_is_ended_and_an_unreachable_machine_marked() {
+        let dir = std::env::temp_dir().join(format!("cue-sweep-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let here = Origin { session_id: "h1".into(), harness: "claude".into(), cwd: "/x".into(), ..Default::default() };
+        let there = Origin { session_id: "m1".into(), harness: "claude".into(), cwd: "/x".into(), machine: "box".into(), ..Default::default() };
+        let pi = Origin { session_id: "p1".into(), harness: "pi".into(), cwd: "/x".into(), ..Default::default() };
+        for o in [&here, &there, &pi] {
+            hub.event(o.clone(), "stopped", "done".into(), vec![], "");
+        }
+        let has = |sid: &str| hub.saved_sessions().iter().any(|s| s.origin.session_id == sid);
+        let none: HashSet<String> = HashSet::new();
+        // Missing a moment: kept (it may be starting up).
+        hub.sweep("", Some(&none));
+        assert!(has("h1"));
+        // Missing long enough: ended, its card with it. Pi has no such list: left alone.
+        hub.store.lock().unwrap().missing.insert("h1".into(), now_ms() - GONE_AFTER_MS - 1);
+        hub.sweep("", Some(&none));
+        assert!(!has("h1") && !hub.pending().iter().any(|i| i.origin.session_id == "h1"), "gone, card and all");
+        assert!(has("p1"), "only Claude sessions are judged by Claude Code's list");
+        assert!(has("m1"), "this Mac's list says nothing about a machine's sessions");
+        // Its machine can't be reached: marked, Close allowed whatever it showed, and forget removes it.
+        hub.sweep("box", None);
+        assert!(hub.unreachable("m1") && hub.closable("m1").is_ok());
+        hub.sweep("box", Some(&["m1".to_string()].into_iter().collect()));
+        assert!(!hub.unreachable("m1") && has("m1"), "reached again, and still running there");
+        hub.sweep("box", None);
+        hub.forget("m1");
+        assert!(!has("m1"));
     }
 
     #[test]

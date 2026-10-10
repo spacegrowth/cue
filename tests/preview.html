@@ -102,6 +102,7 @@
           { session_id: "x-docs", name: "readme-pass", model: "claude-haiku-4-5", status: "busy", packet: 2 } ] },
         pipe: { role: "executor", plugin: "relay", name: "lines-gaps", color: [132, 180, 180], model: "claude-sonnet-5-5[1m]", status: "busy", packet: 3, lead: "relay", lead_name: "agent-relay", lead_armed: true },
         det: { role: "executor", plugin: "relay", name: "breakout-bt", model: "claude-sonnet-5-5", status: "reported", packet: 1, lead: "gone-lead", lead_name: "backtests", lead_armed: false, verify: { verdict: "MISMATCH", note: "2 changes it reports are not staged" } },
+        eng: { role: "executor", plugin: "relay", name: "router-fills", color: [132, 180, 180], model: "claude-sonnet-5-5", status: "busy", packet: 1, lead: "relay", lead_name: "agent-relay", lead_armed: true },
         web: { role: "executor", plugin: "pilead", name: "cart-limit", model: "deepseek/deepseek-flash", status: "busy", packet: 1, lead: "pi-lead-1", lead_name: "shop", lead_armed: true },
       };
       // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.

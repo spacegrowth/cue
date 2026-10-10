@@ -143,7 +143,8 @@ function cardCrew(sid) {
 const reported = (status) => status === "reported" || status === "idle";
 /** A relay / pi-lead button: Review types the command into the lead; Diff opens a page. */
 const crewBtn = (sid, action, label, primary = false, short = "") => `<button class="btn ${primary ? "primary" : ""}" data-crew="${action}" data-crew-sid="${esc(sid)}">${short ? lbl(label, short) : esc(label)}</button>`;
-/** "in review" once you've sent an executor's review (Cue tells every screen), else "". */
+/** "in review" once you've sent an executor's review, "review queued" while it waits for its lead,
+ *  "reviewed" once its lead has seen the report (Cue tells every screen), else "". */
 const reviewWord = (sid) => state.reviews?.[sid] || "";
 /** relay's auto mode beside a lead's LEAD tag: a switch in its chat (`live`: click to flip it),
  *  and on cards and rows just "auto" while it's on. In the chat, hover says what it means. */
@@ -218,7 +219,7 @@ function packetCard(sid) {
   let st, acts = "";
   if (reported(m.status)) {
     const asked = reviewWord(sid);
-    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked ? `${asked} with ${lead}` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
+    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : asked ? `${asked} with ${lead}` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
     acts = crewBtn(sid, "diff", "Diff") + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
   } else {
     const now = liveStep(sid);
@@ -918,7 +919,8 @@ function hideIdle(key) {
   try { localStorage.setItem("cue.hiddenIdle", JSON.stringify([...hiddenIdle])); } catch {}
   renderMain();
 }
-const hideX = (s) => idleNote(s) ? `<button class="x-clear" data-hide-idle="${esc(idleKey(s))}" aria-label="Hide">×</button>` : "";
+const hideX = (s) => cutOff(s) ? `<button class="x-clear" data-forget="${esc(s.session_id)}" aria-label="Remove">×</button>`
+  : idleNote(s) ? `<button class="x-clear" data-hide-idle="${esc(idleKey(s))}" aria-label="Hide">×</button>` : "";
 /** Sessions you starred: the ones you're following. Marked where they are (a star doesn't move them),
  *  and counted by the ★ chip in the header. Kept with the session in Cue (so anything showing
  *  Cue sees the same stars); a star you just clicked shows until Cue's next update says so too. */
@@ -2147,7 +2149,9 @@ function usagePop() {
     ${group("Session", u.five_hour, row("5 hours", u.five_hour))}${group("Weekly", u.seven_day, row("All models", u.seven_day) + models)}
     ${fileSec}<div class="up-foot">Claude Code's limits don't count Codex and Pi.</div></div>`;
 }
-const idleNote = (s) => s.state === "working" ? "" : s.state === "limited" ? limitNote(s) : s.state === "agent" ? `waiting on ${s.driven_by || "another agent"}` : s.state === "stopped" ? "stopped by you" : "cleared from Waiting";
+/** Its machine couldn't be reached on Cue's last try: the card says so whatever it last showed, and × takes it out of Cue. */
+const cutOff = (s) => !!s.machine && (state.unreachable || []).includes(s.machine);
+const idleNote = (s) => cutOff(s) ? `can't reach ${machShort(s.machine)}` : s.state === "working" ? "" : s.state === "limited" ? limitNote(s) : s.state === "agent" ? `waiting on ${s.driven_by || "another agent"}` : s.state === "stopped" ? "stopped by you" : "cleared from Waiting";
 
 // The right column: Sessions takes what it needs (up to half), Recently answered scrolls in the rest.
 const RECENT = 10;
@@ -2174,7 +2178,7 @@ function boardView() {
 
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
   const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
-      <div class="card-head">${s.state === "working" || s.compacting_ms ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}<span>${esc(agentName(s.harness))}</span>${machTag(s.machine)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) ? "" : hideX(s)}</div>
+      <div class="card-head">${(s.state === "working" || s.compacting_ms) && !cutOff(s) ? `<span class="dot-live" title="working"></span>` : ""}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || `<span>${esc(agentName(s.harness))}</span>`}${machTag(s.machine)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
       ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}</div>`;
@@ -2778,7 +2782,7 @@ function svChipState(r) {
   if (r.st === "asks") return `<span class="sx-st hot">asks you</span>`;
   if (r.st === "yours") return `<span class="sx-st">your turn</span>`;
   if (m?.role === "executor" && m.lead_armed === false) return `<span class="sx-st hot">orphaned</span>`;
-  if (m?.role === "executor" && reported(m.status)) return `<span class="sx-st">done, waiting for review</span>`;
+  if (m?.role === "executor" && reported(m.status)) return `<span class="sx-st">done${reviewWord(r.sid) ? ` · ${reviewWord(r.sid)}` : ", waiting for review"}</span>`;
   if (r.quiet && r.st !== "working") return `<span class="sx-st">quiet</span>`;
   if (r.st === "limited") return `<span class="sx-st">out of usage</span>`;
   return `<i class="sx-dot ${r.st === "working" ? "busy" : "idle"}" title="${r.st === "working" ? "working" : "idle"}"></i>`;
@@ -3771,6 +3775,8 @@ function bindMain() {
     const pl = t.closest("a[data-path]");
     if (pl) { e.preventDefault(); if (e.metaKey || e.ctrlKey) return invoke("open_link", { url: pl.dataset.path }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const link = t.closest("a[data-href]");
+    const fg = t.closest("[data-forget]");
+    if (fg) return invoke("forget_session", { sessionId: fg.dataset.forget }).then(() => toast("Removed from Cue")).catch((e) => toast(`Couldn't: ${e}`));
     if (link) { e.preventDefault(); return invoke("open_link", { url: link.dataset.href }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const llb = t.closest("[data-local-lb]");
     if (llb) {

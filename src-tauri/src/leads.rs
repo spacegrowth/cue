@@ -67,6 +67,10 @@ pub struct Member {
     /// The machine it runs on (one of yours, by name); "" for this Mac.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub machine: String,
+    /// Executor: its lead has seen this packet's report (relay's `report_seen_packet`): reviewed,
+    /// by your Review or by relay waking the lead itself.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub reviewed: bool,
     /// Sort key for duplicates (an executor id reused by a resume): the newest record wins.
     #[serde(skip)]
     updated: String,
@@ -171,6 +175,13 @@ fn first_line(p: &Path) -> String {
     line
 }
 
+/// Whether a relay executor's lead has seen its current packet's report (relay marks it when the
+/// lead reviews or opens its diff).
+fn seen_report(e: &Value) -> bool {
+    let n = |k: &str| e.get(k).and_then(Value::as_u64);
+    matches!((n("current_packet"), n("report_seen_packet")), (Some(cur), Some(seen)) if seen >= cur)
+}
+
 fn put(index: &mut HashMap<String, Member>, sid: String, m: Member) {
     if sid.is_empty() {
         return;
@@ -228,6 +239,7 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
             lead: owner,
             goal,
             outcome,
+            reviewed: seen_report(&e),
             id: s(&e, "session_id"),
             updated: s(&e, "updated"),
             ..Default::default()
@@ -397,22 +409,26 @@ fn merge() -> bool {
 const REMOTE_LIST: &str = r#"c="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 r=$(sed -n 's/.*"installPath": *"\([^"]*\)".*/\1/p' "$c/plugins/installed_plugins.json" 2>/dev/null | grep -i relay | head -1)
 if [ -n "$r" ] && [ -x "$r/bin/relay" ]; then r="$r/bin/relay"; else r=$(command -v relay 2>/dev/null || echo "$HOME/.local/bin/relay"); fi
-[ -x "$r" ] || { echo NORELAY; exit 0; }
-echo "BIN:$r"
-"$r" list --all --json 2>/dev/null
+if [ -x "$r" ]; then echo "BIN:$r"; "$r" list --all --json 2>/dev/null; else echo NORELAY; fi
 echo "__CUE_LIVE__"
 for f in "$c"/sessions/*.json; do
-  [ -f "$f" ] && kill -0 "$(basename "$f" .json)" 2>/dev/null && sed -n 's/.*"sessionId": *"\([^"]*\)".*/\1/p' "$f"
+  # Claude Code writes these without a final newline, and sed then prints none: one id per line regardless.
+  [ -f "$f" ] && kill -0 "$(basename "$f" .json)" 2>/dev/null && { sed -n 's/.*"sessionId": *"\([^"]*\)".*/\1/p' "$f"; echo; }
 done
 exit 0"#;
 
-/// Re-read one machine's crews (blocking: an SSH round trip). True when INDEX changed. A machine
-/// that can't be reached keeps what was last read from it.
-pub fn refresh_remote(machine: &str, host: &str) -> bool {
-    let Ok(out) = crate::machines::run(host, REMOTE_LIST) else { return false };
+/// Re-read one machine's crews (blocking: an SSH round trip): whether INDEX changed, and the Claude
+/// sessions running there (None: it couldn't be reached; it keeps what was last read from it).
+pub fn refresh_remote(machine: &str, host: &str) -> (bool, Option<HashSet<String>>) {
+    let Ok(out) = crate::machines::run(host, REMOTE_LIST) else { return (false, None) };
     let parsed = parse_remote(&out, machine);
     REMOTE.lock().unwrap().get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
-    merge()
+    (merge(), Some(live_of(&out)))
+}
+
+/// The Claude sessions REMOTE_LIST found running.
+fn live_of(out: &str) -> HashSet<String> {
+    out.split_once("__CUE_LIVE__").map(|(_, l)| l.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect()).unwrap_or_default()
 }
 
 /// Forget a machine's crews (it has no sessions in Cue any more, or was removed).
@@ -425,8 +441,8 @@ pub fn forget_remote(machine: &str) -> bool {
 fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
     let bin = out.lines().find_map(|l| l.strip_prefix("BIN:")).unwrap_or("").trim().to_string();
     let after_bin = out.split_once('\n').filter(|_| !bin.is_empty()).map(|(_, rest)| rest).unwrap_or("");
-    let (json, live) = after_bin.split_once("__CUE_LIVE__").unwrap_or((after_bin, ""));
-    let live: HashSet<String> = live.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect();
+    let json = after_bin.split_once("__CUE_LIVE__").map_or(after_bin, |(j, _)| j);
+    let live = live_of(out);
     let v: Value = serde_json::from_str(json.trim()).unwrap_or(Value::Null);
     let mut index = HashMap::new();
     let mut leads: HashMap<String, (String, Option<[u8; 3]>)> = HashMap::new();
@@ -463,6 +479,7 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
             lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
             lead_armed: Some(lead.is_some() && live.contains(&owner)),
             lead: owner,
+            reviewed: seen_report(e),
             id: s(e, "session_id"),
             updated: s(e, "updated"),
             machine: machine.into(),
@@ -605,6 +622,17 @@ pub fn is_done(session_id: &str) -> bool {
     INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle"))
 }
 
+/// Whether a done executor's report has been reviewed already (see Member::reviewed).
+pub fn is_reviewed(session_id: &str) -> bool {
+    INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && m.reviewed)
+}
+
+/// Done executors whose report their lead has seen: Cue session id → its lead's session id.
+pub fn reviewed() -> Vec<(String, String)> {
+    let cur = INDEX.lock().unwrap();
+    cur.as_ref().map(|i| i.iter().filter(|(_, m)| m.role == "executor" && m.reviewed && matches!(m.status.as_str(), "reported" | "idle")).map(|(sid, m)| (sid.clone(), m.lead.clone())).collect()).unwrap_or_default()
+}
+
 /// A lead's or executor's name (relay's topic), else its session id.
 pub fn name_of(session_id: &str) -> String {
     INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.to_string())
@@ -686,6 +714,44 @@ C9
         assert_eq!(index["C8"].name, "ls-root", "no topic: its relay id");
         assert!(!index.contains_key("CX"), "not a relay executor");
         assert!(parse_remote("NORELAY\n", "build-box").1.is_empty(), "no relay there: no crews");
+    }
+
+    #[test]
+    fn the_listing_script_gives_one_live_session_per_line() {
+        // A machine as Claude Code and relay leave it: two live sessions whose files end without a
+        // newline (as Claude Code writes them), one dead, and relay's command in the installed plugin.
+        let home = std::env::temp_dir().join(format!("cue-remote-list-{}", std::process::id()));
+        let plugin = home.join("plugins/cache/claude-relay/relay/9.9.9");
+        std::fs::create_dir_all(plugin.join("bin")).unwrap();
+        std::fs::create_dir_all(home.join("sessions")).unwrap();
+        std::fs::write(home.join("plugins/installed_plugins.json"), format!("{{\n  \"plugins\": {{\n    \"relay@claude-relay\": [{{\n      \"installPath\": \"{}\"\n    }}]\n  }}\n}}\n", plugin.display())).unwrap();
+        let relay = plugin.join("bin/relay");
+        std::fs::write(&relay, "#!/bin/sh\necho '{\"leads\": [{\"session_id\": \"L1\", \"project\": \"p\"}], \"executors\": [{\"agent\": \"relay-executor\", \"session_id\": \"e\", \"owner_lead\": \"L1\", \"claude_session\": \"C1\", \"status\": \"reported\"}]}'\n").unwrap();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut std::fs::metadata(&relay).unwrap().permissions(), 0o755);
+        std::fs::set_permissions(&relay, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let me = std::process::id();
+        std::fs::write(home.join(format!("sessions/{me}.json")), r#"{"pid":1,"sessionId":"L1","cwd":"/tmp"}"#).unwrap();
+        std::fs::write(home.join(format!("sessions/{}.json", std::os::unix::process::parent_id())), r#"{"pid":2,"sessionId":"C1","cwd":"/tmp"}"#).unwrap();
+        std::fs::write(home.join("sessions/999999.json"), r#"{"pid":3,"sessionId":"DEAD"}"#).unwrap();
+        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).args(["-c", REMOTE_LIST]).output().unwrap();
+        let out = String::from_utf8_lossy(&out.stdout).to_string();
+        let (bin, index) = parse_remote(&out, "box");
+        assert_eq!(bin, relay.display().to_string());
+        assert_eq!(index["C1"].lead_armed, Some(true), "its lead is live there: {out:?}");
+        let live: Vec<&str> = out.split("__CUE_LIVE__").nth(1).unwrap().lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        assert_eq!(live.len(), 2, "one id per line, the dead one left out: {live:?}");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn an_executor_counts_as_reviewed_once_its_lead_saw_this_packets_report() {
+        let e = |v: &str| serde_json::from_str::<Value>(v).unwrap();
+        assert!(seen_report(&e(r#"{"current_packet": 2, "report_seen_packet": 2}"#)));
+        assert!(!seen_report(&e(r#"{"current_packet": 2, "report_seen_packet": 1}"#)), "seen: the last packet's, not this one's");
+        assert!(!seen_report(&e(r#"{"current_packet": 1, "report_seen_packet": null}"#)));
+        assert!(!seen_report(&e(r#"{"current_packet": 1}"#)));
+        let out = "BIN:/r\n{\"leads\": [], \"executors\": [{\"agent\": \"relay-executor\", \"session_id\": \"a\", \"claude_session\": \"CA\", \"status\": \"reported\", \"current_packet\": 1, \"report_seen_packet\": 1}]}\n__CUE_LIVE__\n";
+        assert!(parse_remote(out, "box").1["CA"].reviewed, "on a machine too");
     }
 
     #[test]
