@@ -363,6 +363,11 @@ impl Feed {
         }
         let mut buf = Vec::new();
         if file.take(len - self.offset).read_to_end(&mut buf).is_err() {
+                // A Stop hook sent it back to work: more of the same turn (the chat folds it under
+                // "After a stop hook"), not a turn of its own.
+                if text.starts_with(crate::transcript::STOP_HOOK_MARK) {
+                    return false;
+                }
             return changed;
         }
         let mut from = 0;
@@ -1015,6 +1020,23 @@ fn clip_lines(text: &str) -> (Vec<String>, usize) {
 }
 
 /// Opened steps: for each id, its full subject (the whole command, path, pattern), and its output
+    #[test]
+    fn a_stop_hooks_follow_up_stays_in_the_turn_it_continues() {
+        let log = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"fix the token expiry"}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"text","text":"Done: expiry fixed."}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":"Stop hook feedback:\n[bash rules-check.sh]: Check the rules"}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat rules.md"}}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:06.000Z","message":{"content":[{"type":"text","text":"1. SHAPE: fine."}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:30.000Z","message":{"content":"and the refresh token?"}}
+"#;
+        let f = feed_of(log);
+        assert_eq!(f.turns.iter().map(|t| t.prompt.as_str()).collect::<Vec<_>>(), ["fix the token expiry", "and the refresh token?"], "the hook's entry opens no turn");
+        let items = &f.turns[0].items;
+        assert_eq!(items.len(), 3, "answer, the hook's step, its checklist: all one turn");
+        assert_eq!(step(&items[1]), ("Ran", "cat rules.md", "ok", false, true));
+    }
+
 /// lines or diff. Read from the transcript on demand, never kept.
 pub fn detail(path: &str, ids: &[String]) -> Value {
     let kind = kind_of(path);

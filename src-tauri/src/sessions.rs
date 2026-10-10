@@ -189,6 +189,7 @@ impl Sessions {
         });
         // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
         if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
+                e.pending = false;
             s.origin = origin.clone();
         }
         // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
@@ -201,7 +202,7 @@ impl Sessions {
             // It went through after all (it waited behind a command, or the agent's word came late, as it can
             // from a machine): its bubble stops saying it didn't. Compared as the agent got it (spacing
             // changed, image paths after it), not character for character.
-            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| e.unsent && crate::transcript::is_message(&s.prompt, &e.text)) {
+            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && crate::transcript::is_message(&s.prompt, &e.text)) {
                 e.unsent = false;
             }
         }
@@ -272,7 +273,7 @@ impl Sessions {
         }
         let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
         let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
-        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false });
+        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false, pending: false });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -311,9 +312,26 @@ impl Sessions {
         self.0.get(session_id).map(|s| s.thread.clone()).unwrap_or_default()
     }
 
+            e.pending = false;
+        }
+    }
+
+    /// Your last message to it: Cue hasn't seen the agent take it yet (`on`), or has (`!on`, the ring goes).
+    pub fn set_pending(&mut self, session_id: &str, on: bool) -> bool {
+        match self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you")) {
+            Some(e) if e.pending != on => {
+                e.pending = on;
+                true
+            }
+            _ => false,
     pub fn state(&self, session_id: &str) -> Option<String> {
         self.0.get(session_id).map(|s| s.state.clone())
     }
+    /// Your last message to it, while Cue is still waiting to see it taken.
+    pub fn pending_text(&self, session_id: &str) -> Option<String> {
+        self.0.get(session_id).and_then(|s| s.thread.iter().rev().find(|e| e.role == "you")).filter(|e| e.pending).map(|e| e.text.clone())
+    }
+
 
     pub fn set_prompt(&mut self, session_id: &str, prompt: &str) {
         if let Some(s) = self.0.get_mut(session_id) {
@@ -449,7 +467,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false }),
         }
     }
 

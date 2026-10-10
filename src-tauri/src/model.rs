@@ -25,6 +25,10 @@ pub struct Exchange {
     /// command, or still be sitting in its box). Cue says so on the bubble.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unsent: bool,
+    /// Yours, typed into the terminal, and Cue hasn't yet seen the agent take it (its hook, its transcript,
+    /// or a dialog it opened). Cue keeps looking for a while; the bubble shows a faint ring meanwhile.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending: bool,
 }
 
 /// An image attached in Cue (base64, optionally as a data: URL).

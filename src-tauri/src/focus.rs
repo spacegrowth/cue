@@ -258,7 +258,7 @@ pub fn tmux_screen(pane: &str) -> Result<String, String> {
 
 /// The keys Cue's screen view offers: enough to answer any menu or prompt (move, pick, confirm, back
 /// out), nothing that types text.
-pub const SCREEN_KEYS: [&str; 15] = ["Up", "Down", "Left", "Right", "Enter", "Escape", "Tab", "BTab", "Space", "1", "2", "3", "4", "y", "n"];
+pub const SCREEN_KEYS: [&str; 20] = ["Up", "Down", "Left", "Right", "Enter", "Escape", "Tab", "BTab", "Space", "1", "2", "3", "4", "5", "6", "7", "8", "9", "y", "n"];
 
 /// Press `keys` in a session's tmux pane, in order. Only ones from SCREEN_KEYS.
 pub fn tmux_keys(o: &Origin, keys: &[String]) -> Result<(), String> {
@@ -709,6 +709,40 @@ fn wait_for_paste(o: &Origin, text: &str, before: &str) {
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
+}
+
+/// The line the cursor is on in the session's pane (this Mac's or a machine's): the end of its input box,
+/// where a message it hasn't taken still shows. One trip: the screen, then the cursor's row.
+pub fn cursor_line(o: &Origin) -> Option<String> {
+    let pane = o.tmux_pane.as_str();
+    let args = ["capture-pane", "-p", "-t", pane, ";", "display-message", "-p", "-t", pane, "#{cursor_y}"];
+    let out = if o.machine.is_empty() {
+        tmux_out(&args)?
+    } else {
+        crate::machines::tmux(&crate::machines::get(&o.machine)?.host, &args).ok()?
+    };
+    let (screen, y) = out.trim_end().rsplit_once('\n')?;
+    let y: usize = y.trim().parse().ok()?;
+    screen.lines().nth(y).map(String::from)
+}
+
+/// Is `text` still sitting in the session's input box (the end of it on the cursor's line)? None when
+/// Cue can't see the pane.
+pub fn text_in_box(o: &Origin, text: &str) -> Option<bool> {
+    if o.tmux_pane.is_empty() {
+        return None;
+    }
+    let line = cursor_line(o)?;
+    let tail = paste_tail(text);
+    Some(!tail.is_empty() && squash(&line).contains(&tail))
+}
+
+/// A dialog open on the session's screen (its choices numbered), if Cue can see the pane.
+pub fn dialog_on(o: &Origin) -> Option<crate::dialog::Dialog> {
+    if o.tmux_pane.is_empty() {
+        return None;
+    }
+    crate::dialog::parse(&session_screen(o).ok()?)
 }
 
 /// A screen without spaces or the input box's side borders: how a wrapped line reads joined up again.

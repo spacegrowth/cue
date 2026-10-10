@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 /// How long to wait for a restarting Cue before giving up on a pending question.
 const RECONNECT_FOR: Duration = Duration::from_secs(15 * 60);
 /// A Stop hook's own output starts with this; what the agent wrote after it is its follow-up.
-const HOOK_MARK: &str = "Stop hook feedback:";
+const HOOK_MARK: &str = crate::transcript::STOP_HOOK_MARK;
 
 /// Entry point for `cue hook …`. Always returns normally; the caller exits 0.
 pub fn main(args: &[String]) {

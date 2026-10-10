@@ -184,9 +184,20 @@ impl Hub {
         }
         (id, rx)
     }
+        self.terminal_ask_with(origin, message, notify, None)
+    }
+
+    /// The same, with the dialog on its screen when Cue can read it (`dialog`, or looked up now): the card
+    /// then shows its title and offers its choices as buttons, instead of only sending you to the terminal.
+    fn terminal_ask_with(&self, origin: Origin, message: String, notify: bool, dialog: Option<crate::dialog::Dialog>) {
 
     /// Claude Code says a permission prompt is waiting in a session's terminal, one Cue has no card for
     /// (it can't answer it: a sandboxed command asking for network access). A card that sends you to
+        let dialog = dialog.or_else(|| crate::focus::dialog_on(&origin));
+        let message = match &dialog {
+            Some(d) if !d.title.is_empty() => format!("Asking in its terminal: {}", d.title),
+            _ => message,
+        };
     /// the terminal, naming the tool call it's about (the newest one still without a result). It goes
     /// once that call gets its result, or the session reports anything else.
     fn terminal_ask(&self, origin: Origin, message: String, notify: bool) {
@@ -205,6 +216,8 @@ impl Hub {
             let thread = st.sessions.thread(&sid);
             let mut it = Self::new_item(&mut st, "terminal", origin);
             it.thread = thread;
+            } else if let Some(d) = dialog {
+                it.tool_input = json!({ "dialog": d });
             it.message = message;
             it.scan_from = scan_from;
             if let Some((tool_use_id, name, input)) = call {
@@ -218,6 +231,87 @@ impl Hub {
             st.items.push(it);
             (id, (head, body))
         };
+    /// Pick choice `n` (1-based) of the dialog a terminal card shows: that number pressed in its pane, and
+    /// Enter if the dialog is still there a moment later. Blocking: call off the UI thread.
+    pub fn answer_terminal(&self, id: &str, n: usize) -> Result<String, String> {
+        let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
+        let d: crate::dialog::Dialog = serde_json::from_value(it.tool_input.get("dialog").cloned().unwrap_or(Value::Null)).map_err(|_| "that card has no choices")?;
+        let label = d.options.get(n.wrapping_sub(1)).ok_or("that isn't one of its choices")?.clone();
+        let o = &it.origin;
+        crate::focus::tmux_keys(o, &[n.to_string()])?;
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        if crate::focus::dialog_on(o).is_some_and(|now| now.options == d.options) {
+            crate::focus::tmux_keys(o, &["Enter".into()])?;
+        }
+        self.finish(id, "answered", &format!("chose {n}. {label}"));
+        // A command's dialog ("/model …"): answered, it's back at its prompt, not at work.
+        if it.tool_name.is_empty() && self.store.lock().unwrap().sessions.thread(&o.session_id).iter().rev().find(|e| e.role == "you").is_some_and(|e| e.text.starts_with('/')) {
+            self.store.lock().unwrap().sessions.mark(o, "waiting", None);
+            self.changed();
+        }
+        Ok(format!("chose {label}"))
+    }
+
+    /// Typed into its terminal, and the agent hasn't said it took it. Looked at once more before deciding:
+    /// a command may have opened a dialog (it ran: a card with its choices), or the text may still sit in
+    /// its box (it didn't: the bubble says so). Otherwise it's pending: a ring on the bubble while Cue
+    /// keeps looking (`confirm_later`), with no verdict until there's something to go on.
+    /// Returns true when it's known to have gone through after all.
+    fn settle_typed(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> bool {
+        if text.starts_with('/') {
+            if let Some(d) = crate::focus::dialog_on(origin) {
+                self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
+                return true;
+            }
+        }
+        if crate::focus::text_in_box(origin, text) == Some(true) {
+            self.store.lock().unwrap().sessions.mark_unsent(sid);
+            return false;
+        }
+        self.store.lock().unwrap().sessions.set_pending(sid, true);
+        self.confirm_later(sid.to_string(), origin.clone(), text.to_string(), cmd_before, t0);
+        false
+    }
+
+    /// Keep looking, off this thread, for the pending message to be taken: its hook (clears the ring
+    /// itself), its command in the transcript, a dialog it opened, or the text still in its box (then it
+    /// didn't go). After `PENDING_MS` with nothing to go on, the bubble says it may not have gone.
+    fn confirm_later(&self, sid: String, origin: Origin, text: String, cmd_before: Option<usize>, t0: u64) {
+        let Some(me) = self.shared() else { return };
+        std::thread::spawn(move || {
+            let end = now_ms() + PENDING_MS;
+            let name = text.strip_prefix('/').and_then(|t| t.split_whitespace().next()).unwrap_or("").to_string();
+            while now_ms() < end {
+                std::thread::sleep(std::time::Duration::from_millis(2000));
+                {
+                    let st = me.store.lock().unwrap();
+                    if st.sessions.pending_text(&sid).as_deref() != Some(text.as_str()) {
+                        return; // its hook came (or it was sent again)
+                    }
+                }
+                let taken = me.store.lock().unwrap().active_at.get(&sid).is_some_and(|t| *t >= t0)
+                    || cmd_before.is_some_and(|before| crate::transcript::command_count(&origin.transcript_path, &name) > before);
+                if taken {
+                    me.store.lock().unwrap().sessions.set_pending(&sid, false);
+                    me.changed();
+                    return;
+                }
+                if !name.is_empty() {
+                    if let Some(d) = crate::focus::dialog_on(&origin) {
+                        me.store.lock().unwrap().sessions.set_pending(&sid, false);
+                        me.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
+                        return;
+                    }
+                }
+                if crate::focus::text_in_box(&origin, &text) == Some(true) {
+                    break;
+                }
+            }
+            me.store.lock().unwrap().sessions.mark_unsent(&sid);
+            me.changed();
+        });
+    }
+
         self.changed();
         if notify && crate::config::flag("/notify/decisions") {
             self.notify(&id, &title.0, &title.1, "");
@@ -719,9 +813,12 @@ impl Hub {
             let mut st = self.store.lock().unwrap();
             st.items.retain(|i| i.id != id);
             st.sessions.note_sent(&sid, text, &paths, t0, crate::config::context_keep());
-            if !submitted {
-                st.sessions.mark_unsent(&sid);
-            }
+        }
+        if !submitted && !direct {
+            submitted = self.settle_typed(&sid, &it.origin, text, cmd_before, t0);
+        }
+        {
+            let mut st = self.store.lock().unwrap();
             let mut h = it;
             h.images = paths;
             h.status = "answered".into();
@@ -730,7 +827,7 @@ impl Hub {
             push_history(&mut st, h);
         }
         self.changed();
-        Ok(if submitted { format!("sent via {via}") } else { format!("typed into {via}, but it didn't seem to submit. Check the tab") })
+        Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
     }
 
     /// Send a message to any live session — a working one included (the "say something" box).
@@ -840,6 +937,9 @@ impl Hub {
             let _ = crate::focus::press_enter(&origin);
             submitted = self.wait_active(session_id, t0, 4000);
         }
+        if !submitted && self.settle_typed(session_id, &origin, typed, cmd_before, t0) {
+            submitted = true;
+        }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         {
             let mut st = self.store.lock().unwrap();
@@ -848,11 +948,8 @@ impl Hub {
                 // It's mid-turn: the agent reads this when it finishes its current step.
                 // The same message as the thread's copy (same time), so the chat shows it once, as queued.
                 let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false };
+                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false };
                 st.sessions.set_queued(session_id, Some(q));
-            }
-            if !submitted {
-                st.sessions.mark_unsent(session_id);
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
             if submitted && !busy && is_command(typed, "compact") {
@@ -861,7 +958,7 @@ impl Hub {
         }
         self.changed();
         if !submitted {
-            return Ok(format!("typed into {via}, but it didn't go through as a message. Check the tab"));
+            return Ok(format!("via {via}; Cue is watching for it to take it"));
         }
         Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
     }
@@ -1900,6 +1997,12 @@ fn with_registry_names(sessions: Vec<crate::sessions::Session>) -> Value {
 }
 
 pub fn split_turn(last: String, turn: &[TurnPart], mode: &str) -> (String, String) {
+/// How long Cue keeps looking for a typed message to be taken before its bubble says it may not have gone.
+/// SHORTCUT: outside tmux (iTerm, Terminal) Cue can't see the input box, so this timer is the only
+/// verdict there; the upgrade is a per-terminal screen read (iTerm's "contents of session") so the
+/// box check works everywhere and the timer goes.
+const PENDING_MS: u64 = 30_000;
+
     if mode == "last" || turn.is_empty() {
         return (last, String::new());
     }

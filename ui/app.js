@@ -1263,8 +1263,15 @@ function whyLine(it) {
   const c = (it.context || []).filter((x) => x.role !== "user").at(-1) || it.context?.at(-1);
   return c ? `<div class="why"${c.text.trim().includes("\n") ? "" : " data-cut"}>Why: ${esc(firstLine(c.text))}</div>` : "";
 }
+/** A dialog Cue read off the session's screen (a terminal card): what it says, and its choices as buttons. */
+function dialogHtml(it) {
+  const d = it.tool_input?.dialog;
+  if (!d?.options?.length) return "";
+  return `${d.detail ? `<div class="qtext">${esc(d.detail)}</div>` : ""}<div class="opts">${d.options.map((o, n) => `<button class="opt ${n === d.selected ? "on" : ""}" data-tpick="${n + 1}" data-id="${esc(it.id)}">${n + 1} · ${esc(o)}</button>`).join("")}</div>`;
+}
 function decisionButtons(it) {
   if (inTerminal(it) && inTmux(it.session_id) && termSid === it.session_id) return `<div class="row-btns"><span class="dim">Answer it in the terminal above.</span></div>`;
+  if (inTerminal(it) && it.tool_input?.dialog?.options?.length) return `${dialogHtml(it)}<div class="row-btns"><span class="dim">Or answer it in its terminal.</span><span class="grow"></span>${inTmux(it.session_id) ? `<button class="btn" data-act="term-open" data-sid="${esc(it.session_id)}">Open terminal</button>` : `<button class="btn" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
   if (inTerminal(it) && inTmux(it.session_id)) return `<div class="row-btns"><span class="dim">It's waiting in its terminal: answer it there.</span><span class="grow"></span><button class="btn primary" data-act="term-open" data-sid="${esc(it.session_id)}">Answer in terminal</button></div>`;
   if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 && questions(it).filter((q) => !isAnswered(it, q)).length > 1 ? "Next" : "Send") : "Redirect")}</div>`;
@@ -1680,7 +1687,9 @@ function chatHtml(it, s, harness, paged = false) {
       const via = !how ? "" : /^queued/.test(how) ? " · queued, it reads this at its next step" : ` · via ${esc(how)}`;
       // Typed into its terminal, but it never became a message: say so where you'll see it.
       const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-msg="${esc(e.text)}">Send again</button>` : ""}</div>` : "";
-      return `<div class="cv-you ${e.unsent ? "unsent" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}</div>${unsent}</div>`;
+      // Typed, and Cue hasn't yet seen it take it: a ring until it does (or until Cue can say it didn't).
+      const wait = e.pending ? " · waiting for it to take this" : "";
+      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}</div>${unsent}</div>`;
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
@@ -2032,6 +2041,7 @@ function activePane() {
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
+  else if (inTerminal(it) && (it.tool_input?.dialog?.options || []).length && it.tool_input.dialog.options.length <= 4) quick = `<div class="nrow-acts wrap">${it.tool_input.dialog.options.map((o, n) => `<button class="btn" data-tpick="${n + 1}" data-id="${esc(it.id)}">${esc(o)}</button>`).join("")}</div>`;
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
@@ -3926,7 +3936,9 @@ function bindMain() {
     if (big && !t.closest("button")) return setActive(big.dataset.big);
     const qs_ = t.closest("[data-qstep]");
     if (qs_) { const [id, n] = qs_.dataset.qstep.split(/:(?=\d+$)/); qStep[id] = +n; return renderMain(); }
-    const pk = t.closest("[data-pick]");
+    const tp = t.closest("[data-tpick]");
+  if (tp) { const it = findItem(tp.dataset.id); if (it) active = { id: it.id, sid: it.session_id }; return invoke("answer_terminal", { id: tp.dataset.id, n: +tp.dataset.tpick }).then((r) => toast(r)).catch((e) => toast(`Couldn't answer it: ${e}`)); }
+  const pk = t.closest("[data-pick]");
     if (pk) { const [qi, oi] = pk.dataset.pick.split(":").map(Number); const it = findItem(pk.dataset.id); return it && pick(it, qi, oi); }
     const al = t.closest("[data-always]");
     if (al) { const it = findItem(al.dataset.id); return it && respond(it, { behavior: "allow_always", permission: it.suggestions[+al.dataset.always] }); }

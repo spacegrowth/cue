@@ -335,6 +335,9 @@ pub fn queued_from_harness(path: &str, text: &str) -> bool {
 }
 
 /// Text only Claude Code itself sends: a background task's `<task-notification>`.
+/// How Claude Code records a Stop hook's "keep going" in the transcript: a user entry starting with this.
+pub const STOP_HOOK_MARK: &str = "Stop hook feedback:";
+
 pub fn harness_text(text: &str) -> bool {
     text.trim_start().starts_with("<task-notification>")
 }
