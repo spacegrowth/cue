@@ -184,26 +184,26 @@ impl Hub {
         }
         (id, rx)
     }
+
+    /// Claude Code says a permission prompt is waiting in a session's terminal, one Cue has no card for
+    /// (it can't answer it: a sandboxed command asking for network access). A card that sends you to
+    /// the terminal, naming the tool call it's about (the newest one still without a result). It goes
+    /// once that call gets its result, or the session reports anything else.
+    fn terminal_ask(&self, origin: Origin, message: String, notify: bool) {
         self.terminal_ask_with(origin, message, notify, None)
     }
 
     /// The same, with the dialog on its screen when Cue can read it (`dialog`, or looked up now): the card
     /// then shows its title and offers its choices as buttons, instead of only sending you to the terminal.
     fn terminal_ask_with(&self, origin: Origin, message: String, notify: bool, dialog: Option<crate::dialog::Dialog>) {
-
-    /// Claude Code says a permission prompt is waiting in a session's terminal, one Cue has no card for
-    /// (it can't answer it: a sandboxed command asking for network access). A card that sends you to
+        let sid = origin.session_id.clone();
+        let path = origin.transcript_path.clone();
+        let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
         let dialog = dialog.or_else(|| crate::focus::dialog_on(&origin));
         let message = match &dialog {
             Some(d) if !d.title.is_empty() => format!("Asking in its terminal: {}", d.title),
             _ => message,
         };
-    /// the terminal, naming the tool call it's about (the newest one still without a result). It goes
-    /// once that call gets its result, or the session reports anything else.
-    fn terminal_ask(&self, origin: Origin, message: String, notify: bool) {
-        let sid = origin.session_id.clone();
-        let path = origin.transcript_path.clone();
-        let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
         let scan_from = if path.is_empty() { 0 } else { transcript::tail_offset(&path) };
         let (id, title) = {
             let mut st = self.store.lock().unwrap();
@@ -216,14 +216,14 @@ impl Hub {
             let thread = st.sessions.thread(&sid);
             let mut it = Self::new_item(&mut st, "terminal", origin);
             it.thread = thread;
-            } else if let Some(d) = dialog {
-                it.tool_input = json!({ "dialog": d });
             it.message = message;
             it.scan_from = scan_from;
             if let Some((tool_use_id, name, input)) = call {
                 it.tool_use_id = Some(tool_use_id);
                 it.tool_name = name;
                 it.tool_input = input;
+            } else if let Some(d) = dialog {
+                it.tool_input = json!({ "dialog": d });
             }
             let (head, what) = notify_title(&it);
             let body = if it.tool_name.is_empty() { what } else { format!("{}: {what}", it.message) };
@@ -231,6 +231,12 @@ impl Hub {
             st.items.push(it);
             (id, (head, body))
         };
+        self.changed();
+        if notify && crate::config::flag("/notify/decisions") {
+            self.notify(&id, &title.0, &title.1, "");
+        }
+    }
+
     /// Pick choice `n` (1-based) of the dialog a terminal card shows: that number pressed in its pane, and
     /// Enter if the dialog is still there a moment later. Blocking: call off the UI thread.
     pub fn answer_terminal(&self, id: &str, n: usize) -> Result<String, String> {
@@ -318,12 +324,6 @@ impl Hub {
             me.store.lock().unwrap().sessions.mark_unsent(&sid);
             me.changed();
         });
-    }
-
-        self.changed();
-        if notify && crate::config::flag("/notify/decisions") {
-            self.notify(&id, &title.0, &title.1, "");
-        }
     }
 
     fn clear_terminal_asks(&self, session_id: &str) {
@@ -945,9 +945,6 @@ impl Hub {
             let _ = crate::focus::press_enter(&origin);
             submitted = self.wait_active(session_id, t0, 4000);
         }
-        if !submitted && self.settle_typed(session_id, &origin, typed, cmd_before, t0) {
-            submitted = true;
-        }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         {
             let mut st = self.store.lock().unwrap();
@@ -963,6 +960,9 @@ impl Hub {
             if submitted && !busy && is_command(typed, "compact") {
                 st.sessions.set_compacting(session_id, now_ms());
             }
+        }
+        if !submitted && self.settle_typed(session_id, &origin, typed, cmd_before, t0) {
+            submitted = true;
         }
         self.changed();
         if !submitted {
@@ -2047,12 +2047,6 @@ fn push_history(st: &mut Store, it: Item) {
 /// A Claude Code session's name as Claude Code has it now: `/rename` in its terminal updates Claude
 /// Code's own list of running sessions (Cue's rename sends `/rename` too), and Cue's record may not know.
 pub fn split_turn(last: String, turn: &[TurnPart], mode: &str) -> (String, String) {
-/// How long Cue keeps looking for a typed message to be taken before its bubble says it may not have gone.
-/// SHORTCUT: outside tmux (iTerm, Terminal) Cue can't see the input box, so this timer is the only
-/// verdict there; the upgrade is a per-terminal screen read (iTerm's "contents of session") so the
-/// box check works everywhere and the timer goes.
-const PENDING_MS: u64 = 30_000;
-
     if mode == "last" || turn.is_empty() {
         return (last, String::new());
     }
@@ -2094,6 +2088,12 @@ pub fn summary(it: &Item) -> String {
 /// A prompt open this long in a terminal before Cue makes a card for it: its own permission hook (which
 /// asks Cue at once) gets there first.
 const WAITING_GRACE_MS: u64 = 4_000;
+
+/// How long Cue keeps looking for a typed message to be taken before its bubble says it may not have gone.
+/// SHORTCUT: outside tmux (iTerm, Terminal) Cue can't see the input box, so this timer is the only
+/// verdict there; the upgrade is a per-terminal screen read (iTerm's "contents of session") so the
+/// box check works everywhere and the timer goes.
+const PENDING_MS: u64 = 30_000;
 
 /// What a session waits for in its terminal, in Claude Code's words ("approve Bash", "dialog open").
 fn waiting_words(waiting_for: &str) -> String {

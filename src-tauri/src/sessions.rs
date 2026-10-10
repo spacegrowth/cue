@@ -204,7 +204,6 @@ impl Sessions {
         });
         // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
         if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
-                e.pending = false;
             s.origin = origin.clone();
         }
         // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
@@ -219,6 +218,7 @@ impl Sessions {
             // changed, image paths after it), not character for character.
             if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && crate::transcript::is_message(&s.prompt, &e.text)) {
                 e.unsent = false;
+                e.pending = false;
             }
         }
         if state == "working" {
@@ -327,6 +327,20 @@ impl Sessions {
         self.0.get(session_id).map(|s| s.thread.clone()).unwrap_or_default()
     }
 
+    pub fn state(&self, session_id: &str) -> Option<String> {
+        self.0.get(session_id).map(|s| s.state.clone())
+    }
+
+    pub fn set_prompt(&mut self, session_id: &str, prompt: &str) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.prompt = prompt.trim().to_string();
+        }
+    }
+
+    /// Your last message to it never went through as a message: flag it, so its bubble says so.
+    pub fn mark_unsent(&mut self, session_id: &str) {
+        if let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you")) {
+            e.unsent = true;
             e.pending = false;
         }
     }
@@ -339,26 +353,12 @@ impl Sessions {
                 true
             }
             _ => false,
-    pub fn state(&self, session_id: &str) -> Option<String> {
-        self.0.get(session_id).map(|s| s.state.clone())
+        }
     }
+
     /// Your last message to it, while Cue is still waiting to see it taken.
     pub fn pending_text(&self, session_id: &str) -> Option<String> {
         self.0.get(session_id).and_then(|s| s.thread.iter().rev().find(|e| e.role == "you")).filter(|e| e.pending).map(|e| e.text.clone())
-    }
-
-
-    pub fn set_prompt(&mut self, session_id: &str, prompt: &str) {
-        if let Some(s) = self.0.get_mut(session_id) {
-            s.prompt = prompt.trim().to_string();
-        }
-    }
-
-    /// Your last message to it never went through as a message: flag it, so its bubble says so.
-    pub fn mark_unsent(&mut self, session_id: &str) {
-        if let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you")) {
-            e.unsent = true;
-        }
     }
 
     /// Working sessions whose log Cue reads for their latest step: (id, harness, log). Claude Code's

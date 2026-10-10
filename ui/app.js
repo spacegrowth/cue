@@ -2043,7 +2043,6 @@ function activePane() {
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
-  else if (inTerminal(it) && (it.tool_input?.dialog?.options || []).length && it.tool_input.dialog.options.length <= 4) quick = `<div class="nrow-acts wrap">${it.tool_input.dialog.options.map((o, n) => `<button class="btn" data-tpick="${n + 1}" data-id="${esc(it.id)}">${esc(o)}</button>`).join("")}</div>`;
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
@@ -2081,6 +2080,7 @@ function needRow(it, ghost, open = false) {
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";
   if (it.kind === "permission") quick = `<div class="nrow-acts"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
+  else if (inTerminal(it) && (it.tool_input?.dialog?.options || []).length && it.tool_input.dialog.options.length <= 4) quick = `<div class="nrow-acts wrap">${it.tool_input.dialog.options.map((o, n) => `<button class="btn" data-tpick="${n + 1}" data-id="${esc(it.id)}">${esc(o)}</button>`).join("")}</div>`;
   else if (inTerminal(it)) quick = `<div class="nrow-acts">${inTmux(it.session_id) ? `<button class="btn primary" data-act="term-card" data-id="${esc(it.id)}">Answer in terminal</button>` : `<button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button>`}</div>`;
   else if (q.length === 1 && !q[0].multiSelect && (q[0].options || []).length <= 4) quick = `<div class="nrow-acts wrap">${q[0].options.map((o, oi) => `<button class="btn" data-pick="0:${oi}" data-id="${esc(it.id)}">${esc(o.label)}</button>`).join("")}</div>`;
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
