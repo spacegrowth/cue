@@ -397,11 +397,12 @@ pub fn end_agent(pid: i32) -> Result<(), String> {
 /// the walk, the signal and the wait: nothing to poll over SSH.
 pub fn end_machine_agent(o: &Origin) -> Result<(), String> {
     let m = crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
-    let pane_pid = match crate::machines::tmux(&m.host, &["list-panes", "-t", &o.tmux_pane, "-F", "#{pane_pid}"]) {
+    let pane_pid = match crate::machines::tmux(&m.host, &["display-message", "-p", "-t", &o.tmux_pane, "#{pane_pid}"]) {
         Ok(p) => p.trim().to_string(),
         Err(_) => return Ok(()), // its pane is gone already: nothing to end
     };
-    if pane_pid.is_empty() || pane_pid == "0" {
+    // Its pane's own pid only (list-panes would name every pane in its window).
+    if pane_pid.is_empty() || pane_pid == "0" || !pane_pid.chars().all(|c| c.is_ascii_digit()) {
         return Ok(());
     }
     let script = r#"

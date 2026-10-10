@@ -203,10 +203,12 @@ fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)
         let h = hub.clone();
         let done = with_timeout(move || {
             let Some(m) = machines::get(&machine) else { return };
-            match machines::tmux(&m.host, &["display-message", "-p", "-t", o.tmux_pane.as_str(), "#{session_name}"]) {
-                Ok(s) if s.trim() == crate::focus::TMUX_SESSION => return, // still alive: only Cue restarted
+            // Its agent still runs there (Claude Code's registry: <pid>.json naming the session, that
+            // pid alive), in Cue's tmux or your own: leave it, a second one would share its conversation.
+            match machines::run(&m.host, &agent_running_script(&o.session_id)) {
+                Ok(s) if s.trim() == "GONE" => {}
+                Ok(_) => return,
                 Err(e) => { machine_hooks::log_raw(&machine, &format!("rebuild {} skipped: {e}", o.session_id)); return; }
-                _ => {}
             }
             let Ok(line) = focus::resume_line(&o.cwd, &o.session_id) else { return };
             let label = if !name.is_empty() { name.clone() } else { model::project_of(&o.cwd) };
@@ -235,6 +237,17 @@ fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)
     }
 }
 
+/// The script that says whether a Claude session's agent runs on a machine: LIVE or GONE.
+fn agent_running_script(session_id: &str) -> String {
+    format!(
+        r#"for f in "${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}"/sessions/*.json; do
+  [ -f "$f" ] && grep -qF {sid} "$f" && kill -0 "$(basename "$f" .json)" 2>/dev/null && {{ echo LIVE; exit 0; }}
+done
+echo GONE"#,
+        sid = focus::shq(session_id)
+    )
+}
+
 /// At launch: a reboot killed every tmux pane, so live sessions' panes are gone. Open each
 /// again (its own tmux session, `claude --resume` typed in), like Resume does for one.
 /// Skipped in a quiet test instance, or when Settings says sessions don't run in tmux.
@@ -242,6 +255,9 @@ fn restore_sessions(hub: &Arc<Hub>) {
     if std::env::var_os("CUE_QUIET").is_some() || !config::tmux_sessions() {
         return;
     }
+    // Claude Code's own registry of the sessions running now, read fresh (the watcher hasn't yet).
+    live::refresh();
+    let running: std::collections::HashSet<String> = live::claude().into_iter().map(|q| q.session_id).collect();
     let mut remote = vec![];
     for s in hub.saved_sessions() {
         if !rebuildable(&s.origin) {
@@ -252,8 +268,10 @@ fn restore_sessions(hub: &Arc<Hub>) {
             continue;
         }
         let label = if !s.name.is_empty() { s.name.clone() } else { model::project_of(&s.origin.cwd) };
-        if focus::pane_in_its_session(&s.origin.tmux_pane, &label) {
-            continue; // Cue restarted, the reboot didn't: its pane is still there
+        // Its agent still runs (Cue restarted, the Mac didn't): wherever it runs, in Cue's tmux, your
+        // own, or a renamed session, a second `claude --resume` would be two agents on one conversation.
+        if running.contains(&s.origin.session_id) || focus::pane_in_its_session(&s.origin.tmux_pane, &label) {
+            continue;
         }
         rebuild(hub, &s.origin, &label);
     }
@@ -504,13 +522,86 @@ fn dictate_stop(d: State<dictation::Dictation>) {
     dictation::stop(&d)
 }
 
-/// A link in a message: open it in your browser. Web links only.
+/// A link in a message: open it in your browser (web links); a document (PDF, Markdown, text, an
+/// image…) or a plain folder opens in its usual app; anything else is only shown in Finder (`open -R`):
+/// agent text can name an app or a script, and a click mustn't run it. (Paths: file:// links, and bare
+/// absolute paths on ⌘-click in the window.)
 #[tauri::command]
 fn open_link(url: String) -> Result<(), String> {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err("not a web link".into());
+    let target = link_target(&url)?;
+    let mut open = std::process::Command::new("/usr/bin/open");
+    if !is_web(&target) && !safe_to_open(std::path::Path::new(&target)) {
+        open.arg("-R");
     }
-    std::process::Command::new("open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+    open.arg(&target).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+fn is_web(url: &str) -> bool {
+    url.starts_with("https://") || url.starts_with("http://")
+}
+
+/// Documents that open in an app without running anything. Not on the list (a script, an app, an
+/// installer, a .command, a macro-enabled .docm, a web page, …): shown in Finder only.
+const OPENABLE: &[&str] = &[
+    "pdf", "md", "markdown", "txt", "log", "csv", "tsv", "json", "yaml", "yml", "toml", "rtf",
+    "png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp",
+    "mp4", "mov", "m4v", "mp3", "m4a", "wav",
+    "docx", "xlsx", "pptx", "pages", "numbers", "key",
+];
+
+/// Whether a path opens rather than only showing in Finder: a document on OPENABLE, or a plain folder
+/// (one with no extension: .app and other bundles are folders too). The real file decides, not a
+/// link's name (a "notes.pdf" link to a script is shown, not opened).
+fn safe_to_open(p: &std::path::Path) -> bool {
+    let Ok(real) = std::fs::canonicalize(p) else { return false };
+    let ext = real.extension().map(|e| e.to_string_lossy().to_lowercase());
+    if real.is_dir() {
+        return ext.is_none();
+    }
+    ext.is_some_and(|e| OPENABLE.contains(&e.as_str()))
+}
+
+/// What `open` gets: web links as-is; everything else is a path — file:// stripped, ~ expanded,
+/// and it must exist (so a dead path says so in Cue instead of Finder beeping).
+fn link_target(url: &str) -> Result<String, String> {
+    if is_web(url) {
+        return Ok(url.to_string());
+    }
+    let mut p = match url.strip_prefix("file://") {
+        Some(rest) => percent_decoded(rest),
+        None => url.to_string(),
+    };
+    if let Some(rest) = p.strip_prefix('~') {
+        let home = std::env::var("HOME").map_err(|_| "no home folder".to_string())?;
+        p = format!("{home}{rest}");
+    }
+    if !p.starts_with('/') {
+        return Err("not a link".into());
+    }
+    if !std::path::Path::new(&p).exists() {
+        return Err("nothing at that path".into());
+    }
+    Ok(p)
+}
+
+/// A file:// link's path as the disk has it: "%20" a space, and so on.
+fn percent_decoded(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// An image a message mentions by path (a screenshot the agent made), as a data: URL. The window
@@ -1058,12 +1149,28 @@ fn utf8_locale(get: impl Fn(&str) -> Option<String>) -> bool {
     })
 }
 
+/// A setting Cue drops from its own environment at start, so tmux and the sessions it opens don't inherit
+/// it: the marks of the Claude Code session Cue may have been opened from (`CLAUDE_CODE_*`, `CLAUDECODE`),
+/// and, when that shell pointed Claude Code at another provider (`ANTHROPIC_BASE_URL` set), all of that
+/// setup (`ANTHROPIC_*`: its key must not go to Anthropic either). Your own `ANTHROPIC_API_KEY` alone stays.
+fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
+    (other_provider && k.starts_with("ANTHROPIC_")) || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE"
+}
+
 pub fn run() {
     // Opened from the Finder or the Dock, an app gets no locale, and tmux without UTF-8 rewrites what it
     // prints (a tab in its answers as "_", "❯" as "_" in the terminal it draws). Cue and everything it
     // starts (tmux, agents, shells) get UTF-8, as they would from a terminal. Set before any thread starts.
     if !utf8_locale(|k| std::env::var(k).ok()) {
         std::env::set_var("LC_CTYPE", "UTF-8");
+    }
+    // Opened from a shell set up for another provider, or from inside a Claude Code session, Cue would hand
+    // that setup to tmux, and tmux to every session it opens. Cue starts them clean, as a new terminal would.
+    let other_provider = std::env::var_os("ANTHROPIC_BASE_URL").is_some_and(|v| !v.is_empty());
+    for (k, _) in std::env::vars_os() {
+        if k.to_str().is_some_and(|k| inherited_agent_var(k, other_provider)) {
+            std::env::remove_var(&k);
+        }
     }
     let app = tauri::Builder::default()
         .manage(dictation::Dictation::default())
@@ -1198,6 +1305,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn another_providers_setup_and_a_parent_claude_session_are_dropped() {
+        for k in ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_SESSION_ID", "CLAUDECODE"] {
+            assert!(inherited_agent_var(k, true), "{k}");
+        }
+        for k in ["PATH", "HOME", "LC_CTYPE", "CUE_DRIVEN_BY", "CLAUDE_CONFIG_DIR", "ANTHROPIC"] {
+            assert!(!inherited_agent_var(k, true), "{k} stays");
+        }
+        // No other provider: your own key and settings stay; a parent session's marks still go.
+        assert!(!inherited_agent_var("ANTHROPIC_API_KEY", false) && !inherited_agent_var("ANTHROPIC_MODEL", false));
+        assert!(inherited_agent_var("CLAUDECODE", false) && inherited_agent_var("CLAUDE_CODE_SESSION_ID", false));
+    }
+
+    #[test]
     fn a_utf8_locale_is_recognised_whichever_setting_says_so() {
         let env = |pairs: &'static [(&'static str, &'static str)]| move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string());
         assert!(!utf8_locale(env(&[])), "none at all (opened from the Finder)");
@@ -1208,10 +1328,61 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_session_whose_agent_runs_is_left_alone() {
+        let home = std::env::temp_dir().join(format!("cue-running-{}", std::process::id()));
+        let dir = home.join("sessions");
+        std::fs::create_dir_all(&dir).unwrap();
+        let run = |sid: &str| {
+            let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).args(["-c", &agent_running_script(sid)]).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(run("abc-1"), "GONE", "no registry entry");
+        std::fs::write(dir.join(format!("{}.json", std::process::id())), r#"{"pid":1,"sessionId":"abc-1"}"#).unwrap();
+        assert_eq!(run("abc-1"), "LIVE", "its pid is alive");
+        assert_eq!(run("other"), "GONE", "another session's entry");
+        std::fs::write(dir.join("999999.json"), r#"{"sessionId":"dead-1"}"#).unwrap();
+        assert_eq!(run("dead-1"), "GONE", "its pid is gone");
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
     fn rebuildable_takes_claude_sessions_with_a_pane_and_a_folder() {
         assert!(rebuildable(&model::Origin { harness: "claude".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }));
         assert!(!rebuildable(&model::Origin { harness: "codex".into(), tmux_pane: "%1".into(), cwd: "/tmp/x".into(), ..Default::default() }), "only claude has --resume");
         assert!(!rebuildable(&model::Origin { harness: "claude".into(), cwd: "/tmp/x".into(), ..Default::default() }), "the Apple Terminal one: no pane");
+    }
+
+    #[test]
+    fn documents_and_folders_open_but_scripts_and_apps_only_show() {
+        let dir = std::env::temp_dir().join(format!("cue-open-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("Some.app")).unwrap();
+        for f in ["notes.md", "Report.PDF", "run.sh", "go.command", "x.docm", "page.html", "noext"] {
+            std::fs::write(dir.join(f), "x").unwrap();
+        }
+        std::os::unix::fs::symlink(dir.join("run.sh"), dir.join("fake.pdf")).unwrap();
+        let ok = |f: &str| safe_to_open(&dir.join(f));
+        assert!(ok("notes.md") && ok("Report.PDF"), "documents open in their app");
+        assert!(safe_to_open(&dir), "a plain folder opens");
+        for f in ["run.sh", "go.command", "x.docm", "page.html", "noext", "Some.app", "fake.pdf", "missing.pdf"] {
+            assert!(!ok(f), "{f}: shown in Finder only");
+        }
+        assert_eq!(link_target(&format!("file://{}/My%20Notes.md", "/tmp")).unwrap_err(), "nothing at that path");
+        std::fs::write(dir.join("My Notes.md"), "x").unwrap();
+        assert_eq!(link_target(&format!("file://{}/My%20Notes.md", dir.display())).unwrap(), format!("{}/My Notes.md", dir.display()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn link_target_passes_web_links_through_and_checks_paths_exist() {
+        assert_eq!(link_target("https://x.dev").unwrap(), "https://x.dev");
+        let dir = std::env::temp_dir();
+        let there = dir.join("cue-link-target");
+        std::fs::create_dir_all(&there).unwrap();
+        assert_eq!(link_target(&format!("file://{}", there.display())).unwrap(), there.display().to_string());
+        assert_eq!(link_target(&there.display().to_string()).unwrap(), there.display().to_string());
+        assert!(link_target("/definitely/not/here").is_err(), "a dead path says so in Cue");
+        assert!(link_target("not a link").is_err());
+        std::fs::remove_dir_all(&there).unwrap();
     }
 
     #[test]

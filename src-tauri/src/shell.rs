@@ -93,9 +93,25 @@ pub fn run(cwd: &str, line: &str) -> Result<Ran, String> {
 
 /// The script `run_on_machine` sends: into the folder there (saying NODIR rather than failing, as
 /// `open_in_tmux` does), the line in a subshell of its own (an `exit` in it only ends that), and Cue's
-/// own last line with its exit code — the proof the script ran, an ssh failure having none.
-fn remote_script(cwd: &str, line: &str) -> String {
-    format!("cd {dir} 2>/dev/null || {{ echo NODIR; exit 0; }}\n({line})\nprintf '\\n__CUE_EXIT__:%d\\n' \"$?\"", dir = crate::machines::remote_dir(cwd))
+/// own last line with its exit code — the proof the script ran, an ssh failure having none. The line
+/// is stopped there after `secs` (it and everything it started: ending ssh here wouldn't reach it),
+/// and a stopped one says __CUE_TIMEOUT__ before its code.
+fn remote_script(cwd: &str, line: &str, secs: u64) -> String {
+    format!(
+        r#"cd {dir} 2>/dev/null || {{ echo NODIR; exit 0; }}
+t="${{TMPDIR:-/tmp}}/cue-ran-$$"
+tree() {{ for c in $(ps -eo pid=,ppid= | awk -v q="$1" '$2==q {{print $1}}'); do tree "$c"; done; echo "$1"; }}
+(
+{line}
+) </dev/null &
+p=$!
+( sleep {secs}; : > "$t"; kill -TERM $(tree "$p") 2>/dev/null ) >/dev/null 2>&1 &
+w=$!
+wait "$p"; c=$?
+if [ -e "$t" ]; then rm -f "$t"; printf '\n__CUE_TIMEOUT__'; else kill $(tree "$w") 2>/dev/null; fi
+printf '\n__CUE_EXIT__:%d\n' "$c""#,
+        dir = crate::machines::remote_dir(cwd)
+    )
 }
 
 /// `run`, on a machine Cue knows (the session runs there): the same timeout and cut, over Cue's shared
@@ -107,7 +123,7 @@ pub fn run_on_machine(m: &crate::machines::Machine, cwd: &str, line: &str) -> Re
         return Err("nothing to run".into());
     }
     let started = Instant::now();
-    let child = crate::machines::ssh_command_err(&m.host, &remote_script(cwd, line))
+    let child = crate::machines::ssh_command_err(&m.host, &remote_script(cwd, line, TIMEOUT_SECS - 3))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -122,7 +138,11 @@ pub fn run_on_machine(m: &crate::machines::Machine, cwd: &str, line: &str) -> Re
     }
     // Cue's own last line, when the script ran (its code, so an `exit` in the line still counts).
     if let Some((head, code)) = stdout.rsplit_once("\n__CUE_EXIT__:") {
-        return Ok(finish(head, &stderr, code.parse().unwrap_or(-1), ms, false, cwd));
+        // Stopped there, at the time limit: the card says so, as it does for a line here.
+        if let Some(head) = head.strip_suffix("\n__CUE_TIMEOUT__") {
+            return Ok(finish(head, &stderr, -1, ms, true, cwd));
+        }
+        return Ok(finish(head, &stderr, code.trim().parse().unwrap_or(-1), ms, false, cwd));
     }
     if stdout.trim() == "NODIR" {
         return Err(format!("{cwd} isn't a folder on {}", m.name));
@@ -162,12 +182,37 @@ mod tests {
 
     #[test]
     fn a_line_on_a_machine_runs_in_the_folder_there_and_says_its_exit_code() {
-        let script = remote_script("~", "echo hi; exit 3");
+        let script = remote_script("~", "echo hi; exit 3", 30);
         let out = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&script)]).output().unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         assert!(stdout.starts_with("hi\n"), "{stdout:?}");
         assert!(stdout.ends_with("\n__CUE_EXIT__:3\n"), "an `exit` in the line still says its code: {stdout:?}");
-        let bad = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&remote_script("/no/such/dir", "true"))]).output().unwrap();
+        let (_, code) = stdout.rsplit_once("\n__CUE_EXIT__:").unwrap();
+        assert_eq!(code.trim().parse::<i32>(), Ok(3), "the code as the card reads it");
+        let c = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&remote_script("~", "echo ok # a comment", 30))]).output().unwrap();
+        assert!(String::from_utf8_lossy(&c.stdout).ends_with("\n__CUE_EXIT__:0\n"), "a comment at the end doesn't break the line");
+    }
+
+    #[test]
+    fn a_line_on_a_machine_is_stopped_there_at_the_limit_with_what_it_started() {
+        // dash, as /bin/sh is on most Linux machines, and this Mac's sh.
+        for sh in ["/bin/sh", "/bin/dash"].into_iter().filter(|p| std::path::Path::new(p).exists()) {
+            let mark = format!("cue-stop-test-{}-{}", std::process::id(), sh.len());
+            let started = Instant::now();
+            let out = std::process::Command::new(sh).args(["-c", &remote_script("~", &format!("echo begun; sleep 30 & sleep 31; echo {mark}"), 1)]).output().unwrap();
+            let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+            assert!(started.elapsed().as_secs() < 10, "{sh}: stopped at the limit, not after 30 s");
+            assert!(stdout.starts_with("begun\n") && stdout.contains("\n__CUE_TIMEOUT__\n__CUE_EXIT__:"), "{sh}: {stdout:?}");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let left = std::process::Command::new("/bin/ps").args(["-eo", "command="]).output().unwrap();
+            assert!(!String::from_utf8_lossy(&left.stdout).lines().any(|l| l.trim() == "sleep 30" || l.trim() == "sleep 31"), "{sh}: nothing it started is left running");
+            // A quick line: no timeout mark, and its watcher is gone too.
+            let quick = std::process::Command::new(sh).args(["-c", &remote_script("~", "echo fast", 77)]).output().unwrap();
+            assert!(String::from_utf8_lossy(&quick.stdout).ends_with("fast\n\n__CUE_EXIT__:0\n"), "{sh}");
+            let left = std::process::Command::new("/bin/ps").args(["-eo", "command="]).output().unwrap();
+            assert!(!String::from_utf8_lossy(&left.stdout).lines().any(|l| l.trim() == "sleep 77"), "{sh}: the watcher doesn't outlive the line");
+        }
+        let bad = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&remote_script("/no/such/dir", "true", 30))]).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&bad.stdout).trim(), "NODIR", "a folder that isn't one there says so");
     }
 }

@@ -284,8 +284,16 @@ function table(lines, inline) {
 function linkify(h) {
   const links = [];
   const a = (u, label) => `<a href="#" data-href="${u}" title="${u}">${label}</a>`;
-  return h.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, u) => `\u0000${links.push(a(u, label)) - 1}\u0000`)
-    .replace(/https?:\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => a(u, u))
+  // A path in a message is not a link on a plain click (paths are everywhere in agent text), but
+  // ⌘-click opens it (a document in its app; a script or an app only shown in Finder): the click
+  // handler sends data-path to open_link.
+  const pa = (u) => `<a href="#" data-path="${u}" title="⌘-click to open: ${u}">${u}</a>`;
+  return h.replace(/\[([^\]\n]+)\]\(((?:https?|file):\/\/[^\s)]+)\)/g, (_, label, u) => `\u0000${links.push(a(u, label)) - 1}\u0000`)
+    .replace(/(?:https?|file):\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => a(u, u))
+    .replace(/(^|[^\w@/\\<])(\/[\w.@~+-]+(?:\/[\w.@~+-]+)*\/?|~\/[^\s<>"'`]+)/g, (m, pre, raw) => {
+      const t = raw.match(/[.,;:!?]+$/)?.[0] || "";
+      return pre + pa(raw.slice(0, raw.length - t.length)) + t;
+    })
     .replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
 }
 /** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, quotes, code. Escapes first, so it's safe. */
@@ -414,21 +422,27 @@ let mouseDown = false, heldDraw = false, selBefore = "", copied = null;   // cop
 const inField = (n) => !!(n?.nodeType === 1 ? n : n?.parentElement)?.closest?.("input, textarea");
 // A selection made by this press (a click on a button leaves an older one in place: not that).
 const dragSelecting = () => mouseDown && !getSelection().isCollapsed && getSelection().toString() !== selBefore;
-addEventListener("mousedown", (e) => { mouseDown = e.button === 0 && !inField(e.target); selBefore = getSelection().toString(); }, true);
+// Pressing a link: a redraw before you let go would swap it for a copy, and the click would land on
+// nothing (a working session redraws twice a second). It waits until the click has gone through.
+let onLink = false;
+addEventListener("mousedown", (e) => { mouseDown = e.button === 0 && !inField(e.target); onLink = mouseDown && !!e.target.closest?.("a[data-href], a[data-path]"); selBefore = getSelection().toString(); }, true);
 addEventListener("mouseup", () => {
   if (!mouseDown) return;
   const sel = getSelection(), text = sel.toString(), fresh = dragSelecting();
   mouseDown = false;
+  const wasLink = onLink;
+  onLink = false;
   // Selected text in the window (not in a box you type in, where ⌘C works as ever): on your clipboard now.
   if (fresh && text.trim() && !inField(sel.anchorNode)) {
     if (!document.execCommand("copy")) navigator.clipboard?.writeText(text);
     copied = { at: Date.now(), words: text.length > 40 ? text.trim().split(/\s+/).length : 0 };
     if (!heldDraw && !showCopied()) toast("Copied");
   }
-  if (heldDraw) { heldDraw = false; renderMain(); }
+  // Pressed on a link: after the click (it fires after this), so the link is still there for it.
+  if (heldDraw) { heldDraw = false; wasLink ? setTimeout(renderMain) : renderMain(); }
 }, true);
 // Let go outside the window (no mouseup here): the held redraw happens anyway.
-addEventListener("blur", () => { mouseDown = false; if (heldDraw) { heldDraw = false; renderMain(); } });
+addEventListener("blur", () => { mouseDown = onLink = false; if (heldDraw) { heldDraw = false; renderMain(); } });
 
 /** "Copied", in Moss, at the right end just above the chat's text box (or its bottom, with no box). Put back
  *  after each redraw, its fade carrying on where it was. False when there's no chat to show it in. */
@@ -2956,7 +2970,7 @@ function flipPlay(from) {
 }
 function renderMain() {
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
-  if (dragSelecting() || folding) { heldDraw = true; return; }
+  if (dragSelecting() || folding || (mouseDown && onLink)) { heldDraw = true; return; }
   const focused = document.activeElement;
   const flipFrom = flipRects();
   const focusKey = focused?.dataset?.text;
@@ -3377,6 +3391,9 @@ function bindMain() {
     if (fwdTo && forward) { forward.to = fwdTo.dataset.fwdTo; renderMain(); return document.querySelector(".fwd-note")?.focus(); }
     if (t.closest("[data-act='send-forward']")) return sendForward();
     if (t.closest("[data-act='cancel-forward']")) { sheet = forward = null; return renderMain(); }
+    // A path: ⌘-click opens it (or shows it in Finder); a plain click stays what it was (text, or the row it's in).
+    const pl = t.closest("a[data-path]");
+    if (pl) { e.preventDefault(); if (e.metaKey || e.ctrlKey) return invoke("open_link", { url: pl.dataset.path }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const link = t.closest("a[data-href]");
     if (link) { e.preventDefault(); return invoke("open_link", { url: link.dataset.href }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const llb = t.closest("[data-local-lb]");
