@@ -184,8 +184,10 @@ impl Sessions {
         }
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             s.prompt = p.trim().to_string();
-            // It went through after all (it waited behind a command, say): its bubble stops saying it didn't.
-            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| e.unsent && e.text.trim() == s.prompt) {
+            // It went through after all (it waited behind a command, or the agent's word came late, as it can
+            // from a machine): its bubble stops saying it didn't. Compared as the agent got it (spacing
+            // changed, image paths after it), not character for character.
+            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| e.unsent && crate::transcript::is_message(&s.prompt, &e.text)) {
                 e.unsent = false;
             }
         }
@@ -864,6 +866,17 @@ mod tests {
         s.mark(&origin("a"), "working", Some("something else"));
         assert!(s.0["a"].thread.last().unwrap().unsent, "a different prompt leaves it flagged");
         s.mark(&origin("a"), "working", Some("run the tests"));
+        assert!(!s.0["a"].thread.last().unwrap().unsent);
+    }
+
+    #[test]
+    fn a_late_message_counts_as_the_agent_got_it() {
+        let mut s = Sessions::default();
+        s.mark(&origin("a"), "waiting", None);
+        s.note("a", "you", "look at this\nscreenshot", 10);
+        s.mark_unsent("a");
+        // Its line break joined up, an image's path after it: still the same message.
+        s.mark(&origin("a"), "working", Some("look at this screenshot /Users/me/cue/uploads/1.png"));
         assert!(!s.0["a"].thread.last().unwrap().unsent);
     }
 }

@@ -104,6 +104,8 @@
         det: { role: "executor", plugin: "relay", name: "breakout-bt", model: "claude-sonnet-5-5", status: "reported", packet: 1, lead: "gone-lead", lead_name: "backtests", lead_armed: false, verify: { verdict: "MISMATCH", note: "2 changes it reports are not staged" } },
         web: { role: "executor", plugin: "pilead", name: "cart-limit", model: "deepseek/deepseek-flash", status: "busy", packet: 1, lead: "pi-lead-1", lead_name: "shop", lead_armed: true },
       };
+      // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.
+      if (q.has("crew") && q.has("rq")) { state.review_queue = { relay: [{ exec: "x-spend", name: "board-spend", at_ms: now - 2 * M }, { exec: "x-docs", name: "readme-pass", at_ms: now - M }] }; state.reviews = { "x-spend": "review queued", "x-docs": "review queued" }; }
       // ?manyanswers=1: a long history, to see Recently answered scroll on its own.
       if (q.has("manyanswers")) for (let n = 0; n < 25; n++) state.history.push({ id: `hx${n}`, kind: "permission", harness: n % 2 ? "pi" : "claude", project: ["data-pipeline", "web-app", "agent-relay"][n % 3], tool_name: "Bash", tool_input: { command: `make step-${n}` }, status: "answered", outcome: "allowed", created_ms: now - (80 + n * 7) * M, resolved_ms: now - (79 + n * 7) * M });
       // Conversations, as the backend keeps them per session (the last agent entry is the finished message).
@@ -227,6 +229,7 @@
           if (cmd === "close_session") return "Closed its iTerm tab";
           if (cmd === "agents_installed") return ["claude", "pi"];
           if (cmd === "new_session") return { session_id: "", detail: `Started ${args.agent} in a new iTerm tab` };
+          if (cmd === "unqueue_review") { for (const l of Object.keys(state.review_queue || {})) state.review_queue[l] = state.review_queue[l].filter((r) => r.exec !== args.exec); return null; }
           if (cmd === "crew_action") return args.action === "review" ? `Sent /relay:review ${args.sessionId}` : args.action.startsWith("auto-") ? `Auto mode ${args.action.slice(5)}` : "Opened in your browser";
         } },
         event: { listen: async (name, f) => { (listeners[name] ||= []).push(f); } },
@@ -235,6 +238,7 @@
   </script>
   <script src="../ui/vendor/xterm/xterm.js"></script>
   <script src="../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="../ui/vendor/xterm/addon-webgl.js"></script>
   <script src="../ui/app.js"></script>
   <script>
     setTimeout(() => {

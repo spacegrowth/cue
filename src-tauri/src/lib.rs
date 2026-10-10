@@ -97,6 +97,12 @@ fn dismiss(hub: State<Arc<Hub>>, id: String) {
     hub.dismiss(&id)
 }
 
+/// × on a queued review in its lead's chat: take it back.
+#[tauri::command]
+fn unqueue_review(hub: State<Arc<Hub>>, exec: String) {
+    hub.unqueue_review(&exec)
+}
+
 #[tauri::command]
 fn send_to_back(hub: State<Arc<Hub>>, id: String) -> Result<(), String> {
     hub.send_to_back(&id)
@@ -651,14 +657,18 @@ pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result
         // One review at a time per lead: refused while it's busy (see Hub::review).
         leads::Act::Send { to, text } if action == "review" => h.review(&to, session_id, &text),
         leads::Act::Send { to, text } => h.send_to_session(&to, &text, &[], false).map(|_| format!("Sent {text}")),
-        leads::Act::Run(bin, args, done) => {
-            let out = std::process::Command::new(&bin).args(&args).output().map_err(|e| format!("couldn't run relay: {e}"))?;
-            if out.status.success() {
-                Ok(done)
-            } else {
-                let err = String::from_utf8_lossy(&out.stderr);
-                Err(err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("relay failed").trim().to_string())
-            }
+        leads::Act::Run(cmd, done) => cmd.run().map(|_| done),
+        // relay writes the page there and prints its path: bring it here and open it.
+        leads::Act::RemoteDiff(cmd) => {
+            let said = cmd.run()?;
+            let path = said.lines().rev().map(str::trim).find(|l| l.ends_with(".html")).ok_or("relay didn't say where it wrote the page")?.to_string();
+            let page = leads::Cmd { bin: "cat".into(), args: vec![path.clone()], machine: cmd.machine.clone() }.run()?;
+            let dir = server::cue_dir().join("diffs");
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "diff.html".into());
+            let here = dir.join(format!("{}-{name}", cmd.args.get(1).cloned().unwrap_or_default()));
+            std::fs::write(&here, page).map_err(|e| e.to_string())?;
+            std::process::Command::new("/usr/bin/open").arg(&here).status().map(|_| "Opened in your browser".into()).map_err(|e| e.to_string())
         }
         leads::Act::Open(page) => std::process::Command::new("open").arg(&page).status().map(|_| "Opened in your browser".into()).map_err(|e| e.to_string()),
     }
@@ -815,15 +825,9 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
     let session_id = session_id.to_string();
     {
         h.closable(&session_id)?;
+        // An executor: relay / pi-lead close it, where it runs (on its machine, over SSH).
         if let Some(plan) = leads::close_plan(&session_id) {
-            let (bin, args) = plan?;
-            let out = std::process::Command::new(&bin).args(&args).output().map_err(|e| e.to_string())?;
-            return if out.status.success() {
-                Ok("Closed".into())
-            } else {
-                let err = String::from_utf8_lossy(&out.stderr);
-                Err(err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("close failed").trim().to_string())
-            };
+            return plan?.run().map(|_| "Closed".into());
         }
         let origin = h.live_origin(&session_id).ok_or("that session is gone")?;
         // On this Mac, the agent's process. On a machine, there is no pid here (it runs there): its
@@ -1330,7 +1334,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -1383,6 +1387,29 @@ pub fn run() {
                     // ...and from that list: sessions Cue doesn't know yet, prompts in a terminal it has no card for.
                     let a = h.clone();
                     let _ = tauri::async_runtime::spawn_blocking(move || a.sync_live()).await;
+                }
+            });
+            // Leads and executors on your machines: relay's listing there, every 10 s, for each machine
+            // Cue has sessions on (a machine with none isn't woken; its crews are forgotten).
+            let h = hub.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut tick = tokio::time::interval(std::time::Duration::from_secs(10));
+                loop {
+                    tick.tick().await;
+                    let a = h.clone();
+                    let changed = tauri::async_runtime::spawn_blocking(move || {
+                        let busy: std::collections::HashSet<String> = a.saved_sessions().into_iter().map(|s| s.origin.machine).filter(|m| !m.is_empty()).collect();
+                        let mut changed = false;
+                        for m in machines::list() {
+                            changed |= if busy.contains(&m.name) { leads::refresh_remote(&m.name, &m.host) } else { leads::forget_remote(&m.name) };
+                        }
+                        changed
+                    })
+                    .await
+                    .unwrap_or(false);
+                    if changed {
+                        h.redraw();
+                    }
                 }
             });
             #[cfg(feature = "ext")]

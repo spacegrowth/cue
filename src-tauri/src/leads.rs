@@ -9,6 +9,9 @@
 //!   only while Claude Code's own registry, `~/.claude/sessions/<pid>.json`, has it open in a live process.
 //! pi-lead (`$PI_LEAD_HOME`, default `~/.pi-lead`): `leads/<pi session>.json` per lead, and
 //!   `sessions/<pi session>/meta.json` + `status` per executor (pi runs as `--session-id <sid>`).
+//! Your machines (+ New → Machine): relay's own listing there (`relay list --all --json`), read
+//!   over Cue's shared SSH connection while Cue has sessions there; relay's commands (close, auto,
+//!   diff) run there too.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -61,6 +64,9 @@ pub struct Member {
     /// Executor: its id in relay / pi-lead (what their commands take), not Cue's session id.
     #[serde(skip)]
     pub id: String,
+    /// The machine it runs on (one of yours, by name); "" for this Mac.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub machine: String,
     /// Sort key for duplicates (an executor id reused by a resume): the newest record wins.
     #[serde(skip)]
     updated: String,
@@ -74,6 +80,10 @@ fn is_zero(n: &u64) -> bool {
 const GONE: &[&str] = &["closed", "superseded", "dead", "retired", "done"];
 
 static INDEX: Mutex<Option<HashMap<String, Member>>> = Mutex::new(None);
+/// This Mac's part of INDEX, as last scanned.
+static LOCAL: Mutex<Option<HashMap<String, Member>>> = Mutex::new(None);
+/// Each machine's part: its relay command there, and its leads and executors.
+static REMOTE: Mutex<Option<HashMap<String, (String, HashMap<String, Member>)>>> = Mutex::new(None);
 
 /// Each file's last parse, by path, with the modification time it was parsed at. relay never deletes
 /// executor records (hundreds of closed ones pile up), and a closed record never changes again: a
@@ -361,12 +371,148 @@ pub fn refresh() -> bool {
     let fresh = scan(&relay_dir(), &pilead_dir(), &claude_sessions_dir());
     verify_reported(&fresh, &relay_dir());
     let verified = VERIFIED.swap(false, std::sync::atomic::Ordering::Relaxed);
-    let mut cur = INDEX.lock().unwrap();
-    if cur.as_ref() == Some(&fresh) {
-        return verified;
+    *LOCAL.lock().unwrap() = Some(fresh);
+    merge() || verified
+}
+
+/// INDEX again from this Mac's part and every machine's (this Mac's wins a clash). True when it changed.
+fn merge() -> bool {
+    let mut all = LOCAL.lock().unwrap().clone().unwrap_or_default();
+    for (_, members) in REMOTE.lock().unwrap().as_ref().into_iter().flat_map(|r| r.values()) {
+        for (sid, m) in members {
+            all.entry(sid.clone()).or_insert_with(|| m.clone());
+        }
     }
-    *cur = Some(fresh);
+    let mut cur = INDEX.lock().unwrap();
+    if cur.as_ref() == Some(&all) {
+        return false;
+    }
+    *cur = Some(all);
     true
+}
+
+/// What runs on a machine to list its crews: relay's command there (from Claude Code's installed
+/// plugins, else on PATH), its JSON listing, then the Claude sessions open in a live process there
+/// (a lead counts as listening only while one is).
+const REMOTE_LIST: &str = r#"c="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+r=$(sed -n 's/.*"installPath": *"\([^"]*\)".*/\1/p' "$c/plugins/installed_plugins.json" 2>/dev/null | grep -i relay | head -1)
+if [ -n "$r" ] && [ -x "$r/bin/relay" ]; then r="$r/bin/relay"; else r=$(command -v relay 2>/dev/null || echo "$HOME/.local/bin/relay"); fi
+[ -x "$r" ] || { echo NORELAY; exit 0; }
+echo "BIN:$r"
+"$r" list --all --json 2>/dev/null
+echo "__CUE_LIVE__"
+for f in "$c"/sessions/*.json; do
+  [ -f "$f" ] && kill -0 "$(basename "$f" .json)" 2>/dev/null && sed -n 's/.*"sessionId": *"\([^"]*\)".*/\1/p' "$f"
+done
+exit 0"#;
+
+/// Re-read one machine's crews (blocking: an SSH round trip). True when INDEX changed. A machine
+/// that can't be reached keeps what was last read from it.
+pub fn refresh_remote(machine: &str, host: &str) -> bool {
+    let Ok(out) = crate::machines::run(host, REMOTE_LIST) else { return false };
+    let parsed = parse_remote(&out, machine);
+    REMOTE.lock().unwrap().get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
+    merge()
+}
+
+/// Forget a machine's crews (it has no sessions in Cue any more, or was removed).
+pub fn forget_remote(machine: &str) -> bool {
+    let gone = REMOTE.lock().unwrap().as_mut().and_then(|r| r.remove(machine)).is_some();
+    gone && merge()
+}
+
+/// REMOTE_LIST's answer: relay's command there, and its leads and executors keyed by Cue session id.
+fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
+    let bin = out.lines().find_map(|l| l.strip_prefix("BIN:")).unwrap_or("").trim().to_string();
+    let after_bin = out.split_once('\n').filter(|_| !bin.is_empty()).map(|(_, rest)| rest).unwrap_or("");
+    let (json, live) = after_bin.split_once("__CUE_LIVE__").unwrap_or((after_bin, ""));
+    let live: HashSet<String> = live.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect();
+    let v: Value = serde_json::from_str(json.trim()).unwrap_or(Value::Null);
+    let mut index = HashMap::new();
+    let mut leads: HashMap<String, (String, Option<[u8; 3]>)> = HashMap::new();
+    for l in v.get("leads").and_then(Value::as_array).into_iter().flatten() {
+        let sid = s(l, "session_id");
+        leads.insert(sid.clone(), (s(l, "project"), color(l)));
+        let lead = Member {
+            role: "lead".into(),
+            plugin: "relay".into(),
+            name: s(l, "project"),
+            color: color(l),
+            model: s(l, "model"),
+            auto: l.get("autonomous").and_then(Value::as_bool),
+            updated: s(l, "last_active"),
+            machine: machine.into(),
+            ..Default::default()
+        };
+        put(&mut index, sid, lead);
+    }
+    for e in v.get("executors").and_then(Value::as_array).into_iter().flatten() {
+        if !s(e, "agent").starts_with("relay-executor") {
+            continue;
+        }
+        let owner = s(e, "owner_lead");
+        let lead = leads.get(&owner);
+        let m = Member {
+            role: "executor".into(),
+            plugin: "relay".into(),
+            name: Some(s(e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| s(e, "session_id")),
+            color: lead.and_then(|l| l.1),
+            model: s(e, "model"),
+            status: s(e, "status"),
+            packet: e.get("current_packet").and_then(Value::as_u64),
+            lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
+            lead_armed: Some(lead.is_some() && live.contains(&owner)),
+            lead: owner,
+            id: s(e, "session_id"),
+            updated: s(e, "updated"),
+            machine: machine.into(),
+            ..Default::default()
+        };
+        put(&mut index, s(e, "claude_session"), m);
+    }
+    (bin, index)
+}
+
+/// A relay / pi-lead command, on this Mac or on the machine the session runs on.
+#[derive(Debug, PartialEq)]
+pub struct Cmd {
+    pub bin: String,
+    pub args: Vec<String>,
+    /// The machine to run it on ("" for this Mac).
+    pub machine: String,
+}
+
+impl Cmd {
+    fn here(bin: PathBuf, args: Vec<String>) -> Cmd {
+        Cmd { bin: bin.to_string_lossy().into_owned(), args, machine: String::new() }
+    }
+
+    /// Run it: Ok(what it printed) or Err(its last line of complaint). Blocking.
+    pub fn run(&self) -> Result<String, String> {
+        let last = |t: &str, or: &str| t.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or(or).trim().to_string();
+        if self.machine.is_empty() {
+            let out = std::process::Command::new(&self.bin).args(&self.args).output().map_err(|e| format!("couldn't run {}: {e}", self.bin))?;
+            return if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(last(&String::from_utf8_lossy(&out.stderr), "it failed")) };
+        }
+        let m = crate::machines::get(&self.machine).ok_or(format!("{} isn't one of your machines any more", self.machine))?;
+        let line = std::iter::once(&self.bin).chain(&self.args).map(|a| crate::focus::shq(a)).collect::<Vec<_>>().join(" ");
+        // Its own words either way (Cue's SSH hides a script's stderr), and its exit code last.
+        let out = crate::machines::run(&m.host, &format!("{line} 2>&1; printf '\\n__CUE_EXIT__:%d\\n' \"$?\""))?;
+        match out.rsplit_once("\n__CUE_EXIT__:") {
+            Some((said, code)) if code.trim() == "0" => Ok(said.to_string()),
+            Some((said, _)) => Err(last(said, "it failed")),
+            None => Err("it didn't run there".into()),
+        }
+    }
+}
+
+/// relay's command where this member runs: its machine's (as last listed there), or this Mac's.
+fn relay_for(m: &Member) -> Result<Cmd, String> {
+    if m.machine.is_empty() {
+        return relay_bin().map(|b| Cmd::here(b, vec![])).ok_or_else(|| "can't find relay's command (is the claude-relay plugin installed?)".to_string());
+    }
+    let bin = REMOTE.lock().unwrap().as_ref().and_then(|r| r.get(&m.machine)).map(|(b, _)| b.clone()).filter(|b| !b.is_empty());
+    bin.map(|bin| Cmd { bin, args: vec![], machine: m.machine.clone() }).ok_or_else(|| format!("can't find relay's command on {}", m.machine))
 }
 
 /// Who handles this session's finished turn, given what its hook said (`hooked`). An executor
@@ -395,7 +541,10 @@ pub enum Act {
     /// Type this into a session (Cue's session id): the lead runs it as a command.
     Send { to: String, text: String },
     /// Run relay's own CLI; on success, say this.
-    Run(PathBuf, Vec<String>, String),
+    Run(Cmd, String),
+    /// relay's diff page for an executor on a machine: written there (its path is what relay
+    /// prints), brought here, then opened.
+    RemoteDiff(Cmd),
     /// Open a page that's already written (pi-lead's executor writes its diff page itself).
     Open(PathBuf),
 }
@@ -428,13 +577,13 @@ fn pilead_bin(id: &str) -> Option<PathBuf> {
 /// How to close this session through its own tool, if it has one: a relay / pi-lead executor is closed
 /// by relay / pilead (it marks the executor closed and closes its tab). A lead that still has
 /// executors isn't closed from Cue: that's relay's handoff / close. None: not in a crew.
-pub fn close_plan(session_id: &str) -> Option<Result<(PathBuf, Vec<String>), String>> {
+pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
     let cur = INDEX.lock().unwrap();
     let index = cur.as_ref()?;
     let m = index.get(session_id)?;
     match (m.plugin.as_str(), m.role.as_str()) {
-        ("relay", "executor") => Some(relay_bin().map(|b| (b, vec!["close".into(), m.id.clone()])).ok_or_else(|| "can't find relay's command".to_string())),
-        ("pilead", "executor") => Some(pilead_bin(&m.id).map(|b| (b, vec!["close".into(), m.id.clone()])).ok_or_else(|| "can't find pilead's command".to_string())),
+        ("relay", "executor") => Some(relay_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
+        ("pilead", "executor") => Some(pilead_bin(&m.id).map(|b| Cmd::here(b, vec!["close".into(), m.id.clone()])).ok_or_else(|| "can't find pilead's command".to_string())),
         (_, "lead") => {
             let n = index.values().filter(|e| e.role == "executor" && e.lead == session_id && !GONE.contains(&e.status.as_str())).count();
             (n > 0).then(|| Err(format!("it leads {n} executor{} still open: close them, or hand the lead off, first", if n == 1 { "" } else { "s" })))
@@ -466,7 +615,7 @@ pub fn name_of(session_id: &str) -> String {
 pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
     let cur = INDEX.lock().unwrap();
     let m = cur.as_ref().and_then(|i| i.get(session_id)).ok_or("Cue doesn't know this session as a lead or executor")?;
-    let relay = || relay_bin().ok_or_else(|| "can't find relay's command (is the claude-relay plugin installed?)".to_string());
+    let relay = |args: &[&str]| relay_for(m).map(|c| Cmd { args: args.iter().map(|a| a.to_string()).collect(), ..c });
     match (m.plugin.as_str(), m.role.as_str(), action) {
         (plugin, "executor", "review") => {
             if m.lead_armed != Some(true) {
@@ -475,11 +624,12 @@ pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
             let cmd = if plugin == "pilead" { "/pilead:review" } else { "/relay:review" };
             Ok(Act::Send { to: m.lead.clone(), text: format!("{cmd} {}", m.id) })
         }
-        ("relay", "executor", "diff") => Ok(Act::Run(relay()?, vec!["diff".into(), m.id.clone(), "--open".into()], "Opened in your browser".into())),
+        ("relay", "executor", "diff") if !m.machine.is_empty() => Ok(Act::RemoteDiff(relay(&["diff", &m.id])?)),
+        ("relay", "executor", "diff") => Ok(Act::Run(relay(&["diff", &m.id, "--open"])?, "Opened in your browser".into())),
         // A lead's auto mode on or off (it goes ahead on routine steps without asking you).
         ("relay", "lead", "auto-on" | "auto-off") => {
             let on = action == "auto-on";
-            Ok(Act::Run(relay()?, vec!["auto".into(), (if on { "on" } else { "off" }).into(), "--session".into(), session_id.to_string()], format!("Auto mode {}", if on { "on" } else { "off" })))
+            Ok(Act::Run(relay(&["auto", if on { "on" } else { "off" }, "--session", session_id])?, format!("Auto mode {}", if on { "on" } else { "off" })))
         }
         ("pilead", "executor", "diff") => pilead_diff_page(&pilead_dir(), &m.id).map(Act::Open).ok_or_else(|| "it hasn't written a diff page yet".into()),
         _ => Err(format!("no {action} for this session")),
@@ -513,6 +663,39 @@ pub fn view(known: &HashSet<String>) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_machines_crews_come_from_relays_listing_there() {
+        let out = r#"BIN:/home/me/.claude/plugins/cache/claude-relay/relay/0.5.11/bin/relay
+{"leads": [{"session_id": "L9", "project": "smoke", "color": [200, 140, 135], "model": "claude-opus-5-5", "autonomous": true, "last_active": "2026-10-04T09:57:37"},
+           {"session_id": "L8", "project": "old", "last_active": "2026-10-03T18:30:38", "ended": true}],
+ "executors": [{"agent": "relay-executor", "session_id": "hello-md", "topic": "hello-md", "status": "reported", "current_packet": 2, "owner_lead": "L9", "claude_session": "C9", "model": "claude-sonnet-5-5", "updated": "2026-10-04T09:50:00"},
+               {"agent": "relay-executor", "session_id": "ls-root", "topic": "", "status": "busy", "owner_lead": "L8", "owner_project": "old", "claude_session": "C8"},
+               {"agent": "something-else", "session_id": "x", "claude_session": "CX"}]}
+__CUE_LIVE__
+L9
+C9
+"#;
+        let (bin, index) = parse_remote(out, "build-box");
+        assert_eq!(bin, "/home/me/.claude/plugins/cache/claude-relay/relay/0.5.11/bin/relay");
+        let l9 = &index["L9"];
+        assert_eq!((l9.role.as_str(), l9.name.as_str(), l9.machine.as_str(), l9.auto), ("lead", "smoke", "build-box", Some(true)));
+        let c9 = &index["C9"];
+        assert_eq!((c9.role.as_str(), c9.id.as_str(), c9.lead.as_str(), c9.lead_name.as_str(), c9.lead_armed, c9.packet), ("executor", "hello-md", "L9", "smoke", Some(true), Some(2)));
+        assert_eq!(c9.color, Some([200, 140, 135]), "its lead's color");
+        assert_eq!(index["C8"].lead_armed, Some(false), "its lead's session isn't running there");
+        assert_eq!(index["C8"].name, "ls-root", "no topic: its relay id");
+        assert!(!index.contains_key("CX"), "not a relay executor");
+        assert!(parse_remote("NORELAY\n", "build-box").1.is_empty(), "no relay there: no crews");
+    }
+
+    #[test]
+    fn a_command_here_says_what_it_printed_or_its_last_complaint() {
+        let ok = Cmd { bin: "/bin/sh".into(), args: vec!["-c".into(), "echo done".into()], machine: String::new() };
+        assert_eq!(ok.run().unwrap().trim(), "done");
+        let bad = Cmd { bin: "/bin/sh".into(), args: vec!["-c".into(), "echo first >&2; echo no such session: x >&2; exit 1".into()], machine: String::new() };
+        assert_eq!(bad.run().unwrap_err(), "no such session: x");
+    }
+
     use super::*;
 
     fn write(p: &Path, text: &str) {

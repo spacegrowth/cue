@@ -658,6 +658,7 @@ const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane;
 let termSid = null;            // whose terminal is open
 let termGen = 0;               // which opening its output belongs to (0: not known yet)
 let termObj = null, termFit = null, termHost = null, termWatch = null;
+let termQueue = [], termFrame = 0;   // output waiting for the next frame: one write per frame, however many chunks came
 const termLast = new Map();    // sid -> its screen's last line, for the closed strip
 const waitsInTerminal = (sid) => state.items.some((i) => i.session_id === sid && inTerminal(i));
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -720,6 +721,12 @@ async function openTerm(sid) {
   termFit = new FitAddon.FitAddon();
   termObj.loadAddon(termFit);
   termObj.open(termHost);
+  // Drawn on the GPU where it can be (much faster than the default); if that's lost, back to the default.
+  try {
+    const gl = new WebglAddon.WebglAddon();
+    gl.onContextLoss(() => gl.dispose());
+    termObj.loadAddon(gl);
+  } catch {}
   try { termFit.fit(); } catch {}
   termObj.onData((d) => { if (termSid) invoke("term_write", { sessionId: termSid, data: d }).catch(() => {}); });
   termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); });
@@ -737,6 +744,9 @@ function closeTerm(quiet = false) {
   termSid = null;
   termGen = 0;
   termWatch?.disconnect();
+  cancelAnimationFrame(termFrame);
+  termQueue = [];
+  termFrame = 0;
   termObj?.dispose();
   termHost?.remove();
   termWatch = termObj = termFit = termHost = null;
@@ -746,7 +756,19 @@ function closeTerm(quiet = false) {
 function onTermOutput(p) {
   if (p.sid !== termSid || (termGen && p.gen !== termGen)) return;
   if (p.end) return closeTerm();
-  termObj?.write(Uint8Array.from(atob(p.data), (c) => c.charCodeAt(0)));
+  termQueue.push(p.data);
+  if (!termFrame) termFrame = requestAnimationFrame(flushTerm);
+}
+/** What arrived since the last frame, decoded and written as one. */
+function flushTerm() {
+  termFrame = 0;
+  const chunks = termQueue;
+  termQueue = [];
+  if (!termObj || !chunks.length) return;
+  const bin = chunks.map(atob).join("");
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  termObj.write(bytes);
 }
 /** After a redraw: the terminal back in its slot, sized, and focused again if it had the keyboard. */
 function placeTerm(hadFocus) {
@@ -1636,6 +1658,8 @@ function chatHtml(it, s, harness, paged = false) {
   }), chose.concat(ran));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
+  // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
+  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q"><div class="cv-you-text">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
   if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
   return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
@@ -2499,8 +2523,8 @@ function recentFolders() {
   return [...seen.entries()].sort((a, b) => b[1] - a[1]).map(([cwd]) => cwd).slice(0, 12);
 }
 function liveChip() {
-  const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length;
-  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
+  const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length, fresh = rows.filter((r) => isNewSession(r.sid)).length;
+  return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}${fresh ? ` <span class="hsub">· ${fresh} new</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
 }
 // ---------- ★ in the header: the sessions you starred, and which of them need you ----------
 let starOpen = false;              // its list is open
@@ -2509,6 +2533,9 @@ let starLitTill = 0;               // lit up until then: one of them just starte
 function starChip() {
   const stars = starredIds();
   const rows = liveRows().filter((r) => stars.has(r.sid));
+  // Starred and parked: not live, but still yours to come back to.
+  for (const p of state.parked || []) if (isStarred(p.session_id) && !rows.some((r) => r.sid === p.session_id))
+    rows.push({ sid: p.session_id, harness: p.harness, name: bareName(p.name) || p.project || baseName(p.cwd) || "session", cwd: p.cwd || "", st: "parked", since: p.parked_ms, what: "", parked: true });
   if (!rows.length) { starOpen = false; return ""; }
   const needs = rows.filter((r) => r.st === "asks" || r.st === "yours");
   // It lights up when one newly needs you, then goes quiet: lit all the time, you'd stop seeing it.
@@ -2526,12 +2553,17 @@ function starPop(rows) {
     const what = r.what || (r.it ? plain(summary(r.it)) : "");   // a finished turn: its message
     const ask = r.st === "asks" && r.it?.kind === "permission" ? `<span class="st-acts"><button class="btn deny" data-act="deny" data-id="${esc(r.it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(r.it.id)}">Allow</button></span>` : "";
     return `<div class="lv-row st-row ${r.sid === (quietOpen || active?.sid) ? "on" : ""}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">
-      <div class="st-line">${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${svChipState(r)}${placeIcon(r.sid)}<span class="age">${ago(r.since)}</span><span class="lv-acts">${starBtn(r.sid)}</span></div>
+      <div class="st-line">${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${r.parked ? `${P_SIGN}<span class="sx-st">parked</span>` : `${newPill(r.sid)}${svChipState(r)}${placeIcon(r.sid)}`}<span class="age">${ago(r.since)}</span><span class="lv-acts">${r.parked && !waking.has(r.sid) ? `<button class="btn" data-wake="${esc(r.sid)}">↺ Resume</button>` : ""}${starBtn(r.sid)}</span></div>
       ${what || ask ? `<div class="st-now ${r.st === "asks" ? "hot" : ""}">${r.run ? `<span class="dot-live"></span>` : ""}<span class="st-what ${r.st === "asks" && r.it && isBash(r.it) ? "mono" : ""}">${esc(what)}</span>${ask}</div>` : ""}</div>`;
   };
   return `<div class="lv-pop st-pop"><div class="st-head">Starred<span>${rows.length}</span></div><div class="lv-list">${sorted.map(row).join("")}</div><div class="lv-foot"><span class="lv-keys">Star a session on its card to follow it</span></div></div>`;
 }
 function livePop(rows) {
+  // + New: just the form, not the sessions under it.
+  if (newOpen) {
+    liveShown = [];
+    return `<div class="lv-pop nf-pop"><div class="nf-head"><span>New session</span><button class="nf-x" data-lv="cancel" aria-label="Close">×</button></div>${newForm()}</div>`;
+  }
   const q = draft("find-live").text.trim().toLowerCase();
   const hay = (r) => { const ab = svAbout(r); return [r.name, r.cwd, ab.about, ab.now, (r.crew || crewOf(r.sid))?.lead_name].join(" ").toLowerCase(); };
   const hits = rows.filter((r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w)));
@@ -2541,12 +2573,13 @@ function livePop(rows) {
     const ab = svAbout(r), unnamed = r.name === baseName(r.cwd) && (ab.about || ab.now);
     const name = unnamed ? ab.about || ab.now : r.name, tip = [ab.about, ab.now].filter(Boolean).join(" · ");
     const m = r.crew || crewOf(r.sid);
-    const main = r.it ? `<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`
+    // No Reply: the row opens it. Answer stays, for what's blocked on you.
+    const main = r.it ? (r.st === "asks" ? `<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">Answer</button>` : "")
       : !r.quiet || r.harness === "claude" ? `<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>` : "";
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${newPill(r.sid)}${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
   };
   const ordered = [...groups.entries()]
     .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
@@ -2557,7 +2590,6 @@ function livePop(rows) {
     .map(([cwd, rs]) => `<div class="lv-group"><div class="lv-ghead"><span>${esc(baseName(cwd) || "(no folder)")}</span><span class="sx-branch">${esc(state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`).join("");
   return `<div class="lv-pop">
     <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
-    ${newOpen ? newForm() : ""}
     <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div>
     <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>${liveSpot ? "⌘K" : "⌘L"}</kbd> open / close</span></div></div>`;
 }
@@ -2624,7 +2656,7 @@ async function lvAct(act, d) {
     liveOpen = !(liveOpen && liveSpot === spot);
     liveSpot = spot;
     liveSel = 0;
-    if (!liveOpen) newOpen = false;
+    newOpen = false;   // the live chip shows the sessions, never the New form
     renderMain();
     // Open: ready to type a name straight away.
     if (liveOpen) document.querySelector('[data-text="find-live"]')?.focus();
@@ -2632,6 +2664,7 @@ async function lvAct(act, d) {
   }
   if (act === "all") { liveOpen = newOpen = false; view = "sessions"; return renderMain(); }
   if (act === "new") {
+    if (d.spot) { sheet = lightbox = null; liveSpot = true; }   // the header's + New: in the middle, like ⌘N
     liveOpen = newOpen = true;
     draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || recentFolders()[0] || "");
     if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
@@ -2643,7 +2676,7 @@ async function lvAct(act, d) {
   if (act === "machine-add") { nfAdding = !nfAdding; renderMain(); return nfAdding && document.querySelector('[data-text="mc-host"]')?.focus(); }
   if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : homeless(recentFolders()[0] || ""); return renderMain(); }
   if (act === "perm") { newPerm = d.perm; return renderMain(); }
-  if (act === "cancel") { newOpen = false; return renderMain(); }
+  if (act === "cancel") { liveOpen = newOpen = false; return renderMain(); }
   if (act === "start") {
     const cwd = draft("new-cwd").text.trim();
     if (!cwd) return toast("Pick a folder first");
@@ -2676,13 +2709,35 @@ function liveRows() {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
     const what = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
-    return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), cwd: s.cwd || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
+    return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
   });
   for (const q of state.live || []) {
-    rows.push({ sid: q.session_id, harness: q.harness, name: bareName(q.name) || baseName(q.cwd) || "session", cwd: q.cwd || "", st: q.status === "busy" ? "working" : "idle", since: q.since_ms, what: "", run: false, quiet: true });
+    rows.push({ sid: q.session_id, harness: q.harness, name: bareName(q.name) || baseName(q.cwd) || "session", cwd: q.cwd || "", machine: q.machine || "", st: q.status === "busy" ? "working" : "idle", since: q.since_ms, what: "", run: false, quiet: true });
   }
+  markSeen(rows);
   return rows;
 }
+// A session that started a moment ago gets a "new" pill, so it's easy to find among the rest. Cue gets
+// no start time, so it's when this window first saw it (kept across restarts); the ones already running
+// the first time Cue looks don't count.
+const NEW_FOR_MS = 2 * 60000;
+let firstSeen = null;   // sid -> ms first seen (0: was there before Cue looked)
+function markSeen(rows) {
+  if (!state.live) return;   // the first snapshot isn't in yet
+  if (!firstSeen) {
+    let kept = null;
+    try { kept = JSON.parse(localStorage.getItem("cue.firstSeen") || "null"); } catch {}
+    firstSeen = new Map(Object.entries(kept || {}));
+    if (!kept) for (const r of rows) firstSeen.set(r.sid, 0);
+  }
+  const t = now(), live = new Set(rows.map((r) => r.sid));
+  let changed = false;
+  for (const r of rows) if (!firstSeen.has(r.sid)) { firstSeen.set(r.sid, t); changed = true; setTimeout(renderMain, NEW_FOR_MS + 500); }
+  for (const sid of firstSeen.keys()) if (!live.has(sid)) { firstSeen.delete(sid); changed = true; }
+  if (changed) try { localStorage.setItem("cue.firstSeen", JSON.stringify(Object.fromEntries(firstSeen))); } catch {}
+}
+const isNewSession = (sid) => { const at = firstSeen?.get(sid); return !!at && now() - at < NEW_FOR_MS; };
+const newPill = (sid) => isNewSession(sid) ? `<span class="new-pill">new</span>` : "";
 const SV_ORDER = { asks: 0, yours: 1, working: 2, limited: 3, agent: 4, stopped: 5, idle: 6 };
 const svRank = (r) => SV_ORDER[r.st] ?? 6;
 /** Red tile: something there is blocked on you, or an executor's report reaches nobody. ("Your turn" isn't blocked.) */
@@ -2727,7 +2782,8 @@ function svClosable(r) {
  *  open it in Active, or go to its terminal. A quiet Claude session opens too (Cue takes it in); other quiet ones only have the tab. */
 function svActs(r) {
   const m = r.crew || crewOf(r.sid), acts = [];
-  if (r.it) acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">${r.st === "asks" ? "Answer" : "Reply"}</button>`);
+  // No Reply: the tile opens it. Answer stays, for what's blocked on you.
+  if (r.it && r.st === "asks") acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">Answer</button>`);
   if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + crewBtn(r.sid, "diff", "Diff") + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
   if (!r.it && (!r.quiet || r.harness === "claude") && !r.ghost) acts.push(`<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>`);
   if (svClosable(r)) acts.push(closeBtn(r.sid));
@@ -2754,10 +2810,43 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet && r.harness !== "claude" ? `` : ""}`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name">${esc(name)}</span>${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}${lead}<span class="sx-name">${esc(name)}</span>${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");
+/** Sessions-tab sections you folded (a machine, "parked", "closed"), kept across restarts; and the
+ *  Parked / Closed lists you asked to see whole (else they show what fits on screen). */
+const svFolded = (() => { try { return new Set(JSON.parse(localStorage.getItem("cue.svFolded") || "[]")); } catch { return new Set(); } })();
+const svShowAll = new Set();
+function svFold(key) {
+  svFolded.has(key) ? svFolded.delete(key) : svFolded.add(key);
+  try { localStorage.setItem("cue.svFolded", JSON.stringify([...svFolded])); } catch {}
+  renderMain();
+}
+/** Parked and Closed show the rows that fit on screen below what's above them (at least one row of
+ *  them), then "Show N more"; the live tiles always show whole. Runs after each render and on resize. */
+function fitSvRest() {
+  const sc = document.querySelector(".sv-scroll");
+  if (!sc) return;
+  const bottom = sc.getBoundingClientRect().bottom;
+  for (const list of sc.querySelectorAll(".sx-rest[data-fit]")) {
+    const rows = [...list.children], key = list.dataset.fit;
+    rows.forEach((r) => r.classList.remove("sx-cut"));
+    list.parentElement.querySelector(":scope > .sx-more")?.remove();
+    if (svShowAll.has(key)) continue;
+    const cols = getComputedStyle(list).gridTemplateColumns.split(" ").length || 1;
+    const fits = rows.filter((r) => r.getBoundingClientRect().bottom <= bottom - 34).length;
+    const keep = Math.max(cols, fits - (fits % cols || 0) || cols);
+    if (keep >= rows.length) continue;
+    rows.slice(keep).forEach((r) => r.classList.add("sx-cut"));
+    const more = document.createElement("button");
+    more.className = "sx-more";
+    more.dataset.svAll = key;
+    more.textContent = `Show ${rows.length - keep} more`;
+    list.after(more);
+  }
+}
+window.addEventListener("resize", () => { if (view === "sessions") fitSvRest(); });
 function sessionsView() {
   const all = liveRows();
   const q = draft("find-sessions").text.trim().toLowerCase();
@@ -2765,8 +2854,9 @@ function sessionsView() {
   const match = (r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w));
   const bySid = new Map(all.map((r) => [r.sid, r]));
   // Tiles by folder. A crew lives in its lead's tile, whatever folders its executors work in.
+  // Each machine its own tiles: the same folder on two machines is two tiles.
   const tiles = new Map();
-  const tile = (cwd) => tiles.get(cwd) || tiles.set(cwd, { cwd, solo: [], crews: [] }).get(cwd);
+  const tile = (cwd, machine = "") => { const k = `${machine}\n${cwd}`; return tiles.get(k) || tiles.set(k, { cwd, machine, solo: [], crews: [] }).get(k); };
   const placed = new Set();
   for (const lead of all.filter((r) => crewOf(r.sid)?.role === "lead")) {
     const m = crewOf(lead.sid);
@@ -2776,17 +2866,17 @@ function sessionsView() {
       return bySid.get(e.session_id) || { sid: e.session_id, harness: m.plugin === "pilead" ? "pi" : "claude", name: e.name, cwd: "", st: e.status === "busy" ? "working" : "idle", since: 0, what: "", ghost: true,
         crew: { role: "executor", plugin: m.plugin, status: e.status, model: e.model, packet: e.packet, goal: e.goal, outcome: e.outcome, verify: e.verify, lead: lead.sid, lead_name: m.name, lead_armed: true } };
     });
-    tile(lead.cwd).crews.push({ lead, m, execs });
+    tile(lead.cwd, lead.machine).crews.push({ lead, m, execs });
   }
   // Executors whose lead Cue can't see (not running, or not in Cue yet): a crew line of their own, in their folder.
   const orphans = new Map();
   for (const r of all.filter((r) => !placed.has(r.sid) && crewOf(r.sid)?.role === "executor")) {
     placed.add(r.sid);
-    const m = crewOf(r.sid), key = `${r.cwd}\n${m.lead}`;
-    if (!orphans.has(key)) { orphans.set(key, { lead: null, m, execs: [] }); tile(r.cwd).crews.push(orphans.get(key)); }
+    const m = crewOf(r.sid), key = `${r.machine}\n${r.cwd}\n${m.lead}`;
+    if (!orphans.has(key)) { orphans.set(key, { lead: null, m, execs: [] }); tile(r.cwd, r.machine).crews.push(orphans.get(key)); }
     orphans.get(key).execs.push(r);
   }
-  for (const r of all.filter((r) => !placed.has(r.sid))) tile(r.cwd).solo.push(r);
+  for (const r of all.filter((r) => !placed.has(r.sid))) tile(r.cwd, r.machine).solo.push(r);
 
   const crewHtml = (c) => {
     const execs = c.execs.filter(match);
@@ -2806,15 +2896,40 @@ function sessionsView() {
     const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
       <div class="sx-thead"><span class="sx-tname">${esc(baseName(t.cwd) || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(t.cwd)}" title="New session in ${esc(homeless(t.cwd))}">+</button></div>
       ${solo.length ? `<div class="sx-solo">${svItems(solo)}</div>` : ""}${crews.join("")}</div>`;
-    return { rank, latest, html };
+    return { machine: t.machine, rank, latest, html };
   }).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);
+  const liveSids = new Set(all.map((r) => r.sid));
+  const rest = [...(state.parked || []).map((p) => ({ ...p, kind: "parked", at: p.parked_ms })),
+    ...(closedList || []).filter((c) => !(state.parked || []).some((p) => p.session_id === c.session_id)).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }))]
+    .filter((p) => !liveSids.has(p.session_id) && match({ name: p.name || p.project, cwd: p.cwd, harness: p.harness }));
+  if (!closedLoading && !closedList) queueMicrotask(loadClosed);
+  // Sections, each under a heading: This Mac, then each other machine (its live tiles), then Parked
+  // and Closed (one slim line each, machine tag on the ones from elsewhere; Closed folds).
+  const newest = (a, b) => b.at - a.at;
+  const ps = rest.filter((p) => p.kind === "parked").sort(newest), cs = rest.filter((p) => p.kind === "closed").sort(newest), on = (sid) => sid === active?.sid;
+  // Each heading folds its section (kept); a search shows everything.
+  const sec = (key, label, n, body, cls = "") => {
+    const open = !!q || !svFolded.has(key);
+    return `<div class="sx-sec ${cls} ${open ? "" : "shut"}"><div class="sx-sec-h"><button class="sx-sec-fold" data-sv-fold="${esc(key)}" aria-expanded="${open}"><span class="sx-arrow">${open ? "▾" : "▸"}</span>${label}</button><span>${n}</span></div>${open ? body : ""}</div>`;
+  };
+  const machines = [...new Set(["", ...cards.map((c) => c.machine)])].sort((a, b) => (a !== "") - (b !== "") || machShort(a).localeCompare(machShort(b)));
+  const liveSecs = machines.map((m) => {
+    const mine = cards.filter((c) => c.machine === m), rs = all.filter((r) => r.machine === m);
+    if (!mine.length && m) return "";
+    const asks = rs.filter((r) => r.st === "asks").length, yours = rs.filter((r) => r.st === "yours").length;
+    const n = [`${rs.length} live`, asks && `${asks} asks you`, yours && `${yours} your turn`].filter(Boolean).join(" · ");
+    return sec(`m:${m}`, m ? esc(machShort(m)) : "This Mac", n, mine.length ? `<div class="sx-tiles">${mine.map((c) => c.html).join("")}</div>` : `<div class="quiet-line">${q ? `Nothing here matches “${esc(q)}”.` : "No live sessions on this Mac."}</div>`);
+  }).join("");
+  const restList = (key, rows) => `<div class="sx-rest" ${q ? "" : `data-fit="${key}"`}>${rows.map((r) => parkedRow(r, on(r.session_id))).join("")}</div>`;
+  const restSecs = (ps.length ? sec("parked", "Parked", ps.length, restList("parked", ps), "sx-rest-sec") : "")
+    + (cs.length ? sec("closed", "Closed", `${cs.length} · last 30 days`, restList("closed", cs), "sx-rest-sec") : "");
 
   const n = (st) => all.filter((r) => r.st === st).length, quiet = all.filter((r) => r.quiet).length;
   const counts = [`<b>${all.length} live</b>`, n("asks") && `${n("asks")} asks you`, n("yours") && `${n("yours")} your turn`, n("working") && `${n("working")} working`, quiet && `${quiet} quiet`].filter(Boolean).join(" · ");
   return `<div class="sv">
     <div class="sv-bar"><label class="sv-search">${SEARCH_ICON}<input data-text="find-sessions" placeholder="Find a session: name, folder, branch, what it's doing" spellcheck="false" autocomplete="off" value="${esc(draft("find-sessions").text)}"/></label>
       <button class="btn primary sv-new" data-lv="new">+ New session</button><span class="sv-count">${counts}</span></div>
-    <div class="sv-scroll">${cards.length ? `<div class="sx-tiles">${cards.map((c) => c.html).join("")}</div>` : `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div></div>`;
+    <div class="sv-scroll">${liveSecs}${restSecs}</div></div>`;
 }
 async function svAct(act, sid) {
   if (act === "close") {
@@ -3155,7 +3270,7 @@ function renderMain() {
 
   const counts = headerChips();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips">${counts}${liveChip()}${starChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
+    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${starChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
       ${usageChip()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
@@ -3164,6 +3279,8 @@ function renderMain() {
   </div>${moving ? movingDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
+  markMore();   // lists end on whole cards before anything measures where cards landed
+  if (view === "sessions") fitSvRest();
   flipPlay(flipFrom);
   // A card just answered: its ✓ row eases from the card's height down to its own.
   for (const el of document.querySelectorAll(".nrow.ghost.fresh")) {
@@ -3349,7 +3466,6 @@ function saveDrafts() {
       const now = draftJson(drafts[key]);
       if (now === (savedDrafts[key] ?? draftJson(null))) continue;
       savedDrafts[key] = now;
-  markMore();   // lists end on whole cards before anything measures where cards landed
       const { text, images } = JSON.parse(now);
       invoke("set_draft", { key, text, images }).catch(() => {});
     }
@@ -3526,6 +3642,8 @@ function bindMain() {
     if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) return openBtw(bw.dataset.sid); btwFor = null; return renderMain(); }
     const sn = t.closest("[data-act=send-now]");
     if (sn) return sendQueuedNow(sn.dataset.sid);
+    const uq = t.closest("[data-act=unqueue-review]");
+    if (uq) return invoke("unqueue_review", { exec: uq.dataset.exec }).then(() => toast("Taken off the queue")).catch((e) => toast(`Couldn't: ${e}`));
     const he = t.closest("[data-act=held-edit]");
     if (he) return pullHeld(he.dataset.sid);
     const hn = t.closest("[data-act=held-now]");
@@ -3635,7 +3753,7 @@ function bindMain() {
     if (lb) { lightbox = JSON.parse(lb.dataset.lightbox); return renderMain(); }
     const dlb = t.closest("[data-draft-lightbox]");
     if (dlb) { const [key, n] = dlb.dataset.draftLightbox.split(/:(?=\d+$)/); lightbox = { srcs: draft(key).images.map((im) => im.data), i: +n }; return renderMain(); }
-    if (t.matches(".scrim")) { sheet = null; return renderMain(); }
+    if (t.matches(".scrim")) { sheet = null; if (t.matches(".spot-scrim")) liveOpen = newOpen = false; return renderMain(); }
     const us = t.closest("[data-usage]");
     if (us) {
       const k = us.dataset.usage;
@@ -3674,10 +3792,10 @@ function bindMain() {
     const ca = t.closest("[data-crew]");
     if (ca) return crewAct(ca.dataset.crewSid, ca.dataset.crew);
     // A button in the row (Allow / Deny in the starred list) does its own thing, not "open".
-    const sv = t.closest("button[data-act]") ? null : t.closest("[data-sv]");
+    const sv = t.closest("button[data-act], button[data-wake]") ? null : t.closest("[data-sv]");
     if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; starOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
     if (starOpen && !t.closest(".st-wrap")) { starOpen = false; renderMain(); }
-    if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = false; renderMain(); }
+    if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = newOpen = false; renderMain(); }
     const tr = t.closest("[data-act=trust]");
     if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Answer it in its terminal.`)); return; }
     const goS = t.closest("[data-act=go-session]");
@@ -3687,6 +3805,10 @@ function bindMain() {
     if (wk) return wakeParked(wk.dataset.wake);
     const wsd = t.closest("[data-wake-send]");
     if (wsd) return wakeParked(wsd.dataset.wakeSend, draft(`s:${wsd.dataset.wakeSend}`).text.trim());
+    const svf = t.closest("[data-sv-fold]");
+    if (svf) return svFold(svf.dataset.svFold);
+    const sva = t.closest("[data-sv-all]");
+    if (sva) { svShowAll.add(sva.dataset.svAll); return fitSvRest(); }
     const shw = t.closest("[data-shelf]");
     if (shw) return pickShelf(shw.dataset.shelf);
     const pkc = t.closest("[data-park-closed]");
@@ -3824,10 +3946,8 @@ function bindMain() {
       return pickCmd(mk, m[cmdSel].name, e.key === "Enter");
     }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
-    // Esc in the New session form closes just the form (and back to the list), not the whole drop-down.
     if (starOpen && e.key === "Escape") { starOpen = false; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
-      if (newOpen && e.target.closest?.(".nf")) { newOpen = false; renderMain(); return document.querySelector('[data-text="find-live"]')?.focus(); }
       liveOpen = newOpen = false;
       return renderMain();
     }

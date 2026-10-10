@@ -65,6 +65,14 @@ CREATE TABLE IF NOT EXISTS parked (
   data        TEXT NOT NULL            -- the whole Parked as JSON (the session as it was, and when)
 );
 
+-- Reviews waiting for their lead to be free (Review while it works): sent in order, one at a time.
+CREATE TABLE IF NOT EXISTS review_queue (
+  exec        TEXT PRIMARY KEY,        -- the executor's Cue session id
+  lead        TEXT NOT NULL,           -- its lead's Cue session id
+  text        TEXT NOT NULL,           -- what's typed into the lead ("/relay:review <id>")
+  at_ms       INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS drafts (
   -- SHORTCUT: draft images are stored inline as data URLs (up to 6 × 15 MB); fine for a few drafts.
   -- Upgrade path: save them to uploads/ and keep paths, like sent images.
@@ -432,6 +440,26 @@ pub fn drafts() -> Value {
         Ok(Value::Object(out))
     })
     .unwrap_or_else(|| json!({}))
+}
+
+/// The reviews waiting for their leads, oldest first: (executor, lead, text, when).
+pub fn review_queue() -> Vec<(String, String, String, u64)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT exec, lead, text, at_ms FROM review_queue ORDER BY at_ms")?;
+        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? as u64)))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    })
+    .unwrap_or_default()
+}
+
+/// Queue a review (or keep the one queued).
+pub fn queue_review(exec: &str, lead: &str, text: &str, at_ms: u64) {
+    with(|c| c.execute("INSERT OR IGNORE INTO review_queue (exec, lead, text, at_ms) VALUES (?1, ?2, ?3, ?4)", params![exec, lead, text, at_ms as i64]));
+}
+
+/// A queued review sent, or taken back.
+pub fn unqueue_review(exec: &str) {
+    with(|c| c.execute("DELETE FROM review_queue WHERE exec = ?1", params![exec]));
 }
 
 /// Save one draft; an empty one (no text, no images) is removed.

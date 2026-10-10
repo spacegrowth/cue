@@ -62,6 +62,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }
 .hchip.hot { background: var(--on-bg); color: var(--bg); }
 .hchip .hsub { font-weight: 500; opacity: 0.7; }
+.hchip.new-chip { flex: none; }   /* "+ New" always reads in full, however tight the bar */
 /* The chip you're stepping through: ‹ 2 of 3 waiting ›. */
 .hchip.nav { padding: 0 3px; gap: 2px; }
 .hchip.nav .hnav { display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 6px; color: inherit; font: inherit; }
@@ -1013,6 +1014,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-l.run { font: 11px var(--mono); color: var(--ink); }
 .sx-l.ask { color: var(--deny); }
 .sx-l.out .sx-k { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-right: 6px; }
+/* "new": a session that started in the last few minutes, so you can find it. */
+.new-pill { flex: none; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
 .sx-st { font-size: 11px; font-weight: 500; color: var(--muted); }
 .sx-st.hot { color: var(--deny); font-weight: 650; }
 .sx-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
@@ -1117,9 +1120,15 @@ button.tm-chip:hover { background: var(--panel-2); }
 /* On the green page, not in a card: a white button (moss would vanish into the background). */
 .btn.primary.sv-new { height: 32px; background: var(--panel); color: var(--ink); border-color: var(--panel); }
 /* The New session form. */
+/* + New on its own: a title bar with ×, then the form, which scrolls when the window is short. */
+.nf-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 700; }
+.nf-x { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; font-size: 18px; line-height: 1; color: var(--muted); }
+.nf-x:hover { background: var(--panel-2); color: var(--ink); }
+.nf-pop .nf { border-bottom: 0; background: var(--panel); padding: 12px 16px 16px; min-height: 0; overflow-y: auto; }
 .nf { padding: 10px 12px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); display: flex; flex-direction: column; gap: 8px; }
 .nf-row { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px; }
 .nf-row.top { align-items: start; }
+.nf-row > .seg { justify-self: start; }   /* as wide as its buttons, like the other rows */
 /* Runs in: a terminal tab or tmux, and what tmux buys you. */
 .nf-where { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; }
 .nf-where .seg { flex-wrap: wrap; }
@@ -1253,3 +1262,20 @@ button.tm-chip:hover { background: var(--panel-2); }
 .shelf-word span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
 .shelf-sep { color: var(--on-bg-muted); }
 .sec-parked .sec-body { gap: 2px; max-height: 322px; }   /* ten lines (30px + 2px gap each); the rest scroll, under "N more" */
+
+/* Sessions tab: a heading over each section (This Mac, each other machine, Parked, Closed). Each folds;
+   the heading stays at the top while its section scrolls under it. */
+.sx-sec + .sx-sec { margin-top: 22px; }
+.sx-sec.shut + .sx-sec { margin-top: 4px; }
+.sx-sec-h { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: baseline; gap: 8px; padding: 2px 2px 9px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-bg); }
+.sx-sec-h > span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
+.sx-sec-fold { display: inline-flex; align-items: baseline; gap: 6px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; padding: 0; }
+.sx-sec-fold:hover { opacity: 0.8; }
+.sx-arrow { width: 9px; font-size: 10px; color: var(--on-bg-muted); }
+/* Parked and Closed: slim faded lines, in columns; brighter on hover. What doesn't fit waits behind "Show N more". */
+.sx-rest { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 2px 12px; opacity: 0.7; }
+.sx-rest:hover, .sx-rest:has(.prow.on) { opacity: 1; }
+.sx-rest .prow.closed { opacity: 0.8; }
+.sx-rest .sx-cut { display: none; }
+.sx-more { margin: 6px 0 0 8px; padding: 4px 10px; border-radius: 7px; font-size: 11.5px; color: var(--on-bg-muted); }
+.sx-more:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 8%, transparent); }

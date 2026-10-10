@@ -691,6 +691,44 @@ pub fn enter_gap(text: &str) -> f64 {
     (0.6 + 0.05 * text.chars().count() as f64 / 100.0).min(4.0)
 }
 
+/// In tmux Cue can see the pane, so it doesn't sleep the whole gap: it watches until the paste shows in
+/// the agent's input box (the end of its text, or Claude Code's "[Pasted text …]" for a long one), then
+/// Enter goes straight away. Most messages go in a few tens of milliseconds; a machine's pane is read over
+/// SSH, so there it's as long as the paste really takes. Never longer than `enter_gap`.
+fn wait_for_paste(o: &Origin, text: &str, before: &str) {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs_f64(enter_gap(text));
+    let tail = paste_tail(text);
+    while std::time::Instant::now() < end {
+        if let Ok(now) = session_screen(o) {
+            if paste_shows(before, &now, &tail) {
+                // Drawn means taken in; a moment more for the agent to be ready for a key.
+                std::thread::sleep(std::time::Duration::from_millis(40));
+                return;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+}
+
+/// A screen without spaces or the input box's side borders: how a wrapped line reads joined up again.
+fn squash(t: &str) -> String {
+    t.chars().filter(|c| !c.is_whitespace() && *c != '│').collect()
+}
+
+/// The last characters of a message as its input box shows them.
+fn paste_tail(text: &str) -> String {
+    let t: Vec<char> = squash(text).chars().collect();
+    t[t.len().saturating_sub(24)..].iter().collect()
+}
+
+/// Has the paste landed on screen since `before`? Its end shows once more than it did, or one more
+/// "[Pasted text" placeholder does (the text may be on screen already, from an earlier message).
+fn paste_shows(before: &str, now: &str, tail: &str) -> bool {
+    let n = |s: &str, pat: &str| if pat.is_empty() { 0 } else { s.matches(pat).count() };
+    let (b, a) = (squash(before), squash(now));
+    n(&a, tail) > n(&b, tail) || n(&a, "[Pastedtext") > n(&b, "[Pastedtext")
+}
+
 fn iterm_predicate(o: &Origin) -> Option<String> {
     if o.term_program == "iTerm.app" {
         if let Some(uuid) = o.iterm_session_id.split(':').nth(1) {
@@ -760,11 +798,12 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     let pause = || std::thread::sleep(std::time::Duration::from_secs_f64(enter_gap(text)));
     if !o.tmux_pane.is_empty() {
         let pane = o.tmux_pane.as_str();
+        let before = session_screen(o).unwrap_or_default();
         // One paste (bracketed when the app asked for it), so a multi-line reply can't submit early.
         if !tmux_for(o, &["set-buffer", "-b", "cue", text]) || !tmux_for(o, &["paste-buffer", "-p", "-d", "-b", "cue", "-t", pane]) {
             return Err(format!("tmux pane {pane} is gone"));
         }
-        pause();
+        wait_for_paste(o, text, &before);
         press_enter(o)?;
         return Ok(format!("tmux pane {pane}"));
     }
@@ -858,6 +897,26 @@ pub fn press_enter(o: &Origin) -> Result<(), String> {
 #[cfg(test)]
 mod start_tests {
     use super::*;
+
+    #[test]
+    fn a_paste_shows_once_its_end_is_on_screen_once_more() {
+        let before = "> earlier: fix the login\n────\n> ";
+        let tail = paste_tail("now fix the login");
+        assert!(!paste_shows(before, before, &tail), "nothing new yet");
+        assert!(!paste_shows(before, "> earlier: fix the login\n────\n> now fix", &tail), "only part of it");
+        assert!(paste_shows(before, "> earlier: fix the login\n────\n> now fix the\n  login", &tail), "wrapped is fine");
+        // The same words as an earlier message: only a second copy counts.
+        let tail = paste_tail("fix the login");
+        assert!(!paste_shows(before, "> earlier: fix the login\n────\n> ", &tail));
+        assert!(paste_shows(before, "> earlier: fix the login\n────\n> fix the login", &tail));
+    }
+
+    #[test]
+    fn a_long_paste_shows_as_its_placeholder() {
+        let tail = paste_tail(&"a long message ".repeat(80));
+        assert!(paste_shows("> ", "> [Pasted text #1 +12 lines]", &tail));
+        assert!(!paste_shows("> [Pasted text #1 +3 lines]", "> [Pasted text #1 +3 lines]", &tail));
+    }
 
     #[test]
     fn a_folder_is_trusted_if_it_or_a_parent_was_accepted() {
