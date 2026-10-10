@@ -81,12 +81,18 @@ const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
 
 /// Context this full (percent) at a turn's end: the notification says so and offers Compact.
 pub const CONTEXT_HIGH: u8 = 80;
+/// The last background agent reported: Claude Code starts the session's next turn within a moment.
+/// Past this with no turn, its last reply is taken as your turn.
+const HELPERS_SETTLE_SECS: u64 = 15;
 /// No new output for this long while running a command, or while only thinking: stuck.
 const STUCK_RUNNING_MS: u64 = 10 * 60_000;
 const STUCK_THINKING_MS: u64 = 5 * 60_000;
 /// A queued message taken from the queue this recently was taken as the turn before it ended: it's
 /// the next turn's prompt, not the prompt of the turn now ending.
 const TAKEN_SETTLE_MS: u64 = 3000;
+/// A rename typed into Claude Code shows in its list of sessions within a few seconds; past this,
+/// it didn't take it.
+const RENAME_WITHIN_MS: u64 = 15_000;
 
 pub struct Hub {
     store: Mutex<Store>,
@@ -354,15 +360,25 @@ impl Hub {
             }
         }
         let (message, followup) = split_turn(message, &turn, &crate::config::turn_mode());
+        // Its turn ended with background agents still at work (Claude Code's Agent tool): it's at its
+        // prompt, but its answer isn't in yet; Claude Code wakes it when they report. So it waits on
+        // them, not on you, and the chat shows them at work. (A message you send goes straight in.)
+        let helpers = if event == "stopped" && driven_by.is_empty() && origin.harness == "claude" && !origin.transcript_path.is_empty() {
+            crate::steps::running_helpers(&origin.transcript_path).len() as u64
+        } else {
+            0
+        };
+        let driven_by = if helpers > 0 { crate::sessions::helpers_words(helpers) } else { driven_by.to_string() };
         // Another agent drives this session (a helper its lead started, labelled CUE_DRIVEN_BY): its finished turn is for that
         // agent, so it stays in Working as "waiting on its lead" instead of becoming your card.
-        if event == "stopped" && !driven_by.is_empty() && !crate::config::flag("/agents/show_driven") {
+        if event == "stopped" && !driven_by.is_empty() && (helpers > 0 || !crate::config::flag("/agents/show_driven")) {
             {
                 let mut st = self.store.lock().unwrap();
                 let sid = origin.session_id.clone();
                 st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
                 st.sessions.mark(&origin, "agent", None);
-                st.sessions.set_driven_by(&sid, driven_by);
+                st.sessions.set_driven_by(&sid, &driven_by);
+                st.sessions.set_helpers(&sid, helpers);
                 st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
                 if let Some(q) = &unread {
                     st.sessions.below_reply(&sid, q);
@@ -1669,6 +1685,32 @@ impl Hub {
                 self.changed();
             }
         }
+        // At its prompt while its background agents work: how many are left. Once none is, Claude Code
+        // wakes it with their reports (a new turn); if that doesn't come, its last reply is your turn.
+        for o in self.store.lock().unwrap().sessions.with_helpers() {
+            let left = crate::steps::running_helpers(&o.transcript_path).len() as u64;
+            let sid = o.session_id.clone();
+            if left > 0 {
+                if self.store.lock().unwrap().sessions.set_helpers(&sid, left) {
+                    self.changed();
+                }
+                continue;
+            }
+            self.store.lock().unwrap().sessions.set_helpers(&sid, 0);
+            self.changed();
+            let me = self.shared();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(HELPERS_SETTLE_SECS));
+                let Some(me) = me else { return };
+                let still = me.store.lock().unwrap().sessions.state(&sid).as_deref() == Some("agent");
+                if still {
+                    if let Some((at, reply)) = transcript::turn_ended(&o.transcript_path) {
+                        me.your_turn_since(o, reply, at);
+                        me.changed();
+                    }
+                }
+            });
+        }
         // Compacting (from Cue, its terminal, or on its own) until its transcript says it's done; given up after 15 minutes.
         let compacted: Vec<(String, bool)> = {
             let st = self.store.lock().unwrap();
@@ -1954,6 +1996,33 @@ mod tests {
         assert_eq!(Hub::lead_busy(&st, "L", t + 1000), Some("reviewing E1".into()));
         assert_eq!(Hub::lead_busy(&st, "L", t + REVIEW_SETTLE_MS + 1), None);
         assert_eq!(Hub::lead_busy(&st, "OTHER", t + 1000), None);
+    }
+
+    #[test]
+    fn a_turn_that_ends_with_background_agents_at_work_waits_on_them_not_you() {
+        let dir = std::env::temp_dir().join(format!("cue-helpers-{}", std::process::id()));
+        let sub = dir.join("s1").join("subagents");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("agent-a1.meta.json"), r#"{"agentType":"Explore"}"#).unwrap();
+        std::fs::write(sub.join("agent-a1.jsonl"), concat!(r#"{"type":"assistant","isSidechain":true,"timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"h1","name":"Read","input":{"file_path":"/a/hub.rs"}}]}}"#, "\n")).unwrap();
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"map the names"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Backend: names"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"launched"}]},"toolUseResult":{"status":"async_launched","agentId":"a1","description":"Backend: names"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"text","text":"An agent is on it."}]}}"#,
+        ].join("\n") + "\n").unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let o = Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x".into(), transcript_path: path.to_string_lossy().into_owned(), ..Default::default() };
+        hub.event(o.clone(), "stopped", "An agent is on it.".into(), vec![], "");
+        let s = hub.saved_sessions().into_iter().find(|s| s.origin.session_id == "s1").unwrap();
+        assert_eq!((s.state.as_str(), s.driven_by.as_str(), s.helpers), ("agent", "1 background agent", 1), "at its prompt, waiting on its agent");
+        assert!(hub.pending().is_empty(), "no card: its answer isn't in yet");
+        assert_eq!(s.thread.last().map(|e| e.text.as_str()), Some("An agent is on it."), "what it said so far is in the chat");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

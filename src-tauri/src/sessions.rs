@@ -28,8 +28,12 @@ pub struct Session {
     /// | "agent" (finished, but another agent drives it: waiting on that agent, not you)
     /// | "stopped" (you interrupted it from Cue; it's at its prompt)
     pub state: String,
-    /// Who drives it when it's in "agent" state, e.g. "its relay lead (…)".
+    /// Who drives it when it's in "agent" state, e.g. "its relay lead (…)", or "2 background agents".
     pub driven_by: String,
+    /// Background agents it started that are still at work (Claude Code's Agent tool): it's at its
+    /// prompt meanwhile, in "agent" state, and Claude Code wakes it when they report. 0 = none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub helpers: u64,
     /// What you sent while it was busy, until it picks it up (its next turn starts or ends).
     pub queued: Option<Exchange>,
     pub since_ms: u64,
@@ -141,6 +145,15 @@ const LONG_ECHO_MS: u64 = 120_000;
 #[derive(Default)]
 pub struct Sessions(HashMap<String, Session>);
 
+/// "2 background agents" / "1 background agent"; "" for none.
+pub fn helpers_words(n: u64) -> String {
+    match n {
+        0 => String::new(),
+        1 => "1 background agent".into(),
+        n => format!("{n} background agents"),
+    }
+}
+
 impl Sessions {
     /// Record that a session entered `state`. Opens a new bar segment when the kind changes.
     pub fn mark(&mut self, origin: &Origin, state: &str, prompt: Option<&str>) {
@@ -157,6 +170,7 @@ impl Sessions {
             segments: vec![],
             thread: vec![],
             driven_by: String::new(),
+            helpers: 0,
             queued: None,
             name: String::new(),
             rename_pending: false,
@@ -518,6 +532,23 @@ impl Sessions {
         if let Some(s) = self.0.get_mut(session_id) {
             s.driven_by = by.to_string();
         }
+    }
+
+    /// How many background agents it waits on (see `helpers`); as "agent" state's driver when some.
+    pub fn set_helpers(&mut self, session_id: &str, n: u64) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.helpers != n => {
+                s.helpers = n;
+                s.driven_by = helpers_words(n);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Sessions at their prompt while their background agents work: (id, origin).
+    pub fn with_helpers(&self) -> Vec<Origin> {
+        self.0.values().filter(|s| s.state == "agent" && s.helpers > 0).map(|s| s.origin.clone()).collect()
     }
 
     pub fn origin(&self, session_id: &str) -> Option<Origin> {

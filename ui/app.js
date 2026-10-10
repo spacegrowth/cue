@@ -1486,7 +1486,7 @@ async function loadSteps(sid) {
       for (const [k, at] of stepArrived) if (Date.now() - at > REVEAL_MS) stepArrived.delete(k);   // done animating
       for (const t of r.turns) t.items.forEach((x, i) => { const k = itemKey(t, x, i); if (!had.has(k)) stepArrived.set(`${sid}|${k}`, Date.now()); });
     }
-    stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], meta: r.turns ? r.meta : f?.meta, at: Date.now() });
+    stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], meta: r.turns ? r.meta : f?.meta, helpers: (r.turns ? r.helpers : f?.helpers) || [], at: Date.now() });
     if (r.turns) { renderMain(); wantDetails(sid); }
   } catch {} finally { stepsBusy = false; }
 }
@@ -1546,12 +1546,46 @@ const reveal = (k, ms, extra = "") => {
   const t = Date.now() - (stepArrived.get(k) || 0);
   return t < ms ? ` reveal" style="${extra}animation-delay:-${t}ms` : "";
 };
-function stepLine(sid, x, all) {
+function stepLine(sid, x, all, plain = false) {
   const k = `${sid}|${x.id}`;
-  const open = x.done && all !== stepFlip.has(k);
-  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}${reveal(k, 250)}" ${x.done ? `data-step="${esc(k)}"` : "disabled"}>
+  const open = !plain && x.done && all !== stepFlip.has(k);
+  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}${reveal(k, 250)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
     <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject ? ` <span class="${x.mono ? "mono" : ""}">${esc(x.subject)}</span>` : ""}</span>
-    <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done ? (open ? "⌄" : "›") : ""}</span></button>${open ? stepDetailHtml(k, x) : ""}`;
+    <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? stepDetailHtml(k, x) : ""}`;
+}
+// ---------- background agents: Claude Code's Agent tool, run in the background ----------
+// Each runs inside its session's process, with no terminal and no way to message it: not a session,
+// so no row or card of its own. Its steps come with the session's (from its own log). While it runs
+// its block sits above the message box, so chatting on doesn't scroll it away; once it's finished the
+// block folds under the Delegating step that started it.
+const helperOpen = new Set();   // "sid|agent id": finished blocks you opened, running ones you folded
+const HELPER_TRAY_STEPS = 6;
+const helpersOf = (sid) => stepFeeds.get(sid)?.helpers || [];
+const helperRunning = (h) => !!h.running;
+/** "1m 12s" of work: until it finished, or so far. */
+const helperSpan = (h) => { const ms = (h.finished_ms || Date.now()) - h.started_ms; const m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000); return m ? `${m}m ${sec}s` : `${sec}s`; };
+/** One agent's block: who it is and how long, its steps (the last few in the tray; all once opened). */
+function helperBlock(sid, h, inTray) {
+  const k = `${sid}|${h.id}`;
+  const running = helperRunning(h);
+  const open = inTray ? !helperOpen.has(k) : helperOpen.has(k);
+  const model = (h.model || "").replace(/^claude-/, "").replace(/-\d.*$/, "");
+  const head = `<button class="bg-head" data-helper="${esc(k)}"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b><span class="dim"> · ${esc(h.desc)}${model ? ` · ${esc(model)}` : ""} · ${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>` : `finished · ${helperSpan(h)}`}</span>${running ? `<span class="dot-live"></span>` : `<span class="stx-chev">${open ? "⌄" : "›"}</span>`}</button>`;
+  if (!open) return `<div class="bg-agent folded">${head}</div>`;
+  const all = !inTray || helperOpen.has(`${k}|all`);
+  const items = all ? h.items : h.items.slice(-HELPER_TRAY_STEPS);
+  const before = (h.more || 0) + (h.items.length - items.length);
+  const steps = items.map((x) => x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small">${md(x.text)}</div>`).join("");
+  return `<div class="bg-agent">${head}${before && !all ? `<button class="stx-more dim" data-helper-all="${esc(k)}">${before} earlier steps · show all</button>` : before ? `<div class="stx-more dim">${before} earlier steps not shown</div>` : ""}<div class="stx-steps">${steps}</div>
+    <div class="bg-note">${running ? "Read-only. It reports to this session, not to you." : "What it reported is in the session's next reply."}</div></div>`;
+}
+/** The tray above the message box: every agent still at work. "" when none. */
+function helperTray(sid) {
+  const hs = helpersOf(sid);
+  const running = hs.filter(helperRunning);
+  if (!running.length) return "";
+  const done = hs.length - running.length;
+  return `<div class="tray"><div class="tray-head"><span class="dot-live"></span><b>${running.length} background agent${running.length === 1 ? "" : "s"} running</b>${done ? `<span class="dim"> · ${done} finished</span>` : ""}</div>${running.map((h) => helperBlock(sid, h, true)).join("")}</div>`;
 }
 /** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
@@ -1577,8 +1611,9 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   if (!items.length) return first ? `<div class="stx">${head}</div>` : "";
   let body = "", run = [];
   const flush = () => { if (run.length) body += `<div class="stx-steps">${run.join("")}</div>`; run = []; };
+  const finished = new Map(helpersOf(sid).filter((h) => !helperRunning(h)).map((h) => [h.step, h]));
   items.forEach(([x, i]) => {
-    if (x.t !== "say") return run.push(stepLine(sid, x, all));
+    if (x.t !== "say") { run.push(stepLine(sid, x, all)); const h = finished.get(x.id); if (h) run.push(helperBlock(sid, h, false)); return; }
     flush();
     // New words unroll top to bottom, quicker for short ones.
     const ms = Math.min(REVEAL_MS, 250 + x.text.length * 2);
@@ -1682,7 +1717,9 @@ function statusLine(it, s) {
   // count since the turn started, so a long think doesn't look stuck.
   if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span>Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span></div>`;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}</div>`;
-  if (s?.state === "agent") return `<div class="cv-status">Idle, waiting on ${esc(s.driven_by || "another agent")}</div>`;
+  const tray = s?.session_id ? helperTray(s.session_id) : "";
+  if (tray) return tray;
+  if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span>Waiting on ${esc(s.driven_by)}` : `Idle, waiting on ${esc(s.driven_by || "another agent")}`}</div>`;
   if (s?.state === "limited" && s.limit) {
     const l = s.limit, what = s.prompt ? `“${esc(s.prompt.length > 80 ? s.prompt.slice(0, 80) + "…" : s.prompt)}”` : "Your last message";
     if (lifted(l)) return `<div class="cv-status limit"><span class="lim-dot back"></span><span><b>${esc(scopeName(l))} is back.</b> ${what} didn't run.</span><button class="btn small" data-usage="resend-one" data-sid="${esc(s.session_id)}">Resend</button></div>`;
@@ -1966,7 +2003,7 @@ function activePane() {
   const turnWord = ch ? `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} · +${ch.add} −${ch.del}` : it?.interrupted ? "interrupted" : "your turn";
   const pill = pending
     ? `<span class="pill ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? turnWord : it.kind === "question" ? "asks you" : inTerminal(it) ? "asks in its terminal" : "needs a decision"} · ${ago(it.created_ms)}${it.kind === "waiting" ? `<button class="pill-x" data-act="dismiss" data-id="${esc(it.id)}" title="Take it off Waiting" aria-label="Take it off Waiting">×</button>` : ""}</span>`
-    : `<span class="pill soft">${s ? { working: "working", waiting: "your turn", deciding: "deciding", agent: "on its lead", stopped: "stopped", limited: s.limit && lifted(s.limit) ? "usage is back" : "out of usage" }[s.state] || s.state : "answered"}</span>`;
+    : `<span class="pill soft">${s ? { working: "working", waiting: "your turn", deciding: "deciding", agent: s.helpers ? "on its agents" : "on its lead", stopped: "stopped", limited: s.limit && lifted(s.limit) ? "usage is back" : "out of usage" }[s.state] || s.state : "answered"}</span>`;
   let foot;
   if (pending && it.kind !== "waiting") {
     // In its terminal: what Claude Code said ("A sandboxed command needs network access"), then the call it's about.
@@ -3721,6 +3758,10 @@ function bindMain() {
     if (tf) { const k = tf.dataset.turnFold; turnFold.set(k, tf.dataset.open !== "1"); renderMain(); return wantDetails(k.split("|")[0]); }
     const ta = t.closest("[data-turn-all]");
     if (ta) { const k = ta.dataset.turnAll; turnAll.has(k) ? turnAll.delete(k) : turnAll.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
+    const hb = t.closest("[data-helper]");
+    if (hb) { const k = hb.dataset.helper; helperOpen.has(k) ? helperOpen.delete(k) : helperOpen.add(k); return renderMain(); }
+    const ha = t.closest("[data-helper-all]");
+    if (ha) { helperOpen.add(`${ha.dataset.helperAll}|all`); return renderMain(); }
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const qp = t.closest("[data-quick]");
@@ -4185,6 +4226,9 @@ async function boot() {
     if (!f || working || Date.now() - f.at > 2000) loadSteps(sid);
   }, 500);
   // The live "what it's doing · 3s" counts every second, without redrawing everything.
-  setInterval(() => document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); }), 1000);
+  setInterval(() => {
+    document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
+    document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
+  }, 1000);
 }
 boot();

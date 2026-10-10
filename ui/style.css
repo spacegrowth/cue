@@ -307,6 +307,23 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
 .stx-res .add { color: var(--accent); font-weight: 650; } .stx-res .del { color: var(--deny); font-weight: 650; }
 .stx-chev { width: 10px; flex: none; color: var(--muted); font-size: 11px; text-align: center; }
+/* A background agent's block: dashed, so it reads as not a session (nothing to type into). Under its
+   Delegating step once finished; in the tray above the message box while it runs. */
+.bg-agent { margin: 2px 0 4px 25px; border: 1px dashed var(--line); border-radius: 10px; padding: 6px 10px 8px; background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); display: flex; flex-direction: column; gap: 4px; }
+.bg-agent.folded { padding-bottom: 6px; }
+.bg-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; width: 100%; text-align: left; min-width: 0; }
+.bg-head b { font-weight: 650; flex: none; }
+.bg-head .dim { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bgtag { font: 800 9px var(--sans); letter-spacing: 0.08em; padding: 2px 5px; border-radius: 4px; line-height: 1.3; color: var(--muted); border: 1px dashed var(--muted); flex: none; }
+.bg-agent .stx-steps { margin-left: 2px; }
+.bg-agent .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
+.bg-note { font-size: 11.5px; color: var(--muted); }
+.bg-agent button.stx-more { text-align: left; color: var(--muted); }
+.bg-agent button.stx-more:hover { color: var(--ink); }
+.tray { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
+.tray-head b { font-weight: 650; }
+.tray .bg-agent { margin-left: 0; }
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
 .stx-full { font-size: 11.5px; white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 7px; padding: 6px 9px; }
 .stx-path { font-size: 11px; color: var(--muted); word-break: break-all; }

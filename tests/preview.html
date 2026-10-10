@@ -39,6 +39,9 @@
           sess("api", "api-server", "claude", "deciding", 0.2, [seg("working", 12, 0.2), seg("waiting", 0.2)]),
           sess("eng", "order-engine", "claude", "working", 6, [seg("working", 6)], "Refactor the order router so partial fills reuse the same broker session"),
           sess("alerts", "alerts", "pi", "working", 2, [seg("working", 2)], "Find why webhook retries double-fire"),
+          // At its prompt while two background agents work (Claude Code's Agent tool): waiting on them, not you.
+          { ...sess("names", "cue", "claude", "agent", 2, [seg("working", 5, 2), seg("idle", 2)], "Map every name a session has, backend and UI"), driven_by: "2 background agents", helpers: 2,
+            thread: [{ role: "you", text: "Map every name a session has, backend and UI.", at_ms: now - 5 * M }, { role: "agent", text: "Two agents are mapping the names. I'll put the answer together when they report.", at_ms: now - 2 * M }] },
         ],
         items: [
           { id: "n1", kind: "waiting", harness: "claude", session_id: "relay", cwd: "/Users/me/code/agent-relay", project: "agent-relay", message: relayMsg, context: [], created_ms: now - 11 * M, status: "pending", outcome: "" },
@@ -206,6 +209,18 @@
               { at_ms: now - 40 * M, prompt: "why do partial fills open a second broker session?", more: 0, items: [{ t: "say", text: "The router opens a session per fill. I'll reuse the order's session.", at_ms: now - 39 * M }, { t: "step", id: "q2a", kind: "read", verb: "Read", subject: "router.py", mono: true, result: "318 lines", bad: false, done: true, at_ms: now - 38 * M }, { t: "say", text: "Found it: `open_session()` is called inside the fill loop.", at_ms: now - 36 * M }] },
               { at_ms: now - 25 * M, prompt: "fix it and run the tests", more: 0, items: [{ t: "step", id: "q2b", kind: "edit", verb: "Edited", subject: "router.py", mono: true, result: "+9 −4", bad: false, done: true, at_ms: now - 24 * M }, { t: "step", id: "q2c", kind: "run", verb: "Running", subject: "pytest tests/router -q", mono: true, result: "", bad: false, done: false, at_ms: now - 1 * M }] },
             ] };
+            // names: a turn that started two background agents; one still at work, one finished.
+            if (args.sessionId === "names") {
+              const hs = (id, m, o = {}) => ({ t: "step", id, kind: "search", verb: "Searched", subject: "“custom-title|ai-title”", mono: true, result: "14 results", bad: false, done: true, at_ms: now - m * M, ...o });
+              return { version: 1, turns: [{ at_ms: now - 5 * M, prompt: "Map every name a session has, backend and UI.", more: 0, items: [
+                { t: "step", id: "n1", kind: "agent", verb: "Delegated", subject: "Backend: session name sources", mono: false, result: "in the background", bad: false, done: true, at_ms: now - 4.9 * M },
+                { t: "step", id: "n2", kind: "agent", verb: "Delegated", subject: "UI: every name shown", mono: false, result: "in the background", bad: false, done: true, at_ms: now - 4.9 * M },
+                { t: "say", text: "Two agents are mapping the names. I'll put the answer together when they report.", at_ms: now - 2 * M } ] }],
+                helpers: [
+                  { id: "h1", step: "n1", desc: "Backend: session name sources", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: 0, running: true, more: 3, items: [hs("h1a", 4), { t: "step", id: "h1b", kind: "read", verb: "Read", subject: "sessions.rs", mono: true, result: "882 lines", bad: false, done: true, at_ms: now - 3 * M }, { t: "step", id: "h1c", kind: "read", verb: "Reading", subject: "hub.rs", mono: true, result: "", bad: false, done: false, at_ms: now - 0.3 * M }] },
+                  { id: "h2", step: "n2", desc: "UI: every name shown", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: now - 2.5 * M, running: false, more: 0, items: [hs("h2a", 4.5, { subject: "“nameSpan|agentName”", result: "9 results" }), { t: "step", id: "h2b", kind: "read", verb: "Read", subject: "app.js", mono: true, result: "4193 lines", bad: false, done: true, at_ms: now - 3.5 * M }, { t: "say", text: "Every name the UI shows comes from `nameSpan` …", at_ms: now - 2.5 * M }] },
+                ] };
+            }
             if (args.sessionId !== "relay") return { version: 0, turns: [] };
             const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });
             const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
@@ -304,6 +319,9 @@
         setActive(null, "relay");
         if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
       }
+      // ?open=<session id>: that session's chat in Active (e.g. names: at its prompt while background agents work).
+      const openQ = new URLSearchParams(q).get("open");
+      if (openQ && openQ !== "term") setTimeout(() => setActive(null, openQ), 80);
       // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
       if (/new=1/.test(q)) setTimeout(() => {
         state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };

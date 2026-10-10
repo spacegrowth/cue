@@ -96,6 +96,73 @@ struct Feed {
     turns: Vec<Turn>,
     version: u64,
     used: Instant,
+    /// A background agent's own log (every entry is a sidechain one, and read as this feed's).
+    helper: bool,
+    /// Helper: when its last answer ended (its report is written, no step open); 0 while it works.
+    ended_ms: u64,
+    /// The background agents this session started (Claude Code's Agent tool), each read from its own log.
+    helpers: Vec<Helper>,
+}
+
+/// A background agent a Claude Code session started: it runs inside the session's process, with no
+/// terminal of its own, and writes its log to `<session folder>/subagents/agent-<id>.jsonl`. Nothing
+/// can be sent to it from outside; it reports to its session. Here so the chat can show it at work
+/// (its steps, live) under the step that started it, and the session can be marked as waiting on it.
+#[derive(Serialize)]
+pub struct Helper {
+    /// Claude Code's agent id.
+    id: String,
+    /// The Delegating step that started it (its tool_use id).
+    step: String,
+    /// The one-line description the session gave it.
+    desc: String,
+    /// Its agent type ("Explore", "general-purpose"), from its meta file; "" until that's read.
+    kind: String,
+    model: String,
+    started_ms: u64,
+    /// When the session was told it finished (its task-notification); 0 until then.
+    finished_ms: u64,
+    /// Its own steps, from its log (the last MAX_HELPER_ITEMS; `more` says how many came before).
+    items: Vec<Item>,
+    more: usize,
+    #[serde(skip)]
+    feed: Option<Box<Feed>>,
+}
+
+/// A helper's steps shown in the chat: the newest of them.
+const MAX_HELPER_ITEMS: usize = 80;
+/// Helpers remembered per session (finished ones go first, oldest first).
+const MAX_HELPERS: usize = 12;
+
+impl Helper {
+    /// Running: not reported finished, and its log doesn't end on an answer.
+    pub fn running(&self) -> bool {
+        self.finished_ms == 0 && self.feed.as_ref().is_none_or(|f| f.ended_ms == 0)
+    }
+
+    /// Read what its log added; true when its steps changed.
+    fn catch_up(&mut self) -> bool {
+        let Some(f) = self.feed.as_mut() else { return false };
+        let before = f.version;
+        f.catch_up();
+        if f.version == before {
+            return false;
+        }
+        let all: Vec<&Item> = f.turns.iter().flat_map(|t| t.items.iter()).collect();
+        let skip = all.len().saturating_sub(MAX_HELPER_ITEMS);
+        self.more = skip + f.turns.iter().map(|t| t.more).sum::<usize>();
+        self.items = all.into_iter().skip(skip).cloned().collect();
+        if self.model.is_empty() {
+            self.model = f.meta.model.clone();
+        }
+        true
+    }
+}
+
+/// Where a session's background agent writes its log, and its meta file (`<session folder>/subagents/`).
+fn helper_path(session_log: &str, agent_id: &str) -> Option<std::path::PathBuf> {
+    let folder = session_log.strip_suffix(".jsonl")?;
+    Some(std::path::Path::new(folder).join("subagents").join(format!("agent-{agent_id}.jsonl")))
 }
 
 static FEEDS: Mutex<Option<HashMap<String, Feed>>> = Mutex::new(None);
@@ -119,7 +186,20 @@ pub fn steps(path: &str, known: u64) -> Value {
     }
     let turns: Vec<&Turn> = feed.turns.iter().filter(|t| !t.items.is_empty()).collect();
     let meta = (!feed.meta.model.is_empty() || feed.meta.context > 0).then_some(&feed.meta);
-    json!({ "version": feed.version, "turns": turns, "meta": meta })
+    // Each helper with whether it's still at work (that's read from its log, not a field).
+    let helpers: Vec<Value> = feed.helpers.iter().map(|h| { let mut v = serde_json::to_value(h).unwrap_or(Value::Null); v["running"] = json!(h.running()); v }).collect();
+    json!({ "version": feed.version, "turns": turns, "meta": meta, "helpers": helpers })
+}
+
+/// The background agents a Claude Code session has running right now: their descriptions.
+/// (The session is at its prompt while they run; Claude Code wakes it when they report.)
+pub fn running_helpers(path: &str) -> Vec<String> {
+    let mut guard = FEEDS.lock().unwrap();
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    feed.helpers.iter().filter(|h| h.running()).map(|h| h.desc.clone()).collect()
 }
 
 /// How full the session's context is (the latest reply's tokens, as a share of the model's window), 0–100.
@@ -209,36 +289,93 @@ impl Feed {
     fn open(path: &str, version: u64) -> Feed {
         let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let offset = len.saturating_sub(START_BYTES);
-        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now() }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new() }
+    }
+
+    /// A background agent's log, read from its start (it's small: one task).
+    fn open_helper(path: &str) -> Feed {
+        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new() }
+    }
+
+    /// A background agent just started (its launch result came in): remember it and open its log.
+    fn add_helper(&mut self, step: &str, extra: &Value, at_ms: u64) {
+        let s = |k: &str| extra.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let id = s("agentId");
+        if id.is_empty() || self.helpers.iter().any(|h| h.id == id) {
+            return;
+        }
+        let path = helper_path(&self.path, &id);
+        let kind = path
+            .as_ref()
+            .and_then(|p| std::fs::read(p.with_extension("meta.json")).ok())
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .and_then(|m| m.get("agentType").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_default();
+        let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
+        self.helpers.push(Helper { id, step: step.to_string(), desc: s("description"), kind, model: s("resolvedModel"), started_ms: at_ms, finished_ms: 0, items: Vec::new(), more: 0, feed });
+        // The oldest finished ones go first; what's running is never dropped.
+        while self.helpers.len() > MAX_HELPERS {
+            match self.helpers.iter().position(|h| !h.running()) {
+                Some(i) => { self.helpers.remove(i); }
+                None => break,
+            }
+        }
+    }
+
+    /// Claude Code told the session a background agent finished (`<task-notification>`): mark it.
+    fn helper_finished(&mut self, notification: &str, at_ms: u64) {
+        let tag = |t: &str| notification.split(&format!("<{t}>")).nth(1).and_then(|r| r.split(&format!("</{t}>")).next()).map(str::trim).unwrap_or("").to_string();
+        let (id, status) = (tag("task-id"), tag("status"));
+        if let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) {
+            if status != "running" {
+                h.finished_ms = at_ms;
+            }
+        }
     }
 
     /// Read what was added since last time (whole lines only; a half-written line waits for the next call).
     fn catch_up(&mut self) {
-        let Ok(mut file) = std::fs::File::open(&self.path) else { return };
+        let mut changed = self.read_new();
+        // Its background agents' logs too: their steps are part of what this session is doing.
+        for h in &mut self.helpers {
+            changed |= h.catch_up();
+        }
+        if changed {
+            if self.turns.len() > MAX_TURNS {
+                self.turns.drain(..self.turns.len() - MAX_TURNS);
+            }
+            self.version += 1;
+        }
+    }
+
+    /// Read this log's new lines; true when anything shown changed.
+    fn read_new(&mut self) -> bool {
+        let Ok(mut file) = std::fs::File::open(&self.path) else { return false };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        let mut changed = false;
         if len < self.offset {
-            // The file was replaced: start over (with a new version, so callers redraw).
-            *self = Feed::open(&self.path, self.version + 1);
+            // The file was replaced: start over (and count a version, so callers redraw).
+            *self = Feed::open(&self.path, self.version);
+            changed = true;
         }
         if len <= self.offset || file.seek(SeekFrom::Start(self.offset)).is_err() {
-            return;
+            return changed;
         }
         let mut buf = Vec::new();
         if file.take(len - self.offset).read_to_end(&mut buf).is_err() {
-            return;
+            return changed;
         }
         let mut from = 0;
         if self.align {
-            let Some(nl) = buf.iter().position(|&b| b == b'\n') else { return };
+            let Some(nl) = buf.iter().position(|&b| b == b'\n') else { return changed };
             from = nl + 1;
             self.align = false;
         }
         let Some(end) = buf.iter().rposition(|&b| b == b'\n').map(|i| i + 1).filter(|&e| e > from) else {
             self.offset += from as u64;
-            return;
+            return changed;
         };
         let text = String::from_utf8_lossy(&buf[from..end]);
-        let mut changed = false;
         for e in lines(&text) {
             changed |= self.observe(&e);
             for c in translate(self.kind, &e, &mut self.patches) {
@@ -246,12 +383,7 @@ impl Feed {
             }
         }
         self.offset += end as u64;
-        if changed {
-            if self.turns.len() > MAX_TURNS {
-                self.turns.drain(..self.turns.len() - MAX_TURNS);
-            }
-            self.version += 1;
-        }
+        changed
     }
 
     /// The model, context and cost from one raw log entry (each agent logs them its own way).
@@ -262,7 +394,7 @@ impl Feed {
         let m = &mut self.meta;
         match self.kind {
             Kind::Claude => {
-                if e.get("type").and_then(Value::as_str) == Some("assistant") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) {
+                if e.get("type").and_then(Value::as_str) == Some("assistant") && (self.helper || e.get("isSidechain").and_then(Value::as_bool) != Some(true)) {
                     let msg = e.get("message").cloned().unwrap_or(Value::Null);
                     if let Some(u) = msg.get("usage") {
                         let (fresh, read, wrote) = (n(u.get("input_tokens")), n(u.get("cache_read_input_tokens")), n(u.get("cache_creation_input_tokens")));
@@ -339,17 +471,25 @@ impl Feed {
     /// One transcript entry. Returns whether anything shown changed.
     fn take(&mut self, e: &Value) -> bool {
         // A helper agent's own steps (older transcripts keep them inline) aren't this session's.
-        if e.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+        if !self.helper && e.get("isSidechain").and_then(Value::as_bool) == Some(true) {
             return false;
         }
         let at = stamp(e);
+        if self.helper {
+            // Its answer ended: its report is written. A new message to it (its session can send one) puts it back to work.
+            match e.get("type").and_then(Value::as_str) {
+                Some("assistant") if e.pointer("/message/stop_reason").and_then(Value::as_str) == Some("end_turn") => self.ended_ms = at.max(1),
+                Some("user") if !content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) => self.ended_ms = 0,
+                _ => {}
+            }
+        }
         match e.get("type").and_then(Value::as_str) {
             Some("user") => {
                 let blocks = content_blocks(e);
                 let results: Vec<&Value> = blocks.iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")).collect();
                 if !results.is_empty() {
                     let extra = e.get("toolUseResult");
-                    return results.into_iter().fold(false, |any, b| self.finish(b, extra) || any);
+                    return results.into_iter().fold(false, |any, b| self.finish(b, extra, at) || any);
                 }
                 if e.get("isMeta").and_then(Value::as_bool) == Some(true) || e.get("isCompactSummary").and_then(Value::as_bool) == Some(true) {
                     return false;
@@ -364,6 +504,9 @@ impl Feed {
                     return false;
                 }
                 self.close_open("");
+                if crate::transcript::harness_text(text) {
+                    self.helper_finished(text, at);
+                }
                 let prompt = if crate::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
                 self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0 });
                 false // an empty turn isn't shown until something happens in it
@@ -407,7 +550,7 @@ impl Feed {
     }
 
     /// A tool call's result came in: fill in how it went.
-    fn finish(&mut self, block: &Value, extra: Option<&Value>) -> bool {
+    fn finish(&mut self, block: &Value, extra: Option<&Value>, at: u64) -> bool {
         let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else { return false };
         for turn in self.turns.iter_mut().rev().take(3) {
             for item in turn.items.iter_mut().rev() {
@@ -418,6 +561,11 @@ impl Feed {
                         *result = r;
                         *bad = b;
                         *done = true;
+                        let launched = extra.filter(|x| x.get("status").and_then(Value::as_str) == Some("async_launched")).cloned();
+                        let step = sid.clone();
+                        if let Some(x) = launched {
+                            self.add_helper(&step, &x, at);
+                        }
                         return true;
                     }
                 }
@@ -978,7 +1126,7 @@ mod tests {
     use super::*;
 
     fn feed_of(jsonl: &str) -> Feed {
-        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now() };
+        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new() };
         for e in lines(jsonl) {
             f.take(&e);
         }
@@ -1013,6 +1161,55 @@ mod tests {
         // Still running: the present-tense verb, no result. The helper's words aren't here.
         assert_eq!(step(&items[4]), ("Running", "npm test", "", false, false));
         assert_eq!(items.len(), 5);
+    }
+
+    #[test]
+    fn a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-helper-{}", std::process::id()));
+        let sub = dir.join("s1").join("subagents");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("agent-a1.meta.json"), r#"{"agentType":"Explore","description":"Backend: names","toolUseId":"t1","requestShape":"background"}"#).unwrap();
+        std::fs::write(sub.join("agent-a1.jsonl"), [
+            r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"find every name"}}"#,
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:04.000Z","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"h1","name":"Grep","input":{"pattern":"ai-title"}}]}}"#,
+            r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"h1","content":"Found 3 files"}]}}"#,
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:06.000Z","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"h2","name":"Read","input":{"file_path":"/a/hub.rs"}}]}}"#,
+        ].join("\n") + "\n").unwrap();
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"map the names"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Backend: names","subagent_type":"Explore","prompt":"find every name"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Backend: names","resolvedModel":"claude-opus-5-5"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"text","text":"An agent is on it."}]}}"#,
+        ].join("\n") + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        f.catch_up();
+        assert_eq!(f.helpers.len(), 1);
+        let h = &f.helpers[0];
+        assert_eq!((h.id.as_str(), h.step.as_str(), h.desc.as_str(), h.kind.as_str(), h.model.as_str()), ("a1", "t1", "Backend: names", "Explore", "claude-opus-5-5"));
+        assert!(h.running());
+        assert_eq!(h.items.len(), 2, "its own steps, from its own log");
+        assert_eq!(step(&h.items[0]), ("Searched", "“ai-title”", "3 files", false, true));
+        assert_eq!(step(&h.items[1]).0, "Reading");
+        assert_eq!(step(&f.turns[0].items[0]), ("Delegated", "Backend: names", "in the background", false, true));
+        assert_eq!(running_helpers(p), vec!["Backend: names".to_string()]);
+        // It writes its report: it's done, even before its session hears so.
+        let v = f.version;
+        let mut log = std::fs::OpenOptions::new().append(true).open(sub.join("agent-a1.jsonl")).unwrap();
+        std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:07.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"h2","content":"ok"}]}}"#, "\n",
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:08.000Z","message":{"model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"Names: project, name."}]}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        assert!(f.version > v, "its new steps count as a change");
+        assert!(!f.helpers[0].running());
+        assert_eq!(f.helpers[0].finished_ms, 0);
+        // Its session is told: finished for good.
+        let mut log = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","timestamp":"2026-10-04T10:01:00.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent \"Backend: names\" finished</summary>\n</task-notification>"}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        assert_eq!(f.helpers[0].finished_ms, crate::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
+        assert!(running_helpers(p).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
