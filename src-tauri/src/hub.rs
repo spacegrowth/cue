@@ -263,11 +263,18 @@ impl Hub {
                 self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
                 return true;
             }
-        // Still in its box: the Enter didn't take (the agent was busy drawing). One more, then a look.
         }
+        // Still in its box: the Enter didn't take (the agent was busy drawing). One more, then a look.
         if crate::focus::text_in_box(origin, text) == Some(true) {
-            self.store.lock().unwrap().sessions.mark_unsent(sid);
-            return false;
+            let _ = crate::focus::press_enter(origin);
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            if crate::focus::text_in_box(origin, text) == Some(true) {
+                self.store.lock().unwrap().sessions.mark_unsent(sid);
+                return false;
+            }
+            if self.wait_active(sid, t0, 3000) {
+                return true;
+            }
         }
         self.store.lock().unwrap().sessions.set_pending(sid, true);
         self.confirm_later(sid.to_string(), origin.clone(), text.to_string(), cmd_before, t0);
