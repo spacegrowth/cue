@@ -1784,7 +1784,9 @@ impl Hub {
         }
         // At its prompt while its background agents work: how many are left. Once none is, Claude Code
         // wakes it with their reports (a new turn); if that doesn't come, its last reply is your turn.
-        for o in self.store.lock().unwrap().sessions.with_helpers() {
+        // Collected first: a guard made in the `for` would hold the lock through the body, which locks again.
+        let with_helpers = self.store.lock().unwrap().sessions.with_helpers();
+        for o in with_helpers {
             let left = crate::steps::running_helpers(&o.transcript_path).len() as u64;
             let sid = o.session_id.clone();
             if left > 0 {
