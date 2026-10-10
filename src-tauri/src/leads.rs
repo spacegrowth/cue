@@ -71,6 +71,10 @@ pub struct Member {
     /// by your Review or by relay waking the lead itself.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub reviewed: bool,
+    /// Executor: its report has been ready (done: reported or idle) for MISSED_WAKE_SECS or more, going
+    /// by relay's `updated`. Kept as a flag, not a time, so the window redraws when it turns true.
+    #[serde(skip)]
+    pub ready_late: bool,
     /// Sort key for duplicates (an executor id reused by a resume): the newest record wins.
     #[serde(skip)]
     updated: String,
@@ -80,8 +84,10 @@ fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
-/// Statuses that mean the executor is done with (closed, replaced, gone): left out of a lead's list.
-const GONE: &[&str] = &["closed", "superseded", "dead", "retired", "done"];
+/// Statuses that mean the executor is done with (closed, replaced): left out of a lead's list. (A
+/// "dead" or "stalled" one isn't: its agent is gone but relay still lists it, so it stays under its
+/// lead until you Close it.)
+const GONE: &[&str] = &["closed", "superseded", "retired", "done"];
 
 static INDEX: Mutex<Option<HashMap<String, Member>>> = Mutex::new(None);
 /// This Mac's part of INDEX, as last scanned.
@@ -182,6 +188,67 @@ fn seen_report(e: &Value) -> bool {
     matches!((n("current_packet"), n("report_seen_packet")), (Some(cur), Some(seen)) if seen >= cur)
 }
 
+/// How long a report may sit before its lead is said to have missed it (relay's own wake-up is
+/// normally within seconds).
+const MISSED_WAKE_SECS: u64 = 90;
+
+/// relay's timestamp ("2026-10-04T09:50:00", the local time of the machine it ran on, maybe with a
+/// fraction or a zone suffix, which is ignored) as calendar fields.
+fn naive_tm(ts: &str) -> Option<libc::tm> {
+    let (d, t) = ts.trim().split_once(['T', ' '])?;
+    let mut dp = d.split('-').map(|n| n.parse::<i32>().ok());
+    let (y, mo, da) = (dp.next()??, dp.next()??, dp.next()??);
+    let mut tp = t.split(|c: char| !c.is_ascii_digit() && c != ':').next()?.split(':').map(|n| n.parse::<i32>().ok());
+    let (h, mi) = (tp.next()??, tp.next()??);
+    let sec = tp.next().flatten().unwrap_or(0);
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    (tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_isdst) = (y - 1900, mo - 1, da, h, mi, sec, -1);
+    Some(tm)
+}
+
+/// Seconds since the epoch for relay's timestamp. `zone`: the UTC offset (seconds) of the machine that
+/// wrote it; None is this Mac, in its own zone (daylight saving included).
+fn epoch_secs(ts: &str, zone: Option<i64>) -> Option<u64> {
+    let mut tm = naive_tm(ts)?;
+    let t = match zone {
+        None => unsafe { libc::mktime(&mut tm) as i64 },
+        Some(off) => (unsafe { libc::timegm(&mut tm) } as i64) - off,
+    };
+    (t > 0).then_some(t as u64)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Whether an executor is done (reported or idle) and has been for MISSED_WAKE_SECS (relay's
+/// `updated`, in the zone of the machine it ran on: the last thing relay wrote to the record is the
+/// report landing).
+fn ready_late(e: &Value, now: u64, zone: Option<i64>) -> bool {
+    matches!(s(e, "status").as_str(), "reported" | "idle") && epoch_secs(&s(e, "updated"), zone).is_some_and(|at| now >= at + MISSED_WAKE_SECS)
+}
+
+/// The missed wake-up: the report is ready (a while) and its lead hasn't seen it, though the lead is
+/// listening and free (`lead_free`: not working, compacting or asking you something). relay would
+/// normally have woken it by now.
+fn missed_wake(m: &Member, lead_free: bool) -> bool {
+    m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle") && !m.reviewed && m.ready_late && m.lead_armed == Some(true) && lead_free
+}
+
+/// Done executors whose lead missed the wake-up, as Cue session id; `lead_free` says whether a lead
+/// (its Cue session id) is free to take a review.
+pub fn missed(lead_free: impl Fn(&str) -> bool) -> Vec<String> {
+    let cur = INDEX.lock().unwrap();
+    cur.as_ref().map(|i| i.iter().filter(|(_, m)| missed_wake(m, lead_free(&m.lead))).map(|(sid, _)| sid.clone()).collect()).unwrap_or_default()
+}
+
+/// The key an executor is filed under: its Claude session, or (a stalled one that never got as far
+/// as having a session) relay's own id, so the lead's team still lists it and Close can reach it.
+fn exec_key(e: &Value) -> String {
+    let c = s(e, "claude_session");
+    if c.is_empty() && matches!(s(e, "status").as_str(), "stalled" | "dead") && !s(e, "session_id").is_empty() { format!("relay:{}", s(e, "session_id")) } else { c }
+}
+
 fn put(index: &mut HashMap<String, Member>, sid: String, m: Member) {
     if sid.is_empty() {
         return;
@@ -240,11 +307,12 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
             goal,
             outcome,
             reviewed: seen_report(&e),
+            ready_late: ready_late(&e, now_secs(), None),
             id: s(&e, "session_id"),
             updated: s(&e, "updated"),
             ..Default::default()
         };
-        put(index, s(&e, "claude_session"), m);
+        put(index, exec_key(&e), m);
     }
 }
 
@@ -405,7 +473,8 @@ fn merge() -> bool {
 
 /// What runs on a machine to list its crews: relay's command there (from Claude Code's installed
 /// plugins, else on PATH), its JSON listing, then the Claude sessions open in a live process there
-/// (a lead counts as listening only while one is).
+/// (a lead counts as listening only while one is), then its UTC offset (relay writes its timestamps
+/// in the machine's local time).
 const REMOTE_LIST: &str = r#"c="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 r=$(sed -n 's/.*"installPath": *"\([^"]*\)".*/\1/p' "$c/plugins/installed_plugins.json" 2>/dev/null | grep -i relay | head -1)
 if [ -n "$r" ] && [ -x "$r/bin/relay" ]; then r="$r/bin/relay"; else r=$(command -v relay 2>/dev/null || echo "$HOME/.local/bin/relay"); fi
@@ -415,6 +484,8 @@ for f in "$c"/sessions/*.json; do
   # Claude Code writes these without a final newline, and sed then prints none: one id per line regardless.
   [ -f "$f" ] && kill -0 "$(basename "$f" .json)" 2>/dev/null && { sed -n 's/.*"sessionId": *"\([^"]*\)".*/\1/p' "$f"; echo; }
 done
+# The zone relay's naive timestamps are in: this machine's UTC offset.
+echo "__CUE_TZ__:$(date +%z)"
 exit 0"#;
 
 /// Re-read one machine's crews (blocking: an SSH round trip): whether INDEX changed, and the Claude
@@ -428,7 +499,25 @@ pub fn refresh_remote(machine: &str, host: &str) -> (bool, Option<HashSet<String
 
 /// The Claude sessions REMOTE_LIST found running.
 fn live_of(out: &str) -> HashSet<String> {
-    out.split_once("__CUE_LIVE__").map(|(_, l)| l.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect()).unwrap_or_default()
+    out.split_once("__CUE_LIVE__").map(|(_, l)| l.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(TZ_MARK)).map(String::from).collect()).unwrap_or_default()
+}
+
+const TZ_MARK: &str = "__CUE_TZ__:";
+
+/// The machine's UTC offset in seconds, from REMOTE_LIST's `date +%z` ("+0530", "-0800"); None when it
+/// didn't say (an older answer, or a garbled one): its timestamps are then read in this Mac's zone.
+fn tz_of(out: &str) -> Option<i64> {
+    let z = out.lines().find_map(|l| l.trim().strip_prefix(TZ_MARK))?.trim();
+    let sign = match z.chars().next()? {
+        '+' => 1,
+        '-' => -1,
+        _ => return None,
+    };
+    let d = &z[1..];
+    if d.len() != 4 || !d.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(sign * (d[..2].parse::<i64>().ok()? * 3600 + d[2..].parse::<i64>().ok()? * 60))
 }
 
 /// Forget a machine's crews (it has no sessions in Cue any more, or was removed).
@@ -443,6 +532,7 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
     let after_bin = out.split_once('\n').filter(|_| !bin.is_empty()).map(|(_, rest)| rest).unwrap_or("");
     let json = after_bin.split_once("__CUE_LIVE__").map_or(after_bin, |(j, _)| j);
     let live = live_of(out);
+    let zone = tz_of(out);
     let v: Value = serde_json::from_str(json.trim()).unwrap_or(Value::Null);
     let mut index = HashMap::new();
     let mut leads: HashMap<String, (String, Option<[u8; 3]>)> = HashMap::new();
@@ -480,12 +570,13 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
             lead_armed: Some(lead.is_some() && live.contains(&owner)),
             lead: owner,
             reviewed: seen_report(e),
+            ready_late: ready_late(e, now_secs(), zone),
             id: s(e, "session_id"),
             updated: s(e, "updated"),
             machine: machine.into(),
             ..Default::default()
         };
-        put(&mut index, s(e, "claude_session"), m);
+        put(&mut index, exec_key(e), m);
     }
     (bin, index)
 }
@@ -609,6 +700,18 @@ pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
     }
 }
 
+/// Closing a relay lead that has no executors left: relay's own step-down (`relay close --self <lead
+/// session id>`, run where the lead runs) comes first, so relay stops thinking it leads; then the lead
+/// is ended as any session. None: not such a lead (an executor, a pi-lead lead, a lead with
+/// executors still open, a session outside a crew).
+pub fn lead_stop(session_id: &str) -> Option<Result<Cmd, String>> {
+    let cur = INDEX.lock().unwrap();
+    let index = cur.as_ref()?;
+    let m = index.get(session_id).filter(|m| m.plugin == "relay" && m.role == "lead")?;
+    let open = index.values().any(|e| e.role == "executor" && e.lead == session_id && !GONE.contains(&e.status.as_str()));
+    (!open).then(|| relay_for(m).map(|c| Cmd { args: vec!["close".into(), "--self".into(), session_id.to_string()], ..c }))
+}
+
 /// A relay executor's worktree (where its staged changes are), from relay's session file.
 #[cfg_attr(not(feature = "ext"), allow(dead_code))]
 pub fn worktree(session_id: &str) -> Option<String> {
@@ -638,7 +741,7 @@ pub fn name_of(session_id: &str) -> String {
     INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.to_string())
 }
 
-/// What `action` ("review", "diff", "auto-on", "auto-off") means for this session: an executor's
+/// What `action` ("review", "diff", "close", "auto-on", "auto-off") means for this session: an executor's
 /// review goes to its lead, its diff opens as a page; a relay lead's auto mode is switched by relay.
 pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
     let cur = INDEX.lock().unwrap();
@@ -659,6 +762,9 @@ pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
             let on = action == "auto-on";
             Ok(Act::Run(relay(&["auto", if on { "on" } else { "off" }, "--session", session_id])?, format!("Auto mode {}", if on { "on" } else { "off" })))
         }
+        // An executor whose agent exited before it reported: relay closes its record where it runs.
+        ("relay", "executor", "close") if matches!(m.status.as_str(), "stalled" | "dead") => Ok(Act::Run(relay(&["close", &m.id])?, "Closed".into())),
+        ("relay", "executor", "close") => Err("only an executor whose agent exited can be closed from here".into()),
         ("pilead", "executor", "diff") => pilead_diff_page(&pilead_dir(), &m.id).map(Act::Open).ok_or_else(|| "it hasn't written a diff page yet".into()),
         _ => Err(format!("no {action} for this session")),
     }
@@ -738,8 +844,10 @@ C9
         let (bin, index) = parse_remote(&out, "box");
         assert_eq!(bin, relay.display().to_string());
         assert_eq!(index["C1"].lead_armed, Some(true), "its lead is live there: {out:?}");
-        let live: Vec<&str> = out.split("__CUE_LIVE__").nth(1).unwrap().lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        let live: Vec<&str> = out.split("__CUE_LIVE__").nth(1).unwrap().lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(TZ_MARK)).collect();
         assert_eq!(live.len(), 2, "one id per line, the dead one left out: {live:?}");
+        assert!(tz_of(&out).is_some_and(|z| z.abs() <= 14 * 3600), "it says its UTC offset: {out:?}");
+        assert_eq!(live_of(&out).len(), 2, "the offset line isn't a session");
         std::fs::remove_dir_all(&home).ok();
     }
 
@@ -769,8 +877,12 @@ C9
         std::fs::write(p, text).unwrap();
     }
 
+    /// The tests that fill INDEX / REMOTE take turns.
+    static GLOBALS: Mutex<()> = Mutex::new(());
+
     #[test]
     fn relay_and_pilead_leads_own_their_executors() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!("cue-leads-{}", std::process::id()));
         let (relay, pi, cs) = (root.join("relay"), root.join("pi"), root.join("claude-sessions"));
         // L1 is open in a live process (this test's own pid); GHOST has a marker but no process.
@@ -856,5 +968,163 @@ C9
         let off = "  VERDICT: MISMATCH\n    claimed and staged:   3\n    claimed, NOT staged:  2\n";
         assert_eq!(parse_verify(off).unwrap().note, "2 changes it reports are not staged");
         assert_eq!(parse_verify("no such session: x"), None);
+    }
+
+    fn done_exec() -> Member {
+        Member { role: "executor".into(), plugin: "relay".into(), status: "reported".into(), lead: "L".into(), lead_armed: Some(true), ready_late: true, ..Default::default() }
+    }
+
+    #[test]
+    fn a_report_is_late_once_it_has_waited_ninety_seconds() {
+        let at = epoch_secs("2026-10-04T09:50:00", None).unwrap();
+        assert_eq!(epoch_secs("2026-10-04T09:50:00.123456", None), Some(at), "a fraction is ignored");
+        assert_eq!(epoch_secs("2026-10-04T09:51:00", None), Some(at + 60));
+        assert_eq!(epoch_secs("not a time", None), None);
+        assert_eq!(epoch_secs("", None), None);
+        let e = |status: &str| serde_json::json!({ "status": status, "updated": "2026-10-04T09:50:00" });
+        assert!(!ready_late(&e("reported"), at + 89, None), "not yet");
+        assert!(ready_late(&e("reported"), at + 90, None));
+        assert!(ready_late(&e("idle"), at + 600, None));
+        assert!(!ready_late(&e("busy"), at + 600, None), "still at work: no report to miss");
+        assert!(!ready_late(&serde_json::json!({ "status": "reported" }), at + 600, None), "no timestamp: no claim");
+    }
+
+    #[test]
+    fn a_machines_timestamps_are_read_in_its_own_zone() {
+        // 09:50 at +0900 is 00:50 UTC; at -0800 it's 17:50 UTC.
+        assert_eq!(epoch_secs("2026-10-04T09:50:00", Some(9 * 3600)), Some(1_791_075_000));
+        assert_eq!(epoch_secs("2026-10-04T09:50:00", Some(0)), Some(1_791_075_000 + 9 * 3600));
+        assert_eq!(epoch_secs("2026-10-04T09:50:00", Some(-8 * 3600)), Some(1_791_075_000 + 17 * 3600));
+        assert_eq!(tz_of("x\n__CUE_LIVE__\nL\n__CUE_TZ__:+0530\n"), Some(19_800));
+        assert_eq!(tz_of("__CUE_TZ__:-0800\n"), Some(-28_800));
+        assert_eq!(tz_of("__CUE_TZ__:+0000"), Some(0));
+        assert_eq!(tz_of("__CUE_TZ__:"), None);
+        assert_eq!(tz_of("__CUE_TZ__:oops"), None);
+        assert_eq!(tz_of("no offset said"), None);
+        let ready = |zone: Option<i64>, ts: &str| ready_late(&serde_json::json!({ "status": "reported", "updated": ts }), 1_791_075_000 + 120, zone);
+        assert!(ready(Some(9 * 3600), "2026-10-04T09:50:00"), "ready 120 s ago there");
+        assert!(!ready(Some(9 * 3600), "2026-10-04T09:51:00"), "ready 60 s ago there");
+        assert!(!ready(Some(-8 * 3600), "2026-10-04T09:50:00"), "in a zone 17 h behind, 09:50 hasn't happened yet");
+    }
+
+    /// A machine's answer to REMOTE_LIST: its UTC offset, and one reported executor whose record was
+    /// last written `secs_ago` seconds ago by that machine's clock (its local time, not ours).
+    fn listing_in_zone(off: i64, secs_ago: i64) -> String {
+        let t = (now_secs() as i64 + off - secs_ago) as libc::time_t;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        unsafe { libc::gmtime_r(&t, &mut tm) };
+        let updated = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+        let z = format!("{}{:02}{:02}", if off < 0 { '-' } else { '+' }, off.abs() / 3600, off.abs() % 3600 / 60);
+        format!("BIN:/r/relay\n{{\"leads\": [{{\"session_id\": \"ZL\", \"project\": \"p\"}}], \"executors\": [{{\"agent\": \"relay-executor\", \"session_id\": \"z-1\", \"status\": \"reported\", \"current_packet\": 1, \"owner_lead\": \"ZL\", \"claude_session\": \"ZC\", \"updated\": \"{updated}\"}}]}}\n__CUE_LIVE__\nZL\n__CUE_TZ__:{z}\n")
+    }
+
+    #[test]
+    fn a_machine_in_another_zone_is_judged_by_its_own_clock() {
+        for off in [9 * 3600, -8 * 3600, 5 * 3600 + 1800, 0] {
+            assert!(parse_remote(&listing_in_zone(off, 300), "far").1["ZC"].ready_late, "ready 5 min ago at {off}");
+            assert!(!parse_remote(&listing_in_zone(off, 30), "far").1["ZC"].ready_late, "ready 30 s ago at {off}");
+        }
+        // Without its offset the timestamp can only be read here: a machine 9 h ahead looks 9 h in the future.
+        let blind = listing_in_zone(9 * 3600, 300).replace("__CUE_TZ__:+0900", "");
+        assert!(!parse_remote(&blind, "far").1["ZC"].ready_late || local_offset_secs() >= 9 * 3600, "no offset: read as this Mac's local time");
+    }
+
+    /// This Mac's UTC offset now, in seconds.
+    fn local_offset_secs() -> i64 {
+        let t = now_secs() as libc::time_t;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        unsafe { libc::localtime_r(&t, &mut tm) };
+        tm.tm_gmtoff as i64
+    }
+
+    #[test]
+    fn a_missed_wake_needs_every_condition() {
+        assert!(missed_wake(&done_exec(), true));
+        assert!(missed_wake(&Member { status: "idle".into(), ..done_exec() }, true), "idle is done too");
+        assert!(!missed_wake(&Member { status: "busy".into(), ..done_exec() }, true), "not done");
+        assert!(!missed_wake(&Member { status: "stalled".into(), ..done_exec() }, true), "stalled never reported");
+        assert!(!missed_wake(&Member { reviewed: true, ..done_exec() }, true), "its lead has seen it");
+        assert!(!missed_wake(&Member { ready_late: false, ..done_exec() }, true), "ready under 90 seconds ago");
+        assert!(!missed_wake(&Member { lead_armed: Some(false), ..done_exec() }, true), "its lead isn't listening");
+        assert!(!missed_wake(&Member { lead_armed: None, ..done_exec() }, true));
+        assert!(!missed_wake(&done_exec(), false), "its lead is working, compacting or asking");
+        assert!(!missed_wake(&Member { role: "lead".into(), ..done_exec() }, true));
+    }
+
+    #[test]
+    fn the_scan_marks_a_late_report_and_lists_it_when_its_lead_is_free() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        // Reported long ago, never seen; a listening lead (a machine's live list).
+        let out = r#"BIN:/r/relay
+{"leads": [{"session_id": "ML", "project": "p"}],
+ "executors": [{"agent": "relay-executor", "session_id": "old-1", "status": "reported", "current_packet": 1, "owner_lead": "ML", "claude_session": "MC1", "updated": "2020-01-01T00:00:00"},
+               {"agent": "relay-executor", "session_id": "seen-1", "status": "reported", "current_packet": 1, "report_seen_packet": 1, "owner_lead": "ML", "claude_session": "MC2", "updated": "2020-01-01T00:00:00"},
+               {"agent": "relay-executor", "session_id": "fresh-1", "status": "reported", "current_packet": 1, "owner_lead": "ML", "claude_session": "MC3", "updated": "2999-01-01T00:00:00"}]}
+__CUE_LIVE__
+ML
+"#;
+        let index = parse_remote(out, "box").1;
+        assert!(index["MC1"].ready_late && !index["MC3"].ready_late);
+        *INDEX.lock().unwrap() = Some(index);
+        assert_eq!(missed(|_| true), ["MC1"], "seen and fresh reports aren't missed");
+        assert!(missed(|_| false).is_empty(), "its lead is busy");
+    }
+
+    #[test]
+    fn closing_a_stalled_executor_runs_relays_close_where_it_runs() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        // A stalled executor that never got a Claude session (it sat at the trust prompt) is still listed.
+        let out = r#"BIN:/r/relay
+{"leads": [{"session_id": "ML", "project": "p"}],
+ "executors": [{"agent": "relay-executor", "session_id": "stuck-1", "topic": "stuck", "status": "stalled", "owner_lead": "ML"},
+               {"agent": "relay-executor", "session_id": "busy-1", "status": "busy", "owner_lead": "ML"},
+               {"agent": "relay-executor", "session_id": "gone-1", "topic": "gone", "status": "dead", "owner_lead": "ML", "claude_session": "MC9"}]}
+__CUE_LIVE__
+ML
+"#;
+        let (bin, index) = parse_remote(out, "box");
+        assert!(index.contains_key("relay:stuck-1"), "no Claude session: filed under relay's id");
+        assert!(!index.contains_key("relay:busy-1"), "only a stalled or dead one gets that");
+        *REMOTE.lock().unwrap() = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
+        *INDEX.lock().unwrap() = Some(index);
+        let close = Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "stuck-1".into()], machine: "box".into() };
+        assert_eq!(act("relay:stuck-1", "close"), Ok(Act::Run(close, "Closed".into())));
+        assert_eq!(act("MC9", "close"), Ok(Act::Run(Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "gone-1".into()], machine: "box".into() }, "Closed".into())));
+        assert!(act("ML", "close").is_err(), "a lead isn't closed that way");
+        let v = view(&HashSet::from(["ML".to_string()]));
+        let rows: Vec<(&str, &str)> = v["ML"]["executors"].as_array().unwrap().iter().map(|e| (e["session_id"].as_str().unwrap(), e["status"].as_str().unwrap())).collect();
+        assert!(rows.contains(&("relay:stuck-1", "stalled")), "its row stays under the lead: {rows:?}");
+        assert!(rows.contains(&("MC9", "dead")), "a dead one too, with its Claude session: {rows:?}");
+        assert!(!rows.iter().any(|r| r.0 == "relay:busy-1"));
+        // Closed, relay's record says so on the next listing, and the row goes.
+        let after = parse_remote(&out.replace("\"stalled\"", "\"closed\""), "box").1;
+        assert!(!view_rows(&after, "ML").iter().any(|s| s == "relay:stuck-1"));
+    }
+
+    fn view_rows(index: &HashMap<String, Member>, lead: &str) -> Vec<String> {
+        index.iter().filter(|(_, e)| e.role == "executor" && e.lead == lead && !GONE.contains(&e.status.as_str())).map(|(sid, _)| sid.clone()).collect()
+    }
+
+    #[test]
+    fn a_lead_with_no_executors_left_is_stepped_down_by_relay_before_it_is_ended() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let out = r#"BIN:/r/relay
+{"leads": [{"session_id": "EMPTY", "project": "a"}, {"session_id": "BUSY", "project": "b"}],
+ "executors": [{"agent": "relay-executor", "session_id": "done-1", "status": "closed", "owner_lead": "EMPTY", "claude_session": "X1"},
+               {"agent": "relay-executor", "session_id": "work-1", "status": "busy", "owner_lead": "BUSY", "claude_session": "X2"}]}
+__CUE_LIVE__
+EMPTY
+BUSY
+"#;
+        let (bin, mut index) = parse_remote(out, "box");
+        index.insert("PL".into(), Member { role: "lead".into(), plugin: "pilead".into(), ..Default::default() });
+        *REMOTE.lock().unwrap() = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
+        *INDEX.lock().unwrap() = Some(index);
+        assert_eq!(lead_stop("EMPTY"), Some(Ok(Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "--self".into(), "EMPTY".into()], machine: "box".into() })), "run on its machine");
+        assert_eq!(lead_stop("BUSY"), None, "it still has an executor open: close_plan refuses it");
+        assert_eq!(lead_stop("PL"), None, "pi-lead leads are left as they are");
+        assert_eq!(lead_stop("X1"), None, "an executor is closed by close_plan");
+        assert_eq!(lead_stop("nobody"), None);
+        assert_eq!(close_plan("EMPTY"), None, "close_plan itself is unchanged for it");
     }
 }

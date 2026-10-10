@@ -857,6 +857,11 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
         if let Some(plan) = leads::close_plan(&session_id) {
             return plan?.run().map(|_| "Closed".into());
         }
+        // A relay lead with no executors left: relay steps it down first (else it still thinks it
+        // leads); if that fails, its error is the answer and the pane stays.
+        if let Some(plan) = leads::lead_stop(&session_id) {
+            plan?.run().map_err(|e| format!("relay couldn't step this lead down: {e}"))?;
+        }
         let origin = h.live_origin(&session_id).ok_or("that session is gone")?;
         // On this Mac, the agent's process. On a machine, there is no pid here (it runs there): its
         // pane is ended on the machine instead.

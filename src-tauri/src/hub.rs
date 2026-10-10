@@ -1596,18 +1596,21 @@ impl Hub {
     }
 
     /// For every screen: each executor whose review you sent, executor → "in review", or that waits
-    /// for its lead, → "review queued".
+    /// for its lead, → "review queued"; or whose report its lead never picked up, → "not picked up".
     fn reviews_view(st: &mut Store) -> Value {
         let now = now_ms();
         // "in review" until its lead has seen the report and finished its turn (or 15 minutes).
         let working = |s: &Store, lead: &str| s.sessions.state(lead).as_deref() == Some("working");
         let done: Vec<String> = st.review_sent.iter().filter(|(e, (lead, _))| crate::leads::is_reviewed(e) && !working(st, lead)).map(|(e, _)| e.clone()).collect();
         st.review_sent.retain(|exec, (_, at)| now.saturating_sub(*at) < REVIEW_SHOWN_MS && crate::leads::is_done(exec) && !done.contains(exec));
-        // Later words win: reviewed, then in review, then queued.
+        // Later words win: not picked up, reviewed, then in review, then queued.
+        // "not picked up": its report sat unseen though its lead is listening and free (relay's wake-up never came).
+        let free = |s: &Store, lead: &str| Self::lead_busy(s, lead, now).is_none();
+        let missed = crate::leads::missed(|lead| free(st, lead)).into_iter().map(|e| (e, json!("not picked up")));
         let reviewed = crate::leads::reviewed().into_iter().map(|(e, _)| (e, json!("reviewed")));
         let sent = st.review_sent.keys().map(|e| (e.clone(), json!("in review"))).collect::<Vec<_>>();
         let queued = st.review_queue.iter().map(|q| (q.exec.clone(), json!("review queued")));
-        Value::Object(reviewed.chain(sent).chain(queued).collect())
+        Value::Object(missed.chain(reviewed).chain(sent).chain(queued).collect())
     }
 
     /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×).

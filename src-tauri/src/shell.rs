@@ -195,22 +195,36 @@ mod tests {
 
     #[test]
     fn a_line_on_a_machine_is_stopped_there_at_the_limit_with_what_it_started() {
+        // The leftovers are looked for by their command line in the whole process table, so the sleeps are
+        // ones nothing else runs (the other tests' watchers sleep 30, and are still being killed as this
+        // one looks): numbers of this test run's own.
+        let n = 20000 + u64::from(std::process::id() % 9000);
+        let (long, longer, watcher) = (format!("sleep {n}"), format!("sleep {}", n + 1), format!("sleep {}", n + 2));
+        // Whether any of these is still running; a killed process takes a moment to leave the table, so
+        // it is given up to 5 s to (the check is for what stays, not for how fast it goes).
+        let running = |names: &[&String]| {
+            for _ in 0..50 {
+                let ps = std::process::Command::new("/bin/ps").args(["-eo", "command="]).output().unwrap();
+                if !String::from_utf8_lossy(&ps.stdout).lines().any(|l| names.iter().any(|n| l.trim() == n.as_str())) {
+                    return false;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            true
+        };
         // dash, as /bin/sh is on most Linux machines, and this Mac's sh.
         for sh in ["/bin/sh", "/bin/dash"].into_iter().filter(|p| std::path::Path::new(p).exists()) {
             let mark = format!("cue-stop-test-{}-{}", std::process::id(), sh.len());
             let started = Instant::now();
-            let out = std::process::Command::new(sh).args(["-c", &remote_script("~", &format!("echo begun; sleep 30 & sleep 31; echo {mark}"), 1)]).output().unwrap();
+            let out = std::process::Command::new(sh).args(["-c", &remote_script("~", &format!("echo begun; {long} & {longer}; echo {mark}"), 1)]).output().unwrap();
             let stdout = String::from_utf8_lossy(&out.stdout).to_string();
             assert!(started.elapsed().as_secs() < 10, "{sh}: stopped at the limit, not after 30 s");
             assert!(stdout.starts_with("begun\n") && stdout.contains("\n__CUE_TIMEOUT__\n__CUE_EXIT__:"), "{sh}: {stdout:?}");
-            std::thread::sleep(std::time::Duration::from_millis(300));
-            let left = std::process::Command::new("/bin/ps").args(["-eo", "command="]).output().unwrap();
-            assert!(!String::from_utf8_lossy(&left.stdout).lines().any(|l| l.trim() == "sleep 30" || l.trim() == "sleep 31"), "{sh}: nothing it started is left running");
+            assert!(!running(&[&long, &longer]), "{sh}: nothing it started is left running");
             // A quick line: no timeout mark, and its watcher is gone too.
-            let quick = std::process::Command::new(sh).args(["-c", &remote_script("~", "echo fast", 77)]).output().unwrap();
+            let quick = std::process::Command::new(sh).args(["-c", &remote_script("~", "echo fast", n + 2)]).output().unwrap();
             assert!(String::from_utf8_lossy(&quick.stdout).ends_with("fast\n\n__CUE_EXIT__:0\n"), "{sh}");
-            let left = std::process::Command::new("/bin/ps").args(["-eo", "command="]).output().unwrap();
-            assert!(!String::from_utf8_lossy(&left.stdout).lines().any(|l| l.trim() == "sleep 77"), "{sh}: the watcher doesn't outlive the line");
+            assert!(!running(&[&watcher]), "{sh}: the watcher doesn't outlive the line");
         }
         let bad = std::process::Command::new("/bin/sh").args(["-c", &crate::machines::remote_command_err(&remote_script("/no/such/dir", "true", 30))]).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&bad.stdout).trim(), "NODIR", "a folder that isn't one there says so");

@@ -140,7 +140,15 @@ const reported = (status) => status === "reported" || status === "idle";
 const crewBtn = (sid, action, label, primary = false, short = "") => `<button class="btn ${primary ? "primary" : ""}" data-crew="${action}" data-crew-sid="${esc(sid)}">${short ? lbl(label, short) : esc(label)}</button>`;
 /** "in review" once you've sent an executor's review, "review queued" while it waits for its lead,
  *  "reviewed" once its lead has seen the report (Cue tells every screen), else "". */
-const reviewWord = (sid) => state.reviews?.[sid] || "";
+const reviewWord = (sid) => { const w = state.reviews?.[sid] || ""; return w === "not picked up" ? "" : w; };
+/** A report relay never woke its lead for: ready a while, unseen, its lead listening and free. Cue says so
+ *  instead of "waiting for review"; Review in lead stays. */
+const missedWake = (sid) => state.reviews?.[sid] === "not picked up";
+/** (the narrow team tree on the board says just "not picked up") */
+const NOT_PICKED_UP = "its lead hasn't picked this up";
+/** An executor whose agent exited before it reported (stalled: it never got past a trust prompt, say; dead:
+ *  its process is gone): nothing will ever report, so its row says so and offers Close. */
+const stalled = (status) => status === "stalled" || status === "dead";
 /** relay's auto mode beside a lead's LEAD tag: a switch in its chat (`live`: click to flip it),
  *  and on cards and rows just "auto" while it's on. In the chat, hover says what it means. */
 const autoToggle = (sid, m, live = false) => {
@@ -189,7 +197,7 @@ function exState(e) {
   if (asksOf(e.session_id)) return { word: "needs you", cls: "need" };
   if (reported(e.status)) return { word: "done", cls: "done" };
   if (e.status === "busy") return { word: "working", cls: "busy" };
-  return { word: { stalled: "stalled", closed: "closed", superseded: "replaced", dead: "gone" }[e.status] || e.status || "", cls: "" };
+  return { word: { stalled: "stalled", closed: "closed", superseded: "replaced", dead: "stopped" }[e.status] || e.status || "", cls: "" };
 }
 /** Under the chat's header, lead's or executor's: the whole team, this one lit; each chip ends with its role
  *  (lead / exec); a chip opens that chat. */
@@ -214,7 +222,7 @@ function packetCard(sid) {
   let st, acts = "";
   if (reported(m.status)) {
     const asked = reviewWord(sid);
-    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : asked ? `${asked} with ${lead}` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
+    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : asked ? `${asked} with ${lead}` : missedWake(sid) ? `${lead} hasn't picked this up` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
     acts = crewBtn(sid, "diff", "Diff") + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
   } else {
     const now = liveStep(sid);
@@ -231,7 +239,7 @@ function leadCard(sid) {
   const rows = (m.executors || []).flatMap((e) => {
     const ask = asksOf(e.session_id);
     if (ask) return [`<div class="tc-row need" data-big="${esc(ask.id)}" role="button"><span><b>${esc(e.name)}</b> ${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></span>${ask.kind === "permission" ? `<span class="tc-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></span>` : ""}</div>`];
-    if (reported(e.status) && !reviewWord(e.session_id)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}</span><span class="tc-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review", true)}</span></div>`];
+    if (reported(e.status) && !reviewWord(e.session_id)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}${missedWake(e.session_id) ? ` · ${NOT_PICKED_UP}` : ""}</span><span class="tc-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review", true)}</span></div>`];
     return [];
   });
   // Its plan: what it sends next, and how many wait. (Auto mode is the switch beside its LEAD tag.)
@@ -250,7 +258,8 @@ function teamTree(lead) {
     const ask = asksOf(e.session_id), on = e.session_id === openSid ? "on" : "";
     if (ask) rows.push(`<div class="tn need ${on}" data-big="${esc(ask.id)}"><div class="tn-t"><b>${esc(e.name)}</b><span class="tn-need">needs you</span></div><div class="tn-x">${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></div>${ask.kind === "permission" ? `<div class="tn-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></div>` : ""}</div>`);
     else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span></div></div>`);
-    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, waiting for review</span></div><div class="tn-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
+    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, ${missedWake(e.session_id) ? "not picked up" : "waiting for review"}</span></div><div class="tn-acts">${crewBtn(e.session_id, "diff", "Diff")}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
+    else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>${e.status === "dead" ? "stopped: its agent is gone" : "stalled: its agent exited"}</span></div><div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
     else busy.push(e);
   }
   const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div></div>`;
@@ -2842,7 +2851,7 @@ function svChipState(r) {
   if (r.st === "asks") return `<span class="sx-st hot">asks you</span>`;
   if (r.st === "yours") return `<span class="sx-st">your turn</span>`;
   if (m?.role === "executor" && m.lead_armed === false) return `<span class="sx-st hot">orphaned</span>`;
-  if (m?.role === "executor" && reported(m.status)) return `<span class="sx-st">done${reviewWord(r.sid) ? ` · ${reviewWord(r.sid)}` : ", waiting for review"}</span>`;
+  if (m?.role === "executor" && reported(m.status)) return `<span class="sx-st">done${reviewWord(r.sid) ? ` · ${reviewWord(r.sid)}` : missedWake(r.sid) ? `, ${NOT_PICKED_UP}` : ", waiting for review"}</span>`;
   if (r.quiet && r.st !== "working") return `<span class="sx-st">quiet</span>`;
   if (r.st === "limited") return `<span class="sx-st">out of usage</span>`;
   return `<i class="sx-dot ${r.st === "working" ? "busy" : "idle"}" title="${r.st === "working" ? "working" : "idle"}"></i>`;
