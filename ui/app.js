@@ -55,13 +55,8 @@ const agentName = (h) => ({ claude: "Claude Code", codex: "Codex", pi: "Pi" }[h]
 /** The agent's mark: a letter in its own colour (Claude's orange, Pi's black), so you can tell them apart at a glance. */
 const badge = (h) => `<span class="badge h-${esc(h || "other")}" title="${esc(agentName(h))}">${h === "pi" ? "π" : h === "codex" ? "X" : esc((h || "?")[0].toUpperCase())}</span>`;
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
-/** Hover on a session's name: what Claude Code titled the conversation (✎ in the chat names it). */
-function nameTip(sid) {
-  const title = state.about?.[sid]?.title || "";
-  return title;
-}
-/** A session's name, with that hover. */
-const nameSpan = (sid, project, cls = "proj") => { const tip = sid ? nameTip(sid) : ""; return `<span class="${cls}">${esc(nameOf(sid, project))}</span>`; };
+/** A session's name. */
+const nameSpan = (sid, project, cls = "proj") => `<span class="${cls}">${esc(nameOf(sid, project))}</span>`;
 /** A machine's name, short enough for a card: its first part (no user@, no domain), and past 10 characters
  *  its first 5 and last 5. What you renamed it to comes first. (Notifications do the same: machines::display_name.) */
 const machShort = (m) => {
@@ -1946,7 +1941,7 @@ function parkedPane(p) {
     ? `<div class="cv-status"><span class="dot-live"></span>Resuming${where}…</div>`
     : `<div class="park-line">${closed ? "" : P_SIGN}${closed ? "Closed" : "Parked"} ${parkedAgo(p)} · ${esc(agentName(harness))} stopped${where} · Resume picks up right here</div>`;
   return `<div class="active-pane parked">
-    <div class="ap-head">${badge(harness)}<span class="proj">${esc(name)}</span><span class="dim">${esc(agentName(harness))}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>
+    <div class="ap-head">${badge(harness)}<span class="proj">${esc(name)}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>
       ${closed ? `<button class="btn" data-park-closed="${esc(sid)}" ${w ? "disabled" : ""}>Park</button>` : `<button class="btn" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button>`}
       <button class="btn primary" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>${w ? "Resuming…" : "Resume"}</button></div>
     ${subHead(p.cwd, "", "", "")}
@@ -1993,11 +1988,12 @@ function activePane() {
     foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
-  const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? `${esc(agentName(harness))} · ${esc(shortModel(cm.model))}` : esc(agentName(harness));
+  // The badge already says which agent: no "Claude Code" beside it. An executor's relay name and a crew's model stay.
+  const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? esc(shortModel(cm.model)) : "";
   const onMachine = machTag(s?.machine || it?.machine);
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
-    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}<span class="dim">${who}</span>${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+    <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
@@ -2226,17 +2222,14 @@ function subHead(cwd, crew, sid, titleOf = sid) {
   // Too long: cut in the middle (~/develop…/web-app), so the folder's own name always shows.
   const path = homeless(cwd), cutAt = Math.max(path.lastIndexOf("/"), 0);
   const folder = cwd ? `<span class="ap-cwd sel"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? starBtn(sid) : ""}` : "";
-  // Under the name: what Claude Code titled the conversation (unless that's already the name).
-  const t = titleOf ? state.about?.[titleOf]?.title || "" : "";
-  const title = t && t !== nameOf(titleOf, "") ? `<span class="ap-title">${esc(t)}</span>` : "";
   const meta = titleOf ? metaInline(titleOf) : "";
-  return folder || crew || title || meta ? `<div class="ap-sub">${title}${meta}${crew}${folder}</div>` : "";
+  return folder || crew || meta ? `<div class="ap-sub">${meta}${crew}${folder}</div>` : "";
 }
 function nameHead(sid, project) {
   if (sid && renaming === sid) return `<input class="rename-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;
   const name = sid ? nameOf(sid, project) : project;
-  // No hover here: the chat shows Claude Code's title as text under the name (subHead).
-  return `<span class="proj">${esc(name)}</span>${sid ? `<button class="rename-btn" data-rename="${esc(sid)}" title="Rename this session" aria-label="Rename">✎</button>` : ""}${name !== project ? `<span class="dim">${esc(project)}</span>` : ""}`;
+  // Just the name: its folder's full path is on the line under it (subHead).
+  return `<span class="proj">${esc(name)}</span>${sid ? `<button class="rename-btn" data-rename="${esc(sid)}" title="Rename this session" aria-label="Rename">✎</button>` : ""}`;
 }
 async function submitRename(sid) {
   const key = `rename:${sid}`, name = draft(key).text.trim();
@@ -2607,7 +2600,11 @@ const PERMS = {
   codex: [["ask", "Ask"], ["edits", "Edits in folder"], ["skip", "Skip all"]],
   pi: [["ask", "Ask"], ["skip", "Skip all"]],
 };
-let newPerm = "ask";
+/** The permission you last picked for each agent stays picked for the next + New, until you change it.
+ *  Skip all never does: that's for the one session. */
+const savedPerm = (a) => { try { const p = localStorage.getItem(`cue.newPerm.${a}`); return PERMS[a]?.some(([v]) => v === p) ? p : "ask"; } catch { return "ask"; } };
+const savePerm = (a, p) => { try { localStorage.setItem(`cue.newPerm.${a}`, p); } catch {} };
+let newPerm = savedPerm(newAgent);
 let newWhere = null;   // this session: tmux or not (null: Settings' default)
 const newTmux = () => newWhere ?? !!state.settings?.sessions?.tmux;
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
@@ -2651,7 +2648,7 @@ function newForm() {
   const remote = newMachine ? machineState.get(newMachine) : null;
   // On a machine: the agents its check found there (all three until it's been checked).
   const agents = newMachine ? ["claude", "codex", "pi"].filter((a) => !remote?.tools || remote.tools[a]) : agentsAvail || ["claude"];
-  if (agents.length && !agents.includes(newAgent)) newAgent = agents[0];
+  if (agents.length && !agents.includes(newAgent)) { newAgent = agents[0]; newPerm = savedPerm(newAgent); }
   const folders = nfFolders();
   const machines = machinesList || [];
   return `<div class="nf">
@@ -2703,11 +2700,11 @@ async function lvAct(act, d) {
     renderMain();
     return document.querySelector('[data-text="new-msg"]')?.focus();
   }
-  if (act === "agent") { newAgent = d.agent; if (!PERMS[newAgent].some(([v]) => v === newPerm)) newPerm = "ask"; return renderMain(); }
+  if (act === "agent") { newAgent = d.agent; newPerm = savedPerm(newAgent); return renderMain(); }
   if (act === "where") { newWhere = d.tmux === "true"; return renderMain(); }
   if (act === "machine-add") { nfAdding = !nfAdding; renderMain(); return nfAdding && document.querySelector('[data-text="mc-host"]')?.focus(); }
   if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : homeless(recentFolders()[0] || ""); return renderMain(); }
-  if (act === "perm") { newPerm = d.perm; return renderMain(); }
+  if (act === "perm") { newPerm = d.perm; if (newPerm !== "skip") savePerm(newAgent, newPerm); return renderMain(); }
   if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
   if (act === "folder") return pickFolder(d.cwd);
   if (act === "cancel") { liveOpen = newOpen = false; closeFolders(); return renderMain(); }
@@ -2720,7 +2717,7 @@ async function lvAct(act, d) {
       if (newMachine) rememberFolder(newMachine, cwd);
       toast(r.detail);
       draft("new-msg").text = draft("new-name").text = draft("new-flags").text = "";
-      newPerm = "ask";   // skipping permissions is for that one session, never carried over
+      if (newPerm === "skip") newPerm = savedPerm(newAgent);   // skipping permissions is for that one session, never carried over
       newWhere = null;
       newOpen = liveOpen = false;
       // Cue knows the new session already (it picked the id): open it here. Its terminal stays closed
@@ -2787,13 +2784,13 @@ function svChipState(r) {
   if (r.st === "limited") return `<span class="sx-st">out of usage</span>`;
   return `<i class="sx-dot ${r.st === "working" ? "busy" : "idle"}" title="${r.st === "working" ? "working" : "idle"}"></i>`;
 }
-/** What a session is about, without a model: an executor's packet goal; else Claude's AI title for the
- *  session (set early, never updated); and your latest request to it (Claude's, else what Cue saw you send). */
+/** What a session is about, without a model: an executor's packet goal; and your latest request to it
+ *  (Claude's, else what Cue saw you send). */
 function svAbout(r) {
   const m = r.crew || crewOf(r.sid), a = state.about?.[r.sid];
   const now = a?.prompt || sessionOf(r.sid)?.prompt || "";
   if (m?.role === "executor" && m.goal) return { label: "Goal", about: m.goal, now: "", outcome: m.outcome || "" };
-  return { label: "About", about: a?.title || "", now, outcome: "" };
+  return { label: "About", about: "", now, outcome: "" };
 }
 /** Close: not while it's working or asking you (you'd lose the turn / the question), not a lead that
  *  still has executors (that's relay's handoff), not a session Cue can't reach. Two clicks: Close, Close?. */
@@ -3753,7 +3750,7 @@ function bindMain() {
     const rn = t.closest("[data-rename]");
     if (rn) {
       renaming = rn.dataset.rename;
-      draft(`rename:${renaming}`).text = sessionOf(renaming)?.name || state.about?.[renaming]?.title || "";
+      draft(`rename:${renaming}`).text = sessionOf(renaming)?.name || "";
       renderMain();
       const el = document.querySelector(".rename-in");
       el?.focus(); el?.select();

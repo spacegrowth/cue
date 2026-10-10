@@ -1334,10 +1334,10 @@ impl Hub {
             since_ms: *at,
         });
         let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id)).collect();
-        // What each Claude session is about (AI title, your latest request), from its transcript: no model.
+        // Your latest request to each Claude session, from its transcript: no model.
         let about: HashMap<String, Value> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
             .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
-            .filter_map(|(sid, path)| { let (title, prompt) = crate::live::about(&path); (!title.is_empty() || !prompt.is_empty()).then(|| (sid, json!({ "title": title, "prompt": prompt }))) })
+            .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
             .collect();
         let branches: HashMap<String, String> = st.sessions.all().iter().map(|s| s.origin.cwd.clone()).chain(live.iter().map(|q| q.cwd.clone())).filter(|c| !c.is_empty()).map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
         json!({

@@ -1,5 +1,5 @@
-//! Claude Code's older sessions, for search by name: each transcript's title (your /rename, else
-//! Claude Code's own title), last prompt, folder and when it was last used.
+//! Claude Code's older sessions, for search by name: each transcript's name (your /rename), last
+//! prompt, folder and when it was last used.
 //!
 //! Only the last 64 KB of each transcript is read (that's where Claude Code keeps re-writing those
 //! entries), only when the file changed, on a background thread: search reads this small index and
@@ -64,14 +64,13 @@ fn read_entry(path: &str, mtime: u64) -> Option<Entry> {
     let mut buf = Vec::new();
     f.read_to_end(&mut buf).ok()?;
     let text = String::from_utf8_lossy(&buf);
-    let (mut custom, mut ai, mut prompt, mut cwd) = (String::new(), String::new(), String::new(), String::new());
+    let (mut custom, mut prompt, mut cwd) = (String::new(), String::new(), String::new());
     // Starting mid-file, the first line is a fragment: skip it.
     for line in text.lines().skip(usize::from(len > TAIL)) {
         let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
         let s = |k: &str| e.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         match e.get("type").and_then(Value::as_str) {
             Some("custom-title") => custom = s("customTitle"),
-            Some("ai-title") => ai = s("aiTitle"),
             Some("last-prompt") => prompt = s("lastPrompt"),
             _ => {}
         }
@@ -80,7 +79,8 @@ fn read_entry(path: &str, mtime: u64) -> Option<Entry> {
         }
     }
     let session_id = std::path::Path::new(path).file_stem()?.to_string_lossy().to_string();
-    let title = if custom.is_empty() { ai } else { custom };
+    // Its name is the one you gave it (/rename): Claude's own AI title is never used as a name.
+    let title = custom;
     (!title.is_empty() || !prompt.is_empty()).then_some(Entry { session_id, title, last_prompt: prompt, cwd, updated_ms: mtime })
 }
 
@@ -140,6 +140,13 @@ mod tests {
         let e = read_entry(path.to_str().unwrap(), 7).unwrap();
         assert_eq!((e.session_id.as_str(), e.title.as_str(), e.cwd.as_str()), ("abc-123", "cue-bug-fixes", "/Users/v/dev/cue"));
         assert_eq!(e.last_prompt, "can we search old sessions by name");
+        // Only Claude's own AI title: no name.
+        let p2 = dir.join("def-456.jsonl");
+        let mut f2 = std::fs::File::create(&p2).unwrap();
+        for l in [json!({"type":"ai-title","aiTitle":"Waiting status line clarity"}), json!({"type":"last-prompt","lastPrompt":"hi"})] {
+            writeln!(f2, "{l}").unwrap();
+        }
+        assert_eq!(read_entry(p2.to_str().unwrap(), 7).unwrap().title, "");
         std::fs::remove_dir_all(&dir).ok();
     }
 }

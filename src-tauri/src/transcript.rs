@@ -304,21 +304,17 @@ pub fn prompt_sender(path: &str, prompt_id: &str) -> Option<Sender> {
     })
 }
 
-/// What a session is about, from its own transcript, no model: Claude Code's AI title (set early in
-/// a session, never updated) and your latest request (`last-prompt`). Claude re-writes both every
-/// turn, so the last 256 KB has them; only those lines are parsed.
-pub fn about(path: &str) -> (String, String) {
+/// Your latest request to a session (`last-prompt`), from its own transcript, no model. Claude
+/// re-writes it every turn, so the last 256 KB has it; only those lines are parsed.
+pub fn about(path: &str) -> String {
     let from = std::fs::metadata(path).map(|m| m.len().saturating_sub(256 * 1024)).unwrap_or(0);
-    let Some(tail) = read_from(path, from) else { return (String::new(), String::new()) };
-    let last = |kind: &str, key: &str| {
-        tail.lines()
-            .rev()
-            .filter(|l| l.contains(kind))
-            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-            .find_map(|e| e.get(key).and_then(Value::as_str).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()))
-            .unwrap_or_default()
-    };
-    (last("\"type\":\"ai-title\"", "aiTitle"), last("\"type\":\"last-prompt\"", "lastPrompt"))
+    let Some(tail) = read_from(path, from) else { return String::new() };
+    tail.lines()
+        .rev()
+        .filter(|l| l.contains("\"type\":\"last-prompt\""))
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find_map(|e| e.get("lastPrompt").and_then(Value::as_str).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()))
+        .unwrap_or_default()
 }
 
 /// Whether `text` reached the session from Claude Code's own queue, not from you. A background
@@ -831,7 +827,7 @@ mod tests {
     }
 
     #[test]
-    fn about_reads_the_ai_title_and_the_last_prompt() {
+    fn about_reads_the_last_prompt() {
         let t = write_transcript(&[
             json!({"type":"ai-title","aiTitle":"Old title","sessionId":"s"}),
             json!({"type":"user","message":{"content":"first ask"}}),
@@ -840,9 +836,9 @@ mod tests {
             json!({"type":"last-prompt","lastPrompt":"see it looks odd on sides of keyboard top","sessionId":"s"}),
             json!({"type":"assistant","message":{"content":[{"type":"text","text":"\"type\":\"ai-title\" mentioned in prose"}]}}),
         ]);
-        assert_eq!(about(&t.0), ("Agent decision notification system".into(), "see it looks odd on sides of keyboard top".into()));
+        assert_eq!(about(&t.0), "see it looks odd on sides of keyboard top");
         let empty = write_transcript(&[json!({"type":"user","message":{"content":"hi"}})]);
-        assert_eq!(about(&empty.0), (String::new(), String::new()));
+        assert_eq!(about(&empty.0), "");
     }
 
     #[test]

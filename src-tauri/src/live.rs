@@ -145,16 +145,16 @@ pub fn claude_transcript(cwd: &str, session_id: &str) -> Option<String> {
     p.is_file().then(|| p.to_string_lossy().into_owned())
 }
 
-/// What each Claude session is about (its AI title, your latest request), by transcript. A busy
+/// Your latest request to each Claude session, by transcript. A busy
 /// session's transcript changes every second: it's read again only when it changed AND the last
 /// read is 5s old.
-static ABOUT: Mutex<Option<HashMap<String, (u64, std::time::SystemTime, (String, String))>>> = Mutex::new(None);
+static ABOUT: Mutex<Option<HashMap<String, (u64, std::time::SystemTime, String)>>> = Mutex::new(None);
 
-pub fn about(transcript: &str) -> (String, String) {
+pub fn about(transcript: &str) -> String {
     if transcript.is_empty() {
-        return (String::new(), String::new());
+        return String::new();
     }
-    let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return (String::new(), String::new()) };
+    let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return String::new() };
     let now = crate::model::now_ms();
     let mut cache = ABOUT.lock().unwrap();
     let cache = cache.get_or_insert_with(HashMap::new);

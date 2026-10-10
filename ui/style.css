@@ -666,8 +666,6 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
    the right, under the buttons. */
 .ap-sub { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px 0 44px; min-width: 0; }
 .ap-sub .crew-line { min-width: 0; }
-/* Claude Code's title for the conversation, under the name. */
-.ap-title { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 .ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; min-width: 0; flex: 0 1 auto; display: flex; overflow: hidden; }
 /* Cut in the middle: the start gives way first, the folder's own name only when nothing else is left. */
 .cwd-head { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
