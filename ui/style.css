@@ -648,11 +648,11 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .role.executor { border: 1px solid var(--muted); color: var(--muted); }
 .nrow.on .role.lead { background: var(--on-sel); color: var(--sel); }
 .nrow.on .role.executor { border-color: var(--on-sel); color: var(--on-sel); }
-.crew-color { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--crew); flex: none; vertical-align: 0; margin-right: 4px; }
-.nrow-top .crew-color, .ap-head .crew-color { margin: 0 -2px 0 -2px; }
 /* On the Sessions column's see-through cards: the column's own colours. */
 .working .role.lead { background: var(--on-bg); color: var(--bg); }
 .working .role.executor { border-color: var(--on-bg-muted); color: var(--on-bg-muted); }
+.crew-color { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--crew); flex: none; vertical-align: 0; margin-right: 4px; }
+.nrow-top .crew-color, .ap-head .crew-color { margin: 0 -2px 0 -2px; }
 /* 1px of room above and below: the EXEC / LEAD tag's box is a hair taller than the line, and the clip shaved its bottom edge. */
 .crew-line { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
 .nrow.on .crew-line { color: color-mix(in srgb, var(--on-sel) 75%, transparent); }

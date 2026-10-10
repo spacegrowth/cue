@@ -2878,6 +2878,20 @@ function fitSvRest() {
   }
 }
 window.addEventListener("resize", () => { if (view === "sessions") fitSvRest(); });
+/** "Show N more": the rest of the list shows, and the tab scrolls up once, smoothly, to bring them into
+ *  view (as many as fit, the first one just under its pinned heading, never past the list's end). */
+function showAllSvRest(btn) {
+  const list = btn.previousElementSibling, first = list?.querySelector(".sx-cut");
+  svShowAll.add(btn.dataset.svAll);
+  fitSvRest();
+  const sc = document.querySelector(".sv-scroll");
+  if (!sc || !first) return;
+  const box = sc.getBoundingClientRect(), head = list.parentElement.querySelector(".sx-sec-h")?.offsetHeight || 0;
+  const toFirst = first.getBoundingClientRect().top - box.top - head - 8;
+  const toEnd = list.getBoundingClientRect().bottom - box.bottom + 16;
+  const by = Math.min(toFirst, toEnd);
+  if (by > 0) sc.scrollBy({ top: by, behavior: "smooth" });
+}
 function sessionsView() {
   const all = liveRows();
   const q = draft("find-sessions").text.trim().toLowerCase();
@@ -3760,6 +3774,8 @@ function bindMain() {
     if (mic) return toggleDictation(mic.dataset.mic);
     const pb = t.closest("[data-park]");
     if (pb) { const [sid, on] = pb.dataset.park.split(/:(?=[01]$)/); return setParked(sid, on === "1"); }
+    const fg = t.closest("[data-forget]");
+    if (fg) return invoke("forget_session", { sessionId: fg.dataset.forget }).then(() => toast("Removed from Cue")).catch((e) => toast(`Couldn't: ${e}`));
     const hide = t.closest("[data-hide-idle]");
     if (hide) return hideIdle(hide.dataset.hideIdle);
     const fwdBtn = t.closest("[data-fwd]");
@@ -3772,8 +3788,6 @@ function bindMain() {
     const pl = t.closest("a[data-path]");
     if (pl) { e.preventDefault(); if (e.metaKey || e.ctrlKey) return invoke("open_link", { url: pl.dataset.path }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const link = t.closest("a[data-href]");
-    const fg = t.closest("[data-forget]");
-    if (fg) return invoke("forget_session", { sessionId: fg.dataset.forget }).then(() => toast("Removed from Cue")).catch((e) => toast(`Couldn't: ${e}`));
     if (link) { e.preventDefault(); return invoke("open_link", { url: link.dataset.href }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const llb = t.closest("[data-local-lb]");
     if (llb) {
@@ -3842,7 +3856,7 @@ function bindMain() {
     const svf = t.closest("[data-sv-fold]");
     if (svf) return svFold(svf.dataset.svFold);
     const sva = t.closest("[data-sv-all]");
-    if (sva) { svShowAll.add(sva.dataset.svAll); return fitSvRest(); }
+    if (sva) return showAllSvRest(sva);
     const shw = t.closest("[data-shelf]");
     if (shw) return pickShelf(shw.dataset.shelf);
     const pkc = t.closest("[data-park-closed]");
