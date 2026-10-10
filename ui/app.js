@@ -1467,6 +1467,8 @@ const REVEAL_MS = 900;
  *  is in its pass comes from the clock, so a redraw (they come often while it works) carries it on
  *  instead of starting it over. */
 const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000, FLICK_MS = 700;
+/** The pulsing dot's cycle (.dot-live in the CSS). */
+const PULSE_MS = 1400;
 function sweep(sid, s) {
   if (!(s?.state === "working" || s?.compacting_ms)) return "";
   if (s.stuck_ms && !s.compacting_ms) return `<i class="sweep stalled"></i>`;
@@ -3371,6 +3373,11 @@ function renderMain() {
   </div>${moving ? movingDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
+  // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
+  // clock instead (as the working sweep's does), so it carries on through the redraws that come every
+  // couple of seconds while steps land.
+  const phase = `-${Date.now() % PULSE_MS}ms`;
+  document.querySelectorAll(".dot-live").forEach((el) => { el.style.animationDelay = phase; });
   markMore();   // lists end on whole cards before anything measures where cards landed
   if (view === "sessions") fitSvRest();
   flipPlay(flipFrom);
