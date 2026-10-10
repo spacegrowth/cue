@@ -263,6 +263,7 @@ impl Hub {
                 self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
                 return true;
             }
+        // Still in its box: the Enter didn't take (the agent was busy drawing). One more, then a look.
         }
         if crate::focus::text_in_box(origin, text) == Some(true) {
             self.store.lock().unwrap().sessions.mark_unsent(sid);
