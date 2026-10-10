@@ -8,7 +8,7 @@
 //! drive other agents (a lead and its helpers): who led whom, and what each one said.
 
 use crate::model::{now_ms, Answer, Exchange, Item};
-use crate::sessions::Session;
+use crate::sessions::{Parked, Session};
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -57,6 +57,13 @@ CREATE TABLE IF NOT EXISTS items (
 );
 CREATE INDEX IF NOT EXISTS items_history ON items(status, resolved_ms);
 CREATE INDEX IF NOT EXISTS items_session ON items(session_id);
+
+-- Sessions you parked (stopped, kept to resume): until you resume or unpark them.
+CREATE TABLE IF NOT EXISTS parked (
+  id          TEXT PRIMARY KEY,
+  parked_ms   INTEGER NOT NULL,
+  data        TEXT NOT NULL            -- the whole Parked as JSON (the session as it was, and when)
+);
 
 CREATE TABLE IF NOT EXISTS drafts (
   -- SHORTCUT: draft images are stored inline as data URLs (up to 6 × 15 MB); fine for a few drafts.
@@ -250,6 +257,57 @@ pub fn live() -> (Vec<Session>, Vec<Item>) {
         Ok((sessions, waiting))
     })
     .unwrap_or_default()
+}
+
+// ---------- parked sessions ----------
+
+/// Keep a parked session (again, if it was already: the newer record wins).
+pub fn park(p: &Parked) {
+    with(|c| {
+        c.execute(
+            "INSERT INTO parked (id, parked_ms, data) VALUES (?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET parked_ms = excluded.parked_ms, data = excluded.data",
+            params![p.session.origin.session_id, p.parked_ms as i64, serde_json::to_string(p).unwrap_or_default()],
+        )
+    });
+}
+
+/// Every parked session, the latest parked first.
+pub fn parked() -> Vec<Parked> {
+    with(|c| {
+        let mut q = c.prepare("SELECT data FROM parked ORDER BY parked_ms DESC")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?.filter_map(|r| r.ok()).filter_map(|d| serde_json::from_str(&d).ok()).collect();
+        Ok(rows)
+    })
+    .unwrap_or_default()
+}
+
+/// It isn't parked any more (resumed, unparked, or running again by itself).
+pub fn unpark(session_id: &str) {
+    with(|c| c.execute("DELETE FROM parked WHERE id = ?1", params![session_id]));
+}
+
+/// Sessions that ended since `since_ms`, the latest ended first, at most `limit`: when each ended, and
+/// its record as it was.
+pub fn closed(since_ms: u64, limit: usize) -> Vec<(u64, Session)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT ended_ms, data FROM sessions WHERE ended_ms IS NOT NULL AND ended_ms > ?1 ORDER BY ended_ms DESC LIMIT ?2")?;
+        let rows = q
+            .query_map(params![since_ms as i64, limit as i64], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(at, d)| serde_json::from_str::<Session>(&d).ok().map(|s| (at as u64, s)))
+            .collect();
+        Ok(rows)
+    })
+    .unwrap_or_default()
+}
+
+/// One session that has ended: when, and its record as it was.
+pub fn ended_session(id: &str) -> Option<(u64, Session)> {
+    with(|c| {
+        c.query_row("SELECT ended_ms, data FROM sessions WHERE id = ?1 AND ended_ms IS NOT NULL", params![id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+    })
+    .and_then(|(at, d)| serde_json::from_str::<Session>(&d).ok().map(|s| (at as u64, s)))
 }
 
 // ---------- search: everything Cue has logged ----------

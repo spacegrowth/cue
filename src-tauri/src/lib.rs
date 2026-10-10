@@ -154,10 +154,162 @@ pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json:
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
     let line = focus::resume_line(&cwd, session_id)?;
     let name = model::project_of(&cwd);
-    let tab = if config::tmux_sessions() { focus::open_in_tmux(&line, &cwd, &name)? } else if focus::tmux_installed() { focus::open_in_tmux_tab(&line, &cwd, &name)? } else { focus::open_tab_with(&line)? };
+    let tab = open_for_resume(&line, &cwd, &name)?;
     let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
     h.resumed(origin, &title, &transcript::recent_context(&path, 6), false);
     Ok(serde_json::json!({ "session_id": session_id, "detail": format!("Resumed in {}", tab.what) }))
+}
+
+/// Where a resumed session runs on this Mac: its own tmux session (Settings), else a window of Cue's
+/// tmux tabs, else a plain terminal tab.
+fn open_for_resume(line: &str, cwd: &str, name: &str) -> Result<focus::NewTab, String> {
+    if config::tmux_sessions() {
+        focus::open_in_tmux(line, cwd, name)
+    } else if focus::tmux_installed() {
+        focus::open_in_tmux_tab(line, cwd, name)
+    } else {
+        focus::open_tab_with(line)
+    }
+}
+
+/// Park: stop a session (its agent ended as Close ends it, its tab closed) and keep it under Parked,
+/// to resume with its whole conversation. Claude Code, Codex and Pi; not while it works or asks you
+/// something, and not one relay runs.
+#[tauri::command]
+async fn park_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || park(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+pub(crate) fn park(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
+    let s = h.session_record(session_id).ok_or("Cue has no record of that session")?;
+    if s.origin.cwd.is_empty() {
+        return Err("Cue doesn't know which folder it runs in, so it couldn't resume it".into());
+    }
+    // Only one Cue can bring back: checked before anything is ended.
+    focus::resume_line_for(&s.origin.harness, &s.origin.cwd, session_id)?;
+    // An executor is relay's (or pilead's) to close; a lead with executors still open can't go yet.
+    // A lead with none left is parked like any session: `claude --resume` brings the lead back.
+    match leads::close_plan(session_id) {
+        Some(Err(e)) => return Err(e),
+        Some(Ok(_)) => return Err("relay runs it: close it through relay instead".into()),
+        None => {}
+    }
+    h.closable(session_id)?;
+    // Its finished turn leaves Waiting as parked: before its end, which would call it "session ended".
+    // (Only a finished turn can be here: closable refuses one that asks you something.)
+    for id in h.pending().iter().filter(|i| i.origin.session_id == session_id).map(|i| i.id.clone()) {
+        h.finish(&id, "gone", "parked");
+    }
+    end_session(h, session_id)?;
+    // Its end (SessionEnd, or its agent's exit) drops Cue's record of it: let that land first, so
+    // nothing late from it lands on the parked one.
+    for _ in 0..20 {
+        if h.session_origin(session_id).is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    h.add_parked(s);
+    Ok("Parked: its agent stopped and its terminal closed".into())
+}
+
+/// Resume a parked session: its agent's resume command, in tmux on this Mac or on its machine; its
+/// record back as it was (name, star, recent thread), at its prompt. With a message (Resume & send),
+/// the message goes on that command line, so the agent starts on it once the conversation is loaded.
+#[tauri::command]
+async fn resume_parked(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<String, String> {
+    let h = hub.inner().clone();
+    let message = message.unwrap_or_default();
+    let res = tauri::async_runtime::spawn_blocking(move || resume_parked_session(&h, &session_id, &message)).await.map_err(|e| e.to_string())?;
+    // Cue stays in front: a terminal tab may have opened behind it.
+    if res.is_ok() {
+        show_main(&app, None);
+    }
+    res
+}
+
+pub(crate) fn resume_parked_session(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<String, String> {
+    let p = h.parked(session_id).ok_or("it isn't parked any more")?;
+    // Running again already (you resumed it in a terminal yourself): a second agent would share its
+    // conversation. It's live, so it just leaves Parked.
+    if p.session.origin.machine.is_empty() && live::claude().iter().any(|q| q.session_id == session_id) {
+        h.take_parked(session_id);
+        return Ok("It's already running".into());
+    }
+    resume_record(h, p, message)
+}
+
+/// Closed, in the Parked drawer: sessions that ended in the last 30 days (at most 30), newest first,
+/// not parked and not running again. To find the ones that got lost (an agent that exited, a tab closed).
+#[tauri::command]
+fn closed_sessions(hub: State<Arc<Hub>>) -> Vec<serde_json::Value> {
+    hub.closed(CLOSED_DAYS * 24 * 3600 * 1000, CLOSED_MAX)
+}
+const CLOSED_DAYS: u64 = 30;
+const CLOSED_MAX: usize = 30;
+
+/// Resume a closed session, as a parked one resumes: its agent's resume command, its record back.
+#[tauri::command]
+async fn resume_closed(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<String, String> {
+    let h = hub.inner().clone();
+    let message = message.unwrap_or_default();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        let p = closed_record(&h, &session_id)?;
+        resume_record(&h, p, &message)
+    }).await.map_err(|e| e.to_string())?;
+    if res.is_ok() {
+        show_main(&app, None);
+    }
+    res
+}
+
+/// Park a closed session: kept under Parked (nothing to stop, it has ended already).
+#[tauri::command]
+fn park_closed(hub: State<Arc<Hub>>, session_id: String) -> Result<(), String> {
+    let p = closed_record(hub.inner(), &session_id)?;
+    hub.add_parked(p.session);
+    Ok(())
+}
+
+/// A closed session's saved record, if it can be brought back: ended, not live again, an agent Cue resumes.
+fn closed_record(h: &Arc<Hub>, session_id: &str) -> Result<crate::sessions::Parked, String> {
+    if h.session_origin(session_id).is_some() || live::claude().iter().any(|q| q.session_id == session_id) {
+        return Err("it's running again".into());
+    }
+    let (ended_ms, session) = db::ended_session(session_id).ok_or("Cue has no record of that session")?;
+    focus::resume_line_for(&session.origin.harness, &session.origin.cwd, session_id)?;
+    Ok(crate::sessions::Parked { parked_ms: ended_ms, session })
+}
+
+/// The work behind Resume, for a parked or a closed session: in tmux on this Mac or on its machine.
+fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &str) -> Result<String, String> {
+    let session_id = p.session.origin.session_id.clone();
+    let session_id = session_id.as_str();
+    let o = p.session.origin.clone();
+    let mut line = focus::resume_line_for(&o.harness, &o.cwd, session_id)?;
+    if !message.trim().is_empty() {
+        line += &format!(" {}", focus::shq(message.trim()));
+    }
+    let label = if p.session.name.is_empty() { model::project_of(&o.cwd) } else { p.session.name.clone() };
+    let base = model::Origin { session_id: session_id.to_string(), harness: o.harness.clone(), transcript_path: o.transcript_path.clone(), ..Default::default() };
+    let (fresh, at) = if o.machine.is_empty() {
+        let tab = open_for_resume(&line, &o.cwd, &label)?;
+        let at = tab.what.clone();
+        (model::Origin { cwd: o.cwd.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..base }, at)
+    } else {
+        let m = machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
+        let (pane, tty, dir) = machines::open_in_tmux(&m, &line, &o.cwd, &label)?;
+        (model::Origin { cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..base }, format!("tmux on {}", m.name))
+    };
+    h.unparked(p, fresh, message.trim());
+    Ok(format!("Resumed in {at}"))
+}
+
+/// Unpark: take it off Parked without resuming it. Its conversation stays in History and search.
+#[tauri::command]
+fn unpark_session(hub: State<Arc<Hub>>, session_id: String) {
+    hub.take_parked(&session_id);
 }
 
 /// Would a reboot have left this session without its pane, so Cue rebuilds it? Claude only:
@@ -1178,7 +1330,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, focus_session, focus_session_id, send_to_session, reply, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {

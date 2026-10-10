@@ -131,6 +131,21 @@
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
       if (q.get("ufile") === "err") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [], error: "Line 2: \"spent\" isn't a number (\"lots\")." };
+      // ?park=1: two parked sessions (stopped, kept to resume) under Sessions; Park, Resume and Unpark work.
+      state.parked = q.get("park") ? [
+        { ...sess("drift", "infra", "codex", "waiting", 26 * 60, []), machine: "build-box", parked_ms: now - 26 * 3600000, thread: [
+          { role: "you", text: "Which workspaces are on staging?", at_ms: now - 27 * 3600000 },
+          { role: "agent", text: "Two: `staging` and `staging-eu`.", at_ms: now - 27 * 3600000 + 40000 },
+          { role: "you", text: "Check Terraform drift on staging. Don't apply anything.", at_ms: now - 26.5 * 3600000 },
+          { role: "agent", text: "Three resources drifted: the two security groups on the staging load balancer and the logs bucket. The plan is saved to `drift.plan`; nothing was applied.", at_ms: now - 26.2 * 3600000 } ] },
+        { ...sess("guide", "docs-site", "claude", "waiting", 120, []), name: "auth guide", parked_ms: now - 2 * 3600000, thread: [
+          { role: "you", text: "Rewrite the auth guide around the new middleware.", at_ms: now - 2.2 * 3600000 },
+          { role: "agent", text: "The draft is in `docs/auth.md`. I held off on the code examples until the API settles.", at_ms: now - 2.1 * 3600000 } ] },
+      ] : [];
+      const closed = [
+        { ...sess("lost1", "billing", "claude", "waiting", 0, []), ended_ms: now - 3 * 3600000, thread: [{ role: "you", text: "Add the proration test.", at_ms: now - 3.2 * 3600000 }, { role: "agent", text: "Added `test_proration_midcycle`; it passes.", at_ms: now - 3.1 * 3600000 }] },
+        { ...sess("lost2", "notes", "pi", "waiting", 0, []), ended_ms: now - 4 * 86400000, thread: [{ role: "agent", text: "Summarised the meeting into notes/2026-10-06.md.", at_ms: now - 4 * 86400000 }] },
+      ];
       const listeners = (window.__listeners = {});
       const emit = () => (listeners.state || []).forEach((f) => f({ payload: structuredClone(state) }));
       window.__TAURI__ = {
@@ -143,6 +158,13 @@
           if (cmd === "machine_setup") return ["Set up Cue's hooks for Claude Code (~/.claude/settings.json, backed up first)"];
           // ⌘F: one closed session matching (a Claude Code one, so it offers Resume).
           if (cmd === "search") return [{ kind: "session", session_id: "old-1", name: "checkout-flow", project: "web-shop", harness: "claude", at_ms: Date.now() - 86400000, ended: true, last_role: "agent", last: "Merged the coupon fix." }];
+          if (cmd === "park_session") { const i = state.sessions.findIndex((x) => x.session_id === args.sessionId); if (i < 0) throw "Cue has no record of that session"; const [x] = state.sessions.splice(i, 1); for (const it of state.items.filter((it) => it.session_id === x.session_id)) state.history.unshift({ ...it, status: "gone", outcome: "parked", resolved_ms: Date.now() }); state.items = state.items.filter((it) => it.session_id !== x.session_id); state.parked.unshift({ ...x, parked_ms: Date.now() }); setTimeout(emit, 300); return "Parked"; }
+          if (cmd === "resume_parked") { await new Promise((r) => setTimeout(r, 1200)); const i = state.parked.findIndex((x) => x.session_id === args.sessionId); const [x] = state.parked.splice(i, 1); const back = { ...x, state: args.message ? "working" : "waiting", since_ms: Date.now(), prompt: args.message || "", thread: [...(x.thread || []), ...(args.message ? [{ role: "you", text: args.message, at_ms: Date.now() }] : [])] }; delete back.parked_ms; state.sessions.push(back); setTimeout(emit, 10); return x.machine ? `Resumed in tmux on ${x.machine}` : "Resumed in tmux"; }
+          // Closed: what ended in the last 30 days. Resume or Park takes one off the list.
+          if (cmd === "closed_sessions") return closed;
+          if (cmd === "park_closed") { const i = closed.findIndex((x) => x.session_id === args.sessionId); const [x] = closed.splice(i, 1); state.parked.unshift({ ...x, parked_ms: Date.now() }); setTimeout(emit, 10); return null; }
+          if (cmd === "resume_closed") { await new Promise((r) => setTimeout(r, 1200)); const i = closed.findIndex((x) => x.session_id === args.sessionId); const [x] = closed.splice(i, 1); state.sessions.push({ ...x, state: args.message ? "working" : "waiting", since_ms: Date.now() }); setTimeout(emit, 10); return "Resumed in tmux"; }
+          if (cmd === "unpark_session") { state.parked = state.parked.filter((x) => x.session_id !== args.sessionId); setTimeout(emit, 10); return null; }
           if (cmd === "resume_session") return { session_id: args.sessionId, detail: "Resumed in Cue" };
           if (cmd === "machine_rename") return { name: args.name, host: args.name === "build-box" ? "me@build-box" : args.name, label: args.label.trim() };
           if (cmd === "machine_add") return { name: args.host.replace(/^[^@]*@/, ""), host: args.host };

@@ -618,6 +618,21 @@ pub fn resume_line(cwd: &str, session_id: &str) -> Result<String, String> {
     Ok(format!("cd {} && claude --resume {}", shq(cwd), shq(session_id)))
 }
 
+/// The command line that picks a parked session back up, for its agent: `claude --resume <id>`,
+/// `codex resume <id>`, `pi --session <id>`, each in its folder.
+pub fn resume_line_for(harness: &str, cwd: &str, session_id: &str) -> Result<String, String> {
+    if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err("Cue doesn't have a session id it can resume".into());
+    }
+    let program = match harness {
+        "claude" => return resume_line(cwd, session_id),
+        "codex" => "codex resume",
+        "pi" => "pi --session",
+        other => return Err(format!("Cue can't resume a {other} session")),
+    };
+    Ok(format!("cd {} && {program} {}", shq(cwd), shq(session_id)))
+}
+
 /// A new terminal window running `cmd`: iTerm if it's installed, else Terminal.
 fn run_in_new_window(cmd: &str) -> Result<String, String> {
     let iterm_installed = std::path::Path::new("/Applications/iTerm.app").exists();
@@ -878,6 +893,16 @@ mod start_tests {
         assert_eq!(start_line("pi", "/x", "P1", "hello $(rm -rf ~)", "ignored").unwrap(), "cd '/x' && pi --session-id 'P1' 'hello $(rm -rf ~)'");
         assert_eq!(start_line("codex", "/x", "C1", "go", "").unwrap(), "cd '/x' && codex 'go'");
         assert!(start_line("bash", "/x", "", "", "").is_err());
+    }
+
+    #[test]
+    fn a_parked_session_resumes_with_its_own_agents_command() {
+        assert_eq!(resume_line_for("claude", "/x/my repo", "3f2a-91").unwrap(), "cd '/x/my repo' && claude --resume '3f2a-91'");
+        assert_eq!(resume_line_for("codex", "/x", "a91f").unwrap(), "cd '/x' && codex resume 'a91f'");
+        assert_eq!(resume_line_for("pi", "/x", "P1").unwrap(), "cd '/x' && pi --session 'P1'");
+        assert!(resume_line_for("pi", "/x", "a; rm -rf ~").is_err(), "only an id, never more shell");
+        assert!(resume_line_for("codex", "/x", "").is_err());
+        assert!(resume_line_for("bash", "/x", "S1").is_err());
     }
 
     #[test]

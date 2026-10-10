@@ -94,6 +94,42 @@ fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
+/// A session you parked: its agent ended and its pane closed, its record kept as it was (name, star,
+/// recent thread) so Resume brings it back where it left off. It stays until you resume or unpark it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Parked {
+    pub parked_ms: u64,
+    #[serde(flatten)]
+    pub session: Session,
+}
+
+impl Parked {
+    /// Its record back on a new terminal (`origin`), at its prompt: nothing it was doing or holding
+    /// carries over (that ended with its agent).
+    pub fn into_session(self, origin: Origin) -> Session {
+        let mut s = self.session;
+        let now = now_ms();
+        s.origin = origin;
+        s.state = "waiting".into();
+        s.since_ms = now;
+        s.segments = vec![Segment { kind: "waiting".into(), start_ms: now, end_ms: None }];
+        s.queued = None;
+        s.held = None;
+        s.limit = None;
+        s.doing.clear();
+        s.doing_ms = 0;
+        s.compacting_ms = 0;
+        s.compacted_ms = 0;
+        s.trust_ms = 0;
+        s.stuck_ms = 0;
+        s.later_ms = 0;
+        s.changes = None;
+        s.turn_base = None;
+        s.rename_pending = false;
+        s
+    }
+}
+
 /// Longest text kept per agent message: enough for a full one.
 const EXCHANGE_CHARS: usize = 6000;
 /// Your own messages are kept whole (up to this): a copy cut short can't be matched with what the

@@ -31,6 +31,8 @@ struct Store {
     active_at: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
+    /// Sessions you parked (stopped, kept to resume), the latest parked first.
+    parked: Vec<crate::sessions::Parked>,
     /// Cards with a notification in Notification Center — taken back once the card is gone.
     notified: HashSet<String>,
     /// Sessions that take replies directly (Pi's extension): session id → (connection number, channel).
@@ -78,6 +80,7 @@ impl Hub {
         let (sessions, waiting) = crate::db::live();
         st.sessions.restore(sessions);
         st.items = waiting;
+        st.parked = crate::db::parked();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
         Self { store: Mutex::new(st), app }
@@ -209,9 +212,21 @@ impl Hub {
         }
     }
 
-    /// Star a session (you're following it), or unstar it. Kept with the session, like Later.
+    /// Star a session (you're following it), or unstar it. Kept with the session, like Later; a parked
+    /// one keeps it in its saved record, so it stays under Starred while parked and after it's resumed.
     pub fn set_starred(&self, session_id: &str, on: bool) {
-        let changed = self.store.lock().unwrap().sessions.set_starred(session_id, on);
+        let changed = {
+            let mut st = self.store.lock().unwrap();
+            if st.sessions.set_starred(session_id, on) {
+                true
+            } else if let Some(p) = st.parked.iter_mut().find(|p| p.session.origin.session_id == session_id && (p.session.starred_ms > 0) != on) {
+                p.session.starred_ms = if on { now_ms() } else { 0 };
+                crate::db::park(p);
+                true
+            } else {
+                false
+            }
+        };
         if changed {
             self.changed();
         }
@@ -1134,6 +1149,78 @@ impl Hub {
         Some(Origin { session_id: q.session_id, harness: q.harness, cwd: q.cwd, tty: crate::live::tty_of(q.pid), agent_pid: Some(q.pid), ..Default::default() })
     }
 
+    /// A live session's whole record (what Park keeps).
+    pub fn session_record(&self, session_id: &str) -> Option<crate::sessions::Session> {
+        self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == session_id)
+    }
+
+    /// Park: keep the record of a session whose agent was just ended, under Parked (saved), and take
+    /// it off the live lists at once (its end may still be on its way).
+    pub fn add_parked(&self, session: crate::sessions::Session) {
+        let sid = session.origin.session_id.clone();
+        let p = crate::sessions::Parked { parked_ms: now_ms(), session };
+        crate::db::park(&p);
+        {
+            let mut st = self.store.lock().unwrap();
+            st.sessions.remove(&sid);
+            st.parked.retain(|x| x.session.origin.session_id != sid);
+            st.parked.insert(0, p);
+        }
+        self.changed();
+    }
+
+    /// Sessions that ended within `window_ms` (at most `max`), newest first: not parked, not live again.
+    /// Each its record as it was, with when it ended (`ended_ms`).
+    pub fn closed(&self, window_ms: u64, max: usize) -> Vec<Value> {
+        let skip: HashSet<String> = {
+            let st = self.store.lock().unwrap();
+            st.parked.iter().map(|p| p.session.origin.session_id.clone()).chain(st.sessions.all().into_iter().map(|s| s.origin.session_id)).collect()
+        };
+        crate::db::closed(now_ms().saturating_sub(window_ms), max + skip.len())
+            .into_iter()
+            .filter(|(_, s)| !skip.contains(&s.origin.session_id))
+            .take(max)
+            .filter_map(|(at, s)| {
+                let mut v = serde_json::to_value(&s).ok()?;
+                v["ended_ms"] = json!(at);
+                Some(v)
+            })
+            .collect()
+    }
+
+    pub fn parked(&self, session_id: &str) -> Option<crate::sessions::Parked> {
+        self.store.lock().unwrap().parked.iter().find(|p| p.session.origin.session_id == session_id).cloned()
+    }
+
+    /// Off the Parked list (resumed, or unparked: forgotten, its conversation still in History).
+    pub fn take_parked(&self, session_id: &str) -> Option<crate::sessions::Parked> {
+        let p = {
+            let mut st = self.store.lock().unwrap();
+            let at = st.parked.iter().position(|p| p.session.origin.session_id == session_id)?;
+            st.parked.remove(at)
+        };
+        crate::db::unpark(session_id);
+        self.changed();
+        Some(p)
+    }
+
+    /// A parked session running again on `origin`: its record back as it was, at its prompt, or
+    /// working on `message` when it was resumed with one.
+    pub fn unparked(&self, p: crate::sessions::Parked, origin: Origin, message: &str) {
+        let s = p.into_session(origin.clone());
+        {
+            let mut st = self.store.lock().unwrap();
+            st.parked.retain(|x| x.session.origin.session_id != s.origin.session_id);
+            st.sessions.restore(vec![s.clone()]);
+            if !message.is_empty() {
+                st.sessions.mark(&origin, "working", Some(message));
+                st.sessions.note(&s.origin.session_id, "you", message, crate::config::context_keep());
+            }
+        }
+        crate::db::unpark(&s.origin.session_id);
+        self.changed();
+    }
+
     pub fn drop_session(&self, session_id: &str) {
         let removed = self.store.lock().unwrap().sessions.remove(session_id);
         if removed {
@@ -1170,6 +1257,7 @@ impl Hub {
             // Every answer of the last day, in brief: today's numbers count these, not the History list.
             "answers": st.answers,
             "sessions": with_registry_names(st.sessions.snapshot()),
+            "parked": st.parked,
             "reviews": reviews,
             "crew": crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect()),
             "live": live,
@@ -1516,7 +1604,15 @@ impl Hub {
     fn changed(&self) {
         let Some(app) = &self.app else { return };
         {
-            let st = self.store.lock().unwrap();
+            let mut st = self.store.lock().unwrap();
+            // A parked session that's live again (you resumed it yourself, in a terminal) isn't parked.
+            let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
+            if !back.is_empty() {
+                st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
+                for sid in &back {
+                    crate::db::unpark(sid);
+                }
+            }
             let waiting: Vec<&Item> = st.items.iter().filter(|i| i.kind == "waiting").collect();
             crate::db::sync_live(&st.sessions.all(), &waiting);
         }
@@ -1843,6 +1939,65 @@ mod tests {
         let items = hub.pending();
         assert_eq!(items.len(), 1, "one card, however often it's seen");
         assert_eq!((items[0].kind.as_str(), items[0].created_ms, items[0].message.as_str()), ("waiting", 1_000, "Done: header moved."));
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_parked_session_is_kept_through_a_restart_and_comes_back_whole() {
+        let dir = std::env::temp_dir().join(format!("cue-parked-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "p1".into(), harness: "codex".into(), cwd: "/x/infra".into(), tmux_pane: "%4".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.event(origin.clone(), "stopped", "Three resources drifted.".into(), vec![], "");
+        hub.store.lock().unwrap().sessions.set_name("p1", "drift");
+        hub.store.lock().unwrap().sessions.set_starred("p1", true);
+        let rec = hub.session_record("p1").unwrap();
+        hub.add_parked(rec);
+        assert!(hub.session_origin("p1").is_none(), "off the live lists at once");
+        assert_eq!(hub.snapshot()["parked"][0]["session_id"], "p1");
+
+        // Cue restarts: still parked, with what it said.
+        crate::db::reset();
+        let hub = Hub::new(None);
+        hub.set_starred("p1", false);
+        assert_eq!(crate::db::parked()[0].session.starred_ms, 0, "unstarred while parked, and saved");
+        hub.set_starred("p1", true);
+        let p = hub.parked("p1").expect("parked survives a restart");
+        assert!(p.session.thread.iter().any(|e| e.text.contains("Three resources drifted")));
+
+        // Resumed in a new pane: its name, star and thread come back, at its prompt.
+        let fresh = Origin { tmux_pane: "%9".into(), ..origin };
+        hub.unparked(p, fresh, "");
+        assert!(hub.parked("p1").is_none());
+        let s = hub.session_record("p1").unwrap();
+        assert_eq!((s.name.as_str(), s.state.as_str(), s.origin.tmux_pane.as_str()), ("drift", "waiting", "%9"));
+        assert!(s.starred_ms > 0 && s.thread.iter().any(|e| e.text.contains("Three resources drifted")));
+        crate::db::reset();
+        assert!(Hub::new(None).parked("p1").is_none(), "resumed is no longer parked, after a restart too");
+
+        // Ended (not parked): under Closed, with when it ended; parked or live ones aren't.
+        let hub = Hub::new(None);
+        hub.event(Origin { session_id: "c1".into(), harness: "claude".into(), cwd: "/x/lost".into(), ..Default::default() }, "stopped", "Halfway.".into(), vec![], "");
+        crate::db::sync_live(&hub.saved_sessions(), &[]);
+        hub.drop_session("c1");
+        crate::db::sync_live(&hub.saved_sessions(), &[]);
+        let closed = hub.closed(24 * 3600 * 1000, 30);
+        assert!(closed.iter().any(|v| v["session_id"] == "c1" && v["ended_ms"].as_u64().unwrap_or(0) > 0), "an ended session is under Closed");
+        assert!(!closed.iter().any(|v| v["session_id"] == "p1"), "a resumed one isn't");
+        let (_, rec) = crate::db::ended_session("c1").unwrap();
+        hub.add_parked(rec);
+        assert!(!hub.closed(24 * 3600 * 1000, 30).iter().any(|v| v["session_id"] == "c1"), "parked, it leaves Closed");
+
+        // Unparked: gone from the list, nothing started.
+        let hub = Hub::new(None);
+        hub.event(Origin { session_id: "p2".into(), harness: "pi".into(), cwd: "/x".into(), ..Default::default() }, "stopped", "Done.".into(), vec![], "");
+        hub.add_parked(hub.session_record("p2").unwrap());
+        assert!(hub.take_parked("p2").is_some());
+        assert!(hub.parked("p2").is_none() && hub.session_origin("p2").is_none());
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

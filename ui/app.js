@@ -78,6 +78,28 @@ const machTag = (m) => m ? `<span class="mach" title="Runs on ${esc(m)}">${esc(m
 const nameOf = (sid, project) => String(sessionOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || state.history.find((i) => i.id === id);
 const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);
+/** A session you parked (stopped, kept to resume): not live, so not in state.sessions. */
+const parkedOf = (sid) => (state.parked || []).find((p) => p.session_id === sid);
+/** Sessions that ended in the last 30 days (at most 30), the Parked drawer's Closed tab: asked for when
+ *  that tab shows (again after a minute), not part of every state update. */
+let closedList = null, closedAt = 0, closedLoading = false;
+const closedOf = (sid) => (closedList || []).find((c) => c.session_id === sid);
+async function loadClosed() {
+  if (closedLoading) return;
+  closedLoading = true;
+  try { closedList = await invoke("closed_sessions"); closedAt = now(); }
+  catch (e) { closedList ||= []; toast(`Couldn't list closed sessions: ${e}`); }
+  finally { closedLoading = false; renderMain(); }
+}
+/** The open session is a parked or a closed one (Active shows it read-only, with Resume): its record,
+ *  with `kind` and when it stopped (`at`). */
+function parkedActive() {
+  if (!active?.sid || sessionOf(active.sid)) return null;
+  const p = parkedOf(active.sid);
+  if (p) return { ...p, kind: "parked", at: p.parked_ms };
+  const c = closedOf(active.sid);
+  return c ? { ...c, kind: "closed", at: c.ended_ms } : null;
+}
 
 // ---------- leads and executors (claude-relay, pi-lead) ----------
 /** A session's place in a relay / pi-lead crew: { role: "lead"|"executor", name, lead, lead_name, … }, or undefined. */
@@ -876,7 +898,7 @@ const hideX = (s) => idleNote(s) ? `<button class="x-clear" data-hide-idle="${es
  *  and counted by the ★ chip in the header. Kept with the session in Cue (so anything showing
  *  Cue sees the same stars); a star you just clicked shows until Cue's next update says so too. */
 const starNow = new Map();   // sid -> on, clicked here, not yet in Cue's state
-const isStarred = (sid) => starNow.get(sid) ?? !!sessionOf(sid)?.starred_ms;
+const isStarred = (sid) => starNow.get(sid) ?? !!(sessionOf(sid) || parkedOf(sid))?.starred_ms;
 const starredIds = () => new Set(state.sessions.map((s) => s.session_id).filter(isStarred));
 function toggleStar(sid) {
   const on = !isStarred(sid);
@@ -898,7 +920,7 @@ const starBtn = (sid) => {
 /** Under Sessions, two drawers: Starred, then Recently answered. At most one is open (opening one folds
  *  the other); with both folded, Sessions takes the column. Starred is open to begin with, Recently
  *  answered folded. Remembered per window. */
-const DRAWERS = ["starred", "recent"];
+const DRAWERS = ["starred", "recent", "parked"];
 function openDrawer() {
   try {
     const d = localStorage.getItem("cue.drawer");
@@ -1274,6 +1296,8 @@ const isPending = (it) => !!it && state.items.some((i) => i.id === it.id);
 
 /** What the Active pane shows: your pick (kept after you act), else the oldest thing waiting on you. */
 function current() {
+  // A parked session is open: nothing live to show, and it stays the one open.
+  if (parkedActive()) return null;
   if (active) {
     let it = active.id ? findItem(active.id) : null;
     const s = sessionOf(active.sid);
@@ -1302,7 +1326,7 @@ function restoreSpot() {
   if (["board", "sessions", "history"].includes(spot.view)) view = spot.view;
   // Only if that session is still around; otherwise the usual oldest-first pick stands.
   const card = state.items.find((i) => i.session_id === spot.sid);
-  if (spot.sid && (card || sessionOf(spot.sid))) active = { id: card?.id || null, sid: spot.sid };
+  if (spot.sid && (card || sessionOf(spot.sid) || parkedOf(spot.sid))) active = { id: card?.id || null, sid: spot.sid };
   renderMain();
 }
 function setActive(id, sid, exact = false) {
@@ -1663,7 +1687,7 @@ function nextBar() {
 /** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), a relay lead's Hand
  *  off (asks once more first: the lead steps down), and Decide later / Back to Waiting. */
 let moreFor = null, handoffArm = null;
-function moreMenu(sid, s) {
+function moreMenu(sid, s, closable = false) {
   const open = moreFor === sid;
   const busy = s?.state === "working";
   const m = crewOf(sid);
@@ -1672,7 +1696,7 @@ function moreMenu(sid, s) {
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Hand off? Click again" : "Hand off…"}<span>${busy ? "When this turn ends" : "It writes its notes, opens a successor lead and steps down"}</span></button>` : ""}
-      ${later}</div>`;
+      ${later}${parkMenuItem(sid, s, closable)}</div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
 }
 /** "claude-opus-5-5" → "Opus 5.5", "gpt-5.6-terra" → "GPT-5.6 Terra", "deepseek-v4-pro" → "DeepSeek V4 Pro". */
@@ -1770,8 +1794,141 @@ async function moveToCue(sid) {
     renderMain();
   }
 }
+// ---------- Parked: sessions you stopped, to come back to ----------
+// Park ends a session's agent (as Close does) and keeps it in the Parked drawer; Resume runs its
+// agent's own resume command and it picks up where it left off. Nothing wakes it but you.
+const PARKABLE = new Set(["claude", "codex", "pi"]);
+const waking = new Set();   // parked sessions on their way back
+let parkedAll = null;       // the parked session whose whole kept thread shows (else its last 2 turns)
+/** The parking sign: a small rounded square with a bold P, wherever a session is parked. */
+const P_SIGN = `<i class="p-sign" aria-hidden="true">P</i>`;
+/** How long ago it was parked: "just now" for the first minute. */
+const parkedAgo = (p) => { const at = p.at ?? p.parked_ms; return now() - at < 60000 ? "just now" : `${ago(at)} ago`; };
+/** Its last `n` turns: from your n-th last message to the end (all of it if it has fewer). */
+function lastTurns(thread, n) {
+  const yours = thread.flatMap((e, i) => (e.role === "you" ? [i] : []));
+  return yours.length > n ? thread.slice(yours.at(-n)) : thread;
+}
+/** Park, in the Active header's ⋯ menu: where Close is offered (not while it works or asks you, not a
+ *  lead with executors still open), for an agent Cue can bring back. Not an executor: relay closes those. */
+function parkMenuItem(sid, s, closable) {
+  if (!closable || !s || !PARKABLE.has(s.harness) || !s.cwd || crewOf(sid)?.role === "executor") return "";
+  return `<button data-park-session="${esc(sid)}">Park<span>Stop it and keep it under Parked; Resume brings it back whole</span></button>`;
+}
+async function parkSession(sid) {
+  const name = nameOf(sid, sessionOf(sid)?.project || "it");
+  try { await invoke("park_session", { sessionId: sid }); toast(`Parked ${name}: its agent stopped and its terminal closed`); }
+  catch (e) { toast(`Couldn't park ${name}: ${e}`); }
+}
+/** Resume (↺, the button, or Resume & send with what's in its box), a parked or a closed one: back in
+ *  Sessions, open in Active. */
+async function wakeParked(sid, message = "") {
+  const parked = parkedOf(sid), p = parked || closedOf(sid);
+  if (!p || waking.has(sid)) return;
+  waking.add(sid);
+  renderMain();
+  try {
+    const r = await invoke(parked ? "resume_parked" : "resume_closed", { sessionId: sid, message });
+    // Until Cue's update has it live, Active keeps showing it here (else it would move on to something else).
+    for (let n = 0; n < 30 && !sessionOf(sid); n++) await new Promise((ok) => setTimeout(ok, 100));
+    if (!parked) closedList = (closedList || []).filter((c) => c.session_id !== sid);
+    if (message) { draft(`s:${sid}`).text = ""; saveDrafts(); }
+    toast(`${p.name || p.project} is back: ${r.replace(/^Resumed/, "resumed")}`);
+    setActive(null, sid);
+  } catch (e) {
+    toast(`Couldn't resume ${p.name || p.project}: ${e}`);
+  } finally {
+    waking.delete(sid);
+    renderMain();
+  }
+}
+/** Park, on a closed one: kept under Parked (it has ended already, so nothing stops). */
+async function parkClosed(sid) {
+  const c = closedOf(sid);
+  try { await invoke("park_closed", { sessionId: sid }); }
+  catch (e) { return toast(`Couldn't park it: ${e}`); }
+  // Shown parked now (Cue's update says the same), so Active stays on it.
+  if (c && !parkedOf(sid)) state.parked = [{ ...c, parked_ms: Date.now() }, ...(state.parked || [])];
+  closedList = (closedList || []).filter((x) => x.session_id !== sid);
+  toast(`Parked ${c?.name || c?.project || "it"}`);
+  renderMain();
+}
+/** Unpark: off the list, nothing started. Its conversation stays in History and ⌘F. */
+async function unparkSession(sid) {
+  try { await invoke("unpark_session", { sessionId: sid }); }
+  catch (e) { return toast(`Couldn't unpark it: ${e}`); }
+  if (active?.sid === sid) active = null;
+  toast("Unparked: its conversation is still in History");
+}
+/** The last drawer (below Recently answered), headed "▸ PARKED 8 · CLOSED 30": each word opens its list,
+ *  Parked (the latest parked first) or Closed (what ended in the last 30 days, at most 30, to find the
+ *  ones that got lost). One slim line per session; a list too long for its room ends on "N more". */
+const pkTab = () => { try { return localStorage.getItem("cue.pkTab") === "closed" ? "closed" : "parked"; } catch { return "parked"; } };
+function shelfDrawer(isOpen) {
+  const open = drawerOpen("parked"), tab = pkTab(), ps = state.parked || [];
+  // Closed is asked for once (for its count), and again when you pick it, or after a minute while it shows.
+  if (!closedLoading && (!closedList || (open && tab === "closed" && now() - closedAt > 60000))) queueMicrotask(loadClosed);
+  const word = (t, label, n) => `<button class="shelf-word ${open && tab === t ? "on" : ""}" data-shelf="${t}">${label}${n ? ` <span>${n}</span>` : ""}</button>`;
+  let body = "";
+  if (open) {
+    const rows = tab === "parked" ? ps.map((p) => ({ ...p, kind: "parked", at: p.parked_ms })) : (closedList || []).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }));
+    body = rows.length ? rows.map((r) => parkedRow(r, isOpen(r.session_id))).join("")
+      : `<div class="quiet-line">${tab === "parked" ? "Nothing parked. Park (in a session's ⋯ menu) stops it and keeps it here." : closedList ? "Nothing closed in the last 30 days." : "Looking…"}</div>`;
+  }
+  return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "PARKED", ps.length)}<span class="shelf-sep">·</span>${word("closed", "CLOSED", closedList?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
+}
+/** PARKED or CLOSED in the heading: opens the drawer on that list; the one already showing folds it. */
+function pickShelf(t) {
+  const open = drawerOpen("parked"), same = pkTab() === t;
+  try { localStorage.setItem("cue.pkTab", t); } catch {}
+  if (t === "closed") closedAt = 0;   // asked again: what ended since
+  if (!open || same) return foldDrawer("parked");
+  renderMain();
+}
+function parkedRow(p, on) {
+  const sid = p.session_id, w = waking.has(sid), name = p.name || p.project || baseName(p.cwd) || "session";
+  return `<div class="prow ${p.kind} ${on ? "on" : ""} ${w ? "waking" : ""}" data-session="${esc(sid)}">
+    ${p.kind === "parked" ? P_SIGN : ""}<b>${esc(name)}</b><span class="prow-agent">${esc(agentName(p.harness))}</span>${machTag(p.machine)}<span class="prow-age">${w ? "resuming…" : now() - p.at < 60000 ? "now" : ago(p.at)}</span>
+    <button class="prow-go" data-wake="${esc(sid)}" ${w ? "disabled" : ""} aria-label="Resume ${esc(name)}">↺</button></div>`;
+}
+/** A starred session that's parked, in Starred: the parking sign where the others have a dot, the row
+ *  faded as if asleep; top right, how long it's been parked; Resume right after its last words. */
+function starParkedEntry(p, open) {
+  const sid = p.session_id, w = waking.has(sid);
+  const last = [...(p.thread || [])].reverse().find((e) => e.role === "agent");
+  return `<div class="tl star-tl parked ${w ? "waking" : ""} ${open ? "on" : ""}" data-session="${esc(sid)}">${P_SIGN}
+    <div class="tl-top"><span class="tl-name">${esc(p.name || p.project)}</span><span>${esc(agentName(p.harness))}</span>${machTag(p.machine)}<span class="tl-parked">${w ? "resuming…" : `parked ${parkedAgo(p)}`}</span>${starBtn(sid)}</div>
+    <div class="tl-title tl-said"><span>${esc(last ? plain(firstLine(last.text)) : homeless(p.cwd))}</span>${w ? "" : `<button class="tl-wake" data-wake="${esc(sid)}">↺ Resume</button>`}</div></div>`;
+}
+/** A parked or closed session in Active: its last two turns (more on request), where it stopped, Resume
+ *  (and Unpark for a parked one, Park for a closed one). */
+function parkedPane(p) {
+  const sid = p.session_id, harness = p.harness, name = p.name || p.project || baseName(p.cwd) || "session", w = waking.has(sid), closed = p.kind === "closed";
+  const thread = p.thread || [];
+  const shown = parkedAll === sid ? thread : lastTurns(thread, 2);
+  const hidden = thread.length - shown.length;
+  const more = hidden > 0 ? `<button class="park-more" data-park-all="${esc(sid)}">▴ ${hidden} earlier message${hidden === 1 ? "" : "s"}</button>`
+    : parkedAll === sid && lastTurns(thread, 2).length < thread.length ? `<button class="park-more" data-park-all="${esc(sid)}">▾ Just the last two turns</button>` : "";
+  const rows = shown.map((e) => e.role === "you"
+    ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago</div></div>`
+    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(e.text)}</div></div>`).join("");
+  const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
+  const line = w
+    ? `<div class="cv-status"><span class="dot-live"></span>Resuming${where}…</div>`
+    : `<div class="park-line">${closed ? "" : P_SIGN}${closed ? "Closed" : "Parked"} ${parkedAgo(p)} · ${esc(agentName(harness))} stopped${where} · Resume picks up right here</div>`;
+  return `<div class="active-pane parked">
+    <div class="ap-head">${badge(harness)}<span class="proj">${esc(name)}</span><span class="dim">${esc(agentName(harness))}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>
+      ${closed ? `<button class="btn" data-park-closed="${esc(sid)}" ${w ? "disabled" : ""}>Park</button>` : `<button class="btn" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button>`}
+      <button class="btn primary" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>${w ? "Resuming…" : "Resume"}</button></div>
+    ${subHead(p.cwd, "", "", "")}
+    <div class="ap-chat" data-chat>${more}${rows || `<div class="dim cv-empty">Cue kept no messages from it.</div>`}${line}</div>
+    <div class="foot">${box(`s:${sid}`, `Message ${name}… sending resumes it first`, w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
+}
+
 function activePane() {
   if (quietOpen) return quietPane();
+  const pk = parkedActive();
+  if (pk) return parkedPane(pk);
   const cur = current();
   if (!cur && state.connections && !state.connections.claude?.ok) return `<div class="active-pane empty"><div class="quiet-big">Connect Cue to Claude Code</div><div class="dim">Cue adds its hooks to Claude Code's settings (backed up first), then sessions that need you show up here.</div><button class="btn primary" data-connect="claude">Connect Claude Code</button></div>`;
   if (!cur) return `<div class="active-pane empty"><div class="quiet-big">Nothing waiting.</div><div class="dim">Pick anything on the right to read it or message the session.</div></div>`;
@@ -1812,7 +1969,7 @@ function activePane() {
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     <div class="ap-head">${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}<span class="dim">${who}</span>${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
-      ${sid ? moreMenu(sid, s) : ""}
+      ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
@@ -1966,7 +2123,7 @@ function usagePop() {
 const idleNote = (s) => s.state === "working" ? "" : s.state === "limited" ? limitNote(s) : s.state === "agent" ? `waiting on ${s.driven_by || "another agent"}` : s.state === "stopped" ? "stopped by you" : "cleared from Waiting";
 
 // The right column: Sessions takes what it needs (up to half), Recently answered scrolls in the rest.
-const RECENT = 30;
+const RECENT = 10;
 function boardView() {
   if (!quietOpen) current();   // settles what Active shows before the lists mark it
   const { working, later } = groups();
@@ -2008,7 +2165,8 @@ function boardView() {
         ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
     : `<div class="empty-col">Your answers show up here.</div>`;
   // Starred, in the order you starred them (so they don't shuffle as they work).
-  const stars = state.sessions.filter((s) => isStarred(s.session_id)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
+  // A starred one you parked stays here too, as parked.
+  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
   const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
   const drawer = (name, title, count, body) => { const open = drawerOpen(name); return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`; };
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
@@ -2020,8 +2178,9 @@ function boardView() {
     </div>
     <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
       <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length}</span></div><div class="sec-body">${workCol}</div></div>
-      ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => starEntry(s, isOpen(s.session_id))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
+      ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
       ${drawer("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList)}
+      ${shelfDrawer(isOpen)}
     </div>
   </div>`;
 }
@@ -3122,7 +3281,7 @@ addEventListener("resize", () => { fitHead(); fitTop(); markMore(); });
  *  ends on the last card that fits whole. Every list that scrolls: Waiting, Need to
  *  decide, Sessions, Starred, Recently answered. `trim` re-fits the lists (a redraw, a resize); scrolling
  *  only recounts. */
-const MORE_LISTS = ".sec-waiting .sec-body, .sec-later .sec-body, .sec-sessions .sec-body, .sec-starred .card.recent, .sec-recent .card.recent";
+const MORE_LISTS = ".sec-waiting .sec-body, .sec-later .sec-body, .sec-sessions .sec-body, .sec-starred .card.recent, .sec-recent .card.recent, .sec-parked .sec-body";
 const moreCards = (sc) => [...sc.children].filter((c) => !c.matches(".col-sub, button"));
 // Where a card ends inside its list, by layout (the list is its offsetParent), not by what's on screen:
 // cards that moved slide to their new place after a redraw, and mid-slide they're elsewhere.
@@ -3523,6 +3682,21 @@ function bindMain() {
     if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Answer it in its terminal.`)); return; }
     const goS = t.closest("[data-act=go-session]");
     if (goS) { invoke("focus_session_id", { sessionId: goS.dataset.sid }).then((r) => toast(`Jumped to ${r}`)).catch((e) => toast(`Couldn't jump: ${e}`)); return; }
+    // Parked: Resume (↺ on its row, or the button), Resume & send, Unpark, Park, its earlier messages, fold.
+    const wk = t.closest("[data-wake]");
+    if (wk) return wakeParked(wk.dataset.wake);
+    const wsd = t.closest("[data-wake-send]");
+    if (wsd) return wakeParked(wsd.dataset.wakeSend, draft(`s:${wsd.dataset.wakeSend}`).text.trim());
+    const shw = t.closest("[data-shelf]");
+    if (shw) return pickShelf(shw.dataset.shelf);
+    const pkc = t.closest("[data-park-closed]");
+    if (pkc) return parkClosed(pkc.dataset.parkClosed);
+    const upk = t.closest("[data-unpark]");
+    if (upk) return unparkSession(upk.dataset.unpark);
+    const pks = t.closest("[data-park-session]");
+    if (pks) { moreFor = handoffArm = null; return parkSession(pks.dataset.parkSession); }
+    const pka = t.closest("[data-park-all]");
+    if (pka) { parkedAll = parkedAll === pka.dataset.parkAll ? null : pka.dataset.parkAll; return renderMain(); }
     const ss = t.closest("[data-session]");
     if (ss) return setActive(null, ss.dataset.session);
     const vb = t.closest("[data-view]");
@@ -3703,6 +3877,8 @@ function bindMain() {
         if (key === "new-cwd" || key === "new-name" || key === "new-msg") return lvAct("start", {});
         if (key === "search") return pickResult(searchSel);
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
+        // A parked session's box: Enter resumes it with the message (Resume & send).
+        if (key.startsWith("s:") && !sessionOf(key.slice(2)) && (parkedOf(key.slice(2)) || closedOf(key.slice(2)))) return wakeParked(key.slice(2), draft(key).text.trim());
         if (key.startsWith("s:")) {
           const sid = key.slice(2);
           const turn = state.items.find((i) => i.session_id === sid && i.kind === "waiting");

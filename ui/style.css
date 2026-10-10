@@ -1200,3 +1200,56 @@ button.tm-chip:hover { background: var(--panel-2); }
   background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   box-shadow: 0 2px 8px -2px rgba(0,0,0,0.35); opacity: 0.8; transition: opacity 0.15s; }
 .more-below:hover { opacity: 1; }
+
+/* ---------- Parked: sessions you stopped, to resume (the last drawer, below Recently answered) ---------- */
+/* The parking sign: a small rounded square with a bold P, wherever a session is parked. Solid on a
+   card, light on the background, dark on a selected (lime) row; it pulses while the session comes back. */
+.p-sign { display: inline-grid; place-items: center; flex: none; width: 15px; height: 15px; border-radius: 4px; font: 800 9.5px/1 var(--mono); font-style: normal; background: var(--accent); color: var(--on-accent); }
+.prow .p-sign { background: var(--on-bg-muted); color: var(--bg); }
+.prow:hover .p-sign { background: var(--on-bg); }
+.prow.on .p-sign, .tl.on .p-sign { background: var(--on-sel); color: var(--sel); }
+.prow { display: flex; align-items: center; gap: 7px; min-width: 0; height: 30px; padding: 0 4px 0 10px; border-radius: 9px; font-size: 12.5px; color: var(--on-bg-muted); cursor: pointer; }
+.prow:hover { background: color-mix(in srgb, var(--on-bg) 8%, transparent); color: var(--on-bg); }
+.prow.on, .prow.on:hover { background: var(--sel); color: var(--on-sel); }
+.prow b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.prow-agent { opacity: 0.8; white-space: nowrap; flex: none; }
+.prow .mach { color: inherit; border-color: currentColor; margin-left: 0; }
+.prow-age { margin-left: auto; font: 11px var(--mono); opacity: 0.8; white-space: nowrap; flex: none; }
+.prow-go { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; opacity: 0; }
+.prow:hover .prow-go, .prow.on .prow-go, .prow-go:focus-visible { opacity: 1; }
+.prow-go:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
+.prow.waking .p-sign, .tl.waking .p-sign { animation: pulse 1.4s ease-in-out infinite; }
+.prow.waking .prow-go { display: none; }
+/* Active, for a parked one: its last turns, a little faded, and a dashed line where it stopped. */
+.active-pane.parked .cv-you, .active-pane.parked .cv-agent { opacity: 0.72; }
+.park-more { align-self: center; font-size: 11.5px; font-weight: 650; color: var(--muted); padding: 3px 11px; border-radius: 999px; background: var(--panel-2); }
+.park-more:hover { color: var(--ink); }
+.park-line { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.park-line::before, .park-line::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+@media (prefers-reduced-motion: reduce) { .prow.waking .p-sign, .tl.waking .p-sign { animation: none; } }
+/* Starred, parked: the sign where the dot would be, the row faded as if asleep, Resume on the row. */
+.tl.star-tl.parked::before { display: none; }
+.tl.star-tl.parked > .p-sign { position: absolute; left: 6px; top: 10px; }
+.tl.star-tl.parked .tl-top > :not(.star-btn), .tl.star-tl.parked .tl-said > span { opacity: 0.6; }
+.tl.star-tl.parked.on .tl-top > :not(.star-btn), .tl.star-tl.parked.on .tl-said > span { opacity: 0.85; }
+/* Its last words cut short, Resume right after them. */
+.tl-said { display: flex; align-items: baseline; gap: 8px; }
+.tl-said > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-said > .tl-wake { flex: none; font-size: 12px; }
+.tl.star-tl.parked .tl-top > .tl-parked { margin-left: auto; opacity: 1; white-space: nowrap; }
+.tl-wake { font-weight: 700; color: var(--accent); }
+.tl-wake:hover { opacity: 0.8; }
+.tl.on .tl-wake { color: inherit; }
+/* The Active header's "parked" pill carries the sign too. */
+.pill.park-pill { display: inline-flex; align-items: center; gap: 6px; padding-left: 5px; }
+.park-pill .p-sign { width: 14px; height: 14px; font-size: 9px; }
+.active-pane.parked .ap-head .star-btn { width: 20px; height: 20px; color: var(--muted); }
+.active-pane.parked .ap-head .star-btn.on { color: var(--star); }
+/* The last drawer's heading: "▸ PARKED 8 · CLOSED 30", each word a list; the one showing is bright. */
+.shelf-head { gap: 8px; align-items: baseline; }
+.shelf-head .fold-arrow { color: inherit; padding: 0 2px 0 0; }
+.shelf-word { font: inherit; letter-spacing: inherit; color: var(--on-bg-muted); }
+.shelf-word:hover, .shelf-word.on { color: var(--on-bg); }
+.shelf-word span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
+.shelf-sep { color: var(--on-bg-muted); }
+.sec-parked .sec-body { gap: 2px; max-height: 322px; }   /* ten lines (30px + 2px gap each); the rest scroll, under "N more" */
