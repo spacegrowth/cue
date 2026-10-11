@@ -55,6 +55,8 @@
   <script src="../ui/app.js"></script>
   <script>
     const check = (name, ok, why = "") => console.log(`CHECK ${name} ${ok ? "pass" : "fail"}${ok || !why ? "" : ` (${why})`}`);
+    const say = (text, m) => ({ t: "say", text, at_ms: NOW - m * MIN });
+    const step = (id, m) => ({ t: "step", id, kind: "edit", verb: "Edited", subject: "lib.rs", mono: true, result: "+1 −0", bad: false, done: true, at_ms: NOW - m * MIN });
     const chatEl = () => document.querySelector("[data-chat]");
     // The window polls the feed every 0.5 s too: wait out a poll in flight, then fetch (and draw) what FEED says now.
     const pull = async () => { while (stepsBusy) await new Promise((f) => setTimeout(f, 10)); await loadSteps("w1"); };
@@ -102,6 +104,7 @@
       const fromBottomAfter = chat.scrollHeight - chat.scrollTop - chat.clientHeight;
       check("older-nodes-kept", chatEl() === chat && chat.querySelector(".stx-line") === first && chat.children.length === rowsBefore + 30, `${rowsBefore} -> ${chat.children.length}`);
       check("older-scroll-kept", Math.abs(fromBottomAfter - fromBottom) <= 1, `${fromBottom} -> ${fromBottomAfter}`);
+      check("older-above-scrolled-up-keeps-distance", fromBottom > 24 && Math.abs(fromBottomAfter - fromBottom) <= 1, `${fromBottom} -> ${fromBottomAfter}`);
       // (a) another session opened: a new chat element.
       setActive(null, "w2");
       check("switch-new-tree", chatEl() !== chat && !chat.isConnected && !!chatEl());
@@ -112,6 +115,22 @@
       FEED.version = 3; FEED.turns = FEED.turns.slice(1);
       await pull();
       check("shrunk-feed-full-draw", chatEl() !== chat2 && chatEl().querySelectorAll(".stx").length === 1, `same=${chatEl() === chat2} stx=${chatEl().querySelectorAll(".stx").length}`);
+      // A new turn (a new row in the chat) arrives: at the end the chat follows it; scrolled up it keeps your place.
+      const chat3 = chatEl();
+      const addTurn = async (id, m) => { FEED.version += 10; FEED.turns.push({ at_ms: NOW - m * MIN, more: 0, items: [say(`Turn ${id}.`, m), step(id, m)] }); await pull(); };
+      const gap = () => chat3.scrollHeight - chat3.scrollTop - chat3.clientHeight;
+      chat3.scrollTop = chat3.scrollHeight;
+      const rows0 = chat3.children.length;
+      await addTurn("t1", 1.5);
+      check("follow-at-end", chatEl() === chat3 && chat3.children.length > rows0 && !!chat3.querySelector('[data-key="t1"]') && gap() < 2, `rows ${rows0} -> ${chat3.children.length} gap=${gap()}`);
+      const room = chat3.scrollHeight - chat3.clientHeight;
+      check("scrollable-for-up", room > 340, `room=${room}`);
+      chat3.scrollTop = room - 300;
+      const topUp = chat3.scrollTop, rows1 = chat3.children.length;
+      await addTurn("t2", 1);
+      check("stay-when-scrolled-up", chatEl() === chat3 && chat3.children.length > rows1 && !!chat3.querySelector('[data-key="t2"]') && chat3.scrollTop === topUp, `rows ${rows1} -> ${chat3.children.length} ${topUp} -> ${chat3.scrollTop}`);
+      renderMain();
+      check("redraw-stays-scrolled-up", chat3.scrollTop === topUp, `${topUp} -> ${chat3.scrollTop}`);
       console.log("CHECK done pass");
     }, 300);
   </script>

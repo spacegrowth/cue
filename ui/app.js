@@ -108,11 +108,12 @@ function renderMain() {
   }
   histShown = view === "history" ? histOpen : null;
   document.querySelectorAll("textarea[data-text]").forEach(grow);
-  // The chat jumps to its newest message only when you open something else or a new message lands.
+  // The chat jumps to its end when you open something else; a new row follows only if you were at the end.
   const chat = document.querySelector("[data-chat]");
-  const key = chat ? `${active?.id}|${active?.sid}|${chat.children.length}` : null;
-  // New target or new message: jump to the end. Same chat, you were at the end: stay there
-  // (an image added to the box, or a step landing, mustn't push the last lines out of view).
+  const key = chat ? `${active?.id}|${active?.sid}` : null;
+  // New target: jump to the end. Same chat, you were at the end (within 24 px, measured before the patch):
+  // stay there (an image added to the box, or a step landing, mustn't push the last lines out of view).
+  // Scrolled up to read: a row arriving leaves your place alone.
   if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
   else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
