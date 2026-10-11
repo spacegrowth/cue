@@ -1391,8 +1391,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-more:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 8%, transparent); }
 
 /* Cue's own shells (shells.js): the terminal button by the usage meter, and the floating terminal it
-   brings out. It floats over the window, snapped to the right edge's top or bottom corner; tucked away a
-   tenth of it shows at the edge. Its free corner resizes it. */
+   brings out. It floats over the window, snapped to the right edge's top or bottom corner; tucked away it's
+   a small tab on that edge, at its corner. Its free corner resizes it. */
 .shells-btn { position: relative; }
 .shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 .sh-live { font: 700 10px var(--sans); line-height: 1; }
@@ -1426,10 +1426,11 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .pip-grip { position: absolute; left: -5px; width: 18px; height: 18px; touch-action: none; }
 .pip[data-at="br"] .pip-grip { top: -5px; cursor: nwse-resize; }
 .pip[data-at="tr"] .pip-grip { bottom: -5px; cursor: nesw-resize; }
-/* Tucked away: the tenth that shows is one target that brings it back; the shell under it stays on view, dimmed. */
-.pip-peek { position: absolute; left: 0; top: 0; bottom: 0; width: var(--peek, 48px); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 14px 0 0 14px; color: var(--on-slab); font-size: 18px; background: color-mix(in srgb, var(--slab) 55%, transparent); }
+/* Tucked away: a small tab, all of it the one target that brings it back (its shells hidden under it). */
+.pip.tucked { overflow: hidden; border-radius: 12px 0 0 12px; }
+.pip.tucked .pip-bar, .pip.tucked .pip-slot, .pip.tucked .pip-grip { visibility: hidden; }
+.pip-peek { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--on-slab); font-size: 18px; }
 .pip.tucked .pip-peek { display: flex; }
-.pip.tucked .pip-grip { display: none; }
 .pip.tucked:hover { transform: translateX(-6px); }
 .pip-peek:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
 .pip-menu { position: fixed; z-index: 31; min-width: 240px; max-width: 420px; padding: 4px; border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); font-size: 13px; }

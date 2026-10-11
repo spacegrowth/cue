@@ -2,9 +2,9 @@
 /** The terminal button by the usage meter (or ⌘J) brings out a terminal of Cue's own, tied to no
  *  session: plain shells (your login shell, in a folder you pick; shells.rs), one tab each. It floats
  *  over the window and, let go, springs to the right edge's top or bottom corner, as picture in
- *  picture does. Tucked away it slides into the right edge with a tenth of it still showing, and comes
- *  back from there; the button and that edge show a live dot while a shell runs something, and ✓ once
- *  that ends. Its element lives outside the redraws. Its place and size are kept in this browser. */
+ *  picture does. Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
+ *  from there; the button and that tab show a live dot while a shell runs something, and ✓ once that
+ *  ends. Its element lives outside the redraws. Its place and size are kept in this browser. */
 const shells = [];             // { id, title, cwd, busy, what, gen, term, fit, host, queue, frame }
 let shellCur = null;           // the tab on show
 let shellSeq = 0;
@@ -185,19 +185,20 @@ function pipRoom() {
   const top = document.querySelector(".top")?.getBoundingClientRect().bottom ?? 60;
   return { top: top + 12, bottom: innerHeight - PIP_EDGE, right: innerWidth - PIP_EDGE };
 }
-/** How much of it shows tucked away: a tenth of it (never under 48 px, to hit). */
-const pipPeek = () => Math.max(48, Math.round(pipAt.w / 10));
+/** Tucked away: a small tab, this wide and tall, on the right edge at its corner. */
+const PIP_TAB = { w: 30, h: 76 };
 function placePip() {
   const r = pipRoom();
   pipAt.w = Math.max(360, Math.min(pipAt.w, innerWidth * 0.8));
   pipAt.h = Math.max(180, Math.min(pipAt.h, r.bottom - r.top));
   pipEl.dataset.at = pipAt.corner;
   pipEl.classList.toggle("tucked", pipAt.tucked);
-  pipEl.style.setProperty("--peek", `${pipPeek()}px`);
+  // (Its shells keep their size tucked away: only one that's out is fitted to it.)
+  const w = pipAt.tucked ? PIP_TAB.w : pipAt.w, h = pipAt.tucked ? PIP_TAB.h : pipAt.h;
   Object.assign(pipEl.style, {
-    width: `${pipAt.w}px`, height: `${pipAt.h}px`,
-    left: `${pipAt.tucked ? innerWidth - pipPeek() : r.right - pipAt.w}px`,
-    top: `${pipAt.corner === "tr" ? r.top : r.bottom - pipAt.h}px`,
+    width: `${w}px`, height: `${h}px`,
+    left: `${pipAt.tucked ? innerWidth - w : r.right - w}px`,
+    top: `${pipAt.corner === "tr" ? r.top : r.bottom - h}px`,
   });
   fitShell();
 }
