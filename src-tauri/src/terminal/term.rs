@@ -221,6 +221,12 @@ fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, 
         }
     };
     cmd.env("TERM", "xterm-256color");
+    start(sid, gen, pair, cmd, out)
+}
+
+/// `cmd` in the pseudo-terminal `pair`, its output streamed to `out` from a thread of its own
+/// ({sid, gen, data} as it comes, then {sid, gen, end: true}).
+fn start(sid: &str, gen: u64, pair: portable_pty::PtyPair, cmd: CommandBuilder, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<(u64, Open), String> {
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -263,6 +269,22 @@ fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<Ve
     // -u: the view speaks UTF-8 whatever the locale where it starts (the window's terminal always does).
     let chain = ["-u", "new-session", "-t", session, "-s", &view, ";", "set-option", "status", "off", ";", "set-option", "mouse", "on", ";", "set-option", "destroy-unattached", "on", ";", "select-window", "-t", &view_window, ";", "select-pane", "-t", pane];
     Ok(chain.iter().map(|a| a.to_string()).collect())
+}
+
+/// Any other command in a terminal of Cue's own (a plain shell: shells.rs), opened, deduped, written to,
+/// resized and closed by `sid` as a session's are, its output the same "term" events.
+pub(crate) fn spawn(sid: &str, cmd: CommandBuilder, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<u64, String> {
+    once(sid, cols, rows, || {
+        let pair = native_pty_system().openpty(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())?;
+        start(sid, next_gen(), pair, cmd, out)
+    })
+}
+
+/// For each open terminal whose id starts with `prefix`: its process, and the process group in the
+/// foreground of its terminal (the same as its process while it sits at its prompt).
+pub(crate) fn foreground(prefix: &str) -> Vec<(String, Option<u32>, Option<i32>)> {
+    let t = crate::locking::lock(open_terms(), "open_terms");
+    t.open.iter().filter(|(id, _)| id.starts_with(prefix)).map(|(id, o)| (id.clone(), o.child.process_id(), o.master.process_group_leader())).collect()
 }
 
 /// What you typed in it (and the terminal's own replies, as xterm.js produces them).

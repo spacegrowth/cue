@@ -175,20 +175,7 @@ async function openTerm(sid) {
   termHost = document.createElement("div");
   termHost.className = "term-host";
   slot.appendChild(termHost);
-  termObj = new Terminal({
-    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
-    theme: { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" },
-  });
-  termFit = new FitAddon.FitAddon();
-  termObj.loadAddon(termFit);
-  termObj.open(termHost);
-  // Drawn on the GPU where it can be (much faster than the default); if that's lost, back to the default.
-  try {
-    const gl = new WebglAddon.WebglAddon();
-    gl.onContextLoss(() => gl.dispose());
-    termObj.loadAddon(gl);
-  } catch {}
-  try { termFit.fit(); } catch {}
+  ({ term: termObj, fit: termFit } = xterm(termHost));
   termObj.onData((d) => { if (termSid) invoke("term_write", { sessionId: termSid, data: d }).catch(() => {}); });
   termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); });
   termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
@@ -246,10 +233,32 @@ function flushTerm() {
   const chunks = termQueue;
   termQueue = [];
   if (!termObj || !chunks.length) return;
+  termObj.write(b64Bytes(chunks));
+}
+/** An xterm.js terminal in `host`, in Cue's colours, fitted to it: drawn on the GPU where it can be (much
+ *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js). */
+function xterm(host) {
+  const term = new Terminal({
+    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    theme: { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(host);
+  try {
+    const gl = new WebglAddon.WebglAddon();
+    gl.onContextLoss(() => gl.dispose());
+    term.loadAddon(gl);
+  } catch {}
+  try { fit.fit(); } catch {}
+  return { term, fit };
+}
+/** "term" events' chunks (base64), as the bytes to write. */
+function b64Bytes(chunks) {
   const bin = chunks.map(atob).join("");
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  termObj.write(bytes);
+  return bytes;
 }
 /** After a redraw: the terminal back in its slot, sized, and focused again if it had the keyboard. */
 function placeTerm(hadFocus) {

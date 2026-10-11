@@ -43,7 +43,7 @@ function renderMain() {
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
     <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${starChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
-      ${usageChip()}
+      ${usageChip()}${shellsBtn()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
@@ -466,6 +466,7 @@ function bindMain() {
     if (act === "test-notify") return invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`));
     if (act === "open-history") { view = "history"; sheet = null; return renderMain(); }
     if (act === "open-search") return openSearch();
+    if (act === "shells") return toggleShells();
     if (act === "load-older") return loadOlder(actEl.dataset.sid);
     if (act === "load-transcript") return loadOlder(actEl.dataset.sid, true);
     if (act === "open-settings") { sheet = sheet === "settings" ? null : "settings"; extSections = null; return renderMain(); }
@@ -553,6 +554,10 @@ function bindMain() {
     // Enter in + New's Add machine field adds it.
     if (e.key === "Enter" && e.target.dataset?.text === "mc-host") { e.preventDefault(); return machAct("add"); }
     if (e.key === "Enter" && e.target.dataset?.text === "mc-label" && machRenaming) { e.preventDefault(); return machAct("rename-save", machRenaming); }
+    // ⌘J: Cue's own floating terminal, out or tucked away (from inside it too).
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); return toggleShells(); }
+    // Inside it every key is its shell's; only ⌘ shortcuts stay Cue's.
+    if (e.target.closest?.(".pip") && !e.metaKey) return;
     // ⌃`: the open session's terminal, open or closed (from inside it too).
     if (e.ctrlKey && e.key === "`") {
       e.preventDefault();
@@ -731,7 +736,8 @@ async function boot() {
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);
   });
-  await T.event.listen("term", (e) => onTermOutput(e.payload));
+  await T.event.listen("term", (e) => { onTermOutput(e.payload); onShellOutput(e.payload); });
+  await T.event.listen("shell", (e) => onShellEvent(e.payload));
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
   moveOldParked();
   moveOldStars();

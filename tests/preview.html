@@ -237,6 +237,14 @@
             setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b64 } })), 150);
             return 1;
           }
+          // Cue's own shells (the floating terminal): a prompt that echoes what's typed, Enter a new prompt.
+          if (cmd === "shell_open" || (cmd === "term_write" && args.sessionId.startsWith("shell:"))) {
+            const id = args.id || args.sessionId, say = (t) => (listeners.term || []).forEach((f) => f({ payload: { sid: id, gen: 1, data: btoa(String.fromCharCode(...new TextEncoder().encode(t))) } }));
+            const prompt = `\x1b[32mme@mac\x1b[0m \x1b[1;34m${(args.cwd || "~").replace(/^\/Users\/[^/]+/, "~")}\x1b[0m % `;
+            if (cmd === "shell_open") { setTimeout(() => say(prompt), 50); return 1; }
+            setTimeout(() => say(args.data === "\r" ? `\r\n${prompt}` : args.data === "\x7f" ? "\b \b" : args.data), 10);
+            return;
+          }
           if (cmd === "update_check") return { current: "0.1.5" };
           // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
           if (cmd === "btw") { await new Promise((r) => setTimeout(r, 600)); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; }
@@ -310,6 +318,7 @@
   <script src="../ui/vendor/xterm/addon-webgl.js"></script>
   <script src="../ui/core.js"></script>
   <script src="../ui/chat.js"></script>
+  <script src="../ui/shells.js"></script>
   <script src="../ui/board.js"></script>
   <script src="../ui/sessions.js"></script>
   <script src="../ui/history.js"></script>

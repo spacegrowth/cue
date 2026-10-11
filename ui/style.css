@@ -1389,3 +1389,52 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-rest .sx-cut { display: none; }
 .sx-more { margin: 6px 0 0 8px; padding: 4px 10px; border-radius: 7px; font-size: 11.5px; color: var(--on-bg-muted); }
 .sx-more:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 8%, transparent); }
+
+/* Cue's own shells (shells.js): the terminal button by the usage meter, and the floating terminal it
+   brings out. It floats over the window, snapped to the right edge's top or bottom corner; tucked away a
+   tenth of it shows at the edge. Its free corner resizes it. */
+.shells-btn { position: relative; }
+.shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
+.sh-live { font: 700 10px var(--sans); line-height: 1; }
+.shells-btn .sh-live { position: absolute; top: 3px; right: 2px; }
+.sh-live.run, .sh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); animation: sh-pulse 1.2s ease-in-out infinite; }
+.sh-live.done { color: var(--sel); }
+@keyframes sh-pulse { 50% { opacity: .35; } }
+.pip { position: fixed; z-index: 9; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); border-radius: 14px;
+  box-shadow: 0 26px 60px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transition: left .42s cubic-bezier(.2, .9, .3, 1.12), top .42s cubic-bezier(.2, .9, .3, 1.12), transform .2s, box-shadow .2s; }
+.pip[hidden] { display: none; }
+.pip.drag { transition: none; transform: scale(1.015); box-shadow: 0 36px 80px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08); cursor: grabbing; }
+.pip.sizing { transition: none; }
+body.pip-moving, body.pip-moving * { user-select: none; }
+.pip-bar { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; flex: none; }
+.pip-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.pip-tabs::-webkit-scrollbar { display: none; }
+.pip-tab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; white-space: nowrap; flex: none; max-width: 220px; }
+.pip-tab:hover { opacity: .9; background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
+.pip-tab[aria-selected="true"] { opacity: 1; background: color-mix(in srgb, var(--on-slab) 14%, transparent); }
+.pip-name { overflow: hidden; text-overflow: ellipsis; }
+.pip-name.mono { font: 11.5px var(--mono); }
+.pip-x { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; font-size: 13px; line-height: 1; opacity: .6; margin-right: -4px; }
+.pip-x:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 16%, transparent); }
+.pip-add, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
+.pip-add:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+.pip-slot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+.pip-host { width: 100%; height: 100%; }
+.pip-host[hidden] { display: none; }
+.pip-host .xterm-viewport { background: var(--slab) !important; }
+.pip-grip { position: absolute; left: -5px; width: 18px; height: 18px; touch-action: none; }
+.pip[data-at="br"] .pip-grip { top: -5px; cursor: nwse-resize; }
+.pip[data-at="tr"] .pip-grip { bottom: -5px; cursor: nesw-resize; }
+/* Tucked away: the tenth that shows is one target that brings it back; the shell under it stays on view, dimmed. */
+.pip-peek { position: absolute; left: 0; top: 0; bottom: 0; width: var(--peek, 48px); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 14px 0 0 14px; color: var(--on-slab); font-size: 18px; background: color-mix(in srgb, var(--slab) 55%, transparent); }
+.pip.tucked .pip-peek { display: flex; }
+.pip.tucked .pip-grip { display: none; }
+.pip.tucked:hover { transform: translateX(-6px); }
+.pip-peek:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
+.pip-menu { position: fixed; z-index: 31; min-width: 240px; max-width: 420px; padding: 4px; border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); font-size: 13px; }
+.pip-menu-h { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.pip-menu button { display: flex; width: 100%; gap: 12px; justify-content: space-between; align-items: baseline; padding: 7px 10px; border-radius: 7px; text-align: left; }
+.pip-menu button:hover, .pip-menu button:focus-visible { background: var(--panel-2); outline: 0; }
+.pip-menu .mono { font: 11.5px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .pip { transition: none; } .sh-live.run, .sh-dot { animation: none; } }

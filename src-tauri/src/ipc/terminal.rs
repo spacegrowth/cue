@@ -3,6 +3,7 @@
 use crate::leads;
 use crate::model;
 use crate::terminal::focus;
+use crate::terminal::shells;
 use crate::terminal::term;
 use crate::terminal::dictation;
 use crate::hub::Hub;
@@ -53,6 +54,13 @@ pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, s
     }
     let o = tmux_origin_of(&hub, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || term::open(app, &session_id, &o, cols, rows)).await.map_err(|e| e.to_string())?
+}
+
+/// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that
+/// isn't a folder). Written to, resized and closed with term_write / term_resize / term_close by its id.
+#[tauri::command]
+pub(crate) async fn shell_open(app: tauri::AppHandle, id: String, cwd: String, cols: u16, rows: u16) -> Result<u64, String> {
+    tauri::async_runtime::spawn_blocking(move || shells::open(app, &id, &cwd, cols, rows)).await.map_err(|e| e.to_string())?
 }
 
 /// What you type in the built-in terminal.
