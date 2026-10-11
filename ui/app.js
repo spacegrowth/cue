@@ -36,6 +36,7 @@ function renderMain() {
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   // A background agent's steps (chat.js helperBlock), by agent: where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
+  const trayScrolls = new Map([...document.querySelectorAll("[data-tray-scroll]")].map((el) => [el.dataset.trayScroll, el.scrollTop]));   // the agents tray, by session
   const onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
@@ -55,6 +56,7 @@ function renderMain() {
   placePip();   // Cue's own terminal, back over the columns as they are now
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
+  document.querySelectorAll("[data-tray-scroll]").forEach((el) => { el.scrollTop = trayScrolls.get(el.dataset.trayScroll) ?? 0; });
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
   // land. Not the kept chat's dots: those elements live on, and their pulse with them.

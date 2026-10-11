@@ -338,6 +338,9 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .tray-head b { font-weight: 650; }
 .tray .bg-agent { margin-left: 0; }
+/* Its agents: one in full and the top of the next, the rest scrolled to, so several never fill the window. */
+.tray-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; }
+.tray-list > * { flex: none; }
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
 .stx-full { font-size: 11.5px; white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 7px; padding: 6px 9px; }
 .stx-path { font-size: 11px; color: var(--muted); word-break: break-all; }

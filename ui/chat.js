@@ -788,13 +788,14 @@ function helperBlock(sid, h, inTray) {
   return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${h.more ? `<div class="stx-more dim">${h.more} earlier steps not shown</div>` : ""}<div class="stx-steps bg-scroll" data-bg-scroll="${esc(k)}">${steps}</div>
     <div class="bg-note">${running ? "Read-only. It reports to this session, not to you." : "What it reported is in the session's next reply."}</div></div>`;
 }
-/** The tray above the message box: every agent still at work. "" when none. */
+/** The tray above the message box: every agent still at work, about one agent tall (the rest scrolled
+ *  to inside it, app.js renderMain keeps where you were). "" when none. */
 function helperTray(sid) {
   const hs = helpersOf(sid);
   const running = hs.filter(helperRunning);
   if (!running.length) return "";
   const done = hs.length - running.length;
-  return `<div class="tray"><div class="tray-head"><span class="dot-live"></span><b>${running.length} background agent${running.length === 1 ? "" : "s"} running</b>${done ? `<span class="dim"> · ${done} finished</span>` : ""}</div>${running.map((h) => helperBlock(sid, h, true)).join("")}</div>`;
+  return `<div class="tray"><div class="tray-head"><span class="dot-live"></span><b>${running.length} background agent${running.length === 1 ? "" : "s"} running</b>${done ? `<span class="dim"> · ${done} finished</span>` : ""}</div><div class="tray-list" data-tray-scroll="${esc(sid)}">${running.map((h) => helperBlock(sid, h, true)).join("")}</div></div>`;
 }
 /** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
