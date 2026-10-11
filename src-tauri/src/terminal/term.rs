@@ -277,11 +277,12 @@ fn start(sid: &str, gen: u64, pair: portable_pty::PtyPair, cmd: CommandBuilder, 
     Ok((gen, Open { master: pair.master, writer, child, view: None }))
 }
 
-/// "cue-view-<launch>-": the start of every view this launch of Cue opens (the launch: when it started,
-/// in seconds, so a later launch never takes an earlier one's names, whatever its pid).
+/// "cue-view-<when>-<pid>-": the start of every view this launch of Cue opens (when: the second it first
+/// opened one). The time keeps a later launch, which may get the same pid, off an earlier one's names; the
+/// pid keeps two Macs' Cues apart when they open a first view on one machine in the same second.
 fn view_prefix() -> &'static str {
     static P: OnceLock<String> = OnceLock::new();
-    P.get_or_init(|| format!("cue-view-{}-", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())))
+    P.get_or_init(|| format!("cue-view-{}-{}-", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()), std::process::id()))
 }
 
 /// A pane's client: one round trip (over SSH for a machine's session) to find the pane, then the tmux
@@ -307,7 +308,7 @@ fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<(V
     // Split at the last "|": a session's name may have one, a window id ("@3") never does. Not a tab: some
     // tmux versions print it as "_".
     let (session, window) = where_.rsplit_once('|').filter(|(s, w)| !s.is_empty() && !w.is_empty()).ok_or(format!("tmux pane {pane} is gone"))?;
-    // This launch's own names: views count from 1 again at every launch, and one left on a machine from
+    // This launch's own names (view_prefix): views count from 1 again at every launch, and one left on a machine from
     // an earlier run would refuse the same name ("duplicate session"). Removed by its exact name, its
     // client leaves with it: never switched to another session (a tmux.conf's detach-on-destroy off).
     let view = format!("{}{gen}", view_prefix());
@@ -678,7 +679,8 @@ mod views {
         let _ = crate::machines::tmux(&host, &["kill-session", "-t", &format!("={s}")]);
         println!("VT grouped with: {seen_targets:?}; clients left: {:?}", clients.lines().collect::<Vec<_>>());
         assert!(seen_targets.iter().all(|t| *t == s), "every view grouped with {s}, got {seen_targets:?}");
-        // No client of Cue's stays behind: not on its views, and never moved onto the session itself.
-        assert!(!clients.lines().any(|l| l.starts_with(&mine) || l == s), "clients left behind: {clients:?}");
+        // No client of Cue's stays behind: not on its views, and never moved onto the session itself or the
+        // earlier run's view (where tmux would move it first: the session before, by name).
+        assert!(!clients.lines().any(|l| l.starts_with("cue-view-") || l == s), "clients left behind: {clients:?}");
     }
 }
