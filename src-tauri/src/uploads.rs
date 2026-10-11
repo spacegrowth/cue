@@ -179,7 +179,12 @@ mod tests {
         let local = std::env::temp_dir().join(format!("cue-img {}.png", std::process::id()));
         std::fs::write(&local, &bytes).unwrap();
         let saved = vec![Saved { path: local.to_string_lossy().into(), mime: "image/png".into() }];
-        let there = on_machine(&m, &saved, &|_, _| {}).unwrap();
+        let heard = std::cell::RefCell::new(vec![]);
+        let there = on_machine(&m, &saved, &|sent, total| heard.borrow_mut().push((sent, total))).unwrap();
+        let heard = heard.into_inner();
+        assert_eq!(heard.first(), Some(&(0, 300_000)), "told it's starting, and how much there is");
+        assert_eq!(heard.last(), Some(&(300_000, 300_000)), "and that it's all there");
+        assert!(heard.len() > 3 && heard.windows(2).all(|w| w[0].0 <= w[1].0), "in steps, never going back: {}", heard.len());
         println!("copied to {}", there[0].path);
         assert!(there[0].path.ends_with(&format!("/.cue/uploads/cue-img {}.png", std::process::id())));
         let host = crate::machines::get(&m).unwrap().host;

@@ -46,7 +46,7 @@ done
 /// Once a minute it also drops answers in out/ a day old or more: one the hook never collected (its agent
 /// was gone by the time you answered) would otherwise stay there for good.
 ///
-/// One watcher per Mac: some SSH servers (DevPod's) never end a command whose connection is gone, so an
+/// One watcher per Mac: some SSH servers never end a command whose connection is gone, so an
 /// earlier connection's watcher can live on, its output going nowhere, and take events the current one
 /// never sees (prompts and Stops lost, some read by both as an empty line). A watcher records itself in
 /// ~/.cue/watcher-<this Mac>, and an older one of the same Mac leaves as soon as that names another

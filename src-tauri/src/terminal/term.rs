@@ -15,7 +15,7 @@ struct Open {
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     /// A machine's view session (host, name), Cue's own: removed there by Cue on close, before its client
-    /// goes. Some SSH servers (DevPod's) never hang up a dropped client, so the view would stay attached
+    /// goes. Some SSH servers never hang up a dropped client, so the view would stay attached
     /// for good, one more for every terminal ever opened; and tmux 3.0a can take its whole server down
     /// when a grouped view is left to remove itself once its client is gone (destroy-unattached), so
     /// the view goes first, by its exact name, and its client ends with it.
