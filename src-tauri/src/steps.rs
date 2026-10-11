@@ -170,7 +170,7 @@ static FEEDS: Mutex<Option<HashMap<String, Feed>>> = Mutex::new(None);
 /// The session's turns and steps, newest last. `known`: the version the caller already has; when
 /// nothing changed, only the version comes back.
 pub fn steps(path: &str, known: u64) -> Value {
-    let mut guard = FEEDS.lock().unwrap();
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
     feeds.retain(|_, f| f.used.elapsed() < FORGET);
     // A feed nobody asked for in a while is dropped: a fresh one starts mid-file and counts its version
@@ -194,8 +194,9 @@ pub fn steps(path: &str, known: u64) -> Value {
 /// The background agents a Claude Code session has running right now: their descriptions.
 /// (The session is at its prompt while they run; Claude Code wakes it when they report.)
 pub fn running_helpers(path: &str) -> Vec<String> {
-    let mut guard = FEEDS.lock().unwrap();
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
     let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
     feed.used = Instant::now();
     feed.catch_up();
@@ -205,8 +206,9 @@ pub fn running_helpers(path: &str) -> Vec<String> {
 /// How full the session's context is (the latest reply's tokens, as a share of the model's window), 0–100.
 /// The model a session last answered with ("claude-opus-5-5"), from its transcript.
 pub fn model_of(path: &str) -> Option<String> {
-    let mut guard = FEEDS.lock().unwrap();
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
     let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
     feed.used = Instant::now();
     feed.catch_up();
@@ -232,7 +234,7 @@ fn windows_file() -> std::path::PathBuf {
 
 /// The windows Cue knows (read from disk the first time; tests never touch the real one).
 fn with_windows<R>(f: impl FnOnce(&mut Windows) -> R) -> R {
-    let mut g = WINDOWS.lock().unwrap();
+    let mut g = crate::locking::lock(&WINDOWS, "WINDOWS");
     let w = g.get_or_insert_with(|| if cfg!(test) { Windows::default() } else { std::fs::read(windows_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() });
     f(w)
 }
@@ -249,7 +251,7 @@ pub fn set_window(session_id: &str, window: u64) {
     if window == 0 {
         return;
     }
-    let mut guard = FEEDS.lock().unwrap();
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
     let mine = |f: &Feed| f.kind == Kind::Claude && std::path::Path::new(&f.path).file_stem().and_then(|s| s.to_str()) == Some(session_id);
     let model = feeds.values().find(|f| mine(f)).map(|f| f.meta.model.clone()).unwrap_or_default();
@@ -276,8 +278,9 @@ pub fn set_window(session_id: &str, window: u64) {
 }
 
 pub fn context_pct(path: &str) -> Option<u8> {
-    let mut guard = FEEDS.lock().unwrap();
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
     let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
     feed.used = Instant::now();
     feed.catch_up();
@@ -1169,6 +1172,23 @@ mod tests {
     }
 
     #[test]
+    fn a_stop_hooks_follow_up_stays_in_the_turn_it_continues() {
+        let log = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"fix the token expiry"}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"text","text":"Done: expiry fixed."}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":"Stop hook feedback:\n[bash rules-check.sh]: Check the rules"}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat rules.md"}}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:06.000Z","message":{"content":[{"type":"text","text":"1. SHAPE: fine."}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:30.000Z","message":{"content":"and the refresh token?"}}
+"#;
+        let f = feed_of(log);
+        assert_eq!(f.turns.iter().map(|t| t.prompt.as_str()).collect::<Vec<_>>(), ["fix the token expiry", "and the refresh token?"], "the hook's entry opens no turn");
+        let items = &f.turns[0].items;
+        assert_eq!(items.len(), 3, "answer, the hook's step, its checklist: all one turn");
+        assert_eq!(step(&items[1]), ("Ran", "cat rules.md", "ok", false, true));
+    }
+
+    #[test]
     fn a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished() {
         let dir = std::env::temp_dir().join(format!("cue-steps-helper-{}", std::process::id()));
         let sub = dir.join("s1").join("subagents");
@@ -1215,23 +1235,6 @@ mod tests {
         assert_eq!(f.helpers[0].finished_ms, crate::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn a_stop_hooks_follow_up_stays_in_the_turn_it_continues() {
-        let log = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"fix the token expiry"}}
-{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"text","text":"Done: expiry fixed."}]}}
-{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":"Stop hook feedback:\n[bash rules-check.sh]: Check the rules"}}
-{"type":"assistant","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat rules.md"}}]}}
-{"type":"user","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
-{"type":"assistant","timestamp":"2026-10-04T10:00:06.000Z","message":{"content":[{"type":"text","text":"1. SHAPE: fine."}]}}
-{"type":"user","timestamp":"2026-10-04T10:00:30.000Z","message":{"content":"and the refresh token?"}}
-"#;
-        let f = feed_of(log);
-        assert_eq!(f.turns.iter().map(|t| t.prompt.as_str()).collect::<Vec<_>>(), ["fix the token expiry", "and the refresh token?"], "the hook's entry opens no turn");
-        let items = &f.turns[0].items;
-        assert_eq!(items.len(), 3, "answer, the hook's step, its checklist: all one turn");
-        assert_eq!(step(&items[1]), ("Ran", "cat rules.md", "ok", false, true));
     }
 
     #[test]
@@ -1369,7 +1372,7 @@ mod tests {
         let r1 = steps(p, 0);
         assert_eq!(r1["version"].as_u64(), Some(2));
         append(&path);
-        FEEDS.lock().unwrap().get_or_insert_with(HashMap::new).remove(p);
+        crate::locking::lock(&FEEDS, "FEEDS").get_or_insert_with(HashMap::new).remove(p);
         let r2 = steps(p, r1["version"].as_u64().unwrap());
         assert_eq!(r2["version"].as_u64(), r1["version"].as_u64());
         assert_eq!(r2["meta"]["model"], "claude-opus-5-5", "a fresh feed answers with what's there now, whatever its count");

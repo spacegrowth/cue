@@ -81,6 +81,9 @@ pub fn run(cwd: &str, line: &str) -> Result<Ran, String> {
     let child = Command::new(&shell)
         .args(["-lic", &format!("cd -- \"$CUE_CWD\" && {line}")])
         .env("CUE_CWD", cwd)
+        // Not a Terminal.app session: its "Restored session…" / "Saving session…" lines (from
+        // /etc/zshrc_Apple_Terminal when Cue was started from a terminal) would show in every card.
+        .env("SHELL_SESSIONS_DISABLE", "1")
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

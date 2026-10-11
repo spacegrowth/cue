@@ -2,19 +2,23 @@
 //! picked by hand: Claude Code says which are enabled in a folder (its built-ins, your skills and
 //! commands, plugins'), with what each does and what it takes, when it's asked to set up over its SDK
 //! protocol (`-p --input-format stream-json`, an `initialize` request). That needs no model and starts
-//! no conversation. Cue asks, reads the reply and stops it. Once per folder, again after 10 minutes.
+//! no conversation. Cue asks, reads the reply and stops it: once per folder, the first time its "/"
+//! menu is opened, then kept for a week. Sooner only when you ask: Refresh under the "/" menu, or
+//! Reload beside + New's model list, either of which forgets every folder's list (`forget_all`), so
+//! the next "/" or + New asks again. (The handshake runs in the folder, so that folder's Claude
+//! settings load then, which is why it isn't done on a timer.)
 //!
 //! The same reply lists the models and output styles there are, so `/model` and `/output-style` offer
 //! them as choices (a bare `/model` opens a picker in its terminal, where Cue can't show it).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Cmd {
     pub name: String,
     /// "skill": it becomes a prompt (a turn starts, like a message). "command": Claude Code runs it itself.
@@ -26,17 +30,19 @@ pub struct Cmd {
     pub args: Vec<Arg>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Arg {
     pub value: String,
     pub label: String,
     pub desc: String,
 }
 
-/// How long a folder's list is kept before it's asked again (a new skill or plugin shows up then).
-const KEEP_MS: u64 = 10 * 60_000;
+/// How long a folder's list is kept before it's asked again on its own (a new skill or plugin shows
+/// up then, or sooner with Refresh).
+const KEEP_MS: u64 = 7 * 24 * 3_600_000;
 
-/// By folder: when it was read, and the list.
+/// By folder: when it was read, and the list. What's here is also in the database (`db::commands`),
+/// where it outlives this run of Cue; this is only the copy in hand.
 static LISTS: Mutex<Option<HashMap<String, (u64, Vec<Cmd>)>>> = Mutex::new(None);
 /// Folders being read now.
 static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
@@ -47,19 +53,30 @@ pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
         return Some(vec![]);
     }
     let now = crate::model::now_ms();
-    let cached = LISTS.lock().unwrap().get_or_insert_with(HashMap::new).get(cwd).cloned();
+    // Two separate locks, never one inside the other: the guard of a lookup used in a longer expression
+    // would still be held while the database's copy is put in.
+    let in_hand = crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).get(cwd).cloned();
+    let cached = match in_hand {
+        Some(c) => Some(c),
+        // Not in hand (Cue was relaunched): what the last run kept, if it's there.
+        None => crate::db::commands(cwd).inspect(|kept| {
+            crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).insert(cwd.to_string(), kept.clone());
+        }),
+    };
     let fresh = cached.as_ref().is_some_and(|(at, _)| now.saturating_sub(*at) < KEEP_MS);
     if !fresh {
-        let started = READING.lock().unwrap().get_or_insert_with(HashSet::new).insert(cwd.to_string());
+        let started = crate::locking::lock(&READING, "READING").get_or_insert_with(HashSet::new).insert(cwd.to_string());
         if started {
             let cwd = cwd.to_string();
             std::thread::spawn(move || {
                 let list = read_folder(&cwd);
                 // A failed read keeps the old list (if any), and is tried again next time.
                 if let Some(list) = list {
-                    LISTS.lock().unwrap().get_or_insert_with(HashMap::new).insert(cwd.clone(), (crate::model::now_ms(), list));
+                    let at = crate::model::now_ms();
+                    crate::db::set_commands(&cwd, at, &list);
+                    crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).insert(cwd.clone(), (at, list));
                 }
-                READING.lock().unwrap().get_or_insert_with(HashSet::new).remove(&cwd);
+                crate::locking::lock(&READING, "READING").get_or_insert_with(HashSet::new).remove(&cwd);
             });
         }
     }
@@ -96,6 +113,24 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
     Some(from_setup(r.pointer("/response/response").unwrap_or(&Value::Null)))
 }
 
+/// Forget every folder's list: the next ask, for any folder, reads it from Claude Code again. Refresh
+/// under a "/" menu and Reload beside + New's model list both do this, so one press brings a new
+/// skill, plugin or model everywhere, not in one place.
+pub fn forget_all() {
+    crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).clear();
+    crate::db::clear_commands();
+}
+
+/// The models Claude Code offers (the choices /model takes), for picking one before a session starts.
+/// Read in `cwd`; `fresh` forgets every folder's list first, so Claude Code is asked again. None
+/// while it's being read; empty when it lists none.
+pub fn models_for(cwd: &str, fresh: bool) -> Option<Vec<Arg>> {
+    if fresh {
+        forget_all();
+    }
+    for_session(cwd).map(|l| l.into_iter().find(|c| c.name == "model").map(|c| c.args).unwrap_or_default())
+}
+
 /// The list from Claude Code's setup reply: `commands` (name, description, argumentHint, builtin), with
 /// `models` and `available_output_styles` as the choices for /model and /output-style.
 fn from_setup(r: &Value) -> Vec<Cmd> {
@@ -127,6 +162,102 @@ fn from_setup(r: &Value) -> Vec<Cmd> {
         .collect()
 }
 
+/// A Pi session's "/" menu: Pi's own commands, then what its extension reported (its extensions'
+/// commands, prompt templates and skills, as Pi's `getCommands` lists them).
+/// SHORTCUT: Pi's built-ins are a fixed list, from pi-coding-agent 0.87.1: Pi doesn't export it to
+/// extensions. A command Pi adds later is missing here until this list is updated; typed in full it
+/// still runs (the box sends what you type).
+pub fn for_pi(reported: &[crate::model::AgentCmd]) -> Vec<Cmd> {
+    let fixed = |name: &str, desc: &str, hint: &str| Cmd { name: name.into(), kind: "command".into(), desc: desc.into(), hint: hint.into(), args: vec![] };
+    let mut list = vec![
+        fixed("settings", "Open settings menu", ""),
+        fixed("model", "Select model (opens selector UI)", "<provider/model>"),
+        fixed("thinking", "Set thinking level", "<level>"),
+        fixed("scoped-models", "Enable/disable models for Ctrl+P cycling", ""),
+        fixed("name", "Set session display name", ""),
+        fixed("session", "Show session info and stats", ""),
+        fixed("tree", "Navigate session tree (switch branches)", ""),
+        fixed("fork", "Create a new fork from a previous user message", ""),
+        fixed("clone", "Duplicate the current session at the current position", ""),
+        fixed("compact", "Manually compact the session context", ""),
+        fixed("new", "Start a new session", ""),
+        fixed("resume", "Resume a different session", ""),
+        fixed("export", "Export session (HTML default, or specify path: .html/.jsonl)", ""),
+        fixed("import", "Import and resume a session from a JSONL file", ""),
+        fixed("share", "Share session as a secret GitHub gist", ""),
+        fixed("copy", "Copy last agent message to clipboard", ""),
+        fixed("trust", "Save project trust decision for future sessions", ""),
+        fixed("login", "Configure provider authentication", "<provider>"),
+        fixed("logout", "Remove provider authentication", ""),
+        fixed("reload", "Reload keybindings, extensions, skills, prompts, themes, and context files", ""),
+        fixed("changelog", "Show changelog entries", ""),
+        fixed("hotkeys", "Show all keyboard shortcuts", ""),
+        fixed("bug", "Report a bug to the Pi developers", "<description>"),
+        fixed("quit", "Quit Pi", ""),
+    ];
+    for c in reported {
+        let name = c.name.trim().trim_start_matches('/');
+        if name.is_empty() || list.iter().any(|k| k.name == name) {
+            continue;
+        }
+        // A prompt template or a skill becomes a prompt (a turn starts); an extension's command runs itself.
+        let kind = if c.source == "extension" { "command" } else { "skill" };
+        list.push(Cmd { name: name.to_string(), kind: kind.into(), desc: c.description.trim().to_string(), hint: String::new(), args: vec![] });
+    }
+    list
+}
+
+/// A Codex session's "/" menu.
+/// SHORTCUT: a fixed list, from Codex's own source (codex-rs/tui/src/slash_command.rs) as of October
+/// 2026, without its debug-only and platform-hidden entries: Codex has no way to ask for the list. A
+/// command Codex adds later is missing here until this list is updated; typed in full it still runs.
+pub fn for_codex() -> Vec<Cmd> {
+    let fixed = |name: &str, desc: &str| Cmd { name: name.into(), kind: "command".into(), desc: desc.into(), hint: String::new(), args: vec![] };
+    vec![
+        fixed("model", "Choose what model and reasoning effort to use"),
+        fixed("permissions", "Choose what Codex is allowed to do"),
+        fixed("review", "Review my current changes and find issues"),
+        fixed("plan", "Switch to Plan mode"),
+        fixed("compact", "Summarize conversation to prevent hitting the context limit"),
+        fixed("recap", "Summarize the current conversation now"),
+        fixed("rename", "Rename the current thread"),
+        fixed("new", "Start a new chat during a conversation"),
+        fixed("resume", "Resume a saved chat"),
+        fixed("fork", "Fork the current chat"),
+        fixed("worktree", "Start or continue a conversation in a new worktree"),
+        fixed("archive", "Archive this session"),
+        fixed("init", "Create an AGENTS.md file with instructions for Codex"),
+        fixed("goal", "Set or view the goal for a long-running task"),
+        fixed("side", "Start a side conversation in an ephemeral fork"),
+        fixed("btw", "Start a side conversation in an ephemeral fork"),
+        fixed("agents", "Open the agent command center"),
+        fixed("subagents", "Switch between this session's subagents"),
+        fixed("skills", "Use skills to improve how Codex performs specific tasks"),
+        fixed("hooks", "View and manage lifecycle hooks"),
+        fixed("memories", "Configure memory use and generation"),
+        fixed("mcp", "List MCP tools; use /mcp verbose or /mcp login <name>"),
+        fixed("apps", "Manage apps"),
+        fixed("plugins", "Browse plugins"),
+        fixed("diff", "Show git diff (including untracked files)"),
+        fixed("mention", "Mention a file"),
+        fixed("status", "Show current session configuration and token usage"),
+        fixed("usage", "View account usage or use a usage limit reset"),
+        fixed("export", "Export the conversation as markdown"),
+        fixed("copy", "Copy the last response or part of it"),
+        fixed("cd", "Change the current working directory"),
+        fixed("pwd", "Show the current working directory"),
+        fixed("ps", "List background terminals"),
+        fixed("stop", "Stop all background terminals"),
+        fixed("voice", "Start or stop voice; use /voice settings to choose a voice"),
+        fixed("theme", "Choose a syntax highlighting theme"),
+        fixed("experimental", "Toggle experimental features"),
+        fixed("feedback", "Send logs to maintainers"),
+        fixed("clear", "Clear the terminal and start a new chat"),
+        fixed("logout", "Log out of Codex"),
+        fixed("quit", "Exit Codex"),
+    ]
+}
+
 /// The values in an argument hint that lists them ("[on|off]", "<low|medium|high>"); a free-text hint
 /// ("[name]") or a value with more after it ("ultracode [on|off]") isn't one to pick.
 fn choices(hint: &str) -> Vec<Arg> {
@@ -146,6 +277,43 @@ fn choices(hint: &str) -> Vec<Arg> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pi_and_codex_lists_are_pis_own_plus_what_its_extension_reports_and_codexs_own() {
+        let reported = vec![
+            crate::model::AgentCmd { name: "pilead:review".into(), description: "Review an executor".into(), source: "extension".into() },
+            crate::model::AgentCmd { name: "/tidy".into(), description: "A prompt template".into(), source: "prompt".into() },
+            crate::model::AgentCmd { name: "compact".into(), description: "Pi has this itself".into(), source: "extension".into() },
+            crate::model::AgentCmd { name: " ".into(), description: String::new(), source: "skill".into() },
+        ];
+        let pi = for_pi(&reported);
+        assert_eq!(pi.iter().filter(|c| c.name == "compact").count(), 1, "Pi's own wins, once");
+        let ext = pi.iter().find(|c| c.name == "pilead:review").unwrap();
+        assert_eq!((ext.kind.as_str(), ext.desc.as_str()), ("command", "Review an executor"));
+        assert_eq!(pi.iter().find(|c| c.name == "tidy").unwrap().kind, "skill", "a template is a prompt, the slash dropped");
+        assert!(pi.iter().all(|c| !c.name.trim().is_empty()));
+        assert!(for_pi(&[]).iter().any(|c| c.name == "model" && c.hint == "<provider/model>"));
+        let codex = for_codex();
+        assert!(codex.iter().any(|c| c.name == "review") && codex.iter().all(|c| c.kind == "command"));
+    }
+
+    #[test]
+    fn a_list_kept_from_an_earlier_run_is_used_without_asking_again() {
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-cmds-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let kept = vec![Cmd { name: "merge-main".into(), kind: "skill".into(), desc: "Bring main in".into(), hint: String::new(), args: vec![] }];
+        crate::db::set_commands("/x/kept", crate::model::now_ms(), &kept);
+        // On the calling thread, as the window's thread calls it: it answers from the file, at once,
+        // without the lock being taken inside its own lookup (that hung Cue once).
+        assert_eq!(for_session("/x/kept"), Some(kept.clone()));
+        assert_eq!(for_session("/x/kept"), Some(kept), "and from memory the second time");
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn reads_claude_codes_setup_reply() {

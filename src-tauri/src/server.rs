@@ -106,14 +106,58 @@ async fn settle_prompt(hub: Arc<Hub>, sid: String, path: String, prompt_id: Stri
     hub.prompt_from_you(&sid, &text);
 }
 
+/// The most one connection may send, in all: a message is a few KB, a reply with images a few MB.
+/// Past it the connection just ends, so a client that never sends a newline can't grow Cue's memory.
+const MAX_CONNECTION_BYTES: u64 = 64 << 20;
+
+/// The agent session the connecting process belongs to, if any: it, or one of its ancestors, is a
+/// process Cue knows as an agent's. (Hooks and `cue-ctl` run as the agent's children; Pi's extension
+/// is the agent itself.) None when the peer is unknown or under none of them.
+fn agent_behind(hub: &Hub, peer: Option<i32>) -> Option<String> {
+    let peer = peer?;
+    let agents: std::collections::HashMap<i32, String> = hub.agent_pids().into_iter().map(|(sid, pid)| (pid, sid)).collect();
+    if agents.is_empty() {
+        return None;
+    }
+    let out = std::process::Command::new("/bin/ps").args(["-axo", "pid=,ppid="]).output().ok()?;
+    let parents: std::collections::HashMap<i32, i32> = String::from_utf8_lossy(&out.stdout).lines()
+        .filter_map(|l| { let mut it = l.split_whitespace(); Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?)) })
+        .collect();
+    let mut pid = peer;
+    for _ in 0..64 {
+        if let Some(sid) = agents.get(&pid) {
+            return Some(sid.clone());
+        }
+        pid = *parents.get(&pid)?;
+        if pid <= 1 {
+            return None;
+        }
+    }
+    None
+}
+
 async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
+    let peer = stream.peer_cred().ok().and_then(|c| c.pid());
     let (r, mut w) = stream.into_split();
-    let mut lines = BufReader::new(r).lines();
+    let mut lines = BufReader::new(tokio::io::AsyncReadExt::take(r, MAX_CONNECTION_BYTES)).lines();
     let Some(first) = lines.next_line().await? else { return Ok(()) };
     let msg: ClientMsg = match serde_json::from_str(&first) {
         Ok(m) => m,
         Err(e) => return send(&mut w, json!({"type": "error", "error": e.to_string()})).await,
     };
+    // Deciding, replying, sending to a session, stopping one, going to one: yours, never an agent's.
+    // Any process of this user can reach the socket, and the agents Cue gates are such processes: one
+    // that was talked into it (a page it read, a repo it opened) could otherwise allow its own command
+    // or type into another session's terminal. Refused, and said so, when the sender runs under an agent.
+    // (Not the private test Cue, CUE_QUIET: its tests answer their own asks, and run under an agent when
+    // an agent runs them.)
+    if std::env::var_os("CUE_QUIET").is_none() && matches!(msg, ClientMsg::Respond { .. } | ClientMsg::Reply { .. } | ClientMsg::SendTo { .. } | ClientMsg::Interrupt { .. } | ClientMsg::Focus { .. }) {
+        let h = hub.clone();
+        if let Some(sid) = tokio::task::spawn_blocking(move || agent_behind(&h, peer)).await.unwrap_or(None) {
+            eprintln!("cue: refused a {} from inside agent session {sid} (pid {})", first.split('"').nth(3).unwrap_or("control message"), peer.unwrap_or(0));
+            return send(&mut w, json!({"ok": false, "error": format!("refused: sent from inside agent session {sid}; Cue takes this only from you")})).await;
+        }
+    }
     match msg {
         ClientMsg::Ask { origin, kind, tool_name, tool_input, suggestions, context } => {
             let (id, rx) = hub.add_ask(origin, kind, tool_name, tool_input, suggestions, context);
@@ -154,9 +198,18 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
             let path = if origin.machine.is_empty() { origin.transcript_path.clone() } else { String::new() };
             let prompt = (event == "active").then(|| (origin.session_id.clone(), path, message.clone()));
             let driven_by = crate::leads::resolve_driver(&origin.session_id, &driven_by);
-            hub.event(origin, &event, message, turn, &driven_by);
-            if let Some((sid, path, text)) = prompt {
-                tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text));
+            match prompt {
+                // Nothing to look up (Pi, Codex, a session on a machine): the prompt is yours, noted with
+                // the event itself.
+                Some((_, path, ref text)) if (prompt_id.is_empty() || path.is_empty()) && !crate::transcript::harness_text(text) => {
+                    hub.active_from_you(origin, message, turn, &driven_by);
+                }
+                Some((_, path, _)) if prompt_id.is_empty() || path.is_empty() => hub.event(origin, &event, message, turn, &driven_by),
+                Some((sid, path, text)) => {
+                    hub.event(origin, &event, message, turn, &driven_by);
+                    tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text));
+                }
+                None => hub.event(origin, &event, message, turn, &driven_by),
             }
         }
         ClientMsg::Usage { rate_limits, session_id, cost, window } => {
@@ -199,24 +252,34 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
             let r = tokio::task::spawn_blocking(move || h.interrupt(&session_id)).await.unwrap_or_else(|e| Err(e.to_string()));
             send(&mut w, json!({"ok": r.is_ok(), "detail": r.unwrap_or_else(|e| e)})).await?;
         }
-        ClientMsg::Subscribe { origin } => {
+        ClientMsg::Subscribe { origin, commands } => {
             let sid = origin.session_id.clone();
             if sid.is_empty() {
                 return Ok(());
             }
-            let (n, mut rx) = hub.subscribe(&origin);
+            let (n, mut rx) = match hub.subscribe(&origin, peer) {
+                Ok(s) => s,
+                Err(e) => return send(&mut w, json!({"type": "error", "error": e})).await,
+            };
+            hub.set_agent_commands(&sid, crate::commands::for_pi(&commands));
             loop {
                 tokio::select! {
                     msg = rx.recv() => match msg {
                         Some(msg) => send(&mut w, msg).await?,
                         None => break,
                     },
-                    line = lines.next_line() => if !matches!(line, Ok(Some(_))) { break },
+                    line = lines.next_line() => match line {
+                        // The session's commands again (Refresh asked for them); anything else said here is ignored.
+                        Ok(Some(l)) => if let Ok(ClientMsg::Commands { commands }) = serde_json::from_str::<ClientMsg>(&l) {
+                            hub.set_agent_commands(&sid, crate::commands::for_pi(&commands));
+                        },
+                        _ => break,
+                    },
                 }
             }
             hub.unsubscribe(&sid, n);
         }
-        ClientMsg::Resolved { .. } => {}
+        ClientMsg::Resolved { .. } | ClientMsg::Commands { .. } => {}
     }
     Ok(())
 }

@@ -33,7 +33,7 @@ static LAST: Mutex<Option<(std::path::PathBuf, Option<SystemTime>, Value)>> = Mu
 pub fn read() -> Value {
     let p = path();
     let modified = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
-    let mut last = LAST.lock().unwrap();
+    let mut last = crate::locking::lock(&LAST, "LAST");
     if let Some((lp, lm, v)) = last.as_ref() {
         if *lp == p && *lm == modified {
             return v.clone();
@@ -59,7 +59,7 @@ pub fn read() -> Value {
 pub fn changed() -> bool {
     let p = path();
     let modified = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
-    LAST.lock().unwrap().as_ref().is_none_or(|(lp, lm, _)| *lp != p || *lm != modified)
+    crate::locking::lock(&LAST, "LAST").as_ref().is_none_or(|(lp, lm, _)| *lp != p || *lm != modified)
 }
 
 /// The rows as meters, or what's wrong with the file (the first problem, with its line).

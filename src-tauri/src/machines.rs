@@ -153,12 +153,112 @@ pub fn run_with_input(host: &str, script: &str, input: &str) -> Result<String, S
 }
 
 /// The `ssh` behind `run` and its sibling, for you to spawn yourself (ssh passes the script's exit code
-/// through): the shared connection, never asking for anything, the script's stderr silenced.
+/// through): the shared connection, never asking for anything, the script's stderr silenced. Once Cue
+/// has written the machine's environment there (`env_file`), the script runs in /bin/sh with that file
+/// sourced, and the login shell is skipped: it costs about 300 ms a call (your .bashrc), against 50 for
+/// ssh itself. Should the file be gone (you cleaned ~/.cue), the script still runs, with sh's own PATH.
 pub(crate) fn ssh_command(host: &str, script: &str) -> Command {
+    let command = if env_file(host) { env_command(script) } else { remote_command(script) };
+    let mut c = Command::new("/usr/bin/ssh");
+    c.args(shared())
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &command]);
+    c
+}
+
+/// Where the machine's environment is kept on the machine, under your home there.
+const ENV_FILE: &str = ".cue/env.sh";
+
+/// What ssh runs on the machine for `script` once ENV_FILE is there: /bin/sh sources it, then runs the
+/// script. Guarded: a non-interactive sh that can't source a file ends there, and the script with it.
+fn env_command(script: &str) -> String {
+    format!("exec /bin/sh -c {} 2>/dev/null", shq(&format!("[ -r \"$HOME/{ENV_FILE}\" ] && . \"$HOME/{ENV_FILE}\"\n{script}")))
+}
+
+/// `ssh host`, through your login shell there (`remote_command`): for the two calls that must not depend
+/// on the environment file, reading the environment and writing the file.
+fn ssh_login(host: &str, script: &str) -> Command {
     let mut c = Command::new("/usr/bin/ssh");
     c.args(shared())
         .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command(script)]);
     c
+}
+
+/// Whether your login shell's environment on the machine (PATH, CLAUDE_CONFIG_DIR, whatever it exports)
+/// is written to ENV_FILE there, as `export` lines /bin/sh sources. It's asked of the login shell and
+/// written once (readable by you only, put in place whole), remembered while Cue runs, and asked again
+/// when the machine is reached again (`forget`: a reboot may have changed it). A file, not part of each
+/// command: an environment in the ssh command line shows in `ps` on both ends, and Linux refuses a
+/// single argument past 128 KiB. False until it's written, or when the machine can't say or won't take
+/// the file: then each call goes through the login shell, as before.
+fn env_file(host: &str) -> bool {
+    if crate::locking::lock(caches(), "caches").env.contains(host) {
+        return true;
+    }
+    let Ok(out) = ssh_login(host, "env -0").output() else { return false };
+    if !out.status.success() {
+        return false;
+    }
+    let Some(exports) = env_exports(&out.stdout) else { return false };
+    let write = format!(r#"umask 077; mkdir -p "$HOME/.cue" && cat >"$HOME/{ENV_FILE}.tmp" && mv -f "$HOME/{ENV_FILE}.tmp" "$HOME/{ENV_FILE}""#);
+    let written = (|| {
+        use std::io::Write;
+        let mut child = ssh_login(host, &write).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().ok()?;
+        child.stdin.take()?.write_all(exports.as_bytes()).ok()?;
+        child.wait().ok().filter(|st| st.success())
+    })()
+    .is_some();
+    if written {
+        crate::locking::lock(caches(), "caches").env.insert(host.to_string());
+    }
+    written
+}
+
+/// `env -0` output as `export` lines a POSIX shell takes. What's the connection's own (SSH_*), the shell's
+/// (BASH_*, ZSH_*, prompts, history, SHLVL, PWD) or a function stays out: /bin/sh must not inherit those
+/// from another shell. Nor what bash keeps read-only (UID, EUID, PPID, SHELLOPTS, BASHOPTS, BASH_VERSINFO)
+/// or IFS: where /bin/sh is bash, exporting one of those fails and ends the whole script. None when
+/// there's nothing usable (no PATH: `env -0` didn't work there).
+fn env_exports(raw: &[u8]) -> Option<String> {
+    let skip = |k: &str| {
+        matches!(
+            k,
+            "SHLVL" | "PWD" | "OLDPWD" | "_" | "TERM" | "LINES" | "COLUMNS" | "HISTFILE" | "HISTSIZE" | "HISTFILESIZE" | "LS_COLORS" | "UID" | "EUID" | "PPID" | "SHELLOPTS" | "IFS" | "BASHOPTS" | "BASH_VERSINFO"
+        ) || ["SSH_", "BASH", "ZSH", "PS", "PROMPT", "HIST"].iter().any(|p| k.starts_with(p))
+    };
+    let name_ok = |k: &str| !k.is_empty() && !k.starts_with(|c: char| c.is_ascii_digit()) && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let mut lines = String::new();
+    let mut has_path = false;
+    for entry in raw.split(|b| *b == 0).filter(|e| !e.is_empty()) {
+        let Ok(entry) = std::str::from_utf8(entry) else { continue };
+        let Some((k, v)) = entry.split_once('=') else { continue };
+        if !name_ok(k) || skip(k) {
+            continue;
+        }
+        has_path |= k == "PATH";
+        lines.push_str(&format!("export {k}={}\n", shq(v)));
+    }
+    has_path.then_some(lines)
+}
+
+/// What Cue keeps about a machine while it runs, by host: that its environment file is written there,
+/// and where tmux is.
+#[derive(Default)]
+struct Caches {
+    env: std::collections::HashSet<String>,
+    tmux: std::collections::HashMap<String, String>,
+}
+
+fn caches() -> &'static std::sync::Mutex<Caches> {
+    static C: std::sync::OnceLock<std::sync::Mutex<Caches>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// The machine was reached again (Cue started, or it came back from a reboot or a dropped line): what Cue
+/// kept about it is asked again next time.
+pub fn forget(host: &str) {
+    let mut c = crate::locking::lock(caches(), "caches");
+    c.env.remove(host);
+    c.tmux.remove(host);
 }
 
 /// `ssh_command` keeping the script's stderr: a "!" line's card shows it, as it does on this Mac.
@@ -193,16 +293,14 @@ pub fn tmux(host: &str, args: &[&str]) -> Result<String, String> {
 /// Where tmux is on the machine (a full path), asked once of your login shell there (your PATH) and kept
 /// while Cue runs. None when it can't say (not reachable, no tmux): ask again next time.
 pub fn tmux_path(host: &str) -> Option<String> {
-    static PATHS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> = std::sync::OnceLock::new();
-    let paths = PATHS.get_or_init(Default::default);
-    if let Some(p) = paths.lock().unwrap().get(host) {
+    if let Some(p) = crate::locking::lock(caches(), "caches").tmux.get(host) {
         return Some(p.clone());
     }
     let p = run(host, "command -v tmux").ok()?.lines().last()?.trim().to_string();
     if !p.starts_with('/') {
         return None;
     }
-    paths.lock().unwrap().insert(host.to_string(), p.clone());
+    crate::locking::lock(caches(), "caches").tmux.insert(host.to_string(), p.clone());
     Some(p)
 }
 
@@ -410,5 +508,48 @@ mod tests {
     #[test]
     fn a_script_is_one_quoted_word_for_the_remote_shell() {
         assert_eq!(shq("echo 'hi'; ls"), "'echo '\\''hi'\\''; ls'");
+    }
+
+    #[test]
+    fn the_machines_environment_becomes_exports_sh_takes_and_keeps_the_shells_own_out() {
+        let raw = b"PATH=/home/u/.nvm/v20/bin:/usr/bin\0HOME=/home/u\0CLAUDE_CONFIG_DIR=/home/u/.claude\0SHLVL=2\0PWD=/home/u\0SSH_CONNECTION=1.2.3.4 5 6.7.8.9 22\0BASH_FUNC_x%%=() {  echo\n}\0PS1=\\u$ \0IT'S=a 'quoted' one\0";
+        let pre = env_exports(raw).unwrap();
+        assert_eq!(pre, "export PATH='/home/u/.nvm/v20/bin:/usr/bin'\nexport HOME='/home/u'\nexport CLAUDE_CONFIG_DIR='/home/u/.claude'\n");
+        // Written to a file and sourced, as on the machine: the script sees that environment, from
+        // /bin/sh and from bash alike.
+        let file = std::env::temp_dir().join(format!("cue-env-{}.sh", std::process::id()));
+        std::fs::write(&file, &pre).unwrap();
+        for sh in ["/bin/sh", "/bin/bash"] {
+            let out = std::process::Command::new(sh).args(["-c", &format!(". {}\necho \"$PATH|$CLAUDE_CONFIG_DIR|${{SHLVL:-unset}}\"", shq(&file.to_string_lossy()))]).output().unwrap();
+            let seen = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            assert!(seen.starts_with("/home/u/.nvm/v20/bin:/usr/bin|/home/u/.claude|") && !seen.ends_with("|2"), "{sh}: {seen}");
+        }
+        let _ = std::fs::remove_file(&file);
+        assert!(env_exports(b"HOME=/home/u\0").is_none(), "no PATH: env -0 didn't work there");
+    }
+
+    #[test]
+    fn what_bash_keeps_read_only_stays_out_so_sourcing_the_file_never_aborts() {
+        let raw = b"PATH=/usr/bin\0UID=501\0EUID=501\0PPID=7\0SHELLOPTS=braceexpand\0BASHOPTS=checkwinsize\0BASH_VERSINFO=5\0IFS= \t\n\0KEEP=yes\0";
+        let pre = env_exports(raw).unwrap();
+        assert_eq!(pre, "export PATH='/usr/bin'\nexport KEEP='yes'\n");
+        // Bash as /bin/sh runs the whole file and the line after it (an `export UID=` would end it there).
+        let out = std::process::Command::new("/bin/bash").args(["-c", &format!("{pre}echo \"after:$KEEP\"")]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "after:yes");
+    }
+
+    #[test]
+    fn what_ssh_runs_with_the_environment_file_sources_it_and_still_runs_without_it() {
+        // The command `ssh_command` sends once the file is written, run here with HOME at a scratch
+        // folder: with the file, the script sees what it exports; without it, the script still runs.
+        let home = std::env::temp_dir().join(format!("cue-envhome-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue")).unwrap();
+        let command = env_command("echo \"ran:${CUE_T:-none}\"");
+        let run = || std::process::Command::new("/bin/sh").args(["-c", &command]).env("HOME", &home).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap();
+        assert_eq!(run(), "ran:none", "no file yet: the script runs all the same");
+        std::fs::write(home.join(ENV_FILE), "export CUE_T='set'\n").unwrap();
+        assert_eq!(run(), "ran:set");
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

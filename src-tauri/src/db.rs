@@ -73,6 +73,14 @@ CREATE TABLE IF NOT EXISTS review_queue (
   at_ms       INTEGER NOT NULL
 );
 
+-- The "/" commands Claude Code reports for a folder (see commands.rs): read once, kept a week, so a
+-- relaunch of Cue doesn't ask again.
+CREATE TABLE IF NOT EXISTS commands (
+  cwd         TEXT PRIMARY KEY,
+  read_ms     INTEGER NOT NULL,
+  data        TEXT NOT NULL            -- the list as JSON
+);
+
 CREATE TABLE IF NOT EXISTS drafts (
   -- SHORTCUT: draft images are stored inline as data URLs (up to 6 × 15 MB); fine for a few drafts.
   -- Upgrade path: save them to uploads/ and keep paths, like sent images.
@@ -90,12 +98,15 @@ fn path() -> std::path::PathBuf {
 /// Run `f` on the open database. A database that can't be opened is logged once and every call
 /// becomes a no-op: Cue keeps working from memory rather than refusing to start.
 fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
-    let mut guard = DB.lock().unwrap();
+    let mut guard = crate::locking::lock(&DB, "DB");
     if guard.is_none() {
+        static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         *guard = match open() {
             Ok(c) => Some(c),
             Err(e) => {
-                eprintln!("cue: can't open {}: {e}", path().display());
+                if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    eprintln!("cue: can't open {}: {e}", path().display());
+                }
                 return None;
             }
         };
@@ -463,6 +474,34 @@ pub fn unqueue_review(exec: &str) {
 }
 
 /// Save one draft; an empty one (no text, no images) is removed.
+// ---------- "/" commands by folder ----------
+
+/// A folder's kept command list and when it was read, if any.
+pub fn commands(cwd: &str) -> Option<(u64, Vec<crate::commands::Cmd>)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT read_ms, data FROM commands WHERE cwd = ?1")?;
+        let row = q.query_row(params![cwd], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))).ok();
+        Ok(row.and_then(|(at, data)| serde_json::from_str(&data).ok().map(|list| (at, list))))
+    })
+    .flatten()
+}
+
+pub fn set_commands(cwd: &str, read_ms: u64, list: &[crate::commands::Cmd]) {
+    with(|c| {
+        c.execute(
+            "INSERT INTO commands (cwd, read_ms, data) VALUES (?1, ?2, ?3)
+             ON CONFLICT(cwd) DO UPDATE SET read_ms = excluded.read_ms, data = excluded.data",
+            params![cwd, read_ms as i64, serde_json::to_string(list).unwrap_or_else(|_| "[]".into())],
+        )?;
+        Ok(())
+    });
+}
+
+/// Refresh: every folder's list goes, so each is read again when next asked.
+pub fn clear_commands() {
+    with(|c| c.execute("DELETE FROM commands", []).map(|_| ()));
+}
+
 pub fn set_draft(key: &str, text: &str, images: &Value) {
     with(|c| {
         if text.trim().is_empty() && images.as_array().map_or(true, |a| a.is_empty()) {
@@ -529,7 +568,7 @@ pub static TEST_LOCK: Mutex<()> = Mutex::new(());
 /// For tests: forget the open connection so the next call opens CUE_HOME's database afresh.
 #[cfg(test)]
 pub fn reset() {
-    *DB.lock().unwrap() = None;
+    *crate::locking::lock(&DB, "DB") = None;
 }
 
 /// How many exchanges the log holds for a session.
@@ -613,6 +652,27 @@ mod tests {
         std::env::remove_var("CUE_HOME");
         reset();
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_folders_commands_are_kept_with_when_they_were_read_until_cleared() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-db-cmds-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        reset();
+        let list = vec![crate::commands::Cmd { name: "compact".into(), kind: "command".into(), desc: "Summarize".into(), hint: String::new(), args: vec![] }];
+        assert!(commands("/x/cue").is_none());
+        set_commands("/x/cue", 1_000, &list);
+        reset(); // a relaunch: read from the file, not from memory
+        assert_eq!(commands("/x/cue"), Some((1_000, list.clone())));
+        set_commands("/x/cue", 2_000, &[]);
+        assert_eq!(commands("/x/cue"), Some((2_000, vec![])), "the newer read wins");
+        clear_commands();
+        assert!(commands("/x/cue").is_none());
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

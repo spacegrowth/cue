@@ -36,7 +36,7 @@ pub fn local_copy(m: &Machine, remote: &str) -> String {
     }
     let Some(path) = local_path(m, remote) else { return String::new() };
     let key = path.to_string_lossy().to_string();
-    let mut c = copies().lock().unwrap();
+    let mut c = crate::locking::lock(copies(), "copies");
     let running = c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None)));
     if !running && start(m, remote, &path).map(|ch| c.insert(key.clone(), ch)).is_err() {
         return String::new();
@@ -61,7 +61,7 @@ fn start(m: &Machine, remote: &str, path: &PathBuf) -> Result<Child, String> {
 /// Stop copying `remote` (its session ended). The copy stays until Cue forgets the session.
 pub fn stop(m: &Machine, remote: &str) {
     let Some(path) = local_path(m, remote) else { return };
-    if let Some(mut ch) = copies().lock().unwrap().remove(&*path.to_string_lossy()) {
+    if let Some(mut ch) = crate::locking::lock(copies(), "copies").remove(&*path.to_string_lossy()) {
         let _ = ch.kill();
         let _ = ch.wait();
     }

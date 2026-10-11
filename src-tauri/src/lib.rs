@@ -11,6 +11,7 @@ mod commands;
 mod hub;
 mod leads;
 mod live;
+mod locking;
 mod model;
 mod notify;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
@@ -59,12 +60,28 @@ async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: S
     tauri::async_runtime::spawn_blocking(move || h.session_command(&session_id, &action)).await.map_err(|e| e.to_string())?
 }
 
-/// The "/" menu for a session's box: the commands Claude Code has enabled for it. None while they're
-/// being read (ask again shortly); empty for agents without a list.
+/// The "/" menu for a session's box. Claude Code: the commands it has enabled for the folder, read
+/// from it once and kept a week. Pi: its own commands plus what its extension reported when it
+/// connected. Codex: its own commands. None while a list is being read (ask again shortly). `fresh`:
+/// Refresh was pressed: every kept Claude Code list is forgotten and this one read again; a Pi
+/// session is asked for its list again.
 #[tauri::command]
-fn session_commands(hub: State<Arc<Hub>>, session_id: String) -> Option<Vec<commands::Cmd>> {
+fn session_commands(hub: State<Arc<Hub>>, session_id: String, fresh: Option<bool>) -> Option<Vec<commands::Cmd>> {
+    let fresh = fresh == Some(true);
+    if fresh {
+        commands::forget_all();
+    }
+    // A session that reported its commands (Pi): those, or a fresh set once it answers.
+    if hub.agent_commands(&session_id).is_some() && fresh && hub.ask_agent_commands(&session_id) {
+        return None;
+    }
+    if let Some(list) = hub.agent_commands(&session_id) {
+        return Some(list);
+    }
     let cwd = match hub.session_origin(&session_id) {
         Some(o) if o.harness == "claude" => o.cwd,
+        Some(o) if o.harness == "codex" => return Some(commands::for_codex()),
+        Some(o) if o.harness == "pi" => return Some(commands::for_pi(&[])),
         Some(_) => return Some(vec![]),
         None => match live::claude().into_iter().find(|q| q.session_id == session_id) {
             Some(q) => q.cwd,
@@ -72,6 +89,14 @@ fn session_commands(hub: State<Arc<Hub>>, session_id: String) -> Option<Vec<comm
         },
     };
     commands::for_session(&cwd)
+}
+
+/// The models to pick from in + New: what your Claude Code offers, read in your home folder (the list
+/// is Claude Code's, not a folder's). The window keeps it until you press Reload (`fresh`), which asks
+/// again. None while it's being read (ask again shortly).
+#[tauri::command]
+fn models_list(fresh: bool) -> Option<Vec<commands::Arg>> {
+    commands::models_for(&std::env::var("HOME").unwrap_or_default(), fresh)
 }
 
 /// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art? }] }]); none without one.
@@ -115,10 +140,12 @@ fn send_to_back(hub: State<Arc<Hub>>, id: String) -> Result<(), String> {
     hub.send_to_back(&id)
 }
 
+/// Off the window's thread: finding the tab runs AppleScript over every terminal window, and waits on
+/// macOS's Automation consent dialog the first time.
 #[tauri::command]
-fn focus_session(hub: State<Arc<Hub>>, id: String) -> Result<String, String> {
+async fn focus_session(hub: State<'_, Arc<Hub>>, id: String) -> Result<String, String> {
     let it = hub.get(&id).ok_or("no such item")?;
-    focus::focus(&it.origin)
+    tauri::async_runtime::spawn_blocking(move || focus::focus(&it.origin)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -444,25 +471,22 @@ fn restore_machine(hub: &Arc<Hub>, machine: &str) {
         return;
     }
     static BUSY: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-    if BUSY.lock().unwrap().iter().any(|m| m == machine) {
+    if crate::locking::lock(&BUSY, "BUSY").iter().any(|m| m == machine) {
         return;
     }
     let sessions: Vec<_> = hub.saved_sessions().into_iter().filter(|s| s.origin.machine == machine && rebuildable(&s.origin)).map(|s| (s.origin.machine.clone(), s.origin, s.name)).collect();
     if sessions.is_empty() {
         return;
     }
-    BUSY.lock().unwrap().push(machine.to_string());
+    crate::locking::lock(&BUSY, "BUSY").push(machine.to_string());
     remote_restores(hub, sessions);
-    BUSY.lock().unwrap().retain(|m| m != machine);
+    crate::locking::lock(&BUSY, "BUSY").retain(|m| m != machine);
 }
 
 /// Launch: every session saved as waiting comes back with its card, however it lost it. The card
 /// is the turn it finished, and its saved thread still has it. (A rebuild makes one right away;
 /// anything else that's waiting with no card gets it here.)
 fn bring_back_cards(hub: &Arc<Hub>) {
-    if std::env::var_os("CUE_QUIET").is_some() {
-        return;
-    }
     let pending = hub.pending();
     for s in hub.saved_sessions() {
         if s.state != "waiting" {
@@ -570,7 +594,7 @@ fn codex_log(session_id: &str) -> Option<String> {
     if session_id.len() < 8 {
         return None;
     }
-    if let Some(p) = FOUND.lock().unwrap().get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
+    if let Some(p) = crate::locking::lock(&FOUND, "FOUND").get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
         return Some(p.clone());
     }
     let home = std::env::var("HOME").unwrap_or_default();
@@ -587,7 +611,7 @@ fn codex_log(session_id: &str) -> Option<String> {
             for day in sorted(&month) {
                 if let Some(f) = sorted(&day).into_iter().find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&tail))) {
                     let found = f.to_string_lossy().into_owned();
-                    FOUND.lock().unwrap().get_or_insert_with(Default::default).insert(session_id.to_string(), found.clone());
+                    crate::locking::lock(&FOUND, "FOUND").get_or_insert_with(Default::default).insert(session_id.to_string(), found.clone());
                     return Some(found);
                 }
             }
@@ -603,7 +627,7 @@ fn pi_log(session_id: &str) -> Option<String> {
     if session_id.is_empty() {
         return None;
     }
-    if let Some(p) = FOUND.lock().unwrap().get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
+    if let Some(p) = crate::locking::lock(&FOUND, "FOUND").get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
         return Some(p.clone());
     }
     let home = std::env::var("HOME").unwrap_or_default();
@@ -612,7 +636,7 @@ fn pi_log(session_id: &str) -> Option<String> {
     let found = std::fs::read_dir(root).ok()?.filter_map(Result::ok).filter_map(|d| std::fs::read_dir(d.path()).ok()).flatten().filter_map(Result::ok)
         .map(|f| f.path()).find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&tail)))?
         .to_string_lossy().into_owned();
-    FOUND.lock().unwrap().get_or_insert_with(Default::default).insert(session_id.to_string(), found.clone());
+    crate::locking::lock(&FOUND, "FOUND").get_or_insert_with(Default::default).insert(session_id.to_string(), found.clone());
     Some(found)
 }
 pub(crate) fn steps_for(h: &Hub, session_id: &str, version: u64) -> serde_json::Value {
@@ -688,8 +712,11 @@ pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result
             let page = leads::Cmd { bin: "cat".into(), args: vec![path.clone()], machine: cmd.machine.clone() }.run()?;
             let dir = server::cue_dir().join("diffs");
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "diff.html".into());
-            let here = dir.join(format!("{}-{name}", cmd.args.get(1).cloned().unwrap_or_default()));
+            // The file's name here is made of the crew id and the page's name, both from relay's output
+            // on the machine: only plain characters, so they can't name a path outside diffs/.
+            let plain = |s: &str| s.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')).collect::<String>();
+            let name = std::path::Path::new(&path).file_name().map(|n| plain(&n.to_string_lossy())).filter(|n| n.ends_with(".html") && n.len() > 5).unwrap_or_else(|| "diff.html".into());
+            let here = dir.join(format!("{}-{name}", plain(&cmd.args.get(1).cloned().unwrap_or_default())));
             std::fs::write(&here, page).map_err(|e| e.to_string())?;
             std::process::Command::new("/usr/bin/open").arg(&here).status().map(|_| "Opened in your browser".into()).map_err(|e| e.to_string())
         }
@@ -712,13 +739,16 @@ fn dictate_stop(d: State<dictation::Dictation>) {
 /// agent text can name an app or a script, and a click mustn't run it. (Paths: file:// links, and bare
 /// absolute paths on ⌘-click in the window.)
 #[tauri::command]
-fn open_link(url: String) -> Result<(), String> {
-    let target = link_target(&url)?;
-    let mut open = std::process::Command::new("/usr/bin/open");
-    if !is_web(&target) && !safe_to_open(std::path::Path::new(&target)) {
-        open.arg("-R");
-    }
-    open.arg(&target).spawn().map(|_| ()).map_err(|e| e.to_string())
+async fn open_link(url: String) -> Result<(), String> {
+    // Off the window's thread: a path on a volume that's gone can take a while to say so.
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = link_target(&url)?;
+        let mut open = std::process::Command::new("/usr/bin/open");
+        if !is_web(&target) && !safe_to_open(std::path::Path::new(&target)) {
+            open.arg("-R");
+        }
+        open.arg(&target).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
 }
 
 fn is_web(url: &str) -> bool {
@@ -792,18 +822,26 @@ fn percent_decoded(s: &str) -> String {
 /// An image a message mentions by path (a screenshot the agent made), as a data: URL. The window
 /// can only load files from uploads/ itself, so this hands it image files, and nothing else, by path.
 #[tauri::command]
-fn image_data(path: String) -> Result<String, String> {
-    use base64::Engine;
-    let p = std::path::Path::new(&path);
-    let mime = match uploads::mime_of(&path) {
-        "" => return Err("not an image".into()),
-        m => m,
-    };
-    if !p.is_absolute() || std::fs::metadata(p).map_err(|e| e.to_string())?.len() > 20 * 1024 * 1024 {
-        return Err("not a readable image".into());
-    }
-    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
-    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+async fn image_data(path: String) -> Result<String, String> {
+    // Off the window's thread (a 20 MB read and its base64), and judged by what the path really is: a
+    // link named .png to something else is not an image.
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
+        let p = std::path::Path::new(&path);
+        if !p.is_absolute() {
+            return Err("not a readable image".into());
+        }
+        let real = std::fs::canonicalize(p).map_err(|e| e.to_string())?;
+        let mime = match uploads::mime_of(&real.to_string_lossy()) {
+            "" => return Err("not an image".into()),
+            m => m,
+        };
+        if std::fs::metadata(&real).map_err(|e| e.to_string())?.len() > 20 * 1024 * 1024 {
+            return Err("not a readable image".into());
+        }
+        let bytes = std::fs::read(&real).map_err(|e| e.to_string())?;
+        Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// Open a session Cue hasn't heard from yet in Cue: its chat and message box, not only its tab.
@@ -965,7 +1003,16 @@ fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &
 #[tauri::command]
 async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
-    tauri::async_runtime::spawn_blocking(move || focus::press_enter(&origin)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        // When Cue can see the screen, Enter goes only to the trust question: a button clicked after
+        // the session moved on to a permission prompt would otherwise accept that.
+        if let Some(d) = focus::dialog_on(&origin) {
+            if !d.title.to_lowercase().contains("trust") {
+                return Err("it isn't asking about the folder any more".into());
+            }
+        }
+        focus::press_enter(&origin)
+    }).await.map_err(|e| e.to_string())?
 }
 
 /// "!" in a box: run the rest of the line in the session's folder (or `cwd`, for the + New session box),
@@ -1225,9 +1272,9 @@ async fn agents_installed() -> Vec<String> {
 
 /// "Go to tab" for a session that has no card (a working one).
 #[tauri::command]
-fn focus_session_id(hub: State<Arc<Hub>>, session_id: String) -> Result<String, String> {
+async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
-    focus::focus(&origin)
+    tauri::async_runtime::spawn_blocking(move || focus::focus(&origin)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1375,7 +1422,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {

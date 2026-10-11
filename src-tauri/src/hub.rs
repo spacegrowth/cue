@@ -41,6 +41,8 @@ struct Store {
     /// The same sessions' origins and when they connected: a Pi session subscribes the moment it
     /// starts, so the Sessions view lists it before its first turn.
     subscribed: HashMap<String, (Origin, u64)>,
+    /// The commands each subscribed session reported (its "/" menu), as Cue shows them.
+    agent_commands: HashMap<String, Vec<crate::commands::Cmd>>,
     /// The plan's usage from the status line (None until a status line forwards it).
     rates: Option<crate::usage::Rates>,
     /// Limits already announced (scope + reset), so each one notifies once going out and once coming back.
@@ -154,7 +156,7 @@ impl Hub {
         let scan_from = if origin.transcript_path.is_empty() { 0 } else { transcript::tail_offset(&origin.transcript_path) };
         let (tx, rx) = oneshot::channel();
         let (id, title) = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // A session asking for a decision is no longer "just waiting for you".
             let sid = origin.session_id.clone();
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
@@ -206,7 +208,7 @@ impl Hub {
         };
         let scan_from = if path.is_empty() { 0 } else { transcript::tail_offset(&path) };
         let (id, title) = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // Cue already shows what it's asking.
             if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
                 return;
@@ -244,6 +246,11 @@ impl Hub {
         let d: crate::dialog::Dialog = serde_json::from_value(it.tool_input.get("dialog").cloned().unwrap_or(Value::Null)).map_err(|_| "that card has no choices")?;
         let label = d.options.get(n.wrapping_sub(1)).ok_or("that isn't one of its choices")?.clone();
         let o = &it.origin;
+        // The screen now, not the card's copy of it: the dialog may have closed since, and a permission
+        // prompt in its place has numbered choices too, so the same key there would answer that instead.
+        if !crate::focus::dialog_on(o).is_some_and(|now| now.options == d.options) {
+            return Err("that dialog isn't on its screen any more".into());
+        }
         crate::focus::tmux_keys(o, &[n.to_string()])?;
         std::thread::sleep(std::time::Duration::from_millis(400));
         if crate::focus::dialog_on(o).is_some_and(|now| now.options == d.options) {
@@ -251,8 +258,8 @@ impl Hub {
         }
         self.finish(id, "answered", &format!("chose {n}. {label}"));
         // A command's dialog ("/model …"): answered, it's back at its prompt, not at work.
-        if it.tool_name.is_empty() && self.store.lock().unwrap().sessions.thread(&o.session_id).iter().rev().find(|e| e.role == "you").is_some_and(|e| e.text.starts_with('/')) {
-            self.store.lock().unwrap().sessions.mark(o, "waiting", None);
+        if it.tool_name.is_empty() && self.st().sessions.thread(&o.session_id).iter().rev().find(|e| e.role == "you").is_some_and(|e| e.text.starts_with('/')) {
+            self.st().sessions.mark(o, "waiting", None);
             self.changed();
         }
         Ok(format!("chose {label}"))
@@ -275,14 +282,14 @@ impl Hub {
             let _ = crate::focus::press_enter(origin);
             std::thread::sleep(std::time::Duration::from_millis(700));
             if crate::focus::text_in_box(origin, text) == Some(true) {
-                self.store.lock().unwrap().sessions.mark_unsent(sid);
+                self.st().sessions.mark_unsent(sid);
                 return false;
             }
             if self.wait_active(sid, t0, 3000) {
                 return true;
             }
         }
-        self.store.lock().unwrap().sessions.set_pending(sid, true);
+        self.st().sessions.set_pending(sid, true);
         self.confirm_later(sid.to_string(), origin.clone(), text.to_string(), cmd_before, t0);
         false
     }
@@ -298,21 +305,21 @@ impl Hub {
             while now_ms() < end {
                 std::thread::sleep(std::time::Duration::from_millis(2000));
                 {
-                    let st = me.store.lock().unwrap();
+                    let st = me.st();
                     if st.sessions.pending_text(&sid).as_deref() != Some(text.as_str()) {
                         return; // its hook came (or it was sent again)
                     }
                 }
-                let taken = me.store.lock().unwrap().active_at.get(&sid).is_some_and(|t| *t >= t0)
+                let taken = me.st().active_at.get(&sid).is_some_and(|t| *t >= t0)
                     || cmd_before.is_some_and(|before| crate::transcript::command_count(&origin.transcript_path, &name) > before);
                 if taken {
-                    me.store.lock().unwrap().sessions.set_pending(&sid, false);
+                    me.st().sessions.set_pending(&sid, false);
                     me.changed();
                     return;
                 }
                 if !name.is_empty() {
                     if let Some(d) = crate::focus::dialog_on(&origin) {
-                        me.store.lock().unwrap().sessions.set_pending(&sid, false);
+                        me.st().sessions.set_pending(&sid, false);
                         me.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
                         return;
                     }
@@ -321,13 +328,13 @@ impl Hub {
                     break;
                 }
             }
-            me.store.lock().unwrap().sessions.mark_unsent(&sid);
+            me.st().sessions.mark_unsent(&sid);
             me.changed();
         });
     }
 
     fn clear_terminal_asks(&self, session_id: &str) {
-        let ids: Vec<String> = self.store.lock().unwrap().items.iter().filter(|i| i.kind == "terminal" && i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
+        let ids: Vec<String> = self.st().items.iter().filter(|i| i.kind == "terminal" && i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
         for id in ids {
             self.finish(&id, "answered_elsewhere", "answered in the terminal");
         }
@@ -336,7 +343,7 @@ impl Hub {
     /// "Later": put a session off, or back (`on` false). Kept with the session, so anything showing
     /// Cue's state sees it.
     pub fn set_later(&self, session_id: &str, on: bool) {
-        let changed = self.store.lock().unwrap().sessions.set_later(session_id, on);
+        let changed = self.st().sessions.set_later(session_id, on);
         if changed {
             self.changed();
         }
@@ -346,7 +353,7 @@ impl Hub {
     /// one keeps it in its saved record, so it stays under Starred while parked and after it's resumed.
     pub fn set_starred(&self, session_id: &str, on: bool) {
         let changed = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             if st.sessions.set_starred(session_id, on) {
                 true
             } else if let Some(p) = st.parked.iter_mut().find(|p| p.session.origin.session_id == session_id && (p.session.starred_ms > 0) != on) {
@@ -365,7 +372,7 @@ impl Hub {
     /// Answer from the window (or cue-ctl). False if the item is no longer pending.
     pub fn respond(&self, id: &str, d: Decision) -> bool {
         let outcome = describe(&d);
-        let tx = self.store.lock().unwrap().waiters.remove(id);
+        let tx = self.st().waiters.remove(id);
         match tx {
             Some(tx) => {
                 let delivered = tx.send(Reply::Decision(d)).is_ok();
@@ -379,7 +386,7 @@ impl Hub {
     /// Move an item to history. Any still-open connection is told to stand down.
     pub fn finish(&self, id: &str, status: &str, outcome: &str) {
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             if let Some(tx) = st.waiters.remove(id) {
                 let _ = tx.send(Reply::Cancel(outcome.to_string()));
             }
@@ -401,7 +408,7 @@ impl Hub {
     /// Your message queued during the turn that just ended, unless the turn read it (absorbed between
     /// steps) or it's this turn's own prompt (taken from the queue a while ago).
     fn unread_queued(&self, origin: &Origin) -> Option<crate::model::Exchange> {
-        let q = self.store.lock().unwrap().sessions.queued(&origin.session_id)?;
+        let q = self.st().sessions.queued(&origin.session_id)?;
         if origin.transcript_path.is_empty() {
             return Some(q);
         }
@@ -413,21 +420,32 @@ impl Hub {
     }
 
     pub fn event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str) {
+        self.event_in(origin, event, message, turn, driven_by, false)
+    }
+
+    /// An "active" event whose prompt is known to be yours (nothing to look up: Pi, Codex, a session on a
+    /// machine): the prompt goes into the session's thread under the same lock as its state, so nothing
+    /// sent to it the moment it shows as working can land in the thread first.
+    pub fn active_from_you(&self, origin: Origin, message: String, turn: Vec<TurnPart>, driven_by: &str) {
+        self.event_in(origin, "active", message, turn, driven_by, true)
+    }
+
+    fn event_in(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str, from_you: bool) {
         // Its turn is over: the message you kept for it (sent while it worked) goes now.
         let sid = origin.session_id.clone();
-        let held = event == "stopped" && self.store.lock().unwrap().sessions.held(&sid).is_some();
-        self.on_event(origin, event, message, turn, driven_by);
+        let held = event == "stopped" && self.st().sessions.held(&sid).is_some();
+        self.on_event(origin, event, message, turn, driven_by, from_you);
         if held {
             self.send_held_soon(&sid, 0);
         }
     }
 
-    fn on_event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str) {
+    fn on_event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str, from_you: bool) {
         // Pi's extension says what it's doing as each tool starts ("Running: cargo test").
         // Claude Code is summarizing the conversation (PreCompact: /compact typed anywhere, or its context
         // filled up). Until it's done the session isn't waiting on you, whatever it said last.
         if event == "compacting" {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             if st.sessions.compacting_since(&origin.session_id) == 0 {
                 st.sessions.set_compacting(&origin.session_id, now_ms());
             }
@@ -443,7 +461,7 @@ impl Hub {
         // Anything else from the session: it got past such a prompt.
         self.clear_terminal_asks(&origin.session_id);
         if event == "doing" {
-            let changed = self.store.lock().unwrap().sessions.set_doing(&origin.session_id, &message, 0);
+            let changed = self.st().sessions.set_doing(&origin.session_id, &message, 0);
             if changed {
                 self.changed();
             }
@@ -456,7 +474,7 @@ impl Hub {
             self.deliver_deferred_rename(&origin.session_id);
             unread = self.unread_queued(&origin);
             // The turn is over: whatever you queued during it has been read, or is read next.
-            self.store.lock().unwrap().sessions.set_queued(&origin.session_id, None);
+            self.st().sessions.set_queued(&origin.session_id, None);
             if origin.harness == "claude" {
                 self.limits_lifted(&origin.session_id);
             }
@@ -475,7 +493,7 @@ impl Hub {
         // agent, so it stays in Working as "waiting on its lead" instead of becoming your card.
         if event == "stopped" && !driven_by.is_empty() && (helpers > 0 || !crate::config::flag("/agents/show_driven")) {
             {
-                let mut st = self.store.lock().unwrap();
+                let mut st = self.st();
                 let sid = origin.session_id.clone();
                 st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
                 st.sessions.mark(&origin, "agent", None);
@@ -501,7 +519,7 @@ impl Hub {
                     vec![]
                 };
                 let (id, title) = {
-                    let mut st = self.store.lock().unwrap();
+                    let mut st = self.st();
                     // A session with an open decision is already in the queue — don't double-list it.
                     if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
                         return;
@@ -527,7 +545,7 @@ impl Hub {
                 self.changed();
                 self.turn_changes(&sid);
                 // A lead's turn ended: its next queued review goes (after a moment, for its hooks to settle).
-                if let Some(me) = self.shared().filter(|_| self.store.lock().unwrap().review_queue.iter().any(|q| q.lead == sid)) {
+                if let Some(me) = self.shared().filter(|_| self.st().review_queue.iter().any(|q| q.lead == sid)) {
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(1500));
                         me.drain_reviews();
@@ -536,9 +554,9 @@ impl Hub {
                 // Context high (80%+): the notification says so and offers Compact.
                 let full = (!origin_path.is_empty()).then(|| crate::steps::context_pct(&origin_path)).flatten().filter(|p| *p >= CONTEXT_HIGH);
                 // Put off for later: it waits under Need to decide, without a notification.
-                let later = self.store.lock().unwrap().sessions.is_later(&sid);
+                let later = self.st().sessions.is_later(&sid);
                 // A message you kept for it goes now: nothing to tell you, it's working again in a moment.
-                let held = self.store.lock().unwrap().sessions.held(&sid).is_some();
+                let held = self.st().sessions.held(&sid).is_some();
                 if crate::config::flag("/notify/finished") && !later && !held {
                     match full {
                         Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
@@ -549,7 +567,7 @@ impl Hub {
             "active" => {
                 let mut started = false;
                 {
-                    let mut st = self.store.lock().unwrap();
+                    let mut st = self.st();
                     st.active_at.insert(sid.clone(), now_ms());
                     // Claude Code reports a message you queue while it's busy the moment it lands in its
                     // queue, not when it reads it (that's at its next step). So that's no new turn, and the
@@ -564,6 +582,11 @@ impl Hub {
                         st.sessions.mark(&origin, "working", None);
                         st.sessions.set_queued(&sid, None);
                     }
+                    if from_you && !message.trim().is_empty() {
+                        let m = crate::sessions::unwrap_pasted(&message);
+                        st.sessions.set_prompt(&sid, &m);
+                        st.sessions.note(&sid, "you", &m, crate::config::context_keep());
+                    }
                 }
                 if started {
                     self.turn_started(&sid, &origin.cwd);
@@ -572,7 +595,7 @@ impl Hub {
             }
             "ended" => {
                 let ids: Vec<String> = {
-                    let st = self.store.lock().unwrap();
+                    let st = self.st();
                     st.items.iter().filter(|i| i.origin.session_id == sid).map(|i| i.id.clone()).collect()
                 };
                 for id in ids {
@@ -599,7 +622,7 @@ impl Hub {
             return;
         };
         let announce = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // Already marked by the hook or the transcript check: once is enough.
             if st.sessions.all().iter().any(|s| s.origin.session_id == sid && s.state == "limited") {
                 return;
@@ -630,7 +653,7 @@ impl Hub {
     /// was waiting on it can run again. (A model's own limit only lifts for the session that hit it.)
     fn limits_lifted(&self, sid: &str) {
         let now = now_ms();
-        let mut st = self.store.lock().unwrap();
+        let mut st = self.st();
         let mut lifted = false;
         for s in st.sessions.all() {
             let Some(mut l) = s.limit.clone() else { continue };
@@ -649,12 +672,12 @@ impl Hub {
 
     /// The status line's usage. Only redraws when the numbers move.
     pub fn set_cost(&self, session_id: &str, cost: f64) {
-        self.store.lock().unwrap().costs.insert(session_id.to_string(), cost);
+        self.st().costs.insert(session_id.to_string(), cost);
     }
     /// A Claude Code session's cost so far, for API-key and proxy users only. On a plan (Claude Code sends
     /// its limits only then) it's what the session would cost at API prices, not what you pay.
     pub fn session_cost(&self, session_id: &str) -> Option<f64> {
-        let st = self.store.lock().unwrap();
+        let st = self.st();
         if st.rates.is_some() {
             return None;
         }
@@ -664,7 +687,7 @@ impl Hub {
     pub fn set_rates(&self, rl: &Value) {
         let now = now_ms();
         {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             if let Some(old) = &st.rates {
                 let same = |a: &Option<crate::usage::Window>, k: &str| {
                     a.as_ref().map(|w| w.pct) == rl.pointer(&format!("/{k}/used_percentage")).and_then(Value::as_f64)
@@ -681,7 +704,7 @@ impl Hub {
         }
         let mut rates = crate::usage::rates_from_statusline(rl, now);
         let changed = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // A status line without a window (another agent's, or before Claude Code has numbers) keeps the
             // last one instead of wiping it: the meter shouldn't vanish between updates.
             if let Some(old) = &st.rates {
@@ -705,7 +728,7 @@ impl Hub {
         self.drain_reviews();
         let now = now_ms();
         let (stuck, limited) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             let all = st.sessions.all();
             let stuck: Vec<Origin> = all
                 .iter()
@@ -721,7 +744,7 @@ impl Hub {
             } else if let Some((at, reply, parts)) = transcript::turn_ended_parts(&o.transcript_path).filter(|(at, _, _)| now.saturating_sub(*at) > 5_000) {
                 // Its turn ended but the Stop never reached Cue (Cue was restarting): finish it now.
                 // Only a turn that ended after it started working, and seconds ago (the hook is faster).
-                let since = self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == o.session_id).map(|s| s.since_ms).unwrap_or(u64::MAX);
+                let since = self.st().sessions.all().into_iter().find(|s| s.origin.session_id == o.session_id).map(|s| s.since_ms).unwrap_or(u64::MAX);
                 if at >= since {
                     let driver = crate::leads::resolve_driver(&o.session_id, "");
                     self.event(o, "stopped", reply, parts, &driver);
@@ -731,7 +754,7 @@ impl Hub {
         // A limit whose reset time passed: say so once, per scope.
         let mut back: Vec<(String, usize)> = vec![];
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             for l in &limited {
                 let Some(r) = l.resets_ms.filter(|r| *r <= now && now - *r < 3600 * 1000) else { continue };
                 let key = format!("{}|{}", l.scope, r / 60_000);
@@ -753,7 +776,7 @@ impl Hub {
 
     /// Drop a "waiting" card (or give up on a stuck request) from the window.
     pub fn dismiss(&self, id: &str) {
-        let is_waiting = self.store.lock().unwrap().items.iter().any(|i| i.id == id && i.kind == "waiting");
+        let is_waiting = self.st().items.iter().any(|i| i.id == id && i.kind == "waiting");
         if is_waiting {
             self.remove_waiting(id);
         } else {
@@ -764,7 +787,7 @@ impl Hub {
     /// A waiting card goes to the end of the queue: from now on it sorts by back_ms, so every card
     /// still on its original order comes first. Its age stays when the turn finished.
     pub fn send_to_back(&self, id: &str) -> Result<(), String> {
-        let mut st = self.store.lock().unwrap();
+        let mut st = self.st();
         let it = st.items.iter_mut().find(|i| i.id == id).ok_or("that card is gone")?;
         if it.kind != "waiting" || it.status != "pending" {
             return Err("that card isn't waiting".into());
@@ -786,12 +809,12 @@ impl Hub {
         // The card is stale (the session went on to another turn since): typed now, the reply would land
         // mid-turn and could be lost. Kept in Cue instead, as the box does, and sent when the turn ends.
         let busy = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid)
         };
         if busy {
             let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             st.items.retain(|i| i.id != id);
             st.sessions.hold(&sid, text, paths.clone());
             let mut h = it;
@@ -810,15 +833,14 @@ impl Hub {
         let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&it.origin, &crate::uploads::with_paths(text, &saved))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
         let mut submitted = self.took(&sid, &it.origin, text, cmd_before, t0);
-        if !submitted && !direct && !text.starts_with('/') {
-            let _ = crate::focus::press_enter(&it.origin);
+        if !submitted && !direct && !text.starts_with('/') && Self::retry_enter(&it.origin, text) {
             submitted = self.wait_active(&sid, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         let pics = if saved.is_empty() { String::new() } else { format!(" + {} image{}", saved.len(), if saved.len() == 1 { "" } else { "s" }) };
         let outcome = format!("replied: “{}”{pics}{}", first_line(text, 200), if submitted { "" } else { " (typed; didn't see it submit)" });
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             st.items.retain(|i| i.id != id);
             st.sessions.note_sent(&sid, text, &paths, t0, crate::config::context_keep());
         }
@@ -826,7 +848,7 @@ impl Hub {
             submitted = self.settle_typed(&sid, &it.origin, text, cmd_before, t0);
         }
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let mut h = it;
             h.images = paths;
             h.status = "answered".into();
@@ -846,7 +868,7 @@ impl Hub {
     /// straight away), but nobody stopped anything, so no "⏹ stopped it" line and no stopped state.
     pub fn send_queued_now(&self, session_id: &str) -> Result<String, String> {
         let (origin, direct) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
             (st.sessions.origin(session_id), direct)
         };
@@ -855,29 +877,29 @@ impl Hub {
             // Claude Code may already have taken it into the running turn (between two steps): Esc
             // now would interrupt the turn that's working on it ("Interrupted · What should Claude
             // do instead?") and leave it idle. Esc only while it's still waiting in the queue.
-            let queued = self.store.lock().unwrap().sessions.queued_text(session_id).unwrap_or_default();
+            let queued = self.st().sessions.queued_text(session_id).unwrap_or_default();
             let state = if origin.harness == "claude" { transcript::queued_state(&origin.transcript_path, &queued) } else { None };
             if matches!(state, Some(transcript::Queued::Absorbed | transcript::Queued::Taken(_))) {
-                self.store.lock().unwrap().sessions.set_queued(session_id, None);
+                self.st().sessions.set_queued(session_id, None);
                 self.changed();
                 return Ok("it already has your message: it took it in between steps".into());
             }
             crate::focus::press_escape(&origin)?;
         }
-        self.store.lock().unwrap().sessions.set_queued(session_id, None); // it's reading it now
+        self.st().sessions.set_queued(session_id, None); // it's reading it now
         self.changed();
         Ok("sent now".into())
     }
 
     pub fn interrupt(&self, session_id: &str) -> Result<String, String> {
         let (origin, direct) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
             (st.sessions.origin(session_id), direct)
         };
         let via = if direct { "the session directly".to_string() } else { crate::focus::press_escape(&origin.clone().ok_or("that session is gone")?)? };
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             if let Some(o) = origin {
                 st.sessions.mark(&o, "stopped", None);
             }
@@ -886,7 +908,7 @@ impl Hub {
         }
         self.changed();
         // A message you kept for it goes now, as Claude Code sends its queue once you stop it.
-        if self.store.lock().unwrap().sessions.held(session_id).is_some() {
+        if self.st().sessions.held(session_id).is_some() {
             self.send_held_soon(session_id, 700);
         }
         Ok(format!("stopped via {via}"))
@@ -908,7 +930,7 @@ impl Hub {
         let text = typed.trim();
         self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             // Its terminal is showing a permission prompt or a question: typing now would answer it.
             if st.sessions.state(session_id).as_deref() == Some("deciding") {
                 return Err("it's asking you something first: answer that, then send".into());
@@ -918,12 +940,12 @@ impl Hub {
             (st.sessions.origin(session_id), busy)
         };
         // Force-send to a terminal agent: Esc first, give it a moment to stop, then type.
-        let direct = self.store.lock().unwrap().subscribers.contains_key(session_id);
+        let direct = self.st().subscribers.contains_key(session_id);
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.)
         if busy && !now && !direct && origin.is_some() {
-            self.store.lock().unwrap().sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect());
+            self.st().sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect());
             self.changed();
             return Ok("kept in Cue: it goes when this turn ends".into());
         }
@@ -941,13 +963,12 @@ impl Hub {
         let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &crate::uploads::with_paths(typed, &saved))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
-        if !submitted && !typed.starts_with('/') {
-            let _ = crate::focus::press_enter(&origin);
+        if !submitted && !typed.starts_with('/') && Self::retry_enter(&origin, typed) {
             submitted = self.wait_active(session_id, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             st.sessions.note_sent(session_id, text, &paths, t0, crate::config::context_keep());
             if busy {
                 // It's mid-turn: the agent reads this when it finishes its current step.
@@ -974,12 +995,23 @@ impl Hub {
     /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
     /// can't be sent it's kept again, so nothing you wrote is lost.
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
-        let h = self.store.lock().unwrap().sessions.take_held(session_id).ok_or("nothing kept for it")?;
+        let h = self.st().sessions.take_held(session_id).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
         self.send_saved(session_id, &h.text, saved, now).inspect_err(|_| {
-            self.store.lock().unwrap().sessions.hold(session_id, &h.text, h.images.clone());
+            self.st().sessions.hold(session_id, &h.text, h.images.clone());
             self.changed();
         })
+    }
+
+    /// Enter once more, for a typed message the agent hasn't reported taking. Not when Cue can see the
+    /// box and the text is gone from it (it was taken; a session without Cue's hooks never reports), and
+    /// not into a dialog: a bare Enter there picks whatever is highlighted, "Yes" on a permission prompt.
+    /// True when it was pressed.
+    fn retry_enter(origin: &Origin, text: &str) -> bool {
+        if crate::focus::text_in_box(origin, text) == Some(false) || crate::focus::dialog_on(origin).is_some() {
+            return false;
+        }
+        crate::focus::press_enter(origin).is_ok()
     }
 
     /// The kept message goes off this thread (it types into a terminal): after `wait_ms`, for a
@@ -998,7 +1030,7 @@ impl Hub {
 
     /// The kept message, back to you (into the box, to change it): Esc, or Edit.
     pub fn unhold(&self, session_id: &str) -> Option<Exchange> {
-        let h = self.store.lock().unwrap().sessions.take_held(session_id);
+        let h = self.st().sessions.take_held(session_id);
         if h.is_some() {
             self.changed();
         }
@@ -1007,17 +1039,33 @@ impl Hub {
 
     /// Hand a message (and saved images) to a session that listens directly (Pi). False if none does.
     fn send_direct(&self, session_id: &str, text: &str, saved: &[crate::uploads::Saved], now: bool) -> bool {
-        let st = self.store.lock().unwrap();
+        let st = self.st();
         // now: Pi takes it as a "steer", read mid-turn, instead of a follow-up after the turn.
         let msg = json!({ "type": "reply", "text": text, "images": saved, "now": now });
         st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false)
     }
 
     /// A session starts listening for direct replies. Returns its connection number for unsubscribe.
-    pub fn subscribe(&self, origin: &Origin) -> (u64, tokio::sync::mpsc::UnboundedReceiver<Value>) {
+    /// `peer`: the connecting process, when the socket can say. The session's own process (Pi's extension
+    /// runs inside it) is the only one that may subscribe as it: a second subscriber would get every
+    /// message you send the session, and the session nothing. So while a subscription is open, another
+    /// process can't replace it, and a claimed `agent_pid` must be the peer itself.
+    pub fn subscribe(&self, origin: &Origin, peer: Option<i32>) -> Result<(u64, tokio::sync::mpsc::UnboundedReceiver<Value>), String> {
+        if let (Some(p), Some(claimed)) = (peer, origin.agent_pid) {
+            if p != claimed {
+                return Err(format!("subscribe refused: process {p} says it's {claimed}"));
+            }
+        }
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let n = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
+            let open = st.subscribers.get(&origin.session_id).is_some_and(|(_, tx)| !tx.is_closed());
+            if open {
+                let was = st.subscribed.get(&origin.session_id).and_then(|(o, _)| o.agent_pid);
+                if was.is_some() && was != peer {
+                    return Err(format!("subscribe refused: another process already listens as session {}", origin.session_id));
+                }
+            }
             st.next_sub += 1;
             let n = st.next_sub;
             st.subscribers.insert(origin.session_id.clone(), (n, tx));
@@ -1025,12 +1073,37 @@ impl Hub {
             n
         };
         self.redraw();
-        (n, rx)
+        Ok((n, rx))
+    }
+
+    /// Every agent process Cue knows, by session: the sessions' own, and the ones only subscribed so far.
+    pub fn agent_pids(&self) -> Vec<(String, i32)> {
+        let st = self.st();
+        let mut v = st.sessions.pids();
+        v.extend(st.subscribed.values().filter_map(|(o, _)| o.agent_pid.map(|p| (o.session_id.clone(), p))));
+        v
+    }
+
+    /// What a subscribed session said its commands are (see `session_commands`).
+    pub fn set_agent_commands(&self, session_id: &str, list: Vec<crate::commands::Cmd>) {
+        self.st().agent_commands.insert(session_id.to_string(), list);
+    }
+
+    pub fn agent_commands(&self, session_id: &str) -> Option<Vec<crate::commands::Cmd>> {
+        self.st().agent_commands.get(session_id).cloned()
+    }
+
+    /// Refresh: forget what the session reported and ask it again down its connection. False when
+    /// it isn't connected (then there's nothing to wait for).
+    pub fn ask_agent_commands(&self, session_id: &str) -> bool {
+        let mut st = self.st();
+        st.agent_commands.remove(session_id);
+        st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "commands" })).is_ok()).unwrap_or(false)
     }
 
     /// Drop a listener — only if it's still the same connection (a reconnect may have replaced it).
     pub fn unsubscribe(&self, session_id: &str, n: u64) {
-        let mut st = self.store.lock().unwrap();
+        let mut st = self.st();
         if st.subscribers.get(session_id).is_some_and(|(m, _)| *m == n) {
             st.subscribers.remove(session_id);
             st.subscribed.remove(session_id);
@@ -1056,7 +1129,7 @@ impl Hub {
     fn wait_active(&self, session_id: &str, since: u64, timeout_ms: u64) -> bool {
         let end = now_ms() + timeout_ms;
         while now_ms() < end {
-            if self.store.lock().unwrap().active_at.get(session_id).is_some_and(|t| *t >= since) {
+            if self.st().active_at.get(session_id).is_some_and(|t| *t >= since) {
                 return true;
             }
             std::thread::sleep(std::time::Duration::from_millis(150));
@@ -1065,23 +1138,23 @@ impl Hub {
     }
 
     pub fn get(&self, id: &str) -> Option<Item> {
-        let st = self.store.lock().unwrap();
+        let st = self.st();
         st.items.iter().chain(st.history.iter()).find(|i| i.id == id).cloned()
     }
 
     pub fn pending(&self) -> Vec<Item> {
-        self.store.lock().unwrap().items.clone()
+        self.st().items.clone()
     }
 
     pub fn set_tool_use_id(&self, id: &str, tool_use_id: String) {
-        let mut st = self.store.lock().unwrap();
+        let mut st = self.st();
         if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
             it.tool_use_id = Some(tool_use_id);
         }
     }
 
     pub fn remove_waiting(&self, id: &str) {
-        let mut st = self.store.lock().unwrap();
+        let mut st = self.st();
         st.items.retain(|i| i.id != id);
         drop(st);
         self.changed();
@@ -1089,23 +1162,23 @@ impl Hub {
 
     /// (session id, agent pid) for every live session — the watcher drops the ones whose agent exited.
     pub fn session_pids(&self) -> Vec<(String, i32)> {
-        self.store.lock().unwrap().sessions.pids()
+        self.st().sessions.pids()
     }
 
     /// Where a live session's terminal is — for "Go to tab" on a working session.
     pub fn session_origin(&self, session_id: &str) -> Option<Origin> {
-        self.store.lock().unwrap().sessions.origin(session_id)
+        self.st().sessions.origin(session_id)
     }
 
     /// Every live session as it was when Cue last ran (each with its name): what a reboot may
     /// have left without a tmux pane.
     pub fn saved_sessions(&self) -> Vec<crate::sessions::Session> {
-        self.store.lock().unwrap().sessions.all()
+        self.st().sessions.all()
     }
 
     /// A session's state set by hand (a moved one: "working" while it loads, "waiting" once its prompt is up).
     pub fn mark_state(&self, origin: &Origin, state: &str) {
-        self.store.lock().unwrap().sessions.mark(origin, state, None);
+        self.st().sessions.mark(origin, state, None);
         self.changed();
     }
 
@@ -1114,7 +1187,7 @@ impl Hub {
     pub fn waiting_card(&self, origin: &Origin) {
         let sid = origin.session_id.clone();
         let (thread, message) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             let thread = st.sessions.thread(&sid);
             let message = thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.clone()).unwrap_or_default();
             (thread, message)
@@ -1126,7 +1199,7 @@ impl Hub {
         } else {
             vec![]
         };
-        let mut st = self.store.lock().unwrap();
+        let mut st = self.st();
         st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
         let mut it = Self::new_item(&mut st, "waiting", origin.clone());
         it.thread = thread;
@@ -1139,24 +1212,24 @@ impl Hub {
 
     /// When a session was starred; 0 if it isn't.
     pub fn session_star(&self, session_id: &str) -> u64 {
-        self.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == session_id).map(|s| s.starred_ms).unwrap_or(0)
+        self.st().sessions.all().iter().find(|s| s.origin.session_id == session_id).map(|s| s.starred_ms).unwrap_or(0)
     }
 
     pub fn restore_star(&self, session_id: &str, starred_ms: u64) {
-        self.store.lock().unwrap().sessions.restore_star(session_id, starred_ms);
+        self.st().sessions.restore_star(session_id, starred_ms);
         self.changed();
     }
 
     /// The name a session shows under (yours, or the one it gave itself); "" if it has none.
     pub fn session_name(&self, session_id: &str) -> String {
-        self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| s.name).unwrap_or_default()
+        self.st().sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| s.name).unwrap_or_default()
     }
 
     /// A session Cue just started ("+ New session"): known from the start, so it opens in Active and
     /// takes what you type before it has said anything. With a first message it's already working.
     pub fn started(&self, origin: Origin, message: &str, asks_trust: bool) {
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let sid = origin.session_id.clone();
             let msg = message.trim();
             st.sessions.mark(&origin, if msg.is_empty() { "waiting" } else { "working" }, (!msg.is_empty()).then_some(msg));
@@ -1174,7 +1247,7 @@ impl Hub {
     /// with its name and the last few messages of its conversation so Active shows where it left off.
     pub fn resumed(&self, origin: Origin, name: &str, recent: &[Ctx], working: bool) {
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let sid = origin.session_id.clone();
             st.sessions.mark(&origin, if working { "working" } else { "waiting" }, None);
             if !name.is_empty() {
@@ -1191,7 +1264,7 @@ impl Hub {
     /// say) like any other: its terminal from its process, its last messages from its transcript. Its
     /// hooks take over from the next thing it does.
     pub fn adopt(&self, session_id: &str) -> Result<(), String> {
-        if self.store.lock().unwrap().sessions.origin(session_id).is_some() {
+        if self.st().sessions.origin(session_id).is_some() {
             return Ok(());
         }
         let q = crate::live::claude().into_iter().find(|q| q.session_id == session_id).ok_or("that session is gone")?;
@@ -1220,7 +1293,7 @@ impl Hub {
         // As the Stop hook would have split it: the answer is the card, a hook's follow-up folds under it.
         let (reply, followup) = split_turn(reply, &parts, &crate::config::turn_mode());
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             if st.items.iter().any(|i| i.origin.session_id == sid) {
                 return;
             }
@@ -1248,7 +1321,7 @@ impl Hub {
         let live = crate::live::claude();
         let now = now_ms();
         let (fresh, answered, asking) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             let fresh: Vec<String> = live.iter().map(|q| q.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_none()).collect();
             let answered: Vec<String> = live.iter().filter(|q| q.status != "waiting")
                 .filter(|q| st.items.iter().any(|i| i.kind == "terminal" && i.origin.session_id == q.session_id && q.since_ms > i.created_ms))
@@ -1280,7 +1353,7 @@ impl Hub {
         if self.unreachable(session_id) {
             return Ok(());
         }
-        let st = self.store.lock().unwrap();
+        let st = self.st();
         match st.sessions.state(session_id).as_deref() {
             Some("working") => return Err("it's working: stop it first, or let it finish".into()),
             Some("deciding") => return Err("it's asking you something: answer that first".into()),
@@ -1299,7 +1372,7 @@ impl Hub {
     /// Where a live session runs, for "Go to tab" in the Sessions view: one Cue has heard from, a
     /// Pi session that only subscribed, or a quiet Claude session (its terminal, from its process).
     pub fn live_origin(&self, session_id: &str) -> Option<Origin> {
-        let st = self.store.lock().unwrap();
+        let st = self.st();
         if let Some(o) = st.sessions.origin(session_id).or_else(|| st.subscribed.get(session_id).map(|(o, _)| o.clone())) {
             return Some(o);
         }
@@ -1310,7 +1383,7 @@ impl Hub {
 
     /// A live session's whole record (what Park keeps).
     pub fn session_record(&self, session_id: &str) -> Option<crate::sessions::Session> {
-        self.store.lock().unwrap().sessions.all().into_iter().find(|s| s.origin.session_id == session_id)
+        self.st().sessions.all().into_iter().find(|s| s.origin.session_id == session_id)
     }
 
     /// Park: keep the record of a session whose agent was just ended, under Parked (saved), and take
@@ -1320,7 +1393,7 @@ impl Hub {
         let p = crate::sessions::Parked { parked_ms: now_ms(), session };
         crate::db::park(&p);
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             st.sessions.remove(&sid);
             st.parked.retain(|x| x.session.origin.session_id != sid);
             st.parked.insert(0, p);
@@ -1332,7 +1405,7 @@ impl Hub {
     /// Each its record as it was, with when it ended (`ended_ms`).
     pub fn closed(&self, window_ms: u64, max: usize) -> Vec<Value> {
         let skip: HashSet<String> = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             st.parked.iter().map(|p| p.session.origin.session_id.clone()).chain(st.sessions.all().into_iter().map(|s| s.origin.session_id)).collect()
         };
         crate::db::closed(now_ms().saturating_sub(window_ms), max + skip.len())
@@ -1348,13 +1421,13 @@ impl Hub {
     }
 
     pub fn parked(&self, session_id: &str) -> Option<crate::sessions::Parked> {
-        self.store.lock().unwrap().parked.iter().find(|p| p.session.origin.session_id == session_id).cloned()
+        self.st().parked.iter().find(|p| p.session.origin.session_id == session_id).cloned()
     }
 
     /// Off the Parked list (resumed, or unparked: forgotten, its conversation still in History).
     pub fn take_parked(&self, session_id: &str) -> Option<crate::sessions::Parked> {
         let p = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let at = st.parked.iter().position(|p| p.session.origin.session_id == session_id)?;
             st.parked.remove(at)
         };
@@ -1368,7 +1441,7 @@ impl Hub {
     pub fn unparked(&self, p: crate::sessions::Parked, origin: Origin, message: &str) {
         let s = p.into_session(origin.clone());
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             st.parked.retain(|x| x.session.origin.session_id != s.origin.session_id);
             st.sessions.restore(vec![s.clone()]);
             if !message.is_empty() {
@@ -1388,7 +1461,7 @@ impl Hub {
     pub fn sweep(&self, machine: &str, live: Option<&HashSet<String>>) {
         let now = now_ms();
         let (gone, reach_changed) = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let reach_changed = match live {
                 None => st.unreachable.insert(machine.to_string()),
                 Some(_) => st.unreachable.remove(machine),
@@ -1421,7 +1494,7 @@ impl Hub {
 
     /// A session Cue can't reach or that's gone, taken out of Cue: its cards finish as gone, its row goes.
     pub fn forget(&self, session_id: &str) {
-        let ids: Vec<String> = self.store.lock().unwrap().items.iter().filter(|i| i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
+        let ids: Vec<String> = self.st().items.iter().filter(|i| i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
         for id in ids {
             self.finish(&id, "gone", "session ended");
         }
@@ -1430,40 +1503,30 @@ impl Hub {
 
     /// Whether this session's machine couldn't be reached on Cue's last try.
     pub fn unreachable(&self, session_id: &str) -> bool {
-        let st = self.store.lock().unwrap();
+        let st = self.st();
         st.sessions.all().iter().find(|s| s.origin.session_id == session_id).is_some_and(|s| !s.origin.machine.is_empty() && st.unreachable.contains(&s.origin.machine))
     }
 
     pub fn drop_session(&self, session_id: &str) {
-        let removed = self.store.lock().unwrap().sessions.remove(session_id);
+        let removed = self.st().sessions.remove(session_id);
         if removed {
             self.changed();
         }
     }
 
     pub fn snapshot(&self) -> Value {
-        let mut st = self.store.lock().unwrap();
-        let reviews = Self::reviews_view(&mut st);
-        // The Sessions view: live sessions Cue hasn't heard from yet (quiet Claude ones from its
-        // registry, Pi ones that only subscribed), and each folder's git branch.
-        let known: HashSet<String> = st.sessions.all().iter().map(|s| s.origin.session_id.clone()).chain(st.items.iter().map(|i| i.origin.session_id.clone())).collect();
-        let pi = st.subscribed.values().map(|(o, at)| crate::live::Quiet {
-            session_id: o.session_id.clone(),
-            harness: o.harness.clone(),
-            name: String::new(),
-            cwd: o.cwd.clone(),
-            pid: o.agent_pid.unwrap_or(0),
-            status: "idle".into(),
-            waiting_for: String::new(),
-            since_ms: *at,
-        });
-        let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id)).collect();
+        // What the files say (each Claude session's transcript tail, each folder's git HEAD) is read
+        // with the store unlocked: this runs on the window's thread and on every change, and a slow disk
+        // mustn't hold every hook and tick behind it.
+        let (known, live, transcripts, cwds) = self.snapshot_sources();
         // Your latest request to each Claude session, from its transcript: no model.
-        let about: HashMap<String, Value> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
-            .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
+        let about: HashMap<String, Value> = transcripts.into_iter()
             .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
             .collect();
-        let branches: HashMap<String, String> = st.sessions.all().iter().map(|s| s.origin.cwd.clone()).chain(live.iter().map(|q| q.cwd.clone())).filter(|c| !c.is_empty()).map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
+        let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
+        let crew = crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect());
+        let mut st = self.st();
+        let reviews = Self::reviews_view(&mut st);
         json!({
             "items": st.items,
             "history": st.history,
@@ -1474,7 +1537,7 @@ impl Hub {
             "reviews": reviews,
             "review_queue": Self::review_queue_view(&st),
             "unreachable": st.unreachable,
-            "crew": crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect()),
+            "crew": crew,
             "live": live,
             "branches": branches,
             "about": about,
@@ -1487,6 +1550,30 @@ impl Hub {
         })
     }
 
+    /// For `snapshot`, under one short lock: the session ids Cue knows, the live sessions it hasn't heard
+    /// from yet (quiet Claude ones from its registry, Pi ones that only subscribed), each Claude session's
+    /// transcript, and every folder in play.
+    fn snapshot_sources(&self) -> (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>) {
+        let st = self.st();
+        let known: HashSet<String> = st.sessions.all().iter().map(|s| s.origin.session_id.clone()).chain(st.items.iter().map(|i| i.origin.session_id.clone())).collect();
+        let pi = st.subscribed.values().map(|(o, at)| crate::live::Quiet {
+            session_id: o.session_id.clone(),
+            harness: o.harness.clone(),
+            name: String::new(),
+            cwd: o.cwd.clone(),
+            pid: o.agent_pid.unwrap_or(0),
+            status: "idle".into(),
+            waiting_for: String::new(),
+            since_ms: *at,
+        });
+        let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id)).collect();
+        let transcripts: Vec<(String, String)> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
+            .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
+            .collect();
+        let cwds: Vec<String> = st.sessions.all().iter().map(|s| s.origin.cwd.clone()).chain(live.iter().map(|q| q.cwd.clone())).filter(|c| !c.is_empty()).collect::<HashSet<_>>().into_iter().collect();
+        (known, live, transcripts, cwds)
+    }
+
     /// Review, tapped: type `text` into the lead now. Only one review at a time per lead (two typed into
     /// a busy lead can run together as one message), so while it's busy this refuses and says with what;
     /// you tap Review again once it's free. Cue never types a review you didn't just ask for.
@@ -1494,7 +1581,7 @@ impl Hub {
     /// the moment it is (see `drain_reviews`). Never refused for being busy.
     pub fn review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             if st.review_sent.contains_key(exec) {
                 return Err("its lead is already reviewing it".into());
             }
@@ -1526,7 +1613,7 @@ impl Hub {
         match self.send_to_session(lead, text, &[], false) {
             Ok(_) => Ok(format!("Sent {text}")),
             Err(e) => {
-                self.store.lock().unwrap().review_sent.remove(exec);
+                self.st().review_sent.remove(exec);
                 self.changed();
                 Err(e)
             }
@@ -1535,7 +1622,7 @@ impl Hub {
 
     /// Take a queued review back (× on its line in the lead's chat).
     pub fn unqueue_review(&self, exec: &str) {
-        self.store.lock().unwrap().review_queue.retain(|q| q.exec != exec);
+        self.st().review_queue.retain(|q| q.exec != exec);
         crate::db::unqueue_review(exec);
         self.changed();
     }
@@ -1546,7 +1633,7 @@ impl Hub {
     /// back at work) is dropped. Blocking (typing takes a moment): call off the UI thread.
     pub fn drain_reviews(&self) {
         let due: Vec<QueuedReview> = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // Moot: no longer waiting for a review, or its lead got to it already (relay wakes it).
             let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec)).map(|q| q.exec.clone()).collect();
             for e in &stale {
@@ -1631,7 +1718,7 @@ impl Hub {
         }
         if key == "history.keep" {
             let history = crate::db::history(crate::config::history_keep());
-            self.store.lock().unwrap().history = history;
+            self.st().history = history;
         }
         self.changed();
         Ok(())
@@ -1644,26 +1731,26 @@ impl Hub {
     /// it (Pi isn't connected, typing into Claude Code failed, or Claude Code's list never shows it), Cue
     /// keeps your name and the chat says so (`rename_error`), with Try again. Codex has no names: Cue's only.
     pub fn rename(&self, session_id: &str, name: &str) -> Result<String, String> {
-        let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect();
-        let (harness, state, origin) = self.store.lock().unwrap().sessions.set_name(session_id, &name).ok_or("that session is gone")?;
+        let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().filter(|c| !c.is_control()).take(60).collect();
+        let (harness, state, origin) = self.st().sessions.set_name(session_id, &name).ok_or("that session is gone")?;
         self.changed();
         if name.is_empty() {
             return Ok("Name cleared in Cue".into());
         }
         match harness.as_str() {
             "pi" => {
-                let sent = self.store.lock().unwrap().subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "rename", "name": name })).is_ok()).unwrap_or(false);
+                let sent = self.st().subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "rename", "name": name })).is_ok()).unwrap_or(false);
                 if sent { Ok("Renamed".into()) } else { Err(self.rename_failed(session_id, "Pi isn't connected to Cue, so it didn't get the new name")) }
             }
             "claude" if state == "working" => {
-                self.store.lock().unwrap().sessions.defer_rename(session_id);
+                self.st().sessions.defer_rename(session_id);
                 Ok("Renamed · Claude Code gets it when this turn ends".into())
             }
             "claude" => match crate::focus::type_into(&origin, &format!("/rename {name}")) {
                 Ok(_) => {
                     // Claude Code's list shows a rename within a few seconds: give it 15.
                     if origin.machine.is_empty() {
-                        self.store.lock().unwrap().sessions.expect_rename(session_id, &name, now_ms() + RENAME_WITHIN_MS);
+                        self.st().sessions.expect_rename(session_id, &name, now_ms() + RENAME_WITHIN_MS);
                     }
                     Ok("Renamed".into())
                 }
@@ -1676,14 +1763,14 @@ impl Hub {
 
     /// The agent didn't get the name: Cue keeps it, and the chat says why. Returns `why`.
     fn rename_failed(&self, session_id: &str, why: &str) -> String {
-        self.store.lock().unwrap().sessions.rename_failed(session_id, why);
+        self.st().sessions.rename_failed(session_id, why);
         self.changed();
         why.to_string()
     }
 
     /// × on the chat's rename notice.
     pub fn dismiss_rename_error(&self, session_id: &str) {
-        if self.store.lock().unwrap().sessions.dismiss_rename_error(session_id) {
+        if self.st().sessions.dismiss_rename_error(session_id) {
             self.changed();
         }
     }
@@ -1692,7 +1779,7 @@ impl Hub {
     /// command line where it takes one).
     pub fn name_new(&self, session_id: &str, name: &str) {
         let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect();
-        if !name.is_empty() && self.store.lock().unwrap().sessions.set_name(session_id, &name).is_some() {
+        if !name.is_empty() && self.st().sessions.set_name(session_id, &name).is_some() {
             self.changed();
         }
     }
@@ -1701,7 +1788,7 @@ impl Hub {
     /// the ones made in its terminal.
     fn sync_agent_names(&self) {
         let listed: HashMap<String, String> = crate::live::claude().into_iter().map(|q| (q.session_id, q.name)).collect();
-        if self.store.lock().unwrap().sessions.sync_agent_names(&listed, now_ms()) {
+        if self.st().sessions.sync_agent_names(&listed, now_ms()) {
             self.changed();
         }
     }
@@ -1711,7 +1798,7 @@ impl Hub {
     /// `/relay:handoff`). Not mid-turn: typed then, it would land in the middle of its work.
     pub fn session_command(&self, session_id: &str, action: &str) -> Result<String, String> {
         let (origin, state) = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             let s = st.sessions.all().into_iter().find(|s| s.origin.session_id == session_id).ok_or("that session is gone")?;
             (s.origin.clone(), s.state.clone())
         };
@@ -1730,8 +1817,19 @@ impl Hub {
             _ => return Err(format!("Cue doesn't know \"{action}\"")),
         };
         crate::focus::type_into(&origin, line)?;
+        // Still in its box after a moment (it was busy drawing, or held the text): one more Enter, and if
+        // it's still there, say so rather than show "Compacting" for the 15 minutes until Cue gives up,
+        // holding every message meanwhile.
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        if crate::focus::text_in_box(&origin, line) == Some(true) {
+            let _ = crate::focus::press_enter(&origin);
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            if crate::focus::text_in_box(&origin, line) == Some(true) {
+                return Err(format!("{line} is typed but it didn't take it: press Enter in its terminal"));
+            }
+        }
         if action == "compact" {
-            self.store.lock().unwrap().sessions.set_compacting(session_id, now_ms());
+            self.st().sessions.set_compacting(session_id, now_ms());
             self.changed();
         }
         Ok(match action {
@@ -1741,6 +1839,13 @@ impl Hub {
     }
 
     /// This hub as the app holds it, for work handed to another thread (none in tests: no app).
+    /// The store, locked. A panic on another thread while it held the lock poisons it; what's in it is
+    /// still whole (each change is made under one lock), so Cue goes on with it rather than panicking
+    /// at every lock from then on, which would leave the window up and nothing behind it.
+    fn st(&self) -> std::sync::MutexGuard<'_, Store> {
+        crate::locking::lock(&self.store, "the hub's store")
+    }
+
     fn shared(&self) -> Option<Arc<Hub>> {
         self.app.as_ref().map(|a| a.state::<Arc<Hub>>().inner().clone())
     }
@@ -1751,17 +1856,17 @@ impl Hub {
         let (Some(me), sid, cwd) = (self.shared(), session_id.to_string(), cwd.to_string()) else { return };
         std::thread::spawn(move || {
             let base = crate::changes::base(&cwd);
-            me.store.lock().unwrap().sessions.set_turn_base(&sid, base);
+            me.st().sessions.set_turn_base(&sid, base);
         });
     }
 
     /// A turn ended: what it changed, for the "4 files · +98 −9" pill and Commit.
     fn turn_changes(&self, session_id: &str) {
-        let Some(base) = self.store.lock().unwrap().sessions.take_turn_base(session_id) else { return };
+        let Some(base) = self.st().sessions.take_turn_base(session_id) else { return };
         let (Some(me), sid) = (self.shared(), session_id.to_string()) else { return };
         std::thread::spawn(move || {
             let changes = crate::changes::since(&base);
-            if me.store.lock().unwrap().sessions.set_changes(&sid, changes) {
+            if me.st().sessions.set_changes(&sid, changes) {
                 me.changed();
             }
         });
@@ -1774,9 +1879,9 @@ impl Hub {
     }
 
     fn deliver_deferred_rename(&self, session_id: &str) {
-        let Some((name, origin)) = self.store.lock().unwrap().sessions.take_rename(session_id) else { return };
+        let Some((name, origin)) = self.st().sessions.take_rename(session_id) else { return };
         if origin.machine.is_empty() {
-            self.store.lock().unwrap().sessions.expect_rename(session_id, &name, now_ms() + 2_000 + RENAME_WITHIN_MS);
+            self.st().sessions.expect_rename(session_id, &name, now_ms() + 2_000 + RENAME_WITHIN_MS);
         }
         let (me, sid) = (self.shared(), session_id.to_string());
         std::thread::spawn(move || {
@@ -1791,13 +1896,13 @@ impl Hub {
     /// transcript (no hook involved, so it costs the agent nothing).
     pub fn refresh_activity(&self) {
         self.sync_agent_names();
-        let todo = self.store.lock().unwrap().sessions.working_transcripts();
+        let todo = self.st().sessions.working_transcripts();
         let found: Vec<(String, (String, u64))> =
             todo.into_iter().filter_map(|(sid, harness, path)| crate::transcript::activity_of(&harness, &path).map(|a| (sid, a))).collect();
         // A message you queued that Claude Code or Codex has since taken (into the running turn, or as
         // the next prompt): it's no longer queued, so no "Queued" bubble pinned below the answer, and no Send now.
         let queued: Vec<(String, String, String, crate::model::Exchange)> = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             st.sessions.working_transcripts().into_iter().filter_map(|(sid, h, path)| st.sessions.queued(&sid).map(|q| (sid, h, path, q))).collect()
         };
         // Interrupted (Esc, on purpose or not) a few seconds ago with nothing since: no Stop comes for
@@ -1805,7 +1910,7 @@ impl Hub {
         // is followed at once by your message.
         let now = now_ms();
         let stuck: Vec<Origin> = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             st.sessions.all().into_iter().filter(|s| s.state == "working" && s.origin.harness == "claude" && !s.origin.transcript_path.is_empty())
                 .filter(|s| transcript::interrupted_at(&s.origin.transcript_path).is_some_and(|at| at + 1500 >= s.since_ms && now.saturating_sub(at) > 3000))
                 .map(|s| s.origin).collect()
@@ -1814,7 +1919,7 @@ impl Hub {
             let sid = o.session_id.clone();
             let driver = crate::leads::resolve_driver(&sid, "");
             self.event(o, "stopped", "Interrupted: it stopped mid-turn and is waiting for you. Say “continue” to pick up where it left off.".into(), vec![], &driver);
-            if let Some(it) = self.store.lock().unwrap().items.iter_mut().find(|i| i.kind == "waiting" && i.origin.session_id == sid) {
+            if let Some(it) = self.st().items.iter_mut().find(|i| i.kind == "waiting" && i.origin.session_id == sid) {
                 it.interrupted = true;
             }
             self.changed();
@@ -1823,7 +1928,7 @@ impl Hub {
         // build is fine; one waiting for input in its terminal isn't), or 5 while it's only thinking. Not
         // while a helper agent works (that writes to its own log). Said once per quiet spell.
         let quiet: Vec<(String, u64, String, u64, String)> = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             st.sessions.all().into_iter().filter(|s| s.state == "working" && s.origin.harness != "pi" && !s.origin.transcript_path.is_empty())
                 .filter_map(|s| {
                     let at = std::fs::metadata(&s.origin.transcript_path).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
@@ -1835,38 +1940,38 @@ impl Hub {
             let limit = if doing.starts_with("Delegating") { u64::MAX } else if doing.starts_with("Running") || doing.starts_with("Using") { STUCK_RUNNING_MS } else { STUCK_THINKING_MS };
             let stuck = now.saturating_sub(at) >= limit;
             if stuck && was != at {
-                self.store.lock().unwrap().sessions.set_stuck(&sid, at);
+                self.st().sessions.set_stuck(&sid, at);
                 self.changed();
                 if crate::config::flag("/notify/decisions") {
                     let what = if doing.is_empty() { "Thinking".to_string() } else { doing.trim_end_matches('…').to_string() };
                     self.notify(&format!("stuck-{sid}"), &format!("{name} · no new output for {}m", now.saturating_sub(at) / 60_000), &format!("{what}. If it's waiting for input, it's in its terminal."), "");
                 }
             } else if !stuck && was != 0 {
-                self.store.lock().unwrap().sessions.set_stuck(&sid, 0);
+                self.st().sessions.set_stuck(&sid, 0);
                 crate::notify::remove(&[format!("stuck-{sid}")]);
                 self.changed();
             }
         }
         // At its prompt while its background agents work: how many are left. Once none is, Claude Code
         // wakes it with their reports (a new turn); if that doesn't come, its last reply is your turn.
-        // Collected first: a guard made in the `for` would hold the lock through the body, which locks again.
-        let with_helpers = self.store.lock().unwrap().sessions.with_helpers();
+        // Collected first: a `for` keeps the lock alive for the whole loop, and the body locks again.
+        let with_helpers = self.st().sessions.with_helpers();
         for o in with_helpers {
             let left = crate::steps::running_helpers(&o.transcript_path).len() as u64;
             let sid = o.session_id.clone();
             if left > 0 {
-                if self.store.lock().unwrap().sessions.set_helpers(&sid, left) {
+                if self.st().sessions.set_helpers(&sid, left) {
                     self.changed();
                 }
                 continue;
             }
-            self.store.lock().unwrap().sessions.set_helpers(&sid, 0);
+            self.st().sessions.set_helpers(&sid, 0);
             self.changed();
             let me = self.shared();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(HELPERS_SETTLE_SECS));
                 let Some(me) = me else { return };
-                let still = me.store.lock().unwrap().sessions.state(&sid).as_deref() == Some("agent");
+                let still = me.st().sessions.state(&sid).as_deref() == Some("agent");
                 if still {
                     if let Some((at, reply, parts)) = transcript::turn_ended_parts(&o.transcript_path) {
                         me.your_turn_since(o, reply, parts, at);
@@ -1877,7 +1982,7 @@ impl Hub {
         }
         // Compacting (from Cue, its terminal, or on its own) until its transcript says it's done; given up after 15 minutes.
         let compacted: Vec<(String, bool)> = {
-            let st = self.store.lock().unwrap();
+            let st = self.st();
             st.sessions
                 .compacting()
                 .into_iter()
@@ -1891,7 +1996,7 @@ impl Hub {
                 .collect()
         };
         if !compacted.is_empty() {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             for (sid, done) in &compacted {
                 if *done {
                     st.sessions.set_compacted(sid, now);
@@ -1905,11 +2010,11 @@ impl Hub {
         // A session Cue started in a folder Claude Code didn't trust yet: asking in its terminal until
         // ~/.claude.json says it's trusted (answered there, or with Trust in Cue). Given up after 30 minutes.
         let done: Vec<String> = {
-            let asking = self.store.lock().unwrap().sessions.asking_trust();
+            let asking = self.st().sessions.asking_trust();
             asking.into_iter().filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect()
         };
         if !done.is_empty() {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             for sid in &done {
                 st.sessions.set_trust(sid, 0);
             }
@@ -1928,7 +2033,7 @@ impl Hub {
             .map(|(sid, _, _, _)| sid)
             .collect();
         let changed = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             for sid in &taken {
                 st.sessions.set_queued(sid, None);
             }
@@ -1946,7 +2051,7 @@ impl Hub {
             return;
         }
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let message = crate::sessions::unwrap_pasted(message);
             st.sessions.set_prompt(session_id, &message);
             st.sessions.note(session_id, "you", &message, crate::config::context_keep());
@@ -1960,7 +2065,7 @@ impl Hub {
             return;
         }
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // The project Cue shows for the sender, else Claude's own name for it.
             let who = pid.and_then(|p| st.sessions.project_by_pid(p)).unwrap_or_else(|| if name.is_empty() { "another agent".into() } else { name.to_string() });
             st.sessions.note_peer(session_id, &who, body, crate::config::context_keep());
@@ -1984,7 +2089,7 @@ impl Hub {
     fn changed(&self) {
         let Some(app) = &self.app else { return };
         {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             // A parked session that's live again (you resumed it yourself, in a terminal) isn't parked.
             let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
             if !back.is_empty() {
@@ -1993,12 +2098,16 @@ impl Hub {
                     crate::db::unpark(sid);
                 }
             }
-            let waiting: Vec<&Item> = st.items.iter().filter(|i| i.kind == "waiting").collect();
-            crate::db::sync_live(&st.sessions.all(), &waiting);
+            // The write itself with the store unlocked: it's every session and thread, and on this
+            // thread (often the window's) nothing else must wait for it.
+            let sessions = st.sessions.all();
+            let waiting: Vec<Item> = st.items.iter().filter(|i| i.kind == "waiting").cloned().collect();
+            drop(st);
+            crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
         }
         let _ = app.emit("state", self.snapshot());
         let (decisions, items, answered) = {
-            let mut st = self.store.lock().unwrap();
+            let mut st = self.st();
             let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
             // Answered anywhere (Cue, menu bar, the terminal): take the notification back.
             let answered: Vec<String> = st.notified.difference(&live).cloned().collect();
@@ -2028,7 +2137,7 @@ impl Hub {
             return;
         }
         if crate::notify::post(id, title, body, category) {
-            self.store.lock().unwrap().notified.insert(id.to_string());
+            self.st().notified.insert(id.to_string());
         } else {
             // Unbundled dev binary: a plain notification Cue can't take back.
             let _ = app.notification().builder().title(title).body(body).show();
@@ -2204,7 +2313,7 @@ mod tests {
         hub.sweep("", Some(&none));
         assert!(has("h1"));
         // Missing long enough: ended, its card with it. Pi has no such list: left alone.
-        hub.store.lock().unwrap().missing.insert("h1".into(), now_ms() - GONE_AFTER_MS - 1);
+        hub.st().missing.insert("h1".into(), now_ms() - GONE_AFTER_MS - 1);
         hub.sweep("", Some(&none));
         assert!(!has("h1") && !hub.pending().iter().any(|i| i.origin.session_id == "h1"), "gone, card and all");
         assert!(has("p1"), "only Claude sessions are judged by Claude Code's list");
@@ -2229,7 +2338,7 @@ mod tests {
         let hub = Hub::new(None);
         // The lead was just handed a review (it takes a moment to show as working): busy.
         {
-            let mut st = hub.store.lock().unwrap();
+            let mut st = hub.st();
             st.review_sent.insert("E0".into(), ("L".into(), now_ms()));
             st.review_last.insert("L".into(), now_ms());
         }
@@ -2238,7 +2347,7 @@ mod tests {
         assert!(hub.review("L", "E1", "/relay:review e1").unwrap().starts_with("Already queued"), "twice doesn't queue it twice");
         hub.review("L", "E2", "/relay:review e2").unwrap();
         {
-            let mut st = hub.store.lock().unwrap();
+            let mut st = hub.st();
             let q = Hub::review_queue_view(&st);
             let names: Vec<&str> = q["L"].as_array().unwrap().iter().map(|r| r["exec"].as_str().unwrap()).collect();
             assert_eq!(names, ["E1", "E2"], "in the order you asked");
@@ -2383,7 +2492,7 @@ mod tests {
         assert_eq!(shown("busy")["name"], "later-name");
         assert!(shown("busy").get("rename_error").is_none());
         // Claude Code renamed in its own terminal: Cue follows.
-        hub.store.lock().unwrap().sessions.take_rename("busy");
+        hub.st().sessions.take_rename("busy");
         crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "renamed-there".into(), cwd: "/x/cue".into(), pid: 1, status: "idle".into(), waiting_for: String::new(), since_ms: 0 }]);
         hub.sync_agent_names();
         assert_eq!(shown("busy")["name"], "renamed-there");
@@ -2443,8 +2552,8 @@ mod tests {
         let name = name2;
         // A deadline already passed with Claude Code still on the old name: the notice.
         let old = name.clone();
-        hub.store.lock().unwrap().sessions.set_name(&sid, "never-typed");
-        hub.store.lock().unwrap().sessions.expect_rename(&sid, "never-typed", now_ms());
+        hub.st().sessions.set_name(&sid, "never-typed");
+        hub.st().sessions.expect_rename(&sid, "never-typed", now_ms());
         let s = wait_for(&|s| s.get("rename_error").is_some());
         assert_eq!(s["name"], "never-typed");
         assert!(s["rename_error"].as_str().unwrap().contains(&old), "{s}");
@@ -2498,7 +2607,7 @@ mod tests {
         hub.send_to_session("s5", "and run the tests", &[], false).unwrap();
         let held = |h: &Hub| h.store.lock().unwrap().sessions.held("s5");
         assert_eq!(held(&hub).map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()), "one kept message, the second after the first");
-        assert!(hub.store.lock().unwrap().sessions.thread("s5").iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
+        assert!(hub.st().sessions.thread("s5").iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
         // Esc / Edit: back to you, and nothing kept any more.
         assert_eq!(hub.unhold("s5").map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()));
         assert!(held(&hub).is_none() && hub.unhold("s5").is_none());
@@ -2534,8 +2643,8 @@ mod tests {
         let origin = Origin { session_id: "p1".into(), harness: "codex".into(), cwd: "/x/infra".into(), tmux_pane: "%4".into(), ..Default::default() };
         let hub = Hub::new(None);
         hub.event(origin.clone(), "stopped", "Three resources drifted.".into(), vec![], "");
-        hub.store.lock().unwrap().sessions.set_name("p1", "drift");
-        hub.store.lock().unwrap().sessions.set_starred("p1", true);
+        hub.st().sessions.set_name("p1", "drift");
+        hub.st().sessions.set_starred("p1", true);
         let rec = hub.session_record("p1").unwrap();
         hub.add_parked(rec);
         assert!(hub.session_origin("p1").is_none(), "off the live lists at once");

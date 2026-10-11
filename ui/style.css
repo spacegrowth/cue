@@ -17,6 +17,11 @@
   --work: #A3AD82;
   --deny: #9B2C1F;
   --star: #C99A1E;   /* a starred session's star: the one other hue, kept to the star */
+  /* A project's dot, eight swatches: readable on white, on the lime selected card and on the dark panels.
+     No Moss green (a dot is never a button) and no red (red means "asks you"). */
+  --pcp0: #2F6B8F; --pcp1: #B8742E; --pcp2: #7A4A9E; --pcp3: #2E8A63; --pcp4: #C2473B; --pcp5: #8A8A2E; --pcp6: #3B7FA8; --pcp7: #6E6E6E;
+  --pcb0: #7FB6D6; --pcb1: #E0A463; --pcb2: #BD9AD9; --pcb3: #7FC9A6; --pcb4: #E98A7E; --pcb5: #C9C96A; --pcb6: #86BEDC; --pcb7: #A9A9A9;
+  --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7);
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
@@ -27,6 +32,7 @@
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
     --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
     --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
+    --pcp0: #7FB6D6; --pcp1: #E0A463; --pcp2: #BD9AD9; --pcp3: #7FC9A6; --pcp4: #E98A7E; --pcp5: #C9C96A; --pcp6: #86BEDC; --pcp7: #A9A9A9; --pcb0: #7FB6D6; --pcb1: #E0A463; --pcb2: #BD9AD9; --pcb3: #7FC9A6; --pcb4: #E98A7E; --pcb5: #C9C96A; --pcb6: #86BEDC; --pcb7: #A9A9A9;
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
   }
 }
@@ -34,6 +40,7 @@
   --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
   --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
   --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
+  --pcp0: #7FB6D6; --pcp1: #E0A463; --pcp2: #BD9AD9; --pcp3: #7FC9A6; --pcp4: #E98A7E; --pcp5: #C9C96A; --pcp6: #86BEDC; --pcp7: #A9A9A9; --pcb0: #7FB6D6; --pcb1: #E0A463; --pcb2: #BD9AD9; --pcb3: #7FC9A6; --pcb4: #E98A7E; --pcb5: #C9C96A; --pcb6: #86BEDC; --pcb7: #A9A9A9;
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
 }
 
@@ -260,6 +267,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .thumbs.shots { gap: 10px; margin-top: 8px; }
 .thumbs.shots .thumb { width: 240px; height: 150px; cursor: zoom-in; }
 .thumbs.shots .thumb img { object-fit: cover; object-position: top left; }
+.shots-named { margin-top: 6px; font-size: 12px; color: var(--muted); word-break: break-all; }
+.shots-named code { font-family: var(--mono); }
 .msg a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 /* A path in a message (⌘-click opens it): it stays plain text — paths are everywhere in
    agent prose — with a dotted underline on hover as the only hint. */
@@ -389,6 +398,37 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .cv-status { align-self: center; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; padding: 2px 0; }
 /* flex: none: beside a long line ("Running: …") it keeps its size instead of being squeezed. */
 .dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+/* A project's dot: its color (--pc), solid; pulsing while the session works. On the green (working
+   cards, the header) the brighter set reads better in light mode; in dark mode the sets are the same. */
+.pdot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); vertical-align: 0; }
+.pdot.live { animation: pulse 1.4s ease-in-out infinite; }
+.pdot.all { background: currentColor; }
+.working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); }
+.working.on, .pj-pop, .pc-pop { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); }
+.pc-wrap { position: relative; display: inline-flex; flex: none; }
+.pdot-btn { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; margin: 0 -4px 0 -6px; }
+.pdot-btn:hover, .pdot-btn.on { background: color-mix(in srgb, currentColor 12%, transparent); }
+.pc-pop { position: absolute; top: 28px; left: -4px; z-index: 40; display: flex; flex-direction: column; gap: 7px; padding: 8px 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); white-space: nowrap; }
+.pc-title { font-size: 11.5px; color: var(--muted); }
+.pc-title b { color: var(--ink); font-weight: 650; }
+.pc-row { display: flex; gap: 7px; }
+.pc-sw { width: 20px; height: 20px; border-radius: 50%; background: var(--c); }
+.pc-sw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--c); }
+.pc-sw:hover { transform: scale(1.12); }
+/* The Projects chip: one project's cards alone; its list names every project, with the dot to recolor. */
+.pj-wrap { position: relative; display: inline-flex; }
+.pj-chip .pdot { width: 8px; height: 8px; }
+.pj-car { font-size: 9px; opacity: 0.7; margin-left: 1px; }
+.pj-pop { position: absolute; top: 38px; left: 0; z-index: 30; min-width: 240px; max-height: min(480px, calc(100vh - 80px)); overflow-y: auto; padding: 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); }
+.pj-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.pj-row:hover { background: var(--panel-2); }
+.pj-row.on { background: var(--sel); color: var(--on-sel); }
+.pj-row .pdot-btn { margin: 0 -2px 0 -4px; }
+.pj-row.all .pdot { margin: 0 3px; }
+.pj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pj-n { font: 600 11px var(--mono); color: var(--muted); }
+.pj-row.on .pj-n { color: inherit; opacity: 0.75; }
+.pj-sep { height: 1px; background: var(--line); margin: 4px 6px; }
 @keyframes pulse { 50% { opacity: 0.25; } }
 .cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
@@ -578,10 +618,10 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--panel-2); color: var(--muted); box-shadow: inset 0 -1px 0 var(--line); }
 .tl { display: block; width: 100%; text-align: left; padding: 9px 12px 9px 28px; border-radius: 10px; position: relative; }
 .tl:hover { background: var(--panel-2); }
-.tl::before { content: ""; position: absolute; left: 11px; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.tl::before { content: ""; position: absolute; left: 11px; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); }
 /* Its session is working again: the dot pulses, as a working session's does. */
-.tl.live::before { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
-.tl.ok::before { background: var(--accent); }
+.tl.live::before { background: var(--pc, var(--accent)); animation: pulse 1.4s ease-in-out infinite; }
+.tl.ok::before { background: var(--pc, var(--accent)); }
 .tl.no::before { background: var(--deny); }
 .tl-top { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; }
 .tl-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -668,8 +708,6 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 /* On the Sessions column's see-through cards: the column's own colours. */
 .working .role.lead { background: var(--on-bg); color: var(--bg); }
 .working .role.executor { border-color: var(--on-bg-muted); color: var(--on-bg-muted); }
-.crew-color { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--crew); flex: none; vertical-align: 0; margin-right: 4px; }
-.nrow-top .crew-color, .ap-head .crew-color { margin: 0 -2px 0 -2px; }
 /* 1px of room above and below: the EXEC / LEAD tag's box is a hair taller than the line, and the clip shaved its bottom edge. */
 .crew-line { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
 .nrow.on .crew-line { color: color-mix(in srgb, var(--on-sel) 75%, transparent); }
@@ -791,6 +829,9 @@ button.tm-chip:hover { background: var(--panel-2); }
 .cmd-row.cmd-wait { color: var(--muted); cursor: default; }
 .cmd-row.cmd-wait:hover { background: none; }
 .cmd-row.on { background: var(--accent); color: var(--on-accent, #fff); }
+.cmd-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; padding: 5px 10px 2px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.cmd-foot button { font-size: 11px; font-weight: 600; color: var(--ink); padding: 2px 8px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); }
+.cmd-foot button:hover { background: var(--panel-2, rgba(0,0,0,.04)); }
 .cmd-row.on span, .cmd-row.on i { color: inherit; opacity: .85; box-shadow: none; }
 .slash-hint button { color: var(--accent); font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
 
@@ -995,7 +1036,6 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-item.quiet .sx-name { color: var(--muted); }
 .sx-iline { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; }
 .sx-iline .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
-.sx-iline .crew-color { margin: 0; }
 .sx-iline .role, .sx-iline .sx-st, .sx-iline .sx-crew-n { flex: none; }
 /* a done executor's long state words ("done, its lead hasn't picked this up") give way before its name does */
 .sx-iline .sx-st.long { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1030,7 +1070,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 /* Narrowest (the smallest window): the role tag (the line below says whose it is) and the rename pencil
    go, and the name shortens with … before any button is cut off. */
 @container ap (max-width: 500px) {
-  .ap-head > .role, .ap-head > .crew-color, .ap-head .rename-btn { display: none; }
+  .ap-head > .role, .ap-head .rename-btn { display: none; }
   .ap-head .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 /* When the top bar doesn't fit (fitTop in app.js adds these one by one). */
@@ -1046,7 +1086,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 .ap-head.fit1 .l-short, .ap-head.fit2 .l-short, .ap-head.fit3 .l-short, .ap-head.fit4 .l-short { display: inline; }
 .ap-head.fit2 > .dim, .ap-head.fit3 > .dim, .ap-head.fit4 > .dim { display: none; }
 .ap-head.fit3 > .pill, .ap-head.fit4 > .pill { display: none; }
-.ap-head.fit4 > .role, .ap-head.fit4 > .crew-color, .ap-head.fit4 .rename-btn { display: none; }
+.ap-head.fit4 > .role, .ap-head.fit4 .rename-btn { display: none; }
 .ap-head.fit4 .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sx-l { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 24px; }
 .sx-item.exec .sx-l { padding-left: 0; }
@@ -1064,7 +1104,6 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-crew { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .sx-thead + .sx-crew { border-top: 0; padding-top: 0; }
 .sx-crew-h { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font-size: 11.5px; font-weight: 650; color: var(--ink); text-align: left; padding: 2px 4px 2px 0; border-radius: 6px; }
-.sx-crew-h .crew-color { margin: 0; }
 .sx-crew-h .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
 .sx-crew-h .sx-st, .sx-crew-h .role { white-space: nowrap; flex: none; }
 /* Executors under a lead line up under its name (the lead's badge stands for them). */
@@ -1181,6 +1220,11 @@ button.tm-chip:hover { background: var(--panel-2); }
 .nf-row.top .nf-k { padding-top: 7px; }
 .nf-in { width: 100%; border: 0; border-radius: 8px; padding: 6px 9px; background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 500 12.5px var(--sans); outline: none; resize: vertical; }
 .nf-in.mono { font: 12px var(--mono); }
+.nf-sel { width: auto; max-width: 240px; flex: none; height: 30px; padding-right: 6px; font-weight: 600; }
+.nf-model-id { width: 220px; flex: none; }
+.nf-reload { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
+.nf-reload:hover { background: var(--panel-2); color: var(--ink); }
+.nf-reload:disabled { opacity: .4; cursor: default; }
 .nf-fwrap { position: relative; min-width: 0; }
 .nf-fwrap > .nf-in { padding-right: 28px; }
 .nf-fbtn { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 6px; color: var(--muted); font-size: 11px; }

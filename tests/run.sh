@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run every test against a private, silent Cue: its own socket (CUE_HOME), no notifications,
 # no windows (CUE_QUIET). Your real Cue keeps running untouched.
-set -e
+set -eo pipefail   # a failed `cargo test` ends the run here, not after the protocol tests pass anyway
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export CUE_HOME="$(mktemp -d /tmp/cue-test.XXXX)"
 export CUE_QUIET=1

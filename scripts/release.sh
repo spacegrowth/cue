@@ -96,7 +96,8 @@ fi
 # --- the update: the (notarized) app as tar.gz, signed with the update key ------------------------------
 tar -czf "$DIST/Cue.app.tar.gz" -C "$(dirname "$APP")" Cue.app
 # (Without the build's key variables: the signer refuses a key given twice.)
-env -u TAURI_SIGNING_PRIVATE_KEY -u TAURI_SIGNING_PRIVATE_KEY_PASSWORD npx tauri signer sign -f "$HOME/.tauri/cue.key" -p "$KEY_PASSWORD" "$DIST/Cue.app.tar.gz" >/dev/null
+# (The password through its variable, never as an argument: those show in `ps` while it runs.)
+env -u TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$KEY_PASSWORD" npx tauri signer sign -f "$HOME/.tauri/cue.key" "$DIST/Cue.app.tar.gz" >/dev/null
 SIG="$(cat "$DIST/Cue.app.tar.gz.sig")"; rm "$DIST/Cue.app.tar.gz.sig"
 URL="https://github.com/$REPO/releases/download/v$VERSION/Cue.app.tar.gz"
 python3 - "$VERSION" "$NOTES" "$SIG" "$URL" "$DIST/latest.json" <<'PY'

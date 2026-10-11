@@ -35,7 +35,7 @@ pub fn start() {
 fn refresh() {
     let Ok(home) = std::env::var("HOME") else { return };
     let mut seen: HashMap<String, (u64, Entry)> = HashMap::new();
-    let old = INDEX.lock().unwrap().clone().unwrap_or_default();
+    let old = crate::locking::lock(&INDEX, "INDEX").clone().unwrap_or_default();
     let Ok(dirs) = std::fs::read_dir(format!("{home}/.claude/projects")) else { return };
     for dir in dirs.flatten() {
         let Ok(files) = std::fs::read_dir(dir.path()) else { continue };
@@ -53,7 +53,7 @@ fn refresh() {
             seen.insert(path, (mtime, entry));
         }
     }
-    *INDEX.lock().unwrap() = Some(seen);
+    *crate::locking::lock(&INDEX, "INDEX") = Some(seen);
 }
 
 /// Title, last prompt and folder from the end of one transcript.
@@ -91,7 +91,7 @@ pub fn find(q: &str, skip: &std::collections::HashSet<String>, limit: usize) -> 
     if q.is_empty() {
         return vec![];
     }
-    let guard = INDEX.lock().unwrap();
+    let guard = crate::locking::lock(&INDEX, "INDEX");
     let Some(index) = guard.as_ref() else { return vec![] };
     let mut hits: Vec<&Entry> = index
         .values()
@@ -113,7 +113,7 @@ pub fn find(q: &str, skip: &std::collections::HashSet<String>, limit: usize) -> 
 
 /// An older session's transcript, folder and title, so Resume can pick it up there and show it in Cue.
 pub fn lookup(session_id: &str) -> Option<(String, String, String)> {
-    let guard = INDEX.lock().unwrap();
+    let guard = crate::locking::lock(&INDEX, "INDEX");
     let (path, (_, e)) = guard.as_ref()?.iter().find(|(_, (_, e))| e.session_id == session_id)?;
     (!e.cwd.is_empty()).then(|| (path.clone(), e.cwd.clone(), e.title.clone()))
 }

@@ -22,11 +22,12 @@ id="$(date +%s)-$$"
 # A line per run (kept short), for when an event seems to go missing.
 [ "$(wc -c 2>/dev/null <"$d/hook.log" || echo 0)" -lt 65536 ] || mv -f "$d/hook.log" "$d/hook.log.old" 2>/dev/null
 echo "$id $1 ${TMUX_PANE:-}" >>"$d/hook.log" 2>/dev/null
-{
+# The event (a prompt, a command about to run) is yours alone: the file is readable by you only.
+( umask 077; {
   printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}"
   cat
   printf '}\n'
-} >"$d/in/$id.tmp" 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"
+} >"$d/in/$id.tmp" ) 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"
 [ "$1" = permission ] || exit 0
 # A permission question: wait for the answer while Cue is watching (it stamps the time every second).
 while :; do
@@ -42,13 +43,17 @@ done
 /// the time and say it's alive. The heartbeat matters: if the Cue that started this quits, the next one
 /// fails to reach it, so ssh ends instead of living on and taking events nobody reads. A `sleep` that
 /// can't do fractions (not GNU's or BusyBox's) falls back to a second. ("cue-watch" marks these processes.)
+/// Once a minute it also drops answers in out/ a day old or more: one the hook never collected (its agent
+/// was gone by the time you answered) would otherwise stay there for good.
 const WATCH: &str = r#"# cue-watch
 d="$HOME/.cue"; mkdir -p "$d/in" "$d/out"
-n=0
+n=0; p=0
 while :; do
   if [ "$n" -eq 0 ]; then
     date +%s >"$d/watching"
     echo "@@hb" || exit 0
+    [ "$p" -eq 0 ] && find "$d/out" -name '*.json' -mmin +1440 -delete 2>/dev/null
+    p=$(( (p + 1) % 60 ))
   fi
   n=$(( (n + 1) % 10 ))
   for f in "$d"/in/*.json; do
@@ -106,7 +111,7 @@ pub fn watch_all() {
 pub fn watch(m: &Machine) {
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     {
-        let mut w = watchers().lock().unwrap();
+        let mut w = crate::locking::lock(watchers(), "watchers");
         if w.contains_key(&m.name) {
             return;
         }
@@ -129,7 +134,7 @@ pub fn watch(m: &Machine) {
 
 /// Stop watching a machine (it was removed).
 pub fn unwatch(name: &str) {
-    if let Some(stop) = watchers().lock().unwrap().remove(name) {
+    if let Some(stop) = crate::locking::lock(watchers(), "watchers").remove(name) {
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -147,15 +152,26 @@ fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), Strin
     let mut child = machines::stream_command(&m.host, WATCH).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = child.stdout.take().ok_or("no output")?;
     let mut reached = false;
-    for line in BufReader::new(out).lines() {
+    let mut reader = BufReader::new(out);
+    loop {
         if stop.load(std::sync::atomic::Ordering::Relaxed) {
             break;
         }
-        let Ok(line) = line else { break };
+        let line = match capped_line(&mut reader, MAX_LINE) {
+            Ok(Some(Some(l))) => l,
+            // Too long to be an event: dropped, and said so in the log.
+            Ok(Some(None)) => {
+                log_raw(&m.name, "(a line over the size limit)");
+                continue;
+            }
+            // The stream ended, or the line dropped.
+            Ok(None) | Err(_) => break,
+        };
         if line == "@@hb" {
             // It's alive. The first beat of a stream: the machine is reached (again).
             if !reached {
                 reached = true;
+                machines::forget(&m.host);
                 if let Some(f) = ON_REACHED.get() {
                     let name = m.name.clone();
                     std::thread::spawn(move || f(&name));
@@ -173,6 +189,45 @@ fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), Strin
     let _ = child.kill();
     let _ = child.wait();
     Ok(())
+}
+
+/// The most a line from a machine may hold (an event is a few KB; a transcript's largest tool result is
+/// well under this). Past it, the rest of the line is read and thrown away as it comes, so a machine
+/// that never sends a newline can't make Cue keep growing.
+const MAX_LINE: usize = 1024 * 1024;
+
+/// The next line from `r`, without its newline: Ok(Some(Some(line))), or Ok(Some(None)) for a line over
+/// `max` bytes (skipped whole), or Ok(None) at the end of the stream. Memory never goes past `max`.
+pub(crate) fn capped_line(r: &mut impl BufRead, max: usize) -> std::io::Result<Option<Option<String>>> {
+    let mut buf = Vec::new();
+    let mut over = false;
+    loop {
+        let chunk = r.fill_buf()?;
+        if chunk.is_empty() {
+            // The end: a last line without its newline still counts, nothing at all doesn't.
+            return Ok(if buf.is_empty() && !over { None } else if over { Some(None) } else { Some(Some(String::from_utf8_lossy(&buf).into_owned())) });
+        }
+        let (take, done) = match chunk.iter().position(|b| *b == b'\n') {
+            Some(i) => (i + 1, true),
+            None => (chunk.len(), false),
+        };
+        if !over {
+            let keep = take - usize::from(done);
+            if buf.len() + keep > max {
+                over = true;
+                buf = Vec::new();
+            } else {
+                buf.extend_from_slice(&chunk[..keep]);
+            }
+        }
+        r.consume(take);
+        if done {
+            if buf.last() == Some(&b'\r') {
+                buf.pop();
+            }
+            return Ok(Some(if over { None } else { Some(String::from_utf8_lossy(&buf).into_owned()) }));
+        }
+    }
 }
 
 /// "@@<id> <json>" -> (id, event).
@@ -284,7 +339,7 @@ fn handle(m: &Machine, id: &str, ev: Value) {
     let (m, id, p) = (m.clone(), id.to_string(), ev["input"].clone());
     std::thread::spawn(move || {
         let answer = ask(&msg).map(|d| crate::hook::to_claude(&d, &p).to_string()).unwrap_or_default();
-        let _ = machines::run_with_input(&m.host, &format!(r#"cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &answer);
+        let _ = machines::run_with_input(&m.host, &format!(r#"umask 077; cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &answer);
     });
 }
 
@@ -346,6 +401,43 @@ mod tests {
     }
 
     #[test]
+    fn a_line_from_a_machine_is_capped_and_the_stream_goes_on_after_one_too_long() {
+        let long = "x".repeat(50);
+        let data = format!("@@hb\r\n{long}\nshort\nlast");
+        let mut r = BufReader::with_capacity(8, data.as_bytes());
+        assert_eq!(capped_line(&mut r, 20).unwrap(), Some(Some("@@hb".into())));
+        assert_eq!(capped_line(&mut r, 20).unwrap(), Some(None), "over the cap: skipped whole");
+        assert_eq!(capped_line(&mut r, 20).unwrap(), Some(Some("short".into())), "and the next line is intact");
+        assert_eq!(capped_line(&mut r, 20).unwrap(), Some(Some("last".into())), "a last line without its newline");
+        assert_eq!(capped_line(&mut r, 20).unwrap(), None, "the end");
+        let mut exact = BufReader::new("12345\n".as_bytes());
+        assert_eq!(capped_line(&mut exact, 5).unwrap(), Some(Some("12345".into())), "the cap counts the line, not its newline");
+    }
+
+    #[test]
+    fn the_watcher_drops_answers_nobody_collected_after_a_day() {
+        let home = std::env::temp_dir().join(format!("cue-watch-old-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/out")).unwrap();
+        let (old, fresh) = (home.join(".cue/out/1-1.json"), home.join(".cue/out/2-2.json"));
+        std::fs::write(&old, "{}").unwrap();
+        std::fs::write(&fresh, "{}").unwrap();
+        let two_days_ago = std::time::SystemTime::now() - Duration::from_secs(2 * 86400);
+        std::fs::File::options().write(true).open(&old).unwrap().set_modified(two_days_ago).unwrap();
+        let mut c = Command::new("/bin/sh").arg("-c").arg(WATCH).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let out = c.stdout.take().unwrap();
+        let mut r = BufReader::new(out);
+        let _ = capped_line(&mut r, 1024); // the first heartbeat: the sweep ran just before it
+        std::thread::sleep(Duration::from_millis(300));
+        let _ = c.kill();
+        let _ = c.wait();
+        let (old_there, fresh_there) = (old.exists(), fresh.exists());
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(!old_there, "a day-old answer is gone");
+        assert!(fresh_there, "a fresh one stays");
+    }
+
+    #[test]
     fn the_hook_drops_each_event_for_cue_and_never_waits_when_cue_isnt_watching() {
         let home = std::env::temp_dir().join(format!("cue-mh-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
@@ -353,6 +445,10 @@ mod tests {
         run_sh(SCRIPT, &home, &["stop", "claude"], r#"{"session_id":"s1","last_assistant_message":"Done."}"#);
         let files: Vec<_> = std::fs::read_dir(home.join(".cue/in")).unwrap().flatten().collect();
         assert_eq!(files.len(), 1);
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(files[0].metadata().unwrap().permissions().mode() & 0o777, 0o600, "the event is readable by you only");
+        }
         let ev: Value = serde_json::from_str(&std::fs::read_to_string(files[0].path()).unwrap()).unwrap();
         assert_eq!(ev["event"], "stop");
         assert_eq!(ev["pane"], "%7");

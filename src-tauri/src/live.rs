@@ -75,7 +75,7 @@ fn scan_claude(dir: &Path) -> Vec<Quiet> {
 /// Re-read Claude's registry. True when the list changed (so the window should redraw).
 pub fn refresh() -> bool {
     let fresh = scan_claude(&claude_sessions_dir());
-    let mut cur = CLAUDE.lock().unwrap();
+    let mut cur = crate::locking::lock(&CLAUDE, "CLAUDE");
     if *cur == fresh {
         return false;
     }
@@ -85,13 +85,13 @@ pub fn refresh() -> bool {
 
 /// Every live Claude session in the registry.
 pub fn claude() -> Vec<Quiet> {
-    CLAUDE.lock().unwrap().clone()
+    crate::locking::lock(&CLAUDE, "CLAUDE").clone()
 }
 
 /// Tests: stand in for Claude Code's registry.
 #[cfg(test)]
 pub fn set_claude(list: Vec<Quiet>) {
-    *CLAUDE.lock().unwrap() = list;
+    *crate::locking::lock(&CLAUDE, "CLAUDE") = list;
 }
 
 /// The terminal a process runs in ("/dev/ttys012"), for "Go to tab" on a session that never sent
@@ -156,7 +156,7 @@ pub fn about(transcript: &str) -> String {
     }
     let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return String::new() };
     let now = crate::model::now_ms();
-    let mut cache = ABOUT.lock().unwrap();
+    let mut cache = crate::locking::lock(&ABOUT, "ABOUT");
     let cache = cache.get_or_insert_with(HashMap::new);
     if let Some((at, seen, v)) = cache.get(transcript) {
         if *seen == mtime || now.saturating_sub(*at) < 5_000 {
@@ -198,7 +198,7 @@ pub fn branch(cwd: &str) -> String {
     }
     let Some(head) = head_file(Path::new(cwd)) else { return String::new() };
     let Ok(mtime) = std::fs::metadata(&head).and_then(|m| m.modified()) else { return String::new() };
-    let mut cache = BRANCHES.lock().unwrap();
+    let mut cache = crate::locking::lock(&BRANCHES, "BRANCHES");
     let cache = cache.get_or_insert_with(HashMap::new);
     if let Some((at, b)) = cache.get(&head) {
         if *at == mtime {

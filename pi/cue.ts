@@ -24,13 +24,29 @@ import * as readline from "node:readline";
 const CUE_HOME = process.env.CUE_HOME || path.join(os.homedir(), "Library", "Application Support", "dev.spacegrowth.cue");
 const SOCK = path.join(CUE_HOME, "cue.sock");
 
+// A command that gets asked about in "dangerous" mode. A pattern list, not a parser: it errs towards
+// asking (a `-rf` in an argument asks too), never towards silence on the plain forms below.
 const DANGEROUS = [
-	/\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|--recursive)/i,
+	// Deleting trees: rm with -r and -f together or as separate flags in either order, or --recursive;
+	// find that deletes or hands its matches to rm; Python's rmtree.
+	/\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|--recursive)\b/i,
+	/\brm\b(\s+-\S+)*\s+-[a-z]*r[a-z]*(\s+-\S+)*\s+-[a-z]*f/i,
+	/\brm\b(\s+-\S+)*\s+-[a-z]*f[a-z]*(\s+-\S+)*\s+-[a-z]*r/i,
+	/\bfind\b.*\s(-delete\b|-exec\s+rm\b)/,
+	/shutil\.rmtree/,
+	// Running as root, or a shell string whose contents this list can't see into.
 	/\bsudo\b/,
-	/\bgit\s+push\b.*(--force|-f\b)/,
-	/\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)/,
+	/\b(sh|bash|zsh|dash)\s+(-\S+\s+)*-[a-z]*c\b/,
+	// Rewriting history or throwing work away in git.
+	/\bgit\s+push\b.*(\s--force(-with-lease)?\b|\s-f\b)/,
+	/\bgit\s+reset\s+--hard\b/,
+	/\bgit\s+clean\b.*\s-[a-z]*f/,
+	// Changing ownership or modes across a tree, or opening everything up.
+	/\b(chmod|chown)\s+(-\S+\s+)*-[a-zA-Z]*R\b/,
 	/\b(chmod|chown)\b.*\b777\b/,
-	/\bmkfs\b|\bdd\s+if=/,
+	// Writing to disks or formatting them.
+	/\bmkfs\b|\bdd\s+if=|>\s*\/dev\/(sd|disk|nvme|hd)/,
+	// Dropping data in a database.
 	/\b(drop|truncate)\s+(table|database)\b/i,
 ];
 
@@ -211,10 +227,23 @@ export default function (pi: ExtensionAPI) {
 			const s = net.createConnection(SOCK);
 			replySock = s;
 			s.on("error", () => {});
-			s.on("connect", () => s.write(JSON.stringify({ type: "subscribe", ...origin(ctx) }) + "\n"));
+			// The session's commands (extensions' own, prompt templates, skills), for the "/" menu in Cue's
+			// box; Pi's built-ins Cue knows itself. Sent on connecting, and again when Cue asks (Refresh).
+			const commands = () => {
+				try {
+					return ctx.getCommands().map((c) => ({ name: c.name, description: c.description ?? "", source: c.source }));
+				} catch {
+					return [];
+				}
+			};
+			s.on("connect", () => s.write(JSON.stringify({ type: "subscribe", ...origin(ctx), commands: commands() }) + "\n"));
 			readline.createInterface({ input: s }).on("line", (line) => {
 				try {
 					const m = JSON.parse(line);
+					if (m.type === "commands") {
+						s.write(JSON.stringify({ type: "commands", commands: commands() }) + "\n");
+						return;
+					}
 					// Stop button / Esc twice in Cue: abort the turn, like Esc in Pi's own terminal.
 					if (m.type === "interrupt") {
 						if (!ctx.isIdle()) ctx.abort();

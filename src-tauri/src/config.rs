@@ -42,6 +42,8 @@ pub fn effective() -> Value {
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
+        // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -87,7 +89,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -117,6 +119,13 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             Some(m @ ("line" | "all" | "hidden")) => json!(m),
             _ => return Err("steps must be line, all or hidden".into()),
         },
+        "project.colors" => {
+            let map = value.as_object().ok_or("colors must be folder: swatch")?;
+            if !map.values().all(|v| v.as_u64().is_some_and(|n| n < 8)) {
+                return Err("a swatch is 0 to 7".into());
+            }
+            value
+        }
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
             let phrases: Vec<String> = list.iter().filter_map(Value::as_str).map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|p| !p.is_empty()).collect();

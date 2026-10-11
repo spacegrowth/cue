@@ -37,6 +37,10 @@ pub fn open(app: AppHandle, sid: &str, o: &crate::model::Origin, cols: u16, rows
 
 /// The same, handing each event to `out` (the window's, or a test's).
 fn open_with(sid: &str, pane: &str, host: Option<&str>, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<u64, String> {
+    // No pane is not "any pane": tmux reads `-t ''` as the current session, which would be someone else's.
+    if pane.trim().is_empty() {
+        return Err("this session isn't in a tmux pane Cue knows".into());
+    }
     close(sid);
     let tmux = crate::focus::tmux_bin();
     // tmux here, or on the machine (over SSH).
@@ -103,26 +107,26 @@ fn open_with(sid: &str, pane: &str, host: Option<&str>, cols: u16, rows: u16, ou
         }
         out(serde_json::json!({ "sid": id, "gen": gen, "end": true }));
     });
-    open_terms().lock().unwrap().insert(sid.to_string(), Open { master: pair.master, writer, child });
+    crate::locking::lock(open_terms(), "open_terms").insert(sid.to_string(), Open { master: pair.master, writer, child });
     Ok(gen)
 }
 
 /// What you typed in it (and the terminal's own replies, as xterm.js produces them).
 pub fn write(sid: &str, data: &str) -> Result<(), String> {
-    let mut terms = open_terms().lock().unwrap();
+    let mut terms = crate::locking::lock(open_terms(), "open_terms");
     let t = terms.get_mut(sid).ok_or("its terminal isn't open")?;
     t.writer.write_all(data.as_bytes()).and_then(|_| t.writer.flush()).map_err(|e| e.to_string())
 }
 
 pub fn resize(sid: &str, cols: u16, rows: u16) -> Result<(), String> {
-    let terms = open_terms().lock().unwrap();
+    let terms = crate::locking::lock(open_terms(), "open_terms");
     let t = terms.get(sid).ok_or("its terminal isn't open")?;
     t.master.resize(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())
 }
 
 /// Close it: Cue's client goes (its grouped session with it); the session itself keeps running.
 pub fn close(sid: &str) {
-    if let Some(mut t) = open_terms().lock().unwrap().remove(sid) {
+    if let Some(mut t) = crate::locking::lock(open_terms(), "open_terms").remove(sid) {
         let _ = t.child.kill();
         let _ = t.child.wait();
     }
@@ -148,6 +152,13 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         ok()
+    }
+
+    #[test]
+    fn a_session_without_a_pane_is_never_opened_as_whichever_pane_is_current() {
+        let err = open_with("none", "", None, 80, 12, |_| {}).unwrap_err();
+        assert!(err.contains("isn't in a tmux pane"), "{err}");
+        assert!(open_with("none", "  ", Some("build-box"), 80, 12, |_| {}).is_err(), "nor on a machine");
     }
 
     #[test]

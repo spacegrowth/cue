@@ -281,6 +281,14 @@ fn tmux_for(o: &Origin, args: &[&str]) -> bool {
     crate::machines::get(&o.machine).is_some_and(|m| crate::machines::tmux(&m.host, args).is_ok())
 }
 
+/// `tmux_for` with what tmux printed (trailing blank lines dropped); None when tmux failed.
+fn tmux_out_for(o: &Origin, args: &[&str]) -> Option<String> {
+    if o.machine.is_empty() {
+        return tmux_out(args);
+    }
+    crate::machines::tmux(&crate::machines::get(&o.machine)?.host, args).ok().map(|s| s.trim_end().to_string())
+}
+
 /// What a session's tmux pane shows right now (this Mac's or a machine's).
 pub fn session_screen(o: &Origin) -> Result<String, String> {
     if o.machine.is_empty() {
@@ -833,11 +841,23 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     let pause = || std::thread::sleep(std::time::Duration::from_secs_f64(enter_gap(text)));
     if !o.tmux_pane.is_empty() {
         let pane = o.tmux_pane.as_str();
-        let before = session_screen(o).unwrap_or_default();
-        // One paste (bracketed when the app asked for it), so a multi-line reply can't submit early.
-        if !tmux_for(o, &["set-buffer", "-b", "cue", text]) || !tmux_for(o, &["paste-buffer", "-p", "-d", "-b", "cue", "-t", pane]) {
+        // First trip: what's in the pane, and the screen as it is. The agent must be what's there: back
+        // at a shell prompt (the agent exited), the paste plus Enter would run the message as a command.
+        // Both signs are needed. On this Mac tmux names the pane's process group leader, which is the
+        // shell for anything started as `sh -c "…"`, so the shell's name alone isn't proof.
+        let out = tmux_out_for(o, &["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane]).ok_or(format!("tmux pane {pane} is gone"))?;
+        let (running, before) = out.split_once('\n').unwrap_or((out.as_str(), ""));
+        if is_shell(running.trim()) && at_shell_prompt(before) {
+            return Err(format!("its pane shows a shell prompt ({}), not the agent: nothing typed", running.trim()));
+        }
+        // Second trip: the paste (bracketed when the app asked for it, so a multi-line reply can't submit
+        // early). "--": the text is the buffer even when it starts with "-"; a final ";" would end the
+        // tmux command instead of being typed, so it goes escaped (tmux turns "\;" back into ";").
+        let text = tmux_word(text);
+        if !tmux_for(o, &["set-buffer", "-b", "cue", "--", &text, ";", "paste-buffer", "-p", "-d", "-b", "cue", "-t", pane]) {
             return Err(format!("tmux pane {pane} is gone"));
         }
+        let text = text.as_str();
         wait_for_paste(o, text, &before);
         press_enter(o)?;
         return Ok(format!("tmux pane {pane}"));
@@ -884,6 +904,28 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
         return Ok("Terminal tab".into());
     }
     Err("Cue can't type into this terminal (it works with iTerm, Terminal, tmux, WezTerm and kitty). Use Go to session".into())
+}
+
+/// The process in a tmux pane is a shell, not an agent: what `#{pane_current_command}` says for the
+/// usual shells (a login shell shows with a leading "-").
+fn is_shell(command: &str) -> bool {
+    matches!(command.trim_start_matches('-'), "zsh" | "bash" | "sh" | "fish" | "dash" | "ksh" | "tcsh" | "csh" | "nu" | "login")
+}
+
+/// The screen ends the way a shell waiting for a command does: its last line is a prompt, "user@host:~$ ",
+/// "% ", "❯ ". An agent's screen ends in its input box or status line, never like that.
+fn at_shell_prompt(screen: &str) -> bool {
+    let last = screen.lines().rev().map(str::trim_end).find(|l| !l.is_empty()).unwrap_or("").trim_end();
+    last.len() <= 160 && last.ends_with(['$', '%', '#', '>', '❯', '➜'])
+}
+
+/// `text` as one tmux command-line word: a trailing ";" escaped, since tmux reads a word that ends
+/// in ";" as the end of the command (and strips a "\;" back to ";").
+fn tmux_word(text: &str) -> String {
+    match text.strip_suffix(';') {
+        Some(head) if !head.ends_with('\\') => format!("{head}\\;"),
+        _ => text.to_string(),
+    }
 }
 
 /// One bare Enter: submits a typed reply, and is the retry when one didn't submit.
@@ -1038,6 +1080,28 @@ mod iterm_tests {
         assert!(screen.lines().any(|l| l.trim() == "y"), "{screen:?}");
         assert!(screen.ends_with('2'), "{screen:?}");
         assert!(tmux_screen(&pane).is_err(), "a pane that's gone says so");
+    }
+
+    #[test]
+    fn a_message_typed_into_a_tmux_pane_lands_whole_and_is_submitted() {
+        if !tmux_installed() {
+            return;
+        }
+        let name = format!("cue-type-{}", std::process::id());
+        let pane = tmux_out(&["new-session", "-d", "-s", &name, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "cat"]).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let o = Origin { tmux_pane: pane.clone(), ..Default::default() };
+        let t0 = std::time::Instant::now();
+        type_into(&o, "it's a two\nline message").unwrap();
+        let took = t0.elapsed();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let screen = session_screen(&o);
+        run("tmux", &["kill-session", "-t", &name]);
+        // cat echoes what Enter submitted: both lines, the quote intact.
+        let screen = screen.unwrap();
+        assert!(screen.contains("it's a two") && screen.contains("line message"), "{screen:?}");
+        assert!(took < std::time::Duration::from_secs(1), "Enter went as soon as the paste showed, not after the whole gap: {took:?}");
+        assert!(type_into(&o, "x").is_err(), "a pane that's gone says so");
     }
 
     use super::*;

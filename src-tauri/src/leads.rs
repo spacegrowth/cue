@@ -142,7 +142,7 @@ fn pilead_dir() -> PathBuf {
 
 fn read_json(p: &Path) -> Option<Value> {
     let mtime = std::fs::metadata(p).and_then(|m| m.modified()).ok()?;
-    let mut parsed = PARSED.lock().unwrap();
+    let mut parsed = crate::locking::lock(&PARSED, "PARSED");
     let parsed = parsed.get_or_insert_with(Parsed::default);
     let scan = parsed.scan;
     if let Some((at, v, seen)) = parsed.files.get_mut(p) {
@@ -172,7 +172,7 @@ fn subdirs(p: &Path) -> Vec<PathBuf> {
 static FIRST_LINES: Mutex<Option<HashMap<PathBuf, (std::time::SystemTime, String)>>> = Mutex::new(None);
 fn first_line(p: &Path) -> String {
     let Ok(mtime) = std::fs::metadata(p).and_then(|m| m.modified()) else { return String::new() };
-    let mut cache = FIRST_LINES.lock().unwrap();
+    let mut cache = crate::locking::lock(&FIRST_LINES, "FIRST_LINES");
     let cache = cache.get_or_insert_with(HashMap::new);
     if let Some((at, line)) = cache.get(p) {
         if *at == mtime {
@@ -192,6 +192,12 @@ fn first_line(p: &Path) -> String {
 fn seen_report(e: &Value) -> bool {
     let n = |k: &str| e.get(k).and_then(Value::as_u64);
     matches!((n("current_packet"), n("report_seen_packet")), (Some(cur), Some(seen)) if seen >= cur)
+}
+
+/// A relay session id Cue may build a path from (`<relay>/<id>/...`): one folder name, never a path.
+/// Relay only ever writes such ids; anything else came from a file Cue shouldn't trust.
+fn safe_id(id: &str) -> bool {
+    !id.is_empty() && !id.contains('/') && !id.contains('\\') && !id.contains("..")
 }
 
 /// How long a report may sit before its lead is said to have missed it (relay's own wake-up is
@@ -244,7 +250,7 @@ fn missed_wake(m: &Member, lead_free: bool) -> bool {
 /// Done executors whose lead missed the wake-up, as Cue session id; `lead_free` says whether a lead
 /// (its Cue session id) is free to take a review.
 pub fn missed(lead_free: impl Fn(&str) -> bool) -> Vec<String> {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     cur.as_ref().map(|i| i.iter().filter(|(_, m)| missed_wake(m, lead_free(&m.lead))).map(|(sid, _)| sid.clone()).collect()).unwrap_or_default()
 }
 
@@ -290,6 +296,10 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
     for d in subdirs(root) {
         let Some(e) = read_json(&d.join("session.json")) else { continue };
         if !s(&e, "agent").starts_with("relay-executor") {
+            continue;
+        }
+        if !safe_id(&s(&e, "session_id")) {
+            eprintln!("cue: relay session {} has an id that isn't a folder name ({:?}): skipped", d.display(), s(&e, "session_id"));
             continue;
         }
         let owner = s(&e, "owner_lead");
@@ -415,7 +425,7 @@ fn parse_verify(out: &str) -> Option<Verdict> {
 /// Start `relay verify` for each reported executor whose report is new (or changed) since its last check.
 fn verify_reported(index: &HashMap<String, Member>, root: &Path) {
     let Some(bin) = relay_bin() else { return };
-    let mut cache = VERIFY.lock().unwrap();
+    let mut cache = crate::locking::lock(&VERIFY, "VERIFY");
     let cache = cache.get_or_insert_with(HashMap::new);
     for m in index.values().filter(|m| m.plugin == "relay" && m.role == "executor" && m.status == "reported") {
         let Some(n) = m.packet else { continue };
@@ -430,7 +440,7 @@ fn verify_reported(index: &HashMap<String, Member>, root: &Path) {
         std::thread::spawn(move || {
             let out = std::process::Command::new(&bin).args(["verify", &id]).output();
             let v = out.ok().and_then(|o| parse_verify(&String::from_utf8_lossy(&o.stdout)));
-            if let Some(c) = VERIFY.lock().unwrap().as_mut() {
+            if let Some(c) = crate::locking::lock(&VERIFY, "VERIFY").as_mut() {
                 if c.get(&id).is_some_and(|(k, _)| *k == key) {
                     c.insert(id, (key, v));
                     VERIFIED.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -442,7 +452,7 @@ fn verify_reported(index: &HashMap<String, Member>, root: &Path) {
 
 /// The verdict Cue's own `relay verify` run came up with, else the one relay already had on record.
 fn verdict_of(m: &Member) -> Option<Verdict> {
-    VERIFY.lock().unwrap().as_ref().and_then(|c| c.get(&m.id)).and_then(|(_, v)| v.clone()).or_else(|| m.verify.clone())
+    crate::locking::lock(&VERIFY, "VERIFY").as_ref().and_then(|c| c.get(&m.id)).and_then(|(_, v)| v.clone()).or_else(|| m.verify.clone())
 }
 
 /// A verdict from relay's `list --json` (`verify`: {verdict, mismatches, …}), if it gave one.
@@ -475,7 +485,7 @@ fn ledger_verdicts(path: &Path) -> Verdicts {
     use std::io::{Read, Seek, SeekFrom};
     use std::os::unix::fs::MetadataExt;
     let Ok(meta) = std::fs::metadata(path) else { return Default::default() };
-    let mut cache = LEDGER.lock().unwrap();
+    let mut cache = crate::locking::lock(&LEDGER, "LEDGER");
     let cache = cache.get_or_insert_with(HashMap::new);
     let same = cache.get(path).is_some_and(|l| l.inode == meta.ino() && l.offset <= meta.len());
     if !same {
@@ -515,7 +525,7 @@ fn scan(relay: &Path, pilead: &Path, claude_sessions: &Path) -> HashMap<String, 
     let mut index = HashMap::new();
     scan_relay(relay, &live_claude_sessions(claude_sessions), &mut index);
     scan_pilead(pilead, &mut index);
-    if let Some(parsed) = PARSED.lock().unwrap().as_mut() {
+    if let Some(parsed) = crate::locking::lock(&PARSED, "PARSED").as_mut() {
         let scan = parsed.scan;
         parsed.files.retain(|_, (_, _, seen)| *seen == scan);
         parsed.scan += 1;
@@ -528,19 +538,19 @@ pub fn refresh() -> bool {
     let fresh = scan(&relay_dir(), &pilead_dir(), &claude_sessions_dir());
     verify_reported(&fresh, &relay_dir());
     let verified = VERIFIED.swap(false, std::sync::atomic::Ordering::Relaxed);
-    *LOCAL.lock().unwrap() = Some(fresh);
+    *crate::locking::lock(&LOCAL, "LOCAL") = Some(fresh);
     merge() || verified
 }
 
 /// INDEX again from this Mac's part and every machine's (this Mac's wins a clash). True when it changed.
 fn merge() -> bool {
-    let mut all = LOCAL.lock().unwrap().clone().unwrap_or_default();
-    for (_, members) in REMOTE.lock().unwrap().as_ref().into_iter().flat_map(|r| r.values()) {
+    let mut all = crate::locking::lock(&LOCAL, "LOCAL").clone().unwrap_or_default();
+    for (_, members) in crate::locking::lock(&REMOTE, "REMOTE").as_ref().into_iter().flat_map(|r| r.values()) {
         for (sid, m) in members {
             all.entry(sid.clone()).or_insert_with(|| m.clone());
         }
     }
-    let mut cur = INDEX.lock().unwrap();
+    let mut cur = crate::locking::lock(&INDEX, "INDEX");
     if cur.as_ref() == Some(&all) {
         return false;
     }
@@ -574,8 +584,8 @@ exit 0"#;
 pub fn refresh_remote(machine: &str, host: &str) -> (bool, Option<HashSet<String>>) {
     let Ok(out) = crate::machines::run(host, REMOTE_LIST) else { return (false, None) };
     let parsed = parse_remote(&out, machine);
-    REMOTE_PILEAD.lock().unwrap().get_or_insert_with(HashMap::new).insert(machine.to_string(), pilead_bin_of(&out));
-    REMOTE.lock().unwrap().get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
+    crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD").get_or_insert_with(HashMap::new).insert(machine.to_string(), pilead_bin_of(&out));
+    crate::locking::lock(&REMOTE, "REMOTE").get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
     (merge(), Some(live_of(&out)))
 }
 
@@ -604,10 +614,10 @@ fn tz_of(out: &str) -> Option<i64> {
 
 /// Forget a machine's crews (it has no sessions in Cue any more, or was removed).
 pub fn forget_remote(machine: &str) -> bool {
-    if let Some(p) = REMOTE_PILEAD.lock().unwrap().as_mut() {
+    if let Some(p) = crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD").as_mut() {
         p.remove(machine);
     }
-    let gone = REMOTE.lock().unwrap().as_mut().and_then(|r| r.remove(machine)).is_some();
+    let gone = crate::locking::lock(&REMOTE, "REMOTE").as_mut().and_then(|r| r.remove(machine)).is_some();
     gone && merge()
 }
 
@@ -639,6 +649,10 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
     }
     for e in v.get("executors").and_then(Value::as_array).into_iter().flatten() {
         if !s(e, "agent").starts_with("relay-executor") {
+            continue;
+        }
+        if !safe_id(&s(e, "session_id")) {
+            eprintln!("cue: relay on {machine} lists a session whose id isn't a folder name ({:?}): skipped", s(e, "session_id"));
             continue;
         }
         let owner = s(e, "owner_lead");
@@ -773,7 +787,7 @@ fn relay_for(m: &Member) -> Result<Cmd, String> {
     if m.machine.is_empty() {
         return relay_bin().map(|b| Cmd::here(b, vec![])).ok_or_else(|| "can't find relay's command (is the claude-relay plugin installed?)".to_string());
     }
-    let bin = REMOTE.lock().unwrap().as_ref().and_then(|r| r.get(&m.machine)).map(|(b, _)| b.clone()).filter(|b| !b.is_empty());
+    let bin = crate::locking::lock(&REMOTE, "REMOTE").as_ref().and_then(|r| r.get(&m.machine)).map(|(b, _)| b.clone()).filter(|b| !b.is_empty());
     bin.map(|bin| Cmd { bin, args: vec![], machine: m.machine.clone() }).ok_or_else(|| format!("can't find relay's command on {}", m.machine))
 }
 
@@ -783,7 +797,7 @@ fn pilead_for(m: &Member) -> Result<Cmd, String> {
     if m.machine.is_empty() {
         return pilead_bin(&m.id).map(|b| Cmd::here(b, vec![])).ok_or_else(|| "can't find pilead's command".to_string());
     }
-    let bin = REMOTE_PILEAD.lock().unwrap().as_ref().and_then(|r| r.get(&m.machine)).cloned().filter(|b| !b.is_empty());
+    let bin = crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD").as_ref().and_then(|r| r.get(&m.machine)).cloned().filter(|b| !b.is_empty());
     bin.map(|bin| Cmd { bin, args: vec![], machine: m.machine.clone() }).ok_or_else(|| format!("can't find pilead's command on {}", m.machine))
 }
 
@@ -792,12 +806,12 @@ fn pilead_for(m: &Member) -> Result<Cmd, String> {
 /// because its report reaches nobody unless you see it. Anything else keeps the hook's answer.
 /// (The Claude hook works out relay executors itself; Pi's extension doesn't.)
 pub fn resolve_driver(session_id: &str, hooked: &str) -> String {
-    let known = INDEX.lock().unwrap().as_ref().is_some_and(|i| i.get(session_id).is_some_and(|m| m.role == "executor"));
+    let known = crate::locking::lock(&INDEX, "INDEX").as_ref().is_some_and(|i| i.get(session_id).is_some_and(|m| m.role == "executor"));
     if known { driven_by(session_id) } else { hooked.to_string() }
 }
 
 fn driven_by(session_id: &str) -> String {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     match cur.as_ref().and_then(|i| i.get(session_id)) {
         Some(m) if m.role == "executor" && m.lead_armed == Some(true) => {
             let who = if m.plugin == "pilead" { "pi-lead" } else { "relay" };
@@ -850,7 +864,7 @@ fn pilead_bin(id: &str) -> Option<PathBuf> {
 /// by relay / pilead (it marks the executor closed and closes its tab). A lead that still has
 /// executors isn't closed from Cue: that's relay's handoff / close. None: not in a crew.
 pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     let index = cur.as_ref()?;
     let m = index.get(session_id)?;
     match (m.plugin.as_str(), m.role.as_str()) {
@@ -869,7 +883,7 @@ pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
 /// is ended as any session. None: not such a lead (an executor, a pi-lead lead, a lead with
 /// executors still open, a session outside a crew).
 pub fn lead_stop(session_id: &str) -> Option<Result<Cmd, String>> {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     let index = cur.as_ref()?;
     let m = index.get(session_id).filter(|m| m.plugin == "relay" && m.role == "lead")?;
     let open = index.values().any(|e| e.role == "executor" && e.lead == session_id && !GONE.contains(&e.status.as_str()));
@@ -879,36 +893,36 @@ pub fn lead_stop(session_id: &str) -> Option<Result<Cmd, String>> {
 /// A relay executor's worktree (where its staged changes are), from relay's session file.
 #[cfg_attr(not(feature = "ext"), allow(dead_code))]
 pub fn worktree(session_id: &str) -> Option<String> {
-    let id = INDEX.lock().unwrap().as_ref()?.get(session_id).filter(|m| m.role == "executor" && m.plugin == "relay")?.id.clone();
+    let id = crate::locking::lock(&INDEX, "INDEX").as_ref()?.get(session_id).filter(|m| m.role == "executor" && m.plugin == "relay")?.id.clone();
     let v: Value = serde_json::from_str(&std::fs::read_to_string(relay_dir().join(&id).join("session.json")).ok()?).ok()?;
     v.get("worktree")?.as_str().filter(|w| !w.is_empty()).map(String::from)
 }
 
 /// Whether an executor is done and waiting for its lead's review (relay: reported or idle).
 pub fn is_done(session_id: &str) -> bool {
-    INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle"))
+    crate::locking::lock(&INDEX, "INDEX").as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle"))
 }
 
 /// Whether a done executor's report has been reviewed already (see Member::reviewed).
 pub fn is_reviewed(session_id: &str) -> bool {
-    INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && m.reviewed)
+    crate::locking::lock(&INDEX, "INDEX").as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && m.reviewed)
 }
 
 /// Done executors whose report their lead has seen: Cue session id → its lead's session id.
 pub fn reviewed() -> Vec<(String, String)> {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     cur.as_ref().map(|i| i.iter().filter(|(_, m)| m.role == "executor" && m.reviewed && matches!(m.status.as_str(), "reported" | "idle")).map(|(sid, m)| (sid.clone(), m.lead.clone())).collect()).unwrap_or_default()
 }
 
 /// A lead's or executor's name (relay's topic), else its session id.
 pub fn name_of(session_id: &str) -> String {
-    INDEX.lock().unwrap().as_ref().and_then(|i| i.get(session_id)).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.to_string())
+    crate::locking::lock(&INDEX, "INDEX").as_ref().and_then(|i| i.get(session_id)).map(|m| m.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| session_id.to_string())
 }
 
 /// What `action` ("review", "diff", "close", "auto-on", "auto-off") means for this session: an executor's
 /// review goes to its lead, its diff opens as a page; a relay lead's auto mode is switched by relay.
 pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     let m = cur.as_ref().and_then(|i| i.get(session_id)).ok_or("Cue doesn't know this session as a lead or executor")?;
     let relay = |args: &[&str]| relay_for(m).map(|c| Cmd { args: args.iter().map(|a| a.to_string()).collect(), ..c });
     match (m.plugin.as_str(), m.role.as_str(), action) {
@@ -940,7 +954,7 @@ pub fn act(session_id: &str, action: &str) -> Result<Act, String> {
 /// What the window needs for the sessions it knows: each one's role, and for a lead the
 /// executors still working for it (whether or not Cue has seen them).
 pub fn view(known: &HashSet<String>) -> Value {
-    let cur = INDEX.lock().unwrap();
+    let cur = crate::locking::lock(&INDEX, "INDEX");
     let Some(index) = cur.as_ref() else { return Value::Object(Default::default()) };
     let mut out = serde_json::Map::new();
     for sid in known {
@@ -987,6 +1001,33 @@ C9
         assert_eq!(index["C8"].name, "ls-root", "no topic: its relay id");
         assert!(!index.contains_key("CX"), "not a relay executor");
         assert!(parse_remote("NORELAY\n", "build-box").1.is_empty(), "no relay there: no crews");
+    }
+
+    #[test]
+    fn a_relay_id_that_would_leave_relays_folder_is_skipped() {
+        assert!(super::safe_id("finder-1"));
+        for bad in ["", "../x", "a/b", "a\\b", "..", "x/../../etc"] {
+            assert!(!super::safe_id(bad), "{bad:?}");
+        }
+        // From a machine's listing: the bad one is dropped, the good one kept.
+        let out = "BIN:/r\n{\"leads\": [], \"executors\": [{\"agent\": \"relay-executor\", \"session_id\": \"../../.ssh\", \"claude_session\": \"CBAD\", \"status\": \"reported\"}, {\"agent\": \"relay-executor\", \"session_id\": \"ok-1\", \"claude_session\": \"COK\", \"status\": \"busy\"}]}\n";
+        let (_, index) = parse_remote(out, "build-box");
+        assert!(!index.contains_key("CBAD"));
+        assert_eq!(index["COK"].id, "ok-1");
+        // From relay's folder on this Mac: the same.
+        let root = std::env::temp_dir().join(format!("cue-leads-badid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let write = |p: std::path::PathBuf, t: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, t).unwrap();
+        };
+        write(root.join("evil/session.json"), r#"{"session_id":"../../x","agent":"relay-executor","claude_session":"C1","status":"reported"}"#);
+        write(root.join("fine/session.json"), r#"{"session_id":"fine","agent":"relay-executor","claude_session":"C2","status":"reported"}"#);
+        let mut index = std::collections::HashMap::new();
+        super::scan_relay(&root, &std::collections::HashSet::new(), &mut index);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(!index.contains_key("C1"));
+        assert_eq!(index["C2"].id, "fine");
     }
 
     #[test]
@@ -1097,7 +1138,7 @@ C9
         assert_eq!(index["b12-1"].lead_name, "pi-lead");
         assert_eq!(index["P1"].role, "lead");
 
-        *INDEX.lock().unwrap() = Some(index);
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
         assert_eq!(resolve_driver("C1", ""), "its relay lead (chart-lines)");
         assert_eq!(resolve_driver("b12-1", ""), "its pi-lead lead (pi-lead)");
         assert_eq!(resolve_driver("C3", "its relay lead (claude-relay)"), "", "no armed lead: its report is yours");
@@ -1128,7 +1169,7 @@ C9
         let again = scan(&relay, &pi, &cs);
         assert_eq!(again["C1"].status, "closed");
         assert!(!again.contains_key("C2"));
-        assert!(!PARSED.lock().unwrap().as_ref().unwrap().files.keys().any(|p| p.starts_with(relay.join("old-1"))));
+        assert!(!crate::locking::lock(&PARSED, "PARSED").as_ref().unwrap().files.keys().any(|p| p.starts_with(relay.join("old-1"))));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1247,7 +1288,7 @@ ML
 "#;
         let index = parse_remote(out, "box").1;
         assert!(index["MC1"].ready_late && !index["MC3"].ready_late);
-        *INDEX.lock().unwrap() = Some(index);
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
         assert_eq!(missed(|_| true), ["MC1"], "seen and fresh reports aren't missed");
         assert!(missed(|_| false).is_empty(), "its lead is busy");
     }
@@ -1267,8 +1308,8 @@ ML
         let (bin, index) = parse_remote(out, "box");
         assert!(index.contains_key("relay:stuck-1"), "no Claude session: filed under relay's id");
         assert!(!index.contains_key("relay:busy-1"), "only a stalled or dead one gets that");
-        *REMOTE.lock().unwrap() = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
-        *INDEX.lock().unwrap() = Some(index);
+        *crate::locking::lock(&REMOTE, "REMOTE") = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
         let close = Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "stuck-1".into()], machine: "box".into() };
         assert_eq!(act("relay:stuck-1", "close"), Ok(Act::Run(close, "Closed".into())));
         assert_eq!(act("MC9", "close"), Ok(Act::Run(Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "gone-1".into()], machine: "box".into() }, "Closed".into())));
@@ -1300,8 +1341,8 @@ BUSY
 "#;
         let (bin, mut index) = parse_remote(out, "box");
         index.insert("PL".into(), Member { role: "lead".into(), plugin: "pilead".into(), ..Default::default() });
-        *REMOTE.lock().unwrap() = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
-        *INDEX.lock().unwrap() = Some(index);
+        *crate::locking::lock(&REMOTE, "REMOTE") = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
         assert_eq!(lead_stop("EMPTY"), Some(Ok(Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "--self".into(), "EMPTY".into()], machine: "box".into() })), "run on its machine");
         assert_eq!(lead_stop("BUSY"), None, "it still has an executor open: close_plan refuses it");
         assert_eq!(lead_stop("PL"), None, "pi-lead leads are left as they are");
@@ -1391,14 +1432,14 @@ __CUE_LIVE__
         let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
         let out = format!("NORELAY\n__CUE_PILEAD__\nPBIN:/p/pilead\n{PI_LISTING}\n__CUE_LIVE__\n");
         let index = parse_remote(&out, "box").1;
-        *INDEX.lock().unwrap() = Some(index);
-        *REMOTE_PILEAD.lock().unwrap() = Some(HashMap::from([("box".to_string(), "/p/pilead".to_string())]));
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
+        *crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD") = Some(HashMap::from([("box".to_string(), "/p/pilead".to_string())]));
         assert_eq!(act("pe-1", "review"), Ok(Act::Send { to: "PL1".into(), text: "/pilead:review pe-1".into() }));
         assert!(act("pe-1", "diff").unwrap_err().contains("can't bring it here"), "no remote diff page for pilead");
         assert_eq!(close_plan("pe-1"), Some(Ok(Cmd { bin: "/p/pilead".into(), args: vec!["close".into(), "pe-1".into()], machine: "box".into() })));
-        *REMOTE_PILEAD.lock().unwrap() = None;
+        *crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD") = None;
         assert!(close_plan("pe-1").unwrap().unwrap_err().contains("can't find pilead's command on box"));
-        *INDEX.lock().unwrap() = None;
+        *crate::locking::lock(&INDEX, "INDEX") = None;
     }
 
     #[test]
@@ -1407,7 +1448,7 @@ __CUE_LIVE__
         let path = dir.join("sessions.jsonl");
         let ev = |sid: &str, n: u64, v: &str| format!("{{\"event\":\"report_verify\",\"session_id\":\"{sid}\",\"packet\":{n},\"verdict\":\"{v}\",\"mismatches\":0}}\n");
         let get = |sid: &str, n: u64| ledger_verdicts(&path).get(&(sid.to_string(), n)).map(|v| v.verdict.clone());
-        let offset = || LEDGER.lock().unwrap().as_ref().and_then(|c| c.get(&path)).map(|l| l.offset).unwrap();
+        let offset = || crate::locking::lock(&LEDGER, "LEDGER").as_ref().and_then(|c| c.get(&path)).map(|l| l.offset).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(get("a", 1), None, "no ledger yet: no verdicts");
 

@@ -159,7 +159,28 @@ pub enum ClientMsg {
     Subscribe {
         #[serde(flatten)]
         origin: Origin,
+        /// The commands the session offers (Pi: its extensions' commands, prompt templates, skills),
+        /// for the "/" menu in its box. Pi's built-ins Cue knows itself.
+        #[serde(default)]
+        commands: Vec<AgentCmd>,
     },
+    /// On a subscribe connection: the session's commands again (Cue asked with {"type":"commands"}:
+    /// Refresh under the "/" menu).
+    Commands {
+        #[serde(default)]
+        commands: Vec<AgentCmd>,
+    },
+}
+
+/// A slash command as an agent reports it (Pi's SlashCommandInfo).
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct AgentCmd {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// "extension", "prompt" or "skill" (Pi).
+    #[serde(default)]
+    pub source: String,
 }
 
 /// Your answer, harness-neutral. The hook / extension maps it to its harness's format.
