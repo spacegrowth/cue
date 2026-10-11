@@ -105,7 +105,7 @@ impl Hub {
         let cmd_before = command_before(&it.origin, text);
         // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
         let direct = self.send_direct(&sid, text, &saved, false);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&it.origin, &crate::uploads::with_paths(text, &saved))? };
+        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&it.origin, &crate::uploads::with_paths(text, &crate::uploads::on_machine(&it.origin.machine, &saved)?))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
         let mut submitted = self.took(&sid, &it.origin, text, cmd_before, t0);
         if !submitted && !direct && !text.starts_with('/') && Self::retry_enter(&it.origin, text) {
@@ -235,7 +235,7 @@ impl Hub {
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
         let direct = self.send_direct(session_id, text, &saved, now);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &crate::uploads::with_paths(typed, &saved))? };
+        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &crate::uploads::with_paths(typed, &crate::uploads::on_machine(&origin.machine, &saved)?))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
         if !submitted && !typed.starts_with('/') && Self::retry_enter(&origin, typed) {

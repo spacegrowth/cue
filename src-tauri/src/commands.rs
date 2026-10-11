@@ -49,9 +49,18 @@ static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// The commands for a Claude session in `cwd`, or None while they're being read (ask again shortly).
 pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
+    for_folder(cwd, "")
+}
+
+/// The same for a folder on one of your machines (`machine` empty: this Mac). Read there, over its
+/// connection: the folder isn't on this Mac, and its skills and plugins are the machine's. Kept under
+/// "machine:folder", apart from a Mac folder of the same name.
+pub fn for_folder(cwd: &str, machine: &str) -> Option<Vec<Cmd>> {
     if cwd.is_empty() {
         return Some(vec![]);
     }
+    let key = if machine.is_empty() { cwd.to_string() } else { format!("{machine}:{cwd}") };
+    let cwd = key.as_str();
     let now = crate::model::now_ms();
     // Two separate locks, never one inside the other: the guard of a lookup used in a longer expression
     // would still be held while the database's copy is put in.
@@ -67,9 +76,9 @@ pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
     if !fresh {
         let started = crate::locking::lock(&READING, "READING").get_or_insert_with(HashSet::new).insert(cwd.to_string());
         if started {
-            let cwd = cwd.to_string();
+            let (cwd, folder, machine) = (cwd.to_string(), key_folder(cwd, machine).to_string(), machine.to_string());
             std::thread::spawn(move || {
-                let list = read_folder(&cwd);
+                let list = if machine.is_empty() { read_folder(&folder) } else { read_on_machine(&machine, &folder) };
                 // A failed read keeps the old list (if any), and is tried again next time.
                 if let Some(list) = list {
                     let at = crate::model::now_ms();
@@ -83,11 +92,39 @@ pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
     cached.map(|(_, list)| list)
 }
 
+/// The folder in a key made by `for_folder`.
+fn key_folder<'a>(key: &'a str, machine: &str) -> &'a str {
+    if machine.is_empty() { key } else { &key[machine.len() + 1..] }
+}
+
+/// The setup request Claude Code answers with its commands.
+const SETUP: &str = r#"{"type":"control_request","request_id":"cue-commands","request":{"subtype":"initialize"}}"#;
+/// Claude Code taking requests on its input, with nothing of yours (hooks) run and no session kept.
+const CLAUDE_SETUP: &str = r#"claude -p --input-format stream-json --output-format stream-json --verbose --no-session-persistence --settings '{"disableAllHooks":true}'"#;
+
+/// Ask Claude Code in `cwd` on a machine: one trip over its connection. It answers the setup request
+/// before it sees its input end. Stopped after 30s where `timeout` is there.
+fn read_on_machine(machine: &str, cwd: &str) -> Option<Vec<Cmd>> {
+    let host = crate::machines::get(machine)?.host;
+    let script = format!(
+        "cd {} || exit 1; t=; command -v timeout >/dev/null 2>&1 && t='timeout 30'; printf '%s\\n' {} | $t {CLAUDE_SETUP} 2>/dev/null",
+        crate::focus::shq(cwd),
+        crate::focus::shq(SETUP)
+    );
+    setup_reply(&crate::machines::run(&host, &script).ok()?)
+}
+
+/// The commands in Claude Code's reply to the setup request, from its output lines.
+fn setup_reply(out: &str) -> Option<Vec<Cmd>> {
+    let r = out.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|v| v.get("type").and_then(Value::as_str) == Some("control_response"))?;
+    Some(from_setup(r.pointer("/response/response").unwrap_or(&Value::Null)))
+}
+
 /// Ask Claude Code in `cwd` (through your login shell, so it's found as in your terminal).
 fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let line = r#"exec claude -p --input-format stream-json --output-format stream-json --verbose --no-session-persistence --settings '{"disableAllHooks":true}'"#;
-    let mut child = Command::new(shell).args(["-lic", line]).current_dir(cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let line = format!("exec {CLAUDE_SETUP}");
+    let mut child = Command::new(shell).args(["-lic", &line]).current_dir(cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
     let out = child.stdout.take()?;
     let mut input = child.stdin.take()?;
     // Never hang on it: stop it after 30s if it's still going.
@@ -97,7 +134,7 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
         std::thread::sleep(std::time::Duration::from_secs(30));
         let _ = watch.lock().unwrap().kill();
     });
-    let _ = writeln!(input, r#"{{"type":"control_request","request_id":"cue-commands","request":{{"subtype":"initialize"}}}}"#);
+    let _ = writeln!(input, "{SETUP}");
     let reply = BufReader::new(out)
         .lines()
         .map_while(Result::ok)
@@ -335,5 +372,18 @@ mod tests {
         assert_eq!(row("effort").args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>(), ["low", "medium", "high"]);
         assert!(row("rename").args.is_empty() && row("rename").hint == "[name]");
         assert_eq!((row("merge-main").kind.as_str(), row("model").kind.as_str()), ("skill", "command"));
+    }
+
+    /// On a real machine, by hand: CUE_HOME=<a Cue folder listing it> CUE_MACHINE=name CUE_MACHINE_DIR=folder
+    /// cargo test -q commands_from_a_machine -- --ignored --nocapture. The list comes from Claude Code there,
+    /// in that folder (a name with a space in it is fine).
+    #[test]
+    #[ignore]
+    fn commands_from_a_machine() {
+        let (Ok(m), Ok(dir)) = (std::env::var("CUE_MACHINE"), std::env::var("CUE_MACHINE_DIR")) else { return };
+        let list = read_on_machine(&m, &dir).expect("Claude Code there answered");
+        println!("{} commands: {:?}", list.len(), list.iter().map(|c| c.name.as_str()).collect::<Vec<_>>());
+        let model = list.iter().find(|c| c.name == "model").expect("/model is there");
+        assert!(!model.args.is_empty(), "with its models to pick from");
     }
 }

@@ -39,17 +39,17 @@ pub(crate) fn session_commands(hub: State<Arc<Hub>>, session_id: String, fresh: 
     if let Some(list) = hub.agent_commands(&session_id) {
         return Some(list);
     }
-    let cwd = match hub.session_origin(&session_id) {
-        Some(o) if o.harness == "claude" => o.cwd,
+    let (cwd, machine) = match hub.session_origin(&session_id) {
+        Some(o) if o.harness == "claude" => (o.cwd, o.machine),
         Some(o) if o.harness == "codex" => return Some(commands::for_codex()),
         Some(o) if o.harness == "pi" => return Some(commands::for_pi(&[])),
         Some(_) => return Some(vec![]),
         None => match live::claude().into_iter().find(|q| q.session_id == session_id) {
-            Some(q) => q.cwd,
+            Some(q) => (q.cwd, String::new()),
             None => return Some(vec![]),
         },
     };
-    commands::for_session(&cwd)
+    commands::for_folder(&cwd, &machine)
 }
 
 /// The models to pick from in + New: what your Claude Code offers, read in your home folder (the list
