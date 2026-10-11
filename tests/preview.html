@@ -86,7 +86,10 @@
           { session_id: "q1", harness: "claude", name: "line-tune", cwd: "/Users/me/code/data-pipeline", pid: 1, status: "idle", since_ms: now - 180 * M },
           { session_id: "q2", harness: "claude", name: "", cwd: "/Users/me/code/order-engine", pid: 2, status: "busy", since_ms: now - 25 * M },
           { session_id: "q3", harness: "pi", name: "", cwd: "/Users/me/code/filings-bot", pid: 3, status: "idle", since_ms: now - 2 * M },
+          // A worktree of data-pipeline: its project is the repository, so it shares data-pipeline's tile.
+          { session_id: "q4", harness: "claude", name: "", cwd: "/Users/me/code/data-pipeline-wt/fill-gaps", pid: 4, status: "busy", since_ms: now - 6 * M },
         ];
+        state.projects = { "/Users/me/code/data-pipeline-wt/fill-gaps": { name: "data-pipeline", root: "/Users/me/code/data-pipeline" } };
         state.about = {
           relay: { title: "Relay board token spend", prompt: "go, and keep the footer total" },
           pipe: { title: "Line detector data gaps", prompt: "make the line detector survive data gaps" },
@@ -95,8 +98,9 @@
           api: { title: "Quotes endpoint caching", prompt: "add caching to quotes" },
           q1: { title: "Chart-line finder tuning", prompt: "/line-tune" },
           q2: { title: "Broker session reconnects", prompt: "why do reconnects drop fills?" },
+          q4: { title: "Fill data gaps", prompt: "backfill the missing bars" },
         };
-        state.branches = Object.fromEntries(state.sessions.map((s) => [s.cwd, s.project === "web-app" ? "cart-limits" : "main"]).concat([["/Users/me/code/data-pipeline", "chart-lines"]]));
+        state.branches = Object.fromEntries(state.sessions.map((s) => [s.cwd, s.project === "web-app" ? "cart-limits" : "main"]).concat([["/Users/me/code/data-pipeline", "chart-lines"], ["/Users/me/code/data-pipeline-wt/fill-gaps", "fill-gaps"]]));
       }
       if (q.has("crew")) state.crew = {
         relay: { role: "lead", plugin: "relay", name: "agent-relay", color: [132, 180, 180], model: "claude-opus-5-5", auto: true, plan_next: "docs + deck refresh", plan_queued: 3, executors: [

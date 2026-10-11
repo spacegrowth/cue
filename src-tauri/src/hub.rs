@@ -121,7 +121,7 @@ impl Hub {
         Item {
             id: format!("n{}", st.next),
             kind: kind.into(),
-            project: project_of(&origin.cwd),
+            project: crate::model::project_of_origin(&origin),
             origin,
             tool_name: String::new(),
             tool_input: Value::Null,
@@ -1523,6 +1523,10 @@ impl Hub {
         let about: HashMap<String, Value> = transcripts.into_iter()
             .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
             .collect();
+        // Each folder's repository, where it's in one: its name (the project) and main checkout (where + New starts).
+        let projects: HashMap<String, Value> = cwds.iter()
+            .filter_map(|c| crate::live::repo_root(c).map(|r| (c.clone(), json!({ "name": crate::live::repo_name(&r), "root": r.to_string_lossy() }))))
+            .collect();
         let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
         let crew = crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect());
         let mut st = self.st();
@@ -1540,6 +1544,7 @@ impl Hub {
             "crew": crew,
             "live": live,
             "branches": branches,
+            "projects": projects,
             "about": about,
             "window_ms": crate::sessions::WINDOW_MS,
             "now_ms": now_ms(),
@@ -1932,7 +1937,7 @@ impl Hub {
             st.sessions.all().into_iter().filter(|s| s.state == "working" && s.origin.harness != "pi" && !s.origin.transcript_path.is_empty())
                 .filter_map(|s| {
                     let at = std::fs::metadata(&s.origin.transcript_path).and_then(|m| m.modified()).ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
-                    let name = if s.name.is_empty() { s.project.clone() } else { s.name.clone() };
+                    let name = if s.name.is_empty() { crate::model::folder_of(&s.origin.cwd) } else { s.name.clone() };
                     Some((s.origin.session_id.clone(), at.max(s.since_ms), s.doing.clone(), s.stuck_ms, name))
                 }).collect()
         };

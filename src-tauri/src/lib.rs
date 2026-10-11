@@ -194,7 +194,7 @@ async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session
 pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
     let line = focus::resume_line(&cwd, session_id)?;
-    let name = model::project_of(&cwd);
+    let name = model::folder_of(&cwd);
     let tab = open_for_resume(&line, &cwd, &name)?;
     let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
     h.resumed(origin, &title, &transcript::recent_context(&path, 6), false);
@@ -332,7 +332,7 @@ fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &str) -> Res
     if !message.trim().is_empty() {
         line += &format!(" {}", focus::shq(message.trim()));
     }
-    let label = if p.session.name.is_empty() { model::project_of(&o.cwd) } else { p.session.name.clone() };
+    let label = if p.session.name.is_empty() { model::folder_of(&o.cwd) } else { p.session.name.clone() };
     let base = model::Origin { session_id: session_id.to_string(), harness: o.harness.clone(), transcript_path: o.transcript_path.clone(), ..Default::default() };
     let (fresh, at) = if o.machine.is_empty() {
         let tab = open_for_resume(&line, &o.cwd, &label)?;
@@ -411,7 +411,7 @@ fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Origin, String)
                 Err(e) => { machine_hooks::log_raw(&machine, &format!("rebuild {} skipped: {e}", o.session_id)); return; }
             }
             let Ok(line) = focus::resume_line(&o.cwd, &o.session_id) else { return };
-            let label = if !name.is_empty() { name.clone() } else { model::project_of(&o.cwd) };
+            let label = if !name.is_empty() { name.clone() } else { model::folder_of(&o.cwd) };
             let (pane, tty, dir) = match machines::open_in_tmux(&m, &line, &o.cwd, &label) {
                 Ok(t) => t,
                 Err(e) => { machine_hooks::log_raw(&machine, &format!("rebuild {} failed: {e}", o.session_id)); return; }
@@ -465,7 +465,7 @@ fn restore_sessions(hub: &Arc<Hub>) {
         if !auto_resumable(&s.origin, leads::is_executor) || !s.origin.machine.is_empty() {
             continue;
         }
-        let label = if !s.name.is_empty() { s.name.clone() } else { model::project_of(&s.origin.cwd) };
+        let label = if !s.name.is_empty() { s.name.clone() } else { model::folder_of(&s.origin.cwd) };
         // Its agent still runs (Cue restarted, the Mac didn't): wherever it runs, in Cue's tmux, your
         // own, or a renamed session, a second `claude --resume` would be two agents on one conversation.
         if running.contains(&s.origin.session_id) || focus::pane_in_its_session(&s.origin.tmux_pane, &label) {
@@ -1019,7 +1019,7 @@ pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: 
     let asks_trust = agent == "claude" && !focus::claude_trusts(&dir);
     let line = focus::start_line_with(agent, &dir, &sid, message, name, &opts.perm, &opts.extra)?;
     let in_tmux = opts.tmux.map_or_else(config::tmux_sessions, |t| t && focus::tmux_installed());
-    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::project_of(&dir));
+    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(&dir));
     // In tmux either way when it's installed: "Runs in iTerm" only adds a terminal tab showing it.
     let tab = if in_tmux {
         focus::open_in_tmux(&line, &dir, &label)?
@@ -1042,7 +1042,7 @@ fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &
     let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
     // It starts where tmux opens the window (`cwd`): the line itself stays in that folder.
     let line = focus::start_line_with(agent, ".", &sid, message, name, &opts.perm, &opts.extra)?;
-    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::project_of(cwd.trim()));
+    let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(cwd.trim()));
     let (pane, tty, dir) = machines::open_in_tmux(&m, &line, cwd, &label)?;
     if !sid.is_empty() {
         let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
@@ -1139,7 +1139,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     let name = h.session_name(session_id);
     let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
     let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
-    let label = if name.is_empty() { model::project_of(&cwd) } else { name };
+    let label = if name.is_empty() { model::folder_of(&cwd) } else { name };
     let line = focus::resume_line(&cwd, session_id)?;
     // Its window in Cue first, empty: only once that's there does the old one end, so a tmux that won't
     // cooperate never leaves the session ended and nowhere.

@@ -266,9 +266,22 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn project_of(cwd: &str) -> String {
+/// A folder's own name ("fix-locks"): what a session there is called until you name it.
+pub fn folder_of(cwd: &str) -> String {
     std::path::Path::new(cwd)
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default()
+}
+
+/// The project a folder on this Mac belongs to: its git repository, by its main checkout's name, so
+/// every worktree of `cue` is `cue`. Outside a repository, the folder's own name.
+pub fn project_of(cwd: &str) -> String {
+    crate::live::repo_root(cwd).map(|r| crate::live::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
+}
+
+/// A session's project: as `project_of` on this Mac; on another machine, its folder's name (its
+/// repository isn't read from here).
+pub fn project_of_origin(o: &Origin) -> String {
+    if o.machine.is_empty() { project_of(&o.cwd) } else { folder_of(&o.cwd) }
 }

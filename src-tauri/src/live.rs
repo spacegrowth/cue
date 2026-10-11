@@ -191,6 +191,58 @@ fn head_file(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+static REPOS: Mutex<Option<HashMap<String, PathBuf>>> = Mutex::new(None);
+
+/// The main checkout of the repository `cwd` is in (for a worktree, the checkout it was made from; for
+/// a bare repository, the repository), or None outside one. Kept once found: a folder doesn't change repo.
+pub fn repo_root(cwd: &str) -> Option<PathBuf> {
+    if cwd.is_empty() {
+        return None;
+    }
+    {
+        let cache = crate::locking::lock(&REPOS, "REPOS");
+        if let Some(r) = cache.as_ref().and_then(|m| m.get(cwd)) {
+            return Some(r.clone());
+        }
+    }
+    let root = find_root(Path::new(cwd))?;
+    let mut cache = crate::locking::lock(&REPOS, "REPOS");
+    cache.get_or_insert_with(HashMap::new).insert(cwd.to_string(), root.clone());
+    Some(root)
+}
+
+fn find_root(dir: &Path) -> Option<PathBuf> {
+    let mut d = Some(dir);
+    while let Some(here) = d {
+        let git = here.join(".git");
+        if git.is_dir() {
+            return Some(here.to_path_buf());
+        }
+        if git.is_file() {
+            let text = std::fs::read_to_string(&git).ok()?;
+            let gitdir = text.lines().find_map(|l| l.strip_prefix("gitdir:"))?.trim();
+            let gitdir = if Path::new(gitdir).is_absolute() { PathBuf::from(gitdir) } else { here.join(gitdir) };
+            // A worktree's git folder names the repository's own in `commondir`; a submodule's has none
+            // (it's its own repository, checked out here).
+            let Ok(common) = std::fs::read_to_string(gitdir.join("commondir")) else { return Some(here.to_path_buf()) };
+            let common = gitdir.join(common.trim());
+            let common = common.canonicalize().unwrap_or(common);
+            return Some(match common.file_name().and_then(|n| n.to_str()) {
+                Some(".git") => common.parent().map(Path::to_path_buf).unwrap_or(common),
+                _ => common,
+            });
+        }
+        d = here.parent();
+    }
+    None
+}
+
+/// A repository's name: its main checkout's folder ("cue"; a bare `cue.git` is "cue").
+pub fn repo_name(root: &Path) -> String {
+    let n = root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    n.strip_suffix(".git").filter(|s| !s.is_empty()).map(str::to_string).unwrap_or(n)
+}
+
 /// The branch checked out in `cwd` ("main"), a short commit when detached, "" outside a repository.
 pub fn branch(cwd: &str) -> String {
     if cwd.is_empty() {
@@ -218,6 +270,32 @@ pub fn branch(cwd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A worktree, a subfolder of it and a submodule each find their repository; a plain folder doesn't.
+    #[test]
+    fn repo_of_worktree() {
+        let run = |dir: &Path, args: &[&str]| assert!(std::process::Command::new("git").current_dir(dir).args(args).output().unwrap().status.success(), "git {args:?}");
+        let base = std::env::temp_dir().join(format!("cue-repo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let main = base.join("app");
+        std::fs::create_dir_all(main.join("src")).unwrap();
+        run(&main, &["init", "-q"]);
+        run(&main, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"]);
+        run(&main, &["worktree", "add", "-q", "../app-wt/fix-it"]);
+        let wt = base.join("app-wt/fix-it");
+        std::fs::create_dir_all(wt.join("deep")).unwrap();
+        let name = |p: &Path| repo_root(p.to_str().unwrap()).map(|r| repo_name(&r));
+        assert_eq!(name(&main.join("src")).as_deref(), Some("app"));
+        assert_eq!(name(&wt).as_deref(), Some("app"));
+        assert_eq!(name(&wt.join("deep")).as_deref(), Some("app"));
+        assert_eq!(crate::model::project_of(wt.to_str().unwrap()), "app");
+        assert_eq!(crate::model::folder_of(wt.to_str().unwrap()), "fix-it");
+        let plain = base.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(crate::model::project_of(plain.to_str().unwrap()), "plain");
+        assert_eq!(repo_name(Path::new("/x/app.git")), "app");
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn reads_the_terminal_from_ps() {

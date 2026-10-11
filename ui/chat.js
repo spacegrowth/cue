@@ -959,7 +959,7 @@ function quietPane() {
   const turns = (f?.turns || []).slice(-8);
   const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane ${busy ? "busy" : ""}">
-    <div class="ap-head">${projBtn(baseName(q.cwd), "ap")}${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
+    <div class="ap-head">${projBtn(projOf(q.cwd), "ap")}${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
       ${moveBtn(q.session_id, q.harness, busy ? "working" : "idle", "btn primary")}<button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
     ${subHead(q.cwd, "", "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
@@ -1056,7 +1056,7 @@ const pkTab = () => { try { return localStorage.getItem("cue.pkTab") === "closed
 /** A parked or closed session in Active: its last two turns (more on request), where it stopped, Resume
  *  (and Unpark for a parked one, Park for a closed one). */
 function parkedPane(p) {
-  const sid = p.session_id, harness = p.harness, name = p.name || p.project || baseName(p.cwd) || "session", w = waking.has(sid), closed = p.kind === "closed";
+  const sid = p.session_id, harness = p.harness, name = p.name || baseName(p.cwd) || p.project || "session", w = waking.has(sid), closed = p.kind === "closed";
   const thread = p.thread || [];
   const shown = parkedAll === sid ? thread : lastTurns(thread, 2);
   const hidden = thread.length - shown.length;

@@ -128,7 +128,39 @@ fn open() -> rusqlite::Result<Connection> {
     c.pragma_update(None, "synchronous", "NORMAL")?;
     c.execute_batch(SCHEMA)?;
     import_old_files(&c);
+    if c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))? < 1 {
+        regroup_projects(&c);
+        c.pragma_update(None, "user_version", 1)?;
+    }
     Ok(c)
+}
+
+/// Once: a project used to be its folder's name; now it's the folder's git repository, so a worktree's
+/// sessions and answers join their repository's. Rows from other machines, and folders no longer on
+/// disk, keep the name they have.
+fn regroup_projects(c: &Connection) {
+    let regroup = |table: &str| -> rusqlite::Result<usize> {
+        let rows: Vec<(String, String)> = {
+            let mut q = c.prepare(&format!(
+                "SELECT id, json_extract(data, '$.cwd') FROM {table}
+                 WHERE COALESCE(json_extract(data, '$.machine'), '') = '' AND COALESCE(json_extract(data, '$.cwd'), '') != ''"))?;
+            let r = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+            r
+        };
+        let mut n = 0;
+        for (id, cwd) in rows {
+            let Some(root) = crate::live::repo_root(&cwd) else { continue };
+            let project = crate::live::repo_name(&root);
+            let column = if table == "parked" { "" } else { ", project = ?1" };
+            n += c.execute(&format!("UPDATE {table} SET data = json_set(data, '$.project', ?1){column} WHERE id = ?2"), params![project, id])?;
+        }
+        Ok(n)
+    };
+    for table in ["sessions", "items", "parked"] {
+        if let Err(e) = regroup(table) {
+            eprintln!("cue: regrouping {table} by repository: {e}");
+        }
+    }
 }
 
 // ---------- items: decisions and finished turns, pending and answered ----------
@@ -649,6 +681,44 @@ mod tests {
         assert_eq!(texts(session_log_page("s", 60, 3)), ["m3", "m4", "m5"]);
         assert_eq!(texts(session_log_page("s", 30, 3)), ["m1", "m2"], "fewer than asked: the start");
         assert!(session_log_page("s", 10, 3).is_empty());
+        std::env::remove_var("CUE_HOME");
+        reset();
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Saved sessions, answers and parked ones in a worktree move to its repository's project, once;
+    /// another machine's keep their folder's name.
+    #[test]
+    fn saved_projects_are_regrouped_by_repository() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-db-regroup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let git = |at: &std::path::Path, args: &[&str]| assert!(std::process::Command::new("git").current_dir(at).args(args).output().unwrap().status.success());
+        let main = dir.join("app");
+        std::fs::create_dir_all(&main).unwrap();
+        git(&main, &["init", "-q"]);
+        git(&main, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"]);
+        git(&main, &["worktree", "add", "-q", "../wt/fix-it"]);
+        let wt = dir.join("wt/fix-it").to_string_lossy().to_string();
+        let home = dir.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("CUE_HOME", &home);
+        reset();
+        let data = |machine: &str| json!({ "cwd": wt, "machine": machine, "project": "fix-it" }).to_string();
+        with(|c| {
+            c.execute("INSERT INTO sessions (id, project, cwd, started_ms, updated_ms, data) VALUES ('here', 'fix-it', ?1, 1, 1, ?2)", params![wt, data("")])?;
+            c.execute("INSERT INTO sessions (id, project, cwd, started_ms, updated_ms, data) VALUES ('there', 'fix-it', ?1, 1, 1, ?2)", params![wt, data("box")])?;
+            c.execute("INSERT INTO items (id, kind, status, project, created_ms, data) VALUES ('i', 'waiting', 'answered', 'fix-it', 1, ?1)", params![data("")])?;
+            c.execute("INSERT INTO parked (id, parked_ms, data) VALUES ('p', 1, ?1)", params![data("")])?;
+            c.pragma_update(None, "user_version", 0)
+        })
+        .unwrap();
+        reset(); // the next launch
+        let row = |sql: &str| with(|c| c.query_row(sql, [], |r| r.get::<_, String>(0))).unwrap();
+        assert_eq!(row("SELECT project || ' ' || json_extract(data, '$.project') FROM sessions WHERE id = 'here'"), "app app");
+        assert_eq!(row("SELECT project || ' ' || json_extract(data, '$.project') FROM sessions WHERE id = 'there'"), "fix-it fix-it");
+        assert_eq!(row("SELECT project || ' ' || json_extract(data, '$.project') FROM items WHERE id = 'i'"), "app app");
+        assert_eq!(row("SELECT json_extract(data, '$.project') FROM parked WHERE id = 'p'"), "app");
         std::env::remove_var("CUE_HOME");
         reset();
         std::fs::remove_dir_all(&dir).ok();

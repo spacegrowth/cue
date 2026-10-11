@@ -17,8 +17,10 @@ function livePop(rows) {
   const q = draft("find-live").text.trim().toLowerCase();
   const hay = (r) => { const ab = svAbout(r); return [r.name, r.cwd, ab.about, ab.now, (r.crew || crewOf(r.sid))?.lead_name].join(" ").toLowerCase(); };
   const hits = rows.filter((r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w)));
+  // By project: a repository's worktrees share its group, each row saying its branch.
   const groups = new Map();
-  for (const r of hits) (groups.get(r.cwd) || groups.set(r.cwd, []).get(r.cwd)).push(r);
+  for (const r of hits) (groups.get(r.project) || groups.set(r.project, []).get(r.project)).push(r);
+  const spread = (rs) => new Set(rs.map((r) => r.cwd)).size > 1;
   const row = (r) => {
     const ab = svAbout(r), unnamed = r.name === baseName(r.cwd) && (ab.about || ab.now);
     const name = unnamed ? ab.about || ab.now : r.name, tip = [ab.about, ab.now].filter(Boolean).join(" · ");
@@ -29,15 +31,19 @@ function livePop(rows) {
     // The whole row opens its chat in Active (a quiet session has none in Cue yet: its tab instead).
     const sel = liveShown[liveSel]?.sid === r.sid ? "sel" : "";
     const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${newPill(r.sid)}${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
+    return `<div class="lv-row ${sel} ${viewing}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">${badge(r.harness)}${m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>` : ""}<span class="lv-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${svChipState(r)}${placeIcon(r.sid)}<span class="lv-acts">${main}</span></div>`;
   };
   const ordered = [...groups.entries()]
-    .map(([cwd, rs]) => [cwd, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
+    .map(([p, rs]) => [p, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
     .sort((a, b) => svRank(a[1][0]) - svRank(b[1][0]));
   liveShown = ordered.flatMap(([, rs]) => rs.map((r) => ({ sid: r.sid, act: r.quiet ? "quiet" : "open" })));
   liveSel = Math.min(Math.max(liveSel, 0), Math.max(liveShown.length - 1, 0));
   const list = ordered
-    .map(([cwd, rs]) => `<div class="lv-group"><div class="lv-ghead">${projDot(baseName(cwd), rs.some((r) => r.st === "working"))}<span>${esc(baseName(cwd) || "(no folder)")}</span><span class="sx-branch">${esc(state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`).join("");
+    .map(([p, rs]) => {
+      const many = spread(rs), cwd = many ? projRoot(rs[0].cwd) : rs[0].cwd;
+      for (const r of rs) r.where = many ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
+      return `<div class="lv-group"><div class="lv-ghead">${projDot(p, rs.some((r) => r.st === "working"))}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
+    }).join("");
   return `<div class="lv-pop">
     <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
     <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div>
@@ -228,10 +234,10 @@ function liveRows() {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
     const what = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
-    return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
+    return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), project: s.project || projOf(s.cwd), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
   });
   for (const q of state.live || []) {
-    rows.push({ sid: q.session_id, harness: q.harness, name: bareName(q.name) || baseName(q.cwd) || "session", cwd: q.cwd || "", machine: q.machine || "", st: q.status === "busy" ? "working" : "idle", since: q.since_ms, what: "", run: false, quiet: true });
+    rows.push({ sid: q.session_id, harness: q.harness, name: bareName(q.name) || baseName(q.cwd) || "session", project: projOf(q.cwd), cwd: q.cwd || "", machine: q.machine || "", st: q.status === "busy" ? "working" : "idle", since: q.since_ms, what: "", run: false, quiet: true });
   }
   markSeen(rows);
   return rows;
@@ -335,7 +341,7 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const go = r.ghost && act !== "exec" ? "" : ` role="button" data-sv="${act}" data-sid="${esc(r.sid)}"`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");
@@ -387,15 +393,15 @@ function showAllSvRest(btn) {
   if (by > 0) sc.scrollBy({ top: by, behavior: "smooth" });
 }
 function sessionsView() {
-  const all = liveRows().filter((r) => inProj(baseName(r.cwd)));
+  const all = liveRows().filter((r) => inProj(r.project));
   const q = draft("find-sessions").text.trim().toLowerCase();
   const hay = (r) => { const m = r.crew || crewOf(r.sid), ab = svAbout(r); return [r.name, r.cwd, homeless(r.cwd), state.branches?.[r.cwd], r.what, ab.about, ab.now, m?.lead_name, m?.name, r.harness].join(" ").toLowerCase(); };
   const match = (r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w));
   const bySid = new Map(all.map((r) => [r.sid, r]));
-  // Tiles by folder. A crew lives in its lead's tile, whatever folders its executors work in.
-  // Each machine its own tiles: the same folder on two machines is two tiles.
+  // Tiles by project (a repository and its worktrees). A crew lives in its lead's tile, whatever folders its
+  // executors work in. Each machine its own tiles: the same project on two machines is two tiles.
   const tiles = new Map();
-  const tile = (cwd, machine = "") => { const k = `${machine}\n${cwd}`; return tiles.get(k) || tiles.set(k, { cwd, machine, solo: [], crews: [] }).get(k); };
+  const tile = (r) => { const p = r.project || projOf(r.cwd), k = `${r.machine || ""}\n${p}`; return tiles.get(k) || tiles.set(k, { project: p, cwd: r.cwd, machine: r.machine || "", solo: [], crews: [] }).get(k); };
   const placed = new Set();
   for (const lead of all.filter((r) => crewOf(r.sid)?.role === "lead")) {
     const m = crewOf(lead.sid);
@@ -405,17 +411,17 @@ function sessionsView() {
       return bySid.get(e.session_id) || { sid: e.session_id, harness: m.plugin === "pilead" ? "pi" : "claude", name: e.name, cwd: "", st: e.status === "busy" ? "working" : "idle", since: 0, what: "", ghost: true,
         crew: { ...e, role: "executor", plugin: e.plugin || m.plugin, lead: lead.sid, lead_name: m.name, lead_armed: true } };
     });
-    tile(lead.cwd, lead.machine).crews.push({ lead, m, execs });
+    tile(lead).crews.push({ lead, m, execs });
   }
   // Executors whose lead Cue can't see (not running, or not in Cue yet): a crew line of their own, in their folder.
   const orphans = new Map();
   for (const r of all.filter((r) => !placed.has(r.sid) && crewOf(r.sid)?.role === "executor")) {
     placed.add(r.sid);
     const m = crewOf(r.sid), key = `${r.machine}\n${r.cwd}\n${m.lead}`;
-    if (!orphans.has(key)) { orphans.set(key, { lead: null, m, execs: [] }); tile(r.cwd, r.machine).crews.push(orphans.get(key)); }
+    if (!orphans.has(key)) { orphans.set(key, { lead: null, m, execs: [] }); tile(r).crews.push(orphans.get(key)); }
     orphans.get(key).execs.push(r);
   }
-  for (const r of all.filter((r) => !placed.has(r.sid))) tile(r.cwd, r.machine).solo.push(r);
+  for (const r of all.filter((r) => !placed.has(r.sid))) tile(r).solo.push(r);
 
   const crewHtml = (c) => {
     const execs = c.execs.filter(match);
@@ -426,14 +432,17 @@ function sessionsView() {
     return `<div class="sx-crew">${head}${execs.length ? `<div class="sx-execs">${svItems(execs, c.lead ? c.lead.harness : c.execs[0].harness)}</div>` : ""}</div>`;
   };
   const cards = [...tiles.values()].map((t) => {
+    const members = [...t.solo, ...t.crews.flatMap((c) => [c.lead, ...c.execs].filter(Boolean))];
+    // One folder: its branch on the tile. Several (worktrees): each session says its own, and + starts in the main checkout.
+    const folders = new Set(members.filter((r) => r.cwd).map((r) => r.cwd)), many = folders.size > 1;
+    const cwd = many ? projRoot(t.cwd) : [...folders][0] || t.cwd, br = many ? "" : state.branches?.[cwd];
+    for (const r of members) r.where = many && r.cwd ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
     const solo = t.solo.filter(match);
     const crews = t.crews.map(crewHtml).filter(Boolean);
     if (!solo.length && !crews.length) return null;
-    const members = [...t.solo, ...t.crews.flatMap((c) => [c.lead, ...c.execs].filter(Boolean))];
     const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
-    const br = state.branches?.[t.cwd];
     const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
-      <div class="sx-thead">${projDot(baseName(t.cwd), members.some((m) => m.st === "working"))}<span class="sx-tname">${esc(baseName(t.cwd) || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(t.cwd)}" title="New session in ${esc(homeless(t.cwd))}">+</button></div>
+      <div class="sx-thead">${projDot(t.project, members.some((m) => m.st === "working"))}<span class="sx-tname">${esc(t.project || "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>
       ${solo.length ? `<div class="sx-solo">${svItems(solo)}</div>` : ""}${crews.join("")}</div>`;
     return { machine: t.machine, rank, latest, html };
   }).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);

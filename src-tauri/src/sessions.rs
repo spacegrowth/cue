@@ -1,7 +1,7 @@
 //! Every live agent session and what it has been doing — the source of the Working column and
 //! the 30-minute activity bars (solid = working, striped = waiting on you).
 
-use crate::model::{now_ms, project_of, Exchange, Origin};
+use crate::model::{now_ms, Exchange, Origin};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -175,7 +175,7 @@ impl Sessions {
         let now = now_ms();
         let s = self.0.entry(origin.session_id.clone()).or_insert_with(|| Session {
             origin: origin.clone(),
-            project: project_of(&origin.cwd),
+            project: crate::model::project_of_origin(origin),
             state: String::new(),
             since_ms: now,
             prompt: String::new(),

@@ -69,9 +69,9 @@ const machShort = (m) => {
 };
 /** The label on everything about a session that runs on another machine (none for this Mac). */
 const machTag = (m) => m ? `<span class="mach" title="Runs on ${esc(m)}">${esc(machShort(m))}</span>` : "";
-/** What Cue calls a session: the name you gave it, else its project. */
+/** What Cue calls a session: the name you gave it, else its folder's name, else its project. */
 // ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
-const nameOf = (sid, project) => String(sessionOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || project;
+const nameOf = (sid, project) => String(sessionOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || baseName(sessionOf(sid)?.cwd) || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || state.history.find((i) => i.id === id);
 const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);
 /** A session you parked (stopped, kept to resume): not live, so not in state.sessions. */
@@ -100,8 +100,13 @@ function parkedActive() {
 // ---------- leads and executors (claude-relay, pi-lead) ----------
 /** A session's place in a relay / pi-lead crew: { role: "lead"|"executor", name, lead, lead_name, … }, or undefined. */
 const crewOf = (sid) => state.crew?.[sid];
-// ---------- a project's color: its dot on every card, row and tile, picked by folder name ----------
-/** The swatch (0–7) for a folder name: the one you picked in Settings, else a hash of the name, so it's
+// ---------- a project: the git repository a folder is in (every worktree of it too), else the folder ----------
+/** A folder's project: its repository's name, as Cue read it ("cue" for any worktree of cue), else the folder's name. */
+const projOf = (cwd) => state.projects?.[cwd]?.name || baseName(cwd);
+/** Where + New starts for a project shown with this folder: its repository's main checkout, else the folder. */
+const projRoot = (cwd) => state.projects?.[cwd]?.root || cwd;
+// ---------- a project's color: its dot on every card, row and tile, picked by project name ----------
+/** The swatch (0–7) for a project: the one you picked in Settings, else a hash of the name, so it's
  *  the same after a restart and on every machine. */
 function projIdx(project) {
   const c = state.settings?.project?.colors?.[project];
@@ -114,7 +119,7 @@ const projStyle = (project) => `--pc:var(--pc${projIdx(project)})`;
 /** The dot: solid while the session waits or idles, pulsing while it works. */
 const projDot = (project, live = false) => project ? `<i class="pdot ${live ? "live" : ""}" style="${projStyle(project)}"></i>` : "";
 let colorFor = null;   // { p, w }: the project whose swatches are open, and where ("ap": the pane head, "pj": the projects list)
-/** The dot as a button: a click opens the swatches under it (the folder's name above them). */
+/** The dot as a button: a click opens the swatches under it (the project's name above them). */
 function projBtn(project, where) {
   if (!project) return "";
   const open = colorFor?.p === project && colorFor.w === where;

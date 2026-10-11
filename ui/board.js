@@ -5,7 +5,7 @@ function projectsKnown() {
   const add = (p, need = false) => { if (!p) return; const r = m.get(p) || m.set(p, { n: 0, need: 0 }).get(p); r.n++; if (need) r.need++; };
   const asking = new Set(state.items.map((i) => i.session_id));
   for (const s of state.sessions) add(s.project, asking.has(s.session_id));
-  for (const q of state.live || []) add(baseName(q.cwd));
+  for (const q of state.live || []) add(projOf(q.cwd));
   for (const p of state.parked || []) if (!state.sessions.some((s) => s.session_id === p.session_id)) add(p.project);
   // Projects with nothing live now, but answers in History: listed too (with no count), so History can be narrowed to one.
   for (const h of state.history || []) if (h.project && !m.has(h.project)) m.set(h.project, { n: 0, need: 0 });
@@ -320,7 +320,7 @@ function pickShelf(t) {
   renderMain();
 }
 function parkedRow(p, on) {
-  const sid = p.session_id, w = waking.has(sid), name = p.name || p.project || baseName(p.cwd) || "session";
+  const sid = p.session_id, w = waking.has(sid), name = p.name || baseName(p.cwd) || p.project || "session";
   return `<div class="prow ${p.kind} ${on ? "on" : ""} ${w ? "waking" : ""}" data-session="${esc(sid)}">
     ${p.kind === "parked" ? P_SIGN : ""}<b>${esc(name)}</b><span class="prow-agent">${esc(agentName(p.harness))}</span>${machTag(p.machine)}<span class="prow-age">${w ? "resuming…" : now() - p.at < 60000 ? "now" : ago(p.at)}</span>
     <button class="prow-go" data-wake="${esc(sid)}" ${w ? "disabled" : ""} aria-label="Resume ${esc(name)}">↺</button></div>`;
@@ -611,7 +611,7 @@ function starChip() {
   const rows = liveRows().filter((r) => stars.has(r.sid));
   // Starred and parked: not live, but still yours to come back to.
   for (const p of state.parked || []) if (isStarred(p.session_id) && !rows.some((r) => r.sid === p.session_id))
-    rows.push({ sid: p.session_id, harness: p.harness, name: bareName(p.name) || p.project || baseName(p.cwd) || "session", cwd: p.cwd || "", st: "parked", since: p.parked_ms, what: "", parked: true });
+    rows.push({ sid: p.session_id, harness: p.harness, name: bareName(p.name) || baseName(p.cwd) || p.project || "session", project: p.project, cwd: p.cwd || "", st: "parked", since: p.parked_ms, what: "", parked: true });
   if (!rows.length) { starOpen = false; return ""; }
   const needs = rows.filter((r) => r.st === "asks" || r.st === "yours");
   // It lights up when one newly needs you, then goes quiet: lit all the time, you'd stop seeing it.
@@ -629,7 +629,7 @@ function starPop(rows) {
     const what = r.what || (r.it ? plain(summary(r.it)) : "");   // a finished turn: its message
     const ask = r.st === "asks" && r.it?.kind === "permission" ? `<span class="st-acts"><button class="btn deny" data-act="deny" data-id="${esc(r.it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(r.it.id)}">Allow</button></span>` : "";
     return `<div class="lv-row st-row ${r.sid === (quietOpen || active?.sid) ? "on" : ""}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">
-      <div class="st-line">${projDot(baseName(r.cwd), r.st === "working")}${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${r.parked ? `${P_SIGN}<span class="sx-st">parked</span>` : `${newPill(r.sid)}${svChipState(r)}${placeIcon(r.sid)}`}<span class="age">${ago(r.since)}</span><span class="lv-acts">${r.parked && !waking.has(r.sid) ? `<button class="btn" data-wake="${esc(r.sid)}">↺ Resume</button>` : ""}${starBtn(r.sid)}</span></div>
+      <div class="st-line">${projDot(r.project || projOf(r.cwd), r.st === "working")}${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${r.parked ? `${P_SIGN}<span class="sx-st">parked</span>` : `${newPill(r.sid)}${svChipState(r)}${placeIcon(r.sid)}`}<span class="age">${ago(r.since)}</span><span class="lv-acts">${r.parked && !waking.has(r.sid) ? `<button class="btn" data-wake="${esc(r.sid)}">↺ Resume</button>` : ""}${starBtn(r.sid)}</span></div>
       ${what || ask ? `<div class="st-now ${r.st === "asks" ? "hot" : ""}">${r.run ? `<span class="dot-live"></span>` : ""}<span class="st-what ${r.st === "asks" && r.it && isBash(r.it) ? "mono" : ""}">${esc(what)}</span>${ask}</div>` : ""}</div>`;
   };
   return `<div class="lv-pop st-pop"><div class="st-head">Starred<span>${rows.length}</span></div><div class="lv-list">${sorted.map(row).join("")}</div><div class="lv-foot"><span class="lv-keys">Star a session on its card to follow it</span></div></div>`;

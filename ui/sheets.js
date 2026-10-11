@@ -15,7 +15,7 @@ function movingDialog() {
 async function moveToCue(sid) {
   // A quiet one (Cue hasn't heard from it yet) is only in the live list: its name and folder from there.
   const q = (state.live || []).find((x) => x.session_id === sid);
-  const s = sessionOf(sid) || (q && { name: bareName(q.name) || baseName(q.cwd), harness: q.harness, project: baseName(q.cwd) });
+  const s = sessionOf(sid) || (q && { name: bareName(q.name) || baseName(q.cwd), harness: q.harness, project: projOf(q.cwd) });
   if (!s || moving) return;
   if (quietOpen === sid) quietOpen = null;   // it opens in Active as it moves
   moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "" };
@@ -66,7 +66,7 @@ function liveMatches(q) {
     const byName = Math.min(...[nameScore(name, q), nameScore(r.name, q)].map((x) => x ?? 9));
     const rest = [r.cwd, ab.about, ab.now, (r.crew || crewOf(r.sid))?.lead_name].join(" ").toLowerCase();
     const score = byName < 9 ? byName : q.split(/\s+/).every((w) => rest.includes(w)) ? 5 : null;
-    return score === null ? null : { kind: "session", live: true, quiet: r.quiet, session_id: r.sid, name, project: baseName(r.cwd), harness: r.harness, at_ms: r.since, last: r.what || ab.now || "", score, rank: svRank(r) };
+    return score === null ? null : { kind: "session", live: true, quiet: r.quiet, session_id: r.sid, name, project: r.project || projOf(r.cwd), harness: r.harness, at_ms: r.since, last: r.what || ab.now || "", score, rank: svRank(r) };
   }).filter(Boolean).sort((a, b) => a.score - b.score || a.rank - b.rank || b.at_ms - a.at_ms);
 }
 /** The results in the order they're shown: running sessions, closed ones (best name match first), older
