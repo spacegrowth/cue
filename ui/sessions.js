@@ -489,7 +489,12 @@ async function svAct(act, sid) {
     }
     svCloseArm = null;
     renderMain();
-    try { toast(await invoke("close_session", { sessionId: sid })); }
+    const was = sessionOf(sid);
+    try {
+      toast(await invoke("close_session", { sessionId: sid }));
+      // Under Closed at once, as it was (its name with it), not after the list's next minutely read.
+      if (was) closedList = [{ ...was, ended_ms: now() }, ...(closedList || []).filter((c) => c.session_id !== sid)];
+    }
     catch (e) { toast(`Couldn't close it: ${e}`); }
     return;
   }

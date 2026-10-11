@@ -934,6 +934,10 @@ button.tm-chip:hover { background: var(--panel-2); }
 .ub-dot { width: 8px; height: 8px; border-radius: 50%; background: #7fae5a; }
 .ub-btn { height: 22px; padding: 0 10px; border-radius: 999px; border: 0; background: var(--bg); color: var(--on-bg); font: inherit; font-weight: 650; font-size: 12px; cursor: pointer; }
 .usage-pop { position: absolute; top: 38px; right: 0; z-index: 20; width: 300px; padding: 12px 14px 10px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow, 0 10px 30px rgba(0,0,0,.25)); }
+/* Hovering the meter bar shows the panel; a strip above it bridges the gap so the pointer can reach it. */
+.usage-pop.hov { display: none; }
+.usage-wrap:hover .usage-pop.hov { display: block; }
+.usage-pop.hov::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
 .up-head { font-weight: 700; font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
 .up-head .dim { font-weight: 500; font-size: 11px; }
 .up-group + .up-group { margin-top: 10px; }

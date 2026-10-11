@@ -71,7 +71,9 @@ const machShort = (m) => {
 const machTag = (m) => m ? `<span class="mach" title="Runs on ${esc(m)}">${esc(machShort(m))}</span>` : "";
 /** What Cue calls a session: the name you gave it, else its folder's name, else its project. */
 // ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
-const nameOf = (sid, project) => String(sessionOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || baseName(sessionOf(sid)?.cwd) || project;
+// A session that has stopped (parked or closed) keeps its name: its record as it was.
+const recordOf = (sid) => sessionOf(sid) || parkedOf(sid) || closedOf(sid);
+const nameOf = (sid, project) => String(recordOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || baseName(recordOf(sid)?.cwd) || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || state.history.find((i) => i.id === id);
 const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);
 /** A session you parked (stopped, kept to resume): not live, so not in state.sessions. */
