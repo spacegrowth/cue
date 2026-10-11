@@ -62,7 +62,7 @@ pub struct Session {
     /// The usage limit its last turn ran into (state "limited"). Kept after the limit lifts, until
     /// the session runs again, so Cue can offer to resend what didn't run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<crate::usage::Limit>,
+    pub limit: Option<crate::logs::usage::Limit>,
     /// What it's doing right now ("Running: cargo test"): a working Claude Code session's latest step,
     /// read from its transcript every second; cleared when its state changes. And since when.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -216,7 +216,7 @@ impl Sessions {
             // It went through after all (it waited behind a command, or the agent's word came late, as it can
             // from a machine): its bubble stops saying it didn't. Compared as the agent got it (spacing
             // changed, image paths after it), not character for character.
-            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && crate::transcript::is_message(&s.prompt, &e.text)) {
+            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && crate::logs::transcript::is_message(&s.prompt, &e.text)) {
                 e.unsent = false;
                 e.pending = false;
             }
@@ -605,7 +605,7 @@ impl Sessions {
         }
     }
 
-    pub fn set_limit(&mut self, session_id: &str, limit: Option<crate::usage::Limit>) {
+    pub fn set_limit(&mut self, session_id: &str, limit: Option<crate::logs::usage::Limit>) {
         if let Some(s) = self.0.get_mut(session_id) {
             s.limit = limit;
         }
@@ -765,7 +765,7 @@ fn same_message(a: &str, b: &str, paths: &[&str]) -> bool {
     // Long ones (a paste): the same start is the same message, whatever became of its whitespace (a
     // terminal may join its lines) or its end (an older copy was cut short, with "…").
     if is_long(&a) && is_long(&b) {
-        return crate::transcript::is_message(&a, &b) || crate::transcript::is_message(&b, &a);
+        return crate::logs::transcript::is_message(&a, &b) || crate::logs::transcript::is_message(&b, &a);
     }
     let (short, long) = if a.len() <= b.len() { (&a, &b) } else { (&b, &a) };
     long.contains(short.as_str()) && short.len() * 5 >= long.len() * 4

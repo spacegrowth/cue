@@ -746,11 +746,11 @@ pub fn text_in_box(o: &Origin, text: &str) -> Option<bool> {
 }
 
 /// A dialog open on the session's screen (its choices numbered), if Cue can see the pane.
-pub fn dialog_on(o: &Origin) -> Option<crate::dialog::Dialog> {
+pub fn dialog_on(o: &Origin) -> Option<crate::terminal::dialog::Dialog> {
     if o.tmux_pane.is_empty() {
         return None;
     }
-    crate::dialog::parse(&session_screen(o).ok()?)
+    crate::terminal::dialog::parse(&session_screen(o).ok()?)
 }
 
 /// A screen without spaces or the input box's side borders: how a wrapped line reads joined up again.
@@ -813,8 +813,8 @@ fn iterm_session_do(o: &Origin, predicate: &str, action: &str) -> Result<bool, S
 /// session's current process (a `claude --resume` in another tab is a new one). Any agent: the process
 /// its hook last reported (Codex, Pi too), while it's still running.
 fn current_tty(o: &Origin) -> Option<String> {
-    let from_list = crate::live::claude().into_iter().find(|q| q.session_id == o.session_id).map(|q| q.pid);
-    from_list.into_iter().chain(o.agent_pid).filter(|p| *p > 1).map(crate::live::tty_of).find(|t| !t.is_empty())
+    let from_list = crate::logs::live::claude().into_iter().find(|q| q.session_id == o.session_id).map(|q| q.pid);
+    from_list.into_iter().chain(o.agent_pid).filter(|p| *p > 1).map(crate::logs::live::tty_of).find(|t| !t.is_empty())
 }
 
 fn iterm_write(predicate: &str, action: &str) -> Result<bool, String> {

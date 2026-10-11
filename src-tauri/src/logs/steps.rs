@@ -16,7 +16,7 @@
 //! SHORTCUT: only the last 4 MB of a transcript is read, so very old turns of a huge session aren't
 //! there. That's past anything the chat shows; read further back on demand if that changes.
 
-use crate::transcript::{content_blocks, cut, lines, stamp};
+use crate::logs::transcript::{content_blocks, cut, lines, stamp};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -508,14 +508,14 @@ impl Feed {
                 }
                 // A Stop hook sent it back to work: more of the same turn (the chat folds it under
                 // "After a stop hook"), not a turn of its own.
-                if text.starts_with(crate::transcript::STOP_HOOK_MARK) {
+                if text.starts_with(crate::logs::transcript::STOP_HOOK_MARK) {
                     return false;
                 }
                 self.close_open("");
-                if crate::transcript::harness_text(text) {
+                if crate::logs::transcript::harness_text(text) {
                     self.helper_finished(text, at);
                 }
-                let prompt = if crate::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
+                let prompt = if crate::logs::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
                 self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0 });
                 false // an empty turn isn't shown until something happens in it
             }
@@ -1232,7 +1232,7 @@ mod tests {
         let mut log = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
         std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","timestamp":"2026-10-04T10:01:00.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent \"Backend: names\" finished</summary>\n</task-notification>"}}"#, "\n").as_bytes()).unwrap();
         f.catch_up();
-        assert_eq!(f.helpers[0].finished_ms, crate::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
+        assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }

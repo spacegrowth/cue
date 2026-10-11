@@ -109,7 +109,7 @@ fn parse(text: &str) -> Result<Vec<Value>, String> {
         let resets_ms = match get("resets_at") {
             "" => None,
             v if v.chars().all(|c| c.is_ascii_digit()) => v.parse::<u64>().ok(),
-            v => Some(crate::transcript::iso_ms(v).ok_or(format!("Line {n}: \"resets_at\" isn't a date and time (like 2026-10-12T00:00:00Z) ({v:?})."))?),
+            v => Some(crate::logs::transcript::iso_ms(v).ok_or(format!("Line {n}: \"resets_at\" isn't a date and time (like 2026-10-12T00:00:00Z) ({v:?})."))?),
         };
         meters.push(json!({ "label": label, "spent": spent, "limit": limit, "unit": unit, "resets_ms": resets_ms }));
     }

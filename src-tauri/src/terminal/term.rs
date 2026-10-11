@@ -187,7 +187,7 @@ impl Drop for Opening<'_> {
 /// Start the client: one SSH round trip to find the pane (for a machine's session), then the client
 /// itself in a pseudo-terminal, its output streamed to `out` from a thread of its own.
 fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<(u64, Open), String> {
-    let tmux = crate::focus::tmux_bin();
+    let tmux = crate::terminal::focus::tmux_bin();
     let gen = next_gen();
     let chain: Vec<String> = match target {
         Target::Pane(pane) => pane_chain(&tmux, pane, host, gen)?,
@@ -297,7 +297,7 @@ mod tests {
     use std::sync::{Arc, Mutex as M};
 
     fn tmux(args: &[&str]) -> String {
-        let o = std::process::Command::new(crate::focus::tmux_bin()).args(args).output().unwrap();
+        let o = std::process::Command::new(crate::terminal::focus::tmux_bin()).args(args).output().unwrap();
         String::from_utf8_lossy(&o.stdout).trim().to_string()
     }
 
@@ -406,7 +406,7 @@ mod tests {
         for bad in ["", "a b", "lead:0", "x;y", "$(id)", "a.b"] {
             assert_eq!(attach_args(bad), None, "{bad:?}");
         }
-        if !crate::focus::tmux_installed() {
+        if !crate::terminal::focus::tmux_installed() {
             return;
         }
         // Its session, and a longer name that starts with it (what a plain `-t` would also match).
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn the_built_in_terminal_shows_a_session_takes_what_you_type_and_leaves_it_running() {
-        if !crate::focus::tmux_installed() {
+        if !crate::terminal::focus::tmux_installed() {
             return;
         }
         let name = format!("cue-term-test-{}", std::process::id());

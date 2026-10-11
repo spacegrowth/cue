@@ -51,8 +51,21 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let is_lock = |l: &str| l.contains("locking::lock(") || l.contains(".lock()") || l.contains(".st()");
         let mut bad = vec![];
-        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
-            let path = entry.path();
+        // Every `.rs` file under src/, folders included.
+        fn rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    rs_files(&path, out);
+                } else {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = vec![];
+        rs_files(&dir, &mut files);
+        files.sort();
+        for path in files {
             // Every file but this one (its patterns name the shapes).
             if path.extension().is_none_or(|e| e != "rs") || path.file_name().is_some_and(|n| n == "locking.rs") {
                 continue;

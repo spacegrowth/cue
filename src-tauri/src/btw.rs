@@ -16,7 +16,7 @@ pub fn ask_about(origin: &crate::model::Origin, question: &str) -> Result<String
     if origin.harness != "claude" {
         return Err("By the way works with Claude Code sessions".into());
     }
-    let model = (!origin.transcript_path.is_empty()).then(|| crate::steps::model_of(&origin.transcript_path)).flatten();
+    let model = (!origin.transcript_path.is_empty()).then(|| crate::logs::steps::model_of(&origin.transcript_path)).flatten();
     ask(&origin.session_id, &origin.cwd, model.as_deref(), question)
 }
 

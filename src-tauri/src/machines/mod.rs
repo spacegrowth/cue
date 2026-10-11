@@ -3,6 +3,10 @@
 //! shares one connection per machine (OpenSSH's ControlMaster). When a machine needs a login, Cue opens
 //! `ssh` in a terminal tab and you log in there yourself; from then on Cue uses the connection you opened.
 //! It never installs anything there: it uses the agents you installed, and says how to install the rest.
+
+pub(crate) mod hooks;
+pub(crate) mod logs;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::process::Command;
@@ -88,7 +92,7 @@ pub fn shared() -> [&'static str; 6] {
 }
 
 /// Single-quoted for a POSIX shell (the one helper Cue has for it).
-pub use crate::focus::shq;
+pub use crate::terminal::focus::shq;
 
 /// A machine's name, short enough for a notification: its first part (no user@, no domain; an IP address
 /// stays whole), and past 10 characters its first 5 and last 5. (The window shortens it the same way: machShort.)
@@ -333,7 +337,7 @@ pub(crate) fn remote_dir(dir: &str) -> String {
 /// Start `line` in a new window of Cue's tmux session on the machine, in `dir` there: (pane, its tty,
 /// the folder's full path). Typed into its shell, so the window stays when the agent exits.
 pub fn open_in_tmux(m: &Machine, line: &str, dir: &str, name: &str) -> Result<(String, String, String), String> {
-    let out = run(&m.host, &open_script(crate::focus::TMUX_SESSION, line, dir, name))?;
+    let out = run(&m.host, &open_script(crate::terminal::focus::TMUX_SESSION, line, dir, name))?;
     if out.contains("NODIR") {
         return Err(format!("{dir} isn't a folder on {}", m.name));
     }
@@ -409,7 +413,7 @@ pub fn login(m: &Machine) -> Result<String, String> {
         return Err("that isn't an SSH host".into());
     }
     let line = format!("ssh {} {}", shared().join(" "), m.host);
-    crate::focus::open_tab_with(&line).map(|t| t.what)
+    crate::terminal::focus::open_tab_with(&line).map(|t| t.what)
 }
 
 #[cfg(test)]
@@ -452,7 +456,7 @@ mod tests {
 
     #[test]
     fn starting_a_session_there_opens_a_tmux_window_in_the_folder_and_types_its_line() {
-        if !crate::focus::tmux_installed() {
+        if !crate::terminal::focus::tmux_installed() {
             return;
         }
         let s = format!("cue-mtest-{}", std::process::id());
@@ -461,9 +465,9 @@ mod tests {
         let out = String::from_utf8_lossy(&out.stdout).to_string();
         std::thread::sleep(std::time::Duration::from_millis(900));
         let pane = out.lines().find_map(|l| l.strip_prefix("PANE:")).unwrap_or("").split('|').next().unwrap_or("").to_string();
-        let screen = std::process::Command::new(crate::focus::tmux_bin()).args(["capture-pane", "-p", "-t", &pane]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
-        let windows = std::process::Command::new(crate::focus::tmux_bin()).args(["list-windows", "-t", &s, "-F", "#{window_name}"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
-        let _ = std::process::Command::new(crate::focus::tmux_bin()).args(["kill-session", "-t", &s]).status();
+        let screen = std::process::Command::new(crate::terminal::focus::tmux_bin()).args(["capture-pane", "-p", "-t", &pane]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+        let windows = std::process::Command::new(crate::terminal::focus::tmux_bin()).args(["list-windows", "-t", &s, "-F", "#{window_name}"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+        let _ = std::process::Command::new(crate::terminal::focus::tmux_bin()).args(["kill-session", "-t", &s]).status();
         assert!(pane.starts_with('%'), "it says which pane: {out:?}");
         assert_eq!(out.lines().find_map(|l| l.strip_prefix("DIR:")), Some(std::env::var("HOME").unwrap().as_str()), "~ is home there");
         assert!(screen.contains("started from cue"), "its line was typed and ran: {screen:?}");
@@ -474,10 +478,10 @@ mod tests {
 
     #[test]
     fn a_session_whose_name_only_starts_the_same_is_never_used() {
-        if !crate::focus::tmux_installed() {
+        if !crate::terminal::focus::tmux_installed() {
             return;
         }
-        let tmux = |args: &[&str]| std::process::Command::new(crate::focus::tmux_bin()).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+        let tmux = |args: &[&str]| std::process::Command::new(crate::terminal::focus::tmux_bin()).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
         let s = format!("cue-ptest-{}", std::process::id());
         let other = format!("{s}-smoke");
         tmux(&["new-session", "-d", "-s", &other, "-n", "theirs", "sleep 30"]);

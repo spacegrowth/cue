@@ -3,7 +3,8 @@
 
 use crate::hub::{Hub, Reply};
 use crate::model::ClientMsg;
-use crate::{focus, transcript};
+use crate::logs::transcript;
+use crate::terminal::focus;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
@@ -83,19 +84,19 @@ async fn send(w: &mut tokio::net::unix::OwnedWriteHalf, v: Value) -> std::io::Re
 /// The hook fires before Claude writes the prompt to its transcript, and only the transcript says
 /// who sent it, so look for up to ~3s. Not found (or Codex, which sends no id): count it as yours.
 async fn settle_prompt(hub: Arc<Hub>, sid: String, path: String, prompt_id: String, text: String) {
-    use crate::transcript::Sender;
+    use crate::logs::transcript::Sender;
     // Claude Code's own notice of a finished background task is never yours, whatever the transcript
     // says yet. (Handed over mid-turn, it carries the turn's promptId: that prompt is yours.)
-    if crate::transcript::harness_text(&text) {
+    if crate::logs::transcript::harness_text(&text) {
         return;
     }
     if !prompt_id.is_empty() && !path.is_empty() {
         for _ in 0..15 {
             // Handed over from Claude Code's queue: only the attachment says so, so look there first.
-            if crate::transcript::queued_from_harness(&path, &text) {
+            if crate::logs::transcript::queued_from_harness(&path, &text) {
                 return;
             }
-            match crate::transcript::prompt_sender(&path, &prompt_id) {
+            match crate::logs::transcript::prompt_sender(&path, &prompt_id) {
                 Some(Sender::Harness) => return,
                 Some(Sender::Peer { name, pid, body }) => return hub.prompt_from_peer(&sid, &name, pid, &body),
                 Some(Sender::Human) => break,
@@ -201,7 +202,7 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
             match prompt {
                 // Nothing to look up (Pi, Codex, a session on a machine): the prompt is yours, noted with
                 // the event itself.
-                Some((_, path, ref text)) if (prompt_id.is_empty() || path.is_empty()) && !crate::transcript::harness_text(text) => {
+                Some((_, path, ref text)) if (prompt_id.is_empty() || path.is_empty()) && !crate::logs::transcript::harness_text(text) => {
                     hub.active_from_you(origin, message, turn, &driven_by);
                 }
                 Some((_, path, _)) if prompt_id.is_empty() || path.is_empty() => hub.event(origin, &event, message, turn, &driven_by),
@@ -214,7 +215,7 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
         }
         ClientMsg::Usage { rate_limits, session_id, cost, window } => {
             if let (false, Some(w)) = (session_id.is_empty(), window) {
-                crate::steps::set_window(&session_id, w);
+                crate::logs::steps::set_window(&session_id, w);
             }
             // The plan's limits first: whether there are any decides if the session's cost is shown.
             if rate_limits.is_object() {

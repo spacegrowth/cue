@@ -163,7 +163,7 @@ pub fn about(transcript: &str) -> String {
             return v.clone();
         }
     }
-    let v = crate::transcript::about(transcript);
+    let v = crate::logs::transcript::about(transcript);
     cache.insert(transcript.to_string(), (now, mtime, v.clone()));
     v
 }

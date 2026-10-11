@@ -277,7 +277,7 @@ pub fn folder_of(cwd: &str) -> String {
 /// The project a folder on this Mac belongs to: its git repository, by its main checkout's name, so
 /// every worktree of `cue` is `cue`. Outside a repository, the folder's own name.
 pub fn project_of(cwd: &str) -> String {
-    crate::live::repo_root(cwd).map(|r| crate::live::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
+    crate::logs::live::repo_root(cwd).map(|r| crate::logs::live::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
 }
 
 /// A session's project: as `project_of` on this Mac; on another machine, its folder's name (its

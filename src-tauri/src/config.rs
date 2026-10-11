@@ -31,7 +31,7 @@ pub fn effective() -> Value {
         "login": { "open": login::enabled() },
         "tray": { "show": tray_shown() },
         // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
-        "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::focus::tmux_installed(), "terminal": crate::focus::terminal_name() },
+        "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::terminal::focus::tmux_installed(), "terminal": crate::terminal::focus::terminal_name() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
@@ -70,7 +70,7 @@ pub fn flag(pointer: &str) -> bool {
 /// New sessions run in Cue (in tmux, shown in Cue's own terminal) unless Settings says a terminal tab;
 /// only when tmux is installed.
 pub fn tmux_sessions() -> bool {
-    load().pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true) && crate::focus::tmux_installed()
+    load().pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true) && crate::terminal::focus::tmux_installed()
 }
 
 /// What a finished card shows when a Stop hook made the agent continue: "answer" | "last".

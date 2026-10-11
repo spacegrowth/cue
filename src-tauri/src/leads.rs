@@ -817,7 +817,7 @@ impl Cmd {
             return if out.status.success() { Ok(String::from_utf8_lossy(&out.stdout).into_owned()) } else { Err(last(&String::from_utf8_lossy(&out.stderr), "it failed")) };
         }
         let m = crate::machines::get(&self.machine).ok_or(format!("{} isn't one of your machines any more", self.machine))?;
-        let line = std::iter::once(&self.bin).chain(&self.args).map(|a| crate::focus::shq(a)).collect::<Vec<_>>().join(" ");
+        let line = std::iter::once(&self.bin).chain(&self.args).map(|a| crate::terminal::focus::shq(a)).collect::<Vec<_>>().join(" ");
         // Its own words either way (Cue's SSH hides a script's stderr), and its exit code last.
         let out = crate::machines::run(&m.host, &format!("{line} 2>&1; printf '\\n__CUE_EXIT__:%d\\n' \"$?\""))?;
         match out.rsplit_once("\n__CUE_EXIT__:") {

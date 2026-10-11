@@ -149,8 +149,8 @@ fn regroup_projects(c: &Connection) {
         };
         let mut n = 0;
         for (id, cwd) in rows {
-            let Some(root) = crate::live::repo_root(&cwd) else { continue };
-            let project = crate::live::repo_name(&root);
+            let Some(root) = crate::logs::live::repo_root(&cwd) else { continue };
+            let project = crate::logs::live::repo_name(&root);
             let column = if table == "parked" { "" } else { ", project = ?1" };
             n += c.execute(&format!("UPDATE {table} SET data = json_set(data, '$.project', ?1){column} WHERE id = ?2"), params![project, id])?;
         }

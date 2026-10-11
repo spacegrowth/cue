@@ -103,7 +103,7 @@ pub fn watch_all() {
     // A watcher an earlier Cue left behind would take events away from this one: end them first.
     // Only ssh processes whose command carries the watcher's mark, nothing else that mentions it.
     machines::end_streams("# cue-watch");
-    crate::machine_logs::stop_strays();
+    crate::machines::logs::stop_strays();
     for m in machines::list() {
         watch(&m);
     }
@@ -325,9 +325,9 @@ fn handle(m: &Machine, id: &str, ev: Value) {
     // The session reads its log from a live copy on this Mac (machine_logs); the hooks carry on as well.
     if let Some(remote) = msg["transcript_path"].as_str().filter(|p| !p.is_empty()).map(str::to_string) {
         if ev["event"] == "end" {
-            crate::machine_logs::stop(m, &remote);
+            crate::machines::logs::stop(m, &remote);
         } else {
-            let local = crate::machine_logs::local_copy(m, &remote);
+            let local = crate::machines::logs::local_copy(m, &remote);
             if !local.is_empty() {
                 msg["transcript_path"] = json!(local);
             }
