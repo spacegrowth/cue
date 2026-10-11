@@ -49,17 +49,18 @@ const WATCH: &str = r#"# cue-watch
 d="$HOME/.cue"; mkdir -p "$d/in" "$d/out"
 n=0; p=0
 while :; do
-  if [ "$n" -eq 0 ]; then
-    date +%s >"$d/watching"
-    echo "@@hb" || exit 0
-    [ "$p" -eq 0 ] && find "$d/out" -name '*.json' -mmin +1440 -delete 2>/dev/null
-    p=$(( (p + 1) % 60 ))
-  fi
-  n=$(( (n + 1) % 10 ))
+  [ "$n" -eq 0 ] && date +%s >"$d/watching"
   for f in "$d"/in/*.json; do
     [ -e "$f" ] || continue
     printf '@@%s ' "$(basename "$f" .json)"; tr -d '\n' <"$f"; echo; rm -f "$f"
   done
+  # The beat comes after the events waiting there: the first one means all of them were handed over.
+  if [ "$n" -eq 0 ]; then
+    [ "$p" -eq 0 ] && find "$d/out" -name '*.json' -mmin +1440 -delete 2>/dev/null
+    p=$(( (p + 1) % 60 ))
+    echo "@@hb" || exit 0
+  fi
+  n=$(( (n + 1) % 10 ))
   sleep 0.1 2>/dev/null || { sleep 1; n=0; }
 done"#;
 
@@ -168,7 +169,9 @@ fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), Strin
             Ok(None) | Err(_) => break,
         };
         if line == "@@hb" {
-            // It's alive. The first beat of a stream: the machine is reached (again).
+            // It's alive. The first beat of a stream: the machine is reached (again), and the events
+            // queued there while Cue wasn't watching (an agent that ended meanwhile) are handled already:
+            // what's rebuilt on reaching it goes by what they left.
             if !reached {
                 reached = true;
                 machines::forget(&m.host);
@@ -332,7 +335,12 @@ fn handle(m: &Machine, id: &str, ev: Value) {
     }
     if msg["type"] != "ask" {
         if let Some(mut s) = crate::hook::connect(Duration::from_millis(800)) {
-            let _ = s.write_all(format!("{msg}\n").as_bytes());
+            if s.write_all(format!("{msg}\n").as_bytes()).is_ok() {
+                // Cue hangs up once it has taken the event in: wait for that (up to the timeout), so
+                // the next line, and the machine counting as reached, come after it.
+                let _ = s.shutdown(std::net::Shutdown::Write);
+                let _ = std::io::Read::read(&mut s, &mut [0u8; 64]);
+            }
         }
         return;
     }
@@ -435,6 +443,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
         assert!(!old_there, "a day-old answer is gone");
         assert!(fresh_there, "a fresh one stays");
+    }
+
+    #[test]
+    fn events_waiting_on_the_machine_come_before_its_first_beat() {
+        // An agent ended while Cue wasn't watching: its event waits in ~/.cue/in. The stream hands it
+        // over before saying the machine is reached, so a rebuild on reaching it knows it ended.
+        let home = std::env::temp_dir().join(format!("cue-watch-q-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/in")).unwrap();
+        std::fs::write(home.join(".cue/in/100-1.json"), "{\"event\":\"end\"}\n").unwrap();
+        let mut c = Command::new("/bin/sh").arg("-c").arg(WATCH).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let mut lines = BufReader::new(c.stdout.take().unwrap()).lines();
+        let first = lines.next().unwrap().unwrap();
+        let second = lines.next().unwrap().unwrap();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!((first.as_str(), second.as_str()), (r#"@@100-1 {"event":"end"}"#, "@@hb"));
     }
 
     #[test]

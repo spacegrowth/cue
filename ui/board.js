@@ -501,13 +501,25 @@ function boardView() {
   const needRows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms))
     .map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
 
+  // A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one
+  // for a team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever
+  // their own project is, busy ones too, not on cards of their own.
+  const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
+  const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
+  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && (crewOf(m.lead)?.executors || []).some((e) => e.session_id === sid); };
+  const shown = working.filter((s) => !inTree(s.session_id));
+  // Sessions counts what it shows: its cards, and the executors in its leads' trees.
+  const treed = working.filter((s) => inTree(s.session_id) && sessTree.has(crewOf(s.session_id).lead)).length;
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : idleNote(s); };
-  const card = (s, open = false) => `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" data-session="${esc(s.session_id)}">
+  // A lead's card in Sessions holds its tree: only its top part opens the lead (a row opens that executor,
+  // and the tree's buttons are their own).
+  const card = (s, open = false) => { const tree = sessTree.has(s.session_id) ? teamTree(s.session_id) : "", go = `data-session="${esc(s.session_id)}"`;
+    return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
       <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || `<span>${esc(agentName(s.harness))}</span>`}${machTag(s.machine)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}</div>`;
-  const busy = working.filter((s) => !idleNote(s)), idle = working.filter((s) => idleNote(s) && s.state !== "limited"), outs = working.filter((s) => s.state === "limited");
+      ${bar(s.session_id)}${s.trust_ms ? `<div class="doing">Asking you to trust its folder</div>` : s.compacting_ms ? `<div class="doing">Compacting…</div>` : s.state === "working" && s.doing ? `<div class="doing">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`; };
+  const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
   const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
@@ -533,7 +545,7 @@ function boardView() {
       ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
     </div>
     <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
-      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${working.length}</span></div><div class="sec-body">${workCol}</div></div>
+      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${shown.length + treed}</span></div><div class="sec-body">${workCol}</div></div>
       ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
       ${drawer("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList)}
       ${shelfDrawer(isOpen)}

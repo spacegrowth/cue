@@ -123,6 +123,24 @@
           { session_id: "pe-1", name: "parser", model: "deepseek/deepseek-flash", status: "reported", packet: 2, plugin: "pilead", machine: "build-box", goal: "write the cart parser", outcome: "Parser handles nested lists and empty carts" },
           { session_id: "pe-2", name: "wire-up", model: "deepseek/deepseek-flash", status: "busy", packet: 1, plugin: "pilead", machine: "build-box", goal: "wire the parser into the checkout page" } ] };
       }
+      // ?crew=1&busy=1: a working lead (ledger) whose busy executor works in another repo (ledger-api, its own
+      // session in Cue): the executor sits in the lead's tree on its Sessions card, not on a card of its own.
+      if (q.has("crew") && q.has("busy")) {
+        state.sessions.push(sess("led", "ledger", "claude", "working", 4, [seg("working", 4)], "split the ledger import into packets"),
+          { ...sess("lex", "ledger-api", "claude", "working", 2, [seg("working", 2)], "packet 1"), doing: "Running: cargo test -q", doing_ms: now - 40000 });
+        state.crew.led = { role: "lead", plugin: "relay", name: "ledger", color: [176, 150, 210], model: "claude-opus-5-5", executors: [
+          { session_id: "lex", name: "import-split", model: "claude-sonnet-5-5", status: "busy", packet: 1, goal: "split the CSV import into one job per account" } ] };
+        state.crew.lex = { role: "executor", plugin: "relay", name: "import-split", color: [176, 150, 210], model: "claude-sonnet-5-5", status: "busy", packet: 1, lead: "led", lead_name: "ledger", lead_armed: true, goal: "split the CSV import into one job per account" };
+      }
+      // ?crew=1&remote=1: a relay lead on build-box (infra-ops) with two executors Cue doesn't hold there, each
+      // in a tmux session of its own; dns-cutover's row is clicked (twice: still one terminal), so its pane and
+      // its own terminal show. body[data-term-opens] counts the term_open calls per session.
+      if (q.has("crew") && q.has("remote")) {
+        state.sessions.push({ ...sess("rlead", "infra-ops", "claude", "working", 3, [seg("working", 3)], "move DNS to the new provider"), machine: "build-box", tmux_pane: "%7" });
+        state.crew.rlead = { role: "lead", plugin: "relay", name: "infra-ops", machine: "build-box", color: [120, 170, 200], model: "claude-opus-5-5", executors: [
+          { session_id: "rx-dns", name: "dns-cutover", model: "claude-sonnet-5-5", status: "busy", packet: 2, plugin: "relay", machine: "build-box", tmux_session: "relay-dns-cutover", goal: "move the zone records to the new DNS provider" },
+          { session_id: "rx-certs", name: "cert-renew", model: "claude-sonnet-5-5", status: "reported", packet: 1, plugin: "relay", machine: "build-box", tmux_session: "relay-cert-renew", goal: "renew the wildcard certificate", outcome: "Wildcard cert renewed, expires in 90 days", verify: { verdict: "COUNTS-MATCH" } } ] };
+      }
       if (q.has("crew")) state.reviews = { "x-miss": "not picked up" };
       // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.
       if (q.has("crew") && q.has("rq")) { state.review_queue = { relay: [{ exec: "x-spend", name: "board-spend", at_ms: now - 2 * M }, { exec: "x-docs", name: "readme-pass", at_ms: now - M }] }; state.reviews = { ...state.reviews, "x-spend": "review queued", "x-docs": "review queued" }; }
@@ -148,7 +166,7 @@
       // ?held=1: the working order-engine session has a message kept in Cue, open in Active.
       if (q.has("held")) { const x = state.sessions.find((y) => y.project === "order-engine"); if (x) { x.held = { role: "you", text: "also keep the old broker session open while you test", at_ms: now - M, images: [] }; try { localStorage.setItem("cue.spot", JSON.stringify({ sid: x.session_id, view: "board" })); } catch {} } }
       // Two sessions run on other machines (+ New → Machine): one name shortened, one short already.
-      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", plr: "build-box" }[x.session_id] || "";
+      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", plr: "build-box", rlead: "build-box" }[x.session_id] || "";
       if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
@@ -195,6 +213,15 @@
           // ?term=1: agent-relay runs in tmux; its built-in terminal shows a Claude Code permission menu.
           if (cmd === "session_screen") return "  Do you want to proceed?\n  ❯ 1. Yes\n    2. Yes, and don't ask again\n    3. No (esc)";
           if (cmd === "term_open") {
+            const opens = JSON.parse(document.body.dataset.termOpens || "{}");
+            opens[args.sessionId] = (opens[args.sessionId] || 0) + 1;
+            document.body.dataset.termOpens = JSON.stringify(opens);
+            if (args.sessionId.startsWith("rx-")) {
+              const exec = `\x1b[1m[relay-dns-cutover]\x1b[0m  claude · build-box\r\n\r\n\x1b[2m⏺\x1b[0m Update(zones/example.net.tf)\r\n  ⎿ Updated with 14 additions and 3 removals\r\n\x1b[2m⏺\x1b[0m Bash(terraform plan -out dns.plan)\r\n  ⎿ Plan: 12 to add, 0 to change, 3 to destroy.\r\n\r\n\x1b[33m✻ Checking the TTLs… (38s)\x1b[0m\r\n`;
+              const b = btoa(String.fromCharCode(...new TextEncoder().encode(exec)));
+              setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b } })), 150);
+              return 1;
+            }
             const screen = "\x1b[2m╭──────────────────────────────────────────────────────────╮\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[33mBash command\x1b[0m\r\n\x1b[2m│\x1b[0m   rm -rf build && make release\r\n\x1b[2m│\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[1mDo you want to proceed?\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[32m❯ 1. Yes\x1b[0m\r\n\x1b[2m│\x1b[0m   2. Yes, and don't ask again for rm commands here\r\n\x1b[2m│\x1b[0m   3. No, and tell Claude what to do differently (esc)\r\n\x1b[2m╰──────────────────────────────────────────────────────────╯\x1b[0m\r\n";
             const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(screen)));
             setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b64 } })), 150);
@@ -344,6 +371,9 @@
       // ?open=<session id>: that session's chat in Active (e.g. names: at its prompt while background agents work).
       const openQ = new URLSearchParams(q).get("open");
       if (openQ && openQ !== "term") setTimeout(() => setActive(null, openQ), 80);
+      // (&view=sessions: the Sessions view, dns-cutover marked as the one open, no click to leave the view.)
+      if (/remote=1/.test(q) && /view=sessions/.test(q)) setTimeout(() => { quietOpen = "rx-dns"; renderMain(); }, 200);
+      else if (/remote=1/.test(q)) setTimeout(() => { document.querySelector('[data-exec-term="rx-dns"]')?.click(); setTimeout(() => document.querySelector('[data-exec-term="rx-dns"]')?.click(), 1200); }, 200);
       // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
       if (/new=1/.test(q)) setTimeout(() => {
         state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };

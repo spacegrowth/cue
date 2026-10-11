@@ -113,7 +113,7 @@ function btwPanel(sid) {
 /** Closed: one strip showing its screen's last line, amber while it waits on something only the terminal
  *  can answer. Open: xterm.js draws the real terminal, streamed from a tmux client of Cue's own (term.rs),
  *  and what you type goes straight to it. Its element lives outside the redraws: each one puts it back. */
-const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane;
+const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane || !!execTerm(sid);
 let termSid = null;            // whose terminal is open
 let termGen = 0;               // which opening its output belongs to (0: not known yet)
 let termObj = null, termFit = null, termHost = null, termWatch = null;
@@ -164,6 +164,8 @@ function termDock(sid) {
 }
 async function openTerm(sid) {
   if (!inTmux(sid)) return;
+  // Already open, or opening (its client's on the way): that one, not a second.
+  if (termSid === sid && termObj) return termObj.focus();
   if (termSid) closeTerm(true);
   termSid = sid;
   termGen = 0;
@@ -196,6 +198,19 @@ async function openTerm(sid) {
     const gen = await invoke("term_open", { sessionId: sid, cols: termObj.cols, rows: termObj.rows });
     if (termSid === sid) termGen = gen;
   } catch (e) { toast(`Couldn't open its terminal: ${e}`); if (termSid === sid) closeTerm(); }
+}
+/** A remote executor, from its row in its lead's tree: its chat when Cue holds it, else a pane of its
+ *  own (execPane), and either way its terminal, attached to its own tmux session there. Once per
+ *  executor: a second click on the same row keeps the terminal that's open. */
+function openExec(sid) {
+  if (sessionOf(sid)) setActive(null, sid);
+  else if (quietOpen !== sid || view !== "board") {
+    if (quietOpen !== sid) setActive(null, null);   // (not when it's this one: that would end its terminal)
+    view = "board";
+    quietOpen = sid;
+    renderMain();
+  }
+  return openTerm(sid);
 }
 /** Close it (the session keeps running in tmux). `quiet`: no redraw, another opening follows. */
 function closeTerm(quiet = false) {
@@ -935,6 +950,8 @@ function metaInline(sid) {
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
 let quietOpen = null;
 function quietPane() {
+  const x = execTerm(quietOpen);
+  if (x) return execPane(quietOpen, x);
   const q = (state.live || []).find((x) => x.session_id === quietOpen);
   if (!q) { quietOpen = null; return activePane(); }   // it ended (or reported in): back to the usual
   const f = stepFeeds.get(q.session_id);
@@ -947,6 +964,15 @@ function quietPane() {
     ${subHead(q.cwd, "", "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
     ${chatBox(`q|${q.session_id}`, chat || `<div class="dim cv-empty" data-key="empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`)}</div>`;
+}
+/** A remote executor Cue doesn't hold (its hooks never reached Cue): its team, its packet as its lead's
+ *  listing has it, and its own terminal, which fills the pane. */
+function execPane(sid, e) {
+  const st = exState(e);
+  return `<div class="active-pane exec-pane">
+    <div class="ap-head">${badge(e.plugin === "pilead" ? "pi" : "claude")}<span class="proj">${esc(e.name || sid)}</span><span class="role executor">EXEC</span>${e.model ? `<span class="dim">${esc(shortModel(e.model))}</span>` : ""}<span class="mach">${esc(machShort(e.machine))}</span>${st.word ? `<span class="pill soft">${esc(st.word)}</span>` : ""}<span class="grow"></span></div>
+    ${teamBar(sid)}${packetCard(sid, e)}
+    ${termDock(sid)}</div>`;
 }
 /** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
 function quietTurn(sid, t, live, latest, harness = "claude") {

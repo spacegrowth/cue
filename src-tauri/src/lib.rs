@@ -31,6 +31,7 @@ mod term;
 mod machines;
 mod machine_hooks;
 mod machine_logs;
+mod remote_poll;
 mod shell;
 
 use hub::Hub;
@@ -358,6 +359,14 @@ fn rebuildable(o: &model::Origin) -> bool {
     o.harness == "claude" && !o.tmux_pane.is_empty() && !o.cwd.is_empty()
 }
 
+/// Does Cue bring this session back by itself (at launch, or when its machine is reached again)? A
+/// rebuildable one, unless it's a relay or pi-lead executor (`executor`, from their listings): that one
+/// belongs to its lead, which resumes, replaces or closes it; a `claude --resume` of Cue's own would be a
+/// second terminal on it, one its lead doesn't know about.
+fn auto_resumable(o: &model::Origin, executor: impl Fn(&str) -> bool) -> bool {
+    rebuildable(o) && !executor(&o.session_id)
+}
+
 /// Run `f` (blocking) at most `secs`: None when it hasn't finished (its thread keeps going).
 fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static, secs: u64) -> Option<T> {
     let (tx, rx) = std::sync::mpsc::channel();
@@ -446,12 +455,14 @@ fn restore_sessions(hub: &Arc<Hub>) {
     if std::env::var_os("CUE_QUIET").is_some() || !config::tmux_sessions() {
         return;
     }
-    // Claude Code's own registry of the sessions running now, read fresh (the watcher hasn't yet).
+    // Claude Code's own registry of the sessions running now, read fresh (the watcher hasn't yet), and
+    // relay's and pi-lead's crews here (their executors are left to their leads).
     live::refresh();
+    leads::refresh();
     let running: std::collections::HashSet<String> = live::claude().into_iter().map(|q| q.session_id).collect();
     for s in hub.saved_sessions() {
         // A machine's sessions come back when Cue reaches the machine (restore_machine), not here.
-        if !rebuildable(&s.origin) || !s.origin.machine.is_empty() {
+        if !auto_resumable(&s.origin, leads::is_executor) || !s.origin.machine.is_empty() {
             continue;
         }
         let label = if !s.name.is_empty() { s.name.clone() } else { model::project_of(&s.origin.cwd) };
@@ -471,16 +482,53 @@ fn restore_machine(hub: &Arc<Hub>, machine: &str) {
         return;
     }
     static BUSY: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-    if crate::locking::lock(&BUSY, "BUSY").iter().any(|m| m == machine) {
-        return;
+    {
+        let mut busy = crate::locking::lock(&BUSY, "BUSY");
+        if busy.iter().any(|m| m == machine) {
+            return;
+        }
+        busy.push(machine.to_string());
     }
-    let sessions: Vec<_> = hub.saved_sessions().into_iter().filter(|s| s.origin.machine == machine && rebuildable(&s.origin)).map(|s| (s.origin.machine.clone(), s.origin, s.name)).collect();
-    if sessions.is_empty() {
-        return;
-    }
-    crate::locking::lock(&BUSY, "BUSY").push(machine.to_string());
-    remote_restores(hub, sessions);
+    restore_machine_now(hub, machine);
     crate::locking::lock(&BUSY, "BUSY").retain(|m| m != machine);
+}
+
+fn restore_machine_now(hub: &Arc<Hub>, machine: &str) {
+    if !hub.saved_sessions().iter().any(|s| s.origin.machine == machine && rebuildable(&s.origin)) {
+        return;
+    }
+    // Which of them are relay / pi-lead executors: read from the machine first if Cue hasn't yet (it
+    // was just reached, the remote poll may not have got to it). If that read fails, the sessions not
+    // known as executors (from an earlier read, or from Cue's own record of who drives them) still come
+    // back now; the remote poll reads the machine's crews again on its next turn.
+    if !leads::remote_known(machine) {
+        let Some(m) = machines::get(machine) else { return };
+        if leads::refresh_remote(&m.name, &m.host).1.is_none() {
+            machine_hooks::log_raw(machine, "couldn't read its crews: rebuilding the sessions not known as executors");
+        }
+    }
+    // Read after the machine's queued events were handled (an "ended" one has forgotten its session).
+    let sessions = machine_restores(hub.saved_sessions(), machine, leads::is_executor);
+    if !sessions.is_empty() {
+        remote_restores(hub, sessions);
+    }
+}
+
+/// A machine's saved sessions Cue brings back itself: rebuildable ones, minus every relay / pi-lead
+/// executor it knows of, whether from the crews it read (`executor`) or from its own record of the
+/// session (its hook said its lead drives it).
+fn machine_restores(saved: Vec<crate::sessions::Session>, machine: &str, executor: impl Fn(&str) -> bool) -> Vec<(String, model::Origin, String)> {
+    saved
+        .into_iter()
+        .filter(|s| s.origin.machine == machine && !recorded_executor(&s.driven_by) && auto_resumable(&s.origin, &executor))
+        .map(|s| (s.origin.machine.clone(), s.origin, s.name))
+        .collect()
+}
+
+/// Whether Cue's record of a session says a relay or pi-lead lead drives it ("its relay lead (…)",
+/// "its pi-lead lead (…)", as the hook and `leads::resolve_driver` write it).
+fn recorded_executor(driven_by: &str) -> bool {
+    driven_by.starts_with("its relay lead") || driven_by.starts_with("its pi-lead lead")
 }
 
 /// Launch: every session saved as waiting comes back with its card, however it lost it. The card
@@ -1198,6 +1246,11 @@ fn tmux_origin_of(hub: &Hub, session_id: &str) -> Result<model::Origin, String> 
 /// The built-in terminal (sessions in tmux): open it at its size; its output comes as "term" events.
 #[tauri::command]
 async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, cols: u16, rows: u16) -> Result<u64, String> {
+    // A relay / pi-lead executor on a machine, in a tmux session of its own: that session, whatever
+    // pane Cue has on record for it (and whether or not Cue holds it at all). Never its lead's.
+    if let Some((machine, name)) = leads::exec_tmux(&session_id) {
+        return tauri::async_runtime::spawn_blocking(move || term::open_attached(app, &session_id, &machine, &name, cols, rows)).await.map_err(|e| e.to_string())?;
+    }
     let o = tmux_origin_of(&hub, &session_id)?;
     tauri::async_runtime::spawn_blocking(move || term::open(app, &session_id, &o, cols, rows)).await.map_err(|e| e.to_string())?
 }
@@ -1488,34 +1541,48 @@ pub fn run() {
                     let _ = tauri::async_runtime::spawn_blocking(move || a.sync_live()).await;
                 }
             });
-            // Leads and executors on your machines: relay's listing there, every 10 s, for each machine
-            // Cue has sessions on (a machine with none isn't woken; its crews are forgotten).
+            // Leads and executors on your machines: relay's and pi-lead's listing there (one SSH call),
+            // on every machine, whether or not Cue has anything open there: every 10 s where it has a
+            // live session, every minute elsewhere, less and less often while one can't be reached
+            // (remote_poll). Each machine is read on its own, so one that hangs holds no other up.
             let h = hub.clone();
             tauri::async_runtime::spawn(async move {
-                let mut tick = tokio::time::interval(std::time::Duration::from_secs(10));
+                let sched = Arc::new(std::sync::Mutex::new(remote_poll::Schedule::default()));
+                let mut tick = tokio::time::interval(remote_poll::NEAR);
                 loop {
                     tick.tick().await;
                     let a = h.clone();
-                    let changed = tauri::async_runtime::spawn_blocking(move || {
+                    let s = sched.clone();
+                    let _ = tauri::async_runtime::spawn_blocking(move || {
                         let busy: std::collections::HashSet<String> = a.saved_sessions().into_iter().map(|s| s.origin.machine).filter(|m| !m.is_empty()).collect();
-                        let mut changed = false;
-                        for m in machines::list() {
-                            if busy.contains(&m.name) {
-                                let (c, live) = leads::refresh_remote(&m.name, &m.host);
-                                changed |= c;
-                                // ...and its sessions that ended there while Cue wasn't looking.
-                                a.sweep(&m.name, live.as_ref());
-                            } else {
-                                changed |= leads::forget_remote(&m.name);
-                            }
+                        let list = machines::list();
+                        let names: Vec<String> = list.iter().map(|m| m.name.clone()).collect();
+                        if leads::retain_remote(&names) {
+                            a.redraw();
                         }
-                        changed
+                        let marks: Vec<(String, bool)> = list.iter().map(|m| (m.name.clone(), busy.contains(&m.name))).collect();
+                        let due = crate::locking::lock(&s, "remote poll schedule").due(&marks, std::time::Instant::now());
+                        for m in list.into_iter().filter(|m| due.contains(&m.name)) {
+                            let (a, s, has_sessions) = (a.clone(), s.clone(), busy.contains(&m.name));
+                            std::thread::spawn(move || {
+                                let (changed, live) = leads::refresh_remote(&m.name, &m.host);
+                                let change = crate::locking::lock(&s, "remote poll schedule").done(&m.name, live.is_some());
+                                match change {
+                                    Some(false) => eprintln!("cue: can't reach {} for its crews; trying less often until it answers", m.name),
+                                    Some(true) => eprintln!("cue: reached {} again", m.name),
+                                    None => {}
+                                }
+                                // ...and its sessions that ended there while Cue wasn't looking.
+                                if has_sessions {
+                                    a.sweep(&m.name, live.as_ref());
+                                }
+                                if changed {
+                                    a.redraw();
+                                }
+                            });
+                        }
                     })
-                    .await
-                    .unwrap_or(false);
-                    if changed {
-                        h.redraw();
-                    }
+                    .await;
                 }
             });
             #[cfg(feature = "ext")]
@@ -1588,6 +1655,47 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relay_and_pilead_executors_are_never_resumed_by_cue_itself() {
+        let o = |sid: &str| model::Origin { session_id: sid.into(), harness: "claude".into(), cwd: "/w".into(), tmux_pane: "%3".into(), machine: "box".into(), ..Default::default() };
+        let crews = |sid: &str| matches!(sid, "relay-exec" | "pilead-exec");
+        assert!(auto_resumable(&o("mine"), crews), "a session of yours comes back");
+        assert!(!auto_resumable(&o("relay-exec"), crews), "a relay executor is its lead's");
+        assert!(!auto_resumable(&o("pilead-exec"), crews), "so is a pi-lead one");
+        assert!(!auto_resumable(&model::Origin { tmux_pane: String::new(), ..o("mine") }, crews), "no pane: nothing to rebuild");
+    }
+
+    #[test]
+    fn a_machine_whose_crews_cant_be_read_still_gets_its_own_sessions_back() {
+        let saved = |sid: &str, machine: &str, driven_by: &str| -> crate::sessions::Session {
+            serde_json::from_value(serde_json::json!({
+                "session_id": sid, "harness": "claude", "cwd": "/w", "tmux_pane": "%3", "machine": machine, "project": "w",
+                "state": "working", "driven_by": driven_by, "queued": null, "since_ms": 1, "prompt": "", "segments": [], "thread": []
+            }))
+            .unwrap()
+        };
+        let all = || {
+            vec![
+                saved("mine", "box", ""),
+                saved("helped", "box", "2 background agents"),
+                saved("read-exec", "box", ""),
+                saved("relay-rec", "box", "its relay lead"),
+                saved("pilead-rec", "box", "its pi-lead lead (shop)"),
+                saved("elsewhere", "other", ""),
+            ]
+        };
+        let ids = |v: Vec<(String, model::Origin, String)>| v.into_iter().map(|(_, o, _)| o.session_id).collect::<Vec<_>>();
+        // The crew read failed and none ever succeeded: Cue's own records still keep its leads'
+        // executors out, and every other session on that machine comes back.
+        let mut got = ids(machine_restores(all(), "box", |_| false));
+        got.sort();
+        assert_eq!(got, vec!["helped", "mine", "read-exec"]);
+        // An earlier read knew "read-exec" as an executor: that one stays its lead's too.
+        let mut got = ids(machine_restores(all(), "box", |sid| sid == "read-exec"));
+        got.sort();
+        assert_eq!(got, vec!["helped", "mine"]);
+    }
 
     #[test]
     fn another_providers_setup_and_a_parent_claude_session_are_dropped() {

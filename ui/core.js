@@ -205,9 +205,25 @@ async function crewAct(sid, action) {
 // The same team bar in the lead's chat and each executor's (lead first, then executors as they started;
 // they never reorder), then one card for where you are: an executor's packet, or what the team needs
 // from you in the lead's. On the board, a lead's card holds its executors as a small tree.
+/** An executor by its session id: its own crew record (a session Cue holds), else its line on its lead's
+ *  executor list (one Cue doesn't hold, on another machine say), with its lead filled in. Null for anything else. */
+function execOf(sid) {
+  const m = crewOf(sid);
+  if (m?.role === "executor") return m;
+  for (const [lead, lm] of Object.entries(state.crew || {})) {
+    const e = (lm.executors || []).find((x) => x.session_id === sid);
+    if (e) return { ...e, role: "executor", lead, lead_name: lm.name, lead_armed: true };
+  }
+  return null;
+}
+/** An executor on another machine that runs in a tmux session of its own: its terminal attaches to that
+ *  session (never its lead's), whether or not Cue holds the session. */
+const execTerm = (sid) => { const e = sid && execOf(sid); return e?.machine && e.tmux_session ? e : null; };
+/** Where a row in a lead's tree goes: a remote executor's own terminal, else its chat when Cue has it. */
+const exGo = (sid) => execTerm(sid) ? `data-exec-term="${esc(sid)}" role="button"` : sessionOf(sid) ? `data-session="${esc(sid)}"` : "";
 /** The team a session is in: its lead (session id, name) and executors, or null. */
 function teamOf(sid) {
-  const m = crewOf(sid);
+  const m = execOf(sid) || crewOf(sid);
   if (!m) return null;
   const lead = m.role === "lead" ? sid : m.lead, lm = crewOf(lead);
   const ex = lm?.executors?.length ? lm.executors : m.role === "executor" ? [{ ...m, session_id: sid }] : [];
@@ -241,8 +257,7 @@ function teamBar(sid) {
 const verifyWords = (v) => !v?.verdict ? "" : v.verdict === "COUNTS-MATCH" ? "its report matches what's staged"
   : `<span class="crew-warn">its report doesn't match what's staged${v.verdict === "MALFORMED" ? " (its summary is missing or broken)" : v.note ? ` (${esc(v.note)})` : ""}</span>`;
 /** An executor's chat: its packet (what it's for), where it stands, and Diff / Review once it's done. */
-function packetCard(sid) {
-  const m = crewOf(sid);
+function packetCard(sid, m = crewOf(sid)) {
   if (m?.role !== "executor") return "";
   const lead = esc(m.lead_name || "its lead");
   let st, acts = "";
@@ -283,12 +298,12 @@ function teamTree(lead) {
   for (const e of ex) {
     const ask = asksOf(e.session_id), on = e.session_id === openSid ? "on" : "";
     if (ask) rows.push(`<div class="tn need ${on}" data-big="${esc(ask.id)}"><div class="tn-t"><b>${esc(e.name)}</b><span class="tn-need">needs you</span></div><div class="tn-x">${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></div>${ask.kind === "permission" ? `<div class="tn-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></div>` : ""}</div>`);
-    else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span>${verdictTag(e.verify)}</div>${goalLine(e)}</div>`);
-    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, ${missedWake(e.session_id) ? "not picked up" : "waiting for review"}</span>${verdictTag(e.verify)}</div>${goalLine(e)}<div class="tn-acts">${diffBtn(e.session_id, e)}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
-    else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t"><b>${esc(e.name)}</b><span>${stalledWord(e.status)}</span></div>${goalLine(e)}<div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
+    else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span>${verdictTag(e.verify)}</div>${goalLine(e)}</div>`);
+    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, ${missedWake(e.session_id) ? "not picked up" : "waiting for review"}</span>${verdictTag(e.verify)}</div>${goalLine(e)}<div class="tn-acts">${diffBtn(e.session_id, e)}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
+    else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>${stalledWord(e.status)}</span></div>${goalLine(e)}<div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
     else busy.push(e);
   }
-  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${sessionOf(e.session_id) ? `data-session="${esc(e.session_id)}"` : ""}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div>${goalLine(e)}</div>`;
+  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${exGo(e.session_id)}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div>${goalLine(e)}</div>`;
   // A big team: five working lines, then a count.
   const more = busy.length > TREE_BUSY ? [`<div class="tn"><div class="tn-t tn-x">+${busy.length - TREE_BUSY} more working</div></div>`] : [];
   return `<div class="team-tree">${[...rows, ...busy.slice(0, TREE_BUSY).map(line), ...more].join("")}</div>`;

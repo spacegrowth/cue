@@ -394,6 +394,9 @@ function bindMain() {
     // A team button (auto, Diff, Review) inside a row that opens its session: the button, not the row.
     const ca = t.closest("[data-crew]");
     if (ca) return crewAct(ca.dataset.crewSid, ca.dataset.crew);
+    // A remote executor's row in its lead's tree: its own terminal there (see openExec).
+    const xt = t.closest("[data-exec-term]");
+    if (xt) return openExec(xt.dataset.execTerm);
     // A button in the row (Allow / Deny in the starred list) does its own thing, not "open".
     const sv = t.closest("button[data-act], button[data-wake]") ? null : t.closest("[data-sv]");
     if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; starOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }

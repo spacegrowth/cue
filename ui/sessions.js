@@ -305,12 +305,14 @@ function svActs(r) {
   // No Reply: the tile opens it. Answer stays, for what's blocked on you.
   if (r.it && r.st === "asks") acts.push(`<button class="btn primary" data-sv="open" data-sid="${esc(r.sid)}">Answer</button>`);
   if (m?.role === "executor" && reported(m.status)) acts.push(verifyTag(m.verify) + diffBtn(r.sid, m) + (m.lead_armed && !reviewWord(r.sid) ? crewBtn(r.sid, "review", "Review", true) : ""));
-  if (!r.it && (!r.quiet || r.harness === "claude") && !r.ghost) acts.push(`<button class="btn" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">Open</button>`);
+  if (!r.it && (!r.quiet || r.harness === "claude") && !r.ghost) acts.push(`<button class="btn" data-sv="${svOpenAct(r)}" data-sid="${esc(r.sid)}">Open</button>`);
   // A stalled or stopped executor Cue has no session for: the board tree's Close (through its lead's plugin).
   if (m?.role === "executor" && stalled(m.status) && r.ghost) acts.push(crewBtn(r.sid, "close", "Close"));
   else if (svClosable(r)) acts.push(closeBtn(r.sid));
   return acts.join("");
 }
+/** What opening a tile does: a remote executor's own terminal ("exec"), a quiet session taken in, or its chat. */
+const svOpenAct = (r) => execTerm(r.sid) ? "exec" : r.quiet ? "quiet" : "open";
 /** One session, everything visible: name and state, what it's about, what it's on now, and its buttons.
  *  A lead's line also says it leads (and how); its executors drop the agent badge the lead already shows. */
 function svItem(r, { leadHarness = "", crew = null } = {}) {
@@ -328,7 +330,9 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const hot = r.st === "asks" || m?.lead_armed === false;
   const leadTag = crew ? `<span class="role lead">LEAD</span>${autoToggle(r.sid, crew)}` : "";
   // The whole tile opens it: its chat in Active (a quiet Claude session too: Cue takes it in), else what it's doing.
-  const go = r.ghost ? "" : ` role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}" ${r.quiet && r.harness !== "claude" ? `` : ""}`;
+  // An executor on another machine in a tmux session of its own: its terminal there too (see openExec).
+  const act = svOpenAct(r);
+  const go = r.ghost && act !== "exec" ? "" : ` role="button" data-sv="${act}" data-sid="${esc(r.sid)}"`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
     <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
@@ -399,7 +403,7 @@ function sessionsView() {
     const execs = (m.executors || []).map((e) => {
       placed.add(e.session_id);
       return bySid.get(e.session_id) || { sid: e.session_id, harness: m.plugin === "pilead" ? "pi" : "claude", name: e.name, cwd: "", st: e.status === "busy" ? "working" : "idle", since: 0, what: "", ghost: true,
-        crew: { role: "executor", plugin: e.plugin || m.plugin, machine: e.machine, status: e.status, model: e.model, packet: e.packet, goal: e.goal, outcome: e.outcome, verify: e.verify, lead: lead.sid, lead_name: m.name, lead_armed: true } };
+        crew: { ...e, role: "executor", plugin: e.plugin || m.plugin, lead: lead.sid, lead_name: m.name, lead_armed: true } };
     });
     tile(lead.cwd, lead.machine).crews.push({ lead, m, execs });
   }
@@ -480,6 +484,7 @@ async function svAct(act, sid) {
     catch (e) { toast(`Couldn't close it: ${e}`); }
     return;
   }
+  if (act === "exec") return openExec(sid);
   if (act === "open") { const it = state.items.find((i) => i.session_id === sid && i.status === "pending"); return setActive(it?.id || null, sid); }
   if (act === "quiet") {
     // A Claude session Cue hasn't heard from (resumed after a restart, say): Cue takes it in, so it opens

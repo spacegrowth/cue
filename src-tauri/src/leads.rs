@@ -71,6 +71,11 @@ pub struct Member {
     /// The machine it runs on (one of yours, by name); "" for this Mac.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub machine: String,
+    /// Executor on a machine: the name of its own detached tmux session there (relay's and pi-lead's
+    /// `tmux_session`), which its terminal in Cue attaches to. "" when the listing doesn't say (an older
+    /// relay / pi-lead, or not in tmux) or names one Cue won't pass to tmux (see `tmux_name`).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub tmux_session: String,
     /// Executor: its lead has seen this packet's report (relay's `report_seen_packet`): reviewed,
     /// by your Review or by relay waking the lead itself.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -612,13 +617,33 @@ fn tz_of(out: &str) -> Option<i64> {
     Some(sign * (d[..2].parse::<i64>().ok()? * 3600 + d[2..].parse::<i64>().ok()? * 60))
 }
 
-/// Forget a machine's crews (it has no sessions in Cue any more, or was removed).
-pub fn forget_remote(machine: &str) -> bool {
+/// Forget the crews of machines that aren't yours any more (removed in + New → Machine): whether
+/// INDEX changed. Every machine still listed keeps what was last read from it.
+pub fn retain_remote(machines: &[String]) -> bool {
     if let Some(p) = crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD").as_mut() {
-        p.remove(machine);
+        p.retain(|m, _| machines.contains(m));
     }
-    let gone = crate::locking::lock(&REMOTE, "REMOTE").as_mut().and_then(|r| r.remove(machine)).is_some();
+    let gone = crate::locking::lock(&REMOTE, "REMOTE").as_mut().is_some_and(|r| {
+        let n = r.len();
+        r.retain(|m, _| machines.contains(m));
+        r.len() != n
+    });
     gone && merge()
+}
+
+/// Whether Cue knows this session as a relay or pi-lead executor (here or on a machine): it belongs
+/// to its lead, which resumes, replaces or closes it; Cue never brings it back by itself.
+pub fn is_executor(session_id: &str) -> bool {
+    crate::locking::lock(&INDEX, "INDEX").as_ref().is_some_and(|i| executor_in(i, session_id))
+}
+
+fn executor_in(index: &HashMap<String, Member>, session_id: &str) -> bool {
+    index.get(session_id).is_some_and(|m| m.role == "executor")
+}
+
+/// Whether this machine's crews have been read since Cue started (or since it was last removed).
+pub fn remote_known(machine: &str) -> bool {
+    crate::locking::lock(&REMOTE, "REMOTE").as_ref().is_some_and(|r| r.contains_key(machine))
 }
 
 /// REMOTE_LIST's answer: relay's command there, and its leads and executors keyed by Cue session id.
@@ -679,6 +704,7 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
             id: s(e, "session_id"),
             updated: s(e, "updated"),
             machine: machine.into(),
+            tmux_session: tmux_name(&s(e, "tmux_session")),
             ..Default::default()
         };
         put(&mut index, exec_key(e), m);
@@ -699,6 +725,25 @@ const PILEAD_MARK: &str = "__CUE_PILEAD__";
 /// A machine's pilead command, from its section's `PBIN:` line ("" when it has none).
 fn pilead_bin_of(out: &str) -> String {
     out.split_once(PILEAD_MARK).and_then(|(_, p)| p.lines().find_map(|l| l.strip_prefix("PBIN:"))).unwrap_or("").trim().to_string()
+}
+
+/// A tmux session name from a machine's listing, as Cue will pass it to tmux there: only letters, digits,
+/// `_` and `-` (nothing the remote shell or tmux's own target syntax could read as more than a name); ""
+/// for anything else, which leaves that executor's terminal as it was before the listing named one.
+fn tmux_name(t: &str) -> String {
+    let t = t.trim();
+    if !t.is_empty() && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') { t.to_string() } else { String::new() }
+}
+
+/// An executor on a machine that runs in a tmux session of its own: (machine, that session's name).
+/// None for anything else (a lead, a session on this Mac, or a listing that didn't name one).
+pub fn exec_tmux(session_id: &str) -> Option<(String, String)> {
+    exec_tmux_in(crate::locking::lock(&INDEX, "INDEX").as_ref()?, session_id)
+}
+
+fn exec_tmux_in(index: &HashMap<String, Member>, session_id: &str) -> Option<(String, String)> {
+    let m = index.get(session_id)?;
+    (m.role == "executor" && !m.machine.is_empty() && !m.tmux_session.is_empty()).then(|| (m.machine.clone(), m.tmux_session.clone()))
 }
 
 /// At most 300 characters, as relay clips the lines it lists.
@@ -743,6 +788,7 @@ fn parse_pilead(section: &str, machine: &str, index: &mut HashMap<String, Member
             id: sid.clone(),
             updated: s(e, "created"),
             machine: machine.into(),
+            tmux_session: tmux_name(&s(e, "tmux_session")),
             ..Default::default()
         };
         put(index, sid, m);
@@ -973,7 +1019,7 @@ pub fn view(known: &HashSet<String>) -> Value {
             execs.sort_by(|a, b| a.1.updated.cmp(&b.1.updated));
             v["executors"] = execs
                 .into_iter()
-                .map(|(esid, e)| serde_json::json!({ "session_id": esid, "name": e.name, "model": e.model, "status": e.status, "packet": e.packet, "goal": e.goal, "outcome": e.outcome, "verify": verdict_of(e), "plugin": e.plugin, "machine": e.machine }))
+                .map(|(esid, e)| serde_json::json!({ "session_id": esid, "name": e.name, "model": e.model, "status": e.status, "packet": e.packet, "goal": e.goal, "outcome": e.outcome, "verify": verdict_of(e), "plugin": e.plugin, "machine": e.machine, "tmux_session": e.tmux_session }))
                 .collect();
         }
         out.insert(sid.clone(), v);
@@ -1382,6 +1428,59 @@ __CUE_LIVE__
 {{"leads": [], "executors": [{{"agent": "relay-executor", "session_id": "l", "claude_session": "CL", "status": "busy", "goal": "{}"}}]}}
 "#, "x".repeat(400));
         assert_eq!(parse_remote(&long, "box").1["CL"].goal.chars().count(), 300, "clipped, however long a machine sends it");
+    }
+
+    #[test]
+    fn a_machines_relay_and_pilead_executors_are_known_as_executors_and_their_leads_arent() {
+        let relay = r#"{"leads": [{"session_id": "L9", "project": "smoke"}],
+ "executors": [{"agent": "relay-executor", "session_id": "hello-md", "topic": "hello-md", "status": "busy", "owner_lead": "L9", "claude_session": "C9"},
+               {"agent": "relay-executor", "session_id": "old", "topic": "old", "status": "closed", "owner_lead": "L9", "claude_session": "C7"}]}"#;
+        let out = format!("BIN:/x/relay\n{relay}\n__CUE_PILEAD__\nPBIN:/x/pilead\n{PI_LISTING}\n__CUE_LIVE__\nL9\n");
+        let (_, index) = parse_remote(&out, "box");
+        for sid in ["C9", "C7", "pe-1", "pe-2"] {
+            assert!(executor_in(&index, sid), "{sid}: an executor, its lead's to bring back");
+        }
+        for sid in ["L9", "PL1", "someone-else"] {
+            assert!(!executor_in(&index, sid), "{sid}: not an executor");
+        }
+    }
+
+    #[test]
+    fn a_machines_executors_name_their_own_tmux_session_when_their_listing_does() {
+        let relay = r#"{"leads": [{"session_id": "L9", "project": "smoke", "tmux_session": "relay-lead-smoke"}],
+ "executors": [{"agent": "relay-executor", "session_id": "hello-md", "topic": "hello-md", "status": "busy", "owner_lead": "L9", "claude_session": "C9", "tmux_session": "relay-hello-md_2"},
+               {"agent": "relay-executor", "session_id": "no-key", "topic": "no-key", "status": "busy", "owner_lead": "L9", "claude_session": "C8"},
+               {"agent": "relay-executor", "session_id": "odd", "topic": "odd", "status": "busy", "owner_lead": "L9", "claude_session": "C7", "tmux_session": "x; rm -rf ~"},
+               {"agent": "relay-executor", "session_id": "colon", "topic": "colon", "status": "busy", "owner_lead": "L9", "claude_session": "C6", "tmux_session": "lead:0.1"},
+               {"agent": "relay-executor", "session_id": "blank", "topic": "blank", "status": "busy", "owner_lead": "L9", "claude_session": "C5", "tmux_session": "  "}]}"#;
+        let pi = r#"{"leads": [{"sid": "PL1", "project": "pi-proj", "live": "live"}],
+ "executors": [{"sid": "pe-1", "lead": "PL1", "status": "busy", "topic": "parser", "tmux_session": "pilead-pe-1"},
+               {"sid": "pe-2", "lead": "PL1", "status": "busy", "topic": "wire"},
+               {"sid": "pe-3", "lead": "PL1", "status": "busy", "topic": "quoted", "tmux_session": "pe 3"}]}"#;
+        let out = format!("BIN:/x/relay\n{relay}\n__CUE_PILEAD__\nPBIN:/x/pilead\n{pi}\n__CUE_LIVE__\nL9\nPL1\n");
+        let (_, index) = parse_remote(&out, "box");
+        // Present: that executor's own session, on its machine (relay's and pi-lead's alike).
+        assert_eq!(exec_tmux_in(&index, "C9"), Some(("box".into(), "relay-hello-md_2".into())));
+        assert_eq!(exec_tmux_in(&index, "pe-1"), Some(("box".into(), "pilead-pe-1".into())));
+        // Missing (an older relay / pi-lead): nothing, so its terminal opens as it did before.
+        for sid in ["C8", "pe-2"] {
+            assert_eq!((index[sid].tmux_session.as_str(), exec_tmux_in(&index, sid)), ("", None), "{sid}");
+        }
+        // Anything but letters, digits, _ and -: refused, never handed to the shell or to tmux.
+        for sid in ["C7", "C6", "C5", "pe-3"] {
+            assert_eq!((index[sid].tmux_session.as_str(), exec_tmux_in(&index, sid)), ("", None), "{sid}");
+        }
+        // A lead is never what an executor's terminal attaches to, and a lead has none of its own here.
+        assert_eq!(exec_tmux_in(&index, "L9"), None);
+        assert_eq!(index["L9"].tmux_session, "");
+        // On this Mac (no machine): not this path either.
+        let mut local = index["C9"].clone();
+        local.machine.clear();
+        assert_eq!(exec_tmux_in(&HashMap::from([("C9".to_string(), local)]), "C9"), None);
+        // The window gets it on the lead's executor list, for the rows it draws.
+        let v = serde_json::to_value(&index["C9"]).unwrap();
+        assert_eq!(v["tmux_session"], "relay-hello-md_2");
+        assert!(serde_json::to_value(&index["C8"]).unwrap().get("tmux_session").is_none());
     }
 
     const PI_LISTING: &str = r#"{"leads": [{"sid": "PL1", "project": "pi-proj", "live": "live", "model": "deepseek/flash", "started": "2026-10-10T09:00:00Z", "waiting": 0, "wake": "on"},
