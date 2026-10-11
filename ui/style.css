@@ -1445,3 +1445,19 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .pip-menu button:hover, .pip-menu button:focus-visible { background: var(--panel-2); outline: 0; }
 .pip-menu .mono { font: 11.5px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .pip { transition: none; } .sh-live.run, .sh-dot { animation: none; } }
+
+/* SPIKE: terminal mode — the session's real terminal where the chat is, full height. */
+.ap-term { flex: 1; min-height: 0; margin: 0 12px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-top: 1px solid var(--line); overflow: hidden; }
+.ap-term .tslot { flex: 1; height: auto; min-height: 0; border-top: 0; padding: 10px 6px 6px 8px; }
+.ap-term .term-host .xterm-viewport { background: var(--panel) !important; }
+.term-chat .foot { padding-top: 0; }
+.term-chat .foot .field { border-radius: 0 0 8px 8px; }
+
+.spike-tag { margin-left: 10px; padding: 4px 10px; border-radius: 999px; background: #e0457b; color: #fff; font: 700 12px var(--sans); letter-spacing: .04em; white-space: nowrap; }
+.term-foot { padding: 0 12px 12px; }
+.term-foot .quick { width: 100%; box-sizing: border-box; padding: 8px 10px; border-top: 1px solid var(--line); align-items: center; }
+.term-foot .grow { flex: 1; }
+/* "Its terminal": no scrollbar down its right edge; the wheel and trackpad still scroll it. */
+.ap-term .xterm-viewport { scrollbar-width: none; }
+.ap-term .xterm-viewport::-webkit-scrollbar { display: none; width: 0; }
+.ap-term .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }

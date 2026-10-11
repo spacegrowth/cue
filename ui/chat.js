@@ -114,6 +114,23 @@ function btwPanel(sid) {
  *  can answer. Open: xterm.js draws the real terminal, streamed from a tmux client of Cue's own (term.rs),
  *  and what you type goes straight to it. Its element lives outside the redraws: each one puts it back. */
 const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane || !!execTerm(sid);
+// SPIKE: Settings → Chat shows "Its terminal": for a session in tmux, the chat area IS its real terminal
+// (full height, opened as the session is picked), Cue's rendered chat only where there's no terminal to show.
+// Closing the terminal (Esc, the Close tab) falls back to the rendered chat for that session until reopened.
+let termOff = null;            // the session whose terminal you closed in terminal mode (rendered chat until reopened)
+const chatTerm = (sid) => state.settings?.chat?.mode !== "rendered" && !!sid && inTmux(sid) && termOff !== sid;
+/** Under the terminal, in terminal mode: the quick phrases (each types itself into the terminal and presses
+ *  Enter) and a way back to Cue's chat for this session. */
+function termFoot(sid) {
+  const qs = phrases().map((p) => `<button class="qp" data-term-phrase="${esc(p)}" data-sid="${esc(sid)}">${esc(p)}</button>`).join("");
+  return `<div class="foot term-foot"><div class="quick">${qs}<span class="grow"></span><button class="qp" data-act="term" data-sid="${esc(sid)}">Show Cue's chat</button></div></div>`;
+}
+/** After a draw: in terminal mode the open session's terminal opens by itself (once; openTerm sets termSid first). */
+function autoTerm() {
+  const sid = active?.sid;
+  if (!sid || quietOpen || parkedActive() || !chatTerm(sid) || termSid === sid) return;
+  openTerm(sid);
+}
 let termSid = null;            // whose terminal is open
 let termGen = 0;               // which opening its output belongs to (0: not known yet)
 let termObj = null, termFit = null, termHost = null, termWatch = null;
@@ -164,6 +181,7 @@ function termDock(sid) {
 }
 async function openTerm(sid) {
   if (!inTmux(sid)) return;
+  if (termOff === sid) termOff = null;
   // Already open, or opening (its client's on the way): that one, not a second.
   if (termSid === sid && termObj) return termObj.focus();
   if (termSid) closeTerm(true);
@@ -175,7 +193,7 @@ async function openTerm(sid) {
   termHost = document.createElement("div");
   termHost.className = "term-host";
   slot.appendChild(termHost);
-  ({ term: termObj, fit: termFit } = xterm(termHost));
+  ({ term: termObj, fit: termFit } = xterm(termHost, chatTerm(sid)));
   termObj.onData((d) => { if (termSid) invoke("term_write", { sessionId: termSid, data: d }).catch(() => {}); });
   termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); });
   termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
@@ -209,6 +227,7 @@ function openSession(sid, id = null) {
 /** Close it (the session keeps running in tmux). `quiet`: no redraw, another opening follows. */
 function closeTerm(quiet = false) {
   const sid = termSid;
+  if (!quiet && sid && chatTerm(sid)) termOff = sid;   // closed on purpose: the rendered chat, until you open it again
   termSid = null;
   termGen = 0;
   termWatch?.disconnect();
@@ -237,10 +256,24 @@ function flushTerm() {
 }
 /** An xterm.js terminal in `host`, in Cue's colours, fitted to it: drawn on the GPU where it can be (much
  *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js). */
-function xterm(host) {
+/** The terminal's colours. Docked above the box it's a dark slab. As the chat itself ("Its terminal") it takes
+ *  the card's own colours, light or dark as Cue is, with the 16 terminal colours picked to sit with Cue's
+ *  greens. Colours a program sets exactly (24-bit) are drawn as it says: Claude Code's /theme decides those. */
+function termTheme(asChat) {
+  if (!asChat) return { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" };
+  const bg = cssVar("--panel"), ink = cssVar("--ink");
+  const dark = (() => { const m = bg.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i); return m ? (parseInt(m[1], 16) + parseInt(m[2], 16) + parseInt(m[3], 16)) / 3 < 128 : false; })();
+  const ansi = dark
+    ? { black: "#2A2F1C", red: "#E8907F", green: "#B5C27A", yellow: "#E0B84A", blue: "#8FB3C9", magenta: "#C9A0C2", cyan: "#9CC7B4", white: "#D9DCCB",
+        brightBlack: "#7C8466", brightRed: "#F0A898", brightGreen: "#CBD796", brightYellow: "#EBCB6E", brightBlue: "#A9C7DA", brightMagenta: "#D9B6D3", brightCyan: "#B4D8C8", brightWhite: "#F2F4EA" }
+    : { black: "#1E2410", red: "#B5442E", green: "#4F6B1F", yellow: "#8A6410", blue: "#2F5F86", magenta: "#7E3F74", cyan: "#2E6E62", white: "#8C9277",
+        brightBlack: "#6B7254", brightRed: "#C9573F", brightGreen: "#5E7D27", brightYellow: "#A07617", brightBlue: "#3B729F", brightMagenta: "#924F87", brightCyan: "#3A8576", brightWhite: "#5A6340" };
+  return { background: bg, foreground: ink, cursor: ink, cursorAccent: bg, selectionBackground: dark ? "rgba(181, 194, 122, 0.30)" : "rgba(210, 222, 150, 0.55)", ...ansi };
+}
+function xterm(host, asChat = false) {
   const term = new Terminal({
-    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
-    theme: { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" },
+    fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: asChat ? 13 : 12, lineHeight: asChat ? 1.2 : 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    theme: termTheme(asChat),
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -1133,12 +1166,15 @@ function activePane() {
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
     foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
   } else foot = "";
+  // "Its terminal": the terminal's own prompt is the one place to type. Cue's box goes; the quick phrases stay,
+  // as a slim row that types into the terminal. A decision card (Allow / Deny) stays: it's not a second box.
+  if (chatTerm(sid) && !(pending && it.kind !== "waiting")) foot = termFoot(sid);
   const cm = crewOf(sid);
   // The badge already says which agent: no "Claude Code" beside it. An executor's relay name and a crew's model stay.
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? esc(shortModel(cm.model)) : "";
   const onMachine = machTag(s?.machine || it?.machine);
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
-  return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
+  return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""} ${chatTerm(sid) ? "term-chat" : ""}">${sweep(sid, s)}
     <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
@@ -1148,9 +1184,9 @@ function activePane() {
     ${subHead(s?.cwd || it?.cwd, "", sid)}
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey()}</div>` : ""}
-    ${chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}
+    ${chatTerm(sid) ? `<div class="ap-term"><div class="tslot" data-term-slot></div></div>` : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}
     ${pending ? "" : nextBar()}
-    ${termDock(sid)}${foot}</div>`;
+    ${chatTerm(sid) ? "" : termDock(sid)}${foot}</div>`;
 }
 // ---------- the chat's DOM lives on between draws ----------
 // renderMain rebuilds the whole window from a string; the chat (the Active pane's `.ap-chat`) is the one

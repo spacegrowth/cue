@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cue",
+  "productName": "Cue Spike",
   "version": "0.1.24",
-  "identifier": "dev.spacegrowth.cue",
+  "identifier": "dev.spacegrowth.cue.spike",
   "build": {
     "frontendDist": "../ui"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Cue",
+        "title": "Cue Spike",
         "width": 1440,
         "height": 920,
         "minWidth": 900,

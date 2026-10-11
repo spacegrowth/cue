@@ -41,7 +41,7 @@ function renderMain() {
   const counts = headerChips();
   const lifted = liftChat();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${starChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
+    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="spike-tag">SPIKE · the chat shows its terminal</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${starChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
       ${usageChip()}${shellsBtn()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
@@ -137,6 +137,7 @@ function renderMain() {
   const bp = document.querySelector(".btw-pop"), ah = document.querySelector(".ap-head");
   if (bp && ah) bp.style.top = `${ah.offsetTop + ah.offsetHeight + 2}px`;
   placeTerm(!!termHost && termHost.contains(focused));
+  autoTerm();   // SPIKE: terminal mode opens the session's terminal as the chat
   showCopied();
   fitTop();
 }
@@ -278,6 +279,9 @@ function bindMain() {
     if (ha) { helperOpen.add(`${ha.dataset.helperAll}|all`); return renderMain(); }
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
+    // Terminal mode's quick phrases: typed into the terminal, then Enter.
+    const tph = t.closest("[data-term-phrase]");
+    if (tph) { invoke("term_write", { sessionId: tph.dataset.sid, data: `${tph.dataset.phrase}\r` }).catch(() => {}); termObj?.focus(); return; }
     const qp = t.closest("[data-quick]");
     if (qp) {
       const key = qp.dataset.quick, d = draft(key);
