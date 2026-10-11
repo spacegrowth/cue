@@ -14,11 +14,31 @@ struct Open {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
+    /// A machine's view session (host, name), Cue's own: removed there by Cue on close, before its client
+    /// goes. Some SSH servers (DevPod's) never hang up a dropped client, so the view would stay attached
+    /// for good, one more for every terminal ever opened; and tmux 3.0a can take its whole server down
+    /// when a grouped view is left to remove itself once its client is gone (destroy-unattached), so
+    /// the view goes first, by its exact name, and its client ends with it.
+    view: Option<(String, String)>,
 }
 
 impl Open {
-    /// End its client (and the ssh carrying it, for a machine's session).
+    /// End its client (and the ssh carrying it, for a machine's session). A machine's view is removed
+    /// first, off this thread (one SSH trip), then the client; if that removal can't reach the machine,
+    /// the client ends anyway and the view stays behind, nothing else touched.
     fn end(mut self) {
+        match self.view.take() {
+            Some((host, view)) => {
+                std::thread::spawn(move || {
+                    let _ = crate::machines::tmux(&host, &["kill-session", "-t", &format!("={view}")]);
+                    self.kill();
+                });
+            }
+            None => self.kill(),
+        }
+    }
+
+    fn kill(mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -189,9 +209,12 @@ impl Drop for Opening<'_> {
 fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<(u64, Open), String> {
     let tmux = crate::terminal::focus::tmux_bin();
     let gen = next_gen();
-    let chain: Vec<String> = match target {
-        Target::Pane(pane) => pane_chain(&tmux, pane, host, gen)?,
-        Target::Session(name) => attach_args(name).ok_or(format!("“{name}” isn't a tmux session name Cue will attach to"))?,
+    let (chain, view): (Vec<String>, Option<String>) = match target {
+        Target::Pane(pane) => {
+            let (chain, view) = pane_chain(&tmux, pane, host, gen)?;
+            (chain, Some(view))
+        }
+        Target::Session(name) => (attach_args(name).ok_or(format!("“{name}” isn't a tmux session name Cue will attach to"))?, None),
     };
     let pair = native_pty_system().openpty(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())?;
     let mut cmd = match host {
@@ -221,7 +244,9 @@ fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, 
         }
     };
     cmd.env("TERM", "xterm-256color");
-    start(sid, gen, pair, cmd, out)
+    let (gen, mut o) = start(sid, gen, pair, cmd, out)?;
+    o.view = host.zip(view).map(|(h, v)| (h.to_string(), v));
+    Ok((gen, o))
 }
 
 /// `cmd` in the pseudo-terminal `pair`, its output streamed to `out` from a thread of its own
@@ -243,32 +268,41 @@ fn start(sid: &str, gen: u64, pair: portable_pty::PtyPair, cmd: CommandBuilder, 
         }
         out(serde_json::json!({ "sid": id, "gen": gen, "end": true }));
     });
-    Ok((gen, Open { master: pair.master, writer, child }))
+    Ok((gen, Open { master: pair.master, writer, child, view: None }))
 }
 
 /// A pane's client: one round trip (over SSH for a machine's session) to find the pane, then the tmux
-/// command line for a view of Cue's own on its window.
-fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<Vec<String>, String> {
-    // tmux here, or on the machine (over SSH).
-    let tmux_say = |args: &[&str]| -> String {
-        match host {
-            Some(h) => crate::machines::tmux(h, args).unwrap_or_default(),
-            None => std::process::Command::new(tmux).args(args).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default(),
+/// command line for a view of Cue's own on its window, and that view's name.
+fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<(Vec<String>, String), String> {
+    // Where the pane is, and (the same trip) its window follows the size of whichever terminal was used
+    // last (this one while you type here): one trip to the machine, not two. Two tmux commands, not one
+    // line: tmux before 3.1 has no "latest" and fails the line, which lost the answer ("pane is gone").
+    // The pane's session group, not its session: with Cue's views open, tmux names the newest view as the
+    // pane's session, and each view grouped with the one before it ("-t cue-view-8 -s cue-view-9"),
+    // or failed to find one that had just gone. A session in no group: its own name.
+    let ask = ["display-message", "-p", "-t", pane, "#{?session_group,#{session_group},#{session_name}}|#{window_id}"];
+    let also = ["set-option", "-w", "-t", pane, "window-size", "latest"];
+    let where_ = match host {
+        Some(h) => crate::machines::tmux_then(h, &ask, &also).unwrap_or_default(),
+        None => {
+            let out = std::process::Command::new(tmux).args(ask).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+            let _ = std::process::Command::new(tmux).args(also).output();
+            out
         }
     };
-    // Where the pane is, and (the same call) its window follows the size of whichever terminal was used
-    // last (this one while you type here): one trip to the machine, not two.
-    let where_ = tmux_say(&["display-message", "-p", "-t", pane, "#{session_name}|#{window_id}", ";", "set-option", "-w", "-t", pane, "window-size", "latest"]).trim().to_string();
+    let where_ = where_.trim().to_string();
     // Split at the last "|": a session's name may have one, a window id ("@3") never does. Not a tab: some
     // tmux versions print it as "_".
     let (session, window) = where_.rsplit_once('|').filter(|(s, w)| !s.is_empty() && !w.is_empty()).ok_or(format!("tmux pane {pane} is gone"))?;
-    let view = format!("cue-view-{gen}");
+    // Cue's pid in the name: views count from 1 again at every launch, and one left on a machine from an
+    // earlier run would refuse the same name ("duplicate session").
+    let view = format!("cue-view-{}-{gen}", std::process::id());
     // One client launch: a session grouped with the session's (its windows, its own current window), set
     // up for a pane inside Cue, gone once this client detaches.
     let view_window = format!("{view}:{window}");
     // -u: the view speaks UTF-8 whatever the locale where it starts (the window's terminal always does).
     let chain = ["-u", "new-session", "-t", session, "-s", &view, ";", "set-option", "status", "off", ";", "set-option", "mouse", "on", ";", "set-option", "destroy-unattached", "on", ";", "select-window", "-t", &view_window, ";", "select-pane", "-t", pane];
-    Ok(chain.iter().map(|a| a.to_string()).collect())
+    Ok((chain.iter().map(|a| a.to_string()).collect(), view))
 }
 
 /// Any other command in a terminal of Cue's own (a plain shell: shells.rs), opened, deduped, written to,
@@ -346,7 +380,7 @@ mod tests {
         drop(pair.slave);
         starts.lock().unwrap().push(child.process_id().unwrap_or(0));
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
-        Ok((next_gen(), Open { master: pair.master, writer, child }))
+        Ok((next_gen(), Open { master: pair.master, writer, child, view: None }))
     }
 
     fn alive(pid: u32) -> bool {
@@ -573,5 +607,62 @@ mod perf {
         }
         println!("PERF open terminal until its screen shows (ms): {opens:?}");
         println!("PERF screen check (ms): {checks:?}");
+    }
+}
+
+/// Views on a real machine, by hand: CUE_VIEW_HOST=host cargo test -q views_on_a_machine -- --ignored --nocapture.
+/// Cue's own terminal opened and closed on a throwaway tmux session there ("cue-vt-<pid>", removed after),
+/// next to a view an earlier run left with the same name Cue would once have used: each opening finds the
+/// session (not a view), targets it, and leaves no view behind once closed, however the machine's SSH
+/// server treats a dropped client.
+#[cfg(test)]
+mod views {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn views(host: &str, mine: &str) -> Vec<String> {
+        crate::machines::tmux(host, &["list-sessions", "-F", "#{session_name}"]).unwrap_or_default().lines().filter(|l| l.starts_with(mine)).map(String::from).collect()
+    }
+
+    #[test]
+    #[ignore]
+    fn views_on_a_machine() {
+        let Ok(host) = std::env::var("CUE_VIEW_HOST") else { return };
+        let s = format!("cue-vt-{}", std::process::id());
+        let mine = format!("cue-view-{}-", std::process::id());
+        let pane = crate::machines::tmux(&host, &["new-session", "-d", "-s", &s, "-x", "80", "-y", "12", "-P", "-F", "#{pane_id}", "sh", "-c", "echo VT-MARK; cat"]).unwrap().trim().to_string();
+        // A view an earlier Cue left there, named as views were before (it counted from 1 every launch).
+        let _ = crate::machines::tmux(&host, &["new-session", "-d", "-t", &s, "-s", "cue-view-1"]);
+        let mut seen_targets = vec![];
+        for round in 1..=3 {
+            let t0 = Instant::now();
+            open_with("vt", &pane, Some(&host), 80, 12, |_| {}).unwrap_or_else(|e| panic!("round {round}: {e}"));
+            let open_now = loop {
+                let v = views(&host, &mine);
+                if !v.is_empty() || t0.elapsed() > Duration::from_secs(10) {
+                    break v;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            };
+            assert_eq!(open_now.len(), 1, "round {round}: one view of this run open, got {open_now:?}");
+            // What the view was grouped with: the session itself, never an earlier view.
+            seen_targets.push(crate::machines::tmux(&host, &["display-message", "-p", "-t", &format!("={}:", open_now[0]), "#{session_group}"]).unwrap_or_default().trim().to_string());
+            close("vt");
+            let t1 = Instant::now();
+            while !views(&host, &mine).is_empty() && t1.elapsed() < Duration::from_secs(10) {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let left = views(&host, &mine);
+            println!("VT round {round}: opened {:?}, after close {left:?}", open_now);
+            assert!(left.is_empty(), "round {round}: closing left {left:?} on the machine");
+            // Everything else there is as it was: the session and the earlier run's view.
+            let all = views(&host, "");
+            assert!(all.contains(&s) && all.iter().any(|v| v == "cue-view-1"), "round {round}: closing took more than its view: {all:?}");
+        }
+        let clients = crate::machines::tmux(&host, &["list-clients", "-F", "#{client_session}"]).unwrap_or_default();
+        let _ = crate::machines::tmux(&host, &["kill-session", "-t", "=cue-view-1"]);
+        let _ = crate::machines::tmux(&host, &["kill-session", "-t", &format!("={s}")]);
+        println!("VT grouped with: {seen_targets:?}; clients still on this run's views: {}", clients.lines().filter(|l| l.starts_with(&mine)).count());
+        assert!(seen_targets.iter().all(|t| *t == s), "every view grouped with {s}, got {seen_targets:?}");
     }
 }

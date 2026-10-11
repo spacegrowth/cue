@@ -294,6 +294,17 @@ pub fn tmux(host: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// `tmux` with `args` on the machine, then `also` in the same trip, whose failure is ignored: what the
+/// first said, whatever came of the second (tmux before 3.1 refuses a value it doesn't know, and a
+/// refusal in one command line would lose the first one's answer).
+pub fn tmux_then(host: &str, args: &[&str], also: &[&str]) -> Result<String, String> {
+    let q = |a: &[&str]| a.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ");
+    match tmux_path(host) {
+        Some(p) => run_direct(host, &format!("{p} {}; {p} {} >/dev/null 2>&1; true", q(args), q(also), p = shq(&p))),
+        None => run(host, &format!("tmux {}; tmux {} >/dev/null 2>&1; true", q(args), q(also))),
+    }
+}
+
 /// Where tmux is on the machine (a full path), asked once of your login shell there (your PATH) and kept
 /// while Cue runs. None when it can't say (not reachable, no tmux): ask again next time.
 pub fn tmux_path(host: &str) -> Option<String> {
