@@ -31,13 +31,15 @@ function renderMain() {
   const focusKey = focused?.dataset?.text;
   const focusId = !focusKey && focused?.matches?.("input[id], select[id]") ? focused.id : null;   // e.g. a quick phrase field, the Model pick
   const caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
-  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .ap-chat, .sec-body, .card.recent, .hist, .hdetail";
+  // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
+  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   const onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
 
   const counts = headerChips();
+  const lifted = liftChat();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
     <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${starChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
@@ -47,12 +49,14 @@ function renderMain() {
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
   </div>${moving ? movingDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
+  const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
-  // clock instead (as the working sweep's does), so it carries on through the redraws that come every
-  // couple of seconds while steps land.
+  // clock instead, so it carries on through the redraws that come every couple of seconds while steps
+  // land. Not the kept chat's dots: those elements live on, and their pulse with them.
   const phase = `-${Date.now() % PULSE_MS}ms`;
-  document.querySelectorAll(".dot-live").forEach((el) => { el.style.animationDelay = phase; });
+  const liveChat = kept ? document.querySelector("[data-chat]") : null;
+  document.querySelectorAll(".dot-live").forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
   markMore();   // lists end on whole cards before anything measures where cards landed
   if (view === "sessions") fitSvRest();
   flipPlay(flipFrom);
@@ -108,9 +112,11 @@ function renderMain() {
   const chat = document.querySelector("[data-chat]");
   const key = chat ? `${active?.id}|${active?.sid}|${chat.children.length}` : null;
   // New target or new message: jump to the end. Same chat, you were at the end: stay there
-  // (an image added to the box, or a redraw, mustn't push the last lines out of view).
+  // (an image added to the box, or a step landing, mustn't push the last lines out of view).
   if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
   else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
+  // Drawn afresh for the same chat (its steps feed was replaced): where you were.
+  else if (chat && !kept && oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
   activeKey = key;
   // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).

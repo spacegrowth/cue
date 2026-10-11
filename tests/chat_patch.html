@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Cue chat patch check</title>
+  <link rel="stylesheet" href="../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="../ui/style.css" />
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // The chat updates in place: the real UI code with a fake Tauri bridge, one working session whose
+    // steps feed this script changes between draws, and assertions on the chat's DOM. Headless:
+    //   chrome --headless=new --dump-dom file://…/tests/chat_patch.html 2> log.txt; grep CHECK log.txt
+    window.onerror = (m, src, l, c) => console.log(`CHECK no-error fail ${m} @${l}:${c}`);
+    (() => {
+      const now = (window.NOW = Date.now()), M = (window.MIN = 60000);
+      const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: true, result, bad: false, done: true, at_ms: now - m * M, ...o });
+      const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
+      // The thread: long enough that the chat scrolls, so a page of earlier messages has somewhere to go.
+      const thread = [];
+      for (let n = 0; n < 12; n++) thread.push({ role: n % 2 ? "agent" : "you", text: `Message ${n + 1} of the thread, with enough words to take a line or two in the chat.`, at_ms: now - (40 - n) * M });
+      thread.push({ role: "you", text: "Do the thing.", at_ms: now - 10.5 * M }, { role: "agent", text: "Done.", at_ms: now - 9 * M }, { role: "you", text: "Now the next thing.", at_ms: now - 2.5 * M });
+      const sess = (sid, project, state, thread) => ({ session_id: sid, project, harness: "claude", cwd: `/x/${project}`, state, since_ms: now - 2.4 * M, prompt: "Now the next thing.", segments: [{ kind: "working", start_ms: now - 2.4 * M, end_ms: null }], thread });
+      const state = { now_ms: now, window_ms: 30 * M, settings: { appearance: { mode: "light" } }, connections: { claude: { ok: true } }, parked: [], live: [],
+        sessions: [sess("w1", "one", "working", thread), sess("w2", "two", "working", thread.slice(0, 4))], items: [], history: [] };
+      window.FEED = { version: 1, turns: [
+        { at_ms: now - 10.4 * M, more: 0, items: [st("a1", "read", "Read", "main.rs", "80 lines", 10.3), st("a2", "edit", "Edited", "main.rs", "+4 −1", 10), say("Done.", 9)] },
+        { at_ms: now - 2.4 * M, more: 0, items: [say("Looking at it.", 2.3), st("c1", "read", "Read", "lib.rs", "40 lines", 2.2), st("c2", "run", "Ran", "cargo test", "", 2.1, { done: false })] },
+      ] };
+      window.__TAURI__ = {
+        app: { getVersion: async () => "0" },
+        event: { listen: async () => {} },
+        core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
+          if (cmd === "get_state") return structuredClone(state);
+          if (cmd === "get_drafts") return {};
+          if (cmd === "session_steps") return args.sessionId === "w1" && args.version !== FEED.version ? structuredClone(FEED) : { version: args.sessionId === "w1" ? FEED.version : 0, turns: args.sessionId === "w1" ? undefined : [] };
+          if (cmd === "step_detail") return Object.fromEntries(args.ids.map((id) => [id, { full: "cargo test", output: ["ok"] }]));
+          if (cmd === "session_log_page") return Array.from({ length: 30 }, (_, n) => ({ at_ms: args.beforeMs - (30 - n) * M, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] }));
+          if (cmd === "transcript_page" || cmd === "closed_sessions" || cmd === "machines_list") return [];
+          return null;
+        } },
+      };
+    })();
+  </script>
+  <script src="../ui/vendor/xterm/xterm.js"></script>
+  <script src="../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="../ui/vendor/xterm/addon-webgl.js"></script>
+  <script src="../ui/core.js"></script>
+  <script src="../ui/chat.js"></script>
+  <script src="../ui/board.js"></script>
+  <script src="../ui/sessions.js"></script>
+  <script src="../ui/history.js"></script>
+  <script src="../ui/sheets.js"></script>
+  <script src="../ui/app.js"></script>
+  <script>
+    const check = (name, ok, why = "") => console.log(`CHECK ${name} ${ok ? "pass" : "fail"}${ok || !why ? "" : ` (${why})`}`);
+    const chatEl = () => document.querySelector("[data-chat]");
+    // The window polls the feed every 0.5 s too: wait out a poll in flight, then fetch (and draw) what FEED says now.
+    const pull = async () => { while (stepsBusy) await new Promise((f) => setTimeout(f, 10)); await loadSteps("w1"); };
+    const dupKeys = (root) => { const d = []; for (const p of [root, ...root.querySelectorAll("*")]) { const seen = new Set(); for (const c of p.children) { const k = c.dataset.key; if (k == null) continue; if (seen.has(k)) d.push(k); seen.add(k); } } return d; };
+    setTimeout(async () => {
+      setActive(null, "w1");
+      await pull();
+      const chat = chatEl(), first = chat.querySelector(".stx-line"), sweep = document.querySelector("[data-sweep]");
+      // The older turn is folded (its head only); the live turn's first step is the first line.
+      check("setup", !!first && first.dataset.key === "c1" && !!sweep && chat.querySelectorAll(".stx").length === 2, `first=${first?.dataset.key} sweep=${!!sweep} stx=${chat.querySelectorAll(".stx").length}`);
+      // A selection in the chat before the patch (dragging one takes the cursor out of the text box first).
+      document.activeElement?.blur?.();
+      const r = document.createRange(); r.selectNodeContents(chat.querySelector(".cv-agent .cv-text"));
+      getSelection().removeAllRanges(); getSelection().addRange(r);
+      const selBefore = getSelection().rangeCount;
+      // One more step lands, and the one in flight finishes.
+      FEED.version = 2;
+      const last = FEED.turns[1].items[2];
+      Object.assign(last, { done: true, result: "ok · 12 lines" });
+      FEED.turns[1].items.push({ t: "step", id: "c3", kind: "edit", verb: "Edited", subject: "lib.rs", mono: true, result: "+2 −0", bad: false, done: true, at_ms: NOW - 1.9 * MIN });
+      await pull();
+      check("same-chat-element", chatEl() === chat);
+      check("first-step-same-node", chat.querySelector(".stx-line") === first && first.isConnected);
+      check("new-step-present", !!chat.querySelector('[data-key="c3"]'));
+      check("last-item-updated", (chat.querySelector('[data-key="c2"] .stx-res')?.textContent || "").includes("ok · 12 lines"), chat.querySelector('[data-key="c2"] .stx-res')?.textContent);
+      check("no-duplicate-keys", dupKeys(chat).length === 0, dupKeys(chat).join(","));
+      check("turn-count", chat.querySelectorAll(".stx").length === FEED.turns.length, `${chat.querySelectorAll(".stx").length}`);
+      check("selection-kept", getSelection().rangeCount === selBefore && selBefore === 1 && getSelection().getRangeAt(0).startContainer.isConnected && getSelection().toString().length > 0, `${selBefore} -> ${getSelection().rangeCount} "${getSelection().toString().slice(0, 20)}" active=${document.activeElement?.tagName}`);
+      check("sweep-same-element", document.querySelector("[data-sweep]") === sweep && sweep.isConnected);
+      check("flick-after-step", !!document.querySelector("[data-flick]"));
+      check("new-step-reveals", chat.querySelector('[data-key="c3"]').classList.contains("reveal") && !first.classList.contains("reveal"));
+      // A step opened: its line is updated in place, its detail goes in under it.
+      chat.querySelector('[data-step="w1|c1"]').click();
+      await new Promise((f) => setTimeout(f, 50));
+      check("step-opened-in-place", chat.querySelector(".stx-line") === first && first.classList.contains("open") && !!chat.querySelector('[data-key="d:c1"]'));
+      // A plain redraw (the 15 s one) changes nothing.
+      renderMain();
+      check("redraw-keeps-nodes", chatEl() === chat && chat.querySelector(".stx-line") === first);
+      check("redraw-keeps-selection", getSelection().toString().length > 0 && getSelection().getRangeAt(0).startContainer.isConnected, `"${getSelection().toString().slice(0, 20)}"`);
+      // (b) earlier messages loaded above: nodes kept, distance from the bottom kept.
+      chat.scrollTop = Math.floor(chat.scrollHeight / 2);
+      const fromBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight, rowsBefore = chat.children.length;
+      check("scrollable-before-older", chat.scrollHeight > chat.clientHeight && chat.scrollTop > 60, `h=${chat.scrollHeight} c=${chat.clientHeight} top=${chat.scrollTop}`);
+      await loadOlder("w1");
+      const fromBottomAfter = chat.scrollHeight - chat.scrollTop - chat.clientHeight;
+      check("older-nodes-kept", chatEl() === chat && chat.querySelector(".stx-line") === first && chat.children.length === rowsBefore + 30, `${rowsBefore} -> ${chat.children.length}`);
+      check("older-scroll-kept", Math.abs(fromBottomAfter - fromBottom) <= 1, `${fromBottom} -> ${fromBottomAfter}`);
+      // (a) another session opened: a new chat element.
+      setActive(null, "w2");
+      check("switch-new-tree", chatEl() !== chat && !chat.isConnected && !!chatEl());
+      setActive(null, "w1");
+      const chat2 = chatEl();
+      check("switch-back-new-tree", chat2 !== chat && chat2.dataset.chatFor === "m|w1");
+      // The feed shrank (its transcript was replaced): drawn afresh.
+      FEED.version = 3; FEED.turns = FEED.turns.slice(1);
+      await pull();
+      check("shrunk-feed-full-draw", chatEl() !== chat2 && chatEl().querySelectorAll(".stx").length === 1, `same=${chatEl() === chat2} stx=${chatEl().querySelectorAll(".stx").length}`);
+      console.log("CHECK done pass");
+    }, 300);
+  </script>
+</body>
+</html>

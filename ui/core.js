@@ -558,7 +558,7 @@ function trimCaches() {
   const live = new Set([...state.sessions.map((s) => s.session_id), ...(state.live || []).map((q) => q.session_id)]);
   // Steps and commands: kept for every live session (and the ones you opened lately).
   const near = new Set([...open, ...live, ...recentSids]);
-  for (const m of [stepFeeds, stepArrived, cmdLists, cmdMissed]) for (const k of [...m.keys()]) if (!near.has(sidOf(k))) m.delete(k);
+  for (const m of [stepFeeds, cmdLists, cmdMissed]) for (const k of [...m.keys()]) if (!near.has(sidOf(k))) m.delete(k);
   for (const k of [...btwLog.keys()]) if (!near.has(k)) btwLog.delete(k);
   // Per-session bits of this window's: a terminal's last line, "!" lines (the + New box's stay), forwardable messages
   // (keyed by session or card id, then ":" and the time).

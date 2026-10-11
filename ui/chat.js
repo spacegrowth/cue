@@ -601,15 +601,14 @@ const stepFlip = new Set();    // "sid|id": steps you opened (or, where everythi
 const turnFold = new Map();    // "sid|turn" -> open? (your choice over the default)
 const turnAll = new Set();     // turns where "Show all" opened every step
 const stepDetail = new Map();  // "sid|id" -> { full, output | diff } | "loading"
-// Words and steps that came in while you watch: when (they appear smoothly, once). Not what was already
-// there when the chat opened.
-const stepArrived = new Map(); // "sid|item key" -> ms
+// Words and steps that come in while you watch appear smoothly, once: patchChat gives a new line the
+// `reveal` class as it goes in (a full draw gives nothing that class). This is the longest a new
+// paragraph takes to unroll (--rv).
 const REVEAL_MS = 900;
 /** The working light along the chat's top edge: brisk while steps land (a brighter flick for each new
- *  one), calmer after a quiet spell (a long think), still and amber once Cue thinks it's stuck. Where it
- *  is in its pass comes from the clock, so a redraw (they come often while it works) carries it on
- *  instead of starting it over. */
-const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000, FLICK_MS = 700;
+ *  one, from patchChat), calmer after a quiet spell (a long think), still and amber once Cue thinks it's
+ *  stuck. The element outlives the redraws (settleChat carries it over), so its pass never starts over. */
+const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000;
 /** The pulsing dot's cycle (.dot-live in the CSS). */
 const PULSE_MS = 1400;
 function sweep(sid, s) {
@@ -617,11 +616,7 @@ function sweep(sid, s) {
   if (s.stuck_ms && !s.compacting_ms) return `<i class="sweep stalled"></i>`;
   const lastStep = stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1)?.at_ms || 0;
   const calm = now() - Math.max(s.doing_ms || 0, lastStep, s.compacting_ms || 0, s.since_ms || 0) > QUIET_MS;
-  const period = calm ? CALM_MS : SWEEP_MS;
-  const landed = Math.max(0, ...[...stepArrived].filter(([k]) => k.startsWith(`${sid}|`)).map(([, at]) => at));
-  const since = Date.now() - landed;
-  return `<i class="sweep ${calm ? "calm" : ""}" style="animation-duration:${period}ms;animation-delay:-${Date.now() % period}ms"></i>`
-    + (since < FLICK_MS ? `<i class="sweep flick" style="animation-delay:-${since}ms"></i>` : "");
+  return `<i class="sweep ${calm ? "calm" : ""}" style="animation-duration:${calm ? CALM_MS : SWEEP_MS}ms" data-sweep></i>`;
 }
 const itemKey = (turn, x, i) => (x.t === "step" ? x.id : `${turn.at_ms}:${i}`);
 let stepsBusy = false;
@@ -633,12 +628,8 @@ async function loadSteps(sid) {
   const f = stepFeeds.get(sid);
   try {
     const r = await invoke("session_steps", { sessionId: sid, version: f?.version || 0 });
-    if (r.turns && f) {
-      const had = new Set(f.turns.flatMap((t) => t.items.map((x, i) => itemKey(t, x, i))));
-      for (const [k, at] of stepArrived) if (Date.now() - at > REVEAL_MS) stepArrived.delete(k);   // done animating
-      for (const t of r.turns) t.items.forEach((x, i) => { const k = itemKey(t, x, i); if (!had.has(k)) stepArrived.set(`${sid}|${k}`, Date.now()); });
-    }
-    stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], meta: r.turns ? r.meta : f?.meta, helpers: (r.turns ? r.helpers : f?.helpers) || [], at: Date.now() });
+    // Its first feed: what was already there when the chat opened, not steps landing while you watch.
+    stepFeeds.set(sid, { version: r.version, turns: r.turns ?? f?.turns ?? [], meta: r.turns ? r.meta : f?.meta, helpers: (r.turns ? r.helpers : f?.helpers) || [], at: Date.now(), fresh: !f });
     if (r.turns) { renderMain(); wantDetails(sid); }
   } catch {} finally { stepsBusy = false; }
 }
@@ -691,19 +682,17 @@ function stepDetailHtml(k, x) {
   } else if (x.kind !== "read") body = `<div class="dim">No output.</div>`;
   return `<div class="stx-detail">${full}${body}</div>`;
 }
-/** Just arrived: its arrival animation, picked up where it is. The chat may redraw several times
- *  while it plays; starting over would fade it in twice, dropping it would cut it short. Returns the
- *  attributes to add, or "" once it's done. */
-const reveal = (k, ms, extra = "") => {
-  const t = Date.now() - (stepArrived.get(k) || 0);
-  return t < ms ? ` reveal" style="${extra}animation-delay:-${t}ms` : "";
-};
+/** The chat's rows and a turn's items each carry a `data-key`, so patchChat can tell what's new, what
+ *  changed and what's untouched between draws: this puts the key on `html`'s outer element. */
+const keyed = (html, k) => html.replace(/^<([a-z]+)/i, `<$1 data-key="${esc(String(k))}"`);
+/** Keys for one chat: a second row with the same key gets a suffix, so no two rows share one. */
+const keyer = () => { const seen = new Map(); return (k) => { const n = (seen.get(k) || 0) + 1; seen.set(k, n); return n > 1 ? `${k}#${n}` : k; }; };
 function stepLine(sid, x, all, plain = false) {
   const k = `${sid}|${x.id}`;
   const open = !plain && x.done && all !== stepFlip.has(k);
-  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}${reveal(k, 250)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
+  return `<button class="stx-line ${x.bad ? "bad" : ""} ${open ? "open" : ""}" data-key="${esc(x.id)}" ${x.done && !plain ? `data-step="${esc(k)}"` : "disabled"}>
     <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject ? ` <span class="${x.mono ? "mono" : ""}">${esc(x.subject)}</span>` : ""}</span>
-    <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? stepDetailHtml(k, x) : ""}`;
+    <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;
 }
 // ---------- background agents: Claude Code's Agent tool, run in the background ----------
 // Each runs inside its session's process, with no terminal and no way to message it: not a session,
@@ -723,12 +712,12 @@ function helperBlock(sid, h, inTray) {
   const open = inTray ? !helperOpen.has(k) : helperOpen.has(k);
   const model = (h.model || "").replace(/^claude-/, "").replace(/-\d.*$/, "");
   const head = `<button class="bg-head" data-helper="${esc(k)}"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b><span class="dim"> · ${esc(h.desc)}${model ? ` · ${esc(model)}` : ""} · ${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>` : `finished · ${helperSpan(h)}`}</span>${running ? `<span class="dot-live"></span>` : `<span class="stx-chev">${open ? "⌄" : "›"}</span>`}</button>`;
-  if (!open) return `<div class="bg-agent folded">${head}</div>`;
+  if (!open) return `<div class="bg-agent folded" data-key="h:${esc(h.id)}">${head}</div>`;
   const all = !inTray || helperOpen.has(`${k}|all`);
   const items = all ? h.items : h.items.slice(-HELPER_TRAY_STEPS);
   const before = (h.more || 0) + (h.items.length - items.length);
   const steps = items.map((x) => x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small">${md(x.text)}</div>`).join("");
-  return `<div class="bg-agent">${head}${before && !all ? `<button class="stx-more dim" data-helper-all="${esc(k)}">${before} earlier steps · show all</button>` : before ? `<div class="stx-more dim">${before} earlier steps not shown</div>` : ""}<div class="stx-steps">${steps}</div>
+  return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${before && !all ? `<button class="stx-more dim" data-helper-all="${esc(k)}">${before} earlier steps · show all</button>` : before ? `<div class="stx-more dim">${before} earlier steps not shown</div>` : ""}<div class="stx-steps">${steps}</div>
     <div class="bg-note">${running ? "Read-only. It reports to this session, not to you." : "What it reported is in the session's next reply."}</div></div>`;
 }
 /** The tray above the message box: every agent still at work. "" when none. */
@@ -758,23 +747,24 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const open = turnFold.has(key) ? turnFold.get(key) : mode === "all" || (mode === "line" && (live || latest));
   const all = mode === "all" || turnAll.has(key);
   const count = `${steps.length}${turn.more ? "+" : ""} step${steps.length === 1 ? "" : "s"}`;
-  const head = `<div class="stx-head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
-  if (!open) return first ? `<div class="stx">${head}</div>` : "";
-  if (!items.length) return first ? `<div class="stx">${head}</div>` : "";
-  let body = "", run = [];
-  const flush = () => { if (run.length) body += `<div class="stx-steps">${run.join("")}</div>`; run = []; };
+  const bk = `t:${turn.at_ms}:${part.from}`;
+  const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
+  if (!open) return first ? `<div class="stx" data-key="${esc(bk)}">${head}</div>` : "";
+  if (!items.length) return first ? `<div class="stx" data-key="${esc(bk)}">${head}</div>` : "";
+  let body = "", run = [], runKey = "";
+  // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
+  const flush = () => { if (run.length) body += `<div class="stx-steps" data-key="run:${esc(runKey)}">${run.join("")}</div>`; run = []; };
   const finished = new Map(helpersOf(sid).filter((h) => !helperRunning(h)).map((h) => [h.step, h]));
   items.forEach(([x, i]) => {
-    if (x.t !== "say") { run.push(stepLine(sid, x, all)); const h = finished.get(x.id); if (h) run.push(helperBlock(sid, h, false)); return; }
+    if (x.t !== "say") { if (!run.length) runKey = x.id; run.push(stepLine(sid, x, all)); const h = finished.get(x.id); if (h) run.push(helperBlock(sid, h, false)); return; }
     flush();
     // New words unroll top to bottom, quicker for short ones.
     const ms = Math.min(REVEAL_MS, 250 + x.text.length * 2);
-    const rv = reveal(`${sid}|${itemKey(turn, x, i)}`, ms, `--rv:${ms}ms;`);
-    body += `<div class="stx-say msg${rv}">${md(x.text)}</div>`;
+    body += `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}" style="--rv:${ms}ms">${md(x.text)}</div>`;
   });
   flush();
-  if (!first) return `<div class="stx">${body}</div>`;
-  return `<div class="stx">${head}${turn.more ? `<div class="stx-more dim">${turn.more} earlier steps not shown</div>` : ""}${body}</div>`;
+  if (!first) return `<div class="stx" data-key="${esc(bk)}">${body}</div>`;
+  return `<div class="stx" data-key="${esc(bk)}">${head}${turn.more ? `<div class="stx-more dim" data-key="more">${turn.more} earlier steps not shown</div>` : ""}${body}</div>`;
 }
 /** The chat with each turn's steps put in by time: after your message, before the reply. `extra`:
  *  more lines to place by time (what you chose on a decision, when you chose it). */
@@ -820,9 +810,10 @@ function chatHtml(it, s, harness, paged = false) {
   const project = s?.project || it?.project || "";
   const sid = s?.session_id || it?.session_id;
   // What you chose on a decision sits in the chat when you chose it (later steps come below it).
-  const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: resultLine(it) }] : [];
-  const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: ranCard(sid, e, n) })) : [];
-  const rows = withSteps(sid, s, ex, ex.map((e, n) => {
+  const K = keyer();
+  const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
+  const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
+  const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
     if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
@@ -844,14 +835,14 @@ function chatHtml(it, s, harness, paged = false) {
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
-  }), chose.concat(ran));
-  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
+  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran));
+  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
-  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
-  if (s?.held) rows.push(`<div class="cv-you queued held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
-  if (s?.queued) rows.push(`<div class="cv-you queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
-  return rows.length ? (paged && sid ? olderRow(sid, harness) : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty">No messages yet in this session.</div>`;
+  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
+  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
+  if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
+  return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
 const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
@@ -955,15 +946,15 @@ function quietPane() {
       ${moveBtn(q.session_id, q.harness, busy ? "working" : "idle", "btn primary")}<button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
     ${subHead(q.cwd, "", "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
-    <div class="ap-chat" data-chat>${chat || `<div class="dim cv-empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`}</div></div>`;
+    ${chatBox(`q|${q.session_id}`, chat || `<div class="dim cv-empty" data-key="empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`)}</div>`;
 }
 /** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
 function quietTurn(sid, t, live, latest, harness = "claude") {
-  const you = t.prompt ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(t.prompt)).replace(/\n/g, "<br>")}</div><div class="cv-meta">You · ${ago(t.at_ms)} ago</div></div>` : "";
+  const you = t.prompt ? `<div class="cv-you" data-key="y:${t.at_ms}"><div class="cv-you-text">${linkify(esc(t.prompt)).replace(/\n/g, "<br>")}</div><div class="cv-meta">You · ${ago(t.at_ms)} ago</div></div>` : "";
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
-  const reply = tail.length ? `<div class="cv-agent"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
+  const reply = tail.length ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
 // ---------- Parked: sessions you stopped, to come back to ----------
@@ -1043,21 +1034,22 @@ function parkedPane(p) {
   const thread = p.thread || [];
   const shown = parkedAll === sid ? thread : lastTurns(thread, 2);
   const hidden = thread.length - shown.length;
-  const more = hidden > 0 ? `<button class="park-more" data-park-all="${esc(sid)}">▴ ${hidden} earlier message${hidden === 1 ? "" : "s"}</button>`
-    : parkedAll === sid && lastTurns(thread, 2).length < thread.length ? `<button class="park-more" data-park-all="${esc(sid)}">▾ Just the last two turns</button>` : "";
-  const rows = shown.map((e) => e.role === "you"
+  const more = hidden > 0 ? `<button class="park-more" data-key="more" data-park-all="${esc(sid)}">▴ ${hidden} earlier message${hidden === 1 ? "" : "s"}</button>`
+    : parkedAll === sid && lastTurns(thread, 2).length < thread.length ? `<button class="park-more" data-key="more" data-park-all="${esc(sid)}">▾ Just the last two turns</button>` : "";
+  const K = keyer();
+  const rows = shown.map((e) => keyed(e.role === "you"
     ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago</div></div>`
-    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(e.text)}</div></div>`).join("");
+    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(e.text)}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
   const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
   const line = w
-    ? `<div class="cv-status"><span class="dot-live"></span>Resuming${where}…</div>`
-    : `<div class="park-line">${closed ? "" : P_SIGN}${closed ? "Closed" : "Parked"} ${parkedAgo(p)} · ${esc(agentName(harness))} stopped${where} · Resume picks up right here</div>`;
+    ? `<div class="cv-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`
+    : `<div class="park-line" data-key="line">${closed ? "" : P_SIGN}${closed ? "Closed" : "Parked"} ${parkedAgo(p)} · ${esc(agentName(harness))} stopped${where} · Resume picks up right here</div>`;
   return `<div class="active-pane parked">
     <div class="ap-head">${projBtn(p.project, "ap")}${badge(harness)}<span class="proj">${esc(name)}</span>${machTag(p.machine)}<span class="pill soft park-pill">${w ? "resuming…" : `${closed ? "" : P_SIGN}${p.kind} · ${now() - p.at < 60000 ? "now" : ago(p.at)}`}</span>${closed ? "" : starBtn(sid)}<span class="grow"></span>
       ${closed ? `<button class="btn" data-park-closed="${esc(sid)}" ${w ? "disabled" : ""}>Park</button>` : `<button class="btn" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button>`}
       <button class="btn primary" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>${w ? "Resuming…" : "Resume"}</button></div>
     ${subHead(p.cwd, "", "", "")}
-    <div class="ap-chat" data-chat>${more}${rows || `<div class="dim cv-empty">Cue kept no messages from it.</div>`}${line}</div>
+    ${chatBox(`p|${sid}`, `${more}${rows || `<div class="dim cv-empty" data-key="empty">Cue kept no messages from it.</div>`}${line}`)}
     <div class="foot">${box(`s:${sid}`, `Message ${name}… sending resumes it first`, w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
 }
 
@@ -1114,9 +1106,140 @@ function activePane() {
     ${subHead(s?.cwd || it?.cwd, "", sid)}
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey()}</div>` : ""}
-    <div class="ap-chat" data-chat>${chatHtml(it, s, harness, true)}${renameNotice(s)}${statusLine(it, s)}</div>
+    ${chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}
     ${pending ? "" : nextBar()}
     ${termDock(sid)}${foot}</div>`;
+}
+// ---------- the chat's DOM lives on between draws ----------
+// renderMain rebuilds the whole window from a string; the chat (the Active pane's `.ap-chat`) is the one
+// part that would show it: steps land every half second while a session works, and a rebuilt chat
+// flickers, starts every fade-in over, drops your text selection and loses its scroll. So the chat's
+// element is kept: while the same chat stays open, activePane() leaves a slot where it goes, settleChat
+// puts the live element back into that slot, and patchChat brings it up to date by key: a row or step
+// whose key is new goes in (in order), one whose HTML changed is updated in place, the rest are left
+// alone. The whole chat is drawn afresh only when another chat opens (or the steps feed shrank: the
+// transcript was replaced).
+// Setting the window's HTML would take the chat out of the document, and an element put back after
+// that starts its animations over and loses the selection in it. So liftChat moves it (and the sweep)
+// aside first, with moveBefore where the engine has it: a move that keeps the element's state. Without
+// it the element is kept but a fade-in mid-way would replay, so there the `reveal` of earlier lines is
+// taken off at the next draw. A selection in the chat collapses on either move, so it's noted and put back.
+const KEEPS_STATE = typeof Element.prototype.moveBefore === "function";
+const moveTo = (parent, node, before = null) => (KEEPS_STATE ? parent.moveBefore(node, before) : parent.insertBefore(node, before));
+let chatPending = null;   // what the slot stands for: the chat's HTML, until settleChat patches it in
+/** Before the window's HTML is set: the chat, the sweep and a flick move aside, out of what's replaced. */
+function liftChat() {
+  const kept = ["[data-chat]", "[data-sweep]", "[data-flick]"].map((q) => document.querySelector(q)).filter(Boolean);
+  const chat = kept.find((el) => el.matches("[data-chat]"));
+  const top = chat?.scrollTop;
+  const sel = getSelection();
+  const picked = chat && sel.rangeCount && !sel.isCollapsed && chat.contains(sel.getRangeAt(0).commonAncestorContainer) ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] : null;
+  for (const el of kept) moveTo(document.body, el);
+  return { kept, top, picked };
+}
+/** The `.ap-chat` for a pane: the real thing on a full draw, else a slot for the element that's there. */
+function chatBox(forKey, html) {
+  const old = document.querySelector("[data-chat]");
+  const turns = stepFeeds.get(forKey.slice(2))?.turns.length ?? 0;
+  if (old && old.dataset.chatFor === forKey && turns >= +(old.dataset.turns || 0)) {
+    chatPending = { forKey, html, turns };
+    return `<div class="ap-chat" data-chat data-chat-slot></div>`;
+  }
+  chatPending = null;
+  const f = stepFeeds.get(forKey.slice(2));
+  if (f) f.fresh = false;   // whatever is in this draw was there when the chat was opened
+  return `<div class="ap-chat" data-chat data-chat-for="${esc(forKey)}" data-turns="${turns}">${html}</div>`;
+}
+/** After renderMain set the window's HTML: the live chat (and the working sweep over it) go back where
+ *  the slot is, then the chat is patched. `old`: the chat element from before the draw. Returns true when
+ *  the chat was kept, false when this draw made a new one. */
+function settleChat({ kept, top, picked }) {
+  const slot = document.querySelector("[data-chat-slot]");
+  const old = kept.find((el) => el.matches("[data-chat]"));
+  if (!slot || !old || !chatPending) { chatPending = null; kept.forEach((el) => el.remove()); return false; }
+  const { forKey, html, turns } = chatPending;
+  chatPending = null;
+  const pane = slot.closest(".active-pane");
+  moveTo(slot.parentNode, old, slot);
+  slot.remove();
+  if (top != null && old.scrollTop !== top) old.scrollTop = top;
+  // The sweep carries on where it was (its class and speed follow the new draw); so does a flick mid-pass.
+  const sw = pane?.querySelector("[data-sweep]"), oldSw = kept.find((el) => el.matches("[data-sweep]"));
+  if (sw && oldSw) { oldSw.className = sw.className; oldSw.style.cssText = sw.style.cssText; moveTo(sw.parentNode, oldSw, sw); sw.remove(); }
+  else oldSw?.remove();
+  const oldFlick = kept.find((el) => el.matches("[data-flick]"));
+  if (sw && oldFlick) moveTo(pane, oldFlick, (pane.querySelector("[data-sweep]") || pane.firstChild).nextSibling);
+  else oldFlick?.remove();
+  if (!KEEPS_STATE) old.querySelectorAll(".reveal").forEach((el) => el.classList.remove("reveal"));
+  const f = stepFeeds.get(forKey.slice(2));
+  const fresh = !!f?.fresh;
+  if (f) f.fresh = false;
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const landed = patchKids(old, tpl.content, !fresh);
+  old.dataset.turns = turns;
+  if (landed && sw) flick(pane);
+  // What you had selected, unless the patch replaced it.
+  if (picked && picked[0].isConnected && picked[2].isConnected) try { getSelection().setBaseAndExtent(...picked); } catch {}
+  return true;
+}
+/** A step just landed: one quick flick along the top edge, over the sweep. It outlives the draws that
+ *  come while it plays (settleChat carries it over). */
+function flick(pane) {
+  pane.querySelector("[data-flick]")?.remove();
+  const el = document.createElement("i");
+  el.className = "sweep flick";
+  el.dataset.flick = "1";
+  el.addEventListener("animationend", () => el.remove());
+  (pane.querySelector("[data-sweep]") || pane).after(el);
+}
+/** The chat's rows (or a turn's items) brought up to date, by key. A key not in the DOM goes in where it
+ *  comes in order; one whose HTML differs from the last draw's is updated in place (morph); one that's
+ *  gone is removed; the rest are left exactly as they are. A `.stx` block and a run of steps inside it
+ *  are patched the same way, one level down, so a landing step only adds its own line. `reveal`: a new
+ *  step or paragraph fades in. Returns how many step lines went in. */
+const PATCH_INSIDE = ".stx, .stx-steps";
+function patchKids(live, fresh, reveal) {
+  const want = new Set(), old = new Map();
+  for (const c of fresh.children) want.add(c.dataset.key);
+  for (const c of [...live.children]) { const k = c.dataset.key; if (k == null || old.has(k) || !want.has(k)) c.remove(); else old.set(k, c); }
+  let landed = 0, cursor = live.firstElementChild;
+  const seen = new Set();
+  for (const f of [...fresh.children]) {
+    const k = f.dataset.key, h = f.outerHTML;
+    const node = k != null && !seen.has(k) ? old.get(k) : null;
+    if (!node) {
+      live.insertBefore(f, cursor);
+      f._html = h;
+      const lines = [...f.querySelectorAll(".stx-line"), ...(f.matches(".stx-line") ? [f] : [])];
+      landed += lines.length;
+      if (reveal) for (const el of [...lines, ...f.querySelectorAll(".stx-say"), ...(f.matches(".stx-say") ? [f] : [])]) el.classList.add("reveal");
+      continue;
+    }
+    seen.add(k);
+    if (node === cursor) cursor = cursor.nextElementSibling;
+    else live.insertBefore(node, cursor);   // out of order (rare: rows sort by time)
+    if (node._html === h) continue;
+    node._html = h;
+    if (node.matches(PATCH_INSIDE) && f.matches(PATCH_INSIDE)) { morphAttrs(node, f); landed += patchKids(node, f, reveal); }
+    else morph(node, f);
+  }
+  return landed;
+}
+/** `a` made to match `b` in place where their shapes agree (same tags, same number of children: the text
+ *  and attributes are set), replaced where they don't. A line mid-fade-in keeps its `reveal`. */
+function morph(a, b) {
+  if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.replaceWith(b); return; }
+  if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return; }
+  morphAttrs(a, b);
+  if (a.childNodes.length !== b.childNodes.length) { a.replaceChildren(...b.childNodes); return; }
+  const bc = [...b.childNodes];
+  [...a.childNodes].forEach((c, i) => morph(c, bc[i]));
+}
+function morphAttrs(a, b) {
+  if (a.classList.contains("reveal")) b.classList.add("reveal");
+  for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
 }
 let escArmed = 0;           // when Esc was last pressed on a working session (twice within 1.5s stops it)
 let focusedTarget = null;   // the Active target whose text box last got the cursor
