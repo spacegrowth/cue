@@ -45,24 +45,61 @@ done
 /// can't do fractions (not GNU's or BusyBox's) falls back to a second. ("cue-watch" marks these processes.)
 /// Once a minute it also drops answers in out/ a day old or more: one the hook never collected (its agent
 /// was gone by the time you answered) would otherwise stay there for good.
+///
+/// One watcher per Mac: some SSH servers (DevPod's) never end a command whose connection is gone, so an
+/// earlier connection's watcher can live on, its output going nowhere, and take events the current one
+/// never sees (prompts and Stops lost, some read by both as an empty line). A watcher records itself in
+/// ~/.cue/watcher-<this Mac>, and an older one of the same Mac leaves as soon as that names another
+/// (another Mac's watcher is left alone). Once a second it ends watchers of the script before this one,
+/// which don't know that file: shells only, known by their script read from /proc, never one carrying
+/// this script's marker (itself, and whatever started it with this text in its command line). Each
+/// event is claimed (renamed) before it's read, so two never take one, and at start a claimed event
+/// whose watcher died is put back. On a machine without /proc or pgrep the sweep does nothing.
 const WATCH: &str = r#"# cue-watch
 d="$HOME/.cue"; mkdir -p "$d/in" "$d/out"
+v2=cue-watch-v2; w="$d/watcher-@MAC@"
+echo $$ >"$w"
+for g in "$d"/in/*.json.*; do
+  [ -e "$g" ] || continue
+  kill -0 "${g##*.}" 2>/dev/null || mv "$g" "${g%.*}" 2>/dev/null
+done
 n=0; p=0
 while :; do
-  [ "$n" -eq 0 ] && date +%s >"$d/watching"
+  [ "$(cat "$w" 2>/dev/null)" = $$ ] || exit 0
+  if [ "$n" -eq 0 ]; then
+    date +%s >"$d/watching"
+    for x in $(pgrep -f '# cue-watch' 2>/dev/null); do
+      case "$(cat "/proc/$x/comm" 2>/dev/null)" in sh|bash|dash|ash|zsh|ksh|busybox) ;; *) continue ;; esac
+      grep -q "$v2" "/proc/$x/cmdline" 2>/dev/null && continue
+      grep -q 'n=0; p=0' "/proc/$x/cmdline" 2>/dev/null && kill "$x" 2>/dev/null
+    done
+  fi
   for f in "$d"/in/*.json; do
     [ -e "$f" ] || continue
-    printf '@@%s ' "$(basename "$f" .json)"; tr -d '\n' <"$f"; echo; rm -f "$f"
+    g="$f.$$"; mv "$f" "$g" 2>/dev/null || continue
+    printf '@@%s ' "$(basename "$f" .json)"; tr -d '\n' <"$g"; echo; rm -f "$g"
   done
   # The beat comes after the events waiting there: the first one means all of them were handed over.
   if [ "$n" -eq 0 ]; then
-    [ "$p" -eq 0 ] && find "$d/out" -name '*.json' -mmin +1440 -delete 2>/dev/null
+    [ "$p" -eq 0 ] && find "$d/out" "$d/in" -name '*.json*' -mmin +1440 -delete 2>/dev/null
     p=$(( (p + 1) % 60 ))
     echo "@@hb" || exit 0
   fi
   n=$(( (n + 1) % 10 ))
   sleep 0.1 2>/dev/null || { sleep 1; n=0; }
 done"#;
+
+/// The watcher for this Mac: WATCH with this Mac's name (letters, digits and dashes) in its file's name.
+fn watch_script() -> String {
+    WATCH.replace("@MAC@", &mac_key())
+}
+
+fn mac_key() -> String {
+    let mut buf = [0u8; 256];
+    let n = if unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) } == 0 { buf.iter().position(|b| *b == 0).unwrap_or(0) } else { 0 };
+    let key: String = String::from_utf8_lossy(&buf[..n]).chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).take(64).collect();
+    if key.is_empty() { "mac".into() } else { key }
+}
 
 /// Set Cue's hooks up on the machine for the agents found there (`tools`, from its check): the script,
 /// and Cue's entries in each agent's settings (backed up first, everything else kept). What it did.
@@ -150,7 +187,7 @@ pub fn on_reached(f: impl Fn(&str) + Send + Sync + 'static) {
 
 /// One SSH stream: runs until the connection drops or the machine is removed.
 fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
-    let mut child = machines::stream_command(&m.host, WATCH).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+    let mut child = machines::stream_command(&m.host, &watch_script()).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = child.stdout.take().ok_or("no output")?;
     let mut reached = false;
     let mut reader = BufReader::new(out);
@@ -372,6 +409,10 @@ mod tests {
     use super::*;
     use std::process::Command;
 
+    /// A watcher ends every other watcher of this user (as on a machine, where there is one ~/.cue):
+    /// the tests that run one take turns.
+    static WATCHERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     fn run_sh(script: &str, home: &std::path::Path, args: &[&str], input: &str) -> String {
         let mut c = Command::new("/bin/sh").arg("-c").arg(script).arg("cue-hook").args(args).env("HOME", home).env("TMUX", "/tmp/x,1,0").env("TMUX_PANE", "%7").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
         c.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
@@ -380,10 +421,11 @@ mod tests {
 
     #[test]
     fn the_watcher_hands_an_event_over_within_a_fraction_of_a_second() {
+        let _turn = WATCHERS.lock().unwrap_or_else(|e| e.into_inner());
         let home = std::env::temp_dir().join(format!("cue-watch-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(home.join(".cue/in")).unwrap();
-        let mut c = Command::new("/bin/sh").arg("-c").arg(WATCH).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let mut c = Command::new("/bin/sh").arg("-c").arg(watch_script()).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
         let out = c.stdout.take().unwrap();
         std::thread::spawn(move || {
@@ -409,6 +451,95 @@ mod tests {
     }
 
     #[test]
+    fn a_new_watcher_ends_the_one_before_and_gets_every_event() {
+        let _turn = WATCHERS.lock().unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!("cue-watch2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/in")).unwrap();
+        // A watcher left behind by an earlier Cue (its output going nowhere, as on a server that never ends it).
+        let mut old = Command::new("/bin/sh").arg("-c").arg(watch_script()).env("HOME", &home).stdout(Stdio::null()).spawn().unwrap();
+        std::thread::sleep(Duration::from_millis(400));
+        let mut c = Command::new("/bin/sh").arg("-c").arg(watch_script()).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let out = c.stdout.take().unwrap();
+        std::thread::spawn(move || {
+            for l in BufReader::new(out).lines().map_while(Result::ok) {
+                let _ = tx.send(l);
+            }
+        });
+        assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap(), "@@hb");
+        let gone = (0..30).any(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            matches!(old.try_wait(), Ok(Some(_)))
+        });
+        for i in 0..10 {
+            std::fs::write(home.join(format!(".cue/in/9-{i}.json")), format!("{{\"n\":{i}}}\n")).unwrap();
+        }
+        let mut got = vec![];
+        while let Ok(l) = rx.recv_timeout(Duration::from_secs(2)) {
+            if l != "@@hb" {
+                got.push(l);
+            }
+            if got.len() == 10 {
+                break;
+            }
+        }
+        let _ = old.kill();
+        let _ = old.wait();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(gone, "the earlier watcher left");
+        got.sort();
+        assert_eq!(got, (0..10).map(|i| format!("@@9-{i} {{\"n\":{i}}}")).collect::<Vec<_>>(), "every event, whole, to the current watcher");
+    }
+
+    #[test]
+    fn another_macs_watcher_is_left_alone_and_an_event_a_dead_watcher_claimed_is_delivered() {
+        let _turn = WATCHERS.lock().unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!("cue-watch3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/in")).unwrap();
+        let mut other = Command::new("/bin/sh").arg("-c").arg(WATCH.replace("@MAC@", "another-mac")).env("HOME", &home).stdout(Stdio::null()).spawn().unwrap();
+        std::thread::sleep(Duration::from_millis(400));
+        // Claimed by a watcher that died before handing it over (no process has that pid).
+        std::fs::write(home.join(".cue/in/7-1.json.999999"), "{\"n\":7}\n").unwrap();
+        let mut c = Command::new("/bin/sh").arg("-c").arg(watch_script()).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let out = c.stdout.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for l in BufReader::new(out).lines().map_while(Result::ok) {
+                let _ = tx.send(l);
+            }
+        });
+        // The other Mac's watcher may take it first: then it's handed over there, which is fine too.
+        let mut got = None;
+        let end = std::time::Instant::now() + Duration::from_secs(3);
+        while std::time::Instant::now() < end {
+            if let Ok(l) = rx.recv_timeout(Duration::from_millis(200)) {
+                if l != "@@hb" {
+                    got = Some(l);
+                    break;
+                }
+            }
+        }
+        // Its file goes right after its line is printed.
+        let count = || std::fs::read_dir(home.join(".cue/in")).unwrap().count();
+        let left = (0..20).map(|_| { std::thread::sleep(Duration::from_millis(50)); count() }).find(|n| *n == 0).unwrap_or_else(count);
+        let other_alive = matches!(other.try_wait(), Ok(None));
+        for p in [&mut other, &mut c] {
+            let _ = p.kill();
+            let _ = p.wait();
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(other_alive, "another Mac's watcher keeps running");
+        assert_eq!(left, 0, "the claimed event was put back and handed over");
+        if let Some(l) = got {
+            assert_eq!(l, r#"@@7-1 {"n":7}"#);
+        }
+    }
+
+    #[test]
     fn a_line_from_a_machine_is_capped_and_the_stream_goes_on_after_one_too_long() {
         let long = "x".repeat(50);
         let data = format!("@@hb\r\n{long}\nshort\nlast");
@@ -424,6 +555,7 @@ mod tests {
 
     #[test]
     fn the_watcher_drops_answers_nobody_collected_after_a_day() {
+        let _turn = WATCHERS.lock().unwrap_or_else(|e| e.into_inner());
         let home = std::env::temp_dir().join(format!("cue-watch-old-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(home.join(".cue/out")).unwrap();
@@ -432,7 +564,7 @@ mod tests {
         std::fs::write(&fresh, "{}").unwrap();
         let two_days_ago = std::time::SystemTime::now() - Duration::from_secs(2 * 86400);
         std::fs::File::options().write(true).open(&old).unwrap().set_modified(two_days_ago).unwrap();
-        let mut c = Command::new("/bin/sh").arg("-c").arg(WATCH).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let mut c = Command::new("/bin/sh").arg("-c").arg(watch_script()).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
         let out = c.stdout.take().unwrap();
         let mut r = BufReader::new(out);
         let _ = capped_line(&mut r, 1024); // the first heartbeat: the sweep ran just before it
@@ -447,13 +579,14 @@ mod tests {
 
     #[test]
     fn events_waiting_on_the_machine_come_before_its_first_beat() {
+        let _turn = WATCHERS.lock().unwrap_or_else(|e| e.into_inner());
         // An agent ended while Cue wasn't watching: its event waits in ~/.cue/in. The stream hands it
         // over before saying the machine is reached, so a rebuild on reaching it knows it ended.
         let home = std::env::temp_dir().join(format!("cue-watch-q-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(home.join(".cue/in")).unwrap();
         std::fs::write(home.join(".cue/in/100-1.json"), "{\"event\":\"end\"}\n").unwrap();
-        let mut c = Command::new("/bin/sh").arg("-c").arg(WATCH).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
+        let mut c = Command::new("/bin/sh").arg("-c").arg(watch_script()).env("HOME", &home).stdout(Stdio::piped()).spawn().unwrap();
         let mut lines = BufReader::new(c.stdout.take().unwrap()).lines();
         let first = lines.next().unwrap().unwrap();
         let second = lines.next().unwrap().unwrap();

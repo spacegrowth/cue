@@ -160,7 +160,8 @@ pub fn run() {
             // rest, whose card vanished another way, get it here).
             bring_back_cards(&hub);
             // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
-            if std::env::var_os("CUE_HOME").is_none() {
+            // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
+            if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
                 let h = hub.clone();
                 machines::hooks::on_reached(move |m| restore_machine(&h, m));
                 machines::hooks::watch_all();
