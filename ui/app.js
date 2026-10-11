@@ -436,7 +436,7 @@ function bindMain() {
     const pka = t.closest("[data-park-all]");
     if (pka) { parkedAll = parkedAll === pka.dataset.parkAll ? null : pka.dataset.parkAll; return renderMain(); }
     const ss = t.closest("[data-session]");
-    if (ss) return setActive(null, ss.dataset.session);
+    if (ss) return openSession(ss.dataset.session);
     const vb = t.closest("[data-view]");
     if (vb) { view = vb.dataset.view; return renderMain(); }
     const hf = t.closest("[data-hfilter]");

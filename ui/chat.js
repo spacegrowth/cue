@@ -202,8 +202,8 @@ async function openTerm(sid) {
 /** A remote executor, from its row in its lead's tree: its chat when Cue holds it, else a pane of its
  *  own (execPane), and either way its terminal, attached to its own tmux session there. Once per
  *  executor: a second click on the same row keeps the terminal that's open. */
-function openExec(sid) {
-  if (sessionOf(sid)) setActive(null, sid);
+function openExec(sid, id = null) {
+  if (sessionOf(sid)) setActive(id, sid);
   else if (quietOpen !== sid || view !== "board") {
     if (quietOpen !== sid) setActive(null, null);   // (not when it's this one: that would end its terminal)
     view = "board";
@@ -211,6 +211,13 @@ function openExec(sid) {
     renderMain();
   }
   return openTerm(sid);
+}
+/** A session Cue holds, opened from any row, chip or list that names it: its chat, and for a remote
+ *  executor in a tmux session of its own (one a lead on a machine started, whose hooks reached Cue too)
+ *  also that terminal, as from its row in its lead's tree (openExec). `id`: the card to open it on. */
+function openSession(sid, id = null) {
+  if (sessionOf(sid) && execTerm(sid)) return openExec(sid, id);
+  return setActive(id, sid);
 }
 /** Close it (the session keeps running in tmux). `quiet`: no redraw, another opening follows. */
 function closeTerm(quiet = false) {

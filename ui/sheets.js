@@ -184,7 +184,7 @@ function pickResult(i) {
   const r = searchResults[i];
   if (!r) return;
   if (r.kind === "session" && r.live && r.quiet) { sheet = null; return svAct("quiet", r.session_id); }
-  if (r.kind === "session" && sessionOf(r.session_id)) { sheet = null; return setActive(null, r.session_id); }
+  if (r.kind === "session" && sessionOf(r.session_id)) { sheet = null; return openSession(r.session_id); }
   if (r.kind === "older") return resumeOlder(r);
   openConvo(r, r.kind === "message" ? r.at_ms : null);
 }

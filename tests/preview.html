@@ -144,6 +144,12 @@
         state.crew.rlead = { role: "lead", plugin: "relay", name: "infra-ops", machine: "build-box", color: [120, 170, 200], model: "claude-opus-5-5", executors: [
           { session_id: "rx-dns", name: "dns-cutover", model: "claude-sonnet-5-5", status: "busy", packet: 2, plugin: "relay", machine: "build-box", tmux_session: "relay-dns-cutover", goal: "move the zone records to the new DNS provider" },
           { session_id: "rx-certs", name: "cert-renew", model: "claude-sonnet-5-5", status: "reported", packet: 1, plugin: "relay", machine: "build-box", tmux_session: "relay-cert-renew", goal: "renew the wildcard certificate", outcome: "Wildcard cert renewed, expires in 90 days", verify: { verdict: "COUNTS-MATCH" } } ] };
+        // &held=1: Cue holds dns-cutover too (its hooks reached Cue from the machine), with a crew record of its
+        // own: an executor started by a lead there, as a lead run from tmux on that machine starts one.
+        if (q.has("held")) {
+          state.sessions.push({ ...sess("rx-dns", "infra-ops", "claude", "agent", 2, [seg("working", 2)], "move the zone records to the new DNS provider"), machine: "build-box", tmux_pane: "%9", driven_by: "its relay lead (infra-ops)" });
+          state.crew["rx-dns"] = { role: "executor", plugin: "relay", name: "dns-cutover", model: "claude-sonnet-5-5", status: "busy", packet: 2, lead: "rlead", lead_name: "infra-ops", lead_armed: true, machine: "build-box", tmux_session: "relay-dns-cutover", goal: "move the zone records to the new DNS provider" };
+        }
       }
       if (q.has("crew")) state.reviews = { "x-miss": "not picked up" };
       // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.
@@ -376,7 +382,20 @@
       const openQ = new URLSearchParams(q).get("open");
       if (openQ && openQ !== "term") setTimeout(() => setActive(null, openQ), 80);
       // (&view=sessions: the Sessions view, dns-cutover marked as the one open, no click to leave the view.)
-      if (/remote=1/.test(q) && /view=sessions/.test(q)) setTimeout(() => { quietOpen = "rx-dns"; renderMain(); }, 200);
+      // &held=1&via=tree|chip|live: dns-cutover opened from its row in its lead's tree, its chip on the team bar
+      // of its lead's chat, or its row in the "N live" list. Each way, its own terminal opens (body[data-term-opens])
+      // beside its chat (body[data-open]): tests/exec_attach.sh checks all three, and via=lead below.
+      const via = new URLSearchParams(q).get("via");
+      if (/remote=1/.test(q) && /held=1/.test(q) && via) setTimeout(() => {
+        const done = () => { document.body.dataset.open = active?.sid || ""; };
+        if (via === "tree") { view = "board"; renderMain(); document.querySelector('.team-tree [data-exec-term="rx-dns"], .team-tree [data-session="rx-dns"]')?.click(); }
+        if (via === "chip") { setActive(null, "rlead"); document.querySelector('.team-bar [data-session="rx-dns"]')?.click(); }
+        if (via === "live") { lvAct("toggle", {}); document.querySelector('.lv-row[data-sid="rx-dns"]')?.click(); }
+        // (via=lead: its lead's own row, on the same machine but no executor: its chat only, no terminal.)
+        if (via === "lead") { view = "board"; renderMain(); document.querySelector('.team-top[data-session="rlead"], .working[data-session="rlead"]')?.click(); }
+        setTimeout(done, 300);
+      }, 200);
+      else if (/remote=1/.test(q) && /view=sessions/.test(q)) setTimeout(() => { quietOpen = "rx-dns"; renderMain(); }, 200);
       else if (/remote=1/.test(q)) setTimeout(() => { document.querySelector('[data-exec-term="rx-dns"]')?.click(); setTimeout(() => document.querySelector('[data-exec-term="rx-dns"]')?.click(), 1200); }, 200);
       // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
       if (/new=1/.test(q)) setTimeout(() => {

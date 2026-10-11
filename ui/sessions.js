@@ -499,7 +499,7 @@ async function svAct(act, sid) {
     return;
   }
   if (act === "exec") return openExec(sid);
-  if (act === "open") { const it = state.items.find((i) => i.session_id === sid && i.status === "pending"); return setActive(it?.id || null, sid); }
+  if (act === "open") { const it = state.items.find((i) => i.session_id === sid && i.status === "pending"); return openSession(sid, it?.id || null); }
   if (act === "quiet") {
     // A Claude session Cue hasn't heard from (resumed after a restart, say): Cue takes it in, so it opens
     // like any other, with its chat and a box to type in. If it can't, what it can show read-only.
