@@ -69,6 +69,14 @@ pub struct Turn {
     items: Vec<Item>,
     /// Earlier steps of this turn left out (MAX_ITEMS).
     more: usize,
+    /// When a Stop hook sent it back to work (0: none did). What it did and wrote from then on is the
+    /// hook's follow-up, not its answer: the chat folds it under "After a stop hook" (transcript::is_stop_hook).
+    #[serde(skip_serializing_if = "is_zero")]
+    hooked_ms: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// What the chat's tab shows about a session, from its log: the model, how full its context is (the
@@ -494,6 +502,17 @@ impl Feed {
                     let extra = e.get("toolUseResult");
                     return results.into_iter().fold(false, |any, b| self.finish(b, extra, at) || any);
                 }
+                // A Stop hook sent it back to work (a meta entry, so before those are passed over): more of
+                // the same turn, from here on the hook's follow-up.
+                if crate::logs::transcript::is_stop_hook(e) {
+                    // Read from mid-file, its turn's start further back: the turn starts here, already hooked.
+                    if self.turns.is_empty() {
+                        self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0 });
+                    }
+                    let Some(turn) = self.turns.last_mut().filter(|t| t.hooked_ms == 0) else { return false };
+                    turn.hooked_ms = at.max(1);
+                    return true;
+                }
                 if e.get("isMeta").and_then(Value::as_bool) == Some(true) || e.get("isCompactSummary").and_then(Value::as_bool) == Some(true) {
                     return false;
                 }
@@ -506,17 +525,12 @@ impl Feed {
                 if text.starts_with("<command-") || text.starts_with("<local-command") {
                     return false;
                 }
-                // A Stop hook sent it back to work: more of the same turn (the chat folds it under
-                // "After a stop hook"), not a turn of its own.
-                if text.starts_with(crate::logs::transcript::STOP_HOOK_MARK) {
-                    return false;
-                }
                 self.close_open("");
                 if crate::logs::transcript::harness_text(text) {
                     self.helper_finished(text, at);
                 }
                 let prompt = if crate::logs::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
-                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0 });
+                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0 });
                 false // an empty turn isn't shown until something happens in it
             }
             Some("assistant") => {
@@ -547,7 +561,7 @@ impl Feed {
         if self.turns.is_empty() {
             // Started mid-file, inside a turn whose prompt is further back.
             let at = match &item { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms };
-            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0 });
+            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0 });
         }
         let turn = self.turns.last_mut().unwrap();
         turn.items.push(item);
@@ -1171,21 +1185,83 @@ mod tests {
         assert_eq!(items.len(), 5);
     }
 
-    #[test]
-    fn a_stop_hooks_follow_up_stays_in_the_turn_it_continues() {
-        let log = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"fix the token expiry"}}
+    /// A turn a Stop hook sent back to work, as Claude Code writes it: the hook's entry is a meta one
+    /// (`isMeta`), its content a plain string. The first line stands in for the partial line a tail read drops.
+    const HOOKED: &str = r#"{"type":"summary","summary":"(the line a tail read skips)"}
+{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"role":"user","content":"fix the token expiry"}}
 {"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"text","text":"Done: expiry fixed."}]}}
-{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":"Stop hook feedback:\n[bash rules-check.sh]: Check the rules"}}
+{"type":"system","subtype":"stop_hook_summary","timestamp":"2026-10-04T10:00:02.500Z","hookCount":1}
+{"type":"user","isMeta":true,"timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"Stop hook feedback:\n[bash rules-check-stop.sh]: Unaudited edits this turn. Read rules-check.md"}}
 {"type":"assistant","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cat rules.md"}}]}}
 {"type":"user","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}
 {"type":"assistant","timestamp":"2026-10-04T10:00:06.000Z","message":{"content":[{"type":"text","text":"1. SHAPE: fine."}]}}
-{"type":"user","timestamp":"2026-10-04T10:00:30.000Z","message":{"content":"and the refresh token?"}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-10-04T10:00:07.000Z","durationMs":7000}
 "#;
-        let f = feed_of(log);
+
+    #[test]
+    fn a_stop_hooks_follow_up_stays_in_the_turn_it_continues_marked_from_where_the_hook_sent_it_back() {
+        let mut log = HOOKED.to_string();
+        log.push_str(r#"{"type":"user","timestamp":"2026-10-04T10:00:30.000Z","message":{"content":"and the refresh token?"}}"#);
+        let f = feed_of(&log);
         assert_eq!(f.turns.iter().map(|t| t.prompt.as_str()).collect::<Vec<_>>(), ["fix the token expiry", "and the refresh token?"], "the hook's entry opens no turn");
-        let items = &f.turns[0].items;
-        assert_eq!(items.len(), 3, "answer, the hook's step, its checklist: all one turn");
-        assert_eq!(step(&items[1]), ("Ran", "cat rules.md", "ok", false, true));
+        let t = &f.turns[0];
+        assert_eq!(t.items.len(), 3, "answer, the hook's step, its checklist: all one turn");
+        assert_eq!(t.hooked_ms, stamp(&serde_json::json!({"timestamp": "2026-10-04T10:00:03.000Z"})), "marked where the hook sent it back");
+        let at = |i: &Item| match i { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms };
+        let after: Vec<bool> = t.items.iter().map(|i| at(i) >= t.hooked_ms).collect();
+        assert_eq!(after, [false, true, true], "the answer before it; the hook's step and checklist after");
+        assert_eq!(step(&t.items[1]), ("Ran", "cat rules.md", "ok", false, true));
+        assert_eq!(f.turns[1].hooked_ms, 0, "the next turn starts unhooked");
+        // Sent to the window as hooked_ms, left out when there's none.
+        assert!(serde_json::to_value(t).unwrap().get("hooked_ms").is_some() && serde_json::to_value(&f.turns[1]).unwrap().get("hooked_ms").is_none());
+    }
+
+    #[test]
+    fn a_hook_read_before_its_turns_start_still_marks_what_follows() {
+        // Opened mid-file (the last 4 MB): the hook's entry is the first thing read.
+        let log = HOOKED.lines().skip(4).collect::<Vec<_>>().join("\n");
+        let f = feed_of(&log);
+        assert_eq!(f.turns.len(), 1);
+        assert!(f.turns[0].hooked_ms > 0, "the turn it opens is hooked");
+        assert!(f.turns[0].items.iter().all(|i| match i { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms >= f.turns[0].hooked_ms }), "all it reads after is the hook's");
+    }
+
+    #[test]
+    fn a_background_task_reporting_after_the_hook_starts_unhooked_work() {
+        let mut log = HOOKED.replace(r#"{"type":"system","subtype":"turn_duration","timestamp":"2026-10-04T10:00:07.000Z","durationMs":7000}"#, "");
+        log.push_str(r#"{"type":"user","timestamp":"2026-10-04T10:00:20.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n</task-notification>"}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:22.000Z","message":{"content":[{"type":"text","text":"The agent reports: all three paths agree."}]}}
+"#);
+        let f = feed_of(&log);
+        assert_eq!(f.turns.len(), 2, "the report starts new work");
+        assert!(f.turns[0].hooked_ms > 0 && f.turns[1].hooked_ms == 0, "the hook's part stays with the turn it came in; the new work is an answer again");
+    }
+
+    /// Every reader of a hooked turn agrees on what's the answer and what's the hook's follow-up: the steps
+    /// feed (the chat), the turn's parts read from the transcript (a card Cue learns of after a restart),
+    /// and Cue's Stop hook (a card as the turn ends). One transcript, three readers, one split.
+    #[test]
+    fn every_reader_of_a_hooked_turn_splits_it_the_same_way() {
+        let path = std::env::temp_dir().join(format!("cue-hooked-{}.jsonl", std::process::id()));
+        std::fs::write(&path, HOOKED).unwrap();
+        let p = path.to_string_lossy().to_string();
+        // The steps feed: the last words before the mark are the answer, the words after it the follow-up.
+        let f = feed_of(HOOKED);
+        let t = &f.turns[0];
+        let says = |hooked: bool| t.items.iter().filter_map(|i| match i { Item::Say { text, at_ms } if (*at_ms >= t.hooked_ms) == hooked => Some(text.clone()), _ => None }).collect::<Vec<_>>();
+        let feed = (says(false).last().cloned().unwrap_or_default(), says(true).join("\n\n"));
+        // The transcript's parts, through the card's split.
+        let (_, last, parts) = crate::logs::transcript::turn_ended_parts(&p).expect("the turn ended");
+        let card = crate::hub::split_turn(last, &parts, "answer");
+        // Cue's Stop hook, as it ends the turn.
+        let hook = crate::hook::final_turn(&serde_json::json!({ "transcript_path": p, "last_assistant_message": "1. SHAPE: fine." }));
+        let parts: Vec<crate::model::TurnPart> = hook.iter().map(|v| crate::model::TurnPart { text: v["text"].as_str().unwrap_or("").to_string(), hooked: v["hooked"].as_bool().unwrap_or(false) }).collect();
+        let stop = crate::hub::split_turn("1. SHAPE: fine.".into(), &parts, "answer");
+        let _ = std::fs::remove_file(&path);
+        let want = ("Done: expiry fixed.".to_string(), "1. SHAPE: fine.".to_string());
+        assert_eq!(feed, want, "the steps feed");
+        assert_eq!(card, want, "a turn read from the transcript");
+        assert_eq!(stop, want, "Cue's Stop hook");
     }
 
     #[test]

@@ -21,9 +21,6 @@ use std::time::{Duration, Instant};
 
 /// How long to wait for a restarting Cue before giving up on a pending question.
 const RECONNECT_FOR: Duration = Duration::from_secs(15 * 60);
-/// A Stop hook's own output starts with this; what the agent wrote after it is its follow-up.
-const HOOK_MARK: &str = crate::logs::transcript::STOP_HOOK_MARK;
-
 /// Entry point for `cue hook …`. Always returns normally; the caller exits 0.
 pub fn main(args: &[String]) {
     let event = args.first().map(String::as_str).unwrap_or("permission");
@@ -111,6 +108,24 @@ fn agent_pid(harness: &str) -> i32 {
     parent
 }
 
+/// The terminal device of tmux pane `pane` (on the server in TMUX): "" when it's gone, None when tmux
+/// can't be asked.
+fn pane_tty(pane: &str) -> Option<String> {
+    let out = std::process::Command::new(crate::focus::tmux_bin()).args(["display-message", "-p", "-t", pane, "#{pane_tty}"]).output().ok()?;
+    Some(if out.status.success() { String::from_utf8_lossy(&out.stdout).trim().to_string() } else { String::new() })
+}
+
+/// The agent runs in that pane: its terminal is the pane's. TMUX and TMUX_PANE are only inherited
+/// variables, so an agent started from something that came out of tmux (an iTerm tab opened from a
+/// pane, say) has them too, naming a pane it isn't in, often one long closed: Cue would read and type
+/// into that pane instead of its real terminal. Unknown either way (no tty, tmux not answering): trusted.
+fn in_pane(pane_tty: &Option<String>, agent_tty: &str) -> bool {
+    match pane_tty {
+        Some(t) => agent_tty.is_empty() || t == agent_tty,
+        None => true,
+    }
+}
+
 /// Where this agent runs: its session, folder and transcript, and its terminal (for Go to tab and
 /// typing replies).
 fn origin(p: &Value, harness: &str) -> Map<String, Value> {
@@ -122,11 +137,13 @@ fn origin(p: &Value, harness: &str) -> Map<String, Value> {
     m.insert("session_id".into(), json!(s(p, "session_id")));
     m.insert("cwd".into(), json!(s(p, "cwd")));
     m.insert("transcript_path".into(), json!(s(p, "transcript_path")));
-    m.insert("tty".into(), json!(if tty.is_empty() || tty == "??" { String::new() } else { format!("/dev/{tty}") }));
     m.insert("agent_pid".into(), json!(pid));
     m.insert("term_program".into(), json!(env("TERM_PROGRAM")));
     m.insert("iterm_session_id".into(), json!(env("ITERM_SESSION_ID")));
-    m.insert("tmux_pane".into(), json!(if env("TMUX").is_empty() { String::new() } else { env("TMUX_PANE") }));
+    let pane = if env("TMUX").is_empty() { String::new() } else { env("TMUX_PANE") };
+    let tty = if tty.is_empty() || tty == "??" { String::new() } else { format!("/dev/{tty}") };
+    m.insert("tmux_pane".into(), json!(if pane.is_empty() || in_pane(&pane_tty(&pane), &tty) { pane } else { String::new() }));
+    m.insert("tty".into(), json!(tty));
     m.insert("wezterm_pane".into(), json!(env("WEZTERM_PANE")));
     m.insert("kitty_window_id".into(), json!(env("KITTY_WINDOW_ID")));
     m.insert("kitty_listen_on".into(), json!(env("KITTY_LISTEN_ON")));
@@ -192,7 +209,7 @@ fn send_usage(p: &Value) -> Option<()> {
 /// hook sent it back to work (its follow-up, e.g. a checklist, isn't the answer you want first).
 /// Claude Code waking it afterwards (a background task finished) starts new work: what it writes then
 /// is an answer again, not more of the hook's follow-up.
-fn final_turn(p: &Value) -> Vec<Value> {
+pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
     let last = s(p, "last_assistant_message").trim().to_string();
     let entries = read_tail(&s(p, "transcript_path"));
     let user_text = |e: &Value| -> Option<String> {
@@ -230,7 +247,7 @@ fn final_turn(p: &Value) -> Vec<Value> {
         match kind(e).as_str() {
             "user" => {
                 let t = user_text(e).unwrap_or_default();
-                if t.starts_with(HOOK_MARK) {
+                if crate::logs::transcript::is_stop_hook(e) {
                     hooked = true;
                 } else if crate::logs::transcript::harness_text(&t) {
                     hooked = false;
@@ -372,6 +389,15 @@ pub fn write_shim() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tmux_pane_counts_only_when_the_agent_is_in_it() {
+        assert!(in_pane(&Some("/dev/ttys004".into()), "/dev/ttys004"), "its own pane");
+        assert!(!in_pane(&Some("/dev/ttys004".into()), "/dev/ttys007"), "a pane it only inherited the name of (it runs in an iTerm tab)");
+        assert!(!in_pane(&Some(String::new()), "/dev/ttys007"), "a pane long closed");
+        assert!(in_pane(&None, "/dev/ttys007"), "tmux not answering: trusted");
+        assert!(in_pane(&Some("/dev/ttys004".into()), ""), "no tty to compare: trusted");
+    }
 
     #[test]
     fn decisions_map_to_the_agents_permission_output() {

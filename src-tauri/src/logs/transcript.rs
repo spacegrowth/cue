@@ -338,6 +338,15 @@ pub fn queued_from_harness(path: &str, text: &str) -> bool {
 /// How Claude Code records a Stop hook's "keep going" in the transcript: a user entry starting with this.
 pub const STOP_HOOK_MARK: &str = "Stop hook feedback:";
 
+/// A Stop hook sent the agent back to work: Claude Code writes the hook's output as a user entry (a meta
+/// one, `isMeta`) starting with STOP_HOOK_MARK. What the agent writes after it in the same turn is the
+/// hook's follow-up (a checklist, say), not its answer. Every reader of a transcript asks this, so all of
+/// them (the steps feed, a turn's parts, Cue's Stop hook) agree on where the follow-up starts.
+pub fn is_stop_hook(e: &Value) -> bool {
+    e.get("type").and_then(Value::as_str) == Some("user")
+        && content_blocks(e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).next().is_some_and(|t| t.trim_start().starts_with(STOP_HOOK_MARK))
+}
+
 pub fn harness_text(text: &str) -> bool {
     text.trim_start().starts_with("<task-notification>")
 }
@@ -565,7 +574,7 @@ pub fn turn_ended_parts(path: &str) -> Option<(u64, String, Vec<TurnPart>)> {
                 last_parts = parts.clone();
             }
             // A Stop hook sent it back to work (a meta entry, as a command's is): what follows is its follow-up.
-            Some("user") if content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).next().is_some_and(|t| t.starts_with(STOP_HOOK_MARK)) => {
+            Some("user") if is_stop_hook(&e) => {
                 ended = None;
                 hooked = true;
             }

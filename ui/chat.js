@@ -84,7 +84,8 @@ async function deliver(sid, key, call) {
 }
 /** Has the session's own thread (or queue) caught up with this outbox entry? Once Cue says it's sent
  *  (`via`), Cue has noted it: a message of yours since you pressed send is this one, whatever became of
- *  its text (what the agent got is what the chat shows). Before that, by how it starts: the first 300
+ *  its text (spacing, image paths, or glued to one you stopped: then it shows what you typed, marked as
+ *  gone with the one above). Before that, by how it starts: the first 300
  *  characters that aren't spaces (a terminal may join lines; a long one may be cut short). */
 const msgStart = (t) => String(t ?? "").replace(/\s+/g, "").slice(0, 300);
 function landed(o) {
@@ -643,15 +644,6 @@ function conversation(it, s) {
     // (Settings → Context) while you kept talking; appended, it would sit below your newer messages.
     ex.sort((a, b) => a.at_ms - b.at_ms);
   }
-  // Sent now (⌘↵) just after another message, before it had answered: stopping the turn hands that one
-  // back to Claude Code's box, and what you added is typed after it, so the agent gets one message with
-  // both. Shown as what you added, under the first, saying it went with it.
-  ex = ex.map((e, i) => {
-    const p = ex[i - 1];
-    if (e.role !== "you" || p?.role !== "you" || p.text.trim().length < 12 || e.at_ms - p.at_ms > 120000) return e;
-    const head = p.text.trim(), t = e.text.trimStart();
-    return t.length > head.length && t.startsWith(head) ? { ...e, text: t.slice(head.length).trimStart(), joined: true } : e;
-  });
   // A pending decision is drawn as the action card below; drop the one-line note of it.
   if (isPending(it) && it.kind !== "waiting" && ex.at(-1)?.role !== "you") ex.pop();
   return ex;
@@ -670,6 +662,10 @@ function peerBubble(from, how, at, body, quote) {
 const stepFeeds = new Map();   // sid -> { version, turns, at }
 const stepFlip = new Set();    // "sid|id": steps you opened (or, where everything is open, closed)
 const turnFold = new Map();    // "sid|turn" -> open? (your choice over the default)
+const hookOpen = new Set();    // "sid|turn": its "After a stop hook" part, opened
+/** A turn a Stop hook sent back to work (steps.rs `hooked_ms`): what it did and wrote from then on is the
+ *  hook's follow-up, not its answer. */
+const hookedPart = (turn, x) => !!turn.hooked_ms && x.at_ms >= turn.hooked_ms;
 const turnAll = new Set();     // turns where "Show all" opened every step
 const stepDetail = new Map();  // "sid|id" -> { full, output | diff } | "loading"
 // Words and steps that come in while you watch appear smoothly, once: patchChat gives a new line the
@@ -803,14 +799,17 @@ function helperTray(sid) {
  *  part has the header (its count is the whole turn's). */
 function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set()) {
   const mode = stepsMode();
-  let kept = turn.items;
+  // What a Stop hook made it do goes in its own fold at the end (hookFold); the rest is the turn.
+  const hooked = turn.items.filter((x) => hookedPart(turn, x) && (x.t !== "say" || !said.has(String(x.text || "").trim())));
+  let kept = turn.items.filter((x) => !hookedPart(turn, x));
   // A finished turn's last words are its reply, already in the chat; so are words the chat shows as a
-  // reply mid-turn (the answer, when a Stop hook made it carry on): not twice.
+  // reply mid-turn: not twice.
   if (!live) { let end = kept.length; while (end && kept[end - 1].t === "say") end--; kept = kept.slice(0, end); }
   kept = kept.filter((x) => x.t !== "say" || !said.has(String(x.text || "").trim()));
   const steps = kept.filter((x) => x.t === "step");
-  if (!steps.length) return "";
   const first = part.from === -Infinity;
+  const fold = part.to === Infinity ? hookFold(sid, turn, hooked) : "";
+  if (!steps.length) return fold ? `<div class="stx" data-key="${esc(`t:${turn.at_ms}:${part.from}`)}">${fold}</div>` : "";
   const items = kept.map((x, i) => [x, i]).filter(([x]) => x.at_ms >= part.from && x.at_ms < part.to);
   const key = `${sid}|${turn.at_ms}`;
   const open = turnFold.has(key) ? turnFold.get(key) : mode === "all" || (mode === "line" && (live || latest));
@@ -818,8 +817,8 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const count = `${steps.length}${turn.more ? "+" : ""} step${steps.length === 1 ? "" : "s"}`;
   const bk = `t:${turn.at_ms}:${part.from}`;
   const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
-  if (!open) return first ? `<div class="stx" data-key="${esc(bk)}">${head}</div>` : "";
-  if (!items.length) return first ? `<div class="stx" data-key="${esc(bk)}">${head}</div>` : "";
+  if (!open) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
+  if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
   let body = "", run = [], runKey = "";
   // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
   const flush = () => { if (run.length) body += `<div class="stx-steps" data-key="run:${esc(runKey)}">${run.join("")}</div>`; run = []; };
@@ -832,9 +831,22 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
     body += `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}" style="--rv:${ms}ms">${md(x.text)}</div>`;
   });
   flush();
-  if (!first) return `<div class="stx" data-key="${esc(bk)}">${body}</div>`;
-  return `<div class="stx" data-key="${esc(bk)}">${head}${turn.more ? `<div class="stx-more dim" data-key="more">${turn.more} earlier steps not shown</div>` : ""}${body}</div>`;
+  if (!first) return `<div class="stx" data-key="${esc(bk)}">${body}${fold}</div>`;
+  return `<div class="stx" data-key="${esc(bk)}">${head}${turn.more ? `<div class="stx-more dim" data-key="more">${turn.more} earlier steps not shown</div>` : ""}${body}${fold}</div>`;
 }
+/** A turn's "After a stop hook": folded, what the hook made it do and write (a checklist, the commands it
+ *  ran for it), so it never reads as the answer, live or after. "" when no hook sent it back. */
+function hookFold(sid, turn, hooked) {
+  if (!hooked.length) return "";
+  const key = `${sid}|${turn.at_ms}`, open = hookOpen.has(key);
+  const busy = hooked.some((x) => x.t === "step" && !x.done);
+  const body = open ? hooked.map((x, i) => x.t === "step" ? `<div class="stx-steps">${stepLine(sid, x, false)}</div>` : `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("") : "";
+  return `<div class="follow stx-hook" data-key="hook"><button class="thread-toggle" data-hook-fold="${esc(key)}">${busy ? `<span class="dot-live"></span>` : ""}After a stop hook ${open ? "▴" : "▾"}</button>${open ? `<div class="follow-body">${body}</div>` : ""}</div>`;
+}
+/** A turn since your last message (`since`) has its "After a stop hook" in the chat, so the reply's own copy
+ *  of it, from its card, isn't drawn as well. Since, not the last turn only: a background task reporting
+ *  after the hook starts a turn of its own, and the hook's part stays in the one before. */
+const hookInChat = (sid, since) => stepsMode() !== "hidden" && !!stepFeeds.get(sid)?.turns?.some((t) => t.hooked_ms && t.hooked_ms >= since);
 /** The chat with each turn's steps put in by time: after your message, before the reply. `extra`:
  *  more lines to place by time (what you chose on a decision, when you chose it). */
 function withSteps(sid, s, ex, rows, extra = []) {
@@ -894,13 +906,14 @@ function chatHtml(it, s, harness, paged = false) {
       const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(e.text)}">Send again</button>` : ""}</div>` : "";
       // Typed, and Cue hasn't yet seen it take it: a ring until it does (or until Cue can say it didn't).
       const wait = e.pending ? " · waiting for it to take this" : "";
-      const joined = e.joined ? " · added: it went to the agent with your message above, as one" : "";
+      // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
+      const joined = e.joined ? " · went to the agent with your message above, as one" : "";
       return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
     const folded = !recent.has(n) && long && !openMsgs.has(key);
-    const follow = it?.followup && e.text === it.message ? followHtml(it) : "";
+    const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}

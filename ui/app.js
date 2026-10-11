@@ -387,6 +387,8 @@ function bindMain() {
     if (at) { picker.dataset.key = at.dataset.attach; picker.value = ""; return picker.click(); }
     const un = t.closest("[data-unattach]");
     if (un) { const [key, n] = un.dataset.unattach.split(/:(?=\d+$)/); draft(key).images.splice(+n, 1); return renderMain(); }
+    const hk = t.closest("[data-hook-fold]");
+    if (hk) { const k = hk.dataset.hookFold; hookOpen.has(k) ? hookOpen.delete(k) : hookOpen.add(k); return renderMain(); }
     const fo = t.closest("[data-follow]");
     if (fo) { const id = fo.dataset.follow; openFollow.has(id) ? openFollow.delete(id) : openFollow.add(id); return renderMain(); }
     const stop = t.closest("[data-act=interrupt]");

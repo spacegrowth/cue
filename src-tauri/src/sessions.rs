@@ -216,7 +216,9 @@ impl Sessions {
             // It went through after all (it waited behind a command, or the agent's word came late, as it can
             // from a machine): its bubble stops saying it didn't. Compared as the agent got it (spacing
             // changed, image paths after it), not character for character.
-            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && crate::logs::transcript::is_message(&s.prompt, &e.text)) {
+            // A joined one holds only what you typed: the agent got the message above glued before it.
+            let got = |e: &Exchange| crate::logs::transcript::is_message(&s.prompt, &e.text) || (e.joined && glued_after(&s.prompt, &e.text, &[]));
+            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && got(e)) {
                 e.unsent = false;
                 e.pending = false;
             }
@@ -267,6 +269,8 @@ impl Sessions {
         if text.is_empty() && images.is_empty() {
             return;
         }
+        // The message of yours before the last one: the one you stopped, if this turns out glued to it.
+        let above = if role == "you" { s.thread.len().checked_sub(2).and_then(|i| s.thread.get(i)).filter(|e| e.role == "you").map(|e| e.text.clone()) } else { None };
         if let Some(last) = s.thread.last_mut() {
             let paths: Vec<&str> = images.iter().chain(last.images.iter()).map(String::as_str).collect();
             let age = now_ms().saturating_sub(last.at_ms);
@@ -279,16 +283,22 @@ impl Sessions {
                     return;
                 }
                 // Typed into a box that still held something (a message you stopped comes back into
-                // Claude Code's box): the agent got both, glued. One bubble, saying what it got.
+                // Claude Code's box): the agent got both, glued. When what was there is your message just
+                // above, that one is already in the chat: this one stays what you typed, marked as gone
+                // with it. Otherwise (something left in the box Cue never saw) one bubble with all it got.
                 if role == "you" && glued_after(text, &last.text, &paths) {
-                    last.text = text.to_string();
+                    if above.as_deref().is_some_and(|a| glued_onto(text, a)) {
+                        last.joined = true;
+                    } else {
+                        last.text = text.to_string();
+                    }
                     return;
                 }
             }
         }
         let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
         let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
-        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false, pending: false });
+        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -563,7 +573,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false }),
         }
     }
 
@@ -774,6 +784,14 @@ fn same_message(a: &str, b: &str, paths: &[&str]) -> bool {
 /// Long enough that its start alone tells it apart: 300 characters that aren't spaces.
 fn is_long(t: &str) -> bool {
     t.chars().filter(|c| !c.is_whitespace()).nth(299).is_some()
+}
+
+/// `long` starts with `head`, whatever became of their whitespace (the agent may get a blank line between
+/// them, or none), and `head` is more than a word or two.
+fn glued_onto(long: &str, head: &str) -> bool {
+    let squash = |t: &str| t.split_whitespace().collect::<Vec<_>>().join(" ");
+    let (long, head) = (squash(long), squash(head));
+    head.len() >= 8 && long.len() > head.len() && long.starts_with(&head)
 }
 
 /// `long` is `short` with something typed before it (and `short` is more than a word or two).
@@ -1060,12 +1078,32 @@ mod tests {
         s.note("g", "you", "after esc esc we are losing text box focus", 9); // sent from Cue
         // Claude Code had put the stopped message back in its box; it got both, glued.
         s.note("g", "you", "ok commit , push , releaseafter esc esc we are losing text box focus", 9);
-        let t: Vec<String> = s.thread("g").iter().map(|e| e.text.clone()).collect();
-        assert_eq!(t, ["ok commit , push , release", "ok commit , push , releaseafter esc esc we are losing text box focus"]);
+        // The stopped one is already in the chat above: yours stays what you typed, marked as gone with it.
+        let t: Vec<(String, bool)> = s.thread("g").iter().map(|e| (e.text.clone(), e.joined)).collect();
+        assert_eq!(t, [("ok commit , push , release".to_string(), false), ("after esc esc we are losing text box focus".to_string(), true)]);
+        // The same with a blank line between them (Cue types one when it stops a turn to send now).
+        s.mark(&origin("h"), "working", None);
+        s.note("h", "you", "how do I keep the focus in the box", 9);
+        s.note("h", "you", "and not when I click elsewhere", 9);
+        s.note("h", "you", "how do I keep the focus in the box\n\nand not when I click elsewhere", 9);
+        assert_eq!(s.thread("h").iter().map(|e| (e.text.as_str(), e.joined)).collect::<Vec<_>>(), [("how do I keep the focus in the box", false), ("and not when I click elsewhere", true)]);
         // A short reply isn't matched by chance.
         s.note("g", "you", "yes", 9);
         s.note("g", "you", "I said yes", 9);
         assert_eq!(s.thread("g").len(), 4);
+    }
+
+    #[test]
+    fn a_joined_message_waiting_to_be_taken_is_seen_taken_as_the_agent_got_it() {
+        let mut s = Sessions::default();
+        s.mark(&origin("j"), "working", None);
+        s.note("j", "you", "how do I keep the focus in the box", 9);
+        s.note("j", "you", "and not when I click elsewhere", 9);
+        s.note("j", "you", "how do I keep the focus in the box\n\nand not when I click elsewhere", 9);
+        assert!(s.set_pending("j", true));
+        // The agent's prompt is both, glued: the bubble holding only what you typed is that one.
+        s.mark(&origin("j"), "working", Some("how do I keep the focus in the box\n\nand not when I click elsewhere"));
+        assert!(!s.thread("j").last().unwrap().pending, "taken: the ring goes");
     }
 
     #[test]

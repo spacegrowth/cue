@@ -248,7 +248,8 @@ impl Hub {
             self.changed();
             return Ok("kept in Cue: it goes when this turn ends".into());
         }
-        let busy = if now && busy && !direct {
+        let stopped = now && busy && !direct;
+        let busy = if stopped {
             crate::focus::press_escape(origin.as_ref().ok_or("that session is gone")?)?;
             std::thread::sleep(std::time::Duration::from_millis(700));
             false
@@ -256,10 +257,13 @@ impl Hub {
             busy && !now
         };
         let origin = origin.ok_or("that session is gone")?;
+        // Stopped before it answered, Claude Code hands the message it was on back to its box, and this one
+        // is typed after it: the two go as one. A blank line first keeps them apart (an empty box drops it).
+        let apart = if stopped && origin.harness == "claude" { "\n\n" } else { "" };
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
         let direct = self.send_direct(session_id, text, &saved, now);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?))? };
+        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?)))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
         if !submitted && !typed.starts_with('/') && Self::retry_enter(&origin, typed) {
@@ -273,7 +277,7 @@ impl Hub {
                 // It's mid-turn: the agent reads this when it finishes its current step.
                 // The same message as the thread's copy (same time), so the chat shows it once, as queued.
                 let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false };
+                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false };
                 st.sessions.set_queued(session_id, Some(q));
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
