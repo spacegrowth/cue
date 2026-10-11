@@ -164,6 +164,15 @@ pub fn run() {
             if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
                 let h = hub.clone();
                 machines::hooks::on_reached(move |m| restore_machine(&h, m));
+                // A new session there (a relay executor just started): its crew read now, not at the next poll.
+                let h = hub.clone();
+                machines::hooks::on_new_session(move |m| {
+                    if let Some(mach) = machines::get(m) {
+                        if leads::refresh_remote(&mach.name, &mach.host).0 {
+                            h.redraw();
+                        }
+                    }
+                });
                 machines::hooks::watch_all();
                 let known: Vec<(String, String)> = hub.snapshot()["sessions"].as_array().into_iter().flatten()
                     .filter_map(|s| Some((s["machine"].as_str().filter(|m| !m.is_empty())?.to_string(), s["transcript_path"].as_str()?.to_string())))

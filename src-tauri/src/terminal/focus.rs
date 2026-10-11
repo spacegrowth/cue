@@ -281,12 +281,14 @@ fn tmux_for(o: &Origin, args: &[&str]) -> bool {
     crate::machines::get(&o.machine).is_some_and(|m| crate::machines::tmux(&m.host, args).is_ok())
 }
 
-/// `tmux_for` with what tmux printed (trailing blank lines dropped); None when tmux failed.
-fn tmux_out_for(o: &Origin, args: &[&str]) -> Option<String> {
+/// `tmux_for` saying why it failed: on a machine, a trip that never reached it isn't a pane that's gone.
+fn tmux_try_for(o: &Origin, pane: &str, args: &[&str]) -> Result<String, String> {
     if o.machine.is_empty() {
-        return tmux_out(args);
+        return tmux_out(args).ok_or(format!("tmux pane {pane} is gone"));
     }
-    crate::machines::tmux(&crate::machines::get(&o.machine)?.host, args).ok().map(|s| s.trim_end().to_string())
+    let m = crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", o.machine))?;
+    let unreached = crate::machines::cant_connect(&m.host);
+    crate::machines::tmux(&m.host, args).map(|s| s.trim_end().to_string()).map_err(|e| if e == unreached { e } else { format!("tmux pane {pane} is gone") })
 }
 
 /// What a session's tmux pane shows right now (this Mac's or a machine's).
@@ -845,7 +847,7 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
         // at a shell prompt (the agent exited), the paste plus Enter would run the message as a command.
         // Both signs are needed. On this Mac tmux names the pane's process group leader, which is the
         // shell for anything started as `sh -c "…"`, so the shell's name alone isn't proof.
-        let out = tmux_out_for(o, &["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane]).ok_or(format!("tmux pane {pane} is gone"))?;
+        let out = tmux_try_for(o, pane, &["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane])?;
         let (running, before) = out.split_once('\n').unwrap_or((out.as_str(), ""));
         if is_shell(running.trim()) && at_shell_prompt(before) {
             return Err(format!("its pane shows a shell prompt ({}), not the agent: nothing typed", running.trim()));
@@ -854,9 +856,7 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
         // early). "--": the text is the buffer even when it starts with "-"; a final ";" would end the
         // tmux command instead of being typed, so it goes escaped (tmux turns "\;" back into ";").
         let text = tmux_word(text);
-        if !tmux_for(o, &["set-buffer", "-b", "cue", "--", &text, ";", "paste-buffer", "-p", "-d", "-b", "cue", "-t", pane]) {
-            return Err(format!("tmux pane {pane} is gone"));
-        }
+        tmux_try_for(o, pane, &["set-buffer", "-b", "cue", "--", &text, ";", "paste-buffer", "-p", "-d", "-b", "cue", "-t", pane])?;
         let text = text.as_str();
         wait_for_paste(o, text, &before);
         press_enter(o)?;
@@ -953,7 +953,7 @@ pub fn press_escape(o: &Origin) -> Result<String, String> {
 
 pub fn press_enter(o: &Origin) -> Result<(), String> {
     if !o.tmux_pane.is_empty() {
-        return if tmux_for(o, &["send-keys", "-t", &o.tmux_pane, "Enter"]) { Ok(()) } else { Err("tmux pane is gone".into()) };
+        return tmux_try_for(o, &o.tmux_pane, &["send-keys", "-t", &o.tmux_pane, "Enter"]).map(|_| ());
     }
     if let Some(pred) = iterm_predicate(o) {
         return iterm_session_do(o, &pred, "tell s to write text \"\"").map(|_| ());

@@ -126,7 +126,7 @@ pub fn run(host: &str, script: &str) -> Result<String, String> {
     if !valid_host(host) {
         return Err("that isn't an SSH host".into());
     }
-    let out = ssh_command(host, script).output().map_err(|e| e.to_string())?;
+    let out = output_retrying(|| ssh_command(host, script))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
@@ -154,6 +154,24 @@ pub fn run_with_input(host: &str, script: &str, input: &str) -> Result<String, S
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
+}
+
+/// Run an ssh trip; once more, a moment later, when ssh itself said the machine didn't take it (exit 255
+/// and a refusal or a connect timeout: nothing ran there, so running it again can't do anything twice).
+/// The shared connection takes 10 trips at once (sshd's MaxSessions), and a burst of them can find it full.
+fn output_retrying(mk: impl Fn() -> Command) -> Result<std::process::Output, String> {
+    let out = mk().output().map_err(|e| e.to_string())?;
+    if out.status.code() == Some(255) && not_taken(&String::from_utf8_lossy(&out.stderr)) {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        return mk().output().map_err(|e| e.to_string());
+    }
+    Ok(out)
+}
+
+/// ssh's words for a trip that never started on the machine.
+fn not_taken(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    ["refused", "administratively prohibited", "mux_client", "timed out", "kex_exchange_identification"].iter().any(|w| e.contains(w))
 }
 
 /// The `ssh` behind `run` and its sibling, for you to spawn yourself (ssh passes the script's exit code
@@ -289,9 +307,34 @@ pub(crate) fn remote_command_err(script: &str) -> String {
 pub fn tmux(host: &str, args: &[&str]) -> Result<String, String> {
     let args = args.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ");
     match tmux_path(host) {
-        Some(p) => run_direct(host, &format!("{} {args}", shq(&p))),
-        None => run(host, &format!("tmux {args}")),
+        Some(p) => tmux_trip(host, &format!("{} {args}", shq(&p)), true),
+        None => tmux_trip(host, &format!("tmux {args}"), false),
     }
+}
+
+/// A tmux trip to the machine. When ssh itself failed (exit 255: tmux never exits so), the machine wasn't
+/// reached: that says so, in general terms (whatever sits in front of it, its login may just have
+/// expired), never as a pane that's gone.
+fn tmux_trip(host: &str, script: &str, direct: bool) -> Result<String, String> {
+    if !valid_host(host) {
+        return Err("that isn't an SSH host".into());
+    }
+    let out = output_retrying(|| if direct { direct_command(host, script) } else { ssh_command(host, script) })?;
+    if out.status.success() {
+        return Ok(String::from_utf8_lossy(&out.stdout).to_string());
+    }
+    if out.status.code() == Some(255) {
+        eprintln!("cue: {host} not reached: {}", String::from_utf8_lossy(&out.stderr).trim());
+        return Err(cant_connect(host));
+    }
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(if err.is_empty() { format!("exit {}", out.status.code().unwrap_or(-1)) } else { err })
+}
+
+/// What Cue says when a machine can't be reached.
+pub fn cant_connect(host: &str) -> String {
+    let name = list().into_iter().find(|m| m.host == host).map_or(host.to_string(), |m| display_name(&m.name));
+    format!("Can't connect to {name}. Check that you can ssh to it from a terminal, then try again.")
 }
 
 /// `tmux` with `args` on the machine, then `also` in the same trip, whose failure is ignored: what the
@@ -300,8 +343,8 @@ pub fn tmux(host: &str, args: &[&str]) -> Result<String, String> {
 pub fn tmux_then(host: &str, args: &[&str], also: &[&str]) -> Result<String, String> {
     let q = |a: &[&str]| a.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ");
     match tmux_path(host) {
-        Some(p) => run_direct(host, &format!("{p} {}; {p} {} >/dev/null 2>&1; true", q(args), q(also), p = shq(&p))),
-        None => run(host, &format!("tmux {}; tmux {} >/dev/null 2>&1; true", q(args), q(also))),
+        Some(p) => tmux_trip(host, &format!("{p} {}; {p} {} >/dev/null 2>&1; true", q(args), q(also), p = shq(&p)), true),
+        None => tmux_trip(host, &format!("tmux {}; tmux {} >/dev/null 2>&1; true", q(args), q(also)), false),
     }
 }
 
@@ -319,22 +362,11 @@ pub fn tmux_path(host: &str) -> Option<String> {
     Some(p)
 }
 
-/// `run` without your login shell: for a script that names its programs by full path.
-fn run_direct(host: &str, script: &str) -> Result<String, String> {
-    if !valid_host(host) {
-        return Err("that isn't an SSH host".into());
-    }
-    let out = Command::new("/usr/bin/ssh")
-        .args(shared())
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &format!("exec /bin/sh -c {}", shq(script))])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).to_string())
-    } else {
-        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        Err(if err.is_empty() { format!("exit {}", out.status.code().unwrap_or(-1)) } else { err })
-    }
+/// ssh running the script in /bin/sh, no login shell: for a script that names its programs by full path.
+fn direct_command(host: &str, script: &str) -> Command {
+    let mut c = Command::new("/usr/bin/ssh");
+    c.args(shared()).args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &format!("exec /bin/sh -c {}", shq(script))]);
+    c
 }
 
 /// A folder on the machine as the shell there should read it: `~` stays your home there.
@@ -430,6 +462,17 @@ pub fn login(m: &Machine) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_machine_that_cant_be_reached_says_so_not_that_its_pane_is_gone() {
+        // ssh can't get there (no such name): exit 255, as when a login in front of the machine expired.
+        let e = tmux("cue-test-nowhere.invalid", &["display-message", "-p", "-t", "%104", "#{pane_id}"]).unwrap_err();
+        assert!(e.starts_with("Can't connect to cue-test-nowhere.invalid."), "{e}");
+        assert!(!e.contains("gone"), "{e}");
+        assert!(not_taken("ssh: connect to host x port 22: Connection timed out"));
+        assert!(not_taken("mux_client_request_session: session request failed: Session open refused by peer"));
+        assert!(!not_taken("can't find pane: %104"));
+    }
 
     #[test]
     fn a_machine_name_is_shortened_for_labels() {

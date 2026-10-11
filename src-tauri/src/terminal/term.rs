@@ -297,7 +297,8 @@ fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<(V
     let ask = ["display-message", "-p", "-t", pane, "#{?session_group,#{session_group},#{session_name}}|#{window_id}"];
     let also = ["set-option", "-w", "-t", pane, "window-size", "latest"];
     let where_ = match host {
-        Some(h) => crate::machines::tmux_then(h, &ask, &also).unwrap_or_default(),
+        // Not reached: say so, not that the pane is gone.
+        Some(h) => crate::machines::tmux_then(h, &ask, &also)?,
         None => {
             let out = std::process::Command::new(tmux).args(ask).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
             let _ = std::process::Command::new(tmux).args(also).output();

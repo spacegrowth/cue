@@ -6,11 +6,11 @@
 //! network. When Cue isn't watching, the script leaves at once and the agent asks in its terminal.
 use crate::machines::{self, Machine};
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The hook on the machine. Its name has "cue-hook" in it, so Connect's merge replaces older entries.
 pub const SCRIPT: &str = r#"#!/bin/sh
@@ -95,10 +95,15 @@ fn watch_script() -> String {
 }
 
 fn mac_key() -> String {
+    let key: String = hostname().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).take(64).collect();
+    if key.is_empty() { "mac".into() } else { key }
+}
+
+/// This Mac's host name, as the system has it ("" if it can't say).
+pub(crate) fn hostname() -> String {
     let mut buf = [0u8; 256];
     let n = if unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) } == 0 { buf.iter().position(|b| *b == 0).unwrap_or(0) } else { 0 };
-    let key: String = String::from_utf8_lossy(&buf[..n]).chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).take(64).collect();
-    if key.is_empty() { "mac".into() } else { key }
+    String::from_utf8_lossy(&buf[..n]).into_owned()
 }
 
 /// Set Cue's hooks up on the machine for the agents found there (`tools`, from its check): the script,
@@ -183,6 +188,41 @@ static ON_REACHED: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
 
 pub fn on_reached(f: impl Fn(&str) + Send + Sync + 'static) {
     let _ = ON_REACHED.set(Box::new(f));
+}
+
+/// What runs when a session Cue hasn't heard from in this run sends its first event from a machine (a
+/// relay executor just started, say): given the machine's name, on a thread of its own, now and once
+/// more a few seconds later (its lead may not have written it down yet). At most once per machine every
+/// few seconds, so a machine reached with many sessions asks once.
+static ON_NEW_SESSION: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
+
+pub fn on_new_session(f: impl Fn(&str) + Send + Sync + 'static) {
+    let _ = ON_NEW_SESSION.set(Box::new(f));
+}
+
+fn new_session_seen(machine: &str, sid: &str) {
+    static SEEN: Mutex<Option<(HashSet<String>, HashMap<String, Instant>)>> = Mutex::new(None);
+    let due = {
+        let mut g = crate::locking::lock(&SEEN, "seen sessions");
+        let (seen, last) = g.get_or_insert_with(Default::default);
+        if !seen.insert(format!("{machine}|{sid}")) || last.get(machine).is_some_and(|t| t.elapsed() < Duration::from_secs(3)) {
+            false
+        } else {
+            last.insert(machine.to_string(), Instant::now());
+            true
+        }
+    };
+    if due && ON_NEW_SESSION.get().is_some() {
+        let name = machine.to_string();
+        std::thread::spawn(move || {
+            for wait in [0, 4] {
+                std::thread::sleep(Duration::from_secs(wait));
+                if let Some(f) = ON_NEW_SESSION.get() {
+                    f(&name);
+                }
+            }
+        });
+    }
 }
 
 /// One SSH stream: runs until the connection drops or the machine is removed.
@@ -359,6 +399,9 @@ pub(crate) fn log_raw(machine: &str, line: &str) {
 fn handle(m: &Machine, id: &str, ev: Value) {
     log(&m.name, id, &ev);
     let Some(mut msg) = to_cue(&m.name, &ev) else { return };
+    if let Some(sid) = msg["session_id"].as_str().filter(|s| !s.is_empty()) {
+        new_session_seen(&m.name, sid);
+    }
     // The session reads its log from a live copy on this Mac (machine_logs); the hooks carry on as well.
     if let Some(remote) = msg["transcript_path"].as_str().filter(|p| !p.is_empty()).map(str::to_string) {
         if ev["event"] == "end" {
