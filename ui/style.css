@@ -329,8 +329,8 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-head .dim { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bgtag { font: 800 9px var(--sans); letter-spacing: 0.08em; padding: 2px 5px; border-radius: 4px; line-height: 1.3; color: var(--muted); border: 1px dashed var(--muted); flex: none; }
 .bg-agent .stx-steps { margin-left: 2px; }
-/* Its steps: five rows (a step is 23px), the rest scrolled to inside the block. */
-.bg-scroll { max-height: calc(5 * 23px); overflow-y: auto; overscroll-behavior: contain; }
+/* Its steps: four rows (a step is 23px), the rest scrolled to inside the block. */
+.bg-scroll { max-height: calc(4 * 23px); overflow-y: auto; overscroll-behavior: contain; }
 .bg-scroll > * { flex: none; }
 .bg-agent .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
 .bg-note { font-size: 11.5px; color: var(--muted); }

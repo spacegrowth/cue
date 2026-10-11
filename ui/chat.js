@@ -775,7 +775,7 @@ const helpersOf = (sid) => stepFeeds.get(sid)?.helpers || [];
 const helperRunning = (h) => !!h.running;
 /** "1m 12s" of work: until it finished, or so far. */
 const helperSpan = (h) => { const ms = (h.finished_ms || Date.now()) - h.started_ms; const m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000); return m ? `${m}m ${sec}s` : `${sec}s`; };
-/** One agent's block: who it is and how long, and its steps: five rows tall, the rest scrolled to inside
+/** One agent's block: who it is and how long, and its steps: four rows tall, the rest scrolled to inside
  *  it (it follows the newest unless you scrolled up; app.js renderMain keeps where you were). */
 function helperBlock(sid, h, inTray) {
   const k = `${sid}|${h.id}`;
