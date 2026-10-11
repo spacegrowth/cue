@@ -862,11 +862,16 @@ fn pilead_bin(id: &str) -> Option<PathBuf> {
 
 /// How to close this session through its own tool, if it has one: a relay / pi-lead executor is closed
 /// by relay / pilead (it marks the executor closed and closes its tab). A lead that still has
-/// executors isn't closed from Cue: that's relay's handoff / close. None: not in a crew.
+/// executors isn't closed from Cue: that's relay's handoff / close. None: not in a crew, or an
+/// executor relay is already done with (closed, superseded) whose agent still runs (resumed in a
+/// pane relay's record doesn't know): ending it is Cue's, as for any session.
 pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
     let cur = crate::locking::lock(&INDEX, "INDEX");
     let index = cur.as_ref()?;
     let m = index.get(session_id)?;
+    if m.role == "executor" && GONE.contains(&m.status.as_str()) {
+        return None;
+    }
     match (m.plugin.as_str(), m.role.as_str()) {
         ("relay", "executor") => Some(relay_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
         ("pilead", "executor") => Some(pilead_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
@@ -1154,6 +1159,7 @@ C9
 
         assert!(close_plan("L1").unwrap().unwrap_err().contains("leads 1 executor still open"), "a lead with open executors isn't closed from Cue");
         assert_eq!(close_plan("nobody"), None);
+        assert_eq!(close_plan("C2"), None, "an executor relay already closed (its agent resumed elsewhere) is ended as any session");
 
         let known: HashSet<String> = ["L1", "P1", "nobody"].iter().map(|s| s.to_string()).collect();
         let v = view(&known);

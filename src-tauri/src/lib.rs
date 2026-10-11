@@ -892,8 +892,14 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
             return Ok("Removed from Cue (its machine can't be reached)".into());
         }
         // An executor: relay / pi-lead close it, where it runs (on its machine, over SSH).
+        // relay ends the agent it knows of; one resumed since runs in a pane relay's record doesn't
+        // name, so a session still running here afterwards is ended below like any other.
         if let Some(plan) = leads::close_plan(&session_id) {
-            return plan?.run().map(|_| "Closed".into());
+            plan?.run()?;
+            let still = h.live_origin(&session_id).filter(|o| o.machine.is_empty()).and_then(|_| live::claude().into_iter().find(|q| q.session_id == session_id && unsafe { libc::kill(q.pid, 0) } == 0));
+            if still.is_none() {
+                return Ok("Closed".into());
+            }
         }
         // A relay lead with no executors left: relay steps it down first (else it still thinks it
         // leads); if that fails, its error is the answer and the pane stays.
