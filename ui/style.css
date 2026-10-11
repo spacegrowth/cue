@@ -934,10 +934,17 @@ button.tm-chip:hover { background: var(--panel-2); }
 .ub-dot { width: 8px; height: 8px; border-radius: 50%; background: #7fae5a; }
 .ub-btn { height: 22px; padding: 0 10px; border-radius: 999px; border: 0; background: var(--bg); color: var(--on-bg); font: inherit; font-weight: 650; font-size: 12px; cursor: pointer; }
 .usage-pop { position: absolute; top: 38px; right: 0; z-index: 20; width: 300px; padding: 12px 14px 10px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow, 0 10px 30px rgba(0,0,0,.25)); }
-/* Hovering the meter bar shows the panel; a strip above it bridges the gap so the pointer can reach it. */
-.usage-pop.hov { display: none; }
-.usage-wrap:hover .usage-pop.hov { display: block; }
-.usage-pop.hov::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+/* Your usage file's rows: the first sits in the bar; hovering it shows them all in a list that looks like the bar.
+   A strip above the list bridges the gap so the pointer can reach it. */
+.usage-chip .uf-first { display: inline-flex; align-self: stretch; align-items: center; gap: 7px; }
+.uf-more { display: none; position: absolute; top: 38px; right: 0; z-index: 20; grid-template-columns: auto 38px auto; align-items: center; gap: 6px 7px; padding: 10px 12px; border-radius: 9px; background: var(--slab); color: var(--on-slab); font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: var(--shadow, 0 10px 30px rgba(0,0,0,.25)); }
+.uf-more::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+.usage-wrap:has(.uf-first:hover) .uf-more, .uf-more:hover { display: grid; }
+.uf-row { display: contents; }
+.uf-row .ul { grid-column: 1; opacity: .7; font-weight: 500; }
+.uf-row .um { grid-column: 2; }
+.uf-row .up { grid-column: 3; justify-self: end; font-variant-numeric: tabular-nums; }
+.uf-note { grid-column: 2 / -1; margin-top: -5px; font-size: 11px; font-weight: 500; opacity: .6; }
 .up-head { font-weight: 700; font-size: 13px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
 .up-head .dim { font-weight: 500; font-size: 11px; }
 .up-group + .up-group { margin-top: 10px; }

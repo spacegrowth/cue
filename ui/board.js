@@ -432,14 +432,19 @@ function usageChip() {
   const claude = state.settings?.usage?.claude !== false && u && (u.five_hour || u.seven_day);
   if (!claude && !(uf.meters || []).length && !uf.error) return "";
   const meter = (label, w) => w ? `<span class="ul">${label}</span><span class="um ${w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up">${Math.round(w.pct)}%</span>` : "";
-  // Your own meters (Settings → Usage file) sit beside Claude Code's, drawn the same way: only the
-  // first row in the bar, every row in the panel that hovering it shows.
-  const mine = (uf.meters || []).slice(0, 1).map((m) => {
+  // Your own meters (Settings → Usage file) sit beside Claude Code's, drawn the same way: the first
+  // row in the bar, and all of them in a list of the same look that hovering it shows.
+  const level = (pct) => pct === null ? "" : pct >= 100 ? "full" : pct >= 85 ? "high" : "";
+  const fileMeter = (m, short) => {
     const pct = m.limit ? (m.spent / m.limit) * 100 : null;
-    return `${m.label ? `<span class="ul">${esc(m.label.length > 12 ? m.label.slice(0, 11) + "…" : m.label)}</span>` : ""}${pct === null ? "" : `<span class="um ${pct >= 100 ? "full" : pct >= 85 ? "high" : ""}"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up">${esc(spendText(m))}</span>`;
-  }).join("");
+    const label = short && m.label.length > 12 ? m.label.slice(0, 11) + "…" : m.label;
+    return `${m.label ? `<span class="ul">${esc(label)}</span>` : ""}${pct === null ? "" : `<span class="um ${level(pct)}"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up">${esc(spendText(m))}</span>`;
+  };
+  const meters = uf.meters || [];
+  const mine = meters.length ? `<span class="uf-first">${fileMeter(meters[0], true)}</span>` : "";
+  const more = meters.length > 1 && !usageOpen ? `<span class="uf-more">${meters.map((m) => `<span class="uf-row">${fileMeter(m)}${m.resets_ms ? `<span class="uf-note">resets ${clockAt(m.resets_ms)}</span>` : ""}</span>`).join("")}</span>` : "";
   const broken = uf.error ? `<span class="ul uf-bad" title="${esc(uf.error)}">usage file ⚠</span>` : "";
-  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter">${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${usagePop(true)}</span>`;
+  return `<span class="usage-wrap"><button class="usage-chip" data-usage="meter">${claude ? meter("5h", u.five_hour) + meter("wk", u.seven_day) : ""}${mine}${broken}</button>${more}${usagePop()}</span>`;
 }
 /** "$12.40/$50", "48/200 credits", "$3.10": an amount from your usage file, in its unit. */
 function spendText(m, long = false) {
@@ -449,12 +454,10 @@ function spendText(m, long = false) {
   const both = m.limit ? `${amt(m.spent)}${long ? " of " : "/"}${amt(m.limit)}` : amt(m.spent);
   return sym ? both : `${both} ${m.unit}`;
 }
-/** The usage panel: open on a click, or (hover) drawn hidden so hovering the meter bar shows it. */
-function usagePop(hover = false) {
+function usagePop() {
   const u = state.usage;
   const uf = state.usage_file || {};
-  if (!usageOpen && !hover) return "";
-  const cls = usageOpen ? "usage-pop" : "usage-pop hov";
+  if (!usageOpen) return "";
   // Your usage file: its meters with their details, or what's wrong with it.
   const fileSec = !(uf.meters || []).length && !uf.error ? "" : `<div class="up-group"><div class="up-title">${uf.error ? "Usage file" : "Your usage"}<span> · ${esc(uf.path || "")}${uf.as_of_ms ? `, as of ${clockAt(uf.as_of_ms)}` : ""}</span></div>
     ${uf.error ? `<div class="up-err">${esc(uf.error)}</div>` : uf.meters.map((m) => {
@@ -463,7 +466,7 @@ function usagePop(hover = false) {
       return `<div class="up-row money ${lvl}"><span class="up-name">${esc(m.label || "Usage")}</span>${pct === null ? `<span class="up-bar none"></span>` : `<span class="up-bar"><i style="width:${Math.min(100, pct)}%"></i></span>`}<span class="up-pct">${esc(spendText(m, true))}</span>${m.resets_ms ? `<span class="up-note">resets ${clockAt(m.resets_ms)}</span>` : ""}</div>`;
     }).join("")}</div>`;
   const claude = state.settings?.usage?.claude !== false && u && (u.five_hour || u.seven_day);
-  if (!claude) return `<div class="${cls}"><div class="up-head">Usage</div>${fileSec}</div>`;
+  if (!claude) return `<div class="usage-pop"><div class="up-head">Usage</div>${fileSec}</div>`;
   const lvl = (w) => (w.pct >= 100 ? "full" : w.pct >= 85 ? "high" : "");
   const row = (name, w, note = "") => w ? `<div class="up-row ${lvl(w)}"><span class="up-name">${esc(name)}</span><span class="up-bar"><i style="width:${Math.min(100, w.pct)}%"></i></span><span class="up-pct">${Math.round(w.pct)}%</span>${note ? `<span class="up-note">${esc(note)}</span>` : ""}</div>` : "";
   // Rows that reset together sit under one heading that says when, instead of repeating it per row.
@@ -473,7 +476,7 @@ function usagePop(hover = false) {
     const notes = [m.resets_ms && Math.abs(m.resets_ms - (u.seven_day?.resets_ms || 0)) > 3600e3 ? `resets ${clockAt(m.resets_ms)}` : "", now() - m.fetched_ms > 15 * 60000 ? `${ago(m.fetched_ms)} old` : ""];
     return row(m.name, m, notes.filter(Boolean).join(" · "));
   }).join("");
-  return `<div class="${cls}"><div class="up-head">Claude Code usage<span class="dim">${ago(u.at_ms)} ago</span></div>
+  return `<div class="usage-pop"><div class="up-head">Claude Code usage<span class="dim">${ago(u.at_ms)} ago</span></div>
     ${group("Session", u.five_hour, row("5 hours", u.five_hour))}${group("Weekly", u.seven_day, row("All models", u.seven_day) + models)}
     ${fileSec}<div class="up-foot">Claude Code's limits don't count Codex and Pi.</div></div>`;
 }
