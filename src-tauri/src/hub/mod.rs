@@ -250,7 +250,12 @@ impl Hub {
         let transcripts: Vec<(String, String)> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
             .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
             .collect();
-        let cwds: Vec<String> = st.sessions.all().iter().map(|s| s.origin.cwd.clone()).chain(live.iter().map(|q| q.cwd.clone())).filter(|c| !c.is_empty()).collect::<HashSet<_>>().into_iter().collect();
+        // Folders on this Mac only. Another machine's folder read here would be a lookup of its path on
+        // this disk: "/home/…" is macOS's automounter, which can stall a stat for good (it stalled a launch).
+        let remote: HashSet<&str> = st.subscribed.values().filter(|(o, _)| !o.machine.is_empty()).map(|(o, _)| o.session_id.as_str()).collect();
+        let cwds: Vec<String> = st.sessions.all().iter().filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone())
+            .chain(live.iter().filter(|q| !remote.contains(q.session_id.as_str())).map(|q| q.cwd.clone()))
+            .filter(|c| !c.is_empty()).collect::<HashSet<_>>().into_iter().collect();
         (known, live, transcripts, cwds)
     }
 

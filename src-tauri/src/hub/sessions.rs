@@ -688,4 +688,24 @@ mod tests {
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn another_machines_folder_is_not_looked_up_on_this_mac() {
+        let dir = std::env::temp_dir().join(format!("cue-remote-folder-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        // This repository, as a session's folder here; and a folder on another machine, under a path
+        // that is macOS's automounter here (its lookup stalled a launch once).
+        let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_str().unwrap().to_string();
+        let there = "/home/someone/cue";
+        hub.event(Origin { session_id: "here".into(), harness: "claude".into(), cwd: here.clone(), ..Default::default() }, "stopped", "done".into(), vec![], "");
+        hub.event(Origin { session_id: "there".into(), harness: "claude".into(), cwd: there.into(), machine: "box".into(), ..Default::default() }, "stopped", "done".into(), vec![], "");
+        let snap = hub.snapshot();
+        assert_eq!(snap["projects"][&here]["name"], "cue", "a folder here is looked up");
+        assert!(snap["branches"].get(&here).is_some());
+        assert!(snap["projects"].get(there).is_none() && snap["branches"].get(there).is_none(), "{}", snap["branches"]);
+    }
 }
