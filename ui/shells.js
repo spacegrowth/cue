@@ -1,8 +1,9 @@
 // ---------- Cue's own shells: the floating terminal ----------
 /** The terminal button by the usage meter (or ⌘J) brings out a terminal of Cue's own, tied to no
  *  session: plain shells (your login shell, in a folder you pick; shells.rs), one tab each. It floats
- *  over the board's last two columns, the bottom 35% of them (the top, dragged up; let go, it springs
- *  back to one or the other, as picture in picture does). Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
+ *  over the board's last two columns, at their foot (or head, dragged up; let go, it springs back to one
+ *  or the other, as picture in picture does), 45% of their height to start, and resizes from its free
+ *  edges. Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
  *  from there; the button and that tab show a live dot while a shell runs something, and ✓ once that
  *  ends. Its element lives outside the redraws (each puts it back over the columns). Where it is, top or
  *  bottom and tucked or not, is kept in this browser. */
@@ -10,7 +11,7 @@ const shells = [];             // { id, title, cwd, busy, what, gen, term, fit, 
 let shellCur = null;           // the tab on show
 let shellSeq = 0;
 let pipEl = null;
-let pipAt = { corner: "br", tucked: false };
+let pipAt = { corner: "br", tucked: false, share: 0.45, wide: 1 };
 try { Object.assign(pipAt, JSON.parse(localStorage.getItem("cue.pip") || "{}")); } catch {}
 let pipDone = false;           // a command ended while it was away (until it's back out)
 const pipOut = () => !!pipEl && !pipEl.hidden && !pipAt.tucked;
@@ -48,7 +49,7 @@ function ensurePip() {
   pipEl.hidden = true;
   pipEl.setAttribute("aria-label", "Terminal");
   pipEl.innerHTML = `<div class="pip-bar"><div class="pip-tabs" role="tablist"></div><button class="pip-add" aria-label="New shell">+</button><button class="pip-hide" aria-label="Tuck it away (⌘J)">⇥</button></div>
-    <div class="pip-slot"></div>
+    <div class="pip-slot"></div><div class="pip-grip edge-x" data-grip="x"></div><div class="pip-grip edge-y" data-grip="y"></div><div class="pip-grip corner" data-grip="xy"></div>
     <button class="pip-peek" aria-label="Bring the terminal back"><span aria-hidden="true">‹</span><span class="sh-live"></span></button>`;
   document.body.appendChild(pipEl);
   pipEl.addEventListener("click", (e) => {
@@ -61,6 +62,7 @@ function ensurePip() {
     if (e.target.closest(".pip-peek")) return tuckPip(false);
   });
   pipEl.querySelector(".pip-bar").addEventListener("pointerdown", dragPip);
+  pipEl.querySelectorAll("[data-grip]").forEach((g) => g.addEventListener("pointerdown", sizePip));
   pipEl.addEventListener("transitionend", (e) => { if (e.propertyName === "left" || e.propertyName === "top") fitShell(); });
   window.addEventListener("resize", placePip);
 }
@@ -179,10 +181,10 @@ function folderMenu(anchor) {
 }
 
 // ---------- where it floats ----------
-/** Where it sits when out: over the board's last two columns (Waiting and Sessions), the bottom 35% of
- *  them, or the top 35% once dragged up. In a view without those columns, the window's right 45% under
- *  the header, the same height. Its size follows them: the window's, or the board's, changing moves it. */
-const PIP_SHARE = 0.35;
+/** Where it sits when out: over the board's last two columns (Waiting and Sessions), at their foot (or
+ *  their head, dragged up), 45% of their height to start. In a view without those columns, the window's
+ *  right 45% under the header. Resized, it keeps its size as a share of them (`share` of their height,
+ *  `wide` times their width), so it follows them as the window or the board changes. */
 function pipRoom() {
   const cols = [...document.querySelectorAll(".board > .col")];
   if (cols.length >= 3) {
@@ -201,13 +203,34 @@ function placePip() {
   pipEl.dataset.at = pipAt.corner;
   pipEl.classList.toggle("tucked", pipAt.tucked);
   // (Its shells keep their size tucked away: only one that's out is fitted to it.)
-  const w = pipAt.tucked ? PIP_TAB.w : r.right - r.left, h = pipAt.tucked ? PIP_TAB.h : Math.max(160, Math.round((r.bottom - r.top) * PIP_SHARE));
+  const full = pipFull(r);
+  const w = pipAt.tucked ? PIP_TAB.w : Math.round(Math.max(360, Math.min(full.w, (r.right - r.left) * pipAt.wide)));
+  const h = pipAt.tucked ? PIP_TAB.h : Math.round(Math.max(160, Math.min(full.h, (r.bottom - r.top) * pipAt.share)));
   Object.assign(pipEl.style, {
     width: `${w}px`, height: `${h}px`,
-    left: `${pipAt.tucked ? innerWidth - w : r.left}px`,
+    left: `${pipAt.tucked ? innerWidth - w : r.right - w}px`,
     top: `${pipAt.corner === "tr" ? r.top : r.bottom - h}px`,
   });
   fitShell();
+}
+/** The most it can be: as wide as from the window's left padding to the columns' right, as tall as they are. */
+const pipFull = (r) => ({ w: r.right - (parseFloat(getComputedStyle(document.querySelector(".app") || document.body).paddingLeft) || 20), h: r.bottom - r.top });
+/** Resized by a grip: its left edge (x), the edge away from its corner (y), or the corner between (xy).
+ *  It stays at its corner, so it grows left and away from it; kept as a share of the columns. */
+function sizePip(e) {
+  const grip = e.currentTarget, kind = grip.dataset.grip;
+  grip.setPointerCapture(e.pointerId);
+  pipEl.classList.add("sizing");
+  document.body.classList.add("pip-moving");
+  const x0 = e.clientX, y0 = e.clientY, b0 = pipEl.getBoundingClientRect();
+  const move = (m) => {
+    const r = pipRoom(), full = pipFull(r);
+    if (kind.includes("x")) pipAt.wide = Math.max(360, Math.min(full.w, b0.width + x0 - m.clientX)) / (r.right - r.left);
+    if (kind.includes("y")) pipAt.share = Math.max(160, Math.min(full.h, b0.height + (pipAt.corner === "br" ? y0 - m.clientY : m.clientY - y0))) / (r.bottom - r.top);
+    placePip();
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", () => { grip.removeEventListener("pointermove", move); pipEl.classList.remove("sizing"); document.body.classList.remove("pip-moving"); savePip(); }, { once: true });
 }
 /** Tucked into the right edge, or back out at its corner (where what ended while it was away is seen). */
 function tuckPip(t) {

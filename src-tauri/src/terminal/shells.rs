@@ -65,6 +65,9 @@ fn command_for(shell: &str, dir: &str, zdotdir: Option<String>, wrappers: &std::
     for k in NOT_HERE {
         c.env_remove(k);
     }
+    // A shell of its own, not one nested in whatever started Cue (whose level it would count up from,
+    // and a prompt that shows the level would say so): level 1, as a new terminal tab's.
+    c.env_remove("SHLVL");
     c.env("TERM", "xterm-256color");
     c.env("COLORTERM", "truecolor");
     // Not a Terminal.app session (its "Restored session…" lines, when Cue was started from one).
@@ -198,6 +201,8 @@ mod tests {
         let wrappers = home.join("wrappers");
         let mut c = command_for(shell, dir, zdotdir, &wrappers);
         c.env("HOME", home);
+        // (Cue itself started from inside other shells.)
+        assert!(c.get_env("SHLVL").is_none(), "Cue's own level isn't passed on");
         let seen = Arc::new(Mutex::new(String::new()));
         let s2 = seen.clone();
         crate::terminal::term::spawn(&id, c, 100, 20, move |v| {
@@ -207,7 +212,7 @@ mod tests {
         })
         .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(300));
-        crate::terminal::term::write(&id, "echo \"at:$PWD\" \"$(cuetest)\" \"z:${ZDOTDIR-unset}\"\r").unwrap();
+        crate::terminal::term::write(&id, "echo \"at:$PWD\" \"$(cuetest)\" \"z:${ZDOTDIR-unset}\" \"lvl:$SHLVL\"\r").unwrap();
         until(|| seen.lock().unwrap().contains("from-rc"));
         crate::terminal::term::close(&id);
         let out = seen.lock().unwrap().clone();
@@ -238,6 +243,7 @@ mod tests {
         assert!(z.contains(&at) && z.contains("z:unset"), "zsh: in its folder, the setup loaded, ZDOTDIR as it was: {z:?}");
         assert!(zd.contains(&at) && zd.contains(&format!("z:{}", own.display())), "zsh with a ZDOTDIR: the same, that ZDOTDIR kept: {zd:?}");
         assert!(b.contains(&at), "bash: the same: {b:?}");
+        assert!(z.contains("lvl:1") && b.contains("lvl:1"), "a shell of its own, level 1, not nested: {z:?} {b:?}");
     }
 
     #[test]
