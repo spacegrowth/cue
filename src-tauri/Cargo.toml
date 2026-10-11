@@ -28,6 +28,7 @@ portable-pty = "0.9"
 axum = { version = "0.8", features = ["ws"], optional = true }
 qrcode = { version = "0.14", default-features = false, features = ["svg"], optional = true }
 jsonwebtoken = { version = "9", optional = true }
+vt100 = { version = "0.16", optional = true }
 
 [profile.release]
 strip = true
@@ -41,4 +42,4 @@ block2 = "0.6"
 
 [features]
 # The add-on in src-tauri/ext/ (not part of this repo); install.sh turns it on when that folder is there.
-ext = ["dep:axum", "dep:qrcode", "dep:jsonwebtoken"]
+ext = ["dep:axum", "dep:qrcode", "dep:jsonwebtoken", "dep:vt100"]

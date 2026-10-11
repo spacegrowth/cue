@@ -58,9 +58,28 @@ pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, s
 
 /// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that
 /// isn't a folder). Written to, resized and closed with term_write / term_resize / term_close by its id.
+/// Its output's generation, and this Mac's short host name, for its tab ("mac: ~").
 #[tauri::command]
-pub(crate) async fn shell_open(app: tauri::AppHandle, id: String, cwd: String, cols: u16, rows: u16) -> Result<u64, String> {
-    tauri::async_runtime::spawn_blocking(move || shells::open(app, &id, &cwd, cols, rows)).await.map_err(|e| e.to_string())?
+pub(crate) async fn shell_open(app: tauri::AppHandle, id: String, cwd: String, cols: u16, rows: u16) -> Result<serde_json::Value, String> {
+    let gen = tauri::async_runtime::spawn_blocking(move || shells::open(app, &id, &cwd, cols, rows)).await.map_err(|e| e.to_string())??;
+    let host = crate::machines::hooks::hostname();
+    Ok(serde_json::json!({ "gen": gen, "host": host.split('.').next().unwrap_or(&host) }))
+}
+
+/// Quit after all, shells and their output with it: the window's dialog said yes (ask_before_ending).
+#[tauri::command]
+pub(crate) fn quit_now(app: tauri::AppHandle) {
+    crate::QUIT_SAID.store(true, std::sync::atomic::Ordering::Relaxed);
+    app.exit(0);
+}
+
+/// ⌘W outside Cue's terminal: the window hides, as closing it does (Cue keeps running).
+#[tauri::command]
+pub(crate) fn hide_window(app: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+    }
 }
 
 /// What you type in the built-in terminal.

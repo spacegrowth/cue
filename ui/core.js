@@ -54,21 +54,35 @@ const inTerminal = (it) => it?.kind === "terminal";
 const agentName = (h) => ({ claude: "Claude Code", codex: "Codex", pi: "Pi" }[h] || h || "agent");
 // Each agent gets a Moss letter. (Anthropic's logo needs their written permission, so it isn't used.)
 /** The agent's mark: a letter in its own colour (Claude's orange, Pi's black), so you can tell them apart at a glance. */
-const badge = (h) => `<span class="badge h-${esc(h || "other")}" title="${esc(agentName(h))}">${h === "pi" ? "π" : h === "codex" ? "X" : esc((h || "?")[0].toUpperCase())}</span>`;
+const agentLetter = (h) => h === "pi" ? "π" : h === "codex" ? "X" : esc((h || "?")[0].toUpperCase());
+const badge = (h) => `<span class="badge h-${esc(h || "other")}" title="${esc(agentName(h))}">${agentLetter(h)}</span>`;
+/** The agent most of your sessions run (live, parked, closed). */
+function usualAgent() {
+  const n = {};
+  for (const x of [...state.sessions, ...(state.parked || []), ...(closedList || [])]) if (x.harness) n[x.harness] = (n[x.harness] || 0) + 1;
+  return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || "claude";
+}
+/** A card's agent, on the board's cards and the Parked drawer's rows: nothing for your usual one (it
+ *  would repeat on every card), its mark for any other, so the odd one out is what you see. */
+const oddAgent = (h) => h && h !== usualAgent() ? `<span class="badge h-${esc(h)}" role="img" aria-label="${esc(agentName(h))}">${agentLetter(h)}</span>` : "";
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
 /** A session's name. */
 const nameSpan = (sid, project, cls = "proj") => `<span class="${cls}">${esc(nameOf(sid, project))}</span>`;
-/** A machine's name, short enough for a card: its first part (no user@, no domain), and past 10 characters
- *  its first 5 and last 5. What you renamed it to comes first. (Notifications do the same: machines::display_name.) */
-const machShort = (m) => {
+/** A machine's name: what you renamed it to, else its first part (no user@, no domain). (Notifications
+ *  do the same: machines::display_name.) */
+const machName = (m) => {
   const label = machinesList?.find((x) => x.name === m)?.label;
-  if (label) return label.length > 10 ? `${label.slice(0, 5)}…${label.slice(-5)}` : label;
+  if (label) return label;
   const h = String(m || "").replace(/^[^@]*@/, "");
-  const n = /^[\d.]+$/.test(h) ? h : h.split(".")[0] || h;
-  return n.length > 10 ? `${n.slice(0, 5)}…${n.slice(-5)}` : n;
+  return /^[\d.]+$/.test(h) ? h : h.split(".")[0] || h;
 };
+/** Short enough for a line that has little room: past 10 characters, its first 5 and last 5. */
+const machShort = (m) => { const n = machName(m); return n.length > 10 ? `${n.slice(0, 5)}…${n.slice(-5)}` : n; };
 /** The label on everything about a session that runs on another machine (none for this Mac). */
 const machTag = (m) => m ? `<span class="mach" title="Runs on ${esc(m)}">${esc(machShort(m))}</span>` : "";
+/** On a card, the same label in full at the head of its text line: the card's top line has no room for it
+ *  (name, state, age and buttons). */
+const machLead = (m) => m ? `<span class="mach lead">${esc(machName(m))}</span>` : "";
 /** What Cue calls a session: the name you gave it, else its folder's name, else its project. */
 // ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
 // A session that has stopped (parked or closed) keeps its name: its record as it was.

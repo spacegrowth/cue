@@ -80,7 +80,10 @@ const ZSH: [&str; 4] = [".zshenv", ".zprofile", ".zshrc", ".zlogin"];
 
 /// Cue's `file` for zsh: yours, read from your ZDOTDIR (or ~) as zsh would, then back to Cue's for the
 /// next. Yours may set ZDOTDIR (in .zshenv): the rest are read from there. The last puts ZDOTDIR back
-/// as you had it, and goes into the folder.
+/// as you had it, goes into the folder, and keeps your prompt to one line: a theme's prompt of several
+/// (a blank line, the folder on one, `%` alone on the next) is folded into one before each prompt, as
+/// the floating terminal is short, and starts with the host when it doesn't show it already (many show
+/// it only over SSH). Only in Cue's shells; your other terminals keep it as it is.
 fn zsh_wrapper(file: &str) -> String {
     let mut s = format!("# Cue's shells: your {file}, as ever (from ZDOTDIR or ~). Written by Cue; changes are lost.\n_cue_z=\"$ZDOTDIR\"; ZDOTDIR=\"${{CUE_HOME_ZDOTDIR:-$HOME}}\"\n[[ -r \"$ZDOTDIR/{file}\" ]] && builtin source \"$ZDOTDIR/{file}\"\n");
     if file == ".zshenv" {
@@ -88,6 +91,7 @@ fn zsh_wrapper(file: &str) -> String {
     }
     if file == ".zlogin" {
         s.push_str("if [[ -n \"$CUE_HOME_ZDOTDIR\" ]]; then ZDOTDIR=\"$CUE_HOME_ZDOTDIR\"; else unset ZDOTDIR; fi\nunset _cue_z CUE_HOME_ZDOTDIR\n[[ -n \"$CUE_CWD\" ]] && builtin cd -- \"$CUE_CWD\" 2>/dev/null; unset CUE_CWD\n");
+        s.push_str("_cue_one_line() { while [[ $PS1 == $'\\n'* ]]; do PS1=${PS1#$'\\n'}; done; PS1=${PS1//$'\\n'/ }; print -v _cue_p -P -- \"$PS1\"; [[ $_cue_p == *${HOST%%.*}* ]] || PS1=\"%B%F{green}%m%f%b $PS1\"; unset _cue_p; }\nautoload -Uz add-zsh-hook && add-zsh-hook precmd _cue_one_line\n");
     } else {
         s.push_str("ZDOTDIR=\"$_cue_z\"; unset _cue_z\n");
     }
@@ -96,6 +100,11 @@ fn zsh_wrapper(file: &str) -> String {
 
 /// bash: your login setup (as a new terminal tab has it), then into the folder.
 const BASHRC: &str = "# Cue's shells: your profile, as ever. Written by Cue; changes are lost.\n[ -r /etc/profile ] && . /etc/profile\nfor f in ~/.bash_profile ~/.bash_login ~/.profile; do [ -r \"$f\" ] && { . \"$f\"; break; }; done\n[ -n \"$CUE_CWD\" ] && builtin cd -- \"$CUE_CWD\" 2>/dev/null; unset CUE_CWD\n";
+
+/// Whether any shell is open: quitting Cue ends them, and what they showed with them (the window asks first).
+pub fn any_open() -> bool {
+    !crate::terminal::term::foreground(PREFIX).is_empty()
+}
 
 /// Open shell `id` in `cwd` at `cols`×`rows`. Its output arrives as "term" events (as a session's
 /// terminal's do); what it runs, as "shell" events ({id, busy, what}).
@@ -212,7 +221,7 @@ mod tests {
         })
         .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(300));
-        crate::terminal::term::write(&id, "echo \"at:$PWD\" \"$(cuetest)\" \"z:${ZDOTDIR-unset}\" \"lvl:$SHLVL\"\r").unwrap();
+        crate::terminal::term::write(&id, "echo \"at:$PWD\" \"$(cuetest)\" \"z:${ZDOTDIR-unset}\" \"lvl:$SHLVL\" \"ps:[$PS1]\"\r").unwrap();
         until(|| seen.lock().unwrap().contains("from-rc"));
         crate::terminal::term::close(&id);
         let out = seen.lock().unwrap().clone();
@@ -226,8 +235,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let home = home.canonicalize().unwrap();
         let dir = dir.canonicalize().unwrap().to_string_lossy().to_string();
-        // zsh, the setup in ~: its .zshrc cds away and defines a function.
-        std::fs::write(home.join(".zshrc"), "cd /\ncuetest() { echo from-rc; }\n").unwrap();
+        // zsh, the setup in ~: its .zshrc cds away, defines a function, and has a prompt of three lines.
+        std::fs::write(home.join(".zshrc"), "cd /\ncuetest() { echo from-rc; }\nsetopt promptsubst; PS1=$'\\n${SSH_TTY:+%m }where\\n%% '\n").unwrap();
         let z = started("/bin/zsh", &home, &dir, None);
         // zsh, the setup in a ZDOTDIR of its own.
         let own = home.join("zdot");
@@ -243,6 +252,8 @@ mod tests {
         assert!(z.contains(&at) && z.contains("z:unset"), "zsh: in its folder, the setup loaded, ZDOTDIR as it was: {z:?}");
         assert!(zd.contains(&at) && zd.contains(&format!("z:{}", own.display())), "zsh with a ZDOTDIR: the same, that ZDOTDIR kept: {zd:?}");
         assert!(b.contains(&at), "bash: the same: {b:?}");
+        // (Its host shows only over SSH, as many themes': not here, so Cue puts it first.)
+        assert!(z.contains("ps:[%B%F{green}%m%f%b ${SSH_TTY:+%m }where %% ]"), "zsh: the prompt on one line, the host first: {z:?}");
         assert!(z.contains("lvl:1") && b.contains("lvl:1"), "a shell of its own, level 1, not nested: {z:?} {b:?}");
     }
 

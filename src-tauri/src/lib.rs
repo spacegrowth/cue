@@ -38,6 +38,50 @@ use terminal::dictation;
 use std::sync::Arc;
 use tauri::{Manager, RunEvent, WindowEvent};
 
+/// Set once you've said yes in the window to quitting with shells open: ⌘Q then goes through.
+pub(crate) static QUIT_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The menu bar's menus: Tauri's default ones, but Quit (⌘Q) and Close (⌘W) are Cue's own. Quit asks
+/// first with shells open (ask_before_ending): the stock Quit ends the app at once, with no event to hold
+/// it by (tao has no applicationShouldTerminate). Close goes to the window ("close-key"): inside Cue's
+/// terminal it closes the tab you're in, elsewhere it hides the window as before.
+/// SHORTCUT: the Dock's Quit and logging out still end Cue without asking; holding those needs
+/// applicationShouldTerminate, which tao doesn't offer.
+fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem as P, Submenu};
+    let pkg = app.package_info();
+    let about = AboutMetadata { name: Some(pkg.name.clone()), version: Some(pkg.version.to_string()), ..Default::default() };
+    Menu::with_items(app, &[
+        &Submenu::with_items(app, pkg.name.clone(), true, &[
+            &P::about(app, None, Some(about))?,
+            &P::separator(app)?,
+            &P::services(app, None)?,
+            &P::separator(app)?,
+            &P::hide(app, None)?,
+            &P::hide_others(app, None)?,
+            &P::separator(app)?,
+            &MenuItem::with_id(app, "app-quit", "Quit Cue", true, Some("CmdOrCtrl+Q"))?,
+        ])?,
+        &Submenu::with_items(app, "File", true, &[&MenuItem::with_id(app, "app-close", "Close", true, Some("CmdOrCtrl+W"))?])?,
+        &Submenu::with_items(app, "Edit", true, &[&P::undo(app, None)?, &P::redo(app, None)?, &P::separator(app)?, &P::cut(app, None)?, &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?])?,
+        &Submenu::with_items(app, "View", true, &[&P::fullscreen(app, None)?])?,
+        &Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?])?,
+    ])
+}
+
+/// About to quit (`why`: "quit") or to restart into an update ("update") with shells of Cue's own
+/// open: they end with Cue, and what they showed is lost, so the window comes up and asks first in a
+/// dialog of its own (quit_now, or the update's install, if you say yes). True when it's asking: hold off.
+pub(crate) fn ask_before_ending(app: &tauri::AppHandle, why: &str) -> bool {
+    use tauri::Emitter;
+    if QUIT_SAID.load(std::sync::atomic::Ordering::Relaxed) || !terminal::shells::any_open() {
+        return false;
+    }
+    show_main(app, None);
+    let _ = app.emit_to("main", "end-ask", why);
+    true
+}
+
 /// Bring up the full window, optionally on one item (the menu bar, a notification).
 pub(crate) fn show_main(app: &tauri::AppHandle, id: Option<String>) {
     use tauri::Emitter;
@@ -136,7 +180,7 @@ pub fn run() {
         // Cue reopens at the size and place you left it.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, term_write, term_resize, term_close, shell_open, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, quit_now, hide_window, term_write, term_resize, term_close, shell_open, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification])
         .setup(|app| {
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
@@ -294,6 +338,19 @@ pub fn run() {
             }
             Ok(())
         })
+        .menu(app_menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "app-quit" => {
+                if !ask_before_ending(app, "quit") {
+                    app.exit(0);
+                }
+            }
+            "app-close" => {
+                use tauri::Emitter;
+                let _ = app.emit_to("main", "close-key", ());
+            }
+            _ => {}
+        })
         .on_window_event(|window, event| {
             // Closing the window keeps Cue running (it must stay up to receive requests).
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -307,18 +364,48 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Cue");
 
-    app.run(|handle, event| {
-        if let RunEvent::Reopen { .. } = event {
+    app.run(|handle, event| match event {
+        RunEvent::Reopen { .. } => {
             if let Some(w) = handle.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.set_focus();
             }
         }
+        _ => {}
     });
 }
 
 #[cfg(test)]
 mod tests {
+    /// The window's scripts (ui/index.html, in order) share one global scope: a top-level name declared
+    /// in two of them is a SyntaxError that stops the second script before it runs, and the window
+    /// shows its background and nothing else (that reached the installed app once). Each name once.
+    #[test]
+    fn the_windows_scripts_declare_each_top_level_name_once() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui");
+        let index = std::fs::read_to_string(ui.join("index.html")).unwrap();
+        let scripts: Vec<&str> = index.split("<script src=\"").skip(1).filter_map(|r| r.split('"').next()).filter(|s| !s.starts_with("vendor/")).collect();
+        assert!(scripts.len() >= 2, "{scripts:?}");
+        let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut twice = vec![];
+        for script in &scripts {
+            let text = std::fs::read_to_string(ui.join(script)).unwrap();
+            for (i, line) in text.lines().enumerate() {
+                let mut words = line.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'));
+                let (Some(kw), Some(name)) = (words.next(), words.next()) else { continue };
+                if !matches!(kw, "const" | "let" | "var" | "function" | "class") || name.is_empty() || line.starts_with(' ') || line.starts_with('\t') {
+                    continue;
+                }
+                let at = format!("{script}:{}", i + 1);
+                match seen.insert(name.to_string(), at.clone()) {
+                    Some(first) if !first.starts_with(&format!("{script}:")) => twice.push(format!("{name}: {first} and {at}")),
+                    _ => {}
+                }
+            }
+        }
+        assert!(twice.is_empty(), "declared in two of the window's scripts:\n{}", twice.join("\n"));
+    }
+
     use super::*;
 
     #[test]

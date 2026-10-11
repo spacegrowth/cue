@@ -99,30 +99,35 @@ pub fn clipboard_image() -> Option<String> {
 
 /// The images where a session on `machine` can open them (empty: this Mac, where they already are).
 /// Each is copied over the machine's connection to ~/.cue/uploads there, and its path there is what's
-/// typed. Copies older than a week are cleared there on the way, as they are here.
-pub fn on_machine(machine: &str, saved: &[Saved]) -> Result<Vec<Saved>, String> {
+/// typed. Copies older than a week are cleared there on the way, as they are here. `progress` hears
+/// the bytes copied so far of them all, and the total (a large screenshot over a slow link takes a while).
+pub fn on_machine(machine: &str, saved: &[Saved], progress: &dyn Fn(u64, u64)) -> Result<Vec<Saved>, String> {
     if machine.is_empty() || saved.is_empty() {
         return Ok(saved.to_vec());
     }
     let host = crate::machines::get(machine).ok_or(format!("{machine} isn't one of your machines any more"))?.host;
-    saved
-        .iter()
-        .map(|s| {
-            let bytes = std::fs::read(&s.path).map_err(|e| e.to_string())?;
-            let name = std::path::Path::new(&s.path).file_name().and_then(|n| n.to_str()).ok_or("an image with no name")?;
-            let script = format!(
-                "d=\"$HOME/.cue/uploads\"; mkdir -p \"$d\" && find \"$d\" -type f -mtime +{KEEP_DAYS} -delete 2>/dev/null; base64 -d >\"$d\"/{n} && echo \"$d\"/{n}",
-                n = crate::focus::shq(name)
-            );
-            let at = crate::machines::run_with_input(&host, &script, &base64::engine::general_purpose::STANDARD.encode(bytes))
-                .map_err(|e| format!("couldn't copy the image to {}: {e}", crate::machines::display_name(machine)))?;
-            let path = at.trim().to_string();
-            if path.is_empty() {
-                return Err(format!("couldn't copy the image to {}", crate::machines::display_name(machine)));
-            }
-            Ok(Saved { path, mime: s.mime.clone() })
-        })
-        .collect()
+    let files = saved.iter().map(|s| std::fs::read(&s.path).map_err(|e| e.to_string())).collect::<Result<Vec<_>, _>>()?;
+    let total: u64 = files.iter().map(|b| b.len() as u64).sum();
+    let mut before = 0u64;
+    progress(0, total);
+    let mut out = vec![];
+    for (s, bytes) in saved.iter().zip(&files) {
+        let name = std::path::Path::new(&s.path).file_name().and_then(|n| n.to_str()).ok_or("an image with no name")?;
+        // Written under a temporary name, then renamed: a copy cut short is never typed as the image.
+        let script = format!(
+            "d=\"$HOME/.cue/uploads\"; mkdir -p \"$d\" && find \"$d\" -type f -mtime +{KEEP_DAYS} -delete 2>/dev/null; cat >\"$d\"/{n}.part && mv \"$d\"/{n}.part \"$d\"/{n} && echo \"$d\"/{n}",
+            n = crate::focus::shq(name)
+        );
+        let at = crate::machines::run_with_bytes(&host, &script, bytes, &|n| progress(before + n, total))
+            .map_err(|e| if e.starts_with("Can't connect") { e } else { format!("couldn't copy the image to {}: {e}", crate::machines::display_name(machine)) })?;
+        before += bytes.len() as u64;
+        let path = at.trim().to_string();
+        if path.is_empty() {
+            return Err(format!("couldn't copy the image to {}", crate::machines::display_name(machine)));
+        }
+        out.push(Saved { path, mime: s.mime.clone() });
+    }
+    Ok(out)
 }
 
 /// The text typed into a terminal: your words, then the image paths (space-separated).
@@ -174,7 +179,7 @@ mod tests {
         let local = std::env::temp_dir().join(format!("cue-img {}.png", std::process::id()));
         std::fs::write(&local, &bytes).unwrap();
         let saved = vec![Saved { path: local.to_string_lossy().into(), mime: "image/png".into() }];
-        let there = on_machine(&m, &saved).unwrap();
+        let there = on_machine(&m, &saved, &|_, _| {}).unwrap();
         println!("copied to {}", there[0].path);
         assert!(there[0].path.ends_with(&format!("/.cue/uploads/cue-img {}.png", std::process::id())));
         let host = crate::machines::get(&m).unwrap().host;
@@ -182,7 +187,7 @@ mod tests {
         let remote = crate::machines::run(&host, &format!("cksum <{}", crate::focus::shq(&there[0].path))).unwrap();
         let mine = std::process::Command::new("cksum").stdin(std::fs::File::open(&local).unwrap()).output().unwrap();
         assert_eq!(sum(&remote), sum(&String::from_utf8_lossy(&mine.stdout)), "the same bytes");
-        assert_eq!(on_machine("", &saved).unwrap()[0].path, saved[0].path, "on this Mac: where it already is");
+        assert_eq!(on_machine("", &saved, &|_, _| {}).unwrap()[0].path, saved[0].path, "on this Mac: where it already is");
         let _ = crate::machines::run(&host, &format!("rm -f {}", crate::focus::shq(&there[0].path)));
         std::fs::remove_file(&local).ok();
     }

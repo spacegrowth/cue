@@ -156,6 +156,41 @@ pub fn run_with_input(host: &str, script: &str, input: &str) -> Result<String, S
     }
 }
 
+/// `run_with_input` for a file's bytes, written in pieces: `sent` hears how many have gone so far.
+pub fn run_with_bytes(host: &str, script: &str, bytes: &[u8], sent: &dyn Fn(u64)) -> Result<String, String> {
+    use std::io::Write;
+    if !valid_host(host) {
+        return Err("that isn't an SSH host".into());
+    }
+    let mut child = ssh_command(host, script)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    {
+        let mut input = child.stdin.take().ok_or("no input")?;
+        let mut done = 0u64;
+        for piece in bytes.chunks(64 * 1024) {
+            if let Err(e) = input.write_all(piece) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e.to_string());
+            }
+            done += piece.len() as u64;
+            sent(done);
+        }
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else if out.status.code() == Some(255) {
+        Err(cant_connect(host))
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 /// Run an ssh trip; once more, a moment later, when ssh itself said the machine didn't take it (exit 255
 /// and a refusal or a connect timeout: nothing ran there, so running it again can't do anything twice).
 /// The shared connection takes 10 trips at once (sshd's MaxSessions), and a burst of them can find it full.

@@ -1,17 +1,21 @@
 // ---------- Cue's own shells: the floating terminal ----------
 /** The terminal button by the usage meter (or ⌘J) brings out a terminal of Cue's own, tied to no
- *  session: plain shells (your login shell, in a folder you pick; shells.rs), one tab each. It floats
+ *  session: plain shells (your login shell, at home; shells.rs), one tab each, named "mac: ~" (the host,
+ *  and the folder it's in now) until you rename one (double-click its tab). It floats
  *  over the board's last two columns, at their foot (or head, dragged up; let go, it springs back to one
  *  or the other, as picture in picture does), 45% of their height to start, and resizes from its free
  *  edges. Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
  *  from there; the button and that tab show a live dot while a shell runs something, and ✓ once that
- *  ends. Its element lives outside the redraws (each puts it back over the columns). Where it is, top or
- *  bottom and tucked or not, is kept in this browser. */
-const shells = [];             // { id, title, cwd, busy, what, gen, term, fit, host, queue, frame }
+ *  ends. + or ⌘⇧T opens a new shell tab. Full screen (its ⤢, or a double-click on its bar) it fills the window under the header. Its
+ *  element lives outside the redraws (each puts it back over the columns). Where it is, top or bottom,
+ *  full or not and tucked or not, is kept in this browser. */
+const shells = [];             // { id, where, mac, name, cwd, busy, what, gen, term, fit, host, queue, frame }
 let shellCur = null;           // the tab on show
+let shellMac = "";             // this Mac's short host name (from the first shell_open)
+let shellRenaming = null;      // the tab whose name is being typed
 let shellSeq = 0;
 let pipEl = null;
-let pipAt = { corner: "br", tucked: false, share: 0.45, wide: 1 };
+let pipAt = { corner: "br", tucked: false, full: false, share: 0.45, wide: 1 };
 try { Object.assign(pipAt, JSON.parse(localStorage.getItem("cue.pip") || "{}")); } catch {}
 let pipDone = false;           // a command ended while it was away (until it's back out)
 const pipOut = () => !!pipEl && !pipEl.hidden && !pipAt.tucked;
@@ -35,10 +39,25 @@ function markShells() {
   document.querySelector(".shells-btn")?.setAttribute("aria-pressed", String(pipOut()));
 }
 
-/** The button: a first shell (at home); else out, or tucked away. */
-function toggleShells() {
+/** ⌘⇧T: a new shell tab (at home), the terminal out, as ⌘T is in a terminal app. */
+const newShellTab = () => openShell("");
+/** ⌘K inside it: the tab on show cleared, its prompt line the first. */
+const clearShell = () => shellOf(shellCur)?.term.clear();
+/** ⌘W (the menu's Close, lib.rs app_menu): inside it, the tab you're in closes (the last one puts it
+ *  away); anywhere else the window hides, as it always did. */
+function closeKey() {
+  if (shells.length && pipOut() && pipEl.contains(document.activeElement)) return closeShell(shellCur);
+  invoke("hide_window").catch(() => {});
+}
+/** ⌘1–9 inside it: that tab (⌘9 the last, as in a terminal app). */
+const shellNumber = (n) => { const s = n === 9 ? shells.at(-1) : shells[n - 1]; if (s) showShell(s.id); };
+
+/** The button: a first shell (at home); else out, or tucked away. ⌘J (`key`) first takes you into it when
+ *  it's out but you're elsewhere in Cue; pressed again from inside, it tucks it away. */
+function toggleShells(key = false) {
   if (!shells.length) return openShell("");
   if (pipEl.hidden) { pipEl.hidden = false; return tuckPip(false); }
+  if (key && pipOut() && !pipEl.contains(document.activeElement)) return shellOf(shellCur)?.term.focus();
   tuckPip(!pipAt.tucked);
 }
 
@@ -48,7 +67,7 @@ function ensurePip() {
   pipEl.className = "pip";
   pipEl.hidden = true;
   pipEl.setAttribute("aria-label", "Terminal");
-  pipEl.innerHTML = `<div class="pip-bar"><div class="pip-tabs" role="tablist"></div><button class="pip-add" aria-label="New shell">+</button><button class="pip-hide" aria-label="Tuck it away (⌘J)">⇥</button></div>
+  pipEl.innerHTML = `<div class="pip-bar"><div class="pip-tabs" role="tablist"></div><button class="pip-add" aria-label="New shell (⌘⇧T)">+</button><button class="pip-full" aria-label="Full screen" aria-pressed="false"></button><button class="pip-hide" aria-label="Tuck it away (⌘J)">⇥</button></div>
     <div class="pip-slot"></div><div class="pip-grip edge-x" data-grip="x"></div><div class="pip-grip edge-y" data-grip="y"></div><div class="pip-grip corner" data-grip="xy"></div>
     <button class="pip-peek" aria-label="Bring the terminal back"><span aria-hidden="true">‹</span><span class="sh-live"></span></button>`;
   document.body.appendChild(pipEl);
@@ -56,12 +75,17 @@ function ensurePip() {
     const x = e.target.closest("[data-shell-x]");
     if (x) return closeShell(x.dataset.shellX);
     const t = e.target.closest("[data-shell]");
-    if (t) return showShell(t.dataset.shell);
-    if (e.target.closest(".pip-add")) return folderMenu(e.target.closest(".pip-add"));
+    if (t && !e.target.closest(".pip-rename")) return showShell(t.dataset.shell);
+    if (e.target.closest(".pip-add")) return openShell("");
+    if (e.target.closest(".pip-full")) return fullPip(!pipAt.full);
     if (e.target.closest(".pip-hide")) return tuckPip(true);
     if (e.target.closest(".pip-peek")) return tuckPip(false);
   });
   pipEl.querySelector(".pip-bar").addEventListener("pointerdown", dragPip);
+  // A double-click on a tab names it.
+  pipEl.querySelector(".pip-tabs").addEventListener("dblclick", (e) => { const t = e.target.closest("[data-shell]"); if (t) renameShell(t.dataset.shell); });
+  // A double-click on the bar itself (not a tab or a button) goes full screen and back, as a window's title bar zooms.
+  pipEl.querySelector(".pip-bar").addEventListener("dblclick", (e) => { if (!e.target.closest("button, .pip-tab")) fullPip(!pipAt.full); });
   pipEl.querySelectorAll("[data-grip]").forEach((g) => g.addEventListener("pointerdown", sizePip));
   pipEl.addEventListener("transitionend", (e) => { if (e.propertyName === "left" || e.propertyName === "top") fitShell(); });
   window.addEventListener("resize", placePip);
@@ -80,17 +104,23 @@ async function openShell(cwd) {
   placePip();
   for (const s of shells) s.host.hidden = true;
   const { term, fit } = xterm(host);
-  const sh = { id, cwd, title: baseName(cwd) || "~", busy: false, what: "", gen: 0, term, fit, host, queue: [], frame: 0 };
+  const sh = { id, cwd, where: baseName(cwd) || "~", mac: shellMac, name: "", busy: false, what: "", gen: 0, term, fit, host, queue: [], frame: 0 };
   shells.push(sh);
   showShell(id);
   term.onData((d) => invoke("term_write", { sessionId: id, data: d }).catch(() => {}));
   term.onResize(({ cols, rows }) => invoke("term_resize", { sessionId: id, cols, rows }).catch(() => {}));
-  // Its title, as the shell sets it ("me@mac: ~/code/x"): the folder it's in now, for its tab.
-  term.onTitleChange((t) => { const where = String(t).split(": ").pop(); if (where) { sh.title = baseName(where) || where; drawShellTabs(); } });
+  // Its title, as the shell sets it ("me@mac: ~/code/x"): the host and the folder it's in now, for its tab.
+  term.onTitleChange((t) => {
+    const [who, where] = String(t).includes(": ") ? String(t).split(/: (.*)/) : ["", String(t)];
+    if (where) sh.where = baseName(where) || where;
+    if (who.includes("@")) sh.mac = who.split("@").pop().split(".")[0];
+    drawShellTabs();
+  });
   term.focus();
   try {
-    const gen = await invoke("shell_open", { id, cwd, cols: term.cols, rows: term.rows });
-    if (shellOf(id)) sh.gen = gen;
+    const r = await invoke("shell_open", { id, cwd, cols: term.cols, rows: term.rows });
+    shellMac ||= r.host || "";
+    if (shellOf(id)) { sh.gen = r.gen; sh.mac ||= shellMac; drawShellTabs(); }
   } catch (e) {
     toast(`Couldn't open a shell: ${e}`);
     closeShell(id, true);
@@ -124,6 +154,7 @@ function onShellEvent(p) {
 }
 
 function showShell(id) {
+  if (shellCur === id && shellRenaming !== id) return shellOf(id)?.term.focus();
   shellCur = id;
   for (const s of shells) s.host.hidden = s.id !== id;
   drawShellTabs();
@@ -140,44 +171,67 @@ function closeShell(id, ended = false) {
   cancelAnimationFrame(sh.frame);
   sh.term.dispose();
   sh.host.remove();
-  if (!shells.length) { shellCur = null; pipEl.hidden = true; pipDone = false; drawShellTabs(); return markShells(); }
+  // The last one closed: the terminal goes away, and the cursor to the message box (homeFocus).
+  if (!shells.length) { shellCur = null; pipEl.hidden = true; pipDone = false; drawShellTabs(); markShells(); return homeFocus(); }
   if (shellCur === id) showShell((shells[i] || shells[i - 1]).id);
   else drawShellTabs();
   markShells();
 }
 
+/** A tab's name: yours, else its host and folder ("mac: ~"). */
+const shellName = (s) => s.name || (s.mac ? `${s.mac}: ${s.where}` : s.where);
 function drawShellTabs() {
   const el = pipEl?.querySelector(".pip-tabs");
   if (!el) return;
-  el.innerHTML = shells.map((s) => `<button class="pip-tab" role="tab" data-shell="${esc(s.id)}" aria-selected="${s.id === shellCur}">${s.busy ? `<span class="sh-dot"></span>` : ""}<span class="pip-name ${s.busy ? "" : "mono"}">${esc(s.busy ? s.what || "running" : s.title)}</span><span class="pip-x" data-shell-x="${esc(s.id)}" role="button" aria-label="Close this shell">×</span></button>`).join("");
+  // (Not while a name is typed: the field would go, and what was typed with it.)
+  if (shellRenaming && el.querySelector(".pip-rename")) return;
+  el.innerHTML = shells.map((s, i) => {
+    const name = s.id === shellRenaming ? `<input class="pip-rename" value="${esc(shellName(s))}" aria-label="Name this tab" spellcheck="false" />`
+      : `<span class="pip-name ${s.busy || s.name ? "" : "mono"}">${esc(s.busy ? s.what || "running" : shellName(s))}</span>`;
+    // (The one being named isn't a button: a field inside a button doesn't take clicks or keys in WebKit.)
+    const tag = s.id === shellRenaming ? "span" : "button";
+    return `<${tag} class="pip-tab" role="tab" data-shell="${esc(s.id)}" aria-selected="${s.id === shellCur}">${s.busy ? `<span class="sh-dot"></span>` : ""}${name}${shells.length > 1 && i < 9 ? `<span class="pip-key">⌘${i + 1}</span>` : ""}<span class="pip-x" data-shell-x="${esc(s.id)}" role="button" aria-label="Close this shell">×</span></${tag}>`;
+  }).join("");
+  const field = el.querySelector(".pip-rename");
+  if (!field) return;
+  field.focus();
+  field.select();
+  // Enter keeps it (empty: back to its host and folder), Esc or clicking away leaves it as it was.
+  const done = (keep) => { if (shellRenaming === null) return; const sh = shellOf(shellRenaming); shellRenaming = null; if (keep && sh) sh.name = field.value.trim(); drawShellTabs(); sh?.term.focus(); };
+  field.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(e.key === "Enter"); } });
+  field.addEventListener("blur", () => done(false));
+}
+/** Name a tab: its name becomes a field in place. */
+function renameShell(id) {
+  if (!shellOf(id)) return;
+  shellRenaming = id;
+  drawShellTabs();
 }
 
 const fitShell = () => { if (pipOut()) try { shellOf(shellCur)?.fit.fit(); } catch {} };
 
-/** Where a new shell can start: home, the open session's folder, then the folders your sessions here are in. */
-function folderMenu(anchor) {
-  document.querySelector(".pip-menu")?.remove();
-  const open = current()?.s;
-  const local = (x) => x?.cwd && !x.machine;
-  const seen = new Set(), folders = [];
-  for (const f of [local(open) ? open.cwd : null, ...state.sessions.filter(local).map((s) => s.cwd), ...(state.live || []).filter(local).map((q) => q.cwd)]) if (f && !seen.has(f)) { seen.add(f); folders.push(f); }
-  const m = document.createElement("div");
-  m.className = "pip-menu";
-  m.setAttribute("role", "menu");
-  m.innerHTML = `<div class="pip-menu-h">New shell in</div><button role="menuitem" data-cwd="">Home <span class="mono">~</span></button>`
-    + folders.slice(0, 10).map((f) => `<button role="menuitem" data-cwd="${esc(f)}">${esc(baseName(f))} <span class="mono">${esc(homeless(f))}</span></button>`).join("");
-  document.body.appendChild(m);
-  const r = anchor.getBoundingClientRect();
-  m.style.left = `${Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8))}px`;
-  m.style.top = r.bottom + 6 + m.offsetHeight < innerHeight ? `${r.bottom + 6}px` : `${Math.max(8, r.top - m.offsetHeight - 6)}px`;
-  const done = () => { m.remove(); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key, true); };
-  // (Opened by a click: its pointerdown has passed, so these see only what comes after.)
-  const away = (e) => { if (!m.contains(e.target)) done(); };
-  const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(); } };
-  document.addEventListener("pointerdown", away, true);
-  document.addEventListener("keydown", key, true);
-  m.addEventListener("click", (e) => { const b = e.target.closest("[data-cwd]"); if (b) { done(); openShell(b.dataset.cwd); } });
-  m.querySelector("button")?.focus();
+// ---------- quitting with shells open ----------
+/** Quitting Cue (⌘Q, the menu bar icon's Quit) or restarting into an update ends its shells, and what
+ *  they showed is lost: with any open, Cue asks first ("end-ask" from lib.rs ask_before_ending, or
+ *  Settings' update button), in a dialog of its own. `endAsk`: "quit" or "update" while it asks. */
+let endAsk = null;
+function endDialog() {
+  const n = shells.length, busy = shells.filter((s) => s.busy), update = endAsk === "update";
+  const open = n === 1 ? "A shell is open" : n ? `${n} shells are open` : "Shells are open";
+  return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="end-title">
+    <div class="move-title" id="end-title">${update ? `Restart into Cue${upd.version ? ` ${esc(upd.version)}` : ""}?` : "Quit Cue?"}</div>
+    <div class="end-text">${open} in Cue's terminal. ${update ? "Restarting" : "Quitting"} ends ${n === 1 ? "it" : "them"}, and what ${n === 1 ? "it shows" : "they show"} is lost.</div>
+    ${busy.length ? `<div class="end-text">Still running: ${busy.map((s) => `<span class="mono">${esc(s.what || "a command")}</span>`).join(", ")}</div>` : ""}
+    <div class="row-btns"><span class="grow"></span><button class="btn" data-act="end-no">Cancel <kbd>Esc</kbd></button><button class="btn primary" data-act="end-yes">${update ? "Restart" : "Quit"} <kbd>↵</kbd></button></div>
+  </div></div>`;
+}
+function endAnswer(yes) {
+  const why = endAsk;
+  endAsk = null;
+  renderMain();
+  if (!yes) return;
+  if (why === "update") installUpdate(true);
+  else invoke("quit_now").catch(() => {});
 }
 
 // ---------- where it floats ----------
@@ -195,13 +249,24 @@ function pipRoom() {
   const pad = a ? parseFloat(getComputedStyle(a).paddingRight) || 20 : 20, bottom = innerHeight - (a ? parseFloat(getComputedStyle(a).paddingBottom) || 16 : 16);
   return { left: innerWidth - pad - innerWidth * 0.45, right: innerWidth - pad, top, bottom };
 }
-/** Tucked away: a small tab, this wide and tall, on the right edge at its corner. */
-const PIP_TAB = { w: 30, h: 76 };
+/** Tucked away: a small tab, this wide and tall, on the right edge at its corner. Its left 6px are
+ *  hidden until it's pointed at (style.css): it grows out of the edge, its right side never leaving it. */
+const PIP_TAB = { w: 36, h: 76 };
 function placePip() {
   if (!pipEl || pipEl.hidden) return;
   const r = pipRoom();
   pipEl.dataset.at = pipAt.corner;
   pipEl.classList.toggle("tucked", pipAt.tucked);
+  pipEl.classList.toggle("full", pipAt.full && !pipAt.tucked);
+  const fb = pipEl.querySelector(".pip-full");
+  fb.innerHTML = pipAt.full ? SHRINK_ICON : GROW_ICON;
+  fb.setAttribute("aria-pressed", String(pipAt.full));
+  fb.setAttribute("aria-label", pipAt.full ? "Leave full screen" : "Full screen");
+  if (pipAt.full && !pipAt.tucked) {
+    const w = pipWhole();
+    Object.assign(pipEl.style, { left: `${w.left}px`, top: `${w.top}px`, width: `${w.right - w.left}px`, height: `${w.bottom - w.top}px` });
+    return fitShell();
+  }
   // (Its shells keep their size tucked away: only one that's out is fitted to it.)
   const full = pipFull(r);
   const w = pipAt.tucked ? PIP_TAB.w : Math.round(Math.max(360, Math.min(full.w, (r.right - r.left) * pipAt.wide)));
@@ -212,6 +277,23 @@ function placePip() {
     top: `${pipAt.corner === "tr" ? r.top : r.bottom - h}px`,
   });
   fitShell();
+}
+/** Full screen: the window under the header, inside the app's padding. */
+function pipWhole() {
+  const a = document.querySelector(".app"), cs = a ? getComputedStyle(a) : null, px = (k, d) => (cs && parseFloat(cs[k])) || d;
+  return { left: px("paddingLeft", 20), right: innerWidth - px("paddingRight", 20), top: (document.querySelector(".top")?.getBoundingClientRect().bottom ?? 60) + 14, bottom: innerHeight - px("paddingBottom", 16) };
+}
+const GROW_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg>`;
+const SHRINK_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5 14 2M6.5 9.5 2 14"/></svg>`;
+/** Full screen or back to its corner (its size there kept). */
+function fullPip(f) {
+  pipAt.full = f;
+  savePip();
+  // In one step: its place would glide while its size jumped.
+  pipEl.classList.add("sizing");
+  placePip();
+  requestAnimationFrame(() => requestAnimationFrame(() => pipEl.classList.remove("sizing")));
+  shellOf(shellCur)?.term.focus();
 }
 /** The most it can be: as wide as from the window's left padding to the columns' right, as tall as they are. */
 const pipFull = (r) => ({ w: r.right - (parseFloat(getComputedStyle(document.querySelector(".app") || document.body).paddingLeft) || 20), h: r.bottom - r.top });
@@ -245,7 +327,7 @@ function tuckPip(t) {
  *  the right edge (a third of it beyond) and it tucks away; else it springs back over the columns, to
  *  their top or bottom, whichever is nearer. */
 function dragPip(e) {
-  if (e.button !== 0 || e.target.closest(".pip-x")) return;
+  if (e.button !== 0 || e.target.closest(".pip-x, .pip-rename") || pipAt.full) return;
   const x0 = e.clientX, y0 = e.clientY, r0 = pipEl.getBoundingClientRect();
   let moved = false;
   const move = (m) => {

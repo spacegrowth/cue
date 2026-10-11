@@ -277,7 +277,9 @@ async function checkUpdate() {
   catch (e) { upd = { ...upd, status: `error:${e}` }; }
   renderMain();
 }
-async function installUpdate() {
+/** Install and restart; with shells open, Cue asks first (shells.js endDialog), `sure` once you've said yes. */
+async function installUpdate(sure = false) {
+  if (!sure && shells.length) { endAsk = "update"; return renderMain(); }
   upd = { ...upd, status: "installing" };
   renderMain();
   try { await invoke("update_install"); } catch (e) { upd = { ...upd, status: `error:${e}` }; renderMain(); }

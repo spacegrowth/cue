@@ -4,6 +4,24 @@
  * and it settles to "Sent · via …" once delivered. On failure the text goes back in the box.
  */
 const outbox = [];          // { sid, text, images, at, via } until the session's thread shows it
+// Images on their way to a session's machine, by session: { sent, total, count, machine } while it copies.
+const uploading = new Map();
+const fmtBytes = (n) => n < 1024 * 1024 ? `${n ? Math.max(1, Math.round(n / 1024)) : 0} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+/** "Sending…", or how far the images' copy to its machine has got. */
+function sendingMeta(sid) {
+  const u = uploading.get(sid);
+  if (!u) return "Sending…";
+  const what = u.count > 1 ? `${u.count} images` : "image";
+  return `Copying ${what} to ${machName(u.machine)} · ${fmtBytes(u.sent)} of ${fmtBytes(u.total)}`;
+}
+/** Cue's word on a copy ("upload"): the sending bubble's line follows it, without redrawing the pane. */
+function onUpload(p) {
+  if (p.done) uploading.delete(p.session_id);
+  else uploading.set(p.session_id, p);
+  for (const el of document.querySelectorAll(".cv-you.sending .cv-meta[data-sid]")) {
+    if (el.dataset.sid === p.session_id) el.textContent = sendingMeta(p.session_id);
+  }
+}
 // ---------- "!": a shell line Cue runs for you, in the session's folder, shown as a card (shell.rs) ----------
 // Never sent to the agent: the card offers that. For the + New session box, in its folder ("new").
 const ranLog = new Map();   // sid | "new" -> [{ line, cwd, output, code, ms, at, running, err }]: this window's, oldest first
@@ -219,7 +237,7 @@ function closeTerm(quiet = false) {
   termHost?.remove();
   termWatch = termObj = termFit = termHost = null;
   if (sid) invoke("term_close", { sessionId: sid }).catch(() => {});
-  if (!quiet) renderMain();
+  if (!quiet) { renderMain(); homeFocus(); }
 }
 function onTermOutput(p) {
   if (p.sid !== termSid || (termGen && p.gen !== termGen)) return;
@@ -236,7 +254,9 @@ function flushTerm() {
   termObj.write(b64Bytes(chunks));
 }
 /** An xterm.js terminal in `host`, in Cue's colours, fitted to it: drawn on the GPU where it can be (much
- *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js). */
+ *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js).
+ *  Its cursor blinks at Cue's pace, a 1.4s beat like the live dots: vendor/xterm/addon-webgl.js is patched
+ *  from xterm's fixed 600ms to 700ms (keep that on an update), and the default renderer's in style.css. */
 function xterm(host) {
   const term = new Terminal({
     fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
@@ -339,6 +359,17 @@ function sendQueuedNow(sid) {
     .then(() => toast(`Sent now: ${nameOf(sid, sessionOf(sid)?.project || "it")} stopped its current turn and reads your message next`))
     .catch((e) => toast(`Couldn't send it now: ${e}`));
 }
+/** Send now on the message Cue kept for a working session (its button, or ⌘↵ as for a queued one): it
+ *  stops the turn and the message goes straight away. */
+const sendHeldNow = (sid) => invoke("send_held_now", { sessionId: sid }).then(() => toast("Sent now: it stopped its turn and reads your message next")).catch((e) => toast(`Couldn't send it now: ${e}`));
+/** ⌘↵ with nothing new typed: what's waiting to go (queued in its agent, or kept in Cue) goes now. False when there's nothing. */
+function sendWaitingNow(sid) {
+  const s = sessionOf(sid);
+  if (s?.queued) sendQueuedNow(sid);
+  else if (s?.held) sendHeldNow(sid);
+  else return false;
+  return true;
+}
 const sendTo = (sid, now = false) => sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => invoke("send_to_session", { sessionId: sid, text, images, now }));
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
@@ -360,7 +391,7 @@ async function interrupt(sid) {
   try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }
   catch (e) { toast(`Couldn't stop it: ${e}`); }
 }
-const box_ = (key, placeholder, label, attrs) => box(key, placeholder, label, attrs, true);
+const box_ = (key, placeholder, label, attrs, alt = "") => box(key, placeholder, label, attrs, true, alt);
 
 /** A waiting message's tracing outline: the window redraws every few seconds, so each copy starts where
  *  the clock says the trace is, and it goes round smoothly instead of jumping back to the start. */
@@ -535,7 +566,7 @@ let qpEdit = null;
 const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
 /** A text box that grows as you type (Shift+Enter = new line, Enter = send), optionally with images.
  *  The boxes that message a session (the ones with images) also get the quick phrases. */
-function box(key, placeholder, label, sendAttrs, images) {
+function box(key, placeholder, label, sendAttrs, images, alt = "") {
   const d = draft(key);
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
@@ -545,7 +576,7 @@ function box(key, placeholder, label, sendAttrs, images) {
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
     <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
-    <button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
+    ${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
 }
 
 // ---------- earlier messages: a page at a time from Cue's log as you scroll up ----------
@@ -612,6 +643,15 @@ function conversation(it, s) {
     // (Settings → Context) while you kept talking; appended, it would sit below your newer messages.
     ex.sort((a, b) => a.at_ms - b.at_ms);
   }
+  // Sent now (⌘↵) just after another message, before it had answered: stopping the turn hands that one
+  // back to Claude Code's box, and what you added is typed after it, so the agent gets one message with
+  // both. Shown as what you added, under the first, saying it went with it.
+  ex = ex.map((e, i) => {
+    const p = ex[i - 1];
+    if (e.role !== "you" || p?.role !== "you" || p.text.trim().length < 12 || e.at_ms - p.at_ms > 120000) return e;
+    const head = p.text.trim(), t = e.text.trimStart();
+    return t.length > head.length && t.startsWith(head) ? { ...e, text: t.slice(head.length).trimStart(), joined: true } : e;
+  });
   // A pending decision is drawn as the action card below; drop the one-line note of it.
   if (isPending(it) && it.kind !== "waiting" && ex.at(-1)?.role !== "you") ex.pop();
   return ex;
@@ -731,12 +771,12 @@ function stepLine(sid, x, all, plain = false) {
 // its block sits above the message box, so chatting on doesn't scroll it away; once it's finished the
 // block folds under the Delegating step that started it.
 const helperOpen = new Set();   // "sid|agent id": finished blocks you opened, running ones you folded
-const HELPER_TRAY_STEPS = 6;
 const helpersOf = (sid) => stepFeeds.get(sid)?.helpers || [];
 const helperRunning = (h) => !!h.running;
 /** "1m 12s" of work: until it finished, or so far. */
 const helperSpan = (h) => { const ms = (h.finished_ms || Date.now()) - h.started_ms; const m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000); return m ? `${m}m ${sec}s` : `${sec}s`; };
-/** One agent's block: who it is and how long, its steps (the last few in the tray; all once opened). */
+/** One agent's block: who it is and how long, and its steps: five rows tall, the rest scrolled to inside
+ *  it (it follows the newest unless you scrolled up; app.js renderMain keeps where you were). */
 function helperBlock(sid, h, inTray) {
   const k = `${sid}|${h.id}`;
   const running = helperRunning(h);
@@ -744,11 +784,8 @@ function helperBlock(sid, h, inTray) {
   const model = (h.model || "").replace(/^claude-/, "").replace(/-\d.*$/, "");
   const head = `<button class="bg-head" data-helper="${esc(k)}"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b><span class="dim"> · ${esc(h.desc)}${model ? ` · ${esc(model)}` : ""} · ${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>` : `finished · ${helperSpan(h)}`}</span>${running ? `<span class="dot-live"></span>` : `<span class="stx-chev">${open ? "⌄" : "›"}</span>`}</button>`;
   if (!open) return `<div class="bg-agent folded" data-key="h:${esc(h.id)}">${head}</div>`;
-  const all = !inTray || helperOpen.has(`${k}|all`);
-  const items = all ? h.items : h.items.slice(-HELPER_TRAY_STEPS);
-  const before = (h.more || 0) + (h.items.length - items.length);
-  const steps = items.map((x) => x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small">${md(x.text)}</div>`).join("");
-  return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${before && !all ? `<button class="stx-more dim" data-helper-all="${esc(k)}">${before} earlier steps · show all</button>` : before ? `<div class="stx-more dim">${before} earlier steps not shown</div>` : ""}<div class="stx-steps">${steps}</div>
+  const steps = h.items.map((x) => x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small">${md(x.text)}</div>`).join("");
+  return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${h.more ? `<div class="stx-more dim">${h.more} earlier steps not shown</div>` : ""}<div class="stx-steps bg-scroll" data-bg-scroll="${esc(k)}">${steps}</div>
     <div class="bg-note">${running ? "Read-only. It reports to this session, not to you." : "What it reported is in the session's next reply."}</div></div>`;
 }
 /** The tray above the message box: every agent still at work. "" when none. */
@@ -856,7 +893,8 @@ function chatHtml(it, s, harness, paged = false) {
       const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(e.text)}">Send again</button>` : ""}</div>` : "";
       // Typed, and Cue hasn't yet seen it take it: a ring until it does (or until Cue can say it didn't).
       const wait = e.pending ? " · waiting for it to take this" : "";
-      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}</div>${unsent}</div>`;
+      const joined = e.joined ? " · added: it went to the agent with your message above, as one" : "";
+      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
@@ -867,12 +905,12 @@ function chatHtml(it, s, harness, paged = false) {
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran));
-  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta">${o.via ? `Sent · via ${esc(o.via)}` : "Sending…"}</div></div>`);
+  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
-  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now</button></div></div>`);
-  if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}" title="Stops its turn so it reads this now (⌘↵)">Send now</button></div></div>`);
+  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
+  if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
@@ -1128,10 +1166,12 @@ function activePane() {
     foot = `<div class="foot">${field(it, `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
   } else if (s) {
     const busy = s.state === "working";
-    // Working: what you send waits for its current step (⌘ Enter stops it and sends now, said on the button).
+    // Working: what you send waits for its current step (Queue, ↵), or stops it and goes now (Now, ⌘↵):
+    // with something typed, both are there by the box, so you see you have the choice.
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
+    const now = busy ? `<button class="btn send-now" data-act="send-to" data-now="1" data-sid="${esc(sid)}">Now <kbd>⌘↵</kbd></button>` : "";
+    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   // The badge already says which agent: no "Claude Code" beside it. An executor's relay name and a crew's model stay.
@@ -1294,6 +1334,24 @@ function focusComposer() {
   el.setSelectionRange(el.value.length, el.value.length);
   return true;
 }
+
+/** Focus that has fallen to nothing goes home, to the open session's message box: what had it went away
+ *  (a terminal tab you closed, a terminal put away) or let it go. Never over a choice of yours: not
+ *  while something sits over the chat (a sheet, a menu, a dialog), not when Cue isn't the app you're in,
+ *  and not after a click, where you picked where to be (and may be selecting text, which focusing the
+ *  box would clear). A frame later, so whatever takes focus next has done so first. */
+let pointedAt = 0;
+document.addEventListener("pointerdown", () => { pointedAt = Date.now(); }, true);
+function homeFocus() {
+  requestAnimationFrame(() => {
+    const a = document.activeElement;
+    if ((a && a !== document.body) || !document.hasFocus() || Date.now() - pointedAt < 500) return;
+    if (sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || endAsk || moving) return;
+    focusComposer();
+  });
+}
+// Focus let go to nothing (Tab past the last control, an element that blurs as it closes): home.
+document.addEventListener("focusout", (e) => { if (!e.relatedTarget) homeFocus(); });
 
 /** Text boxes grow with their content, up to ~8 lines, then scroll. */
 const BOX_MAX = 180;   // the text box's tallest (px); past it, it scrolls (style.css says the same)

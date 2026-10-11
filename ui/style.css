@@ -127,10 +127,11 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .nrow.on .mach, .tl.on .mach { color: var(--on-sel); border-color: var(--on-sel); }
 .working .mach { color: var(--on-bg); border-color: var(--on-bg); }
 .mach::before { content: ""; width: 8px; height: 6px; border: 1.3px solid currentColor; border-radius: 1.5px; margin-bottom: 2px; box-shadow: 0 2.6px 0 -1.3px currentColor; opacity: 0.75; }
-/* In the narrow rows (Waiting, Need to decide, the drawers) every pixel goes to the session's name: no icon, no extra gap. */
-/* When the row is still too tight, the status words give way first, then this label, and the name last. */
-.nrow-top .mach, .tl-top .mach { margin-left: 0; padding: 0 5px; display: block; line-height: 15px; flex: 0 10 auto; min-width: 24px; overflow: hidden; text-overflow: ellipsis; }
-.nrow-top .mach::before, .tl-top .mach::before { display: none; }
+/* On a card: at the head of its text line, in full (core.js machLead). */
+.mach.lead { margin: 0 6px 0 0; vertical-align: 1px; }
+:is(.doing, .tl-said) > .mach.lead { margin-right: 0; align-self: center; }
+.prow .mach.lead, .mach-line > .mach.lead { margin: 0; }
+.mach-line { font-style: normal; }
 .nrow-top:has(.mach) .proj, .tl-top:has(.mach) .tl-name { flex-shrink: 0.01; }
 .proj { font-weight: 650; }
 .dim { color: var(--muted); }
@@ -171,6 +172,9 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 /* Send sits inside the box, at the end of its row with the mic and image buttons, so the box runs the
    full width (its right edge is the terminal dock's). */
 .btn.send { height: 30px; min-width: 64px; padding: 0 14px; border-radius: 8px; font-size: 13px; margin-left: 2px; }
+/* While it works, by Queue: stop its turn and send now (⌘↵). */
+.btn.send-now { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; margin-left: 2px; display: inline-flex; align-items: center; gap: 6px; }
+.btn.send-now kbd { padding: 1px 5px; font-size: 11.5px; color: var(--ink); opacity: .7; }
 .field { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); padding: 3px 4px 3px 10px; }
 .field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
 .field-row { display: flex; align-items: flex-end; gap: 4px; }
@@ -325,10 +329,11 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-head .dim { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bgtag { font: 800 9px var(--sans); letter-spacing: 0.08em; padding: 2px 5px; border-radius: 4px; line-height: 1.3; color: var(--muted); border: 1px dashed var(--muted); flex: none; }
 .bg-agent .stx-steps { margin-left: 2px; }
+/* Its steps: five rows (a step is 23px), the rest scrolled to inside the block. */
+.bg-scroll { max-height: calc(5 * 23px); overflow-y: auto; overscroll-behavior: contain; }
+.bg-scroll > * { flex: none; }
 .bg-agent .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
 .bg-note { font-size: 11.5px; color: var(--muted); }
-.bg-agent button.stx-more { text-align: left; color: var(--muted); }
-.bg-agent button.stx-more:hover { color: var(--ink); }
 .tray { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .tray-head b { font-weight: 650; }
@@ -516,6 +521,9 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .move-steps li.now { color: var(--ink); font-weight: 600; }
 .move-err { font-size: 13px; color: var(--deny); line-height: 1.45; }
 .move-secs { font: 12px var(--mono); color: var(--muted); }
+.end-text { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.end-text .mono { font: 12px var(--mono); color: var(--ink); }
+.end-dialog kbd { margin-left: 4px; opacity: .7; }
 .move-screen { font: 11.5px var(--mono); color: var(--on-slab); background: var(--slab); border-radius: 8px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tplace-btn:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-accent)); }
 .tplace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -865,6 +873,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 
 /* "Send now" on a queued message. */
 .q-now { color: var(--accent); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.q-now kbd { display: inline-block; margin-left: 3px; text-decoration: none; font-weight: 600; opacity: .75; }
 
 /* ---------- Need to decide: sessions you parked under Waiting to think about ---------- */
 /* Waiting takes what it needs and scrolls inside; Need to decide folds under it (like Starred), its
@@ -1316,9 +1325,10 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sec-body, .card.recent { position: relative; }
 .more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; padding: 0 9px; border-radius: 999px;
   font-size: 11px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; color: var(--on-bg);
-  background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 2px 8px -2px rgba(0,0,0,0.35); opacity: 0.8; transition: opacity 0.15s; }
-.more-below:hover { opacity: 1; }
+  background: var(--bg); border: 1px solid color-mix(in srgb, var(--on-bg) 22%, transparent); transition: opacity 0.15s; }
+.more-below:hover { border-color: color-mix(in srgb, var(--on-bg) 45%, transparent); }
+/* Faded after a few seconds still: back only when you scroll the list or its count changes (board.js). */
+.more-below.quiet { opacity: 0; pointer-events: none; transition: opacity 0.4s; }
 
 /* ---------- Parked: sessions you stopped, to resume (the last drawer, below Recently answered) ---------- */
 /* The parking sign: a small rounded square with a bold P, wherever a session is parked. Solid on a
@@ -1331,7 +1341,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .prow:hover { background: color-mix(in srgb, var(--on-bg) 8%, transparent); color: var(--on-bg); }
 .prow.on, .prow.on:hover { background: var(--sel); color: var(--on-sel); }
 .prow b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
-.prow-agent { opacity: 0.8; white-space: nowrap; flex: none; }
+/* An agent other than your usual one (core.js oddAgent): its mark, small, after the name. */
+.tl-top .badge, .prow .badge, .card-head .badge { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
 .prow .mach { color: inherit; border-color: currentColor; margin-left: 0; }
 .prow-age { margin-left: auto; font: 11px var(--mono); opacity: 0.8; white-space: nowrap; flex: none; }
 .prow-go { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; opacity: 0; }
@@ -1397,9 +1408,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 .sh-live { font: 700 10px var(--sans); line-height: 1; }
 .shells-btn .sh-live { position: absolute; top: 3px; right: 2px; }
-.sh-live.run, .sh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); animation: sh-pulse 1.2s ease-in-out infinite; }
+.sh-live.run, .sh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); animation: pulse 1.4s ease-in-out infinite; }
 .sh-live.done { color: var(--sel); }
-@keyframes sh-pulse { 50% { opacity: .35; } }
 .pip { position: fixed; z-index: 9; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); border-radius: 14px;
   box-shadow: 0 26px 60px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
   transition: left .42s cubic-bezier(.2, .9, .3, 1.12), top .42s cubic-bezier(.2, .9, .3, 1.12), transform .2s, box-shadow .2s; }
@@ -1424,24 +1434,31 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .pip-tab[aria-selected="true"] { opacity: 1; background: color-mix(in srgb, var(--on-slab) 14%, transparent); }
 .pip-name { overflow: hidden; text-overflow: ellipsis; }
 .pip-name.mono { font: 11.5px var(--mono); }
+/* Its ⌘ number (⌘1–9 go to it from inside the terminal), when there's more than one tab. */
+.pip-key { font: 600 10px var(--sans); opacity: .45; }
+/* A tab's name being typed (double-click a tab). */
+.pip-rename { width: 140px; height: 20px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--on-slab) 35%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--on-slab) 8%, transparent); color: inherit; font: 600 11.5px var(--sans); outline: 0; }
+.pip-rename:focus { border-color: var(--sel); }
 .pip-x { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; font-size: 13px; line-height: 1; opacity: .6; margin-right: -4px; }
 .pip-x:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 16%, transparent); }
-.pip-add, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
-.pip-add:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+.pip-add, .pip-full, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
+.pip-add:hover, .pip-full:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
 .pip-slot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
 .pip-host { width: 100%; height: 100%; }
 .pip-host[hidden] { display: none; }
 .pip-host .xterm-viewport { background: var(--slab) !important; }
+/* The cursor blinks at Cue's 1.4s beat (the GPU renderer's is patched to match; chat.js xterm()). */
+.xterm .xterm-rows .xterm-cursor.xterm-cursor-blink { animation-duration: 1.4s !important; }
+/* Full screen: the whole window under the header; it stays put (no grips, no drag). */
+.pip.full .pip-grip { display: none; }
+.pip.full .pip-bar { cursor: default; }
+.pip-full svg { display: block; margin: auto; }
 /* Tucked away: a small tab, all of it the one target that brings it back (its shells hidden under it). */
-.pip.tucked { overflow: hidden; border-radius: 12px 0 0 12px; }
+.pip.tucked { overflow: hidden; border-radius: 12px 0 0 12px; clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: left .42s cubic-bezier(.2, .9, .3, 1.12), top .42s cubic-bezier(.2, .9, .3, 1.12), clip-path .2s; }
 .pip.tucked .pip-bar, .pip.tucked .pip-slot, .pip.tucked .pip-grip { visibility: hidden; }
-.pip-peek { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--on-slab); font-size: 18px; }
+.pip-peek { position: absolute; inset: 0 0 0 6px; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--on-slab); font-size: 18px; }
 .pip.tucked .pip-peek { display: flex; }
-.pip.tucked:hover { transform: translateX(-6px); }
+/* Pointed at, it grows 6px out of the edge (what was clipped of it shows): nothing moves off the edge, so no gap opens there. */
+.pip.tucked:hover { clip-path: inset(0 round 12px 0 0 12px); }
 .pip-peek:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
-.pip-menu { position: fixed; z-index: 31; min-width: 240px; max-width: 420px; padding: 4px; border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); font-size: 13px; }
-.pip-menu-h { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
-.pip-menu button { display: flex; width: 100%; gap: 12px; justify-content: space-between; align-items: baseline; padding: 7px 10px; border-radius: 7px; text-align: left; }
-.pip-menu button:hover, .pip-menu button:focus-visible { background: var(--panel-2); outline: 0; }
-.pip-menu .mono { font: 11.5px var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) { .pip { transition: none; } .sh-live.run, .sh-dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pip, .pip.tucked { transition: none; } .sh-live.run, .sh-dot { animation: none; } }

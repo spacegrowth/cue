@@ -34,6 +34,8 @@ function renderMain() {
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
   const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
+  // A background agent's steps (chat.js helperBlock), by agent: where you were, or at its newest.
+  const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
   const onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
@@ -47,11 +49,12 @@ function renderMain() {
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${moving ? movingDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
+  </div>${moving ? movingDialog() : ""}${endAsk ? endDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
+  document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
   // land. Not the kept chat's dots: those elements live on, and their pulse with them.
@@ -141,7 +144,7 @@ function renderMain() {
   fitTop();
 }
 addEventListener("resize", () => { fitHead(); fitTop(); markMore(); });
-document.addEventListener("scroll", () => { if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
+document.addEventListener("scroll", (e) => { if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
 document.addEventListener("click", (e) => {
   const pill = e.target.closest?.(".more-below");
   if (!pill) return;
@@ -243,7 +246,7 @@ function bindMain() {
     const he = t.closest("[data-act=held-edit]");
     if (he) return pullHeld(he.dataset.sid);
     const hn = t.closest("[data-act=held-now]");
-    if (hn) return invoke("send_held_now", { sessionId: hn.dataset.sid }).then(() => toast("Sent now: it stopped its turn and reads your message next")).catch((e) => toast(`Couldn't send it now: ${e}`));
+    if (hn) return sendHeldNow(hn.dataset.sid);
     if (t.closest("[data-setup-done]")) { sheet = null; setSetting("setup.done", true); return renderMain(); }
     if (t.closest("[data-connect-all]")) {
       const todo = ["claude", "codex", "pi"].filter((h) => { const c = state.connections?.[h]; return c && !c.ok && c.present; });
@@ -274,8 +277,6 @@ function bindMain() {
     if (ta) { const k = ta.dataset.turnAll; turnAll.has(k) ? turnAll.delete(k) : turnAll.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const hb = t.closest("[data-helper]");
     if (hb) { const k = hb.dataset.helper; helperOpen.has(k) ? helperOpen.delete(k) : helperOpen.add(k); return renderMain(); }
-    const ha = t.closest("[data-helper-all]");
-    if (ha) { helperOpen.add(`${ha.dataset.helperAll}|all`); return renderMain(); }
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const qp = t.closest("[data-quick]");
@@ -389,7 +390,7 @@ function bindMain() {
     const stop = t.closest("[data-act=interrupt]");
     if (stop) return interrupt(stop.dataset.sid);
     const st_ = t.closest("[data-act=send-to]");
-    if (st_) return sendTo(st_.dataset.sid);
+    if (st_) return sendTo(st_.dataset.sid, !!st_.dataset.now);
     if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); }
     const lv = t.closest("[data-lv]");
     if (lv) return lvAct(lv.dataset.lv, lv.dataset);
@@ -474,6 +475,7 @@ function bindMain() {
     // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
     if (act === "move-cue") return actEl.dataset.why ? toast(`Move to Cue: ${actEl.dataset.why}`) : moveToCue(actEl.dataset.sid);
     if (act === "move-dismiss") { moving = null; return renderMain(); }
+    if (act === "end-yes" || act === "end-no") return endAnswer(act === "end-yes");
     if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
     if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
       const who = actEl.dataset.who, e = (ranLog.get(who) || [])[+actEl.dataset.n];
@@ -551,12 +553,26 @@ function bindMain() {
   });
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
+  // While Cue asks whether to quit: Esc is no, Enter yes, before a terminal under it takes the key.
+  document.addEventListener("keydown", (e) => {
+    if (!endAsk || (e.key !== "Escape" && e.key !== "Enter")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    endAnswer(e.key === "Enter");
+  }, true);
   document.addEventListener("keydown", (e) => {
     // Enter in + New's Add machine field adds it.
     if (e.key === "Enter" && e.target.dataset?.text === "mc-host") { e.preventDefault(); return machAct("add"); }
     if (e.key === "Enter" && e.target.dataset?.text === "mc-label" && machRenaming) { e.preventDefault(); return machAct("rename-save", machRenaming); }
     // ⌘J: Cue's own floating terminal, out or tucked away (from inside it too).
-    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); return toggleShells(); }
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); return toggleShells(true); }
+    // ⌘⇧T: a new shell tab in it (from inside it too).
+    if (e.metaKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") { e.preventDefault(); return newShellTab(); }
+    // Inside it, as in a terminal app: ⌘K clears it (not Cue's ⌘K), ⌘1–9 go to its tabs (⌘9 the last).
+    if (e.target.closest?.(".pip") && e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+      if (e.key.toLowerCase() === "k") { e.preventDefault(); return clearShell(); }
+      if (/^[1-9]$/.test(e.key)) { e.preventDefault(); return shellNumber(+e.key); }
+    }
     // Inside it every key is its shell's; only ⌘ shortcuts stay Cue's.
     if (e.target.closest?.(".pip") && !e.metaKey) return;
     // ⌃`: the open session's terminal, open or closed (from inside it too).
@@ -649,9 +665,9 @@ function bindMain() {
         if (key.startsWith("s:")) {
           const sid = key.slice(2);
           const turn = state.items.find((i) => i.session_id === sid && i.kind === "waiting");
-          // ⌘↵ with nothing new in the box: the message already queued goes now.
+          // ⌘↵ with nothing new in the box: the message already waiting (queued, or kept in Cue) goes now.
           const fresh = draft(key).text.trim() || draft(key).images.length;
-          if ((e.ctrlKey || e.metaKey) && !fresh && sessionOf(sid)?.queued) return sendQueuedNow(sid);
+          if ((e.ctrlKey || e.metaKey) && !fresh && sendWaitingNow(sid)) return;
           return turn ? reply(turn) : sendTo(sid, e.ctrlKey || e.metaKey);
         }
         const it = findItem(key);
@@ -659,10 +675,10 @@ function bindMain() {
       }
       return;
     }
-    // ⌘↵ outside the box: the open session's queued message goes now.
+    // ⌘↵ outside the box: the open session's waiting message (queued, or kept in Cue) goes now.
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       const c = current(), sid = c?.s?.session_id || c?.it?.session_id;
-      if (sid && sessionOf(sid)?.queued) { e.preventDefault(); return sendQueuedNow(sid); }
+      if (sid && sendWaitingNow(sid)) return e.preventDefault();
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); return openSearch(); }   // like GitHub and Gmail (only when not typing)
@@ -732,6 +748,7 @@ async function boot() {
   restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
+  await T.event.listen("upload", (e) => onUpload(e.payload));
   await T.event.listen("select", (e) => {
     if (e.payload !== "usage") return setActive(e.payload);
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
@@ -739,6 +756,10 @@ async function boot() {
   });
   await T.event.listen("term", (e) => { onTermOutput(e.payload); onShellOutput(e.payload); });
   await T.event.listen("shell", (e) => onShellEvent(e.payload));
+  // About to quit or restart with shells open: Cue asks first (shells.js endDialog).
+  await T.event.listen("end-ask", (e) => { endAsk = e.payload; document.activeElement?.blur(); renderMain(); });
+  // ⌘W (the menu's Close): inside Cue's terminal, the tab you're in; elsewhere the window hides.
+  await T.event.listen("close-key", () => closeKey());
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
   moveOldParked();
   moveOldStars();

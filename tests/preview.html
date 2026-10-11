@@ -241,7 +241,7 @@
           if (cmd === "shell_open" || (cmd === "term_write" && args.sessionId.startsWith("shell:"))) {
             const id = args.id || args.sessionId, say = (t) => (listeners.term || []).forEach((f) => f({ payload: { sid: id, gen: 1, data: btoa(String.fromCharCode(...new TextEncoder().encode(t))) } }));
             const prompt = `\x1b[32mme@mac\x1b[0m \x1b[1;34m${(args.cwd || "~").replace(/^\/Users\/[^/]+/, "~")}\x1b[0m % `;
-            if (cmd === "shell_open") { setTimeout(() => say(prompt), 50); return 1; }
+            if (cmd === "shell_open") { setTimeout(() => say(prompt), 50); return { gen: 1, host: "mac" }; }
             setTimeout(() => say(args.data === "\r" ? `\r\n${prompt}` : args.data === "\x7f" ? "\b \b" : args.data), 10);
             return;
           }
@@ -278,7 +278,7 @@
                 { t: "step", id: "n2", kind: "agent", verb: "Delegated", subject: "UI: every name shown", mono: false, result: "in the background", bad: false, done: true, at_ms: now - 4.9 * M },
                 { t: "say", text: "Two agents are mapping the names. I'll put the answer together when they report.", at_ms: now - 2 * M } ] }],
                 helpers: [
-                  { id: "h1", step: "n1", desc: "Backend: session name sources", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: 0, running: true, more: 3, items: [hs("h1a", 4), { t: "step", id: "h1b", kind: "read", verb: "Read", subject: "sessions.rs", mono: true, result: "882 lines", bad: false, done: true, at_ms: now - 3 * M }, { t: "step", id: "h1c", kind: "read", verb: "Reading", subject: "hub.rs", mono: true, result: "", bad: false, done: false, at_ms: now - 0.3 * M }] },
+                  { id: "h1", step: "n1", desc: "Backend: session name sources", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: 0, running: true, more: 3, items: [hs("h1a", 4), ...["model.rs", "db.rs", "leads.rs", "config.rs", "machines.rs", "notify.rs"].map((f, n) => ({ t: "step", id: `h1r${n}`, kind: "read", verb: "Read", subject: f, mono: true, result: `${120 + n * 37} lines`, bad: false, done: true, at_ms: now - (3.9 - n * 0.1) * M })), { t: "step", id: "h1b", kind: "read", verb: "Read", subject: "sessions.rs", mono: true, result: "882 lines", bad: false, done: true, at_ms: now - 3 * M }, { t: "step", id: "h1c", kind: "read", verb: "Reading", subject: "hub.rs", mono: true, result: "", bad: false, done: false, at_ms: now - 0.3 * M }] },
                   { id: "h2", step: "n2", desc: "UI: every name shown", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: now - 2.5 * M, running: false, more: 0, items: [hs("h2a", 4.5, { subject: "“nameSpan|agentName”", result: "9 results" }), { t: "step", id: "h2b", kind: "read", verb: "Read", subject: "app.js", mono: true, result: "4193 lines", bad: false, done: true, at_ms: now - 3.5 * M }, { t: "say", text: "Every name the UI shows comes from `nameSpan` …", at_ms: now - 2.5 * M }] },
                 ] };
             }

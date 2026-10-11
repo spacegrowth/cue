@@ -34,6 +34,30 @@ impl Hub {
         false
     }
 
+    /// The images where the session can open them: on a machine, copied there first, the window told how
+    /// far along the copy is ("upload": session_id, sent, total; `done` once it's over).
+    fn images_there(&self, sid: &str, origin: &Origin, saved: &[crate::uploads::Saved]) -> Result<Vec<crate::uploads::Saved>, String> {
+        if origin.machine.is_empty() || saved.is_empty() {
+            return Ok(saved.to_vec());
+        }
+        let last = std::cell::Cell::new(0u64);
+        let tell = |v: Value| {
+            if let Some(app) = &self.app {
+                let _ = app.emit("upload", v);
+            }
+        };
+        let r = crate::uploads::on_machine(&origin.machine, saved, &|sent, total| {
+            // A few times a second is enough to see it move.
+            let t = now_ms();
+            if sent == 0 || sent == total || t.saturating_sub(last.get()) >= 200 {
+                last.set(t);
+                tell(json!({ "session_id": sid, "sent": sent, "total": total, "count": saved.len(), "machine": origin.machine }));
+            }
+        });
+        tell(json!({ "session_id": sid, "done": true }));
+        r
+    }
+
     /// Keep looking, off this thread, for the pending message to be taken: its hook (clears the ring
     /// itself), its command in the transcript, a dialog it opened, or the text still in its box (then it
     /// didn't go). After `PENDING_MS` with nothing to go on, the bubble says it may not have gone.
@@ -105,7 +129,7 @@ impl Hub {
         let cmd_before = command_before(&it.origin, text);
         // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
         let direct = self.send_direct(&sid, text, &saved, false);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&it.origin, &crate::uploads::with_paths(text, &crate::uploads::on_machine(&it.origin.machine, &saved)?))? };
+        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(&sid, &it.origin, &saved)?))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
         let mut submitted = self.took(&sid, &it.origin, text, cmd_before, t0);
         if !submitted && !direct && !text.starts_with('/') && Self::retry_enter(&it.origin, text) {
@@ -235,7 +259,7 @@ impl Hub {
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
         let direct = self.send_direct(session_id, text, &saved, now);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &crate::uploads::with_paths(typed, &crate::uploads::on_machine(&origin.machine, &saved)?))? };
+        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
         if !submitted && !typed.starts_with('/') && Self::retry_enter(&origin, typed) {
