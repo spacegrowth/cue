@@ -257,6 +257,10 @@ pub struct Item {
     pub tool_use_id: Option<String>,
     #[serde(skip)]
     pub scan_from: u64,
+    /// Opened while the session sat at its prompt (a command's dialog, like /model's picker): answering
+    /// it starts no turn, so the session goes back to its prompt, not to Working.
+    #[serde(skip)]
+    pub at_prompt: bool,
 }
 
 pub fn now_ms() -> u64 {

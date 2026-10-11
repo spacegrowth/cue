@@ -90,7 +90,7 @@ mod tests {
         let item = |n: u64, at: u64| Item {
             id: format!("t{n}"), kind: "waiting".into(), origin: Origin::default(), project: "cue".into(),
             tool_name: String::new(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: String::new(),
-            created_ms: at - 1000, status: "answered".into(), outcome: "replied".into(), resolved_ms: Some(at), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
+            created_ms: at - 1000, status: "answered".into(), outcome: "replied".into(), resolved_ms: Some(at), thread: vec![], tool_use_id: None, scan_from: 0, at_prompt: false, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         let mut st = Store::default();
         push_history(&mut st, item(0, now - crate::db::DAY_MS - 60_000)); // yesterday, beyond the cap: goes
@@ -118,7 +118,7 @@ mod tests {
         let item = |n: u64| Item {
             id: format!("h{n}"), kind: "permission".into(), origin: Origin::default(), project: String::new(),
             tool_name: "Bash".into(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: String::new(),
-            created_ms: n, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(n), thread: vec![], tool_use_id: None, scan_from: 0, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
+            created_ms: n, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(n), thread: vec![], tool_use_id: None, scan_from: 0, at_prompt: false, followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         let mut st = Store::default();
         for n in 1..=15 {

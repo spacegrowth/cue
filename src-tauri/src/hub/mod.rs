@@ -122,6 +122,7 @@ impl Hub {
             thread: vec![],
             tool_use_id: None,
             scan_from: 0,
+            at_prompt: false,
         }
     }
 

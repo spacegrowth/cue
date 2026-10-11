@@ -79,10 +79,12 @@ impl Hub {
                 return;
             }
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
+            let at_prompt = st.sessions.state(&sid).as_deref() == Some("waiting");
             st.sessions.mark(&origin, "deciding", None);
             let thread = st.sessions.thread(&sid);
             let mut it = Self::new_item(&mut st, "terminal", origin);
             it.thread = thread;
+            it.at_prompt = at_prompt;
             it.message = message;
             it.scan_from = scan_from;
             if let Some((tool_use_id, name, input)) = call {
@@ -189,9 +191,10 @@ impl Hub {
             }
             let Some(pos) = st.items.iter().position(|i| i.id == id) else { return };
             let mut it = st.items.remove(pos);
-            // An answered permission or question means the agent is back at work.
+            // An answered permission or question means the agent is back at work. A command's dialog
+            // answered at its prompt starts no turn (no Stop would ever come): back to its prompt.
             if it.kind != "waiting" && status != "gone" {
-                st.sessions.mark(&it.origin, "working", None);
+                st.sessions.mark(&it.origin, if it.at_prompt { "waiting" } else { "working" }, None);
                 st.sessions.note(&it.origin.session_id, "you", outcome, crate::config::context_keep());
             }
             it.status = status.into();
@@ -393,6 +396,31 @@ mod tests {
         hub.event(origin, "stopped", "Done.".into(), vec![], "");
         let kinds: Vec<String> = hub.pending().iter().map(|i| i.kind.clone()).collect();
         assert_eq!(kinds, ["waiting"]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn answering_a_commands_dialog_at_its_prompt_leaves_it_at_its_prompt() {
+        let dir = std::env::temp_dir().join(format!("cue-dlg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x/proj".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        // At its prompt, /model opens its picker: answered, no turn starts, so no Stop ever comes.
+        hub.event(origin.clone(), "stopped", "Done.".into(), vec![], "");
+        hub.event(origin.clone(), "terminal_ask", "Waiting in its terminal: dialog open".into(), vec![], "");
+        let id = hub.pending().into_iter().find(|i| i.kind == "terminal").unwrap().id;
+        hub.finish(&id, "answered", "chose 1");
+        assert_eq!(hub.st().sessions.state("s1").as_deref(), Some("waiting"), "not Working: a message you send now goes straight in");
+        // Mid-turn, a prompt answered means it's back at work.
+        hub.event(origin.clone(), "active", "fix it".into(), vec![], "");
+        hub.event(origin, "terminal_ask", "A sandboxed command needs network access".into(), vec![], "");
+        let id = hub.pending().into_iter().find(|i| i.kind == "terminal").unwrap().id;
+        hub.finish(&id, "answered", "allowed");
+        assert_eq!(hub.st().sessions.state("s1").as_deref(), Some("working"));
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
