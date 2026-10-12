@@ -89,10 +89,16 @@ async function deliver(sid, key, call) {
  *  characters that aren't spaces (a terminal may join lines; a long one may be cut short). */
 const msgStart = (t) => String(t ?? "").replace(/\s+/g, "").slice(0, 300);
 function landed(o) {
-  if (/^kept in Cue/.test(o.via || "")) return true;   // shown as the kept bubble
   const s = sessionOf(o.sid);
   if (!s) return !!o.via;
   const want = msgStart(o.text);
+  // Kept in Cue: shown as the kept bubble, once the session's state carries it (from a machine that can
+  // take a moment; dropped before then, the message would vanish and come back). Once seen, it's that
+  // bubble's, even if you take it back to edit; and it doesn't wait forever.
+  if (/^kept in Cue/.test(o.via || "")) {
+    if (s.held && msgStart(s.held.text).includes(want)) o.seenHeld = true;
+    if (o.seenHeld || now() - o.at > 30000) return true;
+  }
   const since = (e) => e && e.role === "you" && e.at_ms >= o.at - 5000;
   const mine = (e) => since(e) && msgStart(e.text).startsWith(want);
   if ((s.thread || []).some(mine) || mine({ role: "you", ...s.queued })) return true;
@@ -919,7 +925,7 @@ function chatHtml(it, s, harness, paged = false) {
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran));
-  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
+  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
