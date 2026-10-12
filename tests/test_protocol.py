@@ -640,6 +640,65 @@ def test_a_turn_that_died_without_a_hook_is_caught_from_its_transcript():
     os.unlink(t.name)
 
 
+def deaf_session(sid, turn_seconds, reply_within):
+    """A session whose hooks report elsewhere (another Cue) or got lost: what Cue types into it is
+    confirmed from its transcript, not called "didn't go through", and its reply comes in from there too.
+    The stand-in agent takes `turn_seconds` to answer."""
+    t = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+    iso = lambda: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+    t.write(json.dumps({"type": "user", "timestamp": iso(), "message": {"role": "user", "content": "start"}}) + "\n")
+    t.write(json.dumps({"type": "system", "subtype": "turn_duration", "timestamp": iso()}) + "\n")
+    t.close()
+    # A stand-in Claude Code that never runs a hook: it takes the line typed into its terminal, writes it to
+    # its transcript as your turn, then its reply and the turn's end.
+    now = 'date -u +%Y-%m-%dT%H:%M:%S.000Z'
+    agent = ("read line; "
+             f"printf '{{\"type\":\"user\",\"timestamp\":\"%s\",\"message\":{{\"role\":\"user\",\"content\":\"%s\"}}}}\\n' \"$({now})\" \"$line\" >> {t.name}; "
+             f"sleep {turn_seconds}; "
+             f"printf '{{\"type\":\"assistant\",\"timestamp\":\"%s\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"Docs are done.\"}}]}}}}\\n' \"$({now})\" >> {t.name}; "
+             f"printf '{{\"type\":\"system\",\"subtype\":\"turn_duration\",\"timestamp\":\"%s\"}}\\n' \"$({now})\" >> {t.name}; "
+             "sleep 90")
+    sess = f"cue-deaf-{os.getpid()}"
+    subprocess.run(["tmux", "new-session", "-d", "-s", sess, "bash", "-c", agent], check=True)
+    pane = subprocess.run(["tmux", "display-message", "-p", "-t", sess, "#{pane_id}"], capture_output=True, text=True).stdout.strip()
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(SOCK)
+        s.sendall((json.dumps({"type": "event", "event": "stopped", "harness": "claude", "session_id": sid, "cwd": "/tmp/deaf",
+                               "message": "started", "tmux_pane": pane, "transcript_path": t.name}) + "\n").encode())
+        s.close()
+        wait_for(lambda: pending_for(sid, "waiting"), "its finished card")
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c.settimeout(40)   # Cue answers once it has typed and looked
+        c.connect(SOCK)
+        c.sendall((json.dumps({"type": "send_to", "session_id": sid, "text": "now the docs"}) + "\n").encode())
+        r = json.loads(c.makefile("r").readline())
+        c.close()
+        assert r["ok"] and "tmux pane" in r["detail"], r
+        mine = lambda: next(e for e in reversed(session_state(sid)["thread"]) if e["role"] == "you" and e["text"] == "now the docs")
+        # Taken: the bubble stops waiting, and isn't marked as not gone through, well before Cue's 30 s give-up.
+        replied = lambda: any(e["role"] == "agent" and e["text"] == "Docs are done." for e in session_state(sid)["thread"])
+        # (Working, or done already: the stand-in's turn is over in seconds.)
+        wait_for(lambda: not mine().get("pending") and not mine().get("unsent") and (session_state(sid)["state"] == "working" or replied()), "confirmed from the transcript", timeout=12)
+        # Its reply comes in from the transcript too (no Stop hook either).
+        wait_for(replied, "the reply", timeout=reply_within)
+        assert not mine().get("unsent"), "never marked as not gone through"
+        assert sum(1 for e in session_state(sid)["thread"] if e["role"] == "you" and e["text"] == "now the docs") == 1, "one bubble, not two"
+    finally:
+        subprocess.run(["tmux", "kill-session", "-t", sess])
+        os.unlink(t.name)
+
+
+def test_a_message_its_hooks_never_confirm_is_confirmed_from_its_transcript():
+    """(A quick turn: over before Cue looks.)"""
+    deaf_session(SID + "-deaf", 3, 15)
+
+
+def test_a_longer_turn_its_hooks_never_report_still_comes_in_from_its_transcript():
+    """(A turn still going when Cue confirms the message: its end is caught later.)"""
+    deaf_session(SID + "-deaf-long", 15, 60)
+
+
 def test_garbage_line_gets_an_error_not_a_crash():
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(SOCK)

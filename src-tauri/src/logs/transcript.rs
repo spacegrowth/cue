@@ -554,6 +554,26 @@ fn local_command(e: &Value) -> bool {
     ["<command-name>", "<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>"].iter().any(|tag| t.starts_with(tag))
 }
 
+/// Whether the log has `text` as a turn of yours, written at `since_ms` or later (a couple of seconds'
+/// leeway for clocks): what Cue typed into the session, taken by the agent, even when no hook said so.
+pub fn prompt_since(path: &str, text: &str, since_ms: u64) -> bool {
+    if path.is_empty() || text.trim().is_empty() {
+        return false;
+    }
+    let Ok(md) = std::fs::metadata(path) else { return false };
+    let Some(log) = read_from(path, md.len().saturating_sub(256 * 1024)) else { return false };
+    let found = lines(&log).any(|e| {
+        e.get("type").and_then(Value::as_str) == Some("user")
+            && e.get("isSidechain").and_then(Value::as_bool) != Some(true)
+            && stamp(&e) + 2_000 >= since_ms
+            && {
+                let said: String = content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect();
+                is_message(&said, text)
+            }
+    });
+    found
+}
+
 pub fn turn_ended(path: &str) -> Option<(u64, String)> {
     turn_ended_parts(path).map(|(at, reply, _)| (at, reply))
 }

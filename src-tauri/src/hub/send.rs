@@ -76,6 +76,22 @@ impl Hub {
                 }
                 let taken = me.st().active_at.get(&sid).is_some_and(|t| *t >= t0)
                     || cmd_before.is_some_and(|before| crate::transcript::command_count(&origin.transcript_path, &name) > before);
+                // In its log as your turn, though no hook said so (its hooks report to another Cue, or one
+                // got lost on the way from a machine): taken. Cue starts the turn as its prompt hook would,
+                // so the session works, and its reply comes in from the log when the turn ends.
+                if !taken && origin.harness == "claude" && crate::transcript::prompt_since(&origin.transcript_path, &text, t0) {
+                    let driver = crate::leads::resolve_driver(&origin.session_id, "");
+                    me.event(origin.clone(), "active", text.clone(), vec![], &driver);
+                    me.st().sessions.set_pending(&sid, false);
+                    // A quick turn may be over already (it ended before Cue looked): finish it now, as the
+                    // Stop hook would have. A longer one is caught when it ends (usage_tick).
+                    if let Some((at, reply, parts)) = crate::transcript::turn_ended_parts(&origin.transcript_path).filter(|(at, _, _)| *at + 2_000 >= t0) {
+                        let _ = at;
+                        me.event(origin.clone(), "stopped", reply, parts, &driver);
+                    }
+                    me.changed();
+                    return;
+                }
                 if taken {
                     me.st().sessions.set_pending(&sid, false);
                     me.changed();
