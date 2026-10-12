@@ -254,8 +254,10 @@ fn known_window(path: &str, model: &str) -> Option<u64> {
 }
 
 /// What Claude Code's status line says a session's window is. A feed that has it open takes it at
-/// once (and counts a new version, so the window redraws its context).
-pub fn set_window(session_id: &str, window: u64) {
+/// once (and counts a new version, so the window redraws its context). `for_model`: it also stands for
+/// its model's window until a session says otherwise: this Mac's sessions, not a machine's (one there
+/// may run the same model with another window, through another provider).
+pub fn set_window(session_id: &str, window: u64, for_model: bool) {
     if window == 0 {
         return;
     }
@@ -269,7 +271,7 @@ pub fn set_window(session_id: &str, window: u64) {
             w.sessions.clear();
         }
         let new_session = w.sessions.insert(session_id.to_string(), window) != Some(window);
-        let new_model = !model.is_empty() && w.models.insert(model, window) != Some(window);
+        let new_model = for_model && !model.is_empty() && w.models.insert(model, window) != Some(window);
         if (new_session || new_model) && !cfg!(test) {
             let tmp = windows_file().with_extension("json.tmp");
             if serde_json::to_vec(&*w).ok().is_some_and(|b| std::fs::write(&tmp, b).is_ok()) {
@@ -1401,7 +1403,7 @@ mod tests {
         let p = path.to_str().unwrap();
         assert_eq!(context_pct(p), Some(87), "without word from Claude Code: the 200k guess");
         let before = steps(p, 0)["version"].as_u64().unwrap();
-        set_window(&sid, 1_000_000);
+        set_window(&sid, 1_000_000, true);
         assert_eq!(context_pct(p), Some(17), "Claude Code's own window, as its status line shows");
         let after = steps(p, before);
         assert!(after["version"].as_u64().unwrap() > before && after["meta"]["window"] == 1_000_000, "the window redraws: {after}");
@@ -1411,8 +1413,18 @@ mod tests {
         let path2 = dir.join(format!("{sid}-2.jsonl"));
         std::fs::write(&path2, std::fs::read_to_string(&path).unwrap().replace("claude-opus-5-5", "claude-test-model-w")).unwrap();
         assert_eq!(context_pct(path2.to_str().unwrap()), Some(87), "a model nobody has reported yet: the guess");
-        set_window(&format!("{sid}-2"), 1_000_000);
+        set_window(&format!("{sid}-2"), 1_000_000, true);
         assert_eq!(context_pct(other.to_str().unwrap()), Some(17), "the window another session on its model reported");
+        // A session on another machine runs that model with 200k (another provider): that's its own window
+        // alone, and this Mac's sessions on the model keep the 1M theirs reported.
+        let remote = dir.join(format!("{sid}-3.jsonl"));
+        std::fs::write(&remote, std::fs::read_to_string(&path2).unwrap()).unwrap();
+        assert_eq!(context_pct(remote.to_str().unwrap()), Some(17), "before it says: the model's window, as before");
+        set_window(&format!("{sid}-3"), 200_000, false);
+        assert_eq!(context_pct(remote.to_str().unwrap()), Some(87), "its own window, once its status line says");
+        let mac = dir.join(format!("{sid}-4.jsonl"));
+        std::fs::write(&mac, std::fs::read_to_string(&path2).unwrap()).unwrap();
+        assert_eq!(context_pct(mac.to_str().unwrap()), Some(17), "this Mac's sessions on the model: still 1M");
         std::fs::remove_dir_all(&dir).ok();
     }
 

@@ -124,6 +124,9 @@ pub enum ClientMsg {
         /// Its context window in tokens (`context_window.context_window_size`).
         #[serde(default)]
         window: Option<u64>,
+        /// The machine it runs on (empty: this Mac). A machine's window is that session's alone.
+        #[serde(default)]
+        machine: String,
     },
     /// Sent on an open Ask connection when the agent got its answer somewhere else.
     Resolved {
@@ -293,4 +296,19 @@ pub fn project_of(cwd: &str) -> String {
 /// repository isn't read from here).
 pub fn project_of_origin(o: &Origin) -> String {
     if o.machine.is_empty() { project_of(&o.cwd) } else { folder_of(&o.cwd) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_from_a_machine_says_which_and_this_macs_says_none() {
+        let from = |line: &str| match serde_json::from_str::<ClientMsg>(line).unwrap() {
+            ClientMsg::Usage { session_id, window, machine, .. } => (session_id, window, machine),
+            _ => panic!("not usage"),
+        };
+        assert_eq!(from(r#"{"type":"usage","session_id":"s","window":200000,"machine":"box"}"#), ("s".into(), Some(200_000), "box".into()));
+        assert_eq!(from(r#"{"type":"usage","rate_limits":{},"session_id":"s","cost":1.5,"window":1000000}"#), ("s".into(), Some(1_000_000), String::new()), "this Mac's hook, as it always sent it");
+    }
 }

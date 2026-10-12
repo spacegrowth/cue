@@ -213,9 +213,9 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 None => hub.event(origin, &event, message, turn, &driven_by),
             }
         }
-        ClientMsg::Usage { rate_limits, session_id, cost, window } => {
+        ClientMsg::Usage { rate_limits, session_id, cost, window, machine } => {
             if let (false, Some(w)) = (session_id.is_empty(), window) {
-                crate::logs::steps::set_window(&session_id, w);
+                crate::logs::steps::set_window(&session_id, w, machine.is_empty());
             }
             // The plan's limits first: whether there are any decides if the session's cost is shown.
             if rate_limits.is_object() {

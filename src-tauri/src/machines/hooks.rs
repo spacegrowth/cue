@@ -38,6 +38,47 @@ while :; do
 done
 "#;
 
+/// The status line on the machine, as on this Mac (install.sh's cue-statusline): Claude Code's transcript
+/// doesn't say how big a session's context window is, its status line does. This passes the size on to
+/// Cue through the hook (as a "usage" event, only when it changes, not on every refresh), then runs your
+/// own status line command unchanged (saved in ~/.cue/statusline.orig; none there: it shows nothing).
+pub const STATUS: &str = r#"#!/bin/sh
+# Cue's pass-through status line (installed by Cue on your Mac when you added this machine): tells Cue
+# the session's context window when it changes, then runs your own status line command unchanged.
+input=$(cat)
+d="$HOME/.cue"
+one=$(printf '%s' "$input" | tr -d '\n')
+sid=$(printf '%s' "$one" | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p')
+win=$(printf '%s' "$one" | sed -n 's/.*"context_window_size" *: *\([0-9][0-9]*\).*/\1/p')
+if [ -n "$sid" ] && [ -n "$win" ] && [ "$(cat "$d/win/$sid" 2>/dev/null)" != "$win" ]; then
+  mkdir -p "$d/win" 2>/dev/null && printf '%s' "$win" >"$d/win/$sid" 2>/dev/null
+  find "$d/win" -type f -mtime +7 -delete 2>/dev/null
+  [ -x "$d/cue-hook" ] && printf '%s' "$input" | "$d/cue-hook" usage claude >/dev/null 2>&1
+fi
+cmd=$(cat "$d/statusline.orig" 2>/dev/null)
+[ -n "$cmd" ] && printf '%s' "$input" | sh -c "$cmd"
+exit 0
+"#;
+
+/// The status line command Cue puts in the machine's Claude Code settings.
+const STATUS_CMD: &str = "\"$HOME/.cue/cue-statusline\"";
+
+/// Claude Code's settings with Cue's status line in, and the command it replaces (to run it from there):
+/// None when Cue's is in already (the one saved then is kept).
+fn wrap_status_line(cfg: &Value) -> Option<(Value, String)> {
+    let line = cfg.get("statusLine").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
+    let was = line.get("command").and_then(Value::as_str).unwrap_or("").to_string();
+    if was.contains("cue-statusline") {
+        return None;
+    }
+    let mut line = line;
+    line["type"] = json!("command");
+    line["command"] = json!(STATUS_CMD);
+    let mut cfg = cfg.clone();
+    cfg["statusLine"] = line;
+    Some((cfg, was))
+}
+
 /// What the watcher runs on the machine: print each waiting event as one line, looking ten times a second
 /// (an event reaches Cue in about a tenth of a second, as a hook on this Mac does), and once a second stamp
 /// the time and say it's alive. The heartbeat matters: if the Cue that started this quits, the next one
@@ -114,13 +155,26 @@ pub fn setup(m: &Machine, tools: &Value) -> Result<Vec<String>, String> {
     if agents.is_empty() {
         return Ok(vec![]);
     }
-    machines::run_with_input(&m.host, r#"mkdir -p "$HOME/.cue" && cat >"$HOME/.cue/cue-hook.tmp" && chmod 755 "$HOME/.cue/cue-hook.tmp" && mv "$HOME/.cue/cue-hook.tmp" "$HOME/.cue/cue-hook""#, SCRIPT)?;
+    let put = |name: &str, body: &str| machines::run_with_input(&m.host, &format!(r#"mkdir -p "$HOME/.cue" && cat >"$HOME/.cue/{name}.tmp" && chmod 755 "$HOME/.cue/{name}.tmp" && mv "$HOME/.cue/{name}.tmp" "$HOME/.cue/{name}""#), body);
+    put("cue-hook", SCRIPT)?;
+    if has("claude") {
+        put("cue-statusline", STATUS)?;
+    }
     let mut did = vec![];
     for (harness, label, file) in agents {
         let path = format!("$HOME/{file}");
         let current = machines::run(&m.host, &format!(r#"cat "{path}" 2>/dev/null; true"#))?;
         let cfg: Value = if current.trim().is_empty() { json!({}) } else { serde_json::from_str(&current).map_err(|e| format!("~/{file} on {} isn't valid JSON ({e}): fix it there, then Check again", m.name))? };
-        let merged = crate::config::merge_hooks(cfg.clone(), "$HOME/.cue/cue-hook", harness)?;
+        let mut merged = crate::config::merge_hooks(cfg.clone(), "$HOME/.cue/cue-hook", harness)?;
+        // Claude Code's status line too: your command is saved first, so it keeps running from Cue's.
+        let mut what = "hooks";
+        if harness == "claude" {
+            if let Some((wrapped, was)) = wrap_status_line(&merged) {
+                machines::run_with_input(&m.host, r#"umask 077; cat >"$HOME/.cue/statusline.orig.tmp" && mv "$HOME/.cue/statusline.orig.tmp" "$HOME/.cue/statusline.orig""#, &was)?;
+                merged = wrapped;
+                what = "hooks and status line";
+            }
+        }
         if merged == cfg {
             continue; // set up already
         }
@@ -128,7 +182,7 @@ pub fn setup(m: &Machine, tools: &Value) -> Result<Vec<String>, String> {
             r#"f="{path}"; mkdir -p "$(dirname "$f")"; [ -e "$f" ] && cp "$f" "$f.cue-backup-$(date +%s)"; cat >"$f.cue-tmp" && mv "$f.cue-tmp" "$f""#
         );
         machines::run_with_input(&m.host, &write, &(serde_json::to_string_pretty(&merged).unwrap_or_default() + "\n"))?;
-        did.push(format!("Set up Cue's hooks for {label} (~/{file}, backed up first)"));
+        did.push(format!("Set up Cue's {what} for {label} (~/{file}, backed up first)"));
     }
     Ok(did)
 }
@@ -325,6 +379,12 @@ pub fn to_cue(machine: &str, ev: &Value) -> Option<Value> {
     let s = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let p = ev.get("input")?;
     let event = s(ev, "event");
+    // From its status line: only the session's context window (the plan's limits and cost are this
+    // Mac's to show, and a machine's window is its own, not its model's everywhere).
+    if event == "usage" {
+        let window = p.pointer("/context_window/context_window_size").and_then(Value::as_u64)?;
+        return Some(json!({ "type": "usage", "session_id": s(p, "session_id"), "window": window, "machine": machine }));
+    }
     let harness = Some(s(ev, "harness")).filter(|h| !h.is_empty()).unwrap_or_else(|| "claude".into());
     let mut msg = Map::new();
     msg.insert("harness".into(), json!(harness));
@@ -460,6 +520,60 @@ mod tests {
         let mut c = Command::new("/bin/sh").arg("-c").arg(script).arg("cue-hook").args(args).env("HOME", home).env("TMUX", "/tmp/x,1,0").env("TMUX_PANE", "%7").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
         c.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
         String::from_utf8_lossy(&c.wait_with_output().unwrap().stdout).to_string()
+    }
+
+    #[test]
+    fn the_status_line_tells_cue_the_window_when_it_changes_and_shows_yours_unchanged() {
+        let home = std::env::temp_dir().join(format!("cue-status-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/in")).unwrap();
+        std::fs::write(home.join(".cue/cue-hook"), SCRIPT).unwrap();
+        std::fs::set_permissions(home.join(".cue/cue-hook"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        // Yours: prints the model it was given (so it got the same input), with a quote in it.
+        std::fs::write(home.join(".cue/statusline.orig"), r#"sed -n 's/.*"display_name":"\([^"]*\)".*/[\1] it'"'"'s mine/p'"#).unwrap();
+        let input = |win: u64| format!(r#"{{"session_id":"abc-123","model":{{"display_name":"Opus"}},"context_window":{{"context_window_size":{win},"used_percentage":12}},"cost":{{"total_cost_usd":1.5}}}}"#);
+        let events = || std::fs::read_dir(home.join(".cue/in")).unwrap().count();
+        assert_eq!(run_sh(STATUS, &home, &[], &input(200_000)).trim(), "[Opus] it's mine", "your status line, as it was");
+        assert_eq!(events(), 1, "the window, told once");
+        let ev: Value = serde_json::from_str(&std::fs::read_to_string(std::fs::read_dir(home.join(".cue/in")).unwrap().next().unwrap().unwrap().path()).unwrap()).unwrap();
+        assert_eq!(to_cue("box", &ev), Some(json!({ "type": "usage", "session_id": "abc-123", "window": 200_000, "machine": "box" })), "only the window, from that machine");
+        run_sh(STATUS, &home, &[], &input(200_000));
+        assert_eq!(events(), 1, "the same again: nothing new (it refreshes often)");
+        run_sh(STATUS, &home, &[], &input(1_000_000));
+        assert_eq!(events(), 2, "a new window: told");
+        // No status line of yours: it shows nothing, and still tells Cue.
+        std::fs::remove_file(home.join(".cue/statusline.orig")).unwrap();
+        assert_eq!(run_sh(STATUS, &home, &[], &input(200_000)), "");
+        assert_eq!(events(), 3);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    /// On a real machine, by hand: CUE_HOME=<a Cue folder listing it> CUE_MACHINE=name cargo test -q
+    /// setup_on_a_machine -- --ignored --nocapture. Sets Cue up there for real (backing up its settings).
+    #[test]
+    #[ignore]
+    fn setup_on_a_machine() {
+        let Ok(name) = std::env::var("CUE_MACHINE") else { return };
+        let m = machines::get(&name).unwrap();
+        let first = setup(&m, &json!({ "claude": true })).unwrap();
+        println!("first: {first:?}");
+        let again = setup(&m, &json!({ "claude": true })).unwrap();
+        assert!(again.is_empty(), "set up already: nothing done the second time ({again:?})");
+        let cfg: Value = serde_json::from_str(&machines::run(&m.host, r#"cat "$HOME/.claude/settings.json""#).unwrap()).unwrap();
+        assert_eq!(cfg["statusLine"]["command"], STATUS_CMD);
+        assert!(machines::run(&m.host, r#"test -x "$HOME/.cue/cue-statusline" && echo ok"#).unwrap().contains("ok"));
+    }
+
+    #[test]
+    fn cues_status_line_goes_in_once_keeping_yours_to_run() {
+        let cfg = json!({ "statusLine": { "type": "command", "command": "bash ~/.claude/line.sh", "padding": 0 }, "model": "opus" });
+        let (wrapped, was) = wrap_status_line(&cfg).unwrap();
+        assert_eq!(was, "bash ~/.claude/line.sh");
+        assert_eq!(wrapped["statusLine"], json!({ "type": "command", "command": "\"$HOME/.cue/cue-statusline\"", "padding": 0 }), "yours replaced, its other settings kept");
+        assert_eq!(wrapped["model"], "opus", "everything else as it was");
+        assert!(wrap_status_line(&wrapped).is_none(), "in already: nothing to do, and the saved one stays");
+        let (none, was) = wrap_status_line(&json!({})).unwrap();
+        assert_eq!((none["statusLine"]["command"].as_str(), was.as_str()), (Some("\"$HOME/.cue/cue-statusline\""), ""), "none of yours: Cue's, showing nothing");
     }
 
     #[test]
