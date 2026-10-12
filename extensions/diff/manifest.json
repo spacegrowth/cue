@@ -1,8 +1,0 @@
-{
-  "title": "Diff",
-  "tab": "Diff",
-  "version": "0.3.0",
-  "entry": "index.html",
-  "capabilities": ["sessions.read", "cmd.run", "machines.run"],
-  "programs": ["git"]
-}
