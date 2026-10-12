@@ -277,8 +277,8 @@ function recentEntry(i) {
   const live = sessionOf(i.session_id)?.state === "working" ? "live" : "";
   // Lit when the Active pane shows this answer, however you got there (its row here, Sessions, Next…).
   return `<div class="tl ${outcomeClass(i)} ${fresh} ${live} ${!quietOpen && active?.id === i.id ? "on" : ""}" style="${projStyle(i.project)}" data-detail="${esc(i.id)}">
-    <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}${oddAgent(i.harness)}<span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
-    <div class="tl-title ${isBash(i) ? "mono" : ""}">${machLead(i.machine)}${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
+    <div class="tl-top">${nameSpan(i.session_id, i.project, "tl-name")}${oddAgent(i.harness)}${machTag(i.machine)}<span style="margin-left:auto">${ago(i.resolved_ms || i.created_ms)}</span></div>
+    <div class="tl-title ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</div><div class="tl-out">${esc(outcomeText(i))}</div>${i.images?.length ? thumbs(i.images) : ""}</div>`;
 }
 
 /** A starred session in its drawer, drawn like Recently answered: who, what it's on now, and its state
@@ -290,8 +290,8 @@ function starEntry(s, open) {
   const what = it ? plain(summary(it)) : s.compacting_ms ? "Compacting…" : s.state === "working" ? s.doing || (s.prompt ? `› ${s.prompt}` : "Thinking") : s.prompt ? `› ${s.prompt}` : plain(firstLine(lastSaid(s)));
   const st = stuck ? `no new output for ${ago(s.stuck_ms)}` : it ? (it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : `asks you · ${verb(it)}`) : s.state === "working" ? "working" : idleNote(s) || "idle";
   return `<div class="tl star-tl ${dot} ${open ? "on" : ""}" style="${projStyle(s.project)}" data-session="${esc(sid)}">
-    <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}${oddAgent(s.harness)}<span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
-    <div class="tl-title">${machLead(s.machine)}${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
+    <div class="tl-top">${nameSpan(sid, s.project, "tl-name")}${oddAgent(s.harness)}${machTag(s.machine)}<span style="margin-left:auto">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}</div>
+    <div class="tl-title">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
 }
 
 // ---------- Board view: ACTIVE | WAITING | WORKING + RECENTLY ANSWERED ----------
@@ -331,8 +331,8 @@ function starParkedEntry(p, open) {
   const sid = p.session_id, w = waking.has(sid);
   const last = [...(p.thread || [])].reverse().find((e) => e.role === "agent");
   return `<div class="tl star-tl parked ${w ? "waking" : ""} ${open ? "on" : ""}" style="${projStyle(p.project)}" data-session="${esc(sid)}">${P_SIGN}
-    <div class="tl-top"><span class="tl-name">${esc(p.name || p.project)}</span>${oddAgent(p.harness)}<span class="tl-parked">${w ? "resuming…" : `parked ${parkedAgo(p)}`}</span>${starBtn(sid)}</div>
-    <div class="tl-title tl-said">${machLead(p.machine)}<span>${esc(last ? plain(firstLine(last.text)) : homeless(p.cwd))}</span>${w ? "" : `<button class="tl-wake" data-wake="${esc(sid)}">↺ Resume</button>`}</div></div>`;
+    <div class="tl-top"><span class="tl-name">${esc(p.name || p.project)}</span>${oddAgent(p.harness)}${machTag(p.machine)}<span class="tl-parked">${w ? "resuming…" : `parked ${parkedAgo(p)}`}</span>${starBtn(sid)}</div>
+    <div class="tl-title tl-said"><span>${esc(last ? plain(firstLine(last.text)) : homeless(p.cwd))}</span>${w ? "" : `<button class="tl-wake" data-wake="${esc(sid)}">↺ Resume</button>`}</div></div>`;
 }
 
 /** × on a finished turn: nothing to reply, take it off Waiting. Decisions don't get one (the agent is blocked on them). */
@@ -343,19 +343,19 @@ const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc
 /** A row in Need to decide: the session, its finished turn if any, ↩ to put it back. Click to open it. */
 function laterRow({ sid, s, it }) {
   const on = active?.sid === sid ? "on" : "";
-  const what = it ? "your turn" : s.state === "working" ? "working" : "idle";
-  const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "", mach = machLead(it?.machine || s.machine);
+  const what = it ? "" : s.state === "working" ? "working" : "idle";
+  const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    <div class="nrow-top">${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}<span class="dim">${what}</span><span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
+    <div class="nrow-top">${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}<span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
     ${cardCrew(sid)}
-    ${text || mach ? `<div class="nrow-text">${mach}${esc(text)}</div>` : ""}</div>`;
+    ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}</div>`;
 }
 /** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
 function needRow(it, ghost, open = false) {
   if (ghost) {
     const h = state.history.find((x) => x.id === it.id);
-    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}</div>
-      <div class="nrow-done ${h ? outcomeClass(h) : ""}">${machLead(it.machine)}✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : "picked up in the terminal")}</div></div>`;
+    return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}</div>
+      <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : "picked up in the terminal")}</div></div>`;
   }
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";
@@ -366,9 +366,9 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    <div class="nrow-top">${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}<span class="dim ${it.interrupted ? "intr" : ""}">${it.kind === "waiting" ? (it.interrupted ? "interrupted" : "your turn") : esc(verb(it))}</span><span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
+    <div class="nrow-top">${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}<span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${cardCrew(it.session_id)}
-    <div class="nrow-text ${isBash(it) ? "mono" : ""}">${machLead(it.machine)}${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
+    <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
 /** A lead whose team needs you while it has nothing waiting itself: a slim card holding the team's tree.
  *  Its title line opens the lead; a row in the tree opens that executor. */
@@ -520,16 +520,12 @@ function boardView() {
   // A lead's card in Sessions holds its tree: only its top part opens the lead (a row opens that executor,
   // and the tree's buttons are their own).
   const card = (s, open = false) => { const tree = sessTree.has(s.session_id) ? teamTree(s.session_id) : "", go = `data-session="${esc(s.session_id)}"`;
-    // Its machine heads the first of its text lines (the note, what it's doing, its prompt), or a line of its own.
     const doing = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
-    const own = !stateNote(s) && !doing && !s.prompt ? machLead(s.machine) : "";
-    let mach = own ? "" : machLead(s.machine);
-    const lead = () => { const m = mach; mach = ""; return m; };
     return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
-      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
-      ${own ? `<div class="agent-note mach-line">${own}</div>` : ""}${stateNote(s) ? `<div class="agent-note">${lead()}${esc(stateNote(s))}</div>` : ""}
+      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
+      ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${doing ? `<div class="doing">${lead()}${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">${lead()}› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`; };
+      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`; };
   const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
   const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")

@@ -78,10 +78,10 @@ const machName = (m) => {
 };
 /** Short enough for a line that has little room: past 10 characters, its first 5 and last 5. */
 const machShort = (m) => { const n = machName(m); return n.length > 10 ? `${n.slice(0, 5)}…${n.slice(-5)}` : n; };
-/** The label on everything about a session that runs on another machine (none for this Mac). */
-const machTag = (m) => m ? `<span class="mach" title="Runs on ${esc(m)}">${esc(machShort(m))}</span>` : "";
-/** On a card, the same label in full at the head of its text line: the card's top line has no room for it
- *  (name, state, age and buttons). */
+/** The label on everything about a session that runs on another machine (none for this Mac); on a card,
+ *  in its top line, by the name. */
+const machTag = (m) => m ? `<span class="mach"><span>${esc(machShort(m))}</span></span>` : "";
+/** The same label in full, at the head of a line of text (Parked's rows). */
 const machLead = (m) => m ? `<span class="mach lead">${esc(machName(m))}</span>` : "";
 /** What Cue calls a session: the name you gave it, else its folder's name, else its project. */
 // ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
