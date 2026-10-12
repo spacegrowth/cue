@@ -57,7 +57,7 @@ my-ext/
 |---|---|
 | `sessions.read` | Know the open session: its name, folder, machine, state, and where its turns began. |
 | `git.read` | Read git in the open session's folders, on this Mac or its machine, through `cue.git`. Cue runs fixed, read-only commands and checks every argument; the extension can't change anything. |
-| `programs.run` | Run its `programs`, as installed on this Mac, without a shell. Only once you've allowed extensions to run programs in Settings → Extensions (off to begin with). |
+| `programs.run` | Run its `programs`, as installed on this Mac, without a shell. Switching it on asks you once more, its programs listed. |
 
 `programs.run` is for your own tools: a container or sync tool, your company's command-line tool.
 Cue runs only programs installed on the Mac, by name (never a path, nor a file from an extension's
@@ -92,7 +92,7 @@ Every call returns a promise, and fails with a message saying why when the manif
 | `cue.session()` | The open session, or `null` (needs `sessions.read`). |
 | `cue.on("session", f)` | `f(session)` whenever the open session changes, or anything about it does (needs `sessions.read`). |
 | `cue.on("theme", f)` | `f(theme)` when Cue's look changes. |
-| `cue.run(program, args, { cwd })` | Runs one of your `programs` (needs `programs.run`, and programs allowed in Settings). Resolves to `{ code, stdout, stderr, ms }`. |
+| `cue.run(program, args, { cwd })` | Runs one of your `programs` (needs `programs.run`). Resolves to `{ code, stdout, stderr, ms }`. |
 | `cue.git(sessionId, op, params)` | Read-only git in the open session's folder (needs `git.read`). `op` is `toplevel`; `diff` with `{ against }` (`"HEAD"` or a commit, e.g. `turn_from.commit`); `untracked`; `new_file` with `{ path }` (relative to the repo); or `edited`: every file the session edited with its edit tools, wherever it is, each with its changes not yet committed (`{ files: [{ path, new, diff }] }`). The others resolve to `{ code, stdout }`. |
 | `cue.badge(sessionId, text)` | Short text on your tab for that session, e.g. `"4 +98 −9"`. `""` clears it. |
 | `cue.toast(text)` | A short message in Cue. |

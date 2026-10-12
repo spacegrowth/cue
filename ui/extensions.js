@@ -12,10 +12,11 @@ const extBadges = new Map();   // `${name}|${sid}` → the short text on its tab
 const extRan = new Map();      // name → the last command line it ran
 const extSent = new Map();     // name → the session info it was last sent (as JSON)
 
-let extRoot = "", extProgramsAllowed = false;
+let extRoot = "";
+let xtConfirm = null;   // the extension whose "it runs programs" confirmation is showing
 const extActivity = new Map();   // name → its last few lines in extensions.log (for Settings)
 async function loadExtensions() {
-  try { const r = (await invoke("ext_list")) || {}; extList = r.list || []; extRoot = r.root || ""; extProgramsAllowed = !!r.programs_allowed; } catch { extList = []; }
+  try { const r = (await invoke("ext_list")) || {}; extList = r.list || []; extRoot = r.root || ""; } catch { extList = []; }
   // An extension switched off (or awaiting approval) loses its page at once; one whose files changed
   // (you copied a new version in, or Cue updated its own) gets a fresh one.
   for (const [n, f] of extFrames) if (!extOf(n)?.enabled || f.dataset.stamp !== (extOf(n).stamp || "")) { f.remove(); extFrames.delete(n); extSent.delete(n); }
@@ -109,20 +110,23 @@ function xtSettings() {
     const newOnly = e.on && (pend.length || pendProgs.length);
     const can = asked.map((c) => `<li>${esc(xtCan(c, progs))}</li>`).join("") || `<li>Nothing beyond showing its page</li>`;
     const more = newOnly ? `<div class="xt-more"><b>Updated, and now also asks to:</b><ul>${[...pend.map((c) => xtCan(c, progs)), ...(pend.length ? [] : pendProgs.map((p) => `Run ${p}`))].map((t) => `<li>${esc(t)}</li>`).join("")}</ul>It's off until you switch it on again.</div>` : "";
-    const blocked = asked.includes("programs.run") && !extProgramsAllowed ? `<div class="xt-more">It runs programs, which extensions aren't allowed to do yet: see the switch above.</div>` : "";
+    // Switching on one that runs programs asks once more, its programs and what that means in front of you.
+    const runs = asked.includes("programs.run") ? progs : [];
+    const confirm = xtConfirm === e.name ? `<div class="xt-more xt-confirm"><b>Let ${esc(e.title || e.name)} run ${esc(runs.join(", ") || "programs")} on this Mac?</b>
+      These are your own installed programs, and they can do a lot: a container tool can reach your whole disk. It can't run anything it brings with it, a shell, or a script interpreter. Allow it only if you trust it.
+      <div class="xt-intro-btns"><button class="btn primary" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="1" data-sure="1">Allow and switch on</button><button class="btn" data-act="xt-cancel">Cancel</button></div></div>` : "";
     const lines = extActivity.get(e.name) || [];
     return `<div class="xt ${e.enabled ? "on" : ""}">
       <div class="xt-head"><span class="xt-name">${esc(e.title || e.name)}</span>${e.version ? `<span class="xt-ver">${esc(e.version)}</span>` : ""}${e.tab ? `<span class="xt-where">adds the “${esc(e.tab)}” tab to sessions</span>` : ""}<span class="grow"></span>
         <span class="xt-state">${e.enabled ? "On" : newOnly ? "Needs your OK" : "Off"}</span>
         <button class="toggle ${e.enabled ? "on" : ""}" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="${e.enabled ? "" : "1"}" role="switch" aria-checked="${!!e.enabled}" aria-label="${esc(e.title || e.name)}"><span></span></button></div>
-      <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}${blocked}
+      <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}${confirm}
         <div class="xt-log"><div class="xt-k">Last it did</div>${lines.length ? lines.map(xtLine).join("") : `<div class="xt-none">Nothing yet</div>`}</div>
         <div class="xt-folder">${e.builtin ? "Comes with Cue, and updates with it" : `${e.replaces_builtin ? "Your copy, used in place of the one that comes with Cue: " : ""}<code>${esc(e.folder || "")}</code>`}</div></div></div>`;
   }).join("");
   return `<div class="set-group">Extensions</div>
     <div class="xt-intro">An extension is a folder with a <code>manifest.json</code> and its own page, in <code>${esc(extRoot)}</code>. Nothing in it runs until you switch it on here, and switching it on is what allows what it asks for. Every command it runs is listed under it.
       <div class="xt-intro-btns"><button class="btn" data-act="xt-folder">Open the folder</button><button class="btn" data-act="xt-rescan">Look again</button></div></div>
-    ${setRow("Let extensions run programs", "For your own tools: an extension you switch on may then run the programs installed on this Mac that it lists, and nothing else. Never a program it brings, a shell, or a script interpreter. Off: none can.", `<button class="toggle ${extProgramsAllowed ? "on" : ""}" data-act="xt-allow" data-on="${extProgramsAllowed ? "" : "1"}" role="switch" aria-checked="${extProgramsAllowed}" aria-label="Let extensions run programs"><span></span></button>`)}
     ${rows || `<div class="xt-empty">No extensions yet. Put one's folder in the folder above, then Look again.</div>`}`;
 }
 document.addEventListener("click", async (e) => {
@@ -130,11 +134,15 @@ document.addEventListener("click", async (e) => {
   const act = t?.dataset.act;
   if (act === "set-tab" && t.dataset.tab === "extensions") setTimeout(loadExtensions, 0);
   if (act === "open-settings") setTimeout(loadExtensions, 0);
-  if (!["xt-toggle", "xt-folder", "xt-rescan", "xt-allow"].includes(act)) return;
+  if (!["xt-toggle", "xt-folder", "xt-rescan", "xt-cancel"].includes(act)) return;
   e.stopPropagation();
   if (act === "xt-folder") return invoke("ext_reveal").catch((x) => toast(`Couldn't open it: ${x}`));
   if (act === "xt-rescan") return loadExtensions();
-  if (act === "xt-allow") { try { await invoke("ext_allow_programs", { on: !!t.dataset.on }); } catch (x) { toast(`Couldn't: ${x}`); } return loadExtensions(); }
+  if (act === "xt-cancel") { xtConfirm = null; return renderMain(); }
+  // Switching on one that runs programs: first the confirmation, then (from its button) for real.
+  const ext = extOf(t.dataset.name);
+  if (act === "xt-toggle" && t.dataset.on && !t.dataset.sure && (ext?.capabilities || []).includes("programs.run")) { xtConfirm = t.dataset.name; return renderMain(); }
+  xtConfirm = null;
   try { await invoke("ext_enable", { name: t.dataset.name, on: !!t.dataset.on }); } catch (x) { toast(`Couldn't: ${x}`); }
   loadExtensions();
 }, true);

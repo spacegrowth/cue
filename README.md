@@ -71,9 +71,8 @@ socket that only processes on your Mac can reach, and it reads their transcripts
 one time it goes online is to check GitHub for a newer version of Cue.
 
 An extension you switch on can't reach the network. It can have Cue read git, read-only, in the open
-session's folder. It can run programs only if you let extensions do that in Settings → Extensions (off
-to begin with), and then only the installed programs it lists and you approved: never one it brings, a
-shell, or a script interpreter. Settings shows what each one may do and every command it ran.
+session's folder. It can run programs only if it asks to and you approve it: then only the installed
+programs it lists, never one it brings, a shell, or a script interpreter. Settings shows what each one may do and every command it ran.
 
 ## Using it
 

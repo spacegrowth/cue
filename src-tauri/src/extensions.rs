@@ -341,20 +341,15 @@ pub async fn ext_git(ext: String, op: String, folder: String, machine: Option<St
 }
 
 // ---------- programs.run: programs installed on this Mac ----------
-// For extensions you trust with your own tools (a container tool, a sync tool, your company's CLI). Off
-// until you allow it in Settings; then each extension runs only the programs its manifest lists and you
-// approved, by name, as installed on this Mac. Never a program it brings with it, never a shell or a
-// script interpreter, never through a shell. Every run is logged.
+// For extensions you trust with your own tools (a container tool, a sync tool, your company's CLI). Each
+// one runs only the programs its manifest lists and you approved when you switched it on, by name, as
+// installed on this Mac. Never a program it brings with it, never a shell or a script interpreter (they'd
+// run a program it brings as text), never through a shell. Every run is logged.
 
 /// Programs that would run whatever text they're given: never run for an extension.
 const NOT_PROGRAMS: [&str; 22] = ["sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "env", "xargs", "python", "python3", "node", "deno", "bun", "ruby", "perl", "php", "osascript", "lua", "tclsh", "expect"];
 /// The longest a run may take (making a container or a pod can take a while).
 const PROGRAM_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
-
-/// Whether you've let extensions run programs at all (Settings → Extensions).
-pub fn programs_allowed() -> bool {
-    crate::config::load()["extensions_allow"]["programs"].as_bool().unwrap_or(false)
-}
 
 /// A program's name as an extension may give it: a plain name, not a path, not one of NOT_PROGRAMS
 /// (nor a versioned one, python3.12 say).
@@ -384,9 +379,6 @@ fn installed(program: &str) -> Option<PathBuf> {
 
 /// Run `program args…` for extension `ext` in `cwd` (a folder here), within every rule above.
 pub fn run_program(ext: &str, program: &str, args: &[String], cwd: Option<&str>) -> Result<Value, String> {
-    if !programs_allowed() {
-        return Err("Extensions aren't allowed to run programs (Settings → Extensions)".into());
-    }
     let m = enabled(ext).ok_or_else(|| format!("{ext} isn't switched on"))?;
     if !has(&m, "capabilities", "programs.run") {
         return Err(format!("{ext} didn't ask to run programs"));
@@ -434,17 +426,10 @@ pub async fn ext_program(ext: String, program: String, args: Vec<String>, cwd: O
     tauri::async_runtime::spawn_blocking(move || run_program(&ext, &program, &args, cwd.as_deref())).await.map_err(|e| e.to_string())?
 }
 
-/// Settings → Extensions: let extensions run programs, or not.
-#[tauri::command]
-pub fn ext_allow_programs(on: bool) -> Result<(), String> {
-    log(&format!("settings programs {}", if on { "allowed" } else { "not allowed" }));
-    crate::config::remember("extensions_allow.programs", json!(on))
-}
-
 /// Where extensions go, and each one there with where it stands.
 #[tauri::command]
 pub fn ext_list() -> Value {
-    json!({ "root": root().display().to_string(), "list": list(), "programs_allowed": programs_allowed() })
+    json!({ "root": root().display().to_string(), "list": list() })
 }
 
 /// Switch an extension on (approving everything its manifest asks for now) or off (what you approved
@@ -551,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn programs_run_only_when_allowed_listed_approved_and_installed() {
+    fn programs_run_only_when_approved_listed_and_installed_never_brought() {
         let _one = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("cue-ext-prog-{}", std::process::id()));
         let ext = dir.join("extensions/tools");
@@ -563,9 +548,8 @@ mod tests {
         std::fs::write(ext.join("mytool"), "#!/bin/sh\necho brought\n").unwrap();
         let run = |p: &str, a: &[&str]| run_program("tools", p, &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None);
 
+        assert!(run("git", &["--version"]).unwrap_err().contains("isn't switched on"), "nothing until you switch it on");
         ext_enable("tools".into(), true).unwrap();
-        assert!(run("git", &["--version"]).unwrap_err().contains("aren't allowed"), "off until allowed in Settings");
-        ext_allow_programs(true).unwrap();
         let ok = run("git", &["--version"]).unwrap();
         assert_eq!(ok["code"], json!(0));
         assert!(ok["stdout"].as_str().unwrap().starts_with("git version"));
@@ -575,8 +559,11 @@ mod tests {
         assert!(run("ls", &[]).is_ok(), "listed and installed");
         assert!(run("cat", &["/etc/hosts"]).unwrap_err().contains("didn't list"), "only what it listed");
         assert!(ext_activity("tools".into(), 10).iter().any(|l| l.contains("ran git --version -> 0")), "logged");
-        ext_allow_programs(false).unwrap();
-        assert!(run("git", &["--version"]).is_err(), "off again");
+        // An update that wants another program: off until you approve it.
+        std::fs::write(ext.join("manifest.json"), r#"{"tab":"T","capabilities":["programs.run"],"programs":["git","bash","ls","curl"]}"#).unwrap();
+        assert!(run("git", &["--version"]).unwrap_err().contains("isn't switched on"), "off until approved again");
+        ext_enable("tools".into(), false).unwrap();
+        assert!(run("git", &["--version"]).is_err(), "off");
 
         std::env::remove_var("CUE_HOME");
         std::env::remove_var("CUE_BUILTIN_EXTENSIONS");

@@ -19,6 +19,8 @@
       const q = new URLSearchParams(location.search);
       // ?parked=det,sec: those sessions start in Need to decide.
       try { localStorage.setItem("cue.parked", JSON.stringify(q.get("parked") ? q.get("parked").split(",") : [])); } catch {}
+      // ?settab=<tab>: Settings opens on that tab.
+      if (q.get("settab")) try { localStorage.setItem("cue.setTab", q.get("settab")); } catch {}
       // ?later=1: Need to decide open (it starts folded).
       try { localStorage.setItem("cue.laterOpen", q.get("later") === "1" ? "1" : "0"); } catch {}
       const now = Date.now(), M = 60000;
@@ -204,7 +206,7 @@
           console.log("[cue-preview]", cmd, JSON.stringify(args));
           // ?xt=1: Settings → Extensions with three: one on, one updated and asking for more, one off.
           if (cmd === "ext_list" && /xt=1/.test(q)) return { root: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions", programs_allowed: false, list: [
-            { name: "boxes", title: "Container tools", tab: "Box", version: "0.1.0", capabilities: ["sessions.read", "programs.run"], programs: ["docker", "mutagen"], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/boxes" },
+            { name: "boxes", title: "Container tools", tab: "Box", version: "0.1.0", capabilities: ["sessions.read", "programs.run"], programs: ["docker", "mutagen"], on: false, enabled: false, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/boxes" },
             { name: "diff", title: "Diff", tab: "Diff", version: "0.4.0", capabilities: ["sessions.read", "git.read"], programs: [], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/diff" },
             { name: "notes", title: "Session notes", tab: "Notes", version: "0.3.0", capabilities: ["sessions.read", "cmd.run"], programs: ["git"], on: true, enabled: false, pending_capabilities: ["cmd.run"], pending_programs: ["git"], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/notes" },
             { name: "digest", title: "Daily digest", version: "0.1.0", capabilities: ["sessions.read"], programs: [], on: false, enabled: false, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/digest" },
