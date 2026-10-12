@@ -5,7 +5,7 @@
 //! count too: git can't tell them apart.
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use crate::safe_git;
 
 /// Where a turn started from: the folder's root, a snapshot of it, and its untracked files (extensions see it too).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -18,22 +18,29 @@ pub struct Base {
     machine: String,
 }
 
-fn sh_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
 /// The folder's state now, on one of Cue's machines: git runs there, and the folder is never looked
 /// up on this Mac. None outside a git repo, or when the machine can't be reached.
 pub fn base_on(machine: &str, cwd: &str) -> Option<Base> {
     if cwd.is_empty() {
         return None;
     }
-    let host = crate::machines::get(machine)?.host;
+    // Git runs as safe_git runs it (no program the repo sets up), in three calls: its top folder, the
+    // filters its own config defines (to switch them off), then the snapshot.
+    let (top, code) = safe_git::run(machine, cwd, &[], &["rev-parse", "--show-toplevel"]).ok()?;
+    let root = top.trim().to_string();
+    if code != 0 || root.is_empty() {
+        return None;
+    }
+    let f = safe_git::no_repo_filters(machine, &root);
+    let g = |rest: &[&str]| safe_git::sh_words(&safe_git::words(&root, &f, rest));
     let script = format!(
-        "cd {} 2>/dev/null || exit 0\nroot=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0\ncd \"$root\" || exit 0\nc=$(git stash create 2>/dev/null)\n[ -n \"$c\" ] || c=$(git rev-parse HEAD 2>/dev/null) || exit 0\nprintf '%s\\n%s\\n' \"$root\" \"$c\"\ngit ls-files --others --exclude-standard",
-        sh_quote(cwd)
+        "c=$({} 2>/dev/null)\n[ -n \"$c\" ] || c=$({} 2>/dev/null) || exit 0\nprintf '%s\\n%s\\n' {} \"$c\"\n{}",
+        g(&["stash", "create"]),
+        g(&["rev-parse", "HEAD"]),
+        safe_git::sh_quote(&root),
+        g(&["ls-files", "--others", "--exclude-standard"])
     );
-    let out = crate::machines::run(&host, &script).ok()?;
+    let out = safe_git::on_machine(machine, &script).ok()?;
     let mut lines = out.lines();
     let root = lines.next()?.trim().to_string();
     let commit = lines.next()?.trim().to_string();
@@ -45,13 +52,15 @@ pub fn base_on(machine: &str, cwd: &str) -> Option<Base> {
 
 /// What changed since `base`, on its machine: one SSH call, git and wc there.
 fn since_on(base: &Base) -> Option<Changes> {
-    let host = crate::machines::get(&base.machine)?.host;
+    let f = safe_git::no_repo_filters(&base.machine, &base.root);
+    let g = |rest: &[&str]| safe_git::sh_words(&safe_git::words(&base.root, &f, rest));
     let script = format!(
-        "cd {} || exit 1\ngit diff --numstat {}\necho @@new\ngit ls-files --others --exclude-standard | while IFS= read -r f; do printf '%s\\t%s\\n' \"$(wc -l < \"$f\" 2>/dev/null | tr -d ' ')\" \"$f\"; done",
-        sh_quote(&base.root),
-        sh_quote(&base.commit)
+        "cd {} || exit 1\n{}\necho @@new\n{} | while IFS= read -r f; do printf '%s\\t%s\\n' \"$(wc -l < \"$f\" 2>/dev/null | tr -d ' ')\" \"$f\"; done",
+        safe_git::sh_quote(&base.root),
+        g(&[&["diff", "--numstat", &base.commit][..], &safe_git::QUIET_DIFF[..]].concat()),
+        g(&["ls-files", "--others", "--exclude-standard"])
     );
-    let out = crate::machines::run(&host, &script).ok()?;
+    let out = safe_git::on_machine(&base.machine, &script).ok()?;
     let (num, new) = out.split_once("@@new\n").unwrap_or((out.as_str(), ""));
     let mut files: Vec<File> = num
         .lines()
@@ -89,9 +98,10 @@ pub struct Changes {
     pub del: u64,
 }
 
+/// Git on this Mac as safe_git runs it: never a program the repository sets up.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
+    let (out, code) = safe_git::run("", dir, &safe_git::no_repo_filters("", dir), args).ok()?;
+    (code == 0).then_some(out)
 }
 
 fn untracked(root: &str) -> Vec<String> {
@@ -114,7 +124,7 @@ pub fn since(base: &Base) -> Option<Changes> {
     if !base.machine.is_empty() {
         return since_on(base);
     }
-    let mut files: Vec<File> = git(&base.root, &["diff", "--numstat", &base.commit])
+    let mut files: Vec<File> = git(&base.root, &[&["diff", "--numstat", &base.commit][..], &crate::safe_git::QUIET_DIFF[..]].concat())
         .unwrap_or_default()
         .lines()
         .filter_map(|l| {

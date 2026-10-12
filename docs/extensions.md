@@ -51,23 +51,18 @@ my-ext/
 | `version` | Shown in Settings. |
 | `entry` | The page the tab opens. Default `index.html`. |
 | `capabilities` | What it asks to do (below). Leave it out to ask for nothing. |
-| `programs` | With `cmd.run` or `machines.run`: the programs it may run, by name. Nothing else will run. |
 
 | Capability | Lets it |
 |---|---|
 | `sessions.read` | Know the open session: its name, folder, machine, state, and where its turns began. |
 | `git.read` | Read git in the open session's folders, on this Mac or its machine, through `cue.git`. Cue runs fixed, read-only commands and checks every argument; the extension can't change anything. |
-| `cmd.run` | Run its `programs` on this Mac, with any arguments. |
-| `machines.run` | Run its `programs` on the machine a session is on, over Cue's own SSH connection, with any arguments. |
 
-Prefer `git.read` to running git yourself. A program allowed with `cmd.run` takes any arguments, and
-many programs can run others (git can, through `-c` or an alias), so approving one is like approving a
-script. Settings says so.
+An extension can't run programs. Reading git is the one thing it can have Cue do outside its page.
 
 ### The page
 
 The tab shows your page in a sandboxed frame. It can load its own scripts, styles and images, but it
-can't reach Cue's window or the network, or fetch anything (its own files included: put data in a
+can't reach Cue's window or the network (no requests, sockets or WebRTC), or fetch anything (its own files included: put data in a
 script); it talks to Cue only through Cue's helper. Load the helper, and Cue's stylesheet if you want its look
 (its colors follow Cue's light and dark):
 
@@ -90,7 +85,6 @@ Every call returns a promise, and fails with a message saying why when the manif
 | `cue.session()` | The open session, or `null` (needs `sessions.read`). |
 | `cue.on("session", f)` | `f(session)` whenever the open session changes, or anything about it does (needs `sessions.read`). |
 | `cue.on("theme", f)` | `f(theme)` when Cue's look changes. |
-| `cue.run(program, args, { cwd, machine })` | Runs a program from your `programs`, without a shell, for at most 20 seconds. Resolves to `{ code, stdout, stderr, line, ms }`. With `machine` (a session's `machine`), it runs there (needs `machines.run`); without it, on this Mac (needs `cmd.run`). |
 | `cue.git(sessionId, op, params)` | Read-only git in the open session's folder (needs `git.read`). `op` is `toplevel`; `diff` with `{ against }` (`"HEAD"` or a commit, e.g. `turn_from.commit`); `untracked`; `new_file` with `{ path }` (relative to the repo); or `edited`: every file the session edited with its edit tools, wherever it is, each with its changes not yet committed (`{ files: [{ path, new, diff }] }`). The others resolve to `{ code, stdout }`. |
 | `cue.badge(sessionId, text)` | Short text on your tab for that session, e.g. `"4 +98 −9"`. `""` clears it. |
 | `cue.toast(text)` | A short message in Cue. |

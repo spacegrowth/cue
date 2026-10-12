@@ -85,13 +85,10 @@ document.addEventListener("click", (e) => {
 
 // ---------- Settings → Extensions ----------
 /** What a capability lets an extension do, in plain words. */
-function xtCan(cap, programs) {
-  const progs = programs.length ? programs.join(", ") : "programs";
+function xtCan(cap) {
   return {
     "sessions.read": "See the open session: its name, folder, machine, and where its turns began",
     "git.read": "Read git in the open session's folders, on this Mac or its machine, without changing anything",
-    "cmd.run": `Run ${progs} on this Mac, with any arguments (as you could in Terminal)`,
-    "machines.run": `Run ${progs} on your machines over Cue's own SSH, with any arguments`,
   }[cap] || `Use “${cap}”`;
 }
 /** A logged line, shown short: "git diff HEAD … · 3m ago". */
@@ -107,11 +104,10 @@ function xtLine(l) {
 }
 function xtSettings() {
   const rows = extList.map((e) => {
-    const asked = e.capabilities || [], programs = e.programs || [];
-    const pend = [...(e.pending_capabilities || [])], pendProgs = e.pending_programs || [];
-    const newOnly = e.on && (pend.length || pendProgs.length);
-    const can = asked.map((c) => `<li>${esc(xtCan(c, programs))}</li>`).join("") || `<li>Nothing beyond showing its page</li>`;
-    const more = newOnly ? `<div class="xt-more"><b>Updated, and now also asks to:</b><ul>${[...pend.map((c) => xtCan(c, programs)), ...(pend.length ? [] : pendProgs.map((p) => `Run ${p}`))].map((t) => `<li>${esc(t)}</li>`).join("")}</ul>It's off until you switch it on again.</div>` : "";
+    const asked = e.capabilities || [], pend = e.pending_capabilities || [];
+    const newOnly = e.on && pend.length;
+    const can = asked.map((c) => `<li>${esc(xtCan(c))}</li>`).join("") || `<li>Nothing beyond showing its page</li>`;
+    const more = newOnly ? `<div class="xt-more"><b>Updated, and now also asks to:</b><ul>${pend.map((c) => `<li>${esc(xtCan(c))}</li>`).join("")}</ul>It's off until you switch it on again.</div>` : "";
     const lines = extActivity.get(e.name) || [];
     return `<div class="xt ${e.enabled ? "on" : ""}">
       <div class="xt-head"><span class="xt-name">${esc(e.title || e.name)}</span>${e.version ? `<span class="xt-ver">${esc(e.version)}</span>` : ""}${e.tab ? `<span class="xt-where">adds the “${esc(e.tab)}” tab to sessions</span>` : ""}<span class="grow"></span>
@@ -182,12 +178,6 @@ addEventListener("message", async (e) => {
     switch (m.method) {
       case "hello": return reply(true, { name, theme: extTheme() });
       case "session.current": need("sessions.read"); return reply(true, extSessionInfo(openSid()));
-      case "cmd.run": {
-        const r = await invoke("ext_run", { ext: name, program: String(p.program || ""), args: (p.args || []).map(String), cwd: p.cwd ? String(p.cwd) : null, machine: p.machine ? String(p.machine) : null });
-        extRan.set(name, r.line);
-        renderMain();
-        return reply(true, r);
-      }
       case "git": {
         // Read-only git that Cue runs, in the open session's folder (Cue's record of it, not the page's word).
         need("git.read");

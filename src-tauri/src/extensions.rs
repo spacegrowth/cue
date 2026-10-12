@@ -1,21 +1,19 @@
 //! Extensions that bring their own page. Each is a folder in <Cue's folder>/extensions/<name>/
 //! with a manifest.json and its HTML, served at cueext://localhost/<name>/… and shown in a sandboxed
 //! frame. The page talks to Cue only through messages to the window, which checks the manifest's
-//! capabilities; running a program is checked again here, against the manifest's `programs`.
+//! capabilities. The one thing an extension can have Cue do outside its page is read git (git.read).
 
 use serde_json::{json, Value};
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Instant;
+use crate::safe_git;
 use tauri::http::{Request, Response};
 
 /// What an extension page may load and do: its own files and Cue's helper, nothing from the network.
 const PAGE_CSP: &str = "default-src 'none'; script-src cueext://localhost; style-src cueext://localhost 'unsafe-inline'; img-src cueext://localhost data:; font-src cueext://localhost; connect-src 'none'; form-action 'none'";
 const SDK_JS: &str = include_str!("../../ui/ext-sdk/cue.js");
 const SDK_CSS: &str = include_str!("../../ui/ext-sdk/cue.css");
-const RUN_LIMIT: Duration = Duration::from_secs(20);
-const OUT_LIMIT: usize = 4 << 20;
 
 /// The extensions that come with Cue: in the app (Contents/Resources/extensions), so they update with it.
 /// A development build run from this checkout uses the checkout's extensions/. CUE_BUILTIN_EXTENSIONS
@@ -100,7 +98,7 @@ fn strings(v: &Value) -> Vec<String> {
 }
 
 /// What you approved for `name`, kept in Cue's own settings (never in the extension's folder, so an
-/// extension can't approve itself): {"on": bool, "capabilities": [...], "programs": [...]}.
+/// extension can't approve itself): {"on": bool, "capabilities": [...]}.
 fn approval(name: &str) -> Value {
     crate::config::load()["extensions"][name].clone()
 }
@@ -111,13 +109,11 @@ fn with_status(mut m: Value) -> Value {
     let name = m["name"].as_str().unwrap_or("").to_string();
     let a = approval(&name);
     let on = a["on"].as_bool().unwrap_or(false);
-    let (caps, progs) = (strings(&a["capabilities"]), strings(&a["programs"]));
+    let caps = strings(&a["capabilities"]);
     let pending_caps: Vec<String> = strings(&m["capabilities"]).into_iter().filter(|c| !caps.contains(c)).collect();
-    let pending_programs: Vec<String> = strings(&m["programs"]).into_iter().filter(|p| !progs.contains(p)).collect();
     m["on"] = json!(on);
-    m["enabled"] = json!(on && pending_caps.is_empty() && pending_programs.is_empty());
+    m["enabled"] = json!(on && pending_caps.is_empty());
     m["pending_capabilities"] = json!(pending_caps);
-    m["pending_programs"] = json!(pending_programs);
     if let Some((dir, builtin)) = dir_of(&name) {
         m["folder"] = json!(dir.display().to_string());
         m["builtin"] = json!(builtin);
@@ -236,20 +232,6 @@ pub fn serve(req: Request<Vec<u8>>) -> Response<Vec<u8>> {
     }
 }
 
-/// Where a program is: the first match on a PATH that also has the usual Homebrew folders (an app
-/// started from Finder gets a short PATH).
-fn which(program: &str) -> Option<PathBuf> {
-    if program.contains('/') {
-        return None;
-    }
-    let path = std::env::var("PATH").unwrap_or_default();
-    let found = path.split(':')
-        .chain(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])
-        .map(|d| Path::new(d).join(program))
-        .find(|p| p.is_file());
-    found
-}
-
 fn log(line: &str) {
     use std::io::Write;
     static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -260,77 +242,10 @@ fn log(line: &str) {
     }
 }
 
-fn shown(program: &str, args: &[String]) -> String {
-    std::iter::once(program.to_string())
-        .chain(args.iter().map(|a| if a.is_empty() || a.contains(|c: char| c.is_whitespace() || "'\"$`\\".contains(c)) { format!("'{}'", a.replace('\'', "'\\''")) } else { a.clone() }))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Run `program` for extension `ext`: only with the `cmd.run` capability, only a program its manifest
-/// lists, never through a shell, at most RUN_LIMIT. Every run goes in extensions.log as a command line.
-pub fn run(ext: &str, program: &str, args: Vec<String>, cwd: Option<String>, machine: Option<String>) -> Result<Value, String> {
-    let m = enabled(ext).ok_or_else(|| format!("{ext} isn't switched on"))?;
-    if !has(&m, "programs", program) {
-        return Err(format!("{ext} didn't list {program} among its programs"));
-    }
-    if let Some(name) = machine.filter(|n| !n.is_empty()) {
-        if !has(&m, "capabilities", "machines.run") {
-            return Err(format!("{ext} didn't ask to run programs on other machines"));
-        }
-        return run_on(ext, &name, program, &args, cwd.as_deref());
-    }
-    if !has(&m, "capabilities", "cmd.run") {
-        return Err(format!("{ext} didn't ask to run programs"));
-    }
-    let bin = which(program).ok_or_else(|| format!("{program} isn't installed"))?;
-    let line = shown(program, &args);
-    let dir = cwd.filter(|d| Path::new(d).is_dir());
-    let mut c = Command::new(&bin);
-    c.args(&args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    if let Some(d) = &dir {
-        c.current_dir(d);
-    }
-    let mut child = c.spawn().map_err(|e| e.to_string())?;
-    let (mut so, mut se) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let ro = std::thread::spawn(move || { let mut b = Vec::new(); let _ = (&mut so).take(OUT_LIMIT as u64).read_to_end(&mut b); b });
-    let re = std::thread::spawn(move || { let mut b = Vec::new(); let _ = (&mut se).take(OUT_LIMIT as u64).read_to_end(&mut b); b });
-    let start = Instant::now();
-    let code = loop {
-        if let Some(s) = child.try_wait().map_err(|e| e.to_string())? {
-            break s.code();
-        }
-        if start.elapsed() > RUN_LIMIT {
-            let _ = child.kill();
-            let _ = child.wait();
-            break None;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    let (out, err) = (ro.join().unwrap_or_default(), re.join().unwrap_or_default());
-    log(&format!("{ext} [{}] {line} -> {}", dir.as_deref().unwrap_or("~"), code.map_or("stopped".into(), |c| c.to_string())));
-    Ok(json!({
-        "line": line,
-        "code": code,
-        "stdout": String::from_utf8_lossy(&out),
-        "stderr": String::from_utf8_lossy(&err),
-        "ms": start.elapsed().as_millis() as u64,
-    }))
-}
-
 // ---------- git.read: git that Cue runs, read-only ----------
 // An extension with `git.read` names an operation; Cue picks the folder (the open session's, from Cue's
 // own record, never the page's word), builds the command, and checks every argument. Nothing it runs can
 // write, and git's repo settings that could start another program are switched off.
-
-/// The git every git.read operation runs: no pager, no locks, no file-system monitor, no external diff or
-/// text conversion (both are set in a repo's own config and run a program).
-fn git_args<'a>(dir: &'a str, rest: &[&'a str]) -> Vec<&'a str> {
-    let mut a = vec!["-c", "core.fsmonitor=false", "-c", "core.pager=cat", "--no-optional-locks", "-C", dir];
-    a.extend_from_slice(rest);
-    a
-}
-const QUIET_DIFF: [&str; 3] = ["--no-color", "--no-ext-diff", "--no-textconv"];
 
 /// A commit to diff against: HEAD, or a commit's hex name (as Cue's own snapshots are).
 fn valid_rev(r: &str) -> bool {
@@ -341,48 +256,6 @@ fn valid_rel(p: &str) -> bool {
     !p.is_empty() && !p.starts_with('-') && !p.starts_with('/') && !p.split('/').any(|s| s == ".." || s.is_empty()) && !p.contains('\0')
 }
 
-/// Filters the repo's own config defines (`filter.<name>.clean`, `.smudge`, `.process`: programs git runs
-/// on files when it diffs them, picked by .gitattributes), each switched off: clean and smudge pass the
-/// file through as it is, and no process runs. Yours, from your own git config (Git LFS, say), stay.
-/// Reading config runs nothing.
-fn no_repo_filters(machine: &str, dir: &str) -> Vec<String> {
-    let mut names: Vec<String> = vec![];
-    for scope in ["--local", "--worktree"] {
-        let Ok((out, _)) = git_in(machine, dir, &[], &["config", scope, "--name-only", "--get-regexp", "^filter\\."]) else { continue };
-        for key in out.lines() {
-            if let Some(name) = key.strip_prefix("filter.").and_then(|k| k.rsplit_once('.')).map(|(n, _)| n.to_string()) {
-                if !names.contains(&name) {
-                    names.push(name);
-                }
-            }
-        }
-    }
-    names.iter().flat_map(|n| ["-c".to_string(), format!("filter.{n}.clean=cat"), "-c".into(), format!("filter.{n}.smudge=cat"), "-c".into(), format!("filter.{n}.process=")]).collect()
-}
-
-/// Run git (the words after `git`) in `dir`, here or on `machine`, with `extra` settings first (from
-/// no_repo_filters): stdout, and the exit code.
-fn git_in(machine: &str, dir: &str, extra: &[String], rest: &[&str]) -> Result<(String, i32), String> {
-    let extra: Vec<&str> = extra.iter().map(String::as_str).collect();
-    let words = git_args(dir, &[&extra[..], rest].concat());
-    if machine.is_empty() {
-        let bin = which("git").ok_or("git isn't installed")?;
-        let out = Command::new(bin).args(&words).stdin(Stdio::null()).output().map_err(|e| e.to_string())?;
-        return Ok((String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(OUT_LIMIT)]).to_string(), out.status.code().unwrap_or(1)));
-    }
-    let host = crate::machines::get(machine).ok_or_else(|| format!("Cue doesn't know a machine called {machine}"))?.host;
-    let mut all = vec!["git"];
-    all.extend(words);
-    let script = format!("{}; printf '\\n@@cue-exit %s\\n' $?", sh_words(&all));
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || { let _ = tx.send(crate::machines::run(&host, &script)); });
-    let o = rx.recv_timeout(RUN_LIMIT).unwrap_or_else(|_| Err("it took too long".into()))?;
-    Ok(match o.rfind("\n@@cue-exit ") {
-        Some(i) => (o[..i].to_string(), o[i + 12..].trim().parse().unwrap_or(1)),
-        None => (o, 1),
-    })
-}
-
 /// One file this session edited, as it is now: its uncommitted changes, against its own repo's HEAD (a
 /// file git doesn't track yet: its whole content). `abs` is absolute.
 fn edited_one(machine: &str, abs: &str, filters: &mut std::collections::HashMap<String, Vec<String>>) -> Value {
@@ -391,14 +264,14 @@ fn edited_one(machine: &str, abs: &str, filters: &mut std::collections::HashMap<
     if dir.is_empty() || base.is_empty() || base.starts_with('-') {
         return json!({ "path": abs, "note": "not a file path" });
     }
-    let extra = filters.entry(dir.clone()).or_insert_with(|| no_repo_filters(machine, &dir)).clone();
-    let tracked = git_in(machine, &dir, &extra, &["ls-files", "--error-unmatch", "--", &base]).map(|(_, c)| c == 0).unwrap_or(false);
+    let extra = filters.entry(dir.clone()).or_insert_with(|| safe_git::no_repo_filters(machine, &dir)).clone();
+    let tracked = safe_git::run(machine, &dir, &extra, &["ls-files", "--error-unmatch", "--", &base]).map(|(_, c)| c == 0).unwrap_or(false);
     let rest: Vec<&str> = if tracked {
-        [&["diff", "HEAD"][..], &QUIET_DIFF[..], &["--", &base]].concat()
+        [&["diff", "HEAD"][..], &safe_git::QUIET_DIFF[..], &["--", &base]].concat()
     } else {
-        [&["diff", "--no-index"][..], &QUIET_DIFF[..], &["--", "/dev/null", &base]].concat()
+        [&["diff", "--no-index"][..], &safe_git::QUIET_DIFF[..], &["--", "/dev/null", &base]].concat()
     };
-    match git_in(machine, &dir, &extra, &rest) {
+    match safe_git::run(machine, &dir, &extra, &rest) {
         Ok((out, _)) if !out.trim().is_empty() => json!({ "path": abs, "new": !tracked, "diff": out }),
         Ok(_) => json!({ "path": abs, "note": if tracked { "no uncommitted changes" } else { "gone, or not in a git repository" } }),
         Err(e) => json!({ "path": abs, "note": e }),
@@ -421,9 +294,9 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
     }
     let start = Instant::now();
     let done = |what: &str, code: i32| log(&format!("{ext} [{}{folder}] git.read {what} -> {code}", if machine.is_empty() { String::new() } else { format!("{machine}:") }));
-    let extra = no_repo_filters(machine, folder);
+    let extra = safe_git::no_repo_filters(machine, folder);
     let plain = |rest: &[&str], what: &str| -> Result<Value, String> {
-        let (out, code) = git_in(machine, folder, &extra, rest)?;
+        let (out, code) = safe_git::run(machine, folder, &extra, rest)?;
         done(what, code);
         Ok(json!({ "code": code, "stdout": out, "ms": start.elapsed().as_millis() as u64 }))
     };
@@ -434,7 +307,7 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
             if !valid_rev(rev) {
                 return Err(format!("not a commit: {rev}"));
             }
-            plain(&[&["diff", rev][..], &QUIET_DIFF[..]].concat(), &format!("diff {rev}"))
+            plain(&[&["diff", rev][..], &safe_git::QUIET_DIFF[..]].concat(), &format!("diff {rev}"))
         }
         "untracked" => plain(&["ls-files", "--others", "--exclude-standard", "--full-name"], "untracked"),
         "new_file" => {
@@ -442,7 +315,7 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
             if !valid_rel(p) {
                 return Err(format!("not a file in the repo: {p}"));
             }
-            plain(&[&["diff", "--no-index"][..], &QUIET_DIFF[..], &["--", "/dev/null", p]].concat(), &format!("new_file {p}"))
+            plain(&[&["diff", "--no-index"][..], &safe_git::QUIET_DIFF[..], &["--", "/dev/null", p]].concat(), &format!("new_file {p}"))
         }
         "edited" => {
             let t = transcript.filter(|t| !t.is_empty()).ok_or("that session has no log to read its edits from")?;
@@ -478,9 +351,9 @@ pub fn ext_enable(name: String, on: bool) -> Result<(), String> {
     let m = manifest(&name).ok_or("no such extension")?;
     let a = approval(&name);
     let v = if on {
-        json!({ "on": true, "capabilities": m["capabilities"].clone(), "programs": m["programs"].clone(), "version": m["version"].clone() })
+        json!({ "on": true, "capabilities": m["capabilities"].clone(), "version": m["version"].clone() })
     } else {
-        json!({ "on": false, "capabilities": a["capabilities"].clone(), "programs": a["programs"].clone(), "version": a["version"].clone() })
+        json!({ "on": false, "capabilities": a["capabilities"].clone(), "version": a["version"].clone() })
     };
     log(&format!("{name} switched {} in Settings", if on { "on" } else { "off" }));
     crate::config::remember(&format!("extensions.{name}"), v)
@@ -510,46 +383,6 @@ pub fn ext_log(ext: String, text: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Every word quoted for a POSIX shell, so nothing in it is read as more shell.
-fn sh_words(words: &[&str]) -> String {
-    words.iter().map(|w| format!("'{}'", w.replace('\'', "'\\''"))).collect::<Vec<_>>().join(" ")
-}
-
-/// The same, on one of Cue's machines, over Cue's own SSH connection. The folder is only ever looked at
-/// there, never on this Mac. At most RUN_LIMIT; every run goes in extensions.log.
-fn run_on(ext: &str, name: &str, program: &str, args: &[String], cwd: Option<&str>) -> Result<Value, String> {
-    let host = crate::machines::get(name).ok_or_else(|| format!("Cue doesn't know a machine called {name}"))?.host;
-    let mut words = vec![program];
-    words.extend(args.iter().map(String::as_str));
-    let cmd = sh_words(&words);
-    // The command's own exit code comes back on a last line (ssh would otherwise turn any non-zero exit,
-    // like `git diff --no-index` finding a difference, into a failure and drop what it printed).
-    let script = match cwd {
-        Some(d) if !d.is_empty() => format!("cd {} && {cmd}; printf '\\n@@cue-exit %s\\n' $?", sh_words(&[d])),
-        _ => format!("{cmd}; printf '\\n@@cue-exit %s\\n' $?"),
-    };
-    let line = shown(program, args);
-    let start = Instant::now();
-    let (tx, rx) = std::sync::mpsc::channel();
-    let (h, sc) = (host.clone(), script.clone());
-    std::thread::spawn(move || { let _ = tx.send(crate::machines::run(&h, &sc)); });
-    let got = rx.recv_timeout(RUN_LIMIT).unwrap_or_else(|_| Err("it took too long".into()));
-    let (out, err, code) = match got {
-        Ok(o) => match o.rfind("\n@@cue-exit ") {
-            Some(i) => (o[..i].to_string(), String::new(), o[i + 12..].trim().parse::<i32>().unwrap_or(1)),
-            None => (o, String::new(), 1),
-        },
-        Err(e) => (String::new(), e, 255),
-    };
-    log(&format!("{ext} [{name}:{}] {line} -> {code}", cwd.unwrap_or("~")));
-    Ok(json!({ "line": format!("{line}  (on {name})"), "code": code, "stdout": out, "stderr": err, "ms": start.elapsed().as_millis() as u64 }))
-}
-
-#[tauri::command]
-pub async fn ext_run(ext: String, program: String, args: Vec<String>, cwd: Option<String>, machine: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run(&ext, &program, args, cwd, machine)).await.map_err(|e| e.to_string())?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,31 +410,31 @@ mod tests {
         std::fs::create_dir_all(&ext).unwrap();
         std::env::set_var("CUE_HOME", &dir);
         std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
-        let write = |caps: &str, progs: &str| std::fs::write(ext.join("manifest.json"), format!(r#"{{"title":"Demo","tab":"Demo","capabilities":[{caps}],"programs":[{progs}]}}"#)).unwrap();
+        let write = |caps: &str| std::fs::write(ext.join("manifest.json"), format!(r#"{{"title":"Demo","tab":"Demo","capabilities":[{caps}]}}"#)).unwrap();
         std::fs::write(ext.join("index.html"), "<p>hi</p>").unwrap();
-        write(r#""cmd.run""#, r#""git""#);
+        write(r#""sessions.read""#);
         let page = || serve(Request::builder().uri("cueext://localhost/demo/index.html").body(vec![]).unwrap()).status();
+        let folder = std::env::temp_dir().display().to_string();
+        let read = || git_read("demo", "toplevel", &folder, "", None, None, None);
 
-        // New: off, its page isn't served and it can't run anything.
+        // New: off, its page isn't served and it can't read git.
         assert_eq!(list()[0]["enabled"], json!(false));
         assert_eq!(page(), 404);
-        assert!(run("demo", "git", vec!["--version".into()], None, None).unwrap_err().contains("isn't switched on"));
+        assert!(read().unwrap_err().contains("isn't switched on"));
 
-        // Switched on: what it asked for is approved; its page is served and git runs.
+        // Switched on: what it asked for is approved; its page is served. Still nothing it didn't ask for.
         ext_enable("demo".into(), true).unwrap();
         assert_eq!(list()[0]["enabled"], json!(true));
         assert_eq!(page(), 200);
-        assert_eq!(run("demo", "git", vec!["--version".into()], None, None).unwrap()["code"], json!(0));
-        // Still only what it listed.
-        assert!(run("demo", "ls", vec![], None, None).unwrap_err().contains("didn't list ls"));
+        assert!(read().unwrap_err().contains("didn't ask to read git"));
 
         // An update that asks for more: off again until switched on again, the new asks listed.
-        write(r#""cmd.run","machines.run""#, r#""git","rsync""#);
+        write(r#""sessions.read","git.read""#);
         let e = &list()[0];
         assert_eq!((e["on"].clone(), e["enabled"].clone()), (json!(true), json!(false)));
-        assert_eq!(e["pending_capabilities"], json!(["machines.run"]));
-        assert_eq!(e["pending_programs"], json!(["rsync"]));
+        assert_eq!(e["pending_capabilities"], json!(["git.read"]));
         assert_eq!(page(), 404);
+        assert!(read().unwrap_err().contains("isn't switched on"));
 
         // Switched off: nothing served, nothing runs; its log names the switches.
         ext_enable("demo".into(), true).unwrap();
@@ -703,15 +536,5 @@ mod tests {
         std::env::remove_var("CUE_HOME");
         std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn remote_words_are_all_quoted() {
-        assert_eq!(sh_words(&["git", "-C", "/a b", "it's"]), "'git' '-C' '/a b' 'it'\\''s'");
-    }
-
-    #[test]
-    fn command_lines_are_quoted() {
-        assert_eq!(shown("git", &["-C".into(), "/a b".into(), "diff".into()]), "git -C '/a b' diff");
     }
 }

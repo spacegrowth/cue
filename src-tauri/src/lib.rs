@@ -3,6 +3,7 @@ mod btw;
 mod db;
 mod hook;
 mod changes;
+mod safe_git;
 mod commands;
 mod hub;
 mod ipc;
@@ -116,6 +117,28 @@ pub fn hook_main(args: &[String]) {
     hook::main(args)
 }
 
+/// Switch WebRTC off for this web view (WebKit's peer-connection preference), where WebKit has it.
+#[cfg(target_os = "macos")]
+fn no_webrtc(w: &tauri::WebviewWindow) {
+    let _ = w.with_webview(|wv| unsafe {
+        use objc2::runtime::AnyObject;
+        use objc2::{msg_send, sel};
+        let wk = wv.inner() as *mut AnyObject;
+        if wk.is_null() {
+            return;
+        }
+        let config: *mut AnyObject = msg_send![&*wk, configuration];
+        let prefs: *mut AnyObject = if config.is_null() { std::ptr::null_mut() } else { msg_send![&*config, preferences] };
+        if prefs.is_null() {
+            return;
+        }
+        let has: bool = msg_send![&*prefs, respondsToSelector: sel!(_setPeerConnectionEnabled:)];
+        if has {
+            let _: () = msg_send![&*prefs, _setPeerConnectionEnabled: false];
+        }
+    });
+}
+
 /// `cue connect <claude|codex|pi>…` from a terminal: the same as Settings → Connect. Prints what it
 /// did; exit code 1 if any failed. Pi's extension comes from the app bundle, else this checkout.
 pub fn connect_main(agents: &[String]) -> i32 {
@@ -183,8 +206,15 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         // Extension pages: cueext://localhost/<name>/…, from <Cue's folder>/extensions (extensions.rs).
         .register_uri_scheme_protocol("cueext", |_ctx, req| extensions::serve(req))
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, quit_now, hide_window, term_write, term_resize, term_close, shell_open, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_run, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, quit_now, hide_window, term_write, term_resize, term_close, shell_open, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, new_session, trust_folder, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git])
         .setup(|app| {
+            // No WebRTC in Cue's web view: Cue doesn't use it, and it's the one way out an extension's page
+            // would otherwise have (a STUN or TURN request to a server of its choosing, which no page policy
+            // stops). Extensions can read your code (git.read); nothing they read may leave this Mac.
+            #[cfg(target_os = "macos")]
+            if let Some(w) = app.get_webview_window("main") {
+                no_webrtc(&w);
+            }
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
                 let old = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cue");
