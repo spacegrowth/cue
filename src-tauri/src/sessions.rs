@@ -83,6 +83,12 @@ pub struct Session {
     /// The folder's git state when this turn started (to tell what the turn changed).
     #[serde(skip)]
     pub turn_base: Option<crate::changes::Base>,
+    /// Where the latest turn started, kept after its changes are counted, and where the session's
+    /// first turn Cue saw started: so an extension can show "this turn" and "the whole session".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_from: Option<crate::changes::Base>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_from: Option<crate::changes::Base>,
     /// What the turn that just ended changed (files, lines); none when it changed nothing. Cleared when
     /// the next turn starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -198,6 +204,8 @@ impl Sessions {
             starred_ms: 0,
             trust_ms: 0,
             turn_base: None,
+            turn_from: None,
+            session_from: None,
             changes: None,
             stuck_ms: 0,
             held: None,
@@ -382,6 +390,12 @@ impl Sessions {
 
     pub fn set_turn_base(&mut self, session_id: &str, base: Option<crate::changes::Base>) {
         if let Some(s) = self.0.get_mut(session_id) {
+            if let Some(b) = &base {
+                s.turn_from = Some(b.clone());
+                if s.session_from.is_none() {
+                    s.session_from = Some(b.clone());
+                }
+            }
             s.turn_base = base;
         }
     }

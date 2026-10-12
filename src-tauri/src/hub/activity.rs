@@ -210,7 +210,7 @@ impl Hub {
                     }
                 }
                 if started {
-                    self.turn_started(&sid, &origin.cwd);
+                    self.turn_started(&sid, &origin.cwd, &origin.machine);
                 }
                 self.changed();
             }
@@ -398,10 +398,11 @@ impl Hub {
 
     /// A turn began: note the folder's git state (in the background: git can take a moment) to tell
     /// later what this turn changed.
-    fn turn_started(&self, session_id: &str, cwd: &str) {
-        let (Some(me), sid, cwd) = (self.shared(), session_id.to_string(), cwd.to_string()) else { return };
+    fn turn_started(&self, session_id: &str, cwd: &str, machine: &str) {
+        let (Some(me), sid, cwd, machine) = (self.shared(), session_id.to_string(), cwd.to_string(), machine.to_string()) else { return };
         std::thread::spawn(move || {
-            let base = crate::changes::base(&cwd);
+            // A session on another machine: its folder is there, so git runs there.
+            let base = if machine.is_empty() { crate::changes::base(&cwd) } else { crate::changes::base_on(&machine, &cwd) };
             me.st().sessions.set_turn_base(&sid, base);
         });
     }

@@ -7,12 +7,71 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
-/// Where a turn started from.
-#[derive(Clone, Debug)]
+/// Where a turn started from: the folder's root, a snapshot of it, and its untracked files (extensions see it too).
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Base {
     root: String,
     commit: String,
     untracked: Vec<String>,
+    /// The machine the folder is on; empty: this Mac. Its git runs there, over Cue's SSH.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    machine: String,
+}
+
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// The folder's state now, on one of Cue's machines: git runs there, and the folder is never looked
+/// up on this Mac. None outside a git repo, or when the machine can't be reached.
+pub fn base_on(machine: &str, cwd: &str) -> Option<Base> {
+    if cwd.is_empty() {
+        return None;
+    }
+    let host = crate::machines::get(machine)?.host;
+    let script = format!(
+        "cd {} 2>/dev/null || exit 0\nroot=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0\ncd \"$root\" || exit 0\nc=$(git stash create 2>/dev/null)\n[ -n \"$c\" ] || c=$(git rev-parse HEAD 2>/dev/null) || exit 0\nprintf '%s\\n%s\\n' \"$root\" \"$c\"\ngit ls-files --others --exclude-standard",
+        sh_quote(cwd)
+    );
+    let out = crate::machines::run(&host, &script).ok()?;
+    let mut lines = out.lines();
+    let root = lines.next()?.trim().to_string();
+    let commit = lines.next()?.trim().to_string();
+    if root.is_empty() || commit.is_empty() {
+        return None;
+    }
+    Some(Base { root, commit, untracked: lines.map(String::from).collect(), machine: machine.to_string() })
+}
+
+/// What changed since `base`, on its machine: one SSH call, git and wc there.
+fn since_on(base: &Base) -> Option<Changes> {
+    let host = crate::machines::get(&base.machine)?.host;
+    let script = format!(
+        "cd {} || exit 1\ngit diff --numstat {}\necho @@new\ngit ls-files --others --exclude-standard | while IFS= read -r f; do printf '%s\\t%s\\n' \"$(wc -l < \"$f\" 2>/dev/null | tr -d ' ')\" \"$f\"; done",
+        sh_quote(&base.root),
+        sh_quote(&base.commit)
+    );
+    let out = crate::machines::run(&host, &script).ok()?;
+    let (num, new) = out.split_once("@@new\n").unwrap_or((out.as_str(), ""));
+    let mut files: Vec<File> = num
+        .lines()
+        .filter_map(|l| {
+            let mut p = l.splitn(3, '\t');
+            let (a, d, path) = (p.next()?, p.next()?, p.next()?);
+            Some(File { path: path.to_string(), add: a.parse().unwrap_or(0), del: d.parse().unwrap_or(0) })
+        })
+        .collect();
+    for l in new.lines() {
+        let Some((n, path)) = l.split_once('\t') else { continue };
+        if !base.untracked.iter().any(|u| u == path) {
+            files.push(File { path: path.to_string(), add: n.parse().unwrap_or(0), del: 0 });
+        }
+    }
+    if files.is_empty() {
+        return None;
+    }
+    let (add, del) = files.iter().fold((0, 0), |(a, d), f| (a + f.add, d + f.del));
+    Some(Changes { files, add, del })
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -47,11 +106,14 @@ pub fn base(cwd: &str) -> Option<Base> {
     let root = git(cwd, &["rev-parse", "--show-toplevel"])?.trim().to_string();
     let snap = git(&root, &["stash", "create"]).map(|s| s.trim().to_string()).unwrap_or_default();
     let commit = if snap.is_empty() { git(&root, &["rev-parse", "HEAD"])?.trim().to_string() } else { snap };
-    Some(Base { untracked: untracked(&root), root, commit })
+    Some(Base { untracked: untracked(&root), root, commit, machine: String::new() })
 }
 
 /// What changed since `base`: edited tracked files, and files that are new and not ignored. None: nothing.
 pub fn since(base: &Base) -> Option<Changes> {
+    if !base.machine.is_empty() {
+        return since_on(base);
+    }
     let mut files: Vec<File> = git(&base.root, &["diff", "--numstat", &base.commit])
         .unwrap_or_default()
         .lines()
