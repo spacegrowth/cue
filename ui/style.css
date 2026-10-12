@@ -224,6 +224,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .sw { display: inline-block; width: 14px; height: 7px; border-radius: 2px; flex: none; }
 .sw.w { background: var(--work); }
 .sw.z { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); box-shadow: inset 0 0 0 1px var(--accent); }
+.sw.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .bar i.z.live, .sw.z.live { animation: none; } }
 .working .bar { background: color-mix(in srgb, var(--on-bg-muted) 20%, transparent); }
 .working .bar i.w { background: var(--on-bg-muted); }
@@ -788,7 +789,12 @@ button.tm-chip:hover { background: var(--panel-2); }
 .tn::before { content: ""; position: absolute; left: 5px; top: 0; bottom: 0; border-left: 2px solid color-mix(in srgb, currentColor 30%, transparent); }
 .tn:last-child::before { bottom: calc(100% - 14px); }
 .tn::after { content: ""; position: absolute; left: 5px; top: 13px; width: 9px; border-top: 2px solid color-mix(in srgb, currentColor 30%, transparent); }
-.tn.on { background: color-mix(in srgb, var(--sel) 45%, transparent); }
+/* The open one: the selected card's lime, as anywhere else (its tree line stays on the card's side). */
+.tn.on { background: var(--sel); color: var(--on-sel); padding-right: 6px; }
+.tn.on::before, .tn.on::after { border-color: color-mix(in srgb, var(--on-sel) 30%, transparent); }
+.tn.on .tn-need { color: var(--on-sel); }
+.tn.on .btn { background: transparent; color: var(--on-sel); border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); }
+.tn.on .btn.primary { background: var(--on-sel); color: var(--sel); border-color: var(--on-sel); }
 .tn-t { display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* the name ellipsizes, but only after the status (which may wrap, never clips) has given what it can */
 .tn-t b { font-size: 12.5px; flex: 0 0.1 auto; min-width: min(7ch, 100%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -881,12 +887,14 @@ button.tm-chip:hover { background: var(--panel-2); }
 .q-now kbd { display: inline-block; margin-left: 3px; text-decoration: none; font-weight: 600; opacity: .75; }
 
 /* ---------- Need to decide: sessions you parked under Waiting to think about ---------- */
-/* Waiting takes what it needs and scrolls inside; Need to decide folds under it (like Starred), its
-   heading always in the column, never pushed out of the window. Open, it takes up to half. */
-.sec-waiting { flex: 0 1 auto; }
+/* Waiting runs on, every card of it, and Need to decide follows it: one list down the column, scrolled
+   as one, never cut short at an edge (so no card hides past it). Each section's heading stays at the
+   column's top while you're in that section. */
+.col.split.col-waiting { overflow-y: auto; padding-bottom: 16px; }
+.col.col-waiting > .sec { flex: none; max-height: none; }
+.col.col-waiting .sec-body { overflow: visible; }
+.col.col-waiting > .sec > .col-head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 4px 0 6px; margin: -4px 0 -6px; }
 .sec-waiting .sec-body { padding: 0 2px 4px; margin: 0 -2px; }
-.sec-drawer.sec-later { flex: 0 1 auto; max-height: 50%; }
-.sec-drawer.sec-later.shut { flex: 0 0 auto; max-height: none; }
 .nrow.later { box-shadow: none; background: color-mix(in srgb, var(--panel) 70%, transparent); }
 .park-btn { height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); flex: none; }
 .park-btn:hover { background: var(--panel-2); color: var(--ink); }

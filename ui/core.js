@@ -457,7 +457,14 @@ function barLabels(sid) {
   return `<div class="bar-labels">${spans.map((g) => `<span class="${g.kind === "working" ? "w" : "z"}" style="left:${g.left.toFixed(2)}%;width:${g.width.toFixed(2)}%">${dur(g.ms)}</span>`).join("")}</div>`;
 }
 /** Under the big bar: what the stripes mean and which end is now, so you needn't hover. */
-const barKey = () => `<div class="bar-key"><span>30 min ago</span><span class="grow"></span><span><i class="sw w"></i>working</span><span><i class="sw z"></i>waiting on you</span><span class="grow"></span><span>now</span></div>`;
+/** Under a session's bar: what its colors mean. The faint one (waiting on its lead or its background
+ *  agents, stopped, out of usage: not on you) only when the bar has some. */
+const barKey = (sid) => {
+  const from = now() - (state.window_ms || 1800000);
+  const faint = (sessionOf(sid)?.segments || []).some((g) => g.kind === "idle" && (g.end_ms ?? now()) > from);
+  const word = crewOf(sid)?.role === "executor" ? "waiting on its lead" : "not on you";
+  return `<div class="bar-key"><span>30 min ago</span><span class="grow"></span><span><i class="sw w"></i>working</span><span><i class="sw z"></i>waiting on you</span>${faint ? `<span><i class="sw i"></i>${word}</span>` : ""}<span class="grow"></span><span>now</span></div>`;
+};
 
 /** The selected card in each list (Waiting, Sessions, Starred, Recently answered), by list, with whether
  *  it shows in full inside the list's scrolling area. */

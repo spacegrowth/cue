@@ -701,11 +701,12 @@ function fitHead() {
 
 /** A list cut off at the bottom says so, quietly: "3 more" on its last card's bottom edge, counting
  *  the cards not in view below, and a click takes the list to its end. And no card shows half: the list
- *  ends on the last card that fits whole. Every list that scrolls: Waiting, Need to
- *  decide, Sessions, Starred, Recently answered. `trim` re-fits the lists (a redraw, a resize); scrolling
- *  only recounts. The pill shows itself when it appears or its count changes, then fades after a few
- *  seconds so a still list stays clean; scrolling the list (`woke`) brings it back. */
-const MORE_LISTS = ".sec-waiting .sec-body, .sec-later .sec-body, .sec-sessions .sec-body, .sec-starred .card.recent, .sec-recent .card.recent, .sec-parked .sec-body";
+ *  ends on the last card that fits whole. The lists that scroll in the third column: Sessions, Starred,
+ *  Recently answered, Parked (not Waiting and Need to decide: their column scrolls as one, every card in
+ *  it, nothing cut short). `trim` re-fits the lists (a redraw, a resize); scrolling only recounts. The
+ *  pill shows itself when it appears or its count changes, then fades after a few seconds so a still list
+ *  stays clean; scrolling the list (`woke`) brings it back. */
+const MORE_LISTS = ".sec-sessions .sec-body, .sec-starred .card.recent, .sec-recent .card.recent, .sec-parked .sec-body";
 const moreCards = (sc) => [...sc.children].filter((c) => !c.matches(".col-sub, button"));
 // Where a card ends inside its list, by layout (the list is its offsetParent), not by what's on screen:
 // cards that moved slide to their new place after a redraw, and mid-slide they're elsewhere.
