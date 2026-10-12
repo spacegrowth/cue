@@ -54,6 +54,7 @@ function renderMain() {
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
+  placeExt();   // the open session's extension tab, over the slot left for it
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
   document.querySelectorAll("[data-tray-scroll]").forEach((el) => { el.scrollTop = trayScrolls.get(el.dataset.trayScroll) ?? 0; });
@@ -741,6 +742,7 @@ function setState(s) {
   if (s.now_ms) clockSkew = s.now_ms - Date.now();
   applyTheme();
   render();
+  extNotify();
 }
 const render = () => renderMain();
 
@@ -748,6 +750,7 @@ async function boot() {
   await loadDrafts();
   bindMain();
   setState(await invoke("get_state"));
+  loadExtensions();
   loadMachines();   // their names (and what you renamed them to) for every label, before + New is opened
   restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));

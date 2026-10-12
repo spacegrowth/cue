@@ -1,0 +1,16 @@
+/* Cue's look for extension pages: <link rel="stylesheet" href="cueext://localhost/_cue/cue.css">.
+   The colors are Cue's own (set by cue.js), so light and dark follow Cue. */
+:root { --radius: 10px; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--panel, #fff); color: var(--ink, #1e2410); font: 13px/1.45 var(--sans, -apple-system, sans-serif); -webkit-font-smoothing: antialiased; }
+button { font: inherit; font-weight: 600; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+input, select, textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; }
+code, pre { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.cue-list { display: flex; flex-direction: column; gap: 2px; }
+.cue-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.cue-row:hover { background: var(--panel-2); }
+.cue-row.on { background: var(--sel); color: var(--on-sel); }

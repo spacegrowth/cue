@@ -1475,3 +1475,38 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .pip.tucked:hover { clip-path: inset(0 round 12px 0 0 12px); }
 .pip-peek:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { .pip, .pip.tucked { transition: none; } .sh-live.run, .sh-dot { animation: none; } }
+
+/* Extensions: a session's tabs under its activity bar; an extension tab's page floats over the slot. */
+.stabs { display: flex; align-items: baseline; gap: 18px; margin: 2px 16px 0; border-bottom: 1px solid var(--line); flex: none; min-width: 0; }
+.stab { font: 600 12.5px var(--sans); color: var(--muted); background: none; border: 0; padding: 6px 1px 7px; margin-bottom: -1px; border-bottom: 2px solid transparent; display: inline-flex; gap: 6px; align-items: baseline; cursor: pointer; }
+.stab:hover { color: var(--ink); }
+.stab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.stab-n { font: 11.5px var(--mono); }
+.stab-ran { font-size: 11px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+.stab-ran code { font-family: var(--mono); }
+.ext-slot { flex: 1; min-height: 0; }
+.ext-frame { position: fixed; z-index: 2; border: 0; background: var(--panel); }
+
+/* Settings → Extensions */
+.xt-intro { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 2px 0 14px; }
+.xt-intro code, .xt-folder code { font: 11.5px var(--mono); }
+.xt-intro-btns { display: flex; gap: 8px; margin-top: 10px; }
+.xt { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; background: var(--panel); }
+.xt-head { display: flex; align-items: center; gap: 10px; }
+.xt-name { font-weight: 650; font-size: 14px; }
+.xt-ver { font: 11.5px var(--mono); color: var(--muted); }
+.xt-where { font-size: 12px; color: var(--muted); }
+.xt-state { font-size: 12px; font-weight: 600; color: var(--muted); }
+.xt.on .xt-state { color: var(--ink); }
+.xt-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 6px 22px; margin-top: 10px; font-size: 12.5px; }
+.xt-k { font-size: 11px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.xt ul { margin: 0; padding-left: 18px; }
+.xt li { margin: 2px 0; }
+.xt-more { grid-column: 1 / -1; background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+.xt-log { min-width: 0; }
+.xt-log-line { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.xt-log-line.bad code { color: var(--deny); }
+.xt-log-line code { font: 11.5px var(--mono); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xt-log-line span, .xt-none { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.xt-folder { grid-column: 1 / -1; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xt-empty { color: var(--muted); padding: 18px 0; }

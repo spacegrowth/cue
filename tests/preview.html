@@ -202,6 +202,13 @@
         app: { getVersion: async () => "0.1.5" },
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           console.log("[cue-preview]", cmd, JSON.stringify(args));
+          // ?xt=1: Settings → Extensions with three: one on, one updated and asking for more, one off.
+          if (cmd === "ext_list" && /xt=1/.test(q)) return { root: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions", list: [
+            { name: "diff", title: "Changes", tab: "Changes", version: "0.2.0", capabilities: ["sessions.read", "cmd.run", "machines.run"], programs: ["git"], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/diff" },
+            { name: "notes", title: "Session notes", tab: "Notes", version: "0.3.0", capabilities: ["sessions.read", "cmd.run"], programs: ["git"], on: true, enabled: false, pending_capabilities: ["cmd.run"], pending_programs: ["git"], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/notes" },
+            { name: "digest", title: "Daily digest", version: "0.1.0", capabilities: ["sessions.read"], programs: [], on: false, enabled: false, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/digest" },
+          ] };
+          if (cmd === "ext_activity" && /xt=1/.test(q)) { const t = Math.floor(Date.now() / 1000); return args.name === "diff" ? [`${t - 600} diff switched on in Settings`, `${t - 180} diff [~] git --no-optional-locks -C /Users/me/code/agent-relay diff 3f9a1c2 --no-color --no-ext-diff -> 0`, `${t - 180} diff [~] git --no-optional-locks -C /Users/me/code/agent-relay ls-files --others --exclude-standard -> 0`, `${t - 40} diff [build-box:~] git --no-optional-locks -C /srv/api diff HEAD --no-color -> 0`] : []; }
           if (cmd === "get_state") { for (const sid of (q.get("parked") || "").split(",")) { const s = state.sessions.find((x) => x.session_id === sid); if (s && !s.later_ms) s.later_ms = now; } return structuredClone(state); }
           if (cmd === "set_later") { const s = state.sessions.find((x) => x.session_id === args.sessionId); if (s) s.later_ms = args.on ? Date.now() : 0; return null; }
           // + New → Machine: one connected, one that needs a login.
@@ -323,6 +330,7 @@
   <script src="../ui/board.js"></script>
   <script src="../ui/sessions.js"></script>
   <script src="../ui/history.js"></script>
+  <script src="../ui/extensions.js"></script>
   <script src="../ui/sheets.js"></script>
   <script src="../ui/app.js"></script>
   <script>
