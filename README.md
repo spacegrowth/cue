@@ -55,12 +55,23 @@ Only `spent` is required. An empty `limit` shows the amount without a bar; `unit
 `resets_at` is an ISO date-time or Unix milliseconds. Up to 3 rows. Cue only reads the file, whenever
 it changes, and never runs anything. If it doesn't match this format, the pill says what's wrong.
 
+## Extensions
+
+An extension adds a tab beside a session's chat, with a page of its own. Cue comes with one,
+[Diff](extensions/diff): what the session changed this turn, the whole session, or everything not
+committed. Copy its folder into Settings → Extensions → **Open the folder**, then switch it on. Nothing
+in an extension runs until you do. To make one, see [docs/extensions.md](docs/extensions.md).
+
 ## Privacy
 
 Cue collects nothing and sends nothing anywhere. Everything it keeps (what's waiting, history,
 drafts, settings) stays on your Mac, in the folder below. It talks to your agents through a local
 socket that only processes on your Mac can reach, and it reads their transcripts on your disk. The
 one time it goes online is to check GitHub for a newer version of Cue.
+
+An extension you switch on can run the programs its manifest lists, on this Mac or over your SSH
+connection to a machine; its page can't reach the network. Settings → Extensions shows what each one
+may do and the commands it ran.
 
 ## Using it
 
