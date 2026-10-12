@@ -16,8 +16,9 @@ let extRoot = "";
 const extActivity = new Map();   // name → its last few lines in extensions.log (for Settings)
 async function loadExtensions() {
   try { const r = (await invoke("ext_list")) || {}; extList = r.list || []; extRoot = r.root || ""; } catch { extList = []; }
-  // An extension switched off (or awaiting approval) loses its page at once.
-  for (const [n, f] of extFrames) if (!extOf(n)?.enabled) { f.remove(); extFrames.delete(n); extSent.delete(n); }
+  // An extension switched off (or awaiting approval) loses its page at once; one whose files changed
+  // (you copied a new version in, or Cue updated its own) gets a fresh one.
+  for (const [n, f] of extFrames) if (!extOf(n)?.enabled || f.dataset.stamp !== (extOf(n).stamp || "")) { f.remove(); extFrames.delete(n); extSent.delete(n); }
   for (const e of extTabs()) extFrame(e);
   await Promise.all(extList.map((e) => invoke("ext_activity", { name: e.name, n: 4 }).then((l) => extActivity.set(e.name, l), () => {})));
   renderMain();
@@ -34,6 +35,7 @@ function extFrame(e) {
   f = document.createElement("iframe");
   f.className = "ext-frame";
   f.hidden = true;
+  f.dataset.stamp = e.stamp || "";
   f.setAttribute("sandbox", "allow-scripts allow-forms");
   f.src = `${EXT_ORIGIN}/${encodeURIComponent(e.name)}/${String(e.entry || "index.html").split("/").map(encodeURIComponent).join("/")}`;
   f.addEventListener("load", () => { extSent.delete(e.name); extNotify(); });
@@ -71,6 +73,8 @@ function placeExt() {
   f.hidden = false;
 }
 addEventListener("resize", placeExt);
+// Back in Cue (after copying a new version in, say): look again, so a changed extension reloads.
+addEventListener("focus", () => { if (extList.length) loadExtensions(); });
 document.addEventListener("click", (e) => {
   const t = e.target.closest?.("[data-stab]");
   if (!t) return;
@@ -85,8 +89,9 @@ function xtCan(cap, programs) {
   const progs = programs.length ? programs.join(", ") : "programs";
   return {
     "sessions.read": "See the open session: its name, folder, machine, and where its turns began",
-    "cmd.run": `Run ${progs} on this Mac`,
-    "machines.run": `Run ${progs} on your machines, over Cue's own SSH`,
+    "git.read": "Read git in the open session's folders, on this Mac or its machine, without changing anything",
+    "cmd.run": `Run ${progs} on this Mac, with any arguments (as you could in Terminal)`,
+    "machines.run": `Run ${progs} on your machines over Cue's own SSH, with any arguments`,
   }[cap] || `Use “${cap}”`;
 }
 /** A logged line, shown short: "git diff HEAD … · 3m ago". */
@@ -114,7 +119,7 @@ function xtSettings() {
         <button class="toggle ${e.enabled ? "on" : ""}" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="${e.enabled ? "" : "1"}" role="switch" aria-checked="${!!e.enabled}" aria-label="${esc(e.title || e.name)}"><span></span></button></div>
       <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}
         <div class="xt-log"><div class="xt-k">Last it did</div>${lines.length ? lines.map(xtLine).join("") : `<div class="xt-none">Nothing yet</div>`}</div>
-        <div class="xt-folder"><code>${esc(e.folder || "")}</code></div></div></div>`;
+        <div class="xt-folder">${e.builtin ? "Comes with Cue, and updates with it" : `${e.replaces_builtin ? "Your copy, used in place of the one that comes with Cue: " : ""}<code>${esc(e.folder || "")}</code>`}</div></div></div>`;
   }).join("");
   return `<div class="set-group">Extensions</div>
     <div class="xt-intro">An extension is a folder with a <code>manifest.json</code> and its own page, in <code>${esc(extRoot)}</code>. Nothing in it runs until you switch it on here, and switching it on is what allows what it asks for. Every command it runs is listed under it.
@@ -181,6 +186,19 @@ addEventListener("message", async (e) => {
         const r = await invoke("ext_run", { ext: name, program: String(p.program || ""), args: (p.args || []).map(String), cwd: p.cwd ? String(p.cwd) : null, machine: p.machine ? String(p.machine) : null });
         extRan.set(name, r.line);
         renderMain();
+        return reply(true, r);
+      }
+      case "git": {
+        // Read-only git that Cue runs, in the open session's folder (Cue's record of it, not the page's word).
+        need("git.read");
+        const sid = String(p.session || "");
+        if (sid !== openSid()) throw new Error("only the open session");
+        const x = sessionOf(sid) || (state.live || []).find((q) => q.session_id === sid);
+        if (!x) throw new Error("no such session");
+        const r = await invoke("ext_git", { ext: name, op: String(p.op || ""), folder: x.cwd || "", machine: x.machine || null,
+          against: p.against ? String(p.against) : null, path: p.path ? String(p.path) : null, transcript: x.transcript_path || null });
+        const ran = `git ${p.op}${p.against ? ` ${String(p.against).slice(0, 9)}` : ""}${p.path ? ` ${p.path}` : ""}${x.machine ? ` · on ${x.machine}` : ""}`;
+        if (extRan.get(name) !== ran) { extRan.set(name, ran); renderMain(); }
         return reply(true, r);
       }
       case "tab.badge": {

@@ -17,6 +17,63 @@ const SDK_CSS: &str = include_str!("../../ui/ext-sdk/cue.css");
 const RUN_LIMIT: Duration = Duration::from_secs(20);
 const OUT_LIMIT: usize = 4 << 20;
 
+/// The extensions that come with Cue: in the app (Contents/Resources/extensions), so they update with it.
+/// A development build run from this checkout uses the checkout's extensions/. CUE_BUILTIN_EXTENSIONS
+/// overrides it (empty: none; tests use that).
+pub fn builtin_root() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("CUE_BUILTIN_EXTENSIONS") {
+        return Some(PathBuf::from(p)).filter(|p| !p.as_os_str().is_empty() && p.is_dir());
+    }
+    let exe = std::env::current_exe().ok()?;
+    let bundled = exe.parent().map(|d| d.join("../Resources/extensions")).filter(|p| p.is_dir());
+    #[cfg(debug_assertions)]
+    let r = bundled.or_else(|| Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../extensions"))).filter(|p| p.is_dir()));
+    #[cfg(not(debug_assertions))]
+    let r = bundled;
+    r
+}
+
+/// Where extension `name` lives: your extensions folder first (a copy there takes the place of one that
+/// comes with Cue), else Cue's own. And whether it's Cue's own.
+fn dir_of(name: &str) -> Option<(PathBuf, bool)> {
+    if !valid_name(name) {
+        return None;
+    }
+    let mine = root().join(name);
+    if mine.join("manifest.json").is_file() {
+        return Some((mine, false));
+    }
+    let b = builtin_root()?.join(name);
+    b.join("manifest.json").is_file().then_some((b, true))
+}
+
+/// Changes whenever any of the extension's files does (their names, sizes and times): its page reloads then.
+fn stamp(dir: &Path) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let mut todo = vec![dir.to_path_buf()];
+    let mut seen = 0;
+    while let Some(d) = todo.pop() {
+        let mut entries: Vec<_> = std::fs::read_dir(&d).into_iter().flatten().flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            if e.file_name().to_string_lossy().starts_with('.') || seen > 2000 {
+                continue;
+            }
+            seen += 1;
+            let Ok(md) = e.metadata() else { continue };
+            if md.is_dir() {
+                todo.push(e.path());
+            } else {
+                e.path().strip_prefix(dir).ok().hash(&mut h);
+                md.len().hash(&mut h);
+                md.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t| t.as_millis()).hash(&mut h);
+            }
+        }
+    }
+    format!("{:x}", h.finish())
+}
+
 pub fn root() -> PathBuf {
     crate::server::cue_dir().join("extensions")
 }
@@ -29,7 +86,7 @@ pub fn manifest(name: &str) -> Option<Value> {
     if !valid_name(name) {
         return None;
     }
-    let text = std::fs::read_to_string(root().join(name).join("manifest.json")).ok()?;
+    let text = std::fs::read_to_string(dir_of(name)?.0.join("manifest.json")).ok()?;
     let mut m: Value = serde_json::from_str(&text).ok()?;
     m["name"] = json!(name);
     if m["entry"].as_str().is_none() {
@@ -61,18 +118,27 @@ fn with_status(mut m: Value) -> Value {
     m["enabled"] = json!(on && pending_caps.is_empty() && pending_programs.is_empty());
     m["pending_capabilities"] = json!(pending_caps);
     m["pending_programs"] = json!(pending_programs);
-    m["folder"] = json!(root().join(&name).display().to_string());
+    if let Some((dir, builtin)) = dir_of(&name) {
+        m["folder"] = json!(dir.display().to_string());
+        m["builtin"] = json!(builtin);
+        // Yours, in place of one that comes with Cue.
+        m["replaces_builtin"] = json!(!builtin && builtin_root().is_some_and(|b| b.join(&name).join("manifest.json").is_file()));
+        m["stamp"] = json!(stamp(&dir));
+    }
     m
 }
 
 pub fn list() -> Vec<Value> {
-    let mut out: Vec<Value> = std::fs::read_dir(root())
+    // Yours and Cue's own, each name once (yours wins: dir_of looks there first).
+    let mut names: Vec<String> = [Some(root()), builtin_root()]
         .into_iter()
         .flatten()
-        .flatten()
-        .filter_map(|e| manifest(e.file_name().to_str()?))
-        .map(with_status)
+        .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten())
+        .filter_map(|e| e.file_name().to_str().map(String::from))
         .collect();
+    names.sort();
+    names.dedup();
+    let mut out: Vec<Value> = names.iter().filter_map(|n| manifest(n)).map(with_status).collect();
     out.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     out
 }
@@ -132,7 +198,7 @@ fn reply(status: u16, kind: &str, body: Vec<u8>) -> Response<Vec<u8>> {
 /// and a symlink only if it stays within the folder).
 fn file_in(name: &str, rel: &str) -> Option<PathBuf> {
     enabled(name)?;
-    let dir = root().join(name).canonicalize().ok()?;
+    let dir = dir_of(name)?.0.canonicalize().ok()?;
     let mut p = dir.clone();
     for seg in rel.split('/') {
         if seg.is_empty() || seg.starts_with('.') {
@@ -252,6 +318,153 @@ pub fn run(ext: &str, program: &str, args: Vec<String>, cwd: Option<String>, mac
     }))
 }
 
+// ---------- git.read: git that Cue runs, read-only ----------
+// An extension with `git.read` names an operation; Cue picks the folder (the open session's, from Cue's
+// own record, never the page's word), builds the command, and checks every argument. Nothing it runs can
+// write, and git's repo settings that could start another program are switched off.
+
+/// The git every git.read operation runs: no pager, no locks, no file-system monitor, no external diff or
+/// text conversion (both are set in a repo's own config and run a program).
+fn git_args<'a>(dir: &'a str, rest: &[&'a str]) -> Vec<&'a str> {
+    let mut a = vec!["-c", "core.fsmonitor=false", "-c", "core.pager=cat", "--no-optional-locks", "-C", dir];
+    a.extend_from_slice(rest);
+    a
+}
+const QUIET_DIFF: [&str; 3] = ["--no-color", "--no-ext-diff", "--no-textconv"];
+
+/// A commit to diff against: HEAD, or a commit's hex name (as Cue's own snapshots are).
+fn valid_rev(r: &str) -> bool {
+    r == "HEAD" || ((7..=64).contains(&r.len()) && r.chars().all(|c| c.is_ascii_hexdigit()))
+}
+/// A file inside the repo, as git names it: relative, no `..`, never read as an option.
+fn valid_rel(p: &str) -> bool {
+    !p.is_empty() && !p.starts_with('-') && !p.starts_with('/') && !p.split('/').any(|s| s == ".." || s.is_empty()) && !p.contains('\0')
+}
+
+/// Filters the repo's own config defines (`filter.<name>.clean`, `.smudge`, `.process`: programs git runs
+/// on files when it diffs them, picked by .gitattributes), each switched off: clean and smudge pass the
+/// file through as it is, and no process runs. Yours, from your own git config (Git LFS, say), stay.
+/// Reading config runs nothing.
+fn no_repo_filters(machine: &str, dir: &str) -> Vec<String> {
+    let mut names: Vec<String> = vec![];
+    for scope in ["--local", "--worktree"] {
+        let Ok((out, _)) = git_in(machine, dir, &[], &["config", scope, "--name-only", "--get-regexp", "^filter\\."]) else { continue };
+        for key in out.lines() {
+            if let Some(name) = key.strip_prefix("filter.").and_then(|k| k.rsplit_once('.')).map(|(n, _)| n.to_string()) {
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+        }
+    }
+    names.iter().flat_map(|n| ["-c".to_string(), format!("filter.{n}.clean=cat"), "-c".into(), format!("filter.{n}.smudge=cat"), "-c".into(), format!("filter.{n}.process=")]).collect()
+}
+
+/// Run git (the words after `git`) in `dir`, here or on `machine`, with `extra` settings first (from
+/// no_repo_filters): stdout, and the exit code.
+fn git_in(machine: &str, dir: &str, extra: &[String], rest: &[&str]) -> Result<(String, i32), String> {
+    let extra: Vec<&str> = extra.iter().map(String::as_str).collect();
+    let words = git_args(dir, &[&extra[..], rest].concat());
+    if machine.is_empty() {
+        let bin = which("git").ok_or("git isn't installed")?;
+        let out = Command::new(bin).args(&words).stdin(Stdio::null()).output().map_err(|e| e.to_string())?;
+        return Ok((String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(OUT_LIMIT)]).to_string(), out.status.code().unwrap_or(1)));
+    }
+    let host = crate::machines::get(machine).ok_or_else(|| format!("Cue doesn't know a machine called {machine}"))?.host;
+    let mut all = vec!["git"];
+    all.extend(words);
+    let script = format!("{}; printf '\\n@@cue-exit %s\\n' $?", sh_words(&all));
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || { let _ = tx.send(crate::machines::run(&host, &script)); });
+    let o = rx.recv_timeout(RUN_LIMIT).unwrap_or_else(|_| Err("it took too long".into()))?;
+    Ok(match o.rfind("\n@@cue-exit ") {
+        Some(i) => (o[..i].to_string(), o[i + 12..].trim().parse().unwrap_or(1)),
+        None => (o, 1),
+    })
+}
+
+/// One file this session edited, as it is now: its uncommitted changes, against its own repo's HEAD (a
+/// file git doesn't track yet: its whole content). `abs` is absolute.
+fn edited_one(machine: &str, abs: &str, filters: &mut std::collections::HashMap<String, Vec<String>>) -> Value {
+    let p = Path::new(abs);
+    let (dir, base) = (p.parent().map(|d| d.display().to_string()).unwrap_or_default(), p.file_name().map(|b| b.to_string_lossy().to_string()).unwrap_or_default());
+    if dir.is_empty() || base.is_empty() || base.starts_with('-') {
+        return json!({ "path": abs, "note": "not a file path" });
+    }
+    let extra = filters.entry(dir.clone()).or_insert_with(|| no_repo_filters(machine, &dir)).clone();
+    let tracked = git_in(machine, &dir, &extra, &["ls-files", "--error-unmatch", "--", &base]).map(|(_, c)| c == 0).unwrap_or(false);
+    let rest: Vec<&str> = if tracked {
+        [&["diff", "HEAD"][..], &QUIET_DIFF[..], &["--", &base]].concat()
+    } else {
+        [&["diff", "--no-index"][..], &QUIET_DIFF[..], &["--", "/dev/null", &base]].concat()
+    };
+    match git_in(machine, &dir, &extra, &rest) {
+        Ok((out, _)) if !out.trim().is_empty() => json!({ "path": abs, "new": !tracked, "diff": out }),
+        Ok(_) => json!({ "path": abs, "note": if tracked { "no uncommitted changes" } else { "gone, or not in a git repository" } }),
+        Err(e) => json!({ "path": abs, "note": e }),
+    }
+}
+
+/// A git.read operation for extension `ext` in the session folder `folder` (here, or on `machine`):
+///   toplevel             the repo's top folder
+///   diff {against}       tracked changes against HEAD or a commit
+///   untracked            files git doesn't track and isn't told to ignore
+///   new_file {path}      one such file's whole content, as a diff
+///   edited {transcript}  every file the session edited (from its log), each with its uncommitted changes
+pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Option<&str>, path: Option<&str>, transcript: Option<&str>) -> Result<Value, String> {
+    let m = enabled(ext).ok_or_else(|| format!("{ext} isn't switched on"))?;
+    if !has(&m, "capabilities", "git.read") {
+        return Err(format!("{ext} didn't ask to read git"));
+    }
+    if folder.is_empty() || !folder.starts_with('/') {
+        return Err("that session has no folder".into());
+    }
+    let start = Instant::now();
+    let done = |what: &str, code: i32| log(&format!("{ext} [{}{folder}] git.read {what} -> {code}", if machine.is_empty() { String::new() } else { format!("{machine}:") }));
+    let extra = no_repo_filters(machine, folder);
+    let plain = |rest: &[&str], what: &str| -> Result<Value, String> {
+        let (out, code) = git_in(machine, folder, &extra, rest)?;
+        done(what, code);
+        Ok(json!({ "code": code, "stdout": out, "ms": start.elapsed().as_millis() as u64 }))
+    };
+    match op {
+        "toplevel" => plain(&["rev-parse", "--show-toplevel"], "toplevel"),
+        "diff" => {
+            let rev = against.unwrap_or("HEAD");
+            if !valid_rev(rev) {
+                return Err(format!("not a commit: {rev}"));
+            }
+            plain(&[&["diff", rev][..], &QUIET_DIFF[..]].concat(), &format!("diff {rev}"))
+        }
+        "untracked" => plain(&["ls-files", "--others", "--exclude-standard", "--full-name"], "untracked"),
+        "new_file" => {
+            let p = path.unwrap_or("");
+            if !valid_rel(p) {
+                return Err(format!("not a file in the repo: {p}"));
+            }
+            plain(&[&["diff", "--no-index"][..], &QUIET_DIFF[..], &["--", "/dev/null", p]].concat(), &format!("new_file {p}"))
+        }
+        "edited" => {
+            let t = transcript.filter(|t| !t.is_empty()).ok_or("that session has no log to read its edits from")?;
+            let files: Vec<String> = crate::logs::steps::edited_files(t)
+                .into_iter()
+                .map(|f| if f.starts_with('/') { f } else { format!("{}/{f}", folder.trim_end_matches('/')) })
+                .take(200)
+                .collect();
+            let mut filters = std::collections::HashMap::new();
+            let out: Vec<Value> = files.iter().map(|f| edited_one(machine, f, &mut filters)).collect();
+            done(&format!("edited ({} files)", out.len()), 0);
+            Ok(json!({ "files": out, "ms": start.elapsed().as_millis() as u64 }))
+        }
+        _ => Err(format!("no such git.read operation: {op}")),
+    }
+}
+
+#[tauri::command]
+pub async fn ext_git(ext: String, op: String, folder: String, machine: Option<String>, against: Option<String>, path: Option<String>, transcript: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || git_read(&ext, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await.map_err(|e| e.to_string())?
+}
+
 /// Where extensions go, and each one there with where it stands.
 #[tauri::command]
 pub fn ext_list() -> Value {
@@ -363,6 +576,7 @@ mod tests {
         let ext = dir.join("extensions/demo");
         std::fs::create_dir_all(&ext).unwrap();
         std::env::set_var("CUE_HOME", &dir);
+        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
         let write = |caps: &str, progs: &str| std::fs::write(ext.join("manifest.json"), format!(r#"{{"title":"Demo","tab":"Demo","capabilities":[{caps}],"programs":[{progs}]}}"#)).unwrap();
         std::fs::write(ext.join("index.html"), "<p>hi</p>").unwrap();
         write(r#""cmd.run""#, r#""git""#);
@@ -396,6 +610,98 @@ mod tests {
         assert!(ext_activity("demo".into(), 10).iter().any(|l| l.ends_with("switched off in Settings")));
 
         std::env::remove_var("CUE_HOME");
+        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cues_own_extensions_are_listed_and_a_copy_of_yours_takes_their_place() {
+        let _one = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-ext-builtin-{}", std::process::id()));
+        let (mine, own) = (dir.join("home/extensions"), dir.join("app/extensions"));
+        for d in [own.join("tool"), own.join("other")] {
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("manifest.json"), r#"{"title":"Cue's","tab":"T"}"#).unwrap();
+            std::fs::write(d.join("index.html"), "v1").unwrap();
+        }
+        std::env::set_var("CUE_HOME", dir.join("home"));
+        std::env::set_var("CUE_BUILTIN_EXTENSIONS", &own);
+        let get = |n: &str| list().into_iter().find(|e| e["name"] == n).unwrap();
+
+        // Cue's own: listed, marked as such, off until switched on, served once it is.
+        assert_eq!(list().len(), 2);
+        assert_eq!((get("tool")["builtin"].clone(), get("tool")["enabled"].clone()), (json!(true), json!(false)));
+        ext_enable("tool".into(), true).unwrap();
+        assert_eq!(serve(Request::builder().uri("cueext://localhost/tool/index.html").body(vec![]).unwrap()).into_body(), b"v1");
+
+        // A change to its files changes its stamp (its page reloads).
+        let before = get("tool")["stamp"].clone();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(own.join("tool/index.html"), "v2, longer").unwrap();
+        assert_ne!(get("tool")["stamp"], before);
+
+        // Your copy of the same name takes its place, and says so.
+        std::fs::create_dir_all(mine.join("tool")).unwrap();
+        std::fs::write(mine.join("tool/manifest.json"), r#"{"title":"Mine","tab":"T"}"#).unwrap();
+        std::fs::write(mine.join("tool/index.html"), "mine").unwrap();
+        let t = get("tool");
+        assert_eq!((t["title"].clone(), t["builtin"].clone(), t["replaces_builtin"].clone()), (json!("Mine"), json!(false), json!(true)));
+        assert_eq!(list().len(), 2);
+        assert_eq!(serve(Request::builder().uri("cueext://localhost/tool/index.html").body(vec![]).unwrap()).into_body(), b"mine");
+
+        std::env::remove_var("CUE_HOME");
+        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn git_read_runs_only_fixed_read_only_git_and_checks_every_argument() {
+        assert!(valid_rev("HEAD") && valid_rev("3f9a1c2") && !valid_rev("--output=/tmp/x") && !valid_rev("main~1") && !valid_rev("-c"));
+        assert!(valid_rel("src/a.rs") && !valid_rel("../x") && !valid_rel("/etc/passwd") && !valid_rel("--output=x") && !valid_rel("a//b"));
+        let _one = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-gitread-{}", std::process::id()));
+        let (home, repo) = (dir.join("home"), dir.join("repo"));
+        std::fs::create_dir_all(home.join("extensions/r")).unwrap();
+        std::fs::write(home.join("extensions/r/manifest.json"), r#"{"tab":"R","capabilities":["git.read"]}"#).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        let sh = |c: &str| assert!(Command::new("/bin/sh").arg("-c").arg(c).current_dir(&repo).status().unwrap().success());
+        sh("git init -q && git config user.email t@t && git config user.name t && printf 'one\n' > a.txt && git add . && git commit -qm i");
+        // A repo whose own config would run a program for a diff: Cue's git.read must not.
+        sh("git config diff.external 'touch ran-external' && printf 'one\ntwo\n' > a.txt && printf 'new\n' > b.txt");
+        // And a filter: .gitattributes picks it, the repo's own config says what it runs.
+        sh("printf '*.txt filter=evil\n' > .gitattributes && git config filter.evil.clean 'touch ran-clean; cat' && git config filter.evil.process 'touch ran-process; false'");
+        std::env::set_var("CUE_HOME", &home);
+        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
+        let folder = repo.canonicalize().unwrap().display().to_string();
+        let read = |op: &str, against: Option<&str>, path: Option<&str>, t: Option<&str>| git_read("r", op, &folder, "", against, path, t);
+
+        // Off: nothing.
+        assert!(read("toplevel", None, None, None).unwrap_err().contains("isn't switched on"));
+        ext_enable("r".into(), true).unwrap();
+        assert_eq!(read("toplevel", None, None, None).unwrap()["stdout"].as_str().unwrap().trim(), folder);
+        let d = read("diff", Some("HEAD"), None, None).unwrap();
+        assert!(d["stdout"].as_str().unwrap().contains("+two"));
+        assert!(!repo.join("ran-external").exists(), "the repo's external diff program never ran");
+        assert!(!repo.join("ran-clean").exists() && !repo.join("ran-process").exists(), "the repo's filters never ran");
+        assert_eq!(read("untracked", None, None, None).unwrap()["stdout"].as_str().unwrap().trim(), ".gitattributes\nb.txt");
+        assert!(read("new_file", None, Some("b.txt"), None).unwrap()["stdout"].as_str().unwrap().contains("+new"));
+        // Anything that isn't a commit or a file in the repo is refused before git runs.
+        assert!(read("diff", Some("--output=/tmp/x"), None, None).is_err());
+        assert!(read("new_file", None, Some("../../etc/passwd"), None).is_err());
+        assert!(read("rm", None, None, None).is_err());
+
+        // edited: the files a session's log says it edited, each with its changes now.
+        let log = dir.join("t.jsonl");
+        std::fs::write(&log, format!(r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"t1","name":"Edit","input":{{"file_path":"{folder}/a.txt"}}}},{{"type":"tool_use","id":"t2","name":"Write","input":{{"file_path":"{folder}/b.txt"}}}}]}}}}"#)).unwrap();
+        let e = read("edited", None, None, Some(log.to_str().unwrap())).unwrap();
+        let files = e["files"].as_array().unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files[0]["diff"].as_str().unwrap().contains("+two") && files[0]["new"] == json!(false));
+        assert!(files[1]["diff"].as_str().unwrap().contains("+new") && files[1]["new"] == json!(true));
+        assert!(!repo.join("ran-clean").exists() && !repo.join("ran-process").exists(), "nor while reading edits");
+
+        std::env::remove_var("CUE_HOME");
+        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

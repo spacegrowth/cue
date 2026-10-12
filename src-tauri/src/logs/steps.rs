@@ -637,6 +637,46 @@ fn kind_of(path: &str) -> Kind {
     }
 }
 
+/// Every file the session edited or wrote, first edited first, as its log names it: Claude Code's Edit,
+/// MultiEdit, Write and NotebookEdit, Codex's apply_patch (every file in a patch; paths relative to the
+/// session's folder), Pi's edit and write. The whole log is read.
+pub fn edited_files(path: &str) -> Vec<String> {
+    let kind = kind_of(path);
+    let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
+    let mut patches = HashMap::new();
+    let mut out: Vec<String> = vec![];
+    fn add(out: &mut Vec<String>, p: &str) {
+        let p = p.trim();
+        if !p.is_empty() && !out.iter().any(|x| x == p) {
+            out.push(p.to_string());
+        }
+    }
+    for line in text.lines() {
+        let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
+        for t in translate(kind, &e, &mut patches) {
+            for b in t.pointer("/message/content").and_then(Value::as_array).into_iter().flatten() {
+                let name = b.get("name").and_then(Value::as_str).unwrap_or("");
+                if b.get("type").and_then(Value::as_str) == Some("tool_use") && matches!(name, "Edit" | "MultiEdit" | "Write" | "NotebookEdit") {
+                    let input = &b["input"];
+                    add(&mut out, input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).unwrap_or(""));
+                }
+            }
+        }
+    }
+    let mut raws: Vec<&String> = patches.values().collect();
+    raws.sort();
+    for raw in raws {
+        for l in raw.lines() {
+            for m in ["*** Update File: ", "*** Add File: ", "*** Delete File: ", "*** Move to: "] {
+                if let Some(p) = l.strip_prefix(m) {
+                    add(&mut out, p);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// One log entry as Claude Code transcript entries (none, one, or a few).
 fn translate(kind: Kind, e: &Value, patches: &mut HashMap<String, String>) -> Vec<Value> {
     match kind {
@@ -1148,6 +1188,32 @@ fn one_detail(tool: &str, input: &Value, block: &Value, extra: &Value) -> Value 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edited_files_are_read_from_every_agents_log() {
+        let dir = std::env::temp_dir().join(format!("cue-edited-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let claude = dir.join("c.jsonl");
+        std::fs::write(&claude, [
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"/r/a.rs"}}]}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":"/r/x.rs"}}]}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"Write","input":{"file_path":"/other/b.md"}},{"type":"tool_use","id":"t4","name":"Edit","input":{"file_path":"/r/a.rs"}}]}}"#,
+        ].join("\n")).unwrap();
+        assert_eq!(edited_files(claude.to_str().unwrap()), vec!["/r/a.rs", "/other/b.md"]);
+        let pi = dir.join("p.jsonl");
+        std::fs::write(&pi, [
+            r#"{"type":"session","version":3,"id":"s","cwd":"/a"}"#,
+            r#"{"type":"message","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"edit","arguments":{"path":"/a/src/f.ts"}}]}}"#,
+        ].join("\n")).unwrap();
+        assert_eq!(edited_files(pi.to_str().unwrap()), vec!["/a/src/f.ts"]);
+        let codex = dir.join("x.jsonl");
+        std::fs::write(&codex, [
+            r#"{"timestamp":"2026-10-05T06:36:49.000Z","type":"session_meta","payload":{"id":"x","cwd":"/w"}}"#,
+            r#"{"timestamp":"2026-10-05T06:36:50.000Z","type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","call_id":"p1","input":"*** Begin Patch\n*** Update File: src/one.rs\n@@\n-a\n+b\n*** Add File: src/two.rs\n+x\n*** End Patch"}}"#,
+        ].join("\n")).unwrap();
+        assert_eq!(edited_files(codex.to_str().unwrap()), vec!["src/one.rs", "src/two.rs"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn feed_of(jsonl: &str) -> Feed {
         let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new() };

@@ -59,9 +59,9 @@ it changes, and never runs anything. If it doesn't match this format, the pill s
 
 An extension adds a tab beside a session's chat, with a page of its own. Cue comes with one,
 [Diff](extensions/diff): what the session changed this turn, the whole session, or everything not
-committed. Copy an extension's folder into Settings → Extensions → **Open the folder**, then switch it
-on. Nothing in an extension runs until you
-do. To make one, see [docs/extensions.md](docs/extensions.md).
+committed. Switch it on in Settings → Extensions; it updates with Cue. To add another, copy its folder
+into Settings → Extensions → **Open the folder**. Nothing in an extension runs until you switch it on.
+To make one, see [docs/extensions.md](docs/extensions.md).
 
 ## Privacy
 

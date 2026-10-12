@@ -61,7 +61,8 @@
       "binaries/cue-listen"
     ],
     "resources": {
-      "../pi/cue.ts": "pi/cue.ts"
+      "../pi/cue.ts": "pi/cue.ts",
+      "../extensions/": "extensions/"
     }
   }
 }

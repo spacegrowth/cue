@@ -34,6 +34,7 @@
     session: () => call("session.current"),
     run: (program, args = [], { cwd, machine } = {}) => call("cmd.run", { program, args, cwd, machine }),
     badge: (session, text) => call("tab.badge", { session, text }),
+    git: (session, op, params = {}) => call("git", { session, op, ...params }),
     toast: (text) => call("ui.toast", { text }),
     log: (text) => call("log", { text }),
     ready: call("hello").then((h) => { theme(h.theme); return h; }),
