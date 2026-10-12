@@ -1,0 +1,27 @@
+body { display: flex; flex-direction: column; overflow: hidden; }
+header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex: none; }
+header .grow { flex: 1; }
+#sum { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#sum b { color: var(--ink); font-weight: 600; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--panel-2); border-radius: 8px; flex: none; }
+.seg button { border: 0; background: none; padding: 3px 10px; border-radius: 6px; font-size: 11.5px; color: var(--muted); }
+.seg button.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.seg button:disabled { opacity: .4; cursor: default; }
+header > button { font-size: 11.5px; padding: 3px 10px; }
+.add { color: color-mix(in srgb, var(--accent) 85%, var(--ink)); }
+.del { color: var(--deny); }
+.n { font-family: var(--mono); font-size: 12px; }
+#body { flex: 1; overflow: auto; padding: 12px 16px 24px; }
+.file { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+.file > summary { list-style: none; cursor: pointer; display: flex; gap: 10px; align-items: center; padding: 6px 10px; background: var(--panel-2); font: 600 12px var(--mono); }
+.file > summary::-webkit-details-marker { display: none; }
+.file > summary .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file > summary .chev { color: var(--muted); }
+.file[open] > summary .chev { transform: rotate(90deg); }
+.tag { font: 600 10.5px var(--sans); color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; }
+.lines { padding: 4px 0; font: 12px/1.5 var(--mono); overflow-x: auto; }
+.lines div { padding: 0 10px; white-space: pre; }
+.lines .a { background: color-mix(in srgb, var(--sel) 45%, transparent); }
+.lines .d { background: color-mix(in srgb, var(--deny) 13%, transparent); }
+.lines .h { color: var(--muted); padding-top: 4px; }
+.note { color: var(--muted); padding: 30px 4px; }
