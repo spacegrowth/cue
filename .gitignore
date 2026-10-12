@@ -3,6 +3,7 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/
 src-tauri/target-clean/
+src-tauri/target-staged/
 
 # An optional add-on, kept outside this repo (built in with the `ext` feature)
 src-tauri/ext

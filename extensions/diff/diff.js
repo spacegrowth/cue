@@ -1,50 +1,26 @@
-// Diff: what the open session changed, from git, as a tab beside its chat.
-//   This turn      since its latest turn began (Cue's snapshot of the folder then)
-//   Whole session  since its first turn Cue saw began
-//   Uncommitted    everything not committed in its folder, whoever changed it
-// For a session on another machine, git runs there, over Cue's own SSH.
+// Diff: what the open session changed, from git, as a tab beside its chat. Git runs through Cue's
+// read-only git (cue.git), in the session's folder, on this Mac or on the session's machine.
+//   This session's edits  the files the session edited (from its log), wherever they are: their changes
+//                         not committed yet
+//   This turn             the session's folder since its latest turn began (Cue's snapshot of it then)
+//   Whole session         the session's folder since its first turn Cue saw began
+//   Uncommitted           everything not committed in the session's folder, whoever changed it
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const SCOPES = [["turn", "This turn"], ["session", "Whole session"], ["uncommitted", "Uncommitted"]];
-let cur = null, scope = null, seq = 0, lastKey = "";
+const SCOPES = [["edits", "This session's edits"], ["turn", "This turn"], ["session", "Whole session"], ["uncommitted", "Uncommitted"]];
+let cur = null, scope = null, seq = 0, lastKey = "", picked = false, noTools = false;
 
 const baseFor = (s, sc) => (sc === "turn" ? s.turn_from : sc === "session" ? s.session_from : null);
-const usable = (s, sc) => sc === "uncommitted" || !!baseFor(s, sc);
-const git = (s, args) => cue.run("git", ["--no-optional-locks", "-C", s.folder, ...args], { machine: s.machine || undefined });
+const usable = (s, sc) => sc === "edits" || sc === "uncommitted" || !!baseFor(s, sc);
+const git = (s, op, params) => cue.git(s.id, op, params);
+const home = (p) => p.replace(/^\/(Users|home)\/[^/]+/, "~");
 
 function drawScope() {
   $("scope").innerHTML = SCOPES.map(([k, label]) => `<button data-k="${k}" class="${k === scope ? "on" : ""}" ${cur && usable(cur, k) ? "" : "disabled"}>${label}</button>`).join("");
 }
 
-async function load(why) {
-  const s = cur, my = ++seq;
-  if (!s) { $("sum").textContent = ""; $("body").innerHTML = `<div class="note">Open a session to see what it changed.</div>`; return; }
-  if (!scope || !usable(s, scope)) scope = usable(s, "turn") ? "turn" : "uncommitted";
-  drawScope();
-  $("body").innerHTML = `<div class="note">Reading git…</div>`;
-  try {
-    const top = await git(s, ["rev-parse", "--show-toplevel"]);
-    if (my !== seq) return;
-    if (top.code !== 0) { $("sum").textContent = ""; $("body").innerHTML = `<div class="note">${esc(s.machine ? `Couldn't read git on ${s.machine}.` : "This folder isn't in a git repository.")}</div>`; cue.badge(s.id, ""); return; }
-    const base = baseFor(s, scope);
-    const against = base ? base.commit : "HEAD";
-    const [diff, others] = await Promise.all([
-      git(s, ["diff", against, "--no-color", "--no-ext-diff"]),
-      git(s, ["ls-files", "--others", "--exclude-standard", "--full-name"]),
-    ]);
-    if (my !== seq) return;
-    const before = new Set(base ? base.untracked : []);
-    const fresh = others.stdout.split("\n").filter((p) => p && !before.has(p));
-    // New files git isn't tracking: their content, as a diff from nothing (the first 20; the rest by name).
-    const shown = await Promise.all(fresh.slice(0, 20).map((p) => git(s, ["diff", "--no-color", "--no-index", "--", "/dev/null", p]).then((r) => r.stdout, () => "")));
-    if (my !== seq) return;
-    render(s, diff.stdout + shown.join(""), fresh.slice(20), base);
-  } catch (e) {
-    if (my === seq) $("body").innerHTML = `<div class="note">${esc(e.message)}</div>`;
-  }
-}
-
-function render(s, text, fresh, base) {
+/** A unified diff (several files' worth) as files: path, new or not, lines, and +/- counts. */
+function parseDiff(text) {
   const files = [];
   let f = null;
   for (const line of text.split("\n")) {
@@ -56,27 +32,99 @@ function render(s, text, fresh, base) {
     else if (line.startsWith("-")) { f.del++; f.lines.push(["d", line]); }
     else if (line) f.lines.push(["", line]);
   }
-  const add = files.reduce((n, x) => n + x.add, 0), del = files.reduce((n, x) => n + x.del, 0), count = files.length + fresh.length;
-  const since = scope === "turn" ? "since its latest turn began" : scope === "session" ? "since its first turn here" : "not committed";
-  $("sum").innerHTML = count ? `<b>${count} file${count === 1 ? "" : "s"}</b> <span class="n"><span class="add">+${add}</span> <span class="del">−${del}</span></span> · ${since}` : since;
-  cue.badge(s.id, count ? `${count} +${add} −${del}` : "");
-  if (!count) { $("body").innerHTML = `<div class="note">No changes ${since}.</div>`; return; }
+  return files;
+}
+
+/** New files, apart from folders full of them (build output git isn't told to ignore, say): a folder,
+ *  two levels deep at most, with more than BULK new files in it is one row, not one row per file. */
+const BULK = 20;
+const dirOf = (p) => { const parts = p.split("/"); return parts.length < 2 ? "" : parts.slice(0, Math.min(2, parts.length - 1)).join("/") + "/"; };
+function bulkSplit(paths) {
+  const groups = new Map();
+  for (const p of paths) { const d = dirOf(p); if (d) groups.set(d, (groups.get(d) || 0) + 1); }
+  const bulk = [...groups].filter(([, n]) => n > BULK).map(([dir, n]) => ({ dir, n }));
+  const inBulk = new Set(bulk.map((b) => b.dir));
+  return { single: paths.filter((p) => !inBulk.has(dirOf(p))), bulk };
+}
+
+async function load() {
+  const s = cur, my = ++seq;
+  if (!s) { $("sum").textContent = ""; $("body").innerHTML = `<div class="note">Open a session to see what it changed.</div>`; return; }
+  if (!scope || !usable(s, scope)) { scope = "edits"; picked = false; }
+  drawScope();
+  $("body").innerHTML = `<div class="note">Reading git…</div>`;
+  try {
+    if (scope === "edits") {
+      const r = await git(s, "edited");
+      if (my !== seq) return;
+      // No edits with its edit tools (an agent that edits through shell commands, say: the log can't say
+      // which files those changed): unless you picked this view, show the folder since this turn began.
+      if (!(r.files || []).length && !picked) { scope = usable(s, "turn") ? "turn" : "uncommitted"; noTools = true; return load(); }
+      noTools = false;
+      renderEdits(s, r.files || []);
+      return;
+    }
+    const top = await git(s, "toplevel");
+    if (my !== seq) return;
+    if (top.code !== 0) { show(s, [], [], `<div class="note">${esc(s.machine ? `Couldn't read git on ${s.machine}.` : "This folder isn't in a git repository.")}</div>`); return; }
+    const base = baseFor(s, scope);
+    const [diff, others] = await Promise.all([git(s, "diff", { against: base ? base.commit : "HEAD" }), git(s, "untracked")]);
+    if (my !== seq) return;
+    const before = new Set(base ? base.untracked : []);
+    const { single, bulk } = bulkSplit(others.stdout.split("\n").filter((p) => p && !before.has(p)));
+    // New files git isn't tracking: their content (the first 20; the rest by name).
+    const shown = await Promise.all(single.slice(0, 20).map((p) => git(s, "new_file", { path: p }).then((r) => r.stdout, () => "")));
+    if (my !== seq) return;
+    const files = parseDiff(diff.stdout + shown.join(""));
+    for (const p of single.slice(20)) files.push({ path: p, isNew: true, lines: [], add: 0, del: 0, unread: true });
+    show(s, files, bulk);
+  } catch (e) {
+    if (my === seq) $("body").innerHTML = `<div class="note">${esc(e.message)}</div>`;
+  }
+}
+
+/** This session's edits: each file it edited, with its changes now; ones with nothing left uncommitted
+ *  listed after. */
+function renderEdits(s, results) {
+  const files = [], quiet = [];
+  const short = (p) => (s.folder && p.startsWith(s.folder.replace(/\/$/, "") + "/") ? p.slice(s.folder.replace(/\/$/, "").length + 1) : home(p));
+  for (const r of results) {
+    const f = r.diff && parseDiff(r.diff)[0];
+    if (f) files.push({ ...f, path: short(r.path), isNew: !!r.new }); else quiet.push({ path: short(r.path), note: r.note || "" });
+  }
+  show(s, files, [], "", quiet, results.length);
+}
+
+const SINCE = { edits: "not committed yet", turn: "since its latest turn began", session: "since its first turn here", uncommitted: "not committed" };
+function show(s, files, bulk, note = "", quiet = [], edited = 0) {
+  const add = files.reduce((n, x) => n + x.add, 0), del = files.reduce((n, x) => n + x.del, 0), count = files.length;
+  const since = SINCE[scope];
+  const nBulk = bulk.reduce((n, b) => n + b.n, 0);
+  const also = bulk.length ? ` · and ${nBulk.toLocaleString()} new files in ${bulk.length === 1 ? esc(bulk[0].dir) : `${bulk.length} folders`}` : "";
+  const what = scope === "edits" ? (edited ? `of the ${edited} file${edited === 1 ? "" : "s"} it edited, ` : "") : "";
+  const why = noTools && scope !== "edits" ? `<div class="why">It hasn't edited files with its edit tools (shell commands don't say which files they change), so this shows its folder.</div>` : "";
+  $("sum").innerHTML = (count ? `<b>${count} file${count === 1 ? "" : "s"}</b> <span class="n"><span class="add">+${add}</span> <span class="del">−${del}</span></span> · ${what}${since}` : scope === "edits" && !edited ? "It hasn't edited any files" : `No changes ${since}`) + also;
+  if (scope === "edits" || scope === "turn") cue.badge(s.id, count ? `${count} +${add} −${del}` : "");
+  if (note) { $("body").innerHTML = why + note; return; }
+  if (!count && !bulk.length && !quiet.length) { $("body").innerHTML = why + `<div class="note">${scope === "edits" ? "It hasn't edited any files yet." : `No changes ${since}.`}</div>`; return; }
   const many = files.length > 12;
-  $("body").innerHTML = files.map((x) => `
-    <details class="file" ${many ? "" : "open"}>
-      <summary><span class="path">${esc(x.path)}</span>${x.isNew ? `<span class="tag">new</span>` : ""}<span class="n add">+${x.add}</span><span class="n del">−${x.del}</span><span class="chev">›</span></summary>
-      <div class="lines">${x.lines.map(([k, l]) => `<div class="${k}">${esc(l)}</div>`).join("")}</div>
-    </details>`).join("") + fresh.map((p) => `
-    <details class="file"><summary><span class="path">${esc(p)}</span><span class="tag">new</span><span class="chev">›</span></summary><div class="lines"><div class="h">A new file git isn't tracking yet.</div></div></details>`).join("");
+  $("body").innerHTML = why + files.map((x) => `
+    <details class="file" ${many || x.unread ? "" : "open"}>
+      <summary><span class="path">${esc(x.path)}</span>${x.isNew ? `<span class="tag">new</span>` : ""}${x.unread ? "" : `<span class="n add">+${x.add}</span><span class="n del">−${x.del}</span>`}<span class="chev">›</span></summary>
+      <div class="lines">${x.unread ? `<div class="h">A new file git isn't tracking yet.</div>` : x.lines.map(([k, l]) => `<div class="${k}">${esc(l)}</div>`).join("")}</div>
+    </details>`).join("") + bulk.map((b) => `
+    <details class="file"><summary><span class="path">${esc(b.dir)}</span><span class="tag">${b.n.toLocaleString()} new files</span><span class="chev">›</span></summary><div class="lines"><div class="h">Files git isn't tracking and isn't told to ignore. If it's build output, add ${esc(b.dir)} to .gitignore.</div></div></details>`).join("")
+    + (quiet.length ? `<div class="quiet"><div class="quiet-h">Also edited, nothing uncommitted now</div>${quiet.map((q) => `<div class="quiet-r"><code>${esc(q.path)}</code>${q.note && q.note !== "no uncommitted changes" ? `<span>${esc(q.note)}</span>` : ""}</div>`).join("")}</div>` : "");
 }
 
 $("scope").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-k]");
   if (!b || b.disabled) return;
   scope = b.dataset.k;
-  load("scope");
+  picked = true;
+  load();
 });
-$("refresh").addEventListener("click", () => load("refresh"));
+$("refresh").addEventListener("click", () => load());
 
 /** Cue says which session is open, and again whenever anything about it changes: reload when it's a
  *  different session, or a turn began or ended (its state or its snapshot moved). */
@@ -86,8 +134,8 @@ function follow(s) {
   const other = !cur || !s || cur.id !== s.id;
   lastKey = key;
   cur = s;
-  if (other) scope = null;
-  load("session");
+  if (other) { scope = null; noTools = false; }
+  load();
 }
 cue.on("session", follow);
 cue.ready.then(async () => follow(await cue.session()));
