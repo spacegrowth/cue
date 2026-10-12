@@ -15,6 +15,11 @@ const HELPERS_SETTLE_SECS: u64 = 15;
 const STUCK_RUNNING_MS: u64 = 10 * 60_000;
 
 const STUCK_THINKING_MS: u64 = 5 * 60_000;
+/// After Cue stops a turn to send your message now, this long before the stop counts as yours: typing the
+/// message into a machine's terminal takes a few round trips, and a failed send says so itself.
+const STOPPED_TO_SEND_MS: u64 = 30_000;
+/// How far a machine's log copy may lag behind its hook: a turn begun this recently isn't read as stopped.
+const LOG_LAG_MS: u64 = 10_000;
 
 /// A queued message taken from the queue this recently was taken as the turn before it ended: it's
 /// the next turn's prompt, not the prompt of the turn now ending.
@@ -429,10 +434,15 @@ impl Hub {
         // Interrupted (Esc, on purpose or not) a few seconds ago with nothing since: no Stop comes for
         // that, so it lands in Waiting as "interrupted", with Continue. A few seconds: ⌘Enter's Esc
         // is followed at once by your message.
+        // Not when the stop was Cue's own, to send your message now: typing it into a machine's terminal
+        // can take longer than that. Nor when a message reached it since moments ago: a machine's log copy
+        // can lag behind its hook, still ending on the interrupt while the agent works on what came next.
         let now = now_ms();
         let stuck: Vec<Origin> = {
             let st = self.st();
+            let recent = |m: &HashMap<String, u64>, sid: &str, ms: u64| m.get(sid).is_some_and(|t| now.saturating_sub(*t) < ms);
             st.sessions.all().into_iter().filter(|s| s.state == "working" && s.origin.harness == "claude" && !s.origin.transcript_path.is_empty())
+                .filter(|s| !recent(&st.stopped_to_send, &s.origin.session_id, STOPPED_TO_SEND_MS) && !recent(&st.active_at, &s.origin.session_id, LOG_LAG_MS))
                 .filter(|s| transcript::interrupted_at(&s.origin.transcript_path).is_some_and(|at| at + 1500 >= s.since_ms && now.saturating_sub(at) > 3000))
                 .map(|s| s.origin).collect()
         };
@@ -569,6 +579,48 @@ impl Hub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A transcript timestamp for `ms` ("2026-10-12T10:00:00.123Z").
+    fn iso(ms: u64) -> String {
+        let secs = (ms / 1000) as libc::time_t;
+        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+        unsafe { libc::gmtime_r(&secs, &mut tm) };
+        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms % 1000)
+    }
+
+    #[test]
+    fn a_turn_cue_stopped_to_send_now_isnt_called_interrupted_and_one_you_stopped_is() {
+        let dir = std::env::temp_dir().join(format!("cue-int-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let interrupted = |sid: &str| -> Origin {
+            let path = dir.join(format!("{sid}.jsonl"));
+            let o = Origin { session_id: sid.into(), harness: "claude".into(), cwd: "/x/proj".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+            hub.mark_state(&o, "working");
+            // Stopped a second after it began: its log ends on the interrupt, nothing after it.
+            let at = now_ms() - 1000;
+            std::fs::write(&path, format!("{{\"type\":\"user\",\"timestamp\":\"{}\",\"message\":{{\"content\":\"on the pill\"}}}}\n{{\"type\":\"user\",\"timestamp\":\"{}\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"[Request interrupted by user]\"}}]}}}}\n", iso(at - 500), iso(at))).unwrap();
+            o
+        };
+        let cue_stopped = interrupted("now1");
+        hub.st().stopped_to_send.insert("now1".into(), now_ms());   // ⌘↵: Cue's own Esc, your message on its way
+        let lagging = interrupted("lag1");
+        let you_stopped = interrupted("esc1");
+        std::thread::sleep(std::time::Duration::from_millis(2300));
+        hub.st().active_at.insert("lag1".into(), now_ms());   // its next message reached Cue; the log copy hasn't caught up
+        hub.refresh_activity();
+        let state = |o: &Origin| hub.st().sessions.state(&o.session_id);
+        assert_eq!(state(&cue_stopped).as_deref(), Some("working"), "Cue stopped it to send yours: still at work, no Interrupted card");
+        assert_eq!(state(&lagging).as_deref(), Some("working"), "a message just reached it: the log copy is behind, not stopped");
+        assert_eq!(state(&you_stopped).as_deref(), Some("waiting"), "you stopped it: Interrupted, waiting for you");
+        assert!(hub.pending().iter().any(|i| i.origin.session_id == "esc1" && i.interrupted));
+        assert!(!hub.pending().iter().any(|i| i.origin.session_id != "esc1"));
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_turn_that_ends_with_background_agents_at_work_waits_on_them_not_you() {

@@ -38,6 +38,9 @@ struct Store {
     next: u64,
     /// When each session last started a turn — how a typed reply is confirmed as submitted.
     active_at: HashMap<String, u64>,
+    /// When Cue last stopped a session's turn itself to send a message now (⌘↵): the interrupt that
+    /// leaves in its transcript is Cue's, with your message on its way, not a turn you stopped.
+    stopped_to_send: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
     /// Sessions you parked (stopped, kept to resume), the latest parked first.

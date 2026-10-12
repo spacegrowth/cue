@@ -250,6 +250,7 @@ impl Hub {
         }
         let stopped = now && busy && !direct;
         let busy = if stopped {
+            self.st().stopped_to_send.insert(session_id.to_string(), now_ms());
             crate::focus::press_escape(origin.as_ref().ok_or("that session is gone")?)?;
             std::thread::sleep(std::time::Duration::from_millis(700));
             false
