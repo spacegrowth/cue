@@ -203,8 +203,9 @@
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           console.log("[cue-preview]", cmd, JSON.stringify(args));
           // ?xt=1: Settings → Extensions with three: one on, one updated and asking for more, one off.
-          if (cmd === "ext_list" && /xt=1/.test(q)) return { root: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions", list: [
-            { name: "diff", title: "Changes", tab: "Changes", version: "0.2.0", capabilities: ["sessions.read", "cmd.run", "machines.run"], programs: ["git"], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/diff" },
+          if (cmd === "ext_list" && /xt=1/.test(q)) return { root: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions", programs_allowed: false, list: [
+            { name: "boxes", title: "Container tools", tab: "Box", version: "0.1.0", capabilities: ["sessions.read", "programs.run"], programs: ["docker", "mutagen"], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/boxes" },
+            { name: "diff", title: "Diff", tab: "Diff", version: "0.4.0", capabilities: ["sessions.read", "git.read"], programs: [], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/diff" },
             { name: "notes", title: "Session notes", tab: "Notes", version: "0.3.0", capabilities: ["sessions.read", "cmd.run"], programs: ["git"], on: true, enabled: false, pending_capabilities: ["cmd.run"], pending_programs: ["git"], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/notes" },
             { name: "digest", title: "Daily digest", version: "0.1.0", capabilities: ["sessions.read"], programs: [], on: false, enabled: false, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/digest" },
           ] };

@@ -109,11 +109,13 @@ fn with_status(mut m: Value) -> Value {
     let name = m["name"].as_str().unwrap_or("").to_string();
     let a = approval(&name);
     let on = a["on"].as_bool().unwrap_or(false);
-    let caps = strings(&a["capabilities"]);
+    let (caps, progs) = (strings(&a["capabilities"]), strings(&a["programs"]));
     let pending_caps: Vec<String> = strings(&m["capabilities"]).into_iter().filter(|c| !caps.contains(c)).collect();
+    let pending_programs: Vec<String> = strings(&m["programs"]).into_iter().filter(|p| !progs.contains(p)).collect();
     m["on"] = json!(on);
-    m["enabled"] = json!(on && pending_caps.is_empty());
+    m["enabled"] = json!(on && pending_caps.is_empty() && pending_programs.is_empty());
     m["pending_capabilities"] = json!(pending_caps);
+    m["pending_programs"] = json!(pending_programs);
     if let Some((dir, builtin)) = dir_of(&name) {
         m["folder"] = json!(dir.display().to_string());
         m["builtin"] = json!(builtin);
@@ -338,10 +340,111 @@ pub async fn ext_git(ext: String, op: String, folder: String, machine: Option<St
     tauri::async_runtime::spawn_blocking(move || git_read(&ext, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await.map_err(|e| e.to_string())?
 }
 
+// ---------- programs.run: programs installed on this Mac ----------
+// For extensions you trust with your own tools (a container tool, a sync tool, your company's CLI). Off
+// until you allow it in Settings; then each extension runs only the programs its manifest lists and you
+// approved, by name, as installed on this Mac. Never a program it brings with it, never a shell or a
+// script interpreter, never through a shell. Every run is logged.
+
+/// Programs that would run whatever text they're given: never run for an extension.
+const NOT_PROGRAMS: [&str; 22] = ["sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "env", "xargs", "python", "python3", "node", "deno", "bun", "ruby", "perl", "php", "osascript", "lua", "tclsh", "expect"];
+/// The longest a run may take (making a container or a pod can take a while).
+const PROGRAM_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Whether you've let extensions run programs at all (Settings → Extensions).
+pub fn programs_allowed() -> bool {
+    crate::config::load()["extensions_allow"]["programs"].as_bool().unwrap_or(false)
+}
+
+/// A program's name as an extension may give it: a plain name, not a path, not one of NOT_PROGRAMS
+/// (nor a versioned one, python3.12 say).
+fn valid_program(p: &str) -> bool {
+    let base = p.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
+    (1..=64).contains(&p.len())
+        && p.chars().all(|c| c.is_ascii_alphanumeric() || "._+-".contains(c))
+        && !p.starts_with(['.', '-'])
+        && !NOT_PROGRAMS.contains(&p)
+        && !NOT_PROGRAMS.contains(&base)
+}
+
+/// Where an installed program is: the folders programs are installed in on a Mac, never anywhere an
+/// extension lives.
+fn installed(program: &str) -> Option<PathBuf> {
+    let path = std::env::var("PATH").unwrap_or_default();
+    let found = path
+        .split(':')
+        .chain(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"])
+        .filter(|d| d.starts_with('/'))
+        .map(|d| Path::new(d).join(program))
+        .find(|p| p.is_file())?;
+    let real = found.canonicalize().ok()?;
+    let theirs: Vec<PathBuf> = [Some(root()), builtin_root()].into_iter().flatten().filter_map(|d| d.canonicalize().ok()).collect();
+    (!theirs.iter().any(|d| real.starts_with(d))).then_some(found)
+}
+
+/// Run `program args…` for extension `ext` in `cwd` (a folder here), within every rule above.
+pub fn run_program(ext: &str, program: &str, args: &[String], cwd: Option<&str>) -> Result<Value, String> {
+    if !programs_allowed() {
+        return Err("Extensions aren't allowed to run programs (Settings → Extensions)".into());
+    }
+    let m = enabled(ext).ok_or_else(|| format!("{ext} isn't switched on"))?;
+    if !has(&m, "capabilities", "programs.run") {
+        return Err(format!("{ext} didn't ask to run programs"));
+    }
+    if !valid_program(program) {
+        return Err(format!("{program} can't be run by an extension"));
+    }
+    if !has(&m, "programs", program) {
+        return Err(format!("{ext} didn't list {program}"));
+    }
+    let bin = installed(program).ok_or_else(|| format!("{program} isn't installed on this Mac"))?;
+    let dir = cwd.filter(|d| d.starts_with('/') && Path::new(d).is_dir());
+    let mut c = Command::new(&bin);
+    c.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    if let Some(d) = dir {
+        c.current_dir(d);
+    }
+    let start = Instant::now();
+    let child = c.spawn().map_err(|e| e.to_string())?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let pid = child.id();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    let out = match rx.recv_timeout(PROGRAM_LIMIT) {
+        Ok(r) => r.map_err(|e| e.to_string())?,
+        Err(_) => {
+            let _ = Command::new("/bin/kill").arg(pid.to_string()).status();
+            log(&format!("{ext} ran {program} {} -> stopped (took too long)", args.join(" ")));
+            return Err(format!("{program} took too long"));
+        }
+    };
+    let code = out.status.code().unwrap_or(-1);
+    log(&format!("{ext} ran {program} {} -> {code}", args.join(" ")));
+    Ok(json!({
+        "code": code,
+        "stdout": String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(4 << 20)]),
+        "stderr": String::from_utf8_lossy(&out.stderr[..out.stderr.len().min(1 << 20)]),
+        "ms": start.elapsed().as_millis() as u64,
+    }))
+}
+
+#[tauri::command]
+pub async fn ext_program(ext: String, program: String, args: Vec<String>, cwd: Option<String>) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_program(&ext, &program, &args, cwd.as_deref())).await.map_err(|e| e.to_string())?
+}
+
+/// Settings → Extensions: let extensions run programs, or not.
+#[tauri::command]
+pub fn ext_allow_programs(on: bool) -> Result<(), String> {
+    log(&format!("settings programs {}", if on { "allowed" } else { "not allowed" }));
+    crate::config::remember("extensions_allow.programs", json!(on))
+}
+
 /// Where extensions go, and each one there with where it stands.
 #[tauri::command]
 pub fn ext_list() -> Value {
-    json!({ "root": root().display().to_string(), "list": list() })
+    json!({ "root": root().display().to_string(), "list": list(), "programs_allowed": programs_allowed() })
 }
 
 /// Switch an extension on (approving everything its manifest asks for now) or off (what you approved
@@ -351,9 +454,9 @@ pub fn ext_enable(name: String, on: bool) -> Result<(), String> {
     let m = manifest(&name).ok_or("no such extension")?;
     let a = approval(&name);
     let v = if on {
-        json!({ "on": true, "capabilities": m["capabilities"].clone(), "version": m["version"].clone() })
+        json!({ "on": true, "capabilities": m["capabilities"].clone(), "programs": m["programs"].clone(), "version": m["version"].clone() })
     } else {
-        json!({ "on": false, "capabilities": a["capabilities"].clone(), "version": a["version"].clone() })
+        json!({ "on": false, "capabilities": a["capabilities"].clone(), "programs": a["programs"].clone(), "version": a["version"].clone() })
     };
     log(&format!("{name} switched {} in Settings", if on { "on" } else { "off" }));
     crate::config::remember(&format!("extensions.{name}"), v)
@@ -441,6 +544,39 @@ mod tests {
         ext_enable("demo".into(), false).unwrap();
         assert_eq!(page(), 404);
         assert!(ext_activity("demo".into(), 10).iter().any(|l| l.ends_with("switched off in Settings")));
+
+        std::env::remove_var("CUE_HOME");
+        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn programs_run_only_when_allowed_listed_approved_and_installed() {
+        let _one = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-ext-prog-{}", std::process::id()));
+        let ext = dir.join("extensions/tools");
+        std::fs::create_dir_all(&ext).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
+        std::fs::write(ext.join("manifest.json"), r#"{"tab":"T","capabilities":["programs.run"],"programs":["git","bash","ls"]}"#).unwrap();
+        // A program it brings along, named like an installed one would be.
+        std::fs::write(ext.join("mytool"), "#!/bin/sh\necho brought\n").unwrap();
+        let run = |p: &str, a: &[&str]| run_program("tools", p, &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None);
+
+        ext_enable("tools".into(), true).unwrap();
+        assert!(run("git", &["--version"]).unwrap_err().contains("aren't allowed"), "off until allowed in Settings");
+        ext_allow_programs(true).unwrap();
+        let ok = run("git", &["--version"]).unwrap();
+        assert_eq!(ok["code"], json!(0));
+        assert!(ok["stdout"].as_str().unwrap().starts_with("git version"));
+        assert!(run("bash", &["-c", "true"]).unwrap_err().contains("can't be run"), "no shells, even when listed");
+        assert!(run("mytool", &[]).is_err(), "not a program it brings");
+        assert!(run(&ext.join("mytool").display().to_string(), &[]).unwrap_err().contains("can't be run"), "no paths");
+        assert!(run("ls", &[]).is_ok(), "listed and installed");
+        assert!(run("cat", &["/etc/hosts"]).unwrap_err().contains("didn't list"), "only what it listed");
+        assert!(ext_activity("tools".into(), 10).iter().any(|l| l.contains("ran git --version -> 0")), "logged");
+        ext_allow_programs(false).unwrap();
+        assert!(run("git", &["--version"]).is_err(), "off again");
 
         std::env::remove_var("CUE_HOME");
         std::env::remove_var("CUE_BUILTIN_EXTENSIONS");

@@ -70,9 +70,10 @@ drafts, settings) stays on your Mac, in the folder below. It talks to your agent
 socket that only processes on your Mac can reach, and it reads their transcripts on your disk. The
 one time it goes online is to check GitHub for a newer version of Cue.
 
-An extension you switch on can't run programs or reach the network. What it can have Cue do for it is
-read git, read-only, in the open session's folder (on this Mac, or over your SSH connection to its
-machine). Settings → Extensions shows what each one may do and every git read it made.
+An extension you switch on can't reach the network. It can have Cue read git, read-only, in the open
+session's folder. It can run programs only if you let extensions do that in Settings → Extensions (off
+to begin with), and then only the installed programs it lists and you approved: never one it brings, a
+shell, or a script interpreter. Settings shows what each one may do and every command it ran.
 
 ## Using it
 

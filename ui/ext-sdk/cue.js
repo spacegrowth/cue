@@ -33,6 +33,7 @@
     on: (event, f) => { (subs[event] ||= []).push(f); },
     session: () => call("session.current"),
     badge: (session, text) => call("tab.badge", { session, text }),
+    run: (program, args = [], { cwd } = {}) => call("programs.run", { program, args, cwd }),
     git: (session, op, params = {}) => call("git", { session, op, ...params }),
     toast: (text) => call("ui.toast", { text }),
     log: (text) => call("log", { text }),

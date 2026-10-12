@@ -12,10 +12,10 @@ const extBadges = new Map();   // `${name}|${sid}` → the short text on its tab
 const extRan = new Map();      // name → the last command line it ran
 const extSent = new Map();     // name → the session info it was last sent (as JSON)
 
-let extRoot = "";
+let extRoot = "", extProgramsAllowed = false;
 const extActivity = new Map();   // name → its last few lines in extensions.log (for Settings)
 async function loadExtensions() {
-  try { const r = (await invoke("ext_list")) || {}; extList = r.list || []; extRoot = r.root || ""; } catch { extList = []; }
+  try { const r = (await invoke("ext_list")) || {}; extList = r.list || []; extRoot = r.root || ""; extProgramsAllowed = !!r.programs_allowed; } catch { extList = []; }
   // An extension switched off (or awaiting approval) loses its page at once; one whose files changed
   // (you copied a new version in, or Cue updated its own) gets a fresh one.
   for (const [n, f] of extFrames) if (!extOf(n)?.enabled || f.dataset.stamp !== (extOf(n).stamp || "")) { f.remove(); extFrames.delete(n); extSent.delete(n); }
@@ -85,8 +85,9 @@ document.addEventListener("click", (e) => {
 
 // ---------- Settings → Extensions ----------
 /** What a capability lets an extension do, in plain words. */
-function xtCan(cap) {
+function xtCan(cap, programs = []) {
   return {
+    "programs.run": `Run these programs installed on your Mac: ${programs.join(", ") || "none listed"}. They can do a lot (a container tool can reach your whole disk): allow only extensions you trust`,
     "sessions.read": "See the open session: its name, folder, machine, and where its turns began",
     "git.read": "Read git in the open session's folders, on this Mac or its machine, without changing anything",
   }[cap] || `Use “${cap}”`;
@@ -104,22 +105,24 @@ function xtLine(l) {
 }
 function xtSettings() {
   const rows = extList.map((e) => {
-    const asked = e.capabilities || [], pend = e.pending_capabilities || [];
-    const newOnly = e.on && pend.length;
-    const can = asked.map((c) => `<li>${esc(xtCan(c))}</li>`).join("") || `<li>Nothing beyond showing its page</li>`;
-    const more = newOnly ? `<div class="xt-more"><b>Updated, and now also asks to:</b><ul>${pend.map((c) => `<li>${esc(xtCan(c))}</li>`).join("")}</ul>It's off until you switch it on again.</div>` : "";
+    const asked = e.capabilities || [], pend = e.pending_capabilities || [], progs = e.programs || [], pendProgs = e.pending_programs || [];
+    const newOnly = e.on && (pend.length || pendProgs.length);
+    const can = asked.map((c) => `<li>${esc(xtCan(c, progs))}</li>`).join("") || `<li>Nothing beyond showing its page</li>`;
+    const more = newOnly ? `<div class="xt-more"><b>Updated, and now also asks to:</b><ul>${[...pend.map((c) => xtCan(c, progs)), ...(pend.length ? [] : pendProgs.map((p) => `Run ${p}`))].map((t) => `<li>${esc(t)}</li>`).join("")}</ul>It's off until you switch it on again.</div>` : "";
+    const blocked = asked.includes("programs.run") && !extProgramsAllowed ? `<div class="xt-more">It runs programs, which extensions aren't allowed to do yet: see the switch above.</div>` : "";
     const lines = extActivity.get(e.name) || [];
     return `<div class="xt ${e.enabled ? "on" : ""}">
       <div class="xt-head"><span class="xt-name">${esc(e.title || e.name)}</span>${e.version ? `<span class="xt-ver">${esc(e.version)}</span>` : ""}${e.tab ? `<span class="xt-where">adds the “${esc(e.tab)}” tab to sessions</span>` : ""}<span class="grow"></span>
         <span class="xt-state">${e.enabled ? "On" : newOnly ? "Needs your OK" : "Off"}</span>
         <button class="toggle ${e.enabled ? "on" : ""}" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="${e.enabled ? "" : "1"}" role="switch" aria-checked="${!!e.enabled}" aria-label="${esc(e.title || e.name)}"><span></span></button></div>
-      <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}
+      <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}${blocked}
         <div class="xt-log"><div class="xt-k">Last it did</div>${lines.length ? lines.map(xtLine).join("") : `<div class="xt-none">Nothing yet</div>`}</div>
         <div class="xt-folder">${e.builtin ? "Comes with Cue, and updates with it" : `${e.replaces_builtin ? "Your copy, used in place of the one that comes with Cue: " : ""}<code>${esc(e.folder || "")}</code>`}</div></div></div>`;
   }).join("");
   return `<div class="set-group">Extensions</div>
     <div class="xt-intro">An extension is a folder with a <code>manifest.json</code> and its own page, in <code>${esc(extRoot)}</code>. Nothing in it runs until you switch it on here, and switching it on is what allows what it asks for. Every command it runs is listed under it.
       <div class="xt-intro-btns"><button class="btn" data-act="xt-folder">Open the folder</button><button class="btn" data-act="xt-rescan">Look again</button></div></div>
+    ${setRow("Let extensions run programs", "For your own tools: an extension you switch on may then run the programs installed on this Mac that it lists, and nothing else. Never a program it brings, a shell, or a script interpreter. Off: none can.", `<button class="toggle ${extProgramsAllowed ? "on" : ""}" data-act="xt-allow" data-on="${extProgramsAllowed ? "" : "1"}" role="switch" aria-checked="${extProgramsAllowed}" aria-label="Let extensions run programs"><span></span></button>`)}
     ${rows || `<div class="xt-empty">No extensions yet. Put one's folder in the folder above, then Look again.</div>`}`;
 }
 document.addEventListener("click", async (e) => {
@@ -127,10 +130,11 @@ document.addEventListener("click", async (e) => {
   const act = t?.dataset.act;
   if (act === "set-tab" && t.dataset.tab === "extensions") setTimeout(loadExtensions, 0);
   if (act === "open-settings") setTimeout(loadExtensions, 0);
-  if (!["xt-toggle", "xt-folder", "xt-rescan"].includes(act)) return;
+  if (!["xt-toggle", "xt-folder", "xt-rescan", "xt-allow"].includes(act)) return;
   e.stopPropagation();
   if (act === "xt-folder") return invoke("ext_reveal").catch((x) => toast(`Couldn't open it: ${x}`));
   if (act === "xt-rescan") return loadExtensions();
+  if (act === "xt-allow") { try { await invoke("ext_allow_programs", { on: !!t.dataset.on }); } catch (x) { toast(`Couldn't: ${x}`); } return loadExtensions(); }
   try { await invoke("ext_enable", { name: t.dataset.name, on: !!t.dataset.on }); } catch (x) { toast(`Couldn't: ${x}`); }
   loadExtensions();
 }, true);
@@ -178,6 +182,13 @@ addEventListener("message", async (e) => {
     switch (m.method) {
       case "hello": return reply(true, { name, theme: extTheme() });
       case "session.current": need("sessions.read"); return reply(true, extSessionInfo(openSid()));
+      case "programs.run": {
+        need("programs.run");
+        const r = await invoke("ext_program", { ext: name, program: String(p.program || ""), args: (p.args || []).map(String), cwd: p.cwd ? String(p.cwd) : null });
+        const ran = `${p.program} ${(p.args || []).join(" ")}`.trim();
+        if (extRan.get(name) !== ran) { extRan.set(name, ran); renderMain(); }
+        return reply(true, r);
+      }
       case "git": {
         // Read-only git that Cue runs, in the open session's folder (Cue's record of it, not the page's word).
         need("git.read");
