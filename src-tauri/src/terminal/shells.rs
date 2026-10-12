@@ -267,6 +267,8 @@ mod tests {
 
     #[test]
     fn a_shell_runs_in_its_folder_shows_what_it_runs_and_ends_when_closed() {
+        // Its shell's files go in Cue's folder (CUE_HOME): not while another test has pointed that elsewhere.
+        let _one = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("cue-shell-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let dir = dir.canonicalize().unwrap().to_string_lossy().to_string();
