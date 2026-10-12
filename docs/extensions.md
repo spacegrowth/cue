@@ -1,7 +1,6 @@
 # Extensions
 
-An extension adds a tab to the open session in Cue, beside Chat, with a page of its own. Cue comes with
-one, [Diff](../extensions/diff), which shows what a session changed.
+An extension adds a tab to the open session in Cue, beside Chat, with a page of its own.
 
 ## Install one
 
@@ -104,4 +103,4 @@ A session looks like this:
 ### Trying it out
 
 Put the folder in Cue's extensions folder, click **Look again**, switch it on, and open a session.
-After you change its files, switch it off and on again in Settings to reload its page. [Diff](../extensions/diff) is a complete example.
+After you change its files, switch it off and on again in Settings to reload its page.
