@@ -95,6 +95,11 @@ function renderEdits(s, results) {
   show(s, files, [], "", quiet, results.length);
 }
 
+/** How many files open by themselves; the rest open when you click them. */
+const OPEN_FIRST = 3;
+let shownFiles = [];
+const linesOf = (x) => (x.unread ? `<div class="h">A new file git isn't tracking yet.</div>` : x.lines.map(([k, l]) => `<div class="${k}">${esc(l)}</div>`).join(""));
+
 const SINCE = { edits: "not committed yet", turn: "since its latest turn began", session: "since its first turn here", uncommitted: "not committed" };
 function show(s, files, bulk, note = "", quiet = [], edited = 0) {
   const add = files.reduce((n, x) => n + x.add, 0), del = files.reduce((n, x) => n + x.del, 0), count = files.length;
@@ -107,12 +112,18 @@ function show(s, files, bulk, note = "", quiet = [], edited = 0) {
   if (scope === "edits" || scope === "turn") cue.badge(s.id, count ? `${count} +${add} −${del}` : "");
   if (note) { $("body").innerHTML = why + note; return; }
   if (!count && !bulk.length && !quiet.length) { $("body").innerHTML = why + `<div class="note">${scope === "edits" ? "It hasn't edited any files yet." : `No changes ${since}.`}</div>`; return; }
-  const many = files.length > 12;
-  $("body").innerHTML = why + files.map((x) => `
-    <details class="file" ${many || x.unread ? "" : "open"}>
+  // Only the first few files open, and a file's lines go in the page only once it's open: a change to
+  // hundreds of files (or one huge one) stays quick to draw.
+  shownFiles = files;
+  let opened = 0;
+  $("body").innerHTML = why + files.map((x, i) => {
+    const open = !x.unread && opened < OPEN_FIRST && ++opened;
+    return `
+    <details class="file" data-i="${i}" ${open ? "open" : ""}>
       <summary><span class="path">${esc(x.path)}</span>${x.isNew ? `<span class="tag">new</span>` : ""}${x.unread ? "" : `<span class="n add">+${x.add}</span><span class="n del">−${x.del}</span>`}<span class="chev">›</span></summary>
-      <div class="lines">${x.unread ? `<div class="h">A new file git isn't tracking yet.</div>` : x.lines.map(([k, l]) => `<div class="${k}">${esc(l)}</div>`).join("")}</div>
-    </details>`).join("") + bulk.map((b) => `
+      <div class="lines">${open ? linesOf(x) : ""}</div>
+    </details>`;
+  }).join("") + bulk.map((b) => `
     <details class="file"><summary><span class="path">${esc(b.dir)}</span><span class="tag">${b.n.toLocaleString()} new files</span><span class="chev">›</span></summary><div class="lines"><div class="h">Files git isn't tracking and isn't told to ignore. If it's build output, add ${esc(b.dir)} to .gitignore.</div></div></details>`).join("")
     + (quiet.length ? `<div class="quiet"><div class="quiet-h">Also edited, nothing uncommitted now</div>${quiet.map((q) => `<div class="quiet-r"><code>${esc(q.path)}</code>${q.note && q.note !== "no uncommitted changes" ? `<span>${esc(q.note)}</span>` : ""}</div>`).join("")}</div>` : "");
 }
@@ -125,6 +136,13 @@ $("scope").addEventListener("click", (e) => {
   load();
 });
 $("refresh").addEventListener("click", () => load());
+// A file's lines go in the first time it's opened.
+$("body").addEventListener("toggle", (e) => {
+  const d = e.target;
+  if (!d.matches?.("details.file[data-i]") || !d.open) return;
+  const box = d.querySelector(".lines");
+  if (!box.childElementCount) box.innerHTML = linesOf(shownFiles[+d.dataset.i]);
+}, true);
 
 /** Cue says which session is open, and again whenever anything about it changes: reload when it's a
  *  different session, or a turn began or ended (its state or its snapshot moved). */
