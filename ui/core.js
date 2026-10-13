@@ -177,7 +177,7 @@ function crewLine(sid, verdict = true) {
 function cardCrew(sid) {
   const m = crewOf(sid);
   if (m?.role === "executor") return crewLine(sid, false).replace('<div class="crew-line">', `<div class="crew-line">${roleTag(sid)} `);
-  if (exLead(sid)) return `<div class="crew-line">${roleTag(sid)} ${handoffOf(sid) ? "a new lead took over" : "not leading anymore"}</div>`;
+  if (exLead(sid)) return `<div class="crew-line">${roleTag(sid)} ${handoffOf(sid) ? "relay handoff to a new lead" : "not leading anymore"}</div>`;
   if (m?.role !== "lead") return "";
   const n = (m.executors || []).length;
   return `<div class="crew-line">${roleTag(sid)} ${n ? `team of ${n}` : "no executors right now"}</div>`;
@@ -277,13 +277,29 @@ function exState(e) {
 }
 /** Under the chat's header, lead's or executor's: the whole team, this one lit; each chip ends with its role
  *  (lead / exec); a chip opens that chat. */
+/** Where the lead a handoff opened is now: "open" (a session in Cue), "quiet" (running, Cue hasn't heard
+ *  from it yet), "ended" (on this Mac: Resume brings it back), or "" (ended on another machine). */
+function newLeadAt(ho) {
+  if (sessionOf(ho.to)) return "open";
+  if ((state.live || []).some((q) => q.session_id === ho.to)) return "quiet";
+  return ho.machine ? "" : "ended";
+}
+/** The button to the lead that has the work now: open it, take it in, or resume it. */
+function newLeadBtn(ho, cls = "btn primary") {
+  const at = newLeadAt(ho), name = bareName(ho.name) || "new lead";
+  if (at === "open") return `<button class="${cls}" data-session="${esc(ho.to)}">Open new lead</button>`;
+  if (at === "quiet") return `<button class="${cls}" data-sv="quiet" data-sid="${esc(ho.to)}">Open new lead</button>`;
+  if (at === "ended") return `<button class="${cls}" data-resume="${esc(ho.to)}" data-name="${esc(name)}">Resume new lead</button>`;
+  return "";
+}
 function teamBar(sid) {
   const ho = !crewOf(sid) && handoffOf(sid);
   if (ho) {
     // Both usually carry the project's name (a handoff keeps it): "this one" and "new lead" tell them apart.
-    const chip = `${esc(bareName(ho.name))} <span class="tm-sub">new lead</span>`;
-    const to = sessionOf(ho.to) ? `<button class="tm-chip" data-session="${esc(ho.to)}">${chip}</button>` : `<span class="tm-chip">${chip}</span>`;
-    return `<div class="team-bar"><span class="tm-label">Handed off</span><span class="tm-chip me">this one</span><span class="tm-sub">→</span>${to}${ho.executors ? `<span class="tm-sub">· took its ${ho.executors} executor${ho.executors === 1 ? "" : "s"}</span>` : ""}</div>`;
+    const at = newLeadAt(ho);
+    const chip = `${esc(bareName(ho.name))} <span class="tm-sub">${at === "open" || at === "quiet" ? "new lead" : "new lead · ended"}</span>`;
+    const to = at === "open" ? `<button class="tm-chip" data-session="${esc(ho.to)}">${chip}</button>` : at === "quiet" ? `<button class="tm-chip" data-sv="quiet" data-sid="${esc(ho.to)}">${chip}</button>` : `<span class="tm-chip gone">${chip}</span>`;
+    return `<div class="team-bar"><span class="tm-label">Relay handoff</span><span class="tm-chip me">this one</span><span class="tm-sub">→</span>${to}${ho.executors ? `<span class="tm-sub">· took its ${ho.executors} executor${ho.executors === 1 ? "" : "s"}</span>` : ""}</div>`;
   }
   const t = teamOf(sid);
   if (!t) return "";
@@ -320,12 +336,17 @@ function leadCard(sid) {
   const m = crewOf(sid);
   const ho = !m && handoffOf(sid);
   if (ho) {
-    return `<div class="team-card"><div class="tc-row"><span><b>A new lead took over</b>${ho.at_ms ? ` ${ago(ho.at_ms)} ago` : ""}. This one isn't leading anymore; its executors report to the new lead now.</span><span class="tc-acts">${sessionOf(ho.to) ? `<button class="btn primary" data-session="${esc(ho.to)}">Open new lead</button>` : ""}${closeBtn(sid)}</span></div></div>`;
+    const at = newLeadAt(ho), via = ho.hops > 1 ? ` It has been handed off ${ho.hops} times since; this goes to the latest lead.` : "";
+    const where = at === "open" || at === "quiet" ? "This one isn't leading anymore; its executors report to the new lead now."
+      : at === "ended" ? "That lead has ended too. Resume it to pick up where it stopped." : `That lead has ended${ho.machine ? ` on ${esc(ho.machine)}` : ""}.`;
+    return `<div class="team-card"><div class="tc-row"><span><b>Relay handoff:</b> a new lead took over${ho.at_ms ? ` ${ago(ho.at_ms)} ago` : ""}. ${where}${via}</span><span class="tc-acts">${newLeadBtn(ho)}${closeBtn(sid)}</span></div></div>`;
   }
+  // Stepped down with no handoff in relay's records: say so, rather than leave you looking for one.
+  if (exLead(sid)) return `<div class="team-card"><div class="tc-row"><span><b>Not leading anymore.</b> relay stepped this one down without a handoff, so no new lead took over from it.</span></div></div>`;
   if (m?.role !== "lead") return "";
   // The lead it took over from, while that one is still open: name it, and Close it from here.
   const pred = predecessorOf(sid);
-  const took = pred ? `<div class="tc-row"><span>Took over from <button class="crew-lead" data-session="${esc(pred)}">the previous lead</button>${m.started_ms ? ` ${ago(m.started_ms)} ago` : ""}. That one's still open, but it isn't leading anymore.</span><span class="tc-acts">${closeBtn(pred)}</span></div>` : "";
+  const took = pred ? `<div class="tc-row"><span>Took over in a relay handoff from <button class="crew-lead" data-session="${esc(pred)}">the previous lead</button>${m.started_ms ? ` ${ago(m.started_ms)} ago` : ""}. That one's still open, but it isn't leading anymore.</span><span class="tc-acts">${closeBtn(pred)}</span></div>` : "";
   const rows = (m.executors || []).flatMap((e) => {
     const ask = asksOf(e.session_id);
     if (ask) return [`<div class="tc-row need" data-big="${esc(ask.id)}" role="button"><span><b>${esc(e.name)}</b> ${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></span>${ask.kind === "permission" ? `<span class="tc-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></span>` : ""}</div>`];

@@ -364,7 +364,7 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const go = r.ghost && act !== "exec" ? "" : ` role="button" data-sv="${act}" data-sid="${esc(r.sid)}"`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""} ${ho ? "was" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${ho ? "" : svChipState(r)}${r.since && !r.quiet && !ho ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${ho ? "" : svChipState(r)}${r.since && !r.quiet && !ho ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${ho && !crewOf(ho.to) ? newLeadBtn(ho, "btn") : ""}${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");

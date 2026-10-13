@@ -495,16 +495,28 @@ fn verdict_from_json(v: &Value) -> Option<Verdict> {
 /// line that isn't finished yet is left for the next tick; a ledger that shrank or is a different
 /// file (its inode changed) is read again from the start.
 type Verdicts = std::sync::Arc<HashMap<(String, u64), Verdict>>;
+/// Every `lead_handoff` in the ledger: the lead that handed off → (the lead it opened, its project,
+/// when). relay's own record of a lead (its marker, which names its predecessor) goes once that lead
+/// steps down or ends; the ledger keeps the handoff for good.
+type Handoffs = std::sync::Arc<HashMap<String, (String, String, u64)>>;
 struct Ledger {
     inode: u64,
     /// Bytes read so far: the end of the last complete line seen.
     offset: u64,
     verdicts: Verdicts,
+    handoffs: Handoffs,
 }
 /// By path (Cue reads one ledger; tests read several).
 static LEDGER: Mutex<Option<HashMap<PathBuf, Ledger>>> = Mutex::new(None);
 
 fn ledger_verdicts(path: &Path) -> Verdicts {
+    read_ledger(path).0
+}
+fn ledger_handoffs(path: &Path) -> Handoffs {
+    read_ledger(path).1
+}
+
+fn read_ledger(path: &Path) -> (Verdicts, Handoffs) {
     use std::io::{Read, Seek, SeekFrom};
     use std::os::unix::fs::MetadataExt;
     let Ok(meta) = std::fs::metadata(path) else { return Default::default() };
@@ -512,11 +524,12 @@ fn ledger_verdicts(path: &Path) -> Verdicts {
     let cache = cache.get_or_insert_with(HashMap::new);
     let same = cache.get(path).is_some_and(|l| l.inode == meta.ino() && l.offset <= meta.len());
     if !same {
-        cache.insert(path.to_path_buf(), Ledger { inode: meta.ino(), offset: 0, verdicts: Default::default() });
+        cache.insert(path.to_path_buf(), Ledger { inode: meta.ino(), offset: 0, verdicts: Default::default(), handoffs: Default::default() });
     }
     let ledger = cache.get_mut(path).unwrap();
+    let seen = |l: &Ledger| (l.verdicts.clone(), l.handoffs.clone());
     if meta.len() == ledger.offset {
-        return ledger.verdicts.clone();
+        return seen(ledger);
     }
     let mut bytes = Vec::new();
     let read = std::fs::File::open(path).and_then(|mut f| {
@@ -524,13 +537,22 @@ fn ledger_verdicts(path: &Path) -> Verdicts {
         f.read_to_end(&mut bytes)
     });
     if read.is_err() {
-        return ledger.verdicts.clone();
+        return seen(ledger);
     }
     // Only whole lines: what follows the last newline may still be being written.
-    let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else { return ledger.verdicts.clone() };
+    let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else { return seen(ledger) };
     ledger.offset += end as u64 + 1;
+    let text = String::from_utf8_lossy(&bytes[..end]);
+    let handoffs = std::sync::Arc::make_mut(&mut ledger.handoffs);
+    for line in text.lines().filter(|l| l.contains("\"lead_handoff\"")) {
+        let Ok(d) = serde_json::from_str::<Value>(line) else { continue };
+        let (from, to) = (s(&d, "from_lead"), s(&d, "to_lead"));
+        if s(&d, "event") == "lead_handoff" && !from.is_empty() && !to.is_empty() {
+            handoffs.insert(from, (to, s(&d, "project"), epoch_secs(&s(&d, "ts"), None).map_or(0, |t| t * 1000)));
+        }
+    }
     let map = std::sync::Arc::make_mut(&mut ledger.verdicts);
-    for line in String::from_utf8_lossy(&bytes[..end]).lines().filter(|l| l.contains("\"report_verify\"")) {
+    for line in text.lines().filter(|l| l.contains("\"report_verify\"")) {
         let Ok(d) = serde_json::from_str::<Value>(line) else { continue };
         let (sid, n) = (s(&d, "session_id"), d.get("packet").and_then(Value::as_u64));
         if s(&d, "event") != "report_verify" || sid.is_empty() {
@@ -541,7 +563,7 @@ fn ledger_verdicts(path: &Path) -> Verdicts {
         let note = if verdict == "MISMATCH" && k > 0 { format!("{k} mismatch{}", if k == 1 { "" } else { "es" }) } else { String::new() };
         map.insert((sid, n), Verdict { verdict, note });
     }
-    ledger.verdicts.clone()
+    seen(ledger)
 }
 
 fn scan(relay: &Path, pilead: &Path, claude_sessions: &Path) -> HashMap<String, Member> {
@@ -1071,19 +1093,30 @@ pub fn hand_left_behind(session_id: &str, to: &str) -> Result<Vec<Cmd>, String> 
         .collect()
 }
 
-/// Leads that handed off and are still open, among `known`: each one's session id → the lead that
-/// took over (`to`, its name, when it started, its machine, how many executors it has now). Not a
-/// session that leads again.
+/// Leads that handed off and are still open, among `known`: each one's session id → the lead that has
+/// the work now (`to`: the one it handed off to, or the last of a chain of handoffs; its name, its
+/// machine, how many executors it has now), when it handed off (`at_ms`), and how many handoffs on
+/// that is (`hops`). Whether that lead still runs is the window's to see. Not a session that leads again.
 pub fn handoffs(known: &HashSet<String>) -> Value {
+    let logged = ledger_handoffs(&relay_dir().join("sessions.jsonl"));
     let cur = crate::locking::lock(&INDEX, "INDEX");
     let Some(index) = cur.as_ref() else { return Value::Object(Default::default()) };
-    let mut out = serde_json::Map::new();
+    // Each lead that handed off → the lead it opened (its id, name, when, machine): relay's ledger on
+    // this Mac, and the leads relay runs now (their markers name their predecessor; on another machine too).
+    let mut next: HashMap<String, (String, String, u64, String)> = logged.iter().map(|(from, (to, project, at))| (from.clone(), (to.clone(), project.clone(), *at, String::new()))).collect();
     for (sid, m) in index.iter().filter(|(_, m)| m.role == "lead" && !m.predecessor.is_empty()) {
-        let old = &m.predecessor;
-        if !known.contains(old) || index.get(old).is_some_and(|o| o.role == "lead") {
-            continue;
+        next.insert(m.predecessor.clone(), (sid.clone(), m.name.clone(), m.started_ms, m.machine.clone()));
+    }
+    let mut out = serde_json::Map::new();
+    for (old, first) in next.iter().filter(|(old, _)| known.contains(*old) && !index.get(*old).is_some_and(|o| o.role == "lead")) {
+        // That lead may have handed off in turn: the work is with the last one.
+        let (mut to, mut hops) = (first, 0);
+        while let Some(n) = next.get(&to.0).filter(|n| n.0 != *old && hops < 20) {
+            to = n;
+            hops += 1;
         }
-        out.insert(old.clone(), serde_json::json!({ "to": sid, "name": m.name, "at_ms": m.started_ms, "machine": m.machine, "executors": open_executors(index, sid).len() }));
+        let (sid, name, _, machine) = to;
+        out.insert(old.clone(), serde_json::json!({ "to": sid, "name": name, "at_ms": first.2, "machine": machine, "executors": open_executors(index, sid).len(), "hops": hops + 1 }));
     }
     Value::Object(out)
 }
@@ -1579,6 +1612,34 @@ __CUE_TZ__:+0000
         assert_eq!(h["OLD"]["machine"], "box");
         assert!(h.get("STILL").is_none(), "one that leads (again) isn't a handed-off lead");
         assert!(handoffs(&HashSet::new()).as_object().unwrap().is_empty(), "only sessions Cue knows");
+    }
+
+    #[test]
+    fn a_handed_off_lead_points_at_the_last_lead_of_its_chain_after_relay_forgot_them() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-handoff-chain-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // relay's markers for B and C are gone (stepped down, ended): only the ledger knows. A line still
+        // being written is left for later.
+        std::fs::write(dir.join("sessions.jsonl"), concat!(
+            r#"{"ts": "2026-10-10T12:21:17", "event": "lead_handoff", "from_lead": "A", "to_lead": "B", "project": "cri"}"#, "\n",
+            r#"{"ts": "2026-10-10T13:00:00", "event": "lead_started", "session_id": "B"}"#, "\n",
+            r#"{"ts": "2026-10-10T22:22:29", "event": "lead_handoff", "from_lead": "B", "to_lead": "C", "project": "cri"}"#, "\n",
+            r#"{"ts": "2026-10-11T09:00:00", "event": "lead_handoff", "from_lead": "C", "to_lead": "D""#,
+        )).unwrap();
+        std::env::set_var("RELAY_STATE_ROOT", &dir);
+        *crate::locking::lock(&INDEX, "INDEX") = Some(HashMap::new());
+        let known: HashSet<String> = ["A", "B"].iter().map(|s| s.to_string()).collect();
+        let h = handoffs(&known);
+        std::env::remove_var("RELAY_STATE_ROOT");
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(h["A"]["to"], "C", "the work is with the last lead: {h}");
+        assert_eq!(h["A"]["hops"], 2);
+        assert_eq!(h["A"]["name"], "cri");
+        assert_eq!(h["A"]["at_ms"], epoch_secs("2026-10-10T12:21:17", None).unwrap() * 1000, "when A handed off");
+        assert_eq!(h["B"]["to"], "C");
+        assert!(h.get("C").is_none(), "C's handoff isn't finished in the ledger yet, and Cue doesn't know C");
     }
 
     #[test]

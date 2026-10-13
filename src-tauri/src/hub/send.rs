@@ -448,7 +448,7 @@ impl Hub {
         }
         Ok(match action {
             "compact" => "Compacting: it summarizes the conversation to free up context".into(),
-            _ => "Handing off: it writes its notes, opens its successor, then steps down".into(),
+            _ => "Relay handoff: it writes its notes, relay opens the new lead, then this one steps down".into(),
         })
     }
 
