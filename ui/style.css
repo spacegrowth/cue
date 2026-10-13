@@ -1510,3 +1510,14 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .xt-log-line span, .xt-none { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
 .xt-folder { grid-column: 1 / -1; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xt-empty { color: var(--muted); padding: 18px 0; }
+
+/* An extension's own window, and + Add's menu offering it */
+.nf-where { position: relative; }
+.xw-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; width: 290px; padding: 6px; background: var(--panel); border-radius: 12px; box-shadow: 0 22px 50px -14px rgba(0,0,0,.45), 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 2px; }
+.xw-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 10px; border-radius: 8px; text-align: left; background: none; border: 0; color: var(--ink); cursor: pointer; }
+.xw-menu button:hover { background: var(--panel-2); }
+.xw-menu b { font-size: 13px; } .xw-menu span { font-size: 12px; color: var(--muted); }
+.xw-scrim { z-index: 46; }
+.xw { width: min(980px, calc(100vw - 40px)); height: calc(100vh - 100px); }
+.xw-frame { flex: 1; min-height: 0; border: 0; border-radius: 0 0 18px 18px; background: var(--panel); }
+.xw-x { font-size: 20px; line-height: 1; color: var(--muted); background: none; border: 0; cursor: pointer; }

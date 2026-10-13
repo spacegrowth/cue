@@ -166,7 +166,7 @@ function extSessionInfo(sid) {
     turn_from: fromBase(s?.turn_from), session_from: fromBase(s?.session_from),
   };
 }
-function extSend(name, msg) { extFrames.get(name)?.contentWindow?.postMessage({ cue: 1, ...msg }, "*"); }
+function extSend(name, msg, frame) { (frame || extFrames.get(name))?.contentWindow?.postMessage({ cue: 1, ...msg }, "*"); }
 /** Each page hears the open session (when it changes, or anything about it does) and the theme. */
 let extThemeSent = "";
 function extNotify() {
@@ -179,8 +179,45 @@ function extNotify() {
   }
 }
 
+// ---------- an extension's own window ----------
+// An extension whose manifest has a "window" (its label) gets an entry under New session → + Add, and
+// its page in a window of its own, over Cue: made when opened, gone when closed (nothing in the
+// background). It speaks to Cue just as a tab's page does, with the same checks.
+let extAddMenu = false;
+let extWin = null;   // { name, frame } while one is open
+const extWindows = () => extList.filter((e) => e.window && e.enabled);
+const extAddMenuHtml = () => (extAddMenu ? `<div class="xw-menu"><button data-xw=""><b>A machine you reach over SSH</b><span>build box, cloud VM…</span></button>${extWindows().map((e) => `<button data-xw="${esc(e.name)}"><b>${esc(e.window)}</b><span>${esc(e.title || e.name)}</span></button>`).join("")}</div>` : "");
+function extOpenWindow(name) {
+  const e = extOf(name);
+  if (!e?.enabled) return;
+  extCloseWindow();
+  const el = document.createElement("div");
+  el.className = "scrim xw-scrim";
+  el.innerHTML = `<div class="sheet xw"><div class="sheet-head"><h3>${esc(e.window)}</h3><span class="grow"></span><button class="xw-x" data-xw-close aria-label="Close">×</button></div></div>`;
+  const f = document.createElement("iframe");
+  f.className = "xw-frame";
+  f.setAttribute("sandbox", "allow-scripts allow-forms");
+  f.src = `${EXT_ORIGIN}/${encodeURIComponent(name)}/${String(e.entry || "index.html").split("/").map(encodeURIComponent).join("/")}`;
+  f.addEventListener("load", () => { extSend(name, { event: "theme", data: extTheme() }, f); if (extCan(e, "sessions.read")) extSend(name, { event: "session", data: extSessionInfo(openSid()) }, f); });
+  el.querySelector(".xw").append(f);
+  el.addEventListener("click", (ev) => { if (ev.target === el || ev.target.closest("[data-xw-close]")) extCloseWindow(); });
+  document.body.append(el);
+  extWin = { name, frame: f, el };
+}
+function extCloseWindow() { if (extWin) { extWin.el.remove(); extWin = null; } }
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && extWin) { ev.stopPropagation(); extCloseWindow(); } }, true);
+document.addEventListener("click", (ev) => {
+  const t = ev.target.closest?.("[data-xw]");
+  if (!t) return;
+  ev.stopPropagation();
+  extAddMenu = false;
+  if (!t.dataset.xw) { nfAdding = true; renderMain(); return document.querySelector('[data-text="mc-host"]')?.focus(); }
+  renderMain();
+  extOpenWindow(t.dataset.xw);
+}, true);
+
 addEventListener("message", async (e) => {
-  const name = [...extFrames].find(([, f]) => f.contentWindow === e.source)?.[0];
+  const name = [...extFrames].find(([, f]) => f.contentWindow === e.source)?.[0] || (extWin && extWin.frame.contentWindow === e.source ? extWin.name : null);
   const m = e.data;
   if (!name || !m || m.cue !== 1 || m.id == null) return;
   const ext = extOf(name), p = m.params || {};

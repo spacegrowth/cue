@@ -150,7 +150,7 @@ function newForm() {
   const folders = nfFolders();
   const machines = machinesList || [];
   return `<div class="nf">
-    <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add" title="Add a machine you reach over SSH">+ Add</button></div></div></div>
+    <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add">+ Add</button></div>${extAddMenuHtml()}</div></div>
     ${nfAdding ? "" : machinePanel(newMachine)}
     ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there; it sets up its hooks for the agents it finds.</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Agent</span><div class="seg">${agents.map((a) => `<button class="${newAgent === a ? "on" : ""}" data-lv="agent" data-agent="${a}">${esc(agentName(a))}</button>`).join("")}</div></div>
@@ -201,7 +201,12 @@ async function lvAct(act, d) {
   }
   if (act === "agent") { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); return renderMain(); }
   if (act === "where") { newWhere = d.tmux === "true"; remember("newWhere", String(newWhere)); return renderMain(); }
-  if (act === "machine-add") { nfAdding = !nfAdding; renderMain(); return nfAdding && document.querySelector('[data-text="mc-host"]')?.focus(); }
+  if (act === "machine-add") {
+    if (nfAdding) { nfAdding = false; return renderMain(); }
+    // Extensions with a window of their own are offered here too (a new container, say).
+    if (extWindows().length) { extAddMenu = !extAddMenu; return renderMain(); }
+    nfAdding = true; renderMain(); return document.querySelector('[data-text="mc-host"]')?.focus();
+  }
   if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); return renderMain(); }
   if (act === "perm") { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); return renderMain(); }
   if (act === "model-1m") { newModel1m = !newModel1m; remember("newModel1m", String(newModel1m)); return renderMain(); }
