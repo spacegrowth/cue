@@ -102,8 +102,8 @@ function xtLine(l) {
   text = text.replace(/^\[[^\]]*\] /, "").replace(/ --no-optional-locks/, "");
   const code = (text.match(/ -> (\S+)$/) || [])[1];
   text = text.replace(/ -> \S+$/, "");
-  const bad = code && code !== "0";
-  return `<div class="xt-log-line ${bad ? "bad" : ""}"><code>${esc(text)}${where ? `  · on ${esc(where)}` : ""}${bad ? `  · ${code === "stopped" ? "stopped" : `exit ${esc(code)}`}` : ""}</code><span>${esc(ago(+ts * 1000))}</span></div>`;
+  const bad = (code && code !== "0") || /^error: /.test(text);
+  return `<div class="xt-log-line ${bad ? "bad" : ""}"><code>${esc(text)}${where ? `  · on ${esc(where)}` : ""}${code && code !== "0" ? `  · ${code === "stopped" ? "stopped" : `exit ${esc(code)}`}` : ""}</code><span>${esc(ago(+ts * 1000))}</span></div>`;
 }
 function xtSettings() {
   const rows = extList.map((e) => {

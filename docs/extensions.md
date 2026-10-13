@@ -33,6 +33,61 @@ my-ext/
   index.html        and whatever .js, .css and images it loads
 ```
 
+### Your first extension
+
+A tab that says hello to the open session. Make a folder `hello` with these three files:
+
+`manifest.json`
+
+```json
+{
+  "title": "Hello",
+  "tab": "Hello",
+  "version": "0.1.0",
+  "capabilities": ["sessions.read"]
+}
+```
+
+`index.html`
+
+```html
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="cueext://localhost/_cue/cue.css">
+  <script src="cueext://localhost/_cue/cue.js"></script>
+  <script src="hello.js" defer></script>
+</head>
+<body style="padding: 20px">
+  <h2 id="name">Open a session</h2>
+  <p class="muted" id="folder"></p>
+</body>
+</html>
+```
+
+`hello.js`
+
+```js
+// Shows the open session's name and folder, and keeps up as you switch sessions.
+function show(s) {
+  document.getElementById("name").textContent = s ? `Hello, ${s.name}` : "Open a session";
+  document.getElementById("folder").textContent = s ? s.folder : "";
+}
+cue.on("session", show);
+cue.ready.then(async () => show(await cue.session()));
+```
+
+Then in Cue: the **Extensions** button in the top bar, **Installed**, **Open the folder**, and put
+`hello` in it. Click **Look again**, switch **Hello** on, and open a session: it has a **Hello** tab with
+its name. Change `hello.js` and come back to Cue: the page reloads with your change.
+
+### When something goes wrong
+
+A page has no console you can see. An error on it (one thrown, or a promise nobody catches) shows in
+red under **Last it did** on its card in **Installed**, and in `extensions.log` in Cue's folder.
+`cue.log("…")` writes a line of your own there.
+
 ### manifest.json
 
 ```json

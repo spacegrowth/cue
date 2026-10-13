@@ -39,4 +39,15 @@
     log: (text) => call("log", { text }),
     ready: call("hello").then((h) => { theme(h.theme); return h; }),
   };
+  // What goes wrong on the page is told to Cue (once each, at most 20), so it shows under "Last it did"
+  // in the Extensions panel: a page has no console you can see.
+  const told = new Set();
+  const report = (what) => {
+    const t = String(what || "unknown error").slice(0, 300);
+    if (told.has(t) || told.size >= 20) return;
+    told.add(t);
+    call("log", { text: `error: ${t}` }).catch(() => {});
+  };
+  addEventListener("error", (e) => report(e.error && e.error.stack ? e.error.stack.split("\n").slice(0, 2).join(" ") : `${e.message} (${(e.filename || "").split("/").pop()}:${e.lineno})`));
+  addEventListener("unhandledrejection", (e) => report(e.reason && e.reason.message ? e.reason.message : e.reason));
 })();
