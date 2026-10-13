@@ -80,6 +80,10 @@ pub struct Session {
     /// "do you trust this folder?". 0 once it's trusted.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub trust_ms: u64,
+    /// Since when its terminal has shown a screen waiting for Enter before Claude Code starts
+    /// ("Security notes … Press Enter to continue…"): no hook reaches Cue until it's past it. 0: it isn't.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub enter_ms: u64,
     /// The folder's git state when this turn started (to tell what the turn changed).
     #[serde(skip)]
     pub turn_base: Option<crate::changes::Base>,
@@ -142,6 +146,7 @@ impl Parked {
         s.compacting_ms = 0;
         s.compacted_ms = 0;
         s.trust_ms = 0;
+        s.enter_ms = 0;
         s.stuck_ms = 0;
         s.later_ms = 0;
         s.changes = None;
@@ -203,6 +208,7 @@ impl Sessions {
             later_ms: 0,
             starred_ms: 0,
             trust_ms: 0,
+            enter_ms: 0,
             turn_base: None,
             turn_from: None,
             session_from: None,
@@ -218,6 +224,7 @@ impl Sessions {
         // question is answered, so it's through it, whatever ~/.claude.json says about the folder.
         if !origin.transcript_path.is_empty() {
             s.trust_ms = 0;
+            s.enter_ms = 0;
         }
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             s.prompt = p.trim().to_string();
@@ -447,6 +454,24 @@ impl Sessions {
         if let Some(s) = self.0.get_mut(session_id) {
             s.trust_ms = at_ms;
         }
+    }
+
+    /// What its terminal shows before Claude Code starts, as last read off its screen (None: neither
+    /// screen). True when that changed.
+    pub fn set_setup(&mut self, session_id: &str, setup: Option<crate::terminal::dialog::Setup>, now: u64) -> bool {
+        use crate::terminal::dialog::Setup;
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        let was = (s.trust_ms, s.enter_ms);
+        let keep = |since: u64, on: bool| if !on { 0 } else if since > 0 { since } else { now };
+        s.trust_ms = keep(s.trust_ms, setup == Some(Setup::Trust));
+        s.enter_ms = keep(s.enter_ms, setup == Some(Setup::Enter));
+        was != (s.trust_ms, s.enter_ms)
+    }
+
+    /// Claude Code sessions in a tmux pane Cue can read that no hook has come from yet: they may be on a
+    /// screen before it starts (trust, Enter to continue).
+    pub fn before_start(&self) -> Vec<Origin> {
+        self.0.values().filter(|s| s.origin.harness == "claude" && s.origin.transcript_path.is_empty() && !s.origin.tmux_pane.is_empty()).map(|s| s.origin.clone()).collect()
     }
 
     /// The sessions waiting on a trust question: (session id, folder, since when).

@@ -419,6 +419,8 @@ function bindMain() {
       renderMain();
       return invoke("rename_dismiss", { sessionId: sid }).catch(() => {});
     }
+    const cs = t.closest("[data-act=continue-start]");
+    if (cs) { invoke("continue_start", { sessionId: cs.dataset.sid }).then(() => toast("Pressed Enter: it's starting")).catch((e) => toast(`Couldn't: ${e}. Answer it in its terminal.`)); return; }
     const tr = t.closest("[data-act=trust]");
     if (tr) { invoke("trust_folder", { sessionId: tr.dataset.sid }).then(() => toast("Trusted: it's starting")).catch((e) => toast(`Couldn't answer it: ${e}. Answer it in its terminal.`)); return; }
     const goS = t.closest("[data-act=go-session]");

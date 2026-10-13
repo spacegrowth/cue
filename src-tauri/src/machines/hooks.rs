@@ -30,10 +30,15 @@ echo "$id $1 ${TMUX_PANE:-}" >>"$d/hook.log" 2>/dev/null
 } >"$d/in/$id.tmp" ) 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"
 [ "$1" = permission ] || exit 0
 # A permission question: wait for the answer while Cue is watching (it stamps the time every second).
+# Not watching now: leave at once. Once it has the question, a dropped line (the Mac asleep, Wi-Fi)
+# isn't the end of it: Cue reconnects and the answer still comes, so it waits up to 10 minutes of
+# silence. The terminal asks meanwhile either way, so answering there still works.
+quiet=20
 while :; do
   if [ -e "$d/out/$id.json" ]; then cat "$d/out/$id.json"; rm -f "$d/out/$id.json"; exit 0; fi
+  [ -e "$d/in/$id.json" ] || quiet=600
   seen=$(cat "$d/watching" 2>/dev/null || echo 0)
-  [ $(( $(date +%s) - ${seen:-0} )) -lt 20 ] || { rm -f "$d/in/$id.json"; exit 0; }
+  [ $(( $(date +%s) - ${seen:-0} )) -lt $quiet ] || { rm -f "$d/in/$id.json"; exit 0; }
   sleep 0.2 2>/dev/null || sleep 1
 done
 "#;
@@ -487,8 +492,45 @@ fn handle(m: &Machine, id: &str, ev: Value) {
     let (m, id, p) = (m.clone(), id.to_string(), ev["input"].clone());
     std::thread::spawn(move || {
         let answer = ask(&msg).map(|d| crate::hook::to_claude(&d, &p).to_string()).unwrap_or_default();
-        let _ = machines::run_with_input(&m.host, &format!(r#"umask 077; cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &answer);
+        let wrote = machines::run_with_input(&m.host, &format!(r#"umask 077; cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &answer);
+        // The hook takes an answer within a fifth of a second. Still there after a few: the hook had
+        // stopped waiting (Cue was out of reach too long), so the agent never got it and is asking in
+        // its terminal: Cue says so, instead of showing it at work on an answer it never had.
+        if !answer.is_empty() && wrote.is_ok() && !collected(&m.host, &id) {
+            let _ = machines::run(&m.host, &format!(r#"rm -f "$HOME/.cue/out/{id}.json""#));
+            not_delivered(msg);
+        }
     });
+}
+
+/// Did the hook on the machine take answer `id` (the file is gone) within a few seconds?
+fn collected(host: &str, id: &str) -> bool {
+    let end = Instant::now() + Duration::from_secs(4);
+    loop {
+        // An answer that can't be checked (the line dropped again) counts as taken: no false alarm.
+        match machines::run(host, &format!(r#"[ -e "$HOME/.cue/out/{id}.json" ] && echo here; true"#)) {
+            Ok(o) if o.trim() == "here" => {}
+            _ => return true,
+        }
+        if Instant::now() >= end {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+/// Tell Cue the answer to the ask `msg` never reached its agent: it's asking in its terminal.
+fn not_delivered(mut msg: Value) {
+    let Some(o) = msg.as_object_mut() else { return };
+    for k in ["kind", "tool_name", "tool_input", "suggestions"] {
+        o.remove(k);
+    }
+    o.insert("type".into(), json!("event"));
+    o.insert("event".into(), json!("terminal_ask"));
+    o.insert("message".into(), json!("Your answer from Cue didn't reach it (it had stopped waiting for Cue): it's asking in its terminal"));
+    if let Some(mut s) = crate::hook::connect(Duration::from_millis(800)) {
+        let _ = s.write_all(format!("{msg}\n").as_bytes());
+    }
 }
 
 /// Ask Cue's socket and wait for the decision (None: answered elsewhere, or Cue went away).
@@ -798,6 +840,34 @@ mod tests {
         let out = run_sh(SCRIPT, &home, &["permission", "claude"], r#"{"session_id":"s1","tool_name":"Bash"}"#);
         answerer.join().unwrap();
         assert_eq!(out, r#"{"decision":"allow"}"#);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_question_cue_has_taken_still_gets_its_answer_after_the_line_goes_quiet() {
+        let home = std::env::temp_dir().join(format!("cue-mh3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/out")).unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        std::fs::write(home.join(".cue/watching"), format!("{now}\n")).unwrap();
+        let h2 = home.clone();
+        // Cue takes the question, then goes quiet for a minute (asleep, Wi-Fi), then answers.
+        let answerer = std::thread::spawn(move || {
+            for _ in 0..50 {
+                std::thread::sleep(Duration::from_millis(100));
+                if let Some(f) = std::fs::read_dir(h2.join(".cue/in")).ok().and_then(|mut d| d.next()).and_then(|e| e.ok()) {
+                    let id = f.path().file_stem().unwrap().to_string_lossy().to_string();
+                    std::fs::rename(f.path(), h2.join(format!(".cue/in/{id}.json.1"))).unwrap();
+                    std::fs::write(h2.join(".cue/watching"), format!("{}\n", now - 60)).unwrap();
+                    std::thread::sleep(Duration::from_millis(1500));
+                    std::fs::write(h2.join(format!(".cue/out/{id}.json")), r#"{"decision":"allow"}"#).unwrap();
+                    return;
+                }
+            }
+        });
+        let out = run_sh(SCRIPT, &home, &["permission", "claude"], r#"{"session_id":"s1","tool_name":"AskUserQuestion"}"#);
+        answerer.join().unwrap();
+        assert_eq!(out, r#"{"decision":"allow"}"#, "a quiet minute after Cue took it isn't the end");
         let _ = std::fs::remove_dir_all(&home);
     }
 

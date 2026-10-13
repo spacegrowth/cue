@@ -76,6 +76,10 @@ pub struct Member {
     /// relay / pi-lead, or not in tmux) or names one Cue won't pass to tmux (see `tmux_name`).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub tmux_session: String,
+    /// Executor on a machine: its terminal is on a screen before Claude Code starts ("trust": asking
+    /// whether you trust the folder; "enter": waiting for Enter), so it isn't working, whatever relay says.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub setup: String,
     /// Executor: its lead has seen this packet's report (relay's `report_seen_packet`): reviewed,
     /// by your Review or by relay waking the lead itself.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -105,6 +109,8 @@ static LOCAL: Mutex<Option<HashMap<String, Member>>> = Mutex::new(None);
 static REMOTE: Mutex<Option<HashMap<String, (String, HashMap<String, Member>)>>> = Mutex::new(None);
 /// Each machine's pilead command ("" when it has none).
 static REMOTE_PILEAD: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+/// Per machine: its tmux panes on a screen before Claude Code starts (pane id -> which), as last listed.
+static REMOTE_SCREENS: Mutex<Option<HashMap<String, HashMap<String, crate::terminal::dialog::Setup>>>> = Mutex::new(None);
 
 /// Each file's last parse, by path, with the modification time it was parsed at. relay never deletes
 /// executor records (hundreds of closed ones pile up), and a closed record never changes again: a
@@ -582,20 +588,66 @@ for f in "$c"/sessions/*.json; do
 done
 # The zone relay's naive timestamps are in: this machine's UTC offset.
 echo "__CUE_TZ__:$(date +%z)"
+# The bottom of every tmux pane: Cue reads which are on a screen before Claude Code starts (it runs no
+# hook until it's past them, so nothing else would tell).
+echo "__CUE_SCREENS__"
+t=$(command -v tmux 2>/dev/null)
+for x in /opt/homebrew/bin/tmux /usr/local/bin/tmux /usr/bin/tmux; do [ -n "$t" ] || { [ -x "$x" ] && t="$x"; }; done
+[ -n "$t" ] && "$t" list-panes -a -F '#{pane_id} #{session_name}' 2>/dev/null | while read -r p n; do
+  echo "@@PANE $p $n"; "$t" capture-pane -p -t "$p" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -n 6
+done
 exit 0"#;
 
 /// Re-read one machine's crews (blocking: an SSH round trip): whether INDEX changed, and the Claude
 /// sessions running there (None: it couldn't be reached; it keeps what was last read from it).
 pub fn refresh_remote(machine: &str, host: &str) -> (bool, Option<HashSet<String>>) {
     let Ok(out) = crate::machines::run(host, REMOTE_LIST) else { return (false, None) };
-    let parsed = parse_remote(&out, machine);
+    let mut parsed = parse_remote(&out, machine);
+    let screens = screens_of(&out);
+    for m in parsed.1.values_mut().filter(|m| m.role == "executor" && !m.tmux_session.is_empty()) {
+        m.setup = screens.values().find(|(n, _)| *n == m.tmux_session).map(|(_, s)| setup_word(*s).to_string()).unwrap_or_default();
+    }
+    crate::locking::lock(&REMOTE_SCREENS, "REMOTE_SCREENS").get_or_insert_with(HashMap::new).insert(machine.to_string(), screens.into_iter().map(|(p, (_, s))| (p, s)).collect());
     crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD").get_or_insert_with(HashMap::new).insert(machine.to_string(), pilead_bin_of(&out));
     crate::locking::lock(&REMOTE, "REMOTE").get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
     (merge(), Some(live_of(&out)))
 }
 
+/// What a machine's tmux pane (`pane`, its id there) showed at the last listing, if it's a screen before
+/// Claude Code starts. None as well when that machine hasn't been listed yet.
+pub fn remote_setup(machine: &str, pane: &str) -> Option<crate::terminal::dialog::Setup> {
+    crate::locking::lock(&REMOTE_SCREENS, "REMOTE_SCREENS").as_ref()?.get(machine)?.get(pane).copied()
+}
+
+/// Whether a machine's panes have been read at all (an older listing, or none yet, says nothing).
+pub fn remote_screens_known(machine: &str) -> bool {
+    crate::locking::lock(&REMOTE_SCREENS, "REMOTE_SCREENS").as_ref().is_some_and(|r| r.contains_key(machine))
+}
+
+fn setup_word(s: crate::terminal::dialog::Setup) -> &'static str {
+    match s {
+        crate::terminal::dialog::Setup::Trust => "trust",
+        crate::terminal::dialog::Setup::Enter => "enter",
+    }
+}
+
+/// REMOTE_LIST's panes on a screen before Claude Code starts: pane id -> (its tmux session, which screen).
+fn screens_of(out: &str) -> HashMap<String, (String, crate::terminal::dialog::Setup)> {
+    let Some((_, part)) = out.split_once("__CUE_SCREENS__") else { return HashMap::new() };
+    part.split("@@PANE ")
+        .skip(1)
+        .filter_map(|chunk| {
+            let (head, screen) = chunk.split_once('\n').unwrap_or((chunk, ""));
+            let (pane, name) = head.trim().split_once(' ')?;
+            let setup = crate::terminal::dialog::setup_on(screen)?;
+            Some((pane.to_string(), (tmux_name(name.trim()), setup)))
+        })
+        .collect()
+}
+
 /// The Claude sessions REMOTE_LIST found running.
 fn live_of(out: &str) -> HashSet<String> {
+    let out = out.split_once("__CUE_SCREENS__").map_or(out, |(o, _)| o);
     out.split_once("__CUE_LIVE__").map(|(_, l)| l.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(TZ_MARK)).map(String::from).collect()).unwrap_or_default()
 }
 
@@ -1019,7 +1071,7 @@ pub fn view(known: &HashSet<String>) -> Value {
             execs.sort_by(|a, b| a.1.updated.cmp(&b.1.updated));
             v["executors"] = execs
                 .into_iter()
-                .map(|(esid, e)| serde_json::json!({ "session_id": esid, "name": e.name, "model": e.model, "status": e.status, "packet": e.packet, "goal": e.goal, "outcome": e.outcome, "verify": verdict_of(e), "plugin": e.plugin, "machine": e.machine, "tmux_session": e.tmux_session }))
+                .map(|(esid, e)| serde_json::json!({ "session_id": esid, "name": e.name, "model": e.model, "status": e.status, "packet": e.packet, "goal": e.goal, "outcome": e.outcome, "verify": verdict_of(e), "plugin": e.plugin, "machine": e.machine, "tmux_session": e.tmux_session, "setup": e.setup }))
                 .collect();
         }
         out.insert(sid.clone(), v);
@@ -1098,13 +1150,13 @@ C9
         std::fs::write(home.join(format!("sessions/{me}.json")), r#"{"pid":1,"sessionId":"L1","cwd":"/tmp"}"#).unwrap();
         std::fs::write(home.join(format!("sessions/{}.json", std::os::unix::process::parent_id())), r#"{"pid":2,"sessionId":"C1","cwd":"/tmp"}"#).unwrap();
         std::fs::write(home.join("sessions/999999.json"), r#"{"pid":3,"sessionId":"DEAD"}"#).unwrap();
-        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("HOME", &home).args(["-c", REMOTE_LIST]).output().unwrap();
+        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("HOME", &home).env("TMUX_TMPDIR", &home).env_remove("TMUX").args(["-c", REMOTE_LIST]).output().unwrap();
         let out = String::from_utf8_lossy(&out.stdout).to_string();
         assert!(out.contains("NOPILEAD") && pilead_bin_of(&out).is_empty(), "no pilead there: {out:?}");
         let (bin, index) = parse_remote(&out, "box");
         assert_eq!(bin, relay.display().to_string());
         assert_eq!(index["C1"].lead_armed, Some(true), "its lead is live there: {out:?}");
-        let live: Vec<&str> = out.split("__CUE_LIVE__").nth(1).unwrap().lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(TZ_MARK)).collect();
+        let live: Vec<&str> = out.split("__CUE_LIVE__").nth(1).unwrap().split("__CUE_SCREENS__").next().unwrap().lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with(TZ_MARK)).collect();
         assert_eq!(live.len(), 2, "one id per line, the dead one left out: {live:?}");
         assert!(tz_of(&out).is_some_and(|z| z.abs() <= 14 * 3600), "it says its UTC offset: {out:?}");
         assert_eq!(live_of(&out).len(), 2, "the offset line isn't a session");
@@ -1115,7 +1167,7 @@ C9
         std::fs::write(&pilead, format!("#!/bin/sh\ncat <<'EOF'\n{PI_LISTING}\nEOF\n")).unwrap();
         std::fs::set_permissions(&pilead, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         let path = format!("{}:/usr/bin:/bin", home.join("bin").display());
-        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("HOME", &home).env("PATH", path).args(["-c", REMOTE_LIST]).output().unwrap();
+        let out = std::process::Command::new("/bin/sh").env("CLAUDE_CONFIG_DIR", &home).env("HOME", &home).env("PATH", path).env("TMUX_TMPDIR", &home).env_remove("TMUX").args(["-c", REMOTE_LIST]).output().unwrap();
         let out = String::from_utf8_lossy(&out.stdout).to_string();
         assert_eq!(pilead_bin_of(&out), pilead.display().to_string(), "{out:?}");
         let (bin, index) = parse_remote(&out, "box");
@@ -1443,6 +1495,20 @@ __CUE_LIVE__
         for sid in ["L9", "PL1", "someone-else"] {
             assert!(!executor_in(&index, sid), "{sid}: not an executor");
         }
+    }
+
+    #[test]
+    fn a_machines_panes_on_a_screen_before_claude_code_starts_are_read_from_its_listing() {
+        let out = "NORELAY\n__CUE_PILEAD__\nNOPILEAD\n__CUE_LIVE__\nC1\n__CUE_TZ__:+0000\n__CUE_SCREENS__\n\
+@@PANE %4 relay-hello-md_2\nSecurity notes:\n1. Claude can make mistakes.\nPress Enter to continue…\n\
+@@PANE %5 cue-app\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm · Esc to cancel\n\
+@@PANE %6 work\n✻ Done\n❯ \n";
+        let screens = screens_of(out);
+        assert_eq!(screens.get("%4"), Some(&("relay-hello-md_2".to_string(), crate::terminal::dialog::Setup::Enter)));
+        assert_eq!(screens.get("%5").map(|s| s.1), Some(crate::terminal::dialog::Setup::Trust));
+        assert!(!screens.contains_key("%6"), "at its prompt: nothing to say");
+        assert_eq!(live_of(out), HashSet::from(["C1".to_string()]), "the panes never read as live sessions");
+        assert_eq!(tz_of(out), Some(0));
     }
 
     #[test]

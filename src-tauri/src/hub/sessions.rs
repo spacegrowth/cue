@@ -46,6 +46,19 @@ impl Hub {
 
     /// A session Cue just started ("+ New session"): known from the start, so it opens in Active and
     /// takes what you type before it has said anything. With a first message it's already working.
+    /// The trust question was answered (or is gone): its banner goes, and the next look at its screen
+    /// says what's there now.
+    pub fn trust_answered(&self, session_id: &str) {
+        self.st().sessions.set_trust(session_id, 0);
+        self.changed();
+    }
+
+    /// Past a screen that waited for Enter before Claude Code started: its banner goes until another shows.
+    pub fn enter_pressed(&self, session_id: &str) {
+        self.st().sessions.set_setup(session_id, None, now_ms());
+        self.changed();
+    }
+
     pub fn started(&self, origin: Origin, message: &str, asks_trust: bool) {
         {
             let mut st = self.st();

@@ -539,11 +539,40 @@ impl Hub {
             drop(st);
             self.changed();
         }
-        // A session Cue started in a folder Claude Code didn't trust yet: asking in its terminal until
-        // ~/.claude.json says it's trusted (answered there, or with Trust in Cue). Given up after 30 minutes.
+        // Before Claude Code starts (no hook from it yet), its terminal can sit on a screen of its own: the
+        // trust question, or one waiting for Enter. Read off its pane: this Mac's now, a machine's from
+        // its last listing (leads::refresh_remote, no SSH here). Shown as such, not as at work.
+        let before = self.st().sessions.before_start();
+        let mut seen: Vec<(String, Option<crate::dialog::Setup>)> = vec![];
+        for o in before {
+            let setup = if o.machine.is_empty() {
+                match crate::focus::tmux_screen(&o.tmux_pane) {
+                    Ok(screen) => crate::dialog::setup_on(&screen),
+                    Err(_) => continue,
+                }
+            } else if crate::leads::remote_screens_known(&o.machine) {
+                crate::leads::remote_setup(&o.machine, &o.tmux_pane)
+            } else {
+                continue;
+            };
+            seen.push((o.session_id, setup));
+        }
+        if !seen.is_empty() {
+            let mut st = self.st();
+            let changed = seen.iter().fold(false, |any, (sid, setup)| st.sessions.set_setup(sid, *setup, now) || any);
+            drop(st);
+            if changed {
+                self.changed();
+            }
+        }
+        // A session Cue started in a folder Claude Code didn't trust yet, in a terminal Cue can't read:
+        // asking until ~/.claude.json says it's trusted (answered there). Given up after 30 minutes. Only
+        // on this Mac: a machine's folder is never looked up here.
         let done: Vec<String> = {
-            let asking = self.st().sessions.asking_trust();
-            asking.into_iter().filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect()
+            let st = self.st();
+            st.sessions.asking_trust().into_iter()
+                .filter(|(sid, _, _)| st.sessions.origin(sid).is_some_and(|o| o.machine.is_empty() && o.tmux_pane.is_empty()))
+                .filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect()
         };
         if !done.is_empty() {
             let mut st = self.st();

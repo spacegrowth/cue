@@ -339,20 +339,52 @@ pub(crate) fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &s
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} on {}", agent, m.name) }))
 }
 
-/// Trust in Cue for a session Claude Code is asking "do you trust this folder?": presses Enter in its
-/// terminal, which picks the question's first choice, "Yes, I trust this folder". Only from your click.
+/// Trust in Cue for a session Claude Code is asking "do you trust this folder?": its cursor moved onto
+/// "Yes, I trust this folder", then Enter. Only from your click, and only where Cue can see the screen
+/// (its tmux pane, here or on a machine): Claude Code lists "No, exit" first, so a blind Enter would end it.
 #[tauri::command]
 pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
+    let h = hub.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        // When Cue can see the screen, Enter goes only to the trust question: a button clicked after
-        // the session moved on to a permission prompt would otherwise accept that.
-        if let Some(d) = focus::dialog_on(&origin) {
-            if !d.title.to_lowercase().contains("trust") {
-                return Err("it isn't asking about the folder any more".into());
+        if origin.tmux_pane.is_empty() {
+            return Err("Cue can't see its terminal".into());
+        }
+        let screen = || focus::session_screen(&origin).ok().filter(|s| crate::terminal::dialog::setup_on(s) == Some(crate::terminal::dialog::Setup::Trust));
+        let Some((cursor, yes)) = screen().as_deref().and_then(crate::terminal::dialog::trust_choices) else {
+            h.trust_answered(&session_id);
+            return Err("it isn't asking about the folder any more".into());
+        };
+        if cursor != yes {
+            let key = if yes > cursor { "Down" } else { "Up" };
+            focus::tmux_keys(&origin, &vec![key.to_string(); cursor.abs_diff(yes)])?;
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if !screen().as_deref().and_then(crate::terminal::dialog::trust_choices).is_some_and(|(c, y)| c == y) {
+                return Err("its cursor didn't reach “Yes”".into());
             }
         }
-        focus::press_enter(&origin)
+        focus::tmux_keys(&origin, &["Enter".to_string()])?;
+        h.trust_answered(&session_id);
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// Continue in Cue for a session whose terminal waits for Enter before Claude Code starts ("Security
+/// notes … Press Enter to continue…"): Enter, only while that screen is still there. Only from your click.
+#[tauri::command]
+pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if origin.tmux_pane.is_empty() {
+            return Err("Cue can't see its terminal".into());
+        }
+        let on = focus::session_screen(&origin).ok().and_then(|s| crate::terminal::dialog::setup_on(&s)) == Some(crate::terminal::dialog::Setup::Enter);
+        h.enter_pressed(&session_id);
+        if !on {
+            return Err("it isn't waiting for Enter any more".into());
+        }
+        focus::tmux_keys(&origin, &["Enter".to_string()])
     }).await.map_err(|e| e.to_string())?
 }
 

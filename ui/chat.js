@@ -686,7 +686,7 @@ const SWEEP_MS = 1600, CALM_MS = 4200, QUIET_MS = 30000;
 const PULSE_MS = 1400;
 function sweep(sid, s) {
   if (!(s?.state === "working" || s?.compacting_ms)) return "";
-  if (s.stuck_ms && !s.compacting_ms) return `<i class="sweep stalled"></i>`;
+  if ((s.stuck_ms && !s.compacting_ms) || preStart(s)) return `<i class="sweep stalled"></i>`;
   const lastStep = stepFeeds.get(sid)?.turns?.at(-1)?.items?.at(-1)?.at_ms || 0;
   const calm = now() - Math.max(s.doing_ms || 0, lastStep, s.compacting_ms || 0, s.since_ms || 0) > QUIET_MS;
   return `<i class="sweep ${calm ? "calm" : ""}" style="animation-duration:${calm ? CALM_MS : SWEEP_MS}ms" data-sweep></i>`;
@@ -939,6 +939,8 @@ const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}
 function statusLine(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
   if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
+  // Waiting for Enter on a screen before Claude Code starts ("Security notes … Press Enter to continue").
+  if (s?.enter_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is waiting for Enter in its terminal before it starts.</b> Nothing runs until then.</span><button class="btn small primary" data-act="continue-start" data-sid="${esc(s.session_id)}">Continue</button></div>`;
   // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
   if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span></div>`;
   // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.

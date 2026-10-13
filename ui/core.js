@@ -255,9 +255,13 @@ const asksOf = (sid) => state.items.find((i) => i.session_id === sid && i.kind !
 /** An executor's state, in a word or two. */
 /** What a working session is doing right now ("Running: cargo test"), from its transcript, and since
  *  when: Cue reads it every few seconds, so it follows the agent step by step. Empty when unknown. */
-const liveStep = (sid) => { const s = sessionOf(sid); return s?.state === "working" && s.doing ? { what: s.doing, at: s.doing_ms } : null; };
+const liveStep = (sid) => { const s = sessionOf(sid); return s?.state === "working" && s.doing && !preStart(s) ? { what: s.doing, at: s.doing_ms } : null; };
+/** Before Claude Code starts, its terminal can sit on a screen of its own (no hook comes until it's past
+ *  it): what that is in words, for a session (`trust_ms` / `enter_ms`) or a machine's executor (`setup`). */
+const preStart = (s) => s?.trust_ms || s?.setup === "trust" ? "asking whether you trust its folder" : s?.enter_ms || s?.setup === "enter" ? "waiting for Enter in its terminal" : "";
 function exState(e) {
   if (asksOf(e.session_id)) return { word: "needs you", cls: "need" };
+  if (preStart(e) || preStart(sessionOf(e.session_id))) return { word: "waiting in its terminal", cls: "need" };
   if (reported(e.status)) return { word: "done", cls: "done" };
   if (e.status === "busy") return { word: "working", cls: "busy" };
   return { word: { stalled: "stalled", closed: "closed", superseded: "replaced", dead: "stopped" }[e.status] || e.status || "", cls: "" };
@@ -288,7 +292,8 @@ function packetCard(sid, m = crewOf(sid)) {
     acts = diffBtn(sid, m) + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
   } else {
     const now = liveStep(sid);
-    st = now ? `${esc(now.what)} · when it reports, ${lead} reviews it` : m.status === "busy" ? `Working on it · when it reports, ${lead} reviews it` : esc(exState(m).word || m.status || "");
+    const pre = preStart(m) || preStart(sessionOf(sid));
+    st = pre ? `Not started: ${pre}. Open its terminal to answer it` : now ? `${esc(now.what)} · when it reports, ${lead} reviews it` : m.status === "busy" ? `Working on it · when it reports, ${lead} reviews it` : esc(exState(m).word || m.status || "");
   }
   const gone = m.lead_armed === false ? `<div class="crew-warn">Its lead (${lead}) isn't running, so ${reported(m.status) ? "its report reaches no one" : "no one will review this"}.</div>` : "";
   return `<div class="team-card"><div class="tc-h">PACKET${m.packet ? ` ${m.packet}` : ""}</div>${m.goal ? `<div class="tc-goal">${esc(m.goal.charAt(0).toUpperCase() + m.goal.slice(1))}</div>` : ""}
@@ -324,7 +329,7 @@ function teamTree(lead) {
     else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>${stalledWord(e.status)}</span></div>${goalLine(e)}<div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
     else busy.push(e);
   }
-  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${exGo(e.session_id)}><div class="tn-t">${e.status === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div>${goalLine(e)}</div>`;
+  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${exGo(e.session_id)}><div class="tn-t">${e.status === "busy" && exState(e).cls === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div>${goalLine(e)}</div>`;
   // A big team: five working lines, then a count.
   const more = busy.length > TREE_BUSY ? [`<div class="tn"><div class="tn-t tn-x">+${busy.length - TREE_BUSY} more working</div></div>`] : [];
   return `<div class="team-tree">${[...rows, ...busy.slice(0, TREE_BUSY).map(line), ...more].join("")}</div>`;
