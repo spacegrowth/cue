@@ -2,12 +2,12 @@
 
 An extension brings a page of its own: as a tab in the open session, beside Chat, or in the Extensions
 panel (the button beside the terminal's in the top bar) for what isn't about one chat, or both. Cue comes with
-one, [Diff](../extensions/diff), which shows what a session changed: switch it on in **Settings →
-Extensions**. The extensions that come with Cue update with it.
+one, [Diff](../extensions/diff), which shows what a session changed: switch it on in the **Extensions** panel (the button in the top bar). The extensions that come with Cue update with it.
 
 ## Install one
 
-1. In Cue, open **Settings → Extensions** and click **Open the folder**.
+1. In Cue, click the **Extensions** button in the top bar (beside the terminal's), and in **Installed**
+   click **Open the folder**.
 2. Copy the extension's folder in (the folder with `manifest.json` in it; unzip it first if it came as
    a zip). Its folder name is its name: letters, digits, `-` and `_`.
 3. Click **Look again**. It's listed, switched off, with what it asks to do.

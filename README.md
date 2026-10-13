@@ -60,8 +60,9 @@ it changes, and never runs anything. If it doesn't match this format, the pill s
 An extension brings a page of its own, as a tab beside a session's chat or in the Extensions panel
 (the button beside the terminal's). Cue comes with one,
 [Diff](extensions/diff): what the session changed this turn, the whole session, or everything not
-committed. Switch it on in Settings → Extensions; it updates with Cue. To add another, copy its folder
-into Settings → Extensions → **Open the folder**. Nothing in an extension runs until you switch it on.
+committed. Switch it on in the Extensions panel (the button beside the terminal's in the top bar); it
+updates with Cue. To add another, copy its folder in from there (**Open the folder**). Nothing in an
+extension runs until you switch it on.
 To make one, see [docs/extensions.md](docs/extensions.md).
 
 ## Privacy

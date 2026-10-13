@@ -23,6 +23,7 @@ async function loadExtensions() {
   for (const e of extTabs()) extFrame(e);
   await Promise.all(extList.map((e) => invoke("ext_activity", { name: e.name, n: 4 }).then((l) => extActivity.set(e.name, l), () => {})));
   renderMain();
+  xtRedraw();
 }
 const extOf = (name) => extList.find((e) => e.name === name);
 const extTabs = () => extList.filter((e) => e.tab && e.enabled);
@@ -84,7 +85,7 @@ document.addEventListener("click", (e) => {
   renderMain();
 }, true);
 
-// ---------- Settings → Extensions ----------
+// ---------- Extensions panel → Installed ----------
 /** What a capability lets an extension do, in plain words. */
 function xtCan(cap, programs = []) {
   return {
@@ -117,31 +118,28 @@ function xtSettings() {
       <div class="xt-intro-btns"><button class="btn primary" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="1" data-sure="1">Allow and switch on</button><button class="btn" data-act="xt-cancel">Cancel</button></div></div>` : "";
     const lines = extActivity.get(e.name) || [];
     return `<div class="xt ${e.enabled ? "on" : ""}">
-      <div class="xt-head"><span class="xt-name">${esc(e.title || e.name)}</span>${e.version ? `<span class="xt-ver">${esc(e.version)}</span>` : ""}${e.tab ? `<span class="xt-where">adds the “${esc(e.tab)}” tab to sessions</span>` : ""}<span class="grow"></span>
+      <div class="xt-head"><span class="xt-name">${esc(e.title || e.name)}</span>${e.version ? `<span class="xt-ver">${esc(e.version)}</span>` : ""}${[e.tab ? `adds the “${esc(e.tab)}” tab to sessions` : "", e.panel ? `in this panel as “${esc(e.panel)}”${e.add ? `, and under New session → + Add` : ""}` : ""].filter(Boolean).length ? `<span class="xt-where">${[e.tab ? `adds the “${esc(e.tab)}” tab to sessions` : "", e.panel ? `in this panel as “${esc(e.panel)}”${e.add ? `, and under New session → + Add` : ""}` : ""].filter(Boolean).join("; ")}</span>` : ""}<span class="grow"></span>
         <span class="xt-state">${e.enabled ? "On" : newOnly ? "Needs your OK" : "Off"}</span>
         <button class="toggle ${e.enabled ? "on" : ""}" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="${e.enabled ? "" : "1"}" role="switch" aria-checked="${!!e.enabled}" aria-label="${esc(e.title || e.name)}"><span></span></button></div>
       <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}${confirm}
         <div class="xt-log"><div class="xt-k">Last it did</div>${lines.length ? lines.map(xtLine).join("") : `<div class="xt-none">Nothing yet</div>`}</div>
         <div class="xt-folder">${e.builtin ? "Comes with Cue, and updates with it" : `${e.replaces_builtin ? "Your copy, used in place of the one that comes with Cue: " : ""}<code>${esc(e.folder || "")}</code>`}</div></div></div>`;
   }).join("");
-  return `<div class="set-group">Extensions</div>
-    <div class="xt-intro">An extension is a folder with a <code>manifest.json</code> and its own page, in <code>${esc(extRoot)}</code>. Nothing in it runs until you switch it on here, and switching it on is what allows what it asks for. Every command it runs is listed under it.
+  return `<div class="xt-intro">An extension is a folder with a <code>manifest.json</code> and its own page, in <code>${esc(extRoot)}</code>. Nothing in it runs until you switch it on here, and switching it on is what allows what it asks for. Every command it runs is listed under it.
       <div class="xt-intro-btns"><button class="btn" data-act="xt-folder">Open the folder</button><button class="btn" data-act="xt-rescan">Look again</button></div></div>
     ${rows || `<div class="xt-empty">No extensions yet. Put one's folder in the folder above, then Look again.</div>`}`;
 }
 document.addEventListener("click", async (e) => {
   const t = e.target.closest?.("[data-act]");
   const act = t?.dataset.act;
-  if (act === "set-tab" && t.dataset.tab === "extensions") setTimeout(loadExtensions, 0);
-  if (act === "open-settings") setTimeout(loadExtensions, 0);
   if (!["xt-toggle", "xt-folder", "xt-rescan", "xt-cancel"].includes(act)) return;
   e.stopPropagation();
   if (act === "xt-folder") return invoke("ext_reveal").catch((x) => toast(`Couldn't open it: ${x}`));
   if (act === "xt-rescan") return loadExtensions();
-  if (act === "xt-cancel") { xtConfirm = null; return renderMain(); }
+  if (act === "xt-cancel") { xtConfirm = null; return xtRedraw(); }
   // Switching on one that runs programs: first the confirmation, then (from its button) for real.
   const ext = extOf(t.dataset.name);
-  if (act === "xt-toggle" && t.dataset.on && !t.dataset.sure && (ext?.capabilities || []).includes("programs.run")) { xtConfirm = t.dataset.name; return renderMain(); }
+  if (act === "xt-toggle" && t.dataset.on && !t.dataset.sure && (ext?.capabilities || []).includes("programs.run")) { xtConfirm = t.dataset.name; return xtRedraw(); }
   xtConfirm = null;
   try { await invoke("ext_enable", { name: t.dataset.name, on: !!t.dataset.on }); } catch (x) { toast(`Couldn't: ${x}`); }
   loadExtensions();
@@ -188,15 +186,20 @@ function extNotify() {
 let extAddMenu = false;
 let extPanel = null;   // { name, frame, el } while the panel is open
 const extPanels = () => extList.filter((e) => e.panel && e.enabled);
-const PUZZLE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h3a2 2 0 0 1 2 2v1.2a1.8 1.8 0 1 0 3.6 0V5H21v5.5h-1.2a1.8 1.8 0 1 0 0 3.6H21V21h-5.5v-1.2a1.8 1.8 0 1 0-3.6 0V21H5a2 2 0 0 1-2-2v-6h1.2a1.8 1.8 0 1 0 0-3.6H3V5a2 2 0 0 1 2-2h4z"/></svg>`;
-const extPanelBtn = () => (extPanels().length ? `<button class="top-btn icon xp-btn" data-xp-open="" aria-pressed="${!!extPanel}" aria-label="Extensions">${PUZZLE_ICON}</button>` : "");
+const EXT_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.9" y="2.6" width="7.5" height="7.5" rx="1.6" transform="rotate(15 17.65 6.35)"/></svg>`;
+const extPanelBtn = () => `<button class="top-btn icon xp-btn" data-xp-open="" aria-pressed="${!!extPanel}" aria-label="Extensions">${EXT_ICON}</button>`;
 const extAddMenuHtml = () => (extAddMenu ? `<div class="xw-menu"><button data-xw=""><b>A machine you reach over SSH</b><span>build box, cloud VM…</span></button>${extPanels().filter((e) => e.add).map((e) => `<button data-xw="${esc(e.name)}"><b>${esc(e.add)}</b><span>${esc(e.title || e.name)}</span></button>`).join("")}</div>` : "");
 const extAddsAny = () => extPanels().some((e) => e.add);
 
+/** The panel's first entry, "Installed": every extension, switched on or off, what it may do, its last
+ *  commands (Cue's own page, drawn here, not an extension's). */
+function xtRedraw() {
+  const pane = extPanel && extPanel.name === "" && extPanel.el.querySelector(".xp-manage");
+  if (pane) pane.innerHTML = xtSettings();
+}
 function extShowPanel(name) {
   const list = extPanels();
-  if (!list.length) return;
-  const e = extOf(name) && extOf(name).panel ? extOf(name) : list[0];
+  const e = name && extOf(name)?.panel && extOf(name).enabled ? extOf(name) : null;
   if (!extPanel) {
     const el = document.createElement("div");
     el.className = "scrim xp-scrim";
@@ -204,14 +207,27 @@ function extShowPanel(name) {
     el.addEventListener("click", (ev) => {
       if (ev.target === el || ev.target.closest("[data-xp-close]")) return extClosePanel();
       const r = ev.target.closest("[data-xp]");
-      if (r) extShowPanel(r.dataset.xp);
+      if (r) extShowPanel(r.dataset.xp || "");
     });
     document.body.append(el);
     extPanel = { name: null, frame: null, el };
   }
-  extPanel.el.querySelector(".xp-rail").innerHTML = list.map((x) => `<button class="${x.name === e.name ? "on" : ""}" data-xp="${esc(x.name)}">${esc(x.panel)}</button>`).join("");
-  if (extPanel.name === e.name) return;
+  extPanel.el.querySelector(".xp-rail").innerHTML = `<button class="${e ? "" : "on"}" data-xp="">Installed</button>${list.length ? `<div class="xp-sep"></div>` : ""}` + list.map((x) => `<button class="${x.name === e?.name ? "on" : ""}" data-xp="${esc(x.name)}">${esc(x.panel)}</button>`).join("");
+  const want = e ? e.name : "";
+  if (extPanel.name === want) return xtRedraw();
   extPanel.frame?.remove();
+  extPanel.frame = null;
+  extPanel.el.querySelector(".xp-manage")?.remove();
+  if (!e) {
+    const m = document.createElement("div");
+    m.className = "xp-manage";
+    extPanel.el.querySelector(".xp-page").append(m);
+    extPanel.name = "";
+    xtRedraw();
+    renderMain();
+    loadExtensions();
+    return;
+  }
   const f = document.createElement("iframe");
   f.className = "xp-frame";
   f.setAttribute("sandbox", "allow-scripts allow-forms");

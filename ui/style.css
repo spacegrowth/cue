@@ -1487,7 +1487,7 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ext-slot { flex: 1; min-height: 0; }
 .ext-frame { position: fixed; z-index: 2; border: 0; background: var(--panel); }
 
-/* Settings → Extensions */
+/* Extensions panel → Installed */
 .xt-intro { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 2px 0 14px; }
 .xt-intro code, .xt-folder code { font: 11.5px var(--mono); }
 .xt-intro-btns { display: flex; gap: 8px; margin-top: 10px; }
@@ -1525,5 +1525,7 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .xp-rail button:hover { color: var(--ink); background: var(--panel-2); }
 .xp-rail button.on { color: var(--ink); background: var(--panel-2); }
 .xp-page { flex: 1; min-width: 0; display: flex; }
+.xp-manage { flex: 1; overflow-y: auto; padding: 16px 22px 22px; }
+.xp-sep { height: 1px; background: var(--line); margin: 6px 4px; }
 .xp-frame { flex: 1; border: 0; border-radius: 0 0 18px 0; background: var(--panel); }
 .xw-x { font-size: 20px; line-height: 1; color: var(--muted); background: none; border: 0; cursor: pointer; }
