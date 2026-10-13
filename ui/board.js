@@ -295,8 +295,33 @@ function starEntry(s, open) {
 }
 
 // ---------- Board view: ACTIVE | WAITING | WORKING + RECENTLY ANSWERED ----------
-/** Everything waiting on you, oldest first: finished turns and decisions together. */
-const needsYou = () => [...groups().decide, ...groups().yours].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms));
+// In conversation: a card that came back within a few minutes of your last message to that session.
+// It leaves the group (back to its place, oldest first) once it's sat that long unanswered, except
+// while it's open in Active, so it never moves under you.
+const TALK_MS = 5 * 60000;
+/** How soon after your message this card came back (ms), or null: not a conversation. */
+function talkGap(it) {
+  if (it.back_ms) return null;   // you sent it to the back
+  const you = (sessionOf(it.session_id)?.thread || []).filter((e) => e.role === "you" && e.at_ms <= it.created_ms).pop();
+  const gap = you ? it.created_ms - you.at_ms : null;
+  return gap !== null && gap <= TALK_MS ? gap : null;
+}
+const talkStale = (it) => now() - it.created_ms > TALK_MS && active?.sid !== it.session_id;
+const talking = (it) => talkGap(it) !== null && !talkStale(it);
+/** Everything waiting on you, finished turns and decisions together: conversations first (in the order
+ *  they came back), then oldest first. */
+const needsYou = () => { const all = [...groups().decide, ...groups().yours].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms)); return [...all.filter(talking), ...all.filter((i) => !talking(i))]; };
+/** Working on what you said in the last few minutes: it stays in the conversation group while it works
+ *  (a card like the others, saying "working"; its card stays under Working too); once it's worked longer, it's a job, and only in Working. */
+const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
+const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span><span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div>${s.doing || s.prompt ? `<div class="nrow-text">${esc(s.doing || `› ${s.prompt}`)}</div>` : ""}</div>`;
+/** The grey line under a card's name: why it's in conversation, or that it just left it. */
+function talkNote(it) {
+  const gap = talkGap(it);
+  if (gap === null) return "";
+  if (!talkStale(it)) return `<div class="talk-why">answered ${ago(now() - gap)} after you</div>`;
+  return now() - it.created_ms < 2 * TALK_MS ? `<div class="talk-why">no reply for ${TALK_MS / 60000}m · back to its place</div>` : "";
+}
 const isPending = (it) => !!it && state.items.some((i) => i.id === it.id);
 function shelfDrawer(isOpen) {
   const open = drawerOpen("parked"), tab = pkTab(), ps = state.parked || [];
@@ -367,7 +392,7 @@ function needRow(it, ghost, open = false) {
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
     <div class="nrow-top">${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}<span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
-    ${cardCrew(it.session_id)}
+    ${talkNote(it)}${cardCrew(it.session_id)}
     <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
 /** A lead whose team needs you while it has nothing waiting itself: a slim card holding the team's tree.
@@ -503,9 +528,6 @@ function boardView() {
   const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
   const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
     .map((l) => ({ _team: l, created_ms: Math.min(...needs.filter((i) => leadOf(i) === l).map((i) => i.back_ms ?? i.created_ms)) }));
-  // Oldest first.
-  const needRows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms))
-    .map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
 
   // A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one
   // for a team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever
@@ -513,7 +535,19 @@ function boardView() {
   const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
   const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
   const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && (crewOf(m.lead)?.executors || []).some((e) => e.session_id === sid); };
+  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !inTree(s.session_id) && !sessTree.has(s.session_id) && workingOnYours(s));
   const shown = working.filter((s) => !inTree(s.session_id));
+  // Conversations first (when there are any, under their own heading): the cards that came back, then the
+  // sessions still working on your message. Then oldest first. A card you just answered fades out in the
+  // group it was in, unless its session is back at work there.
+  const talkSids = new Set(talkWork.map((x) => x.session_id));
+  const rows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms));
+  const inTalk = (i) => !i._team && talking(i);
+  const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
+  const talks = rows.filter(inTalk), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
+  const needRows = talks.length || talkWork.length
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN · ${count(talks)}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}${rest.length ? `<div class="col-sub">OLDEST FIRST · ${count(rest)}</div>${draw(rest)}` : ""}`
+    : draw(rest);
   // Sessions counts what it shows: its cards, and the executors in its leads' trees.
   const treed = working.filter((s) => inTree(s.session_id) && sessTree.has(crewOf(s.session_id).lead)).length;
   const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s); };
@@ -548,7 +582,7 @@ function boardView() {
   return `<div class="board" style="grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)">
     <div class="col main"><div class="col-head">ACTIVE</div>${activePane()}</div>
     <div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 ? " · oldest first" : ""}</span></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}</div></div>
+      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 && !talks.length && !talkWork.length ? " · oldest first" : ""}</span></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}</div></div>
       ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
     </div>
     <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
@@ -648,7 +682,7 @@ const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${
 /** Cards that move between redraws (back into Waiting, into Need to decide, or up to
  *  close a gap) glide from where they were instead of jumping, so you can follow where they went.
  *  Keyed by what they show: an ask or turn by its id, a session card by its session. */
-const FLIP_SEL = ".board .col:not(.main) .nrow[data-big], .board .col:not(.main) .nrow[data-session], .board .col:not(.main) .working[data-session]";
+const FLIP_SEL = ".board .col:not(.main) .nrow[data-big], .board .col:not(.main) .nrow[data-session]:not(.talk-work), .board .col:not(.main) .working[data-session]";
 const flipKey = (el) => (el.dataset.big ? `i:${el.dataset.big}` : `s:${el.dataset.session}`);
 function flipRects() {
   const m = new Map();
