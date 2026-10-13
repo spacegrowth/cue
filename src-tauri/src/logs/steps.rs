@@ -163,11 +163,28 @@ impl Helper {
         if self.model.is_empty() {
             self.model = f.meta.model.clone();
         }
+        // Its meta file can come after it started (copied from another machine).
+        if self.kind.is_empty() {
+            self.kind = helper_kind(std::path::Path::new(&f.path));
+        }
         true
     }
 }
 
+/// A background agent's type ("Explore"), from the meta file beside its log; "" when there's none (yet).
+fn helper_kind(log: &std::path::Path) -> String {
+    std::fs::read(log.with_extension("meta.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|m| m.get("agentType").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_default()
+}
+
 /// Where a session's background agent writes its log, and its meta file (`<session folder>/subagents/`).
+#[cfg(test)]
+pub fn helper_path_for_test(session_log: &str, agent_id: &str) -> Option<std::path::PathBuf> {
+    helper_path(session_log, agent_id)
+}
 fn helper_path(session_log: &str, agent_id: &str) -> Option<std::path::PathBuf> {
     let folder = session_log.strip_suffix(".jsonl")?;
     Some(std::path::Path::new(folder).join("subagents").join(format!("agent-{agent_id}.jsonl")))
@@ -317,13 +334,10 @@ impl Feed {
         if id.is_empty() || self.helpers.iter().any(|h| h.id == id) {
             return;
         }
+        // A session on another machine: its agent's log is copied over (to where it's read from here).
+        crate::machines::logs::copy_helper(&self.path, &id);
         let path = helper_path(&self.path, &id);
-        let kind = path
-            .as_ref()
-            .and_then(|p| std::fs::read(p.with_extension("meta.json")).ok())
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-            .and_then(|m| m.get("agentType").and_then(Value::as_str).map(str::to_string))
-            .unwrap_or_default();
+        let kind = path.as_ref().map(|p| helper_kind(p)).unwrap_or_default();
         let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
         self.helpers.push(Helper { id, step: step.to_string(), desc: s("description"), kind, model: s("resolvedModel"), started_ms: at_ms, finished_ms: 0, items: Vec::new(), more: 0, feed });
         // The oldest finished ones go first; what's running is never dropped.
@@ -342,6 +356,12 @@ impl Feed {
         if let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) {
             if status != "running" {
                 h.finished_ms = at_ms;
+                // Copied from another machine: its log is complete once it reports (a moment for its last lines).
+                let (copy, id) = (self.path.clone(), h.id.clone());
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    crate::machines::logs::stop_helper(&copy, &id);
+                });
             }
         }
     }
