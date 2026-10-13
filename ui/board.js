@@ -314,7 +314,7 @@ const needsYou = () => { const all = [...groups().decide, ...groups().yours].sor
 /** Working on what you said in the last few minutes: it stays in the conversation group while it works
  *  (a card like the others, saying "working"; its card stays under Working too); once it's worked longer, it's a job, and only in Working. */
 const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
-const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span><span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div>${s.doing || s.prompt ? `<div class="nrow-text">${esc(s.doing || `› ${s.prompt}`)}</div>` : ""}</div>`;
+const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span><span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div>${s.doing ? `<div class="nrow-text">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
 /** The grey line under a card's name: why it's in conversation, or that it just left it. */
 function talkNote(it) {
   const gap = talkGap(it);
