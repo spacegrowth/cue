@@ -47,6 +47,12 @@ pub struct Member {
     /// executor whose lead isn't armed reaches nobody.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lead_armed: Option<bool>,
+    /// Lead (relay): the lead it took over from in a handoff (relay's `predecessor`), and when it
+    /// started (ms). The one before steps down but stays open until you close it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub predecessor: String,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub started_ms: u64,
     /// Lead: relay's autonomous posture (`/relay:auto`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto: Option<bool>,
@@ -174,6 +180,10 @@ fn color(v: &Value) -> Option<[u8; 3]> {
     let c = |i: usize| a.get(i)?.as_u64().filter(|n| *n <= 255).map(|n| n as u8);
     Some([c(0)?, c(1)?, c(2)?])
 }
+/// A relay lead record's predecessor: the session id of the lead it took over from, "" for none.
+fn predecessor(v: &Value) -> String {
+    v.get("predecessor").map(|p| s(p, "session_id")).unwrap_or_default()
+}
 fn subdirs(p: &Path) -> Vec<PathBuf> {
     std::fs::read_dir(p).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()).unwrap_or_default()
 }
@@ -296,6 +306,8 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
             color: color(&m),
             model: s(&m, "model"),
             auto: m.get("autonomous").and_then(Value::as_bool),
+            predecessor: predecessor(&m),
+            started_ms: epoch_secs(&s(&m, "started"), None).map_or(0, |t| t * 1000),
             plan_next: plan.0,
             plan_queued: plan.1,
             updated: s(&m, "last_active"),
@@ -718,6 +730,8 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
             color: color(l),
             model: s(l, "model"),
             auto: l.get("autonomous").and_then(Value::as_bool),
+            predecessor: predecessor(l),
+            started_ms: epoch_secs(&s(l, "started"), zone).map_or(0, |t| t * 1000),
             updated: s(l, "last_active"),
             machine: machine.into(),
             ..Default::default()
@@ -960,7 +974,7 @@ fn pilead_bin(id: &str) -> Option<PathBuf> {
 
 /// How to close this session through its own tool, if it has one: a relay / pi-lead executor is closed
 /// by relay / pilead (it marks the executor closed and closes its tab). A lead that still has
-/// executors isn't closed from Cue: that's relay's handoff / close. None: not in a crew, or an
+/// executors can't be parked or moved (Close closes a relay lead's with it: see lead_close). None: not in a crew, or an
 /// executor relay is already done with (closed, superseded) whose agent still runs (resumed in a
 /// pane relay's record doesn't know): ending it is Cue's, as for any session.
 pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
@@ -971,26 +985,107 @@ pub fn close_plan(session_id: &str) -> Option<Result<Cmd, String>> {
         return None;
     }
     match (m.plugin.as_str(), m.role.as_str()) {
-        ("relay", "executor") => Some(relay_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
+        ("relay", "executor") => Some(relay_close(m)),
         ("pilead", "executor") => Some(pilead_for(m).map(|c| Cmd { args: vec!["close".into(), m.id.clone()], ..c })),
         (_, "lead") => {
-            let n = index.values().filter(|e| e.role == "executor" && e.lead == session_id && !GONE.contains(&e.status.as_str())).count();
+            let n = open_executors(index, session_id).len();
             (n > 0).then(|| Err(format!("it leads {n} executor{} still open: close them, or hand the lead off, first", if n == 1 { "" } else { "s" })))
         }
         _ => None,
     }
 }
 
-/// Closing a relay lead that has no executors left: relay's own step-down (`relay close --self <lead
-/// session id>`, run where the lead runs) comes first, so relay stops thinking it leads; then the lead
-/// is ended as any session. None: not such a lead (an executor, a pi-lead lead, a lead with
-/// executors still open, a session outside a crew).
-pub fn lead_stop(session_id: &str) -> Option<Result<Cmd, String>> {
+/// The executors still open under this lead, as Cue session id and record.
+fn open_executors<'a>(index: &'a HashMap<String, Member>, lead: &str) -> Vec<(&'a String, &'a Member)> {
+    index.iter().filter(|(_, e)| e.role == "executor" && e.lead == lead && !GONE.contains(&e.status.as_str())).collect()
+}
+
+/// An executor's relay close, where it runs: relay stops it and closes its tab (what it staged stays
+/// in its worktree).
+fn relay_close(e: &Member) -> Result<Cmd, String> {
+    relay_for(e).map(|c| Cmd { args: vec!["close".into(), e.id.clone()], ..c })
+}
+
+/// Closing a relay lead: relay closes each executor it still has, then steps the lead down (`relay
+/// close --self <lead session id>`, where the lead runs) so relay stops thinking it leads; then the
+/// lead is ended as any session.
+#[derive(Debug, PartialEq)]
+pub struct LeadClose {
+    /// Each open executor: its Cue session id, its name, and its close.
+    pub executors: Vec<(String, String, Cmd)>,
+    pub stop: Cmd,
+}
+
+/// How to close this relay lead and its team. None: not a relay lead (an executor, a pi-lead lead, a
+/// session outside a crew).
+pub fn lead_close(session_id: &str) -> Option<Result<LeadClose, String>> {
     let cur = crate::locking::lock(&INDEX, "INDEX");
     let index = cur.as_ref()?;
     let m = index.get(session_id).filter(|m| m.plugin == "relay" && m.role == "lead")?;
-    let open = index.values().any(|e| e.role == "executor" && e.lead == session_id && !GONE.contains(&e.status.as_str()));
-    (!open).then(|| relay_for(m).map(|c| Cmd { args: vec!["close".into(), "--self".into(), session_id.to_string()], ..c }))
+    let plan = || -> Result<LeadClose, String> {
+        let mut executors = Vec::new();
+        for (sid, e) in open_executors(index, session_id) {
+            executors.push((sid.clone(), e.name.clone(), relay_close(e)?));
+        }
+        let stop = relay_for(m).map(|c| Cmd { args: vec!["close".into(), "--self".into(), session_id.to_string()], ..c })?;
+        Ok(LeadClose { executors, stop })
+    };
+    Some(plan())
+}
+
+/// The relay executors left behind with this one: the same lead, which isn't running any more, and
+/// still open (this one included). Cue session id and record.
+fn left_behind<'a>(index: &'a HashMap<String, Member>, session_id: &str) -> Vec<(&'a String, &'a Member)> {
+    let Some(m) = index.get(session_id).filter(|m| m.role == "executor" && m.plugin == "relay" && m.lead_armed == Some(false)) else { return vec![] };
+    index.iter().filter(|(_, e)| e.role == "executor" && e.plugin == "relay" && e.lead == m.lead && e.machine == m.machine && e.lead_armed == Some(false) && !GONE.contains(&e.status.as_str())).collect()
+}
+
+/// Close every executor left behind with this one (see left_behind): each one's Cue session id, name
+/// and relay close.
+pub fn close_left_behind(session_id: &str) -> Result<Vec<(String, String, Cmd)>, String> {
+    let cur = crate::locking::lock(&INDEX, "INDEX");
+    let index = cur.as_ref().ok_or("Cue hasn't read relay's sessions yet")?;
+    let left = left_behind(index, session_id);
+    if left.is_empty() {
+        return Err("its lead is still running, or it's already closed".into());
+    }
+    left.into_iter().map(|(sid, e)| Ok((sid.clone(), e.name.clone(), relay_close(e)?))).collect()
+}
+
+/// Hand every executor left behind with this one to a relay lead that's running (`to`, its Cue session
+/// id) on the same machine: relay's `adopt` for each, run as that lead (relay takes its caller from
+/// CLAUDE_CODE_SESSION_ID). Its reports wake that lead from then on.
+pub fn hand_left_behind(session_id: &str, to: &str) -> Result<Vec<Cmd>, String> {
+    let cur = crate::locking::lock(&INDEX, "INDEX");
+    let index = cur.as_ref().ok_or("Cue hasn't read relay's sessions yet")?;
+    let lead = index.get(to).filter(|l| l.role == "lead" && l.plugin == "relay" && safe_id(to)).ok_or("that isn't a relay lead")?;
+    let left = left_behind(index, session_id);
+    if left.is_empty() {
+        return Err("its lead is still running, or it's already closed".into());
+    }
+    if left.iter().any(|(_, e)| e.machine != lead.machine) {
+        return Err("that lead runs on another machine".into());
+    }
+    left.into_iter()
+        .map(|(_, e)| relay_for(e).map(|c| Cmd { bin: "/usr/bin/env".into(), args: vec![format!("CLAUDE_CODE_SESSION_ID={to}"), c.bin, "adopt".into(), e.id.clone()], machine: c.machine }))
+        .collect()
+}
+
+/// Leads that handed off and are still open, among `known`: each one's session id → the lead that
+/// took over (`to`, its name, when it started, its machine, how many executors it has now). Not a
+/// session that leads again.
+pub fn handoffs(known: &HashSet<String>) -> Value {
+    let cur = crate::locking::lock(&INDEX, "INDEX");
+    let Some(index) = cur.as_ref() else { return Value::Object(Default::default()) };
+    let mut out = serde_json::Map::new();
+    for (sid, m) in index.iter().filter(|(_, m)| m.role == "lead" && !m.predecessor.is_empty()) {
+        let old = &m.predecessor;
+        if !known.contains(old) || index.get(old).is_some_and(|o| o.role == "lead") {
+            continue;
+        }
+        out.insert(old.clone(), serde_json::json!({ "to": sid, "name": m.name, "at_ms": m.started_ms, "machine": m.machine, "executors": open_executors(index, sid).len() }));
+    }
+    Value::Object(out)
 }
 
 /// A relay executor's worktree (where its staged changes are), from relay's session file.
@@ -1067,7 +1162,7 @@ pub fn view(known: &HashSet<String>) -> Value {
             v["verify"] = serde_json::to_value(vf).unwrap_or_default();
         }
         if m.role == "lead" {
-            let mut execs: Vec<(&String, &Member)> = index.iter().filter(|(_, e)| e.role == "executor" && e.lead == *sid && !GONE.contains(&e.status.as_str())).collect();
+            let mut execs = open_executors(index, sid);
             execs.sort_by(|a, b| a.1.updated.cmp(&b.1.updated));
             v["executors"] = execs
                 .into_iter()
@@ -1433,12 +1528,13 @@ ML
     }
 
     #[test]
-    fn a_lead_with_no_executors_left_is_stepped_down_by_relay_before_it_is_ended() {
+    fn closing_a_relay_lead_closes_its_open_executors_then_steps_it_down() {
         let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
         let out = r#"BIN:/r/relay
 {"leads": [{"session_id": "EMPTY", "project": "a"}, {"session_id": "BUSY", "project": "b"}],
  "executors": [{"agent": "relay-executor", "session_id": "done-1", "status": "closed", "owner_lead": "EMPTY", "claude_session": "X1"},
-               {"agent": "relay-executor", "session_id": "work-1", "status": "busy", "owner_lead": "BUSY", "claude_session": "X2"}]}
+               {"agent": "relay-executor", "session_id": "work-1", "topic": "work", "status": "busy", "owner_lead": "BUSY", "claude_session": "X2"},
+               {"agent": "relay-executor", "session_id": "rep-1", "topic": "rep", "status": "reported", "owner_lead": "BUSY", "claude_session": "X3"}]}
 __CUE_LIVE__
 EMPTY
 BUSY
@@ -1447,12 +1543,71 @@ BUSY
         index.insert("PL".into(), Member { role: "lead".into(), plugin: "pilead".into(), ..Default::default() });
         *crate::locking::lock(&REMOTE, "REMOTE") = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
         *crate::locking::lock(&INDEX, "INDEX") = Some(index);
-        assert_eq!(lead_stop("EMPTY"), Some(Ok(Cmd { bin: "/r/relay".into(), args: vec!["close".into(), "--self".into(), "EMPTY".into()], machine: "box".into() })), "run on its machine");
-        assert_eq!(lead_stop("BUSY"), None, "it still has an executor open: close_plan refuses it");
-        assert_eq!(lead_stop("PL"), None, "pi-lead leads are left as they are");
-        assert_eq!(lead_stop("X1"), None, "an executor is closed by close_plan");
-        assert_eq!(lead_stop("nobody"), None);
+        let on_box = |args: &[&str]| Cmd { bin: "/r/relay".into(), args: args.iter().map(|a| a.to_string()).collect(), machine: "box".into() };
+        assert_eq!(lead_close("EMPTY"), Some(Ok(LeadClose { executors: vec![], stop: on_box(&["close", "--self", "EMPTY"]) })), "run on its machine; a closed executor is left alone");
+        let mut busy = lead_close("BUSY").unwrap().unwrap();
+        busy.executors.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(busy.executors, vec![("X2".into(), "work".into(), on_box(&["close", "work-1"])), ("X3".into(), "rep".into(), on_box(&["close", "rep-1"]))], "every open executor, busy or reported");
+        assert_eq!(busy.stop, on_box(&["close", "--self", "BUSY"]));
+        assert_eq!(lead_close("PL"), None, "pi-lead leads are left as they are");
+        assert_eq!(lead_close("X1"), None, "an executor is closed by close_plan");
+        assert_eq!(lead_close("nobody"), None);
         assert_eq!(close_plan("EMPTY"), None, "close_plan itself is unchanged for it");
+        assert!(close_plan("BUSY").unwrap().is_err(), "and still refuses one with executors (Park, Resume in Cue)");
+    }
+
+    #[test]
+    fn a_lead_that_took_over_names_the_one_before_it_while_that_one_is_open() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let out = r#"BIN:/r/relay
+{"leads": [{"session_id": "NEW", "project": "cue-lead", "started": "2026-10-12T10:00:00", "predecessor": {"session_id": "OLD", "tab_label": "[Lead] cue-lead"}},
+           {"session_id": "AGAIN", "project": "x", "predecessor": {"session_id": "STILL"}}, {"session_id": "STILL", "project": "y"}],
+ "executors": [{"agent": "relay-executor", "session_id": "e-1", "status": "busy", "owner_lead": "NEW", "claude_session": "E1"}]}
+__CUE_LIVE__
+NEW
+__CUE_TZ__:+0000
+"#;
+        let (_, index) = parse_remote(out, "box");
+        assert_eq!(index["NEW"].predecessor, "OLD");
+        assert_eq!(index["NEW"].started_ms, epoch_secs("2026-10-12T10:00:00", Some(0)).unwrap() * 1000);
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
+        let known: HashSet<String> = ["OLD", "NEW", "STILL", "AGAIN"].iter().map(|s| s.to_string()).collect();
+        let h = handoffs(&known);
+        assert_eq!(h["OLD"]["to"], "NEW");
+        assert_eq!(h["OLD"]["name"], "cue-lead");
+        assert_eq!(h["OLD"]["executors"], 1);
+        assert_eq!(h["OLD"]["machine"], "box");
+        assert!(h.get("STILL").is_none(), "one that leads (again) isn't a handed-off lead");
+        assert!(handoffs(&HashSet::new()).as_object().unwrap().is_empty(), "only sessions Cue knows");
+    }
+
+    #[test]
+    fn executors_whose_lead_is_gone_are_closed_or_handed_on_together() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let out = r#"BIN:/r/relay
+{"leads": [{"session_id": "LIVE", "project": "p"}],
+ "executors": [{"agent": "relay-executor", "session_id": "a-1", "topic": "a", "status": "busy", "owner_lead": "GONE", "claude_session": "A1"},
+               {"agent": "relay-executor", "session_id": "a-2", "topic": "b", "status": "reported", "owner_lead": "GONE", "claude_session": "A2"},
+               {"agent": "relay-executor", "session_id": "a-3", "status": "closed", "owner_lead": "GONE", "claude_session": "A3"},
+               {"agent": "relay-executor", "session_id": "o-1", "status": "busy", "owner_lead": "OTHER", "claude_session": "O1"},
+               {"agent": "relay-executor", "session_id": "l-1", "status": "busy", "owner_lead": "LIVE", "claude_session": "L1"}]}
+__CUE_LIVE__
+LIVE
+"#;
+        let (bin, mut index) = parse_remote(out, "box");
+        index.insert("HERE".into(), Member { role: "lead".into(), plugin: "relay".into(), ..Default::default() });
+        *crate::locking::lock(&REMOTE, "REMOTE") = Some(HashMap::from([("box".to_string(), (bin, index.clone()))]));
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
+        let mut left = close_left_behind("A1").unwrap();
+        left.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(left.iter().map(|(sid, _, c)| (sid.as_str(), c.args.join(" "))).collect::<Vec<_>>(), [("A1", "close a-1".to_string()), ("A2", "close a-2".to_string())], "the same gone lead's, still open; not another lead's");
+        assert!(close_left_behind("L1").is_err(), "its lead is running");
+        let mut hand = hand_left_behind("A2", "LIVE").unwrap();
+        hand.sort_by(|a, b| a.args.cmp(&b.args));
+        assert_eq!(hand[0], Cmd { bin: "/usr/bin/env".into(), args: vec!["CLAUDE_CODE_SESSION_ID=LIVE".into(), "/r/relay".into(), "adopt".into(), "a-1".into()], machine: "box".into() });
+        assert_eq!(hand.len(), 2);
+        assert!(hand_left_behind("A1", "HERE").unwrap_err().contains("another machine"));
+        assert!(hand_left_behind("A1", "A2").is_err(), "only to a lead");
     }
 
     #[test]

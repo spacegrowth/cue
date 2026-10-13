@@ -50,7 +50,7 @@ function renderMain() {
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${moving ? movingDialog() : ""}${endAsk ? endDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
+  </div>${moving ? movingDialog() : ""}${endAsk ? endDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
@@ -135,7 +135,7 @@ function renderMain() {
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); if (caret) el.setSelectionRange(...caret); } }
   // Something over the chat closed (Esc, a click outside, a pick): its text box takes the cursor back,
   // unless you closed it by clicking into another box.
-  const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor);
+  const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || deleteAsk);
   if (overWas && !over && !document.activeElement?.matches?.("input, textarea, select")) focusComposer();
   overWas = over;
   fitHead();
@@ -442,6 +442,8 @@ function bindMain() {
     if (upk) return unparkSession(upk.dataset.unpark);
     const pks = t.closest("[data-park-session]");
     if (pks) { moreFor = handoffArm = null; return parkSession(pks.dataset.parkSession); }
+    const dla = t.closest("[data-delete-ask]");
+    if (dla) { moreFor = handoffArm = null; deleteAsk = dla.dataset.deleteAsk; document.activeElement?.blur(); return renderMain(); }
     const pka = t.closest("[data-park-all]");
     if (pka) { parkedAll = parkedAll === pka.dataset.parkAll ? null : pka.dataset.parkAll; return renderMain(); }
     const ss = t.closest("[data-session]");
@@ -482,6 +484,7 @@ function bindMain() {
     // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
     if (act === "move-cue") return actEl.dataset.why ? toast(`Move to Cue: ${actEl.dataset.why}`) : moveToCue(actEl.dataset.sid);
     if (act === "move-dismiss") { moving = null; return renderMain(); }
+    if (act === "delete-yes" || act === "delete-no") return deleteAnswer(act === "delete-yes");
     if (act === "end-yes" || act === "end-no") return endAnswer(act === "end-yes");
     if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
     if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
@@ -562,10 +565,10 @@ function bindMain() {
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
   // While Cue asks whether to quit: Esc is no, Enter yes, before a terminal under it takes the key.
   document.addEventListener("keydown", (e) => {
-    if (!endAsk || (e.key !== "Escape" && e.key !== "Enter")) return;
+    if (!(endAsk || deleteAsk) || (e.key !== "Escape" && e.key !== "Enter")) return;
     e.preventDefault();
     e.stopPropagation();
-    endAnswer(e.key === "Enter");
+    (deleteAsk ? deleteAnswer : endAnswer)(e.key === "Enter");
   }, true);
   document.addEventListener("keydown", (e) => {
     // Enter in + New's Add machine field adds it.

@@ -993,7 +993,8 @@ function moreMenu(sid, s, closable = false) {
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Hand off? Click again" : "Hand off…"}<span>${busy ? "When this turn ends" : "It writes its notes, opens a successor lead and steps down"}</span></button>` : ""}
-      ${later}${parkMenuItem(sid, s, closable)}</div>`;
+      ${later}${parkMenuItem(sid, s, closable)}
+      <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
 }
 /** "claude-opus-5-5" → "Opus 5.5", "gpt-5.6-terra" → "GPT-5.6 Terra", "deepseek-v4-pro" → "DeepSeek V4 Pro". */
@@ -1079,6 +1080,26 @@ function lastTurns(thread, n) {
 function parkMenuItem(sid, s, closable) {
   if (!closable || !s || !PARKABLE.has(s.harness) || !s.cwd || crewOf(sid)?.role === "executor") return "";
   return `<button data-park-session="${esc(sid)}">Park<span>Stop it and keep it under Parked; Resume brings it back whole</span></button>`;
+}
+/** Delete, from the ⋯ menu: asked first, in a dialog (Esc no, Enter yes). `deleteAsk`: the session it asks about. */
+let deleteAsk = null;
+function deleteDialog() {
+  const sid = deleteAsk, name = nameOf(sid, sessionOf(sid)?.project || "this session");
+  const m = crewOf(sid), n = m?.role === "lead" && m?.plugin === "relay" ? (m.executors || []).length : 0;
+  return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="del-title">
+    <div class="move-title" id="del-title">Delete ${esc(name)}?</div>
+    <div class="end-text">${sessionOf(sid) ? `It stops${n ? `, with its ${n} executor${n === 1 ? "" : "s"},` : ""} and its tab closes. ` : ""}Cue forgets it, and its conversation is deleted, so it can't be resumed. This can't be undone.</div>
+    <div class="row-btns"><span class="grow"></span><button class="btn" data-act="delete-no">Cancel <kbd>Esc</kbd></button><button class="btn deny" data-act="delete-yes">Delete <kbd>↵</kbd></button></div>
+  </div></div>`;
+}
+async function deleteAnswer(yes) {
+  const sid = deleteAsk;
+  deleteAsk = null;
+  renderMain();
+  if (!yes || !sid) return;
+  const name = nameOf(sid, sessionOf(sid)?.project || "it");
+  try { toast(`${await invoke("delete_session", { sessionId: sid })}: ${name}`); }
+  catch (e) { toast(`Couldn't delete ${name}: ${e}`); }
 }
 async function parkSession(sid) {
   const name = nameOf(sid, sessionOf(sid)?.project || "it");
@@ -1369,7 +1390,7 @@ function homeFocus() {
   requestAnimationFrame(() => {
     const a = document.activeElement;
     if ((a && a !== document.body) || !document.hasFocus() || Date.now() - pointedAt < 500) return;
-    if (sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || endAsk || moving) return;
+    if (sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || endAsk || deleteAsk || moving) return;
     focusComposer();
   });
 }

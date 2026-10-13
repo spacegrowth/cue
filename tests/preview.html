@@ -153,6 +153,16 @@
           state.crew["rx-dns"] = { role: "executor", plugin: "relay", name: "dns-cutover", model: "claude-sonnet-5-5", status: "busy", packet: 2, lead: "rlead", lead_name: "infra-ops", lead_armed: true, machine: "build-box", tmux_session: "relay-dns-cutover", goal: "move the zone records to the new DNS provider" };
         }
       }
+      // ?crew=1&handoff=1: agent-relay took over from relay-old (relay's handoff), which is still open and
+      // no longer leads; backtester's executors are left by a lead that's gone (Close all 2).
+      if (q.has("crew") && q.has("handoff")) {
+        state.sessions.push(sess("relay-old", "agent-relay", "claude", "waiting", 14, [seg("working", 30, 14), seg("waiting", 14)]));
+        state.crew.relay.predecessor = "relay-old";
+        state.crew.relay.started_ms = now - 12 * M;
+        state.handoffs = { "relay-old": { to: "relay", name: "agent-relay", at_ms: now - 12 * M, executors: 7 } };
+        state.sessions.push(sess("det2", "backtester", "claude", "working", 3, [seg("working", 3)]));
+        state.crew.det2 = { role: "executor", plugin: "relay", name: "stop-tune", model: "claude-sonnet-5-5", status: "busy", packet: 2, lead: "gone-lead", lead_name: "backtests", lead_armed: false };
+      }
       if (q.has("crew")) state.reviews = { "x-miss": "not picked up" };
       // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.
       if (q.has("crew") && q.has("rq")) { state.review_queue = { relay: [{ exec: "x-spend", name: "board-spend", at_ms: now - 2 * M }, { exec: "x-docs", name: "readme-pass", at_ms: now - M }] }; state.reviews = { ...state.reviews, "x-spend": "review queued", "x-docs": "review queued" }; }
@@ -178,7 +188,7 @@
       // ?held=1: the working order-engine session has a message kept in Cue, open in Active.
       if (q.has("held")) { const x = state.sessions.find((y) => y.project === "order-engine"); if (x) { x.held = { role: "you", text: "also keep the old broker session open while you test", at_ms: now - M, images: [] }; try { localStorage.setItem("cue.spot", JSON.stringify({ sid: x.session_id, view: "board" })); } catch {} } }
       // Two sessions run on other machines (+ New → Machine): one name shortened, one short already.
-      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", plr: "build-box", rlead: "build-box" }[x.session_id] || "";
+      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", det2: "build-box", plr: "build-box", rlead: "build-box" }[x.session_id] || "";
       if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
       // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
       if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };

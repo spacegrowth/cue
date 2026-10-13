@@ -235,6 +235,19 @@ pub(crate) async fn crew_action(hub: State<'_, Arc<Hub>>, session_id: String, ac
 
 /// What a relay / pi-lead button does.
 pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result<String, String> {
+    // Executors whose lead is gone, all of them at once: closed by relay, or handed to a lead that's running.
+    if action == "close-left" {
+        let left = leads::close_left_behind(session_id)?;
+        let failed: Vec<String> = left.iter().filter_map(|(sid, name, cmd)| cmd.run().and_then(|_| super::sessions::end_if_still_here(h, sid)).err().map(|e| format!("{name}: {e}"))).collect();
+        return if failed.is_empty() { Ok(format!("Closed {} executor{}", left.len(), if left.len() == 1 { "" } else { "s" })) } else { Err(failed.join("; ")) };
+    }
+    if let Some(to) = action.strip_prefix("hand:") {
+        let cmds = leads::hand_left_behind(session_id, to)?;
+        for cmd in &cmds {
+            cmd.run()?;
+        }
+        return Ok(format!("Handed {} executor{} to {}", cmds.len(), if cmds.len() == 1 { "" } else { "s" }, leads::name_of(to)));
+    }
     match leads::act(session_id, action)? {
         // One review at a time per lead: refused while it's busy (see Hub::review).
         leads::Act::Send { to, text } if action == "review" => h.review(&to, session_id, &text),

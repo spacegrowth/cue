@@ -81,16 +81,21 @@ pub(crate) fn park(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
         h.finish(&id, "gone", "parked");
     }
     end_session(h, session_id)?;
-    // Its end (SessionEnd, or its agent's exit) drops Cue's record of it: let that land first, so
-    // nothing late from it lands on the parked one.
+    // Nothing late from it lands on the parked one.
+    wait_for_end(h, session_id);
+    h.add_parked(s);
+    Ok("Parked: its agent stopped and its terminal closed".into())
+}
+
+/// After ending a session: its end (SessionEnd, or its agent's exit) drops Cue's record of it. Up to
+/// 2 s for that to land.
+fn wait_for_end(h: &Hub, session_id: &str) {
     for _ in 0..20 {
         if h.session_origin(session_id).is_none() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    h.add_parked(s);
-    Ok("Parked: its agent stopped and its terminal closed".into())
 }
 
 /// Resume a parked session: its agent's resume command, in tmux on this Mac or on its machine; its
@@ -207,7 +212,7 @@ pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) 
 }
 
 /// Close a session from the Sessions view: an executor through relay / pilead (they mark it closed and
-/// close its tab); anything else by ending its agent (SIGTERM: the conversation is saved, `--resume`
+/// close its tab), a relay lead with its executors; anything else by ending its agent (SIGTERM: the conversation is saved, `--resume`
 /// brings it back; on a machine, one SIGTERM to everything in its tmux pane there) and closing its tab.
 /// Never while it works or asks you something.
 #[tauri::command]
@@ -226,37 +231,116 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
             h.forget(&session_id);
             return Ok("Removed from Cue (its machine can't be reached)".into());
         }
+        // A relay lead: relay closes each executor it still has (it stops it and closes its tab), then
+        // steps the lead down (else it still thinks it leads); then the lead is ended as any session. If any of
+        // that fails, its error is the answer and the lead stays.
+        if let Some(plan) = leads::lead_close(&session_id) {
+            let plan = plan?;
+            let failed: Vec<String> = plan.executors.iter().filter_map(|(sid, name, cmd)| cmd.run().and_then(|_| end_if_still_here(h, sid)).err().map(|e| format!("{name}: {e}"))).collect();
+            if !failed.is_empty() {
+                return Err(format!("relay couldn't close {} ({}); the lead stays", if failed.len() == 1 { "an executor" } else { "some executors" }, failed.join("; ")));
+            }
+            plan.stop.run().map_err(|e| format!("relay couldn't step this lead down: {e}"))?;
+            let n = plan.executors.len();
+            let said = end_and_close(h, &session_id)?;
+            return Ok(match n { 0 => said, 1 => "Closed it and its executor".into(), _ => format!("Closed it and its {n} executors") });
+        }
         // An executor: relay / pi-lead close it, where it runs (on its machine, over SSH).
-        // relay ends the agent it knows of; one resumed since runs in a pane relay's record doesn't
-        // name, so a session still running here afterwards is ended below like any other.
         if let Some(plan) = leads::close_plan(&session_id) {
             plan?.run()?;
-            let still = h.live_origin(&session_id).filter(|o| o.machine.is_empty()).and_then(|_| live::claude().into_iter().find(|q| q.session_id == session_id && unsafe { libc::kill(q.pid, 0) } == 0));
-            if still.is_none() {
-                return Ok("Closed".into());
-            }
+            return end_if_still_here(h, &session_id).map(|_| "Closed".into());
         }
-        // A relay lead with no executors left: relay steps it down first (else it still thinks it
-        // leads); if that fails, its error is the answer and the pane stays.
-        if let Some(plan) = leads::lead_stop(&session_id) {
-            plan?.run().map_err(|e| format!("relay couldn't step this lead down: {e}"))?;
-        }
-        let origin = h.live_origin(&session_id).ok_or("that session is gone")?;
-        // On this Mac, the agent's process. On a machine, there is no pid here (it runs there): its
-        // pane is ended on the machine instead.
-        if origin.machine.is_empty() {
-            let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-            focus::end_agent(pid)?;
-        } else {
-            focus::end_machine_agent(&origin)?;
-        }
-        Ok(match focus::close_tab(&origin) {
-            Ok(t) => format!("Closed its {t}"),
-            // Many tabs close by themselves when the agent they run exits (relay launches its tabs so).
-            Err(e) if e.contains("is gone") || e.contains("couldn't find") => "Ended it; its tab closed with it".into(),
-            Err(e) => format!("Ended it ({e})"),
-        })
+        end_and_close(h, &session_id)
     }
+}
+
+/// Delete, in the chat header's ⋯ (asked once more first): a session gone for good. A running one is
+/// closed first as Close does (a relay lead with its executors; never while it works or asks you), then
+/// Cue forgets everything it kept of it, and its conversation file goes, so it can't be resumed.
+#[tauri::command]
+pub(crate) async fn delete_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || delete(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+pub(crate) fn delete(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
+    let origin = h
+        .session_record(session_id)
+        .map(|s| s.origin)
+        .or_else(|| h.live_origin(session_id))
+        .or_else(|| h.parked(session_id).map(|p| p.session.origin))
+        .or_else(|| db::ended_session(session_id).map(|(_, s)| s.origin))
+        .ok_or("Cue has no record of that session")?;
+    if h.live_origin(session_id).is_some() {
+        end_session(h, session_id)?;
+        // Nothing late from it comes back after it's deleted.
+        wait_for_end(h, session_id);
+    }
+    h.purge(session_id);
+    match delete_transcript(&origin) {
+        Ok(()) => Ok("Deleted".into()),
+        Err(e) => Ok(format!("Deleted from Cue, but its conversation file stays ({e})")),
+    }
+}
+
+/// A session's conversation file (and Claude Code's folder of the same name beside it, its subagents'
+/// work), on this Mac or on its machine. Only a file named for the session: never anything else.
+fn delete_transcript(o: &crate::model::Origin) -> Result<(), String> {
+    let sid = o.session_id.as_str();
+    let mut path = o.transcript_path.clone();
+    if path.is_empty() && o.machine.is_empty() && o.harness == "claude" {
+        let projects = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".claude/projects");
+        path = std::fs::read_dir(&projects).ok().into_iter().flatten().flatten().map(|d| d.path().join(format!("{sid}.jsonl"))).find(|p| p.exists()).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        // None: Claude Code writes it with the first message, and this one never had one.
+        if path.is_empty() {
+            return Ok(());
+        }
+    }
+    let file = std::path::Path::new(&path);
+    if sid.len() < 8 || !file.file_name().is_some_and(|n| n.to_string_lossy().contains(sid)) {
+        return Err("Cue doesn't know where it is".into());
+    }
+    let beside = file.with_file_name(sid);
+    if o.machine.is_empty() {
+        if beside.is_dir() {
+            std::fs::remove_dir_all(&beside).map_err(|e| e.to_string())?;
+        }
+        return match std::fs::remove_file(file) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()),
+        };
+    }
+    let rm = leads::Cmd { bin: "rm".into(), args: vec!["-rf".into(), "--".into(), path.clone(), beside.to_string_lossy().into_owned()], machine: o.machine.clone() };
+    rm.run().map(|_| ())
+}
+
+/// After relay / pi-lead closed an executor: relay ends the agent it knows of, but one resumed since runs
+/// in a pane relay's record doesn't name, so one still running here is ended like any other session.
+pub(crate) fn end_if_still_here(h: &Hub, session_id: &str) -> Result<(), String> {
+    let still = h.live_origin(session_id).filter(|o| o.machine.is_empty()).and_then(|_| live::claude().into_iter().find(|q| q.session_id == session_id && unsafe { libc::kill(q.pid, 0) } == 0));
+    if still.is_some() {
+        end_and_close(h, session_id)?;
+    }
+    Ok(())
+}
+
+/// End a session's agent and close its tab.
+fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
+    let origin = h.live_origin(session_id).ok_or("that session is gone")?;
+    // On this Mac, the agent's process. On a machine, there is no pid here (it runs there): its
+    // pane is ended on the machine instead.
+    if origin.machine.is_empty() {
+        let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
+        focus::end_agent(pid)?;
+    } else {
+        focus::end_machine_agent(&origin)?;
+    }
+    Ok(match focus::close_tab(&origin) {
+        Ok(t) => format!("Closed its {t}"),
+        // Many tabs close by themselves when the agent they run exits (relay launches its tabs so).
+        Err(e) if e.contains("is gone") || e.contains("couldn't find") => "Ended it; its tab closed with it".into(),
+        Err(e) => format!("Ended it ({e})"),
+    })
 }
 
 /// "+ New session": open a terminal tab in `cwd`, in the background, and start `agent` there with an

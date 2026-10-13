@@ -6,6 +6,9 @@ use super::asks::waiting_words;
 /// A Claude session missing this long from Claude Code's running list (here, or on its machine),
 /// with nothing written to its conversation meanwhile, is gone.
 const GONE_AFTER_MS: u64 = 45_000;
+/// How long a session that just ended is kept out of the list of sessions Cue hasn't heard from: its
+/// agent exits a moment after its SessionEnd (up to a second or two).
+pub(super) const JUST_ENDED_MS: u64 = 10_000;
 
 /// A rename typed into Claude Code shows in its list of sessions within a few seconds; past this,
 /// it didn't take it.
@@ -340,10 +343,34 @@ impl Hub {
     }
 
     pub fn drop_session(&self, session_id: &str) {
-        let removed = self.st().sessions.remove(session_id);
+        let removed = {
+            let mut st = self.st();
+            let removed = st.sessions.remove(session_id);
+            if removed {
+                let now = now_ms();
+                st.just_ended.retain(|_, at| now.saturating_sub(*at) < JUST_ENDED_MS);
+                st.just_ended.insert(session_id.to_string(), now);
+            }
+            removed
+        };
         if removed {
             self.changed();
         }
+    }
+
+    /// Delete: a session (already ended) out of Cue for good: its cards, its History entries, Parked,
+    /// and everything cue.db kept of it.
+    pub fn purge(&self, session_id: &str) {
+        self.forget(session_id);
+        {
+            let mut st = self.st();
+            st.history.retain(|i| i.origin.session_id != session_id);
+            st.answers.retain(|a| a.session_id != session_id);
+            st.parked.retain(|p| p.session.origin.session_id != session_id);
+            st.missing.remove(session_id);
+        }
+        crate::db::delete_session(session_id);
+        self.changed();
     }
 
     /// Change one setting. History size applies right away (memory and file are trimmed).

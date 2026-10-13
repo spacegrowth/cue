@@ -292,22 +292,36 @@ function svAbout(r) {
   if (m?.role === "executor" && m.goal) return { label: "Goal", about: m.goal, now: "", outcome: m.outcome || "" };
   return { label: "About", about: "", now, outcome: "" };
 }
-/** Close: not while it's working or asking you (you'd lose the turn / the question), not a lead that
- *  still has executors (that's relay's handoff), not a session Cue can't reach. Two clicks: Close, Close?. */
+/** Close: not while it's working or asking you (you'd lose the turn / the question), not a pi-lead lead that
+ *  still has executors, not a session Cue can't reach. A relay lead's executors close with it. Two clicks:
+ *  Close, Close? (Close all N? for a lead and its executors). */
 let svCloseArm = null, svCloseTimer = null;
 /** Close: first click arms it ("Close?", red), a second within 4 s closes. In Sessions and the chat's header. */
 function closeBtn(sid) {
   const m = crewOf(sid);
   const what = m?.role === "executor" ? `Close it through ${m.plugin === "pilead" ? "pilead" : "relay"} (marks it closed, closes its tab)` : "End it and close its tab (its conversation is kept: claude --resume brings it back)";
+  const n = m?.role === "lead" ? (m.executors || []).length : 0;
   return svCloseArm === sid
-    ? `<button class="btn deny sx-close on" data-sv="close" data-sid="${esc(sid)}">Close?</button>`
+    ? `<button class="btn deny sx-close on" data-sv="close" data-sid="${esc(sid)}">${n ? `Close all ${n + 1}?` : "Close?"}</button>`
     : `<button class="btn sx-close" data-sv="close" data-sid="${esc(sid)}" title="Close: ${esc(what)}">Close</button>`;
 }
 function svClosable(r) {
   const m = r.crew || crewOf(r.sid);
   if (r.ghost || r.st === "working" || r.st === "asks") return false;
-  if (m?.role === "lead" && (m.executors || []).length) return false;
+  if (m?.role === "lead" && m.plugin !== "relay" && (m.executors || []).length) return false;
   return true;
+}
+/** Executors left behind by a relay lead that isn't running: hand them all to a lead running in the same
+ *  tile (same machine), or close them all (two clicks, as Close). */
+function leftActs(c, t) {
+  const first = c.execs[0], m = crewOf(first?.sid);
+  if (c.m.lead_armed !== false || m?.plugin !== "relay") return "";
+  const to = t.crews.find((x) => x.lead && x.m.plugin === "relay" && (x.lead.machine || "") === (first.machine || ""));
+  const key = `left:${first.sid}`, n = c.execs.length;
+  const close = svCloseArm === key
+    ? `<button class="btn deny sx-close on" data-sv="close-left" data-sid="${esc(first.sid)}">${n > 1 ? `Close all ${n}?` : "Close?"}</button>`
+    : `<button class="btn sx-close" data-sv="close-left" data-sid="${esc(first.sid)}">${n > 1 ? `Close all ${n}` : "Close"}</button>`;
+  return `<span class="sx-acts">${to ? `<button class="btn" data-sv="hand:${esc(to.lead.sid)}" data-sid="${esc(first.sid)}">Hand to ${esc(bareName(to.m.name || to.lead.name))}</button>` : ""}${close}</span>`;
 }
 /** What you can do with a session, right on it: answer or reply when it needs you, the relay buttons,
  *  open it in Active, or go to its terminal. A quiet Claude session opens too (Cue takes it in); other quiet ones only have the tab. */
@@ -338,15 +352,19 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   if (r.st === "working" && r.run) lines.push(`<div class="sx-l run">${esc(r.what)}</div>`);
   else if (r.st === "asks" && r.what) lines.push(`<div class="sx-l ask">${esc(r.what)}</div>`);
   else if (ab.now && !(unnamed && name === ab.now)) lines.push(`<div class="sx-l now">› ${esc(ab.now)}</div>`);
+  // A lead that took over from one still open says so; the one it took over from says where the work went.
+  const pred = crew && predecessorOf(r.sid);
+  if (pred) lines.push(`<div class="sx-l">took over from the previous lead${crew.started_ms ? ` ${ago(crew.started_ms)} ago` : ""}</div>`);
+  const ho = !m && handoffOf(r.sid);
   const hot = r.st === "asks" || m?.lead_armed === false;
-  const leadTag = crew ? `<span class="role lead">LEAD</span>${autoToggle(r.sid, crew)}` : "";
+  const leadTag = crew ? `<span class="role lead">LEAD</span>${autoToggle(r.sid, crew)}` : exLead(r.sid) ? `<span class="role was">EX-LEAD</span>` : "";
   // The whole tile opens it: its chat in Active (a quiet Claude session too: Cue takes it in), else what it's doing.
   // An executor on another machine in a tmux session of its own: its terminal there too (see openExec).
   const act = svOpenAct(r);
   const go = r.ghost && act !== "exec" ? "" : ` role="button" data-sv="${act}" data-sid="${esc(r.sid)}"`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
-  return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${svChipState(r)}${r.since && !r.quiet ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
+  return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""} ${ho ? "was" : ""}"${go}>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${ho ? "" : svChipState(r)}${r.since && !r.quiet && !ho ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");
@@ -416,7 +434,10 @@ function sessionsView() {
       return bySid.get(e.session_id) || { sid: e.session_id, harness: m.plugin === "pilead" ? "pi" : "claude", name: e.name, cwd: "", st: e.status === "busy" ? "working" : "idle", since: 0, what: "", ghost: true,
         crew: { ...e, role: "executor", plugin: e.plugin || m.plugin, lead: lead.sid, lead_name: m.name, lead_armed: true } };
     });
-    tile(lead).crews.push({ lead, m, execs });
+    // The lead it took over from, while that one is still open: under this crew, not a tile of its own.
+    const was = all.filter((r) => !placed.has(r.sid) && handoffOf(r.sid)?.to === lead.sid);
+    was.forEach((r) => placed.add(r.sid));
+    tile(lead).crews.push({ lead, m, execs, was });
   }
   // Executors whose lead Cue can't see (not running, or not in Cue yet): a crew line of their own, in their folder.
   const orphans = new Map();
@@ -428,22 +449,22 @@ function sessionsView() {
   }
   for (const r of all.filter((r) => !placed.has(r.sid))) tile(r).solo.push(r);
 
-  const crewHtml = (c) => {
-    const execs = c.execs.filter(match);
+  const crewHtml = (c, t) => {
+    const execs = c.execs.filter(match), was = (c.was || []).filter(match);
     const leadHit = c.lead && match(c.lead);
-    if (q && !leadHit && !execs.length) return "";
+    if (q && !leadHit && !execs.length && !was.length) return "";
     const head = c.lead ? svItem(c.lead, { crew: c.m })
-      : `<div class="sx-crew-h ${c.m.lead_armed === false ? "gone" : ""}">${badge(c.execs[0].harness)}<span class="sx-lname">${esc(bareName(c.m.lead_name) || "a lead")}</span><span class="sx-crew-n">${c.m.lead_armed === false ? "lead not running" : "lead not in Cue yet"}</span></div>`;
-    return `<div class="sx-crew">${head}${execs.length ? `<div class="sx-execs">${svItems(execs, c.lead ? c.lead.harness : c.execs[0].harness)}</div>` : ""}</div>`;
+      : `<div class="sx-crew-h ${c.m.lead_armed === false ? "gone" : ""}">${badge(c.execs[0].harness)}<span class="sx-lname">${esc(bareName(c.m.lead_name) || "a lead")}</span><span class="sx-crew-n">${c.m.lead_armed === false ? `lead not running${c.execs.length > 1 ? ` · ${c.execs.length} executors still open` : ""}` : "lead not in Cue yet"}</span>${leftActs(c, t)}</div>`;
+    return `<div class="sx-crew">${head}${execs.length ? `<div class="sx-execs">${svItems(execs, c.lead ? c.lead.harness : c.execs[0].harness)}</div>` : ""}${was.map((r) => svItem(r)).join("")}</div>`;
   };
   const cards = [...tiles.values()].map((t) => {
-    const members = [...t.solo, ...t.crews.flatMap((c) => [c.lead, ...c.execs].filter(Boolean))];
+    const members = [...t.solo, ...t.crews.flatMap((c) => [c.lead, ...c.execs, ...(c.was || [])].filter(Boolean))];
     // One folder: its branch on the tile. Several (worktrees): each session says its own, and + starts in the main checkout.
     const folders = new Set(members.filter((r) => r.cwd).map((r) => r.cwd)), many = folders.size > 1;
     const cwd = many ? projRoot(t.cwd) : [...folders][0] || t.cwd, br = many ? "" : state.branches?.[cwd];
     for (const r of members) r.where = many && r.cwd ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
     const solo = t.solo.filter(match);
-    const crews = t.crews.map(crewHtml).filter(Boolean);
+    const crews = t.crews.map((c) => crewHtml(c, t)).filter(Boolean);
     if (!solo.length && !crews.length) return null;
     const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
     const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
@@ -484,16 +505,25 @@ function sessionsView() {
       <button class="btn primary sv-new" data-lv="new">+ New session</button><span class="sv-count">${counts}</span></div>
     <div class="sv-scroll">${liveSecs}${restSecs}</div></div>`;
 }
-async function svAct(act, sid) {
-  if (act === "close") {
-    clearTimeout(svCloseTimer);
-    if (svCloseArm !== sid) {
-      svCloseArm = sid;
-      svCloseTimer = setTimeout(() => { svCloseArm = null; renderMain(); }, 4000);
-      return renderMain();
-    }
-    svCloseArm = null;
+/** Two clicks for Close: the first arms it (for 4 s), the second goes. True on the second. */
+function armClose(key) {
+  clearTimeout(svCloseTimer);
+  if (svCloseArm !== key) {
+    svCloseArm = key;
+    svCloseTimer = setTimeout(() => { svCloseArm = null; renderMain(); }, 4000);
     renderMain();
+    return false;
+  }
+  svCloseArm = null;
+  renderMain();
+  return true;
+}
+async function svAct(act, sid) {
+  // Executors whose lead is gone: closed together, or handed to a running lead (relay's adopt).
+  if (act === "close-left") return armClose(`left:${sid}`) && crewAct(sid, "close-left");
+  if (act.startsWith("hand:")) return crewAct(sid, act);
+  if (act === "close") {
+    if (!armClose(sid)) return;
     const was = sessionOf(sid);
     try {
       toast(await invoke("close_session", { sessionId: sid }));

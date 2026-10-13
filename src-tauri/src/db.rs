@@ -361,6 +361,21 @@ pub fn ended_session(id: &str) -> Option<(u64, Session)> {
     .and_then(|(at, d)| serde_json::from_str::<Session>(&d).ok().map(|s| (at as u64, s)))
 }
 
+/// Delete: everything Cue kept of a session, gone (its record, its conversation log, its cards, parked
+/// or not, its draft, a review waiting on it).
+pub fn delete_session(id: &str) {
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        tx.execute("DELETE FROM sessions WHERE id = ?1", params![id])?;
+        tx.execute("DELETE FROM exchanges WHERE session_id = ?1", params![id])?;
+        tx.execute("DELETE FROM items WHERE session_id = ?1", params![id])?;
+        tx.execute("DELETE FROM parked WHERE id = ?1", params![id])?;
+        tx.execute("DELETE FROM drafts WHERE key = ?1", params![format!("s:{id}")])?;
+        tx.execute("DELETE FROM review_queue WHERE exec = ?1", params![id])?;
+        tx.commit()
+    });
+}
+
 // ---------- search: everything Cue has logged ----------
 
 /// Find `q` (case-insensitive) in every session Cue has seen, ended ones too: session names and
@@ -658,6 +673,44 @@ mod tests {
         assert_eq!(found.first().map(String::as_str), Some("exact"), "the whole name first: {found:?}");
         assert_eq!(found.get(1).map(String::as_str), Some("start"), "then one it starts: {found:?}");
         assert_eq!(found.len(), 20);
+    }
+
+    #[test]
+    fn delete_takes_everything_of_that_session_and_nothing_of_another() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-delete-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        reset();
+        with(|c| {
+            for id in ["gone", "kept"] {
+                c.execute("INSERT INTO sessions (id, project, started_ms, updated_ms, ended_ms, data) VALUES (?1, 'x', 1, 2, 2, '{}')", params![id])?;
+                c.execute("INSERT INTO exchanges (session_id, at_ms, role, text) VALUES (?1, 1, 'you', 'hi')", params![id])?;
+                c.execute("INSERT INTO items (id, session_id, kind, status, created_ms, data) VALUES (?1, ?2, 'waiting', 'answered', 1, '{}')", params![format!("i-{id}"), id])?;
+                c.execute("INSERT INTO parked (id, parked_ms, data) VALUES (?1, 1, '{}')", params![id])?;
+                c.execute("INSERT INTO drafts (key, text, updated_ms) VALUES (?1, 'draft', 1)", params![format!("s:{id}")])?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        delete_session("gone");
+        let count = |id: &str| -> i64 {
+            with(|c| {
+                c.query_row(
+                    "SELECT (SELECT COUNT(*) FROM sessions WHERE id = ?1) + (SELECT COUNT(*) FROM exchanges WHERE session_id = ?1) + (SELECT COUNT(*) FROM items WHERE session_id = ?1) + (SELECT COUNT(*) FROM parked WHERE id = ?1) + (SELECT COUNT(*) FROM drafts WHERE key = 's:' || ?1)",
+                    params![id],
+                    |r| r.get(0),
+                )
+            })
+            .unwrap_or(-1)
+        };
+        let (gone, kept) = (count("gone"), count("kept"));
+        std::env::remove_var("CUE_HOME");
+        reset();
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(gone, 0);
+        assert_eq!(kept, 5);
     }
 
     #[test]

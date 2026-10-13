@@ -720,11 +720,15 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .role { font: 800 9.5px var(--sans); letter-spacing: 0.08em; padding: 2px 6px; border-radius: 4px; line-height: 1.3; flex: none; }
 .role.lead { background: var(--ink); color: var(--panel); }
 .role.executor { border: 1px solid var(--muted); color: var(--muted); }
+/* A lead that handed off: still open, no longer leading. */
+.role.was { border: 1px dashed var(--ink); color: var(--ink); }
 .nrow.on .role.lead { background: var(--on-sel); color: var(--sel); }
 .nrow.on .role.executor { border-color: var(--on-sel); color: var(--on-sel); }
 /* On the Sessions column's see-through cards: the column's own colours. */
 .working .role.lead { background: var(--on-bg); color: var(--bg); }
 .working .role.executor { border-color: var(--on-bg-muted); color: var(--on-bg-muted); }
+.working .role.was { border-color: var(--on-bg); color: var(--on-bg); }
+.nrow.on .role.was { border-color: var(--on-sel); color: var(--on-sel); }
 /* 1px of room above and below: the EXEC / LEAD tag's box is a hair taller than the line, and the clip shaved its bottom edge. */
 .crew-line { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 0; }
 .nrow.on .crew-line { color: color-mix(in srgb, var(--on-sel) 75%, transparent); }
@@ -1152,6 +1156,11 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-crew-h .sx-crew-n { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .sx-crew-h.gone, .sx-crew-h.gone .sx-crew-n { color: var(--deny); }
 .sx-crew-n { font-weight: 500; color: var(--muted); white-space: nowrap; }
+/* Executors whose lead is gone: Hand to… / Close all, at the header's end. */
+.sx-crew-h:has(.sx-acts) { display: flex; flex-wrap: wrap; row-gap: 5px; }
+.sx-crew-h .sx-acts { font-weight: 500; flex-basis: 100%; margin-left: 24px; }
+/* The lead a crew's lead took over from, under the crew while it's still open. */
+.sx-item.was { opacity: 0.7; }
 
 /* Recently answered as a list: a hairline between entries, and the one open in Active outlined in lime
    (a border, not a fill: a filled lime row is the open session, and an answer is a past event). Solid,

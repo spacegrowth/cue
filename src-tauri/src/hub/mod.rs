@@ -71,6 +71,9 @@ struct Store {
     /// Claude sessions missing from Claude Code's own list of running sessions, and since when: gone
     /// for GONE_AFTER_MS, they're ended in Cue (see `sweep`).
     missing: HashMap<String, u64>,
+    /// Sessions that just ended in Cue, and when: their agent takes a moment to exit after its
+    /// SessionEnd, and until it has, it isn't shown again as a session Cue hasn't heard from.
+    just_ended: HashMap<String, u64>,
     /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
     unreachable: HashSet<String>,
 }
@@ -207,7 +210,10 @@ impl Hub {
             .filter_map(|c| crate::live::repo_root(c).map(|r| (c.clone(), json!({ "name": crate::live::repo_name(&r), "root": r.to_string_lossy() }))))
             .collect();
         let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
-        let crew = crate::leads::view(&known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect());
+        let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
+        let crew = crate::leads::view(&ids);
+        // A lead that handed off: which lead took over (relay's handoff), so its chat and row can say so.
+        let handoffs = crate::leads::handoffs(&ids);
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         json!({
@@ -221,6 +227,7 @@ impl Hub {
             "review_queue": Self::review_queue_view(&st),
             "unreachable": st.unreachable,
             "crew": crew,
+            "handoffs": handoffs,
             "live": live,
             "branches": branches,
             "projects": projects,
@@ -250,7 +257,8 @@ impl Hub {
             waiting_for: String::new(),
             since_ms: *at,
         });
-        let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id)).collect();
+        let fresh = now_ms().saturating_sub(sessions::JUST_ENDED_MS);
+        let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id) && !st.just_ended.get(&q.session_id).is_some_and(|at| *at > fresh)).collect();
         let transcripts: Vec<(String, String)> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
             .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
             .collect();
