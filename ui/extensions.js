@@ -179,45 +179,65 @@ function extNotify() {
   }
 }
 
-// ---------- an extension's own window ----------
-// An extension whose manifest has a "window" (its label) gets an entry under New session → + Add, and
-// its page in a window of its own, over Cue: made when opened, gone when closed (nothing in the
-// background). It speaks to Cue just as a tab's page does, with the same checks.
+// ---------- the Extensions panel ----------
+// Where an extension's page goes when it isn't about one chat: an extension whose manifest has a "panel"
+// (its label) is listed in the panel the Extensions button in the top bar opens, beside the terminal's.
+// One with an "add" too (a label) is also offered under New session → + Add, opening the panel on it.
+// Its page is made when shown and gone when the panel closes (nothing in the background), and speaks
+// to Cue just as a tab's page does, with the same checks.
 let extAddMenu = false;
-let extWin = null;   // { name, frame } while one is open
-const extWindows = () => extList.filter((e) => e.window && e.enabled);
-const extAddMenuHtml = () => (extAddMenu ? `<div class="xw-menu"><button data-xw=""><b>A machine you reach over SSH</b><span>build box, cloud VM…</span></button>${extWindows().map((e) => `<button data-xw="${esc(e.name)}"><b>${esc(e.window)}</b><span>${esc(e.title || e.name)}</span></button>`).join("")}</div>` : "");
-function extOpenWindow(name) {
-  const e = extOf(name);
-  if (!e?.enabled) return;
-  extCloseWindow();
-  const el = document.createElement("div");
-  el.className = "scrim xw-scrim";
-  el.innerHTML = `<div class="sheet xw"><div class="sheet-head"><h3>${esc(e.window)}</h3><span class="grow"></span><button class="xw-x" data-xw-close aria-label="Close">×</button></div></div>`;
+let extPanel = null;   // { name, frame, el } while the panel is open
+const extPanels = () => extList.filter((e) => e.panel && e.enabled);
+const PUZZLE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h3a2 2 0 0 1 2 2v1.2a1.8 1.8 0 1 0 3.6 0V5H21v5.5h-1.2a1.8 1.8 0 1 0 0 3.6H21V21h-5.5v-1.2a1.8 1.8 0 1 0-3.6 0V21H5a2 2 0 0 1-2-2v-6h1.2a1.8 1.8 0 1 0 0-3.6H3V5a2 2 0 0 1 2-2h4z"/></svg>`;
+const extPanelBtn = () => (extPanels().length ? `<button class="top-btn icon xp-btn" data-xp-open="" aria-pressed="${!!extPanel}" aria-label="Extensions">${PUZZLE_ICON}</button>` : "");
+const extAddMenuHtml = () => (extAddMenu ? `<div class="xw-menu"><button data-xw=""><b>A machine you reach over SSH</b><span>build box, cloud VM…</span></button>${extPanels().filter((e) => e.add).map((e) => `<button data-xw="${esc(e.name)}"><b>${esc(e.add)}</b><span>${esc(e.title || e.name)}</span></button>`).join("")}</div>` : "");
+const extAddsAny = () => extPanels().some((e) => e.add);
+
+function extShowPanel(name) {
+  const list = extPanels();
+  if (!list.length) return;
+  const e = extOf(name) && extOf(name).panel ? extOf(name) : list[0];
+  if (!extPanel) {
+    const el = document.createElement("div");
+    el.className = "scrim xp-scrim";
+    el.innerHTML = `<div class="sheet xp"><div class="sheet-head"><h3>Extensions</h3><span class="grow"></span><button class="xw-x" data-xp-close aria-label="Close">×</button></div><div class="xp-body"><nav class="xp-rail"></nav><div class="xp-page"></div></div></div>`;
+    el.addEventListener("click", (ev) => {
+      if (ev.target === el || ev.target.closest("[data-xp-close]")) return extClosePanel();
+      const r = ev.target.closest("[data-xp]");
+      if (r) extShowPanel(r.dataset.xp);
+    });
+    document.body.append(el);
+    extPanel = { name: null, frame: null, el };
+  }
+  extPanel.el.querySelector(".xp-rail").innerHTML = list.map((x) => `<button class="${x.name === e.name ? "on" : ""}" data-xp="${esc(x.name)}">${esc(x.panel)}</button>`).join("");
+  if (extPanel.name === e.name) return;
+  extPanel.frame?.remove();
   const f = document.createElement("iframe");
-  f.className = "xw-frame";
+  f.className = "xp-frame";
   f.setAttribute("sandbox", "allow-scripts allow-forms");
-  f.src = `${EXT_ORIGIN}/${encodeURIComponent(name)}/${String(e.entry || "index.html").split("/").map(encodeURIComponent).join("/")}`;
-  f.addEventListener("load", () => { extSend(name, { event: "theme", data: extTheme() }, f); if (extCan(e, "sessions.read")) extSend(name, { event: "session", data: extSessionInfo(openSid()) }, f); });
-  el.querySelector(".xw").append(f);
-  el.addEventListener("click", (ev) => { if (ev.target === el || ev.target.closest("[data-xw-close]")) extCloseWindow(); });
-  document.body.append(el);
-  extWin = { name, frame: f, el };
+  f.src = `${EXT_ORIGIN}/${encodeURIComponent(e.name)}/${String(e.entry || "index.html").split("/").map(encodeURIComponent).join("/")}`;
+  f.addEventListener("load", () => { extSend(e.name, { event: "theme", data: extTheme() }, f); if (extCan(e, "sessions.read")) extSend(e.name, { event: "session", data: extSessionInfo(openSid()) }, f); });
+  extPanel.el.querySelector(".xp-page").append(f);
+  extPanel.name = e.name;
+  extPanel.frame = f;
+  renderMain();
 }
-function extCloseWindow() { if (extWin) { extWin.el.remove(); extWin = null; } }
-document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && extWin) { ev.stopPropagation(); extCloseWindow(); } }, true);
+function extClosePanel() { if (extPanel) { extPanel.el.remove(); extPanel = null; renderMain(); } }
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && extPanel) { ev.stopPropagation(); extClosePanel(); } }, true);
 document.addEventListener("click", (ev) => {
+  const open = ev.target.closest?.("[data-xp-open]");
+  if (open) { ev.stopPropagation(); return extPanel ? extClosePanel() : extShowPanel(open.dataset.xpOpen); }
   const t = ev.target.closest?.("[data-xw]");
   if (!t) return;
   ev.stopPropagation();
   extAddMenu = false;
   if (!t.dataset.xw) { nfAdding = true; renderMain(); return document.querySelector('[data-text="mc-host"]')?.focus(); }
   renderMain();
-  extOpenWindow(t.dataset.xw);
+  extShowPanel(t.dataset.xw);
 }, true);
 
 addEventListener("message", async (e) => {
-  const name = [...extFrames].find(([, f]) => f.contentWindow === e.source)?.[0] || (extWin && extWin.frame.contentWindow === e.source ? extWin.name : null);
+  const name = [...extFrames].find(([, f]) => f.contentWindow === e.source)?.[0] || (extPanel?.frame && extPanel.frame.contentWindow === e.source ? extPanel.name : null);
   const m = e.data;
   if (!name || !m || m.cue !== 1 || m.id == null) return;
   const ext = extOf(name), p = m.params || {};

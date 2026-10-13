@@ -204,7 +204,7 @@ async function lvAct(act, d) {
   if (act === "machine-add") {
     if (nfAdding) { nfAdding = false; return renderMain(); }
     // Extensions with a window of their own are offered here too (a new container, say).
-    if (extWindows().length) { extAddMenu = !extAddMenu; return renderMain(); }
+    if (extAddsAny()) { extAddMenu = !extAddMenu; return renderMain(); }
     nfAdding = true; renderMain(); return document.querySelector('[data-text="mc-host"]')?.focus();
   }
   if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); return renderMain(); }

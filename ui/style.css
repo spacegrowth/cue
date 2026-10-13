@@ -1517,7 +1517,13 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .xw-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 10px; border-radius: 8px; text-align: left; background: none; border: 0; color: var(--ink); cursor: pointer; }
 .xw-menu button:hover { background: var(--panel-2); }
 .xw-menu b { font-size: 13px; } .xw-menu span { font-size: 12px; color: var(--muted); }
-.xw-scrim { z-index: 46; }
-.xw { width: min(980px, calc(100vw - 40px)); height: calc(100vh - 100px); }
-.xw-frame { flex: 1; min-height: 0; border: 0; border-radius: 0 0 18px 18px; background: var(--panel); }
+.xp-scrim { z-index: 46; }
+.xp { width: min(1100px, calc(100vw - 40px)); height: calc(100vh - 100px); }
+.xp-body { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--line); }
+.xp-rail { width: 190px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; border-right: 1px solid var(--line); }
+.xp-rail button { text-align: left; padding: 7px 10px; border-radius: 8px; background: none; border: 0; color: var(--muted); font: 600 13px var(--sans); cursor: pointer; }
+.xp-rail button:hover { color: var(--ink); background: var(--panel-2); }
+.xp-rail button.on { color: var(--ink); background: var(--panel-2); }
+.xp-page { flex: 1; min-width: 0; display: flex; }
+.xp-frame { flex: 1; border: 0; border-radius: 0 0 18px 0; background: var(--panel); }
 .xw-x { font-size: 20px; line-height: 1; color: var(--muted); background: none; border: 0; cursor: pointer; }

@@ -1,6 +1,7 @@
 # Extensions
 
-An extension adds a tab to the open session in Cue, beside Chat, with a page of its own. Cue comes with
+An extension brings a page of its own: as a tab in the open session, beside Chat, or in the Extensions
+panel (the button beside the terminal's in the top bar) for what isn't about one chat, or both. Cue comes with
 one, [Diff](../extensions/diff), which shows what a session changed: switch it on in **Settings →
 Extensions**. The extensions that come with Cue update with it.
 
@@ -47,7 +48,9 @@ my-ext/
 | Field | |
 |---|---|
 | `title` | Its name in Settings. |
-| `tab` | The tab's label in a session. |
+| `tab` | Its tab's label in a session, beside Chat, for what's about one session (Diff). |
+| `panel` | Its label in the Extensions panel (the button beside the terminal's in the top bar), for what isn't about one chat (containers). An extension can have a tab, a panel, or both. |
+| `add` | With `panel`: also offered under New session → + Add, opening the panel on it (e.g. "A new container"). |
 | `version` | Shown in Settings. |
 | `entry` | The page the tab opens. Default `index.html`. |
 | `programs` | With `programs.run`: the installed programs it runs, by name, e.g. `["docker", "mutagen"]`. |
