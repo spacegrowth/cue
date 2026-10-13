@@ -746,7 +746,18 @@ function setState(s) {
   render();
   extNotify();
 }
-const render = () => renderMain();
+// A draw that throws must not leave the window empty: what went wrong is shown where the board
+// would be, so a bad build is seen as an error and not as "Cue didn't start".
+function showRenderError(e) {
+  console.error("[render]", e);
+  const app = document.getElementById("app");
+  if (!app || app.innerHTML.length > 0 && !app.querySelector(".render-error")) return; // an earlier good draw stays
+  const detail = e && e.stack ? e.stack : String(e);
+  app.innerHTML = `<div class="render-error" style="padding:24px 28px;font:13px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;user-select:text"><div style="font:600 15px system-ui;margin-bottom:10px">Cue can't draw its window</div>${esc(detail)}\n\nIf this came with a new build, reinstall the previous one or fix the error above and run ./install.sh --app again.</div>`;
+}
+const render = () => { try { renderMain(); } catch (e) { showRenderError(e); } };
+window.addEventListener("error", (e) => showRenderError(e.error || e.message));
+window.addEventListener("unhandledrejection", (e) => showRenderError(e.reason));
 
 async function boot() {
   await loadDrafts();
@@ -795,4 +806,4 @@ async function boot() {
     document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
   }, 1000);
 }
-boot();
+boot().catch(showRenderError);

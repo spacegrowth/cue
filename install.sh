@@ -56,6 +56,21 @@ quit_cue() {
   pkill -f "Cue.app/Contents/MacOS/cue$" || true
 }
 
+# Start the installed Cue and make sure it is running. Right after a quit-and-replace, Launch
+# Services can refuse the first open (error -609, "connection invalid") and the app silently stays
+# down, so the open is retried until the process is seen.
+launch_cue() {
+  for _ in 1 2 3 4 5 6; do
+    open "$HOME/Applications/Cue.app" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      pgrep -q -f "Cue.app/Contents/MacOS/cue$" && { say "Cue is running"; return 0; }
+      sleep 0.25
+    done
+  done
+  echo "  Cue did not start — open ~/Applications/Cue.app yourself (or run: open ~/Applications/Cue.app)" >&2
+  return 1
+}
+
 install_app() {
   if [ ! -d "$APP_SRC" ]; then
     say "building Cue.app (first time takes a few minutes)…"
@@ -169,10 +184,10 @@ uninstall() {
 
 case "${1:-}" in
   --uninstall) uninstall ;;
-  --app) install_app; open "$HOME/Applications/Cue.app" ;;
+  --app) install_app; launch_cue ;;
   --usage) statusline install; say "usage     → Claude Code's status line now also tells Cue (your own command still runs)" ;;
   "") install_app; install_hooks
       if want_usage; then statusline install; say "usage     → Claude Code's status line now also tells Cue (your own command still runs)"; fi
-      open "$HOME/Applications/Cue.app"; say "done — new and running sessions pick up the hooks on their next event" ;;
+      launch_cue; say "done — new and running sessions pick up the hooks on their next event" ;;
   *) sed -n '2,9p' "$0"; exit 2 ;;
 esac
