@@ -1684,6 +1684,10 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .pip-bar { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; flex: none; }
 .pip-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
 .pip-tabs::-webkit-scrollbar { display: none; }
+.pip-tabs { position: relative; }
+.pip-tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.pip-tabs.more-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px); mask-image: linear-gradient(to right, transparent, #000 36px); }
+.pip-tabs.more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
 .pip-tab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; white-space: nowrap; flex: none; max-width: 220px; }
 .pip-tab:hover { opacity: .9; background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
 .pip-tab[aria-selected="true"] { opacity: 1; background: color-mix(in srgb, var(--on-slab) 14%, transparent); }

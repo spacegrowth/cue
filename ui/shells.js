@@ -92,6 +92,15 @@ function ensurePip() {
   pipEl.querySelector(".pip-bar").addEventListener("pointerdown", dragPip);
   // A double-click on a tab names it.
   pipEl.querySelector(".pip-tabs").addEventListener("dblclick", (e) => { const t = e.target.closest("[data-shell]"); if (t) renameShell(t.dataset.shell); });
+  // More tabs than fit: the row scrolls sideways (a mouse wheel too, not only a trackpad), and fades at
+  // an end with more tabs past it, instead of cutting them off unseen.
+  const strip = pipEl.querySelector(".pip-tabs");
+  strip.addEventListener("wheel", (e) => {
+    if (strip.scrollWidth <= strip.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+    strip.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+  strip.addEventListener("scroll", () => markTabEnds(strip), { passive: true });
   // A double-click on the bar itself (not a tab or a button) goes full screen and back, as a window's title bar zooms.
   pipEl.querySelector(".pip-bar").addEventListener("dblclick", (e) => { if (!e.target.closest("button, .pip-tab")) fullPip(!pipAt.full); });
   pipEl.querySelectorAll("[data-grip]").forEach((g) => g.addEventListener("pointerdown", sizePip));
@@ -226,6 +235,12 @@ function closeShell(id, ended = false) {
 
 /** A tab's name: yours, else its host and folder ("mac: ~"). */
 const shellName = (s) => s.name || (s.mac ? `${s.mac}: ${s.where}` : s.where);
+/** Which ends of the tab row have tabs past them (each fades there). */
+function markTabEnds(strip) {
+  const more = strip.scrollWidth - strip.clientWidth;
+  strip.classList.toggle("more-left", more > 1 && strip.scrollLeft > 1);
+  strip.classList.toggle("more-right", more > 1 && strip.scrollLeft < more - 1);
+}
 function drawShellTabs() {
   const el = pipEl?.querySelector(".pip-tabs");
   if (!el) return;
@@ -238,6 +253,12 @@ function drawShellTabs() {
     const tag = s.id === shellRenaming ? "span" : "button";
     return `<${tag} class="pip-tab" role="tab" data-shell="${esc(s.id)}" aria-selected="${s.id === shellCur}">${s.busy ? `<span class="sh-dot"></span>` : ""}${name}${shells.length > 1 && i < 9 ? `<span class="pip-key">⌘${i + 1}</span>` : ""}<span class="pip-x" data-shell-x="${esc(s.id)}" role="button" aria-label="Close this shell">×</span></${tag}>`;
   }).join("");
+  // The tab on show is always in view (switched to with ⌘1–9, or a new one at the end).
+  const on = el.querySelector('[aria-selected="true"]');
+  if (on && (on.offsetLeft < el.scrollLeft || on.offsetLeft + on.offsetWidth > el.scrollLeft + el.clientWidth)) {
+    el.scrollLeft = on.offsetLeft - Math.max(0, (el.clientWidth - on.offsetWidth) / 2);
+  }
+  markTabEnds(el);
   const field = el.querySelector(".pip-rename");
   if (!field) return;
   field.focus();
