@@ -540,8 +540,8 @@ function boardView() {
   // sessions still working on your message. Then oldest first. A card you just answered fades out in the
   // group it was in, unless its session is back at work there.
   const talkSids = new Set(talkWork.map((x) => x.session_id));
-  // A session working on your message shows under In conversation only; 5 minutes on, it moves to Sessions.
-  const shown = working.filter((s) => !inTree(s.session_id) && !talkSids.has(s.session_id));
+  // A session working on your message shows under In conversation and under Sessions; 5 minutes on, Sessions only.
+  const shown = working.filter((s) => !inTree(s.session_id));
   const rows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms));
   const inTalk = (i) => !i._team && talking(i);
   const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
