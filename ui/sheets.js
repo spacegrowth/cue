@@ -257,6 +257,8 @@ async function sendForward() {
   try { await invoke("send_to_session", { sessionId: to.session_id, text, images: [] }); toast(`Sent to ${to.project}`); }
   catch (e) { toast(`Couldn't send to ${to.project}: ${e}`); }
 }
+/** Notification sounds: Cue's own three, two of macOS's, and none (see sounds.rs). */
+const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glass", "Glass"], ["ping", "Ping"], ["none", "None"]];
 const seg = (key, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${JSON.stringify(v) === JSON.stringify(cur) ? "on" : ""}" data-set="${key}" data-val='${esc(JSON.stringify(v))}'>${esc(l)}</button>`).join("")}</div>`;
 const toggle = (key, on) => `<button class="toggle ${on ? "on" : ""}" data-set="${key}" data-val="${!on}" role="switch" aria-checked="${on}" aria-label="${esc(key)}"><span></span></button>`;
 const setRow = (title, sub, control) => `<div class="set-row"><div class="set-text"><div class="set-title">${title}</div>${sub ? `<div class="set-sub">${sub}</div>` : ""}</div>${control}</div>`;
@@ -437,6 +439,7 @@ function settingsSheet() {
     ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
     ${setRow("When an agent finishes its turn", "Tells you which session is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
     ${setRow("When an agent needs a decision", "Permissions and questions.", toggle("notify.decisions", st.notify?.decisions ?? true))}
+    ${setRow("Sound", "What every notification plays. Click one to hear it.", seg("notify.sound", st.notify?.sound ?? "pluck", SOUNDS))}
     <div class="set-group">Mac</div>
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
     ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}`,

@@ -26,7 +26,7 @@ pub fn effective() -> Value {
     // (flag() falls back to true, so defaults that are off must be listed here.)
     json!({
         "history": { "keep": history_keep() },
-        "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true) },
+        "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "sound": crate::sounds::choice() },
         // Read from macOS, so it matches System Settings → Login Items.
         "login": { "open": login::enabled() },
         "tray": { "show": tray_shown() },
@@ -100,7 +100,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -115,6 +115,10 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "appearance.mode" => match value.as_str() {
             Some(m @ ("system" | "light" | "dark")) => json!(m),
             _ => return Err("appearance must be system, light or dark".into()),
+        },
+        "notify.sound" => match value.as_str() {
+            Some(c) if crate::sounds::CHOICES.contains(&c) => json!(c),
+            _ => return Err(format!("the sound must be one of {}", crate::sounds::CHOICES.join(", "))),
         },
         "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
         "turn.mode" => match value.as_str() {

@@ -308,7 +308,7 @@ function teamBar(sid) {
     return `<${go ? "button" : "span"} class="tm-chip ${cls} ${me ? "me" : ""}" ${go ? `data-session="${esc(id)}"` : ""}>${cls === "busy" ? `<span class="dot-live"></span>` : ""}${esc(name)}${word ? ` <span class="tm-sub">${esc(word)}</span>` : ""}${cls !== "lead" ? ` <span class="tm-sub tm-role">exec</span>` : ""}</${go ? "button" : "span"}>`;
   };
   const lead = sessionOf(t.lead) || t.lead === sid ? chip(t.lead, t.leadName, "lead", "lead") : `<span class="tm-chip gone">${esc(t.leadName)} <span class="tm-sub">lead · not running</span></span>`;
-  return `<div class="team-bar"><span class="tm-label">${esc(t.leadName)}${/s$/i.test(t.leadName) ? "'" : "'s"} team</span>${lead}${t.ex.map((e) => { const st = exState(e); return chip(e.session_id, e.name, st.word, st.cls); }).join("")}</div>`;
+  return `<div class="team-bar">${lead}${t.ex.map((e) => { const st = exState(e); return chip(e.session_id, e.name, st.word, st.cls); }).join("")}</div>`;
 }
 /** relay verify's verdict, in words: it checks every file the report lists is staged, not that the work is right. */
 const verifyWords = (v) => !v?.verdict ? "" : v.verdict === "COUNTS-MATCH" ? "its report matches what's staged"

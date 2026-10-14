@@ -12,6 +12,7 @@ mod locking;
 mod logs;
 mod model;
 mod notify;
+mod sounds;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
 // this repo). Without it there's nothing here.
 #[cfg(feature = "ext")]

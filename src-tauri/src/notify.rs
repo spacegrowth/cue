@@ -138,6 +138,7 @@ mod mac {
             return;
         }
         let _ = APP.set(app.clone());
+        crate::sounds::install();
         let center = UNUserNotificationCenter::currentNotificationCenter();
         let delegate: Retained<Delegate> = unsafe { msg_send![Delegate::alloc(), init] };
         center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -164,7 +165,10 @@ mod mac {
         let content = UNMutableNotificationContent::new();
         content.setTitle(&NSString::from_str(title));
         content.setBody(&NSString::from_str(body));
-        content.setSound(Some(&UNNotificationSound::defaultSound()));
+        // The sound you picked (Settings → General), or none.
+        if let Some(name) = crate::sounds::notification_name(&crate::sounds::choice()) {
+            content.setSound(Some(&UNNotificationSound::soundNamed(&NSString::from_str(&name))));
+        }
         if !category.is_empty() {
             content.setCategoryIdentifier(&NSString::from_str(category));
         }

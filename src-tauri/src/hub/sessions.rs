@@ -375,7 +375,12 @@ impl Hub {
 
     /// Change one setting. History size applies right away (memory and file are trimmed).
     pub fn set_setting(&self, key: &str, value: Value) -> Result<(), String> {
+        // A sound you just picked plays once, so you hear what you chose.
+        let sound = (key == "notify.sound").then(|| value.as_str().map(str::to_string)).flatten();
         crate::config::set(key, value)?;
+        if let Some(c) = sound {
+            crate::sounds::preview(&c);
+        }
         if key == "quick.phrases" {
             crate::notify::set_phrases(&crate::config::quick_phrases());
         }
