@@ -3,7 +3,6 @@
 #
 #   ./install.sh            everything (app, Claude Code + Codex hooks, Pi extension)
 #   ./install.sh --app      just the app
-#   ./install.sh --usage    just "Claude usage in Cue" (the status-line pass-through below)
 #   ./install.sh --uninstall
 #
 # Safe to re-run. Your ~/.claude/settings.json is backed up before it's touched, and only
@@ -115,66 +114,33 @@ install_hooks() {
   fi
 }
 
-# Claude usage in Cue (asked during install): Claude Code hands its plan usage only to the
-# status line command, so Cue puts a pass-through in front of yours. It forwards the numbers to
-# Cue, then runs your own command unchanged (saved in statusline.orig); --uninstall puts it back.
-statusline() {  # $1 = install | remove
-  local wrapper="$CUE_HOME/bin/cue-statusline"
-  if [ "$1" = install ]; then
-    mkdir -p "$CUE_HOME/bin"
-    cat > "$wrapper" <<'SH'
-#!/bin/sh
-# Cue's pass-through status line: hands Claude Code's usage (rate_limits) to Cue, then runs your
-# own status line command unchanged. Put here by Cue's install.sh; --uninstall puts yours back.
-input=$(cat)
-dir=$(dirname "$0")
-[ -x "$dir/cue-hook" ] && (printf '%s' "$input" | "$dir/cue-hook" usage claude >/dev/null 2>&1 &)
-cmd=$(cat "$dir/../statusline.orig" 2>/dev/null)
-[ -n "$cmd" ] && printf '%s' "$input" | sh -c "$cmd"
-exit 0
-SH
-    chmod +x "$wrapper"
-  fi
-  python3 - "$SETTINGS" "$wrapper" "$CUE_HOME/statusline.orig" "$1" <<'EOF'
+# Cue's status line (Cue puts it in front of yours when Claude Code is connected; config.rs): on
+# --uninstall, yours goes back (saved in statusline.orig). Left alone if you've changed it since.
+statusline_remove() {
+  python3 - "$SETTINGS" "$CUE_HOME/statusline.orig" <<'EOF'
 import json, os, shutil, sys, time
-path, wrapper, orig, mode = sys.argv[1:]
+path, orig = sys.argv[1:]
 try:
     cfg = json.load(open(path))
 except Exception:
-    cfg = {}
+    sys.exit(0)
 line = cfg.get("statusLine") or {}
-ours = f'"{wrapper}"'
-if mode == "install":
-    if line.get("command") == ours:
-        sys.exit(0)                       # already in place: keep the saved original
-    open(orig, "w").write(line.get("command", ""))
-    cfg["statusLine"] = {**line, "type": "command", "command": ours}
+if "cue-statusline" not in line.get("command", ""):
+    sys.exit(0)
+prev = open(orig).read() if os.path.exists(orig) else ""
+if prev:
+    cfg["statusLine"] = {**line, "command": prev}
 else:
-    if line.get("command") != ours:
-        sys.exit(0)                       # you've changed it since: leave yours alone
-    prev = open(orig).read() if os.path.exists(orig) else ""
-    if prev:
-        cfg["statusLine"] = {**line, "command": prev}
-    else:
-        cfg.pop("statusLine", None)
-if os.path.exists(path):
-    shutil.copy(path, f"{path}.cue-backup-{time.strftime('%Y%m%d-%H%M%S')}")
+    cfg.pop("statusLine", None)
+shutil.copy(path, f"{path}.cue-backup-{time.strftime('%Y%m%d-%H%M%S')}")
 with open(path, "w") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 EOF
 }
 
-# Asked once, at install, only when someone's at the terminal to answer.
-want_usage() {
-  [ -t 0 ] || return 1
-  printf '  Show Claude Code usage (5h / weekly) in Cue? It wraps your status line; nothing on screen changes. [Y/n] '
-  read -r answer
-  case "$answer" in n*|N*) return 1 ;; esac
-}
-
 uninstall() {
-  statusline remove; say "status line restored"
+  statusline_remove; say "status line restored"
   agent_hooks "$SETTINGS" claude remove; say "claude hooks removed (backup saved)"
   if [ -f "$CODEX_HOOKS" ]; then agent_hooks "$CODEX_HOOKS" codex remove; say "codex hooks removed (backup saved)"; fi
   rm -f "$PI_EXT_DIR/cue.ts"; say "pi extension removed"
@@ -185,9 +151,7 @@ uninstall() {
 case "${1:-}" in
   --uninstall) uninstall ;;
   --app) install_app; launch_cue ;;
-  --usage) statusline install; say "usage     → Claude Code's status line now also tells Cue (your own command still runs)" ;;
   "") install_app; install_hooks
-      if want_usage; then statusline install; say "usage     → Claude Code's status line now also tells Cue (your own command still runs)"; fi
       launch_cue; say "done — new and running sessions pick up the hooks on their next event" ;;
   *) sed -n '2,9p' "$0"; exit 2 ;;
 esac

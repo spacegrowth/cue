@@ -314,7 +314,7 @@ const needsYou = () => { const all = [...groups().decide, ...groups().yours].sor
 /** Working on what you said in the last few minutes: it stays in the conversation group while it works
  *  (a card like the others, saying "working"; its card stays under Working too); once it's worked longer, it's a job, and only in Working. */
 const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
-const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span><span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div>${s.doing ? `<div class="nrow-text">${esc(s.doing)}</div>` : ""}${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
+const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span><span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div><div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
 /** The grey line under a card's name: why it's in conversation, or that it just left it. */
 function talkNote(it) {
   const gap = talkGap(it);
@@ -536,17 +536,18 @@ function boardView() {
   const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
   const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && (crewOf(m.lead)?.executors || []).some((e) => e.session_id === sid); };
   const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !inTree(s.session_id) && !sessTree.has(s.session_id) && workingOnYours(s));
-  const shown = working.filter((s) => !inTree(s.session_id));
   // Conversations first (when there are any, under their own heading): the cards that came back, then the
   // sessions still working on your message. Then oldest first. A card you just answered fades out in the
   // group it was in, unless its session is back at work there.
   const talkSids = new Set(talkWork.map((x) => x.session_id));
+  // A session working on your message shows under In conversation only; 5 minutes on, it moves to Sessions.
+  const shown = working.filter((s) => !inTree(s.session_id) && !talkSids.has(s.session_id));
   const rows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort((a, b) => (a.back_ms ?? a.created_ms) - (b.back_ms ?? b.created_ms));
   const inTalk = (i) => !i._team && talking(i);
   const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
   const talks = rows.filter(inTalk), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
   const needRows = talks.length || talkWork.length
-    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN · ${count(talks)}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}${rest.length ? `<div class="col-sub">OLDEST FIRST · ${count(rest)}</div>${draw(rest)}` : ""}`
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}${rest.length ? `<div class="col-sub">OLDEST FIRST · ${count(rest)}</div>${draw(rest)}` : ""}`
     : draw(rest);
   // Sessions counts what it shows: its cards, and the executors in its leads' trees.
   const treed = working.filter((s) => inTree(s.session_id) && sessTree.has(crewOf(s.session_id).lead)).length;

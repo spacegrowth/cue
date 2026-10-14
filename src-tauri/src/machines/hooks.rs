@@ -45,17 +45,19 @@ done
 
 /// The status line on the machine, as on this Mac (install.sh's cue-statusline): Claude Code's transcript
 /// doesn't say how big a session's context window is, its status line does. This passes the size on to
-/// Cue through the hook (as a "usage" event, only when it changes, not on every refresh), then runs your
+/// Cue through the hook (as a "usage" event when it changes, and again every 10 minutes in case one was
+/// lost while Cue couldn't hear the machine; not on every refresh), then runs your
 /// own status line command unchanged (saved in ~/.cue/statusline.orig; none there: it shows nothing).
 pub const STATUS: &str = r#"#!/bin/sh
 # Cue's pass-through status line (installed by Cue on your Mac when you added this machine): tells Cue
-# the session's context window when it changes, then runs your own status line command unchanged.
+# the session's context window when it changes (and every 10 minutes, should one have been lost), then
+# runs your own status line command unchanged.
 input=$(cat)
 d="$HOME/.cue"
 one=$(printf '%s' "$input" | tr -d '\n')
 sid=$(printf '%s' "$one" | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p')
 win=$(printf '%s' "$one" | sed -n 's/.*"context_window_size" *: *\([0-9][0-9]*\).*/\1/p')
-if [ -n "$sid" ] && [ -n "$win" ] && [ "$(cat "$d/win/$sid" 2>/dev/null)" != "$win" ]; then
+if [ -n "$sid" ] && [ -n "$win" ] && { [ "$(cat "$d/win/$sid" 2>/dev/null)" != "$win" ] || [ -z "$(find "$d/win/$sid" -mmin -10 2>/dev/null)" ]; }; then
   mkdir -p "$d/win" 2>/dev/null && printf '%s' "$win" >"$d/win/$sid" 2>/dev/null
   find "$d/win" -type f -mtime +7 -delete 2>/dev/null
   [ -x "$d/cue-hook" ] && printf '%s' "$input" | "$d/cue-hook" usage claude >/dev/null 2>&1
@@ -68,20 +70,8 @@ exit 0
 /// The status line command Cue puts in the machine's Claude Code settings.
 const STATUS_CMD: &str = "\"$HOME/.cue/cue-statusline\"";
 
-/// Claude Code's settings with Cue's status line in, and the command it replaces (to run it from there):
-/// None when Cue's is in already (the one saved then is kept).
 fn wrap_status_line(cfg: &Value) -> Option<(Value, String)> {
-    let line = cfg.get("statusLine").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
-    let was = line.get("command").and_then(Value::as_str).unwrap_or("").to_string();
-    if was.contains("cue-statusline") {
-        return None;
-    }
-    let mut line = line;
-    line["type"] = json!("command");
-    line["command"] = json!(STATUS_CMD);
-    let mut cfg = cfg.clone();
-    cfg["statusLine"] = line;
-    Some((cfg, was))
+    crate::config::wrap_status_line(cfg, STATUS_CMD)
 }
 
 /// What the watcher runs on the machine: print each waiting event as one line, looking ten times a second
@@ -565,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn the_status_line_tells_cue_the_window_when_it_changes_and_shows_yours_unchanged() {
+    fn the_status_line_tells_cue_the_window_when_it_changes_or_every_10_minutes_and_shows_yours_unchanged() {
         let home = std::env::temp_dir().join(format!("cue-status-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(home.join(".cue/in")).unwrap();
@@ -583,10 +573,17 @@ mod tests {
         assert_eq!(events(), 1, "the same again: nothing new (it refreshes often)");
         run_sh(STATUS, &home, &[], &input(1_000_000));
         assert_eq!(events(), 2, "a new window: told");
+        // The same window 11 minutes on: told again (one lost while Cue couldn't hear the machine comes back).
+        let stamp = home.join(".cue/win/abc-123");
+        std::fs::File::options().write(true).open(&stamp).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(11 * 60)).unwrap();
+        run_sh(STATUS, &home, &[], &input(1_000_000));
+        assert_eq!(events(), 3, "the same window, 10 minutes on: told again");
+        run_sh(STATUS, &home, &[], &input(1_000_000));
+        assert_eq!(events(), 3, "and then not again at once");
         // No status line of yours: it shows nothing, and still tells Cue.
         std::fs::remove_file(home.join(".cue/statusline.orig")).unwrap();
         assert_eq!(run_sh(STATUS, &home, &[], &input(200_000)), "");
-        assert_eq!(events(), 3);
+        assert_eq!(events(), 4);
         std::fs::remove_dir_all(&home).ok();
     }
 

@@ -440,11 +440,12 @@ impl Feed {
                             m.model = model.to_string();
                         }
                         // The transcript doesn't say the window. Claude Code's status line does (for this
-                        // session, or another on its model); until then 200k, or 1M once it's past that (or says so).
+                        // session, or another on its model); until then 1M once the model's name says so or
+                        // it's past 200k, else unknown (0): the chat shows the tokens, not a guessed share.
                         m.window = match known_window(&self.path, &m.model) {
                             Some(w) => w,
                             None if m.model.contains("[1m]") || m.context > 200_000 || m.window == 1_000_000 => 1_000_000,
-                            None => 200_000,
+                            None => 0,
                         };
                     }
                 }
@@ -1487,7 +1488,7 @@ mod tests {
         // 174k tokens on a model whose name doesn't say its window is 1M.
         std::fs::write(&path, "{\"type\":\"user\",\"timestamp\":\"2026-10-04T10:00:00.000Z\",\"message\":{\"content\":\"hi\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2026-10-04T10:00:02.000Z\",\"message\":{\"model\":\"claude-opus-5-5\",\"content\":[{\"type\":\"text\",\"text\":\"Hello.\"}],\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":173376,\"cache_creation_input_tokens\":710}}}\n").unwrap();
         let p = path.to_str().unwrap();
-        assert_eq!(context_pct(p), Some(87), "without word from Claude Code: the 200k guess");
+        assert_eq!(context_pct(p), None, "without word from Claude Code: no share (a 200k guess is 5x off on a 1M window)");
         let before = steps(p, 0)["version"].as_u64().unwrap();
         set_window(&sid, 1_000_000, true);
         assert_eq!(context_pct(p), Some(17), "Claude Code's own window, as its status line shows");
@@ -1498,7 +1499,7 @@ mod tests {
         std::fs::write(&other, std::fs::read_to_string(&path).unwrap().replace("claude-opus-5-5", "claude-test-model-w")).unwrap();
         let path2 = dir.join(format!("{sid}-2.jsonl"));
         std::fs::write(&path2, std::fs::read_to_string(&path).unwrap().replace("claude-opus-5-5", "claude-test-model-w")).unwrap();
-        assert_eq!(context_pct(path2.to_str().unwrap()), Some(87), "a model nobody has reported yet: the guess");
+        assert_eq!(context_pct(path2.to_str().unwrap()), None, "a model nobody has reported yet: no share");
         set_window(&format!("{sid}-2"), 1_000_000, true);
         assert_eq!(context_pct(other.to_str().unwrap()), Some(17), "the window another session on its model reported");
         // A session on another machine runs that model with 200k (another provider): that's its own window

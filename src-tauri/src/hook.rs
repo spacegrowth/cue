@@ -371,15 +371,34 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
 /// the hooks, and the settings files never need to know where the app lives.
 pub fn write_shim() {
     let Ok(exe) = std::env::current_exe() else { return };
+    put_script("cue-hook", &format!("#!/bin/sh\n# Written by Cue on every launch: hands the agent's hook event to Cue.\nexec \"{}\" hook \"$@\"\n", exe.display()));
+    put_script("cue-statusline", STATUS_LINE);
+}
+
+/// Cue's pass-through status line on this Mac (config.rs puts it in Claude Code's settings): hands Claude
+/// Code's status (the plan's usage, the session's context window and cost) to Cue on each refresh, then
+/// runs your own status line command unchanged (saved in statusline.orig; none there: it shows nothing).
+const STATUS_LINE: &str = r#"#!/bin/sh
+# Cue's pass-through status line (written by Cue on every launch): hands Claude Code's status to Cue,
+# then runs your own status line command unchanged.
+input=$(cat)
+dir=$(dirname "$0")
+[ -x "$dir/cue-hook" ] && (printf '%s' "$input" | "$dir/cue-hook" usage claude >/dev/null 2>&1 &)
+cmd=$(cat "$dir/../statusline.orig" 2>/dev/null)
+[ -n "$cmd" ] && printf '%s' "$input" | sh -c "$cmd"
+exit 0
+"#;
+
+/// A script in Cue's bin folder, executable, replaced only when it changed.
+fn put_script(name: &str, body: &str) {
     let dir = crate::server::cue_dir().join("bin");
     let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("cue-hook");
-    let body = format!("#!/bin/sh\n# Written by Cue on every launch: hands the agent's hook event to Cue.\nexec \"{}\" hook \"$@\"\n", exe.display());
-    if std::fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
+    let path = dir.join(name);
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(body) {
         return;
     }
-    let tmp = dir.join("cue-hook.tmp");
-    if std::fs::write(&tmp, &body).is_ok() {
+    let tmp = dir.join(format!("{name}.tmp"));
+    if std::fs::write(&tmp, body).is_ok() {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
         let _ = std::fs::rename(&tmp, &path);

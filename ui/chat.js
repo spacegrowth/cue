@@ -1015,10 +1015,11 @@ function metaInline(sid) {
   const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 2 : 0)}M` : `${Math.round(n / 1000)}k`);
   const money = (c) => `$${c >= 100 ? Math.round(c) : c.toFixed(2)}`;
   const tip = [m.model && `Model: ${m.model}`, m.window && `Context: ${k(m.context)} of ${k(m.window)} tokens (${pct}%)`, m.cost != null && `Cost so far: ${money(m.cost)}`].filter(Boolean).join("\n");
+  // No share until Cue knows the window (Claude Code's status line says it): the tokens alone, not a guess.
   // Just compacted: its log's last count is from before, so don't show it until a new reply brings a fresh one.
   const s = sessionOf(sid);
   const freed = s?.compacted_ms && s.state !== "working";
-  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : m.context ? `<span class="mi-ctx">${k(m.context)} context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
   // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
   const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
   return `<span class="ap-meta">${parts.join(" · ")}</span>${chip}`;

@@ -207,7 +207,9 @@ pub fn connect(harness: &str, pi_ext: &std::path::Path) -> Result<String, String
     let hook = crate::server::cue_dir().join("bin/cue-hook");
     match harness {
         "claude" => {
-            add_hooks(std::path::Path::new(&format!("{home}/.claude/settings.json")), &hook.to_string_lossy(), "claude")?;
+            let settings = format!("{home}/.claude/settings.json");
+            add_hooks(std::path::Path::new(&settings), &hook.to_string_lossy(), "claude")?;
+            add_status_line(std::path::Path::new(&settings))?;
             Ok("Connected Claude Code. New sessions show up in Cue; in one already open, type /hooks once (or restart it with claude --resume).".into())
         }
         "codex" => {
@@ -293,6 +295,35 @@ fn wanted(hook: &str, harness: &str) -> Vec<(&'static str, Value)> {
     want
 }
 
+/// Claude Code's settings with Cue's status line (`cmd`) in, and the command it replaces (Cue's runs it
+/// from there, unchanged): None when Cue's is in already (the one saved then is kept). Here and on a machine.
+pub fn wrap_status_line(cfg: &Value, cmd: &str) -> Option<(Value, String)> {
+    let line = cfg.get("statusLine").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
+    let was = line.get("command").and_then(Value::as_str).unwrap_or("").to_string();
+    if was.contains("cue-statusline") {
+        return None;
+    }
+    let mut line = line;
+    line["type"] = json!("command");
+    line["command"] = json!(cmd);
+    let mut cfg = cfg.clone();
+    cfg["statusLine"] = line;
+    Some((cfg, was))
+}
+
+/// Cue's status line on this Mac (bin/cue-statusline, written at launch): Claude Code tells only its status
+/// line a session's context window and your plan's usage, so Cue's passes them on and runs yours. Your
+/// command is saved to statusline.orig first, the settings file backed up as on Connect.
+fn add_status_line(path: &std::path::Path) -> Result<(), String> {
+    let Some(cfg) = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).filter(Value::is_object) else { return Ok(()) };
+    let cmd = format!("\"{}\"", crate::server::cue_dir().join("bin/cue-statusline").display());
+    let Some((cfg, was)) = wrap_status_line(&cfg, &cmd) else { return Ok(()) };
+    std::fs::write(crate::server::cue_dir().join("statusline.orig"), &was).map_err(|e| format!("Couldn't save your status line: {e}"))?;
+    let backup = format!("{}.cue-backup-{}", path.display(), crate::model::now_ms());
+    std::fs::copy(path, &backup).map_err(|e| format!("Couldn't back up {}: {e}", path.display()))?;
+    std::fs::write(path, serde_json::to_string_pretty(&cfg).unwrap_or_default() + "\n").map_err(|e| format!("Couldn't write {}: {e}", path.display()))
+}
+
 /// At launch: an agent you connected with an older Cue gets the hooks this one added (once; its
 /// settings file is backed up as on Connect). One you never connected is left alone.
 pub fn refresh_hooks() {
@@ -305,6 +336,12 @@ pub fn refresh_hooks() {
         if want.iter().any(|(e, _)| ours(e)) && !want.iter().all(|(e, _)| ours(e)) {
             if let Err(e) = add_hooks(std::path::Path::new(&file), &hook, harness) {
                 eprintln!("cue: couldn't add new hooks for {harness}: {e}");
+            }
+        }
+        // Connected Claude Code: Cue's status line too (once; yours keeps running from it).
+        if harness == "claude" && want.iter().any(|(e, _)| ours(e)) {
+            if let Err(e) = add_status_line(std::path::Path::new(&file)) {
+                eprintln!("cue: couldn't add Cue's status line: {e}");
             }
         }
     }
