@@ -188,7 +188,34 @@ footer .grow { flex: 1; }
           <li>Read from the session's own transcript when you look; nothing is copied or kept</li>
         </ul>
       </div>
-      <div class="shot tall"><img src="shots/steps.png" alt="Steps between a message and the reply: edits with their sizes, a failed test run opened to its output, and an edit opened to its diff." width="1314" height="1980"></div>
+      <div class="shot tall"><img src="shots/steps.png" alt="Steps between a message and the reply: edits with their sizes, a failed test run opened to its output, and an edit opened to its diff." width="1308" height="1808"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split flip">
+      <div class="text">
+        <p class="eyebrow">Diff</p>
+        <h2>What it changed, beside the chat</h2>
+        <p class="sub">The Diff tab shows the files a session edited and what's still uncommitted in them, without leaving Cue. Switch to this turn, the whole session, or everything uncommitted in its folder.</p>
+        <ul>
+          <li>The tab shows the count before you open it: <code>4 +15 −3</code></li>
+          <li>Works for sessions on other machines too</li>
+          <li>Read-only: Cue runs git to look, never to change anything</li>
+        </ul>
+      </div>
+      <div class="shot tall"><img src="shots/diff.png" alt="The Diff tab of a session: four files it edited, the first opened to its added and removed lines." width="1308" height="1528"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split">
+      <div class="text">
+        <p class="eyebrow">Background agents</p>
+        <h2>See the agents it sent off</h2>
+        <p class="sub">When a session hands work to background agents, Cue shows each one at work under it: what it's reading and running, and when it's done. The session isn't waiting on you, so it stays out of Waiting until they report back.</p>
+      </div>
+      <div class="shot tall"><img src="shots/agents.png" alt="A session waiting on two background agents: one still reading files, one finished." width="1308" height="1528"></div>
     </div>
   </section>
 
@@ -208,6 +235,11 @@ footer .grow { flex: 1; }
       <p class="eyebrow">And the small things</p>
       <h2>Built for a day of running several agents</h2>
       <div class="grid">
+        <div class="mini"><b>In conversation</b><span>Sessions that answer within 5 minutes of your message go to the top of Waiting, so a back-and-forth keeps going.</span></div>
+        <div class="mini"><b>Other machines</b><span>Sessions on your servers show up beside the ones on your Mac, over your own SSH.</span></div>
+        <div class="mini"><b>Park</b><span>Stop a session you'll come back to. It stays listed, ready to resume.</span></div>
+        <div class="mini"><b>A terminal of its own</b><span>⌘J opens a floating terminal over the board, with a tab per shell.</span></div>
+        <div class="mini"><b>Extensions</b><span>Add tabs to sessions or pages to Cue. Nothing runs on your Mac until you allow it.</span></div>
         <div class="mini"><b>Quick phrases</b><span>Commit, Go ahead, Think hard: one click sends it. Set your own four.</span></div>
         <div class="mini"><b>Queue or send now</b><span>Message a busy session: it reads it after its current step, or stop it and send.</span></div>
         <div class="mini"><b>History and stats</b><span>What you answered today, how long agents waited, and the longest wait.</span></div>
@@ -225,7 +257,7 @@ footer .grow { flex: 1; }
       <p class="sub">Cue collects nothing and sends nothing anywhere. It's open source, so you can check.</p>
       <div class="privacy-list">
         <div><b>No accounts, no tracking</b><span>No sign-up, no analytics, no crash reporting.</span></div>
-        <div><b>Local only</b><span>It talks to your agents through a socket that only processes on your Mac can reach.</span></div>
+        <div><b>Local only</b><span>It talks to your agents through a socket that only processes on your Mac can reach. Other machines are reached over your own SSH, with no server in between.</span></div>
         <div><b>Your data is a folder</b><span>History, drafts and settings live in one folder in your Library. Delete it and it's gone.</span></div>
         <div><b>One request out</b><span>The only time Cue goes online is to check GitHub for a newer version of itself.</span></div>
       </div>
