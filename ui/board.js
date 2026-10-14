@@ -126,6 +126,12 @@ function openDrawer() {
 function laterOpen() {
   try { return localStorage.getItem("cue.laterOpen") === "1"; } catch { return false; }
 }
+/** Waiting's Oldest first group, folded under its heading (only while In conversation is there too). */
+const oldestShut = () => { try { return localStorage.getItem("cue.oldestShut") === "1"; } catch { return false; } };
+function foldOldest() {
+  try { localStorage.setItem("cue.oldestShut", oldestShut() ? "0" : "1"); } catch {}
+  renderMain();
+}
 const drawerOpen = (name) => name === "later" ? laterOpen() : openDrawer() === name;
 /** Open or fold a drawer like a drawer: folding, its height shrinks up into its heading while Sessions
  *  grows into the room; opening, it grows back down (the other one, if open, folds at once). Snaps with
@@ -547,7 +553,7 @@ function boardView() {
   const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
   const talks = rows.filter(inTalk), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
   const needRows = talks.length || talkWork.length
-    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}${rest.length ? `<div class="col-sub">OLDEST FIRST · ${count(rest)}</div>${draw(rest)}` : ""}`
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}${rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-oldest aria-expanded="${!oldestShut()}"><span class="fold-arrow">${oldestShut() ? "▸" : "▾"}</span> OLDEST FIRST · ${count(rest)}</button>${oldestShut() ? "" : draw(rest)}` : ""}`
     : draw(rest);
   // Sessions counts what it shows: its cards, and the executors in its leads' trees.
   const treed = working.filter((s) => inTree(s.session_id) && sessTree.has(crewOf(s.session_id).lead)).length;

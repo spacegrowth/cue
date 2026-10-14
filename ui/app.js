@@ -307,6 +307,7 @@ function bindMain() {
       return;
     }
     { const fd = t.closest("[data-fold]"); if (fd) return foldDrawer(fd.dataset.fold); }
+    if (t.closest("[data-fold-oldest]")) return foldOldest();
     // An ended Claude Code session, opened from search: back to work, as an older one resumes.
     if (t.closest("[data-act=convo-resume]")) return resumeOlder({ session_id: convo.sid, name: convo.name });
     if (t.closest("[data-act=convo-back]")) { sheet = "search"; renderMain(); return document.querySelector(".search-in")?.focus(); }
