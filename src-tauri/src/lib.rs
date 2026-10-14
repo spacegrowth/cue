@@ -117,6 +117,13 @@ pub fn hook_main(args: &[String]) {
     hook::main(args)
 }
 
+/// Text size: the whole window zooms (text, cards and buttons together), as a browser's ⌘+ does.
+pub(crate) fn apply_zoom(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.set_zoom(config::zoom());
+    }
+}
+
 /// Switch WebRTC off for this web view (WebKit's peer-connection preference), where WebKit has it.
 #[cfg(target_os = "macos")]
 fn no_webrtc(w: &tauri::WebviewWindow) {
@@ -215,6 +222,7 @@ pub fn run() {
             if let Some(w) = app.get_webview_window("main") {
                 no_webrtc(&w);
             }
+            apply_zoom(app.handle());
             // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
             if std::env::var_os("CUE_HOME").is_none() {
                 let old = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cue");

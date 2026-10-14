@@ -383,6 +383,11 @@ impl Hub {
             let history = crate::db::history(crate::config::history_keep());
             self.st().history = history;
         }
+        if key == "appearance.zoom" {
+            if let Some(app) = &self.app {
+                crate::apply_zoom(app);
+            }
+        }
         self.changed();
         Ok(())
     }

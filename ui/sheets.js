@@ -432,6 +432,7 @@ function settingsSheet() {
     ${updateRow()}
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
+    ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
     ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
     ${setRow("When an agent finishes its turn", "Tells you which session is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}

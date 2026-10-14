@@ -37,7 +37,7 @@ pub fn effective() -> Value {
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
-        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system") },
+        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom() },
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
@@ -78,6 +78,17 @@ pub fn turn_mode() -> String {
     load().pointer("/turn/mode").and_then(Value::as_str).filter(|m| *m == "last").unwrap_or("answer").to_string()
 }
 
+/// Text size: the window's zoom, one of these steps (⌘+ / ⌘− / ⌘0, or Settings → Text size).
+pub const ZOOM_STEPS: [f64; 4] = [0.9, 1.0, 1.15, 1.3];
+
+/// The text size you picked (1.0 until you pick one; anything not a step reads as 1.0).
+pub fn zoom() -> f64 {
+    load().pointer("/appearance/zoom").and_then(Value::as_f64).and_then(zoom_step).unwrap_or(1.0)
+}
+fn zoom_step(z: f64) -> Option<f64> {
+    ZOOM_STEPS.into_iter().find(|s| (s - z).abs() < 0.001)
+}
+
 /// How many earlier exchanges each session keeps for context (Settings → Context; default 5).
 pub fn context_keep() -> usize {
     load().pointer("/context/keep").and_then(Value::as_u64).unwrap_or(5).clamp(1, 50) as usize
@@ -89,7 +100,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "pi.gate", "appearance.mode", "appearance.zoom", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -105,6 +116,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             Some(m @ ("system" | "light" | "dark")) => json!(m),
             _ => return Err("appearance must be system, light or dark".into()),
         },
+        "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
         "turn.mode" => match value.as_str() {
             Some(m @ ("answer" | "last")) => json!(m),
             _ => return Err("turn mode must be answer or last".into()),
@@ -306,6 +318,18 @@ pub fn tray_shown() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_size_takes_only_its_steps() {
+        for z in ZOOM_STEPS {
+            assert_eq!(zoom_step(z), Some(z));
+        }
+        // A number that's nearly a step (as JSON may round it) is that step; anything else isn't one.
+        assert_eq!(zoom_step(1.1500000001), Some(1.15));
+        for z in [0.0, 0.5, 1.2, 2.0, -1.0, f64::NAN] {
+            assert_eq!(zoom_step(z), None, "{z}");
+        }
+    }
 
     #[test]
     fn connect_keeps_your_settings_and_hooks_and_replaces_only_cues() {

@@ -576,6 +576,8 @@ function bindMain() {
     if (e.key === "Enter" && e.target.dataset?.text === "mc-label" && machRenaming) { e.preventDefault(); return machAct("rename-save", machRenaming); }
     // ⌘J: Cue's own floating terminal, out or tucked away (from inside it too).
     if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); return toggleShells(true); }
+    // ⌘+ / ⌘− / ⌘0: text size, a step bigger or smaller, or back to Default (from anywhere in Cue).
+    if (e.metaKey && !e.altKey && !e.ctrlKey && ["=", "+", "-", "_", "0"].includes(e.key)) { e.preventDefault(); return stepZoom(e.key === "0" ? 0 : e.key === "-" || e.key === "_" ? -1 : 1); }
     // ⌘⇧T: a new shell tab in it (from inside it too).
     if (e.metaKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === "t") { e.preventDefault(); return newShellTab(); }
     // Inside it, as in a terminal app: ⌘K clears it (not Cue's ⌘K), ⌘1–9 go to its tabs (⌘9 the last).
