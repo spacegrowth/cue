@@ -19,15 +19,20 @@ function projChip() {
   if (!list.length && !projFilter && !pins.length) return "";
   const total = list.reduce((n, [, r]) => n + r.n, 0);
   const pin = (p) => `<button class="pj-pin ${pins.includes(p) ? "on" : ""}" data-pjpin="${esc(p)}" aria-label="${pins.includes(p) ? "Unpin" : "Pin"} ${esc(p)}" aria-pressed="${pins.includes(p)}">${PIN_ICON}</button>`;
-  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}<span class="pj-name">${esc(p)}</span><span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : "history"}</span>${pin(p)}</div>`;
+  // A project's name: yours (its own under it, dim), or the box you're renaming it in (Enter keeps it; empty: its own again).
+  const label = (p) => pjRenaming === p
+    ? `<input class="pj-name-in" data-text="pjname:${esc(p)}" maxlength="40" placeholder="${esc(p)}" spellcheck="false" value="${esc(draft(`pjname:${p}`).text)}"/>`
+    : `<span class="pj-name">${esc(projLabel(p))}${projLabel(p) !== p ? `<span class="pj-orig">${esc(p)}</span>` : ""}</span>`;
+  const ren = (p) => `<button class="pj-ren" data-pjren="${esc(p)}" aria-label="Rename ${esc(projLabel(p))}">✎</button>`;
+  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}${label(p)}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : "history"}</span>${ren(p)}${pin(p)}</div>`;
   const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project="">${projBtn(ALL_PROJ, "pj")}<span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}</div>` : "";
   // A pinned project picked shows as its own chip, lit; the projects chip then reads All projects.
   const shown = projFilter && !pins.includes(projFilter) ? projFilter : "";
   // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
-  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(shown) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
+  const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
   // Its dot changes its color, as the projects chip's does.
-  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(p)}</span></button></span></span>`).join("");
+  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span></button></span></span>`).join("");
   return main + chips;
 }
 

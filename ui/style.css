@@ -488,6 +488,14 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .pj-pin.on svg { fill: currentColor; }
 .pj-pinned { max-width: 170px; }
 .pj-pinned .pj-open { min-width: 0; }
+/* A row's ✎ (rename it in Cue), shown as its pin is; the name's box in its place; its own name under yours. */
+.pj-ren { display: grid; place-items: center; width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; font-size: 12px; color: var(--muted); opacity: 0; }
+.pj-row:hover .pj-ren, .pj-ren:focus-visible { opacity: 0.7; }
+.pj-ren:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+.pj-name-in { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; outline: none; }
+.pj-name-in:focus { border-color: var(--muted); }
+.pj-orig { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.pj-row.on .pj-orig { color: inherit; opacity: 0.7; }
 .pj-pn { overflow: hidden; text-overflow: ellipsis; }
 
 @keyframes pulse { 50% { opacity: 0.25; } }

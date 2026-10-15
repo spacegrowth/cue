@@ -43,7 +43,7 @@ pub fn effective() -> Value {
         "quick": { "phrases": quick_phrases() },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -64,6 +64,20 @@ fn pins(value: &Value) -> Result<Value, String> {
         return Err(format!("at most {PINS_MAX} pinned projects"));
     }
     Ok(json!(pins))
+}
+/// The names you gave projects in Cue (project: name), shown in place of the folder's or repository's own.
+/// Each one trimmed, its spaces single, at most `NAME_MAX` characters; an empty one is dropped (the folder's
+/// name again).
+const NAME_MAX: usize = 40;
+fn names(value: &Value) -> Result<Value, String> {
+    let mut out = serde_json::Map::new();
+    for (p, n) in value.as_object().ok_or("names must be project: name")? {
+        let n = n.as_str().ok_or("a name must be text")?.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !n.is_empty() && n != *p {
+            out.insert(p.clone(), json!(n.chars().take(NAME_MAX).collect::<String>()));
+        }
+    }
+    Ok(Value::Object(out))
 }
 pub fn quick_phrases() -> Vec<String> {
     match load().pointer("/quick/phrases").and_then(Value::as_array) {
@@ -115,7 +129,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -159,6 +173,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         }
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
         "project.pins" => pins(&value)?,
+        "project.names" => names(&value)?,
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
             let phrases: Vec<String> = list.iter().filter_map(Value::as_str).map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|p| !p.is_empty()).collect();
@@ -395,6 +410,14 @@ mod tests {
         assert_eq!(pins(&json!(["a", "b", "c"])), Ok(json!(["a", "b", "c"])));
         assert!(pins(&json!(["a", "b", "c", "d"])).is_err());
         assert!(pins(&json!("cue")).is_err());
+    }
+
+    #[test]
+    fn a_projects_name_is_tidied_and_an_empty_one_means_its_own_again() {
+        assert_eq!(names(&json!({ "cue": "  My   app ", "web": "", "api": "api" })), Ok(json!({ "cue": "My app" })));
+        assert_eq!(names(&json!({ "x": "a".repeat(50) })), Ok(json!({ "x": "a".repeat(40) })));
+        assert!(names(&json!({ "x": 3 })).is_err());
+        assert!(names(&json!(["x"])).is_err());
     }
 
     #[test]

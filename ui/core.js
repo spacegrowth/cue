@@ -169,9 +169,22 @@ let colorFor = null;   // { p, w }: the project (or ALL_PROJ) whose swatches are
 function projBtn(project, where) {
   if (!project) return "";
   const all = project === ALL_PROJ, cur = swatchOf(project), open = colorFor?.p === project && colorFor.w === where;
-  const title = `<b>${all ? "All projects" : esc(project)}</b>`;
+  const title = `<b>${all ? "All projects" : esc(projLabel(project))}</b>`;
   const pop = open ? `<div class="pc-pop"><div class="pc-title">${title}</div><div class="pc-row">${SWATCHES.map(([i], n) => `<button class="pc-sw ${cur === i ? "on" : ""}" style="--c:var(--pc${i})" data-pcpick="${esc(project)}" data-pcidx="${i}" aria-label="${i === MOSS ? "Moss" : `Swatch ${n + 1}`}"></button>`).join("")}</div></div>` : "";
   return `<span class="pc-wrap"><button class="pdot-btn ${open ? "on" : ""}" data-pcolor="${esc(project)}" data-pcwhere="${where}" aria-label="Color for ${all ? "all projects" : esc(project)}"><i class="pdot" style="--pc:var(--pc${cur})"></i></button>${pop}</span>`;
+}
+/** A project as Cue shows it: the name you gave it, else its own (its repository's or folder's). */
+const projLabel = (p) => (state.settings?.project?.names || {})[p] || p;
+let pjRenaming = null;   // the project whose name is being edited in the projects list
+function saveProjName(project) {
+  const key = `pjname:${project}`, name = draft(key).text.trim().replace(/\s+/g, " ").slice(0, 40);
+  pjRenaming = null;
+  delete drafts[key];
+  const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
+  const { [project]: _, ...rest } = p.names || {};
+  p.names = name && name !== project ? { ...rest, [project]: name } : rest;
+  setSetting("project.names", p.names);
+  renderMain();
 }
 /** The projects pinned beside All projects in the header (config.rs PINS_MAX), in the order pinned. */
 const PINS_MAX = 3;

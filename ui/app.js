@@ -226,15 +226,27 @@ function bindMain() {
     if (pc) { const { pcolor: p, pcwhere: w } = pc.dataset; colorFor = colorFor?.p === p && colorFor.w === w ? null : { p, w }; return renderMain(); }
     if (colorFor && !t.closest(".pc-wrap")) { colorFor = null; renderMain(); }
     // The Projects chip: its list, and the project it shows alone (empty: all of them).
+    // Renaming a project in the list: its box takes clicks (not a pick); ✎ opens it.
+    if (t.closest(".pj-name-in")) return;
+    const renB = t.closest("[data-pjren]");
+    if (renB) {
+      pjRenaming = renB.dataset.pjren;
+      draft(`pjname:${pjRenaming}`).text = (state.settings?.project?.names || {})[pjRenaming] || "";
+      renderMain();
+      const el = document.querySelector(".pj-name-in");
+      el?.focus(); el?.select();
+      return;
+    }
     const pinB = t.closest("[data-pjpin]");
     if (pinB) { togglePin(pinB.dataset.pjpin); return renderMain(); }
     const pj = t.closest("[data-pj]");
     if (pj) {
+      pjRenaming = null;
       if (pj.dataset.pj === "toggle") pjOpen = !pjOpen;
       else { projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {} }
       return renderMain();
     }
-    if (pjOpen && !t.closest(".pj-wrap")) { pjOpen = false; renderMain(); }
+    if (pjOpen && !t.closest(".pj-wrap")) { pjOpen = false; pjRenaming = null; renderMain(); }
     const mach = t.closest("[data-mach]");
     if (mach) return machAct(mach.dataset.mach, mach.dataset.name);
     const tm = t.closest("[data-act=term], [data-act=term-open], [data-act=term-card]");
@@ -625,6 +637,7 @@ function bindMain() {
     }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
     if (starOpen && e.key === "Escape") { starOpen = false; return renderMain(); }
+    if (pjRenaming && e.key === "Escape") { pjRenaming = null; return renderMain(); }
     if ((pjOpen || colorFor) && e.key === "Escape") { pjOpen = false; colorFor = null; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
       liveOpen = newOpen = false;
@@ -676,6 +689,7 @@ function bindMain() {
         if (key === "new-name" || key === "new-msg") return lvAct("start", {});
         if (key === "search") return pickResult(searchSel);
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
+        if (key.startsWith("pjname:")) return saveProjName(key.slice(7));
         // A parked session's box: Enter resumes it with the message (Resume & send).
         if (key.startsWith("s:") && !sessionOf(key.slice(2)) && (parkedOf(key.slice(2)) || closedOf(key.slice(2)))) return wakeParked(key.slice(2), draft(key).text.trim());
         if (key.startsWith("s:")) {
