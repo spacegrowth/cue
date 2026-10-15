@@ -225,6 +225,8 @@ function bindMain() {
     if (pc) { const { pcolor: p, pcwhere: w } = pc.dataset; colorFor = colorFor?.p === p && colorFor.w === w ? null : { p, w }; return renderMain(); }
     if (colorFor && !t.closest(".pc-wrap")) { colorFor = null; renderMain(); }
     // The Projects chip: its list, and the project it shows alone (empty: all of them).
+    const pinB = t.closest("[data-pjpin]");
+    if (pinB) { togglePin(pinB.dataset.pjpin); return renderMain(); }
     const pj = t.closest("[data-pj]");
     if (pj) {
       if (pj.dataset.pj === "toggle") pjOpen = !pjOpen;

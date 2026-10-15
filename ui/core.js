@@ -173,6 +173,17 @@ function projBtn(project, where) {
   const pop = open ? `<div class="pc-pop"><div class="pc-title">${title}</div><div class="pc-row">${SWATCHES.map(([i], n) => `<button class="pc-sw ${cur === i ? "on" : ""}" style="--c:var(--pc${i})" data-pcpick="${esc(project)}" data-pcidx="${i}" aria-label="${i === MOSS ? "Moss" : `Swatch ${n + 1}`}"></button>`).join("")}</div></div>` : "";
   return `<span class="pc-wrap"><button class="pdot-btn ${open ? "on" : ""}" data-pcolor="${esc(project)}" data-pcwhere="${where}" aria-label="Color for ${all ? "all projects" : esc(project)}"><i class="pdot" style="--pc:var(--pc${cur})"></i></button>${pop}</span>`;
 }
+/** The projects pinned beside All projects in the header (config.rs PINS_MAX), in the order pinned. */
+const PINS_MAX = 3;
+const projPins = () => (Array.isArray(state.settings?.project?.pins) ? state.settings.project.pins : []);
+function togglePin(project) {
+  const pins = projPins();
+  const next = pins.includes(project) ? pins.filter((p) => p !== project) : [...pins, project];
+  if (next.length > PINS_MAX) return toast(`${PINS_MAX} pinned at most: unpin one first`);
+  ((state.settings ||= {}).project ||= {}).pins = next;   // shown now; Cue's next update says the same
+  setSetting("project.pins", next);
+}
+const PIN_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 4 4v2H6v-2l4-4z"/></svg>`;
 function setProjColor(project, idx) {
   const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
   if (project === ALL_PROJ) { p.all = idx; return setSetting("project.all", idx); }

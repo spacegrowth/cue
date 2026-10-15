@@ -449,7 +449,7 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .pdot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); vertical-align: 0; }
 .pdot.live { animation: pulse 1.4s ease-in-out infinite; }
 .working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); --pc8: var(--pcb8); --pc9: var(--pcb9); }
-.working.on, .pj-pop, .pc-pop { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9); }
+.working.on, .pj-pop, .pc-pop, .pj-pinned.hot { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9); }
 .pc-wrap { position: relative; display: inline-flex; flex: none; }
 .pdot-btn { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; margin: 0 -4px 0 -6px; }
 .pdot-btn:hover, .pdot-btn.on { background: color-mix(in srgb, currentColor 12%, transparent); }
@@ -479,6 +479,15 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .pj-n { font: 600 11px var(--mono); color: var(--muted); }
 .pj-row.on .pj-n { color: inherit; opacity: 0.75; }
 .pj-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+/* A row's pin: faint until hovered, solid once pinned (its project then sits beside the projects chip). */
+.pj-pin { display: grid; place-items: center; width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; color: var(--muted); opacity: 0; }
+.pj-row:hover .pj-pin, .pj-pin:focus-visible { opacity: 0.7; }
+.pj-pin:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+.pj-pin.on { opacity: 1; color: inherit; }
+.pj-pin.on svg { fill: currentColor; }
+.pj-pinned { max-width: 170px; }
+.pj-pn { overflow: hidden; text-overflow: ellipsis; }
+
 @keyframes pulse { 50% { opacity: 0.25; } }
 .cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
@@ -1172,6 +1181,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 .top:is(.tfit3, .tfit4) .usage-wrap { margin-right: 0; }
 .top.tfit4 .hlbl { display: none; }
 .top.tfit4 .hchip { padding: 0 10px; }
+.top:is(.tfit3, .tfit4) .pj-pinned { max-width: 110px; }
 /* When the header's buttons still don't fit (fitHead in app.js adds these one by one). */
 .ap-head.fit1 .l-long, .ap-head.fit2 .l-long, .ap-head.fit3 .l-long, .ap-head.fit4 .l-long { display: none; }
 .ap-head.fit1 .l-short, .ap-head.fit2 .l-short, .ap-head.fit3 .l-short, .ap-head.fit4 .l-short { display: inline; }

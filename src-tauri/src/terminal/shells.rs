@@ -142,6 +142,21 @@ pub fn open(app: AppHandle, id: &str, cwd: &str, cols: u16, rows: u16) -> Result
     Ok(opened)
 }
 
+/// Open shell `id` in `cwd` as a pseudo-terminal of Cue's own, never in tmux: for a shell whose screen is
+/// read from its output (an add-on's), where tmux's redrawing would keep the scrollback to itself. It ends
+/// when it's closed, or when Cue quits. Its output's generation.
+pub fn open_plain(app: AppHandle, id: &str, cwd: &str, cols: u16, rows: u16) -> Result<u64, String> {
+    if !id_ok(id) {
+        return Err(format!("“{id}” isn't a shell's id"));
+    }
+    let a = app.clone();
+    let g = crate::terminal::term::spawn(id, command(&folder(cwd)), cols, rows, move |v| {
+        let _ = a.emit("term", v);
+    })?;
+    watch(app);
+    Ok(g)
+}
+
 fn open_with(id: &str, cwd: &str, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<(u64, bool), String> {
     if !id_ok(id) {
         return Err(format!("“{id}” isn't a shell's id"));
