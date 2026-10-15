@@ -211,6 +211,20 @@ pub(crate) fn set_setting(hub: State<Arc<Hub>>, key: String, value: serde_json::
     hub.set_setting(&key, value)
 }
 
+/// Text onto your clipboard, from outside a click (a terminal's copy: tmux hands it over as it happens, when
+/// the window's own clipboard can refuse it).
+#[tauri::command]
+pub(crate) async fn copy_text(text: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Write;
+        let mut c = std::process::Command::new("/usr/bin/pbcopy").stdin(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        c.stdin.take().ok_or("no pbcopy")?.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        c.wait().map_err(|e| e.to_string()).map(|_| ())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Paste fallback: the clipboard's image as a data: URL, if there is one.
 #[tauri::command]
 pub(crate) async fn clipboard_image() -> Option<String> {

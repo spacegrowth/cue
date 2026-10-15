@@ -267,6 +267,8 @@ function flushTerm() {
 function xterm(host) {
   const term = new Terminal({
     fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
+    // ⌥-drag: a selection of the terminal's own, even with tmux taking the mouse.
+    macOptionClickForcesSelection: true,
     theme: { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" },
   });
   const fit = new FitAddon.FitAddon();
@@ -278,6 +280,17 @@ function xterm(host) {
     term.loadAddon(gl);
   } catch {}
   try { fit.fit(); } catch {}
+  // What tmux copies (drag over text: it selects, and on letting go hands the text to the terminal as
+  // OSC 52, base64 after the ";"), and a ⌥-drag selection once you let go: on your clipboard.
+  const copy = (text) => { if (text.trim()) invoke("copy_text", { text }).then(() => toast("Copied"), () => {}); };
+  term.parser.registerOscHandler(52, (data) => {
+    const b64 = data.slice(data.indexOf(";") + 1);
+    if (b64 && b64 !== "?") try { copy(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)))); } catch {}
+    return true;
+  });
+  let picked = false;   // a new ⌥-drag selection, not copied yet (a later click doesn't copy it again)
+  term.onSelectionChange(() => { picked = term.hasSelection(); });
+  host.addEventListener("mouseup", () => { if (picked) { picked = false; copy(term.getSelection()); } });
   return { term, fit };
 }
 /** "term" events' chunks (base64), as the bytes to write. */

@@ -1,5 +1,5 @@
 // Cue UI board — the Board view: cards, decision cards, header chips, drawers, usage, and the animations that move rows.
-/** Every project with something live, waiting or parked: name, sessions, how many need you. */
+/** Every project with something live, waiting or parked (in History, also those with past answers): name, sessions, how many need you. */
 function projectsKnown() {
   const m = new Map();
   const add = (p, need = false) => { if (!p) return; const r = m.get(p) || m.set(p, { n: 0, need: 0 }).get(p); r.n++; if (need) r.need++; };
@@ -7,8 +7,9 @@ function projectsKnown() {
   for (const s of state.sessions) add(s.project, asking.has(s.session_id));
   for (const q of state.live || []) add(projOf(q.cwd));
   for (const p of state.parked || []) if (!state.sessions.some((s) => s.session_id === p.session_id)) add(p.project);
-  // Projects with nothing live now, but answers in History: listed too (with no count), so History can be narrowed to one.
-  for (const h of state.history || []) if (h.project && !m.has(h.project)) m.set(h.project, { n: 0, need: 0 });
+  // Projects with nothing live now, but answers in History: listed too (with no count) in History, so it can be
+  // narrowed to one. Not on the Board or Sessions: picked there, they'd show nothing.
+  if (view === "history") for (const h of state.history || []) if (h.project && !m.has(h.project)) m.set(h.project, { n: 0, need: 0 });
   if (projFilter && !m.has(projFilter)) m.set(projFilter, { n: 0, need: 0 });
   return [...m.entries()].sort((a, b) => b[1].need - a[1].need || b[1].n - a[1].n || a[0].localeCompare(b[0]));
 }
