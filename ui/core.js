@@ -164,7 +164,7 @@ function projTheme() {
 const projStyle = (project) => `--pc:var(--pc${projIdx(project)})`;
 /** The dot: solid while the session waits or idles, pulsing while it works. */
 const projDot = (project, live = false) => project ? `<i class="pdot ${live ? "live" : ""}" style="${projStyle(project)}"></i>` : "";
-let colorFor = null;   // { p, w }: the project (or ALL_PROJ) whose swatches are open, and where ("ap": the pane head, "pj": the projects list, "chip": the header chip)
+let colorFor = null;   // { p, w }: the project (or ALL_PROJ) whose swatches are open, and where ("ap": the pane head, "pj": the projects list, "chip": the header chip, "pin": a pinned project's chip)
 /** The dot as a button: a click opens the swatches under it (just the project's name above them). */
 function projBtn(project, where) {
   if (!project) return "";

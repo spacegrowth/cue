@@ -146,6 +146,7 @@ function renderMain() {
   placeTerm(!!termHost && termHost.contains(focused));
   showCopied();
   fitTop();
+  placeColors();
 }
 addEventListener("resize", () => { fitHead(); fitTop(); markMore(); });
 document.addEventListener("scroll", (e) => { if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);

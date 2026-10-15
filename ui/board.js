@@ -26,7 +26,8 @@ function projChip() {
   // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
   const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(shown) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
-  const chips = pins.map((p) => `<button class="hchip pj-pinned ${projFilter === p ? "hot" : ""}" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><i class="pdot" style="${projStyle(p)}"></i><span class="pj-pn">${esc(p)}</span></button>`).join("");
+  // Its dot changes its color, as the projects chip's does.
+  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(p)}</span></button></span></span>`).join("");
   return main + chips;
 }
 
@@ -539,7 +540,10 @@ function boardView() {
   const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
   // A team is one card: an executor's card goes into its lead's tree (when Cue has the lead). A lead with
   // nothing of its own waiting still gets a card, where its executor's would have been.
-  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) ? m.lead : null; };
+  // Only while the lead still lists it: an executor that left its team (closed, or handed to another lead)
+  // can still name the old lead, whose card would then hold an empty tree and its own card none.
+  const listed = (sid, lead) => (crewOf(lead)?.executors || []).some((e) => e.session_id === sid);
+  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) && listed(i.session_id, m.lead) ? m.lead : null; };
   const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
   const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
     .map((l) => ({ _team: l, created_ms: Math.min(...needs.filter((i) => leadOf(i) === l).map((i) => i.back_ms ?? i.created_ms)) }));
@@ -549,7 +553,7 @@ function boardView() {
   // their own project is, busy ones too, not on cards of their own.
   const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
   const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
-  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && (crewOf(m.lead)?.executors || []).some((e) => e.session_id === sid); };
+  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && listed(sid, m.lead); };
   const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !inTree(s.session_id) && !sessTree.has(s.session_id) && workingOnYours(s));
   // Conversations first (when there are any, under their own heading): the cards that came back, then the
   // sessions still working on your message. Then oldest first. A card you just answered fades out in the
@@ -729,6 +733,15 @@ function fitTop() {
     if (fits()) return;
     h.classList.add(step);
   }
+}
+/** A project's swatches never get cut off: near the foot of the projects list (or the window), they open
+ *  upward instead. */
+function placeColors() {
+  const pop = document.querySelector(".pc-pop");
+  if (!pop) return;
+  const box = pop.closest(".pj-pop")?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight };
+  const r = pop.getBoundingClientRect(), btn = pop.previousElementSibling.getBoundingClientRect();
+  pop.classList.toggle("up", r.bottom > box.bottom && btn.top - r.height - 6 >= box.top);
 }
 /** The chat header's buttons never get cut off: when they don't fit, it gives up room step by step
  *  (short labels, then the agent and model, then the "your turn" pill, then the role tag, and the
