@@ -58,19 +58,34 @@ pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, s
 
 /// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that
 /// isn't a folder). Written to, resized and closed with term_write / term_resize / term_close by its id.
-/// Its output's generation, and this Mac's short host name, for its tab ("mac: ~").
+/// Its output's generation, this Mac's short host name, for its tab ("mac: ~"), and whether it's in tmux
+/// (`kept`: quitting Cue doesn't end it). One still running in tmux is attached again, as it was.
 #[tauri::command]
 pub(crate) async fn shell_open(app: tauri::AppHandle, id: String, cwd: String, cols: u16, rows: u16) -> Result<serde_json::Value, String> {
-    let gen = tauri::async_runtime::spawn_blocking(move || shells::open(app, &id, &cwd, cols, rows)).await.map_err(|e| e.to_string())??;
+    let (gen, kept) = tauri::async_runtime::spawn_blocking(move || shells::open(app, &id, &cwd, cols, rows)).await.map_err(|e| e.to_string())??;
     let host = crate::machines::hooks::hostname();
-    Ok(serde_json::json!({ "gen": gen, "host": host.split('.').next().unwrap_or(&host) }))
+    Ok(serde_json::json!({ "gen": gen, "kept": kept, "host": host.split('.').next().unwrap_or(&host) }))
 }
 
-/// Quit after all, shells and their output with it: the window's dialog said yes (ask_before_ending).
+/// The shells still running in tmux, oldest first ({id, name, cwd}), and this Mac's short host name:
+/// the window gives each its tab back.
 #[tauri::command]
-pub(crate) fn quit_now(app: tauri::AppHandle) {
-    crate::QUIT_SAID.store(true, std::sync::atomic::Ordering::Relaxed);
-    app.exit(0);
+pub(crate) async fn shell_list(app: tauri::AppHandle) -> serde_json::Value {
+    let list = tauri::async_runtime::spawn_blocking(move || shells::list(app)).await.unwrap_or_default();
+    let host = crate::machines::hooks::hostname();
+    serde_json::json!({ "shells": list, "host": host.split('.').next().unwrap_or(&host) })
+}
+
+/// A shell's tab renamed ("" for none): kept with the shell, for the next Cue.
+#[tauri::command]
+pub(crate) async fn shell_name(id: String, name: String) {
+    let _ = tauri::async_runtime::spawn_blocking(move || shells::rename(&id, &name)).await;
+}
+
+/// ⌘K in a shell in tmux.
+#[tauri::command]
+pub(crate) async fn shell_clear(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || shells::clear(&id)).await.map_err(|e| e.to_string())?
 }
 
 /// ⌘W outside Cue's terminal: the window hides, as closing it does (Cue keeps running).
@@ -93,8 +108,11 @@ pub(crate) fn term_resize(session_id: String, cols: u16, rows: u16) -> Result<()
     term::resize(&session_id, cols, rows)
 }
 
-/// Close it (the session keeps running).
+/// Close it (the session keeps running). A shell's tab closed: the shell ends.
 #[tauri::command]
 pub(crate) fn term_close(session_id: String) {
+    if session_id.starts_with(shells::PREFIX) {
+        return shells::close(&session_id);
+    }
     term::close(&session_id);
 }

@@ -279,9 +279,8 @@ async function checkUpdate() {
   catch (e) { upd = { ...upd, status: `error:${e}` }; }
   renderMain();
 }
-/** Install and restart; with shells open, Cue asks first (shells.js endDialog), `sure` once you've said yes. */
-async function installUpdate(sure = false) {
-  if (!sure && shells.length) { endAsk = "update"; return renderMain(); }
+/** Install and restart. */
+async function installUpdate() {
   upd = { ...upd, status: "installing" };
   renderMain();
   try { await invoke("update_install"); } catch (e) { upd = { ...upd, status: `error:${e}` }; renderMain(); }
@@ -434,6 +433,7 @@ function settingsSheet() {
     ${updateRow()}
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
+    ${setRow("Project colors", "The window takes the color of the project picked at the top, or of All projects. Off, it's always Moss; the projects' dots keep their colors.", toggle("appearance.project", st.appearance?.project ?? true))}
     ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
     ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}

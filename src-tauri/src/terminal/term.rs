@@ -95,6 +95,13 @@ pub fn open_attached(app: AppHandle, sid: &str, machine: &str, tmux_session: &st
     }))
 }
 
+/// A tmux session on this Mac (a shell of Cue's own: shells.rs), its terminal a client attached to
+/// exactly that session. Opened, deduped and closed as `open`'s are (one per `sid`).
+pub(crate) fn attach_local(sid: &str, tmux_session: &str, cols: u16, rows: u16, out: impl Fn(serde_json::Value) + Send + 'static) -> Result<u64, String> {
+    let target = Target::Session(tmux_session);
+    once(sid, cols, rows, || launch(sid, &target, None, cols, rows, out))
+}
+
 /// What a terminal shows: a session's pane (through a view of Cue's own, grouped with the pane's tmux
 /// session), or a whole tmux session it attaches to (an executor's own, on a machine).
 enum Target<'a> {

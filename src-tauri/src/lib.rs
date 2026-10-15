@@ -41,15 +41,9 @@ use terminal::dictation;
 use std::sync::Arc;
 use tauri::{Manager, RunEvent, WindowEvent};
 
-/// Set once you've said yes in the window to quitting with shells open: ⌘Q then goes through.
-pub(crate) static QUIT_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// The menu bar's menus: Tauri's default ones, but Quit (⌘Q) and Close (⌘W) are Cue's own. Quit asks
-/// first with shells open (ask_before_ending): the stock Quit ends the app at once, with no event to hold
-/// it by (tao has no applicationShouldTerminate). Close goes to the window ("close-key"): inside Cue's
-/// terminal it closes the tab you're in, elsewhere it hides the window as before.
-/// SHORTCUT: the Dock's Quit and logging out still end Cue without asking; holding those needs
-/// applicationShouldTerminate, which tao doesn't offer.
+/// The menu bar's menus: Tauri's default ones, but Close (⌘W) is Cue's own: it goes to the window
+/// ("close-key"), where inside Cue's terminal it closes the tab you're in, elsewhere it hides the window
+/// as before. (Cue's terminal's shells run in tmux: quitting never asks, they carry on.)
 fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem as P, Submenu};
     let pkg = app.package_info();
@@ -70,19 +64,6 @@ fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wr
         &Submenu::with_items(app, "View", true, &[&P::fullscreen(app, None)?])?,
         &Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?])?,
     ])
-}
-
-/// About to quit (`why`: "quit") or to restart into an update ("update") with shells of Cue's own
-/// open: they end with Cue, and what they showed is lost, so the window comes up and asks first in a
-/// dialog of its own (quit_now, or the update's install, if you say yes). True when it's asking: hold off.
-pub(crate) fn ask_before_ending(app: &tauri::AppHandle, why: &str) -> bool {
-    use tauri::Emitter;
-    if QUIT_SAID.load(std::sync::atomic::Ordering::Relaxed) || !terminal::shells::any_open() {
-        return false;
-    }
-    show_main(app, None);
-    let _ = app.emit_to("main", "end-ask", why);
-    true
 }
 
 /// Bring up the full window, optionally on one item (the menu bar, a notification).
@@ -214,7 +195,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         // Extension pages: cueext://localhost/<name>/…, from <Cue's folder>/extensions (extensions.rs).
         .register_uri_scheme_protocol("cueext", |_ctx, req| extensions::serve(req))
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, quit_now, hide_window, term_write, term_resize, term_close, shell_open, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, delete_session, new_session, trust_folder, continue_start, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git, extensions::ext_program])
+        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, hide_window, term_write, term_resize, term_close, shell_open, shell_list, shell_name, shell_clear, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_starred, btw, connect_agent, update_check, update_install, session_steps, step_detail, send_queued_now, ext_settings, crew_action, focus_live, close_session, delete_session, new_session, trust_folder, continue_start, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git, extensions::ext_program])
         .setup(|app| {
             // No WebRTC in Cue's web view: Cue doesn't use it, and it's the one way out an extension's page
             // would otherwise have (a STUN or TURN request to a server of its choosing, which no page policy
@@ -382,11 +363,7 @@ pub fn run() {
         })
         .menu(app_menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "app-quit" => {
-                if !ask_before_ending(app, "quit") {
-                    app.exit(0);
-                }
-            }
+            "app-quit" => app.exit(0),
             "app-close" => {
                 use tauri::Emitter;
                 let _ = app.emit_to("main", "close-key", ());

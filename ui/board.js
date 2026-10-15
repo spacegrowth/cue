@@ -17,8 +17,9 @@ function projChip() {
   if (!list.length && !projFilter) return "";
   const total = list.reduce((n, [, r]) => n + r.n, 0);
   const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}<span class="pj-name">${esc(p)}</span><span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : "history"}</span></div>`;
-  const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project=""><i class="pdot all"></i><span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}</div>` : "";
-  return `<span class="pj-wrap"><button class="hchip pj-chip ${projFilter || pjOpen ? "on" : ""}" data-pj="toggle">${projFilter ? `${projDot(projFilter)}${esc(projFilter)}` : `<i class="pdot all"></i><span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button>${pop}</span>`;
+  const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project="">${projBtn(ALL_PROJ, "pj")}<span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}</div>` : "";
+  // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
+  return `<span class="pj-wrap"><span class="hchip pj-chip ${projFilter || pjOpen ? "on" : ""}">${projBtn(projFilter || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${projFilter ? esc(projFilter) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button></span>${pop}</span>`;
 }
 
 // ---------- actions ----------

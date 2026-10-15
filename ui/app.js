@@ -24,6 +24,7 @@ function applyTheme() {
   else document.documentElement.dataset.theme = mode;
 }
 function renderMain() {
+  projTheme();
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
   if (dragSelecting() || folding || (mouseDown && onLink) || composing) { heldDraw = true; return; }
   const focused = document.activeElement;
@@ -50,7 +51,7 @@ function renderMain() {
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${moving ? movingDialog() : ""}${endAsk ? endDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
+  </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
@@ -486,7 +487,6 @@ function bindMain() {
     if (act === "move-cue") return actEl.dataset.why ? toast(`Move to Cue: ${actEl.dataset.why}`) : moveToCue(actEl.dataset.sid);
     if (act === "move-dismiss") { moving = null; return renderMain(); }
     if (act === "delete-yes" || act === "delete-no") return deleteAnswer(act === "delete-yes");
-    if (act === "end-yes" || act === "end-no") return endAnswer(act === "end-yes");
     if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
     if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
       const who = actEl.dataset.who, e = (ranLog.get(who) || [])[+actEl.dataset.n];
@@ -564,12 +564,12 @@ function bindMain() {
   });
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
-  // While Cue asks whether to quit: Esc is no, Enter yes, before a terminal under it takes the key.
+  // While Cue asks whether to delete a session: Esc is no, Enter yes, before a terminal under it takes the key.
   document.addEventListener("keydown", (e) => {
-    if (!(endAsk || deleteAsk) || (e.key !== "Escape" && e.key !== "Enter")) return;
+    if (!deleteAsk || (e.key !== "Escape" && e.key !== "Enter")) return;
     e.preventDefault();
     e.stopPropagation();
-    (deleteAsk ? deleteAnswer : endAnswer)(e.key === "Enter");
+    deleteAnswer(e.key === "Enter");
   }, true);
   document.addEventListener("keydown", (e) => {
     // Enter in + New's Add machine field adds it.
@@ -782,8 +782,7 @@ async function boot() {
   });
   await T.event.listen("term", (e) => { onTermOutput(e.payload); onShellOutput(e.payload); });
   await T.event.listen("shell", (e) => onShellEvent(e.payload));
-  // About to quit or restart with shells open: Cue asks first (shells.js endDialog).
-  await T.event.listen("end-ask", (e) => { endAsk = e.payload; document.activeElement?.blur(); renderMain(); });
+  restoreShells();   // the shells still running in tmux, back in their tabs
   // ⌘W (the menu's Close): inside Cue's terminal, the tab you're in; elsewhere the window hides.
   await T.event.listen("close-key", () => closeKey());
   await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));

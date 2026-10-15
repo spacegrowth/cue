@@ -68,11 +68,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
             "update" => {
                 tauri::async_runtime::spawn(crate::update_from_menu(app.clone()));
             }
-            "quit" => {
-                if !crate::ask_before_ending(app, "quit") {
-                    app.exit(0);
-                }
-            }
+            "quit" => app.exit(0),
             _ => {}
         })
         .build(app)?

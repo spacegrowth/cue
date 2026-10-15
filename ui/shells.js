@@ -4,12 +4,14 @@
  *  and the folder it's in now) until you rename one (double-click its tab). It floats
  *  over the board's last two columns, at their foot (or head, dragged up; let go, it springs back to one
  *  or the other, as picture in picture does), 45% of their height to start, and resizes from its free
- *  edges. Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
+ *  edges. With tmux, each tab's shell runs in a tmux session of its own: quitting or restarting Cue lets
+ *  go of it, and the next Cue gives each its tab back (restoreShells), in order, with its name, the
+ *  one on show the same. Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
  *  from there; the button and that tab show a live dot while a shell runs something, and ✓ once that
  *  ends. + or ⌘⇧T opens a new shell tab. Full screen (its ⤢, or a double-click on its bar) it fills the window under the header. Its
  *  element lives outside the redraws (each puts it back over the columns). Where it is, top or bottom,
  *  full or not and tucked or not, is kept in this browser. */
-const shells = [];             // { id, where, mac, name, cwd, busy, what, gen, term, fit, host, queue, frame }
+const shells = [];             // { id, where, mac, name, cwd, busy, what, kept, gen, term, fit, host, queue, frame }
 let shellCur = null;           // the tab on show
 let shellMac = "";             // this Mac's short host name (from the first shell_open)
 let shellRenaming = null;      // the tab whose name is being typed
@@ -42,7 +44,13 @@ function markShells() {
 /** ⌘⇧T: a new shell tab (at home), the terminal out, as ⌘T is in a terminal app. */
 const newShellTab = () => openShell("");
 /** ⌘K inside it: the tab on show cleared, its prompt line the first. */
-const clearShell = () => shellOf(shellCur)?.term.clear();
+const clearShell = () => {
+  const sh = shellOf(shellCur);
+  if (!sh?.term) return;
+  // In tmux, tmux clears it (and redraws the tab); else the tab's own terminal.
+  if (sh.kept) invoke("shell_clear", { id: sh.id }).catch(() => sh.term.clear());
+  else sh.term.clear();
+};
 /** ⌘W (the menu's Close, lib.rs app_menu): inside it, the tab you're in closes (the last one puts it
  *  away); anywhere else the window hides, as it always did. */
 function closeKey() {
@@ -57,7 +65,7 @@ const shellNumber = (n) => { const s = n === 9 ? shells.at(-1) : shells[n - 1]; 
 function toggleShells(key = false) {
   if (!shells.length) return openShell("");
   if (pipEl.hidden) { pipEl.hidden = false; return tuckPip(false); }
-  if (key && pipOut() && !pipEl.contains(document.activeElement)) return shellOf(shellCur)?.term.focus();
+  if (key && pipOut() && !pipEl.contains(document.activeElement)) return shellOf(shellCur)?.term?.focus();
   tuckPip(!pipAt.tucked);
 }
 
@@ -92,21 +100,34 @@ function ensurePip() {
 }
 
 /** A new shell in `cwd` (home when empty), its tab on show and the terminal out. */
-async function openShell(cwd) {
+function openShell(cwd) {
   ensurePip();
-  const id = `shell:${Date.now().toString(36)}${++shellSeq}`;
-  const host = document.createElement("div");
-  host.className = "pip-host";
-  pipEl.querySelector(".pip-slot").appendChild(host);
-  // Out, and its element on show, before its terminal is made: it's sized from where it sits.
+  const sh = addShell({ id: `shell:${Date.now().toString(36)}${++shellSeq}`, cwd });
+  // Out before its terminal is made: it's sized from where it sits.
   pipEl.hidden = false;
   pipAt.tucked = false;
   placePip();
-  for (const s of shells) s.host.hidden = true;
-  const { term, fit } = xterm(host);
-  const sh = { id, cwd, where: baseName(cwd) || "~", mac: shellMac, name: "", busy: false, what: "", gen: 0, term, fit, host, queue: [], frame: 0 };
+  showShell(sh.id);
+}
+
+/** A tab for shell `id`. Its terminal is made, and the shell started or attached again, when the tab is
+ *  first on show with the terminal out (attachShell): made tucked away, it would be sized to the tab. */
+function addShell({ id, cwd = "", name = "", kept = false }) {
+  const host = document.createElement("div");
+  host.className = "pip-host";
+  host.hidden = true;
+  pipEl.querySelector(".pip-slot").appendChild(host);
+  const sh = { id, cwd, where: baseName(cwd) || "~", mac: shellMac, name, kept, busy: false, what: "", gen: 0, term: null, fit: null, host, queue: [], frame: 0 };
   shells.push(sh);
-  showShell(id);
+  return sh;
+}
+
+/** Its terminal, and its shell opened in it (in tmux, a running one is attached again, as it was). */
+async function attachShell(sh) {
+  const { term, fit } = xterm(sh.host);
+  sh.term = term;
+  sh.fit = fit;
+  const id = sh.id;
   term.onData((d) => invoke("term_write", { sessionId: id, data: d }).catch(() => {}));
   term.onResize(({ cols, rows }) => invoke("term_resize", { sessionId: id, cols, rows }).catch(() => {}));
   // Its title, as the shell sets it ("me@mac: ~/code/x"): the host and the folder it's in now, for its tab.
@@ -116,15 +137,32 @@ async function openShell(cwd) {
     if (who.includes("@")) sh.mac = who.split("@").pop().split(".")[0];
     drawShellTabs();
   });
-  term.focus();
   try {
-    const r = await invoke("shell_open", { id, cwd, cols: term.cols, rows: term.rows });
+    const r = await invoke("shell_open", { id, cwd: sh.cwd, cols: term.cols, rows: term.rows });
     shellMac ||= r.host || "";
-    if (shellOf(id)) { sh.gen = r.gen; sh.mac ||= shellMac; drawShellTabs(); }
+    if (shellOf(id)) { sh.gen = r.gen; sh.kept = !!r.kept; sh.mac ||= shellMac; drawShellTabs(); }
   } catch (e) {
     toast(`Couldn't open a shell: ${e}`);
     closeShell(id, true);
   }
+}
+
+/** At launch: the shells still running in tmux, each back in its tab, as they were (the terminal out
+ *  or tucked away as it was, the tab on show the same). Only the one on show is attached, once it's out. */
+async function restoreShells() {
+  let r;
+  try { r = await invoke("shell_list"); } catch { return; }
+  const list = r?.shells || [];
+  if (!list.length || shells.length) return;
+  shellMac ||= r.host || "";
+  ensurePip();
+  for (const x of list) addShell({ id: x.id, cwd: x.cwd || "", name: x.name || "", kept: true });
+  let cur = null;
+  try { cur = localStorage.getItem("cue.shellCur"); } catch {}
+  pipEl.hidden = false;
+  placePip();
+  showShell(shellOf(cur) ? cur : shells.at(-1).id, false);
+  markShells();
 }
 
 /** Its output ("term" events with its id), written once a frame; the end of it (the shell exited) closes its tab. */
@@ -153,13 +191,15 @@ function onShellEvent(p) {
   markShells();
 }
 
-function showShell(id) {
-  if (shellCur === id && shellRenaming !== id) return shellOf(id)?.term.focus();
+/** Tab `id` on show (`focus`: the keyboard into it, when the terminal is out). */
+function showShell(id, focus = true) {
+  if (shellCur === id && shellRenaming !== id) return shellOf(id)?.term?.focus();
   shellCur = id;
+  try { localStorage.setItem("cue.shellCur", id); } catch {}
   for (const s of shells) s.host.hidden = s.id !== id;
   drawShellTabs();
   fitShell();
-  if (pipOut()) shellOf(id)?.term.focus();
+  if (pipOut() && focus) shellOf(id)?.term?.focus();
 }
 
 /** Close a shell (`ended`: it already exited). The last one closed puts the terminal away. */
@@ -169,7 +209,7 @@ function closeShell(id, ended = false) {
   const [sh] = shells.splice(i, 1);
   if (!ended) invoke("term_close", { sessionId: id }).catch(() => {});
   cancelAnimationFrame(sh.frame);
-  sh.term.dispose();
+  sh.term?.dispose();
   sh.host.remove();
   // The last one closed: the terminal goes away, and the cursor to the message box (homeFocus).
   if (!shells.length) { shellCur = null; pipEl.hidden = true; pipDone = false; drawShellTabs(); markShells(); return homeFocus(); }
@@ -197,7 +237,15 @@ function drawShellTabs() {
   field.focus();
   field.select();
   // Enter keeps it (empty: back to its host and folder), Esc or clicking away leaves it as it was.
-  const done = (keep) => { if (shellRenaming === null) return; const sh = shellOf(shellRenaming); shellRenaming = null; if (keep && sh) sh.name = field.value.trim(); drawShellTabs(); sh?.term.focus(); };
+  // (A shell in tmux keeps its name with it, for the next Cue.)
+  const done = (keep) => {
+    if (shellRenaming === null) return;
+    const sh = shellOf(shellRenaming);
+    shellRenaming = null;
+    if (keep && sh) { sh.name = field.value.trim(); invoke("shell_name", { id: sh.id, name: sh.name }).catch(() => {}); }
+    drawShellTabs();
+    sh?.term?.focus();
+  };
   field.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(e.key === "Enter"); } });
   field.addEventListener("blur", () => done(false));
 }
@@ -208,30 +256,13 @@ function renameShell(id) {
   drawShellTabs();
 }
 
-const fitShell = () => { if (pipOut()) try { shellOf(shellCur)?.fit.fit(); } catch {} };
-
-// ---------- quitting with shells open ----------
-/** Quitting Cue (⌘Q, the menu bar icon's Quit) or restarting into an update ends its shells, and what
- *  they showed is lost: with any open, Cue asks first ("end-ask" from lib.rs ask_before_ending, or
- *  Settings' update button), in a dialog of its own. `endAsk`: "quit" or "update" while it asks. */
-let endAsk = null;
-function endDialog() {
-  const n = shells.length, busy = shells.filter((s) => s.busy), update = endAsk === "update";
-  const open = n === 1 ? "A shell is open" : n ? `${n} shells are open` : "Shells are open";
-  return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="end-title">
-    <div class="move-title" id="end-title">${update ? `Restart into Cue${upd.version ? ` ${esc(upd.version)}` : ""}?` : "Quit Cue?"}</div>
-    <div class="end-text">${open} in Cue's terminal. ${update ? "Restarting" : "Quitting"} ends ${n === 1 ? "it" : "them"}, and what ${n === 1 ? "it shows" : "they show"} is lost.</div>
-    ${busy.length ? `<div class="end-text">Still running: ${busy.map((s) => `<span class="mono">${esc(s.what || "a command")}</span>`).join(", ")}</div>` : ""}
-    <div class="row-btns"><span class="grow"></span><button class="btn" data-act="end-no">Cancel <kbd>Esc</kbd></button><button class="btn primary" data-act="end-yes">${update ? "Restart" : "Quit"} <kbd>↵</kbd></button></div>
-  </div></div>`;
-}
-function endAnswer(yes) {
-  const why = endAsk;
-  endAsk = null;
-  renderMain();
-  if (!yes) return;
-  if (why === "update") installUpdate(true);
-  else invoke("quit_now").catch(() => {});
+/** The tab on show fitted to the terminal, while it's out; its terminal made first, the first time. */
+function fitShell() {
+  if (!pipOut()) return;
+  const sh = shellOf(shellCur);
+  if (!sh) return;
+  if (!sh.term) return attachShell(sh);
+  try { sh.fit.fit(); } catch {}
 }
 
 // ---------- where it floats ----------
@@ -293,7 +324,7 @@ function fullPip(f) {
   pipEl.classList.add("sizing");
   placePip();
   requestAnimationFrame(() => requestAnimationFrame(() => pipEl.classList.remove("sizing")));
-  shellOf(shellCur)?.term.focus();
+  shellOf(shellCur)?.term?.focus();
 }
 /** The most it can be: as wide as from the window's left padding to the columns' right, as tall as they are. */
 const pipFull = (r) => ({ w: r.right - (parseFloat(getComputedStyle(document.querySelector(".app") || document.body).paddingLeft) || 20), h: r.bottom - r.top });
@@ -320,7 +351,7 @@ function tuckPip(t) {
   if (!t) pipDone = false;
   savePip();
   placePip();
-  if (t) { document.activeElement?.blur(); focusComposer(); } else shellOf(shellCur)?.term.focus();
+  if (t) { document.activeElement?.blur(); focusComposer(); } else shellOf(shellCur)?.term?.focus();
   markShells();
 }
 /** Dragged by its bar (a press that doesn't move stays a click on the tab, +, ⇥ under it). Let go past

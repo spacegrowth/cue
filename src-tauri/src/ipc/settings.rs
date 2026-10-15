@@ -70,10 +70,6 @@ pub(crate) fn offer_update(app: &tauri::AppHandle, u: &tauri_plugin_updater::Upd
 /// The menu bar icon's "Check for Updates…": check, and once one is found, install it and restart.
 pub(crate) async fn update_from_menu(app: tauri::AppHandle) {
     if tray::update_offered() {
-        // Shells open: the window asks first, and installs it if you say so.
-        if crate::ask_before_ending(&app, "update") {
-            return;
-        }
         tray::update_item("Installing the update…", false);
         if let Err(e) = install_update(app).await {
             eprintln!("cue: update: {e}");

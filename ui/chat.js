@@ -1391,7 +1391,7 @@ function homeFocus() {
   requestAnimationFrame(() => {
     const a = document.activeElement;
     if ((a && a !== document.body) || !document.hasFocus() || Date.now() - pointedAt < 500) return;
-    if (sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || endAsk || deleteAsk || moving) return;
+    if (sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || deleteAsk || moving) return;
     focusComposer();
   });
 }

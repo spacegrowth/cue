@@ -1,5 +1,6 @@
 /* Cue — Moss. One hue: the window is drenched in it, cards sit on top, actions use it.
-   Light by default; dark follows macOS (or Settings → Appearance). */
+   Light by default; dark follows macOS (or Settings → Appearance). One project picked in the header,
+   the window takes that project's hue instead (`.proj-theme`, after these). */
 :root {
   --bg: #3F4A22;
   --on-bg: #FFFFFF;
@@ -17,11 +18,12 @@
   --work: #A3AD82;
   --deny: #9B2C1F;
   --star: #C99A1E;   /* a starred session's star: the one other hue, kept to the star */
-  /* A project's dot, eight swatches: readable on white, on the lime selected card and on the dark panels.
-     No Moss green (a dot is never a button) and no red (red means "asks you"). */
-  --pcp0: #2F6B8F; --pcp1: #B8742E; --pcp2: #7A4A9E; --pcp3: #2E8A63; --pcp4: #C2473B; --pcp5: #8A8A2E; --pcp6: #3B7FA8; --pcp7: #6E6E6E;
-  --pcb0: #7FB6D6; --pcb1: #E0A463; --pcb2: #BD9AD9; --pcb3: #7FC9A6; --pcb4: #E98A7E; --pcb5: #C9C96A; --pcb6: #86BEDC; --pcb7: #A9A9A9;
-  --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7);
+  /* A project's dot, ten swatches (core.js SWATCHES): Moss (0, Cue's own), then soft, greyed colors, each
+     also the hue and strength its window takes when it's the one picked. On white, the color as picked; on the
+     window's color (--pcb), a lighter one of the same hue. Saved as 0–9. */
+  --pcp0: #3F4A22; --pcp1: #7a7a66; --pcp2: #9b8eb4; --pcp3: #a8925e; --pcp4: #b7a38f; --pcp5: #6d8375; --pcp6: #5f8b8a; --pcp7: #6b739c; --pcp8: #a3828f; --pcp9: #6e7076;
+  --pcb0: #D2DE96; --pcb1: oklch(0.82 0.033 107); --pcb2: oklch(0.82 0.063 301); --pcb3: oklch(0.82 0.083 87); --pcb4: oklch(0.82 0.041 67); --pcb5: oklch(0.82 0.036 157); --pcb6: oklch(0.82 0.053 194); --pcb7: oklch(0.82 0.07 276); --pcb8: oklch(0.82 0.048 353); --pcb9: oklch(0.82 0.011 271);
+  --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9);
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
@@ -32,7 +34,7 @@
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
     --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
     --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
-    --pcp0: #7FB6D6; --pcp1: #E0A463; --pcp2: #BD9AD9; --pcp3: #7FC9A6; --pcp4: #E98A7E; --pcp5: #C9C96A; --pcp6: #86BEDC; --pcp7: #A9A9A9; --pcb0: #7FB6D6; --pcb1: #E0A463; --pcb2: #BD9AD9; --pcb3: #7FC9A6; --pcb4: #E98A7E; --pcb5: #C9C96A; --pcb6: #86BEDC; --pcb7: #A9A9A9;
+    --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9);
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
   }
 }
@@ -40,15 +42,48 @@
   --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
   --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
   --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
-  --pcp0: #7FB6D6; --pcp1: #E0A463; --pcp2: #BD9AD9; --pcp3: #7FC9A6; --pcp4: #E98A7E; --pcp5: #C9C96A; --pcp6: #86BEDC; --pcp7: #A9A9A9; --pcb0: #7FB6D6; --pcb1: #E0A463; --pcb2: #BD9AD9; --pcb3: #7FC9A6; --pcb4: #E98A7E; --pcb5: #C9C96A; --pcb6: #86BEDC; --pcb7: #A9A9A9;
+  --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9);
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
+}
+
+/* One project picked: every color of the window from its hue (--ph) and strength (--pk: 0 for Graphite),
+   at Moss's own lightness and depth, so each is as calm as Moss. Dark gets a deeper, more colored ground
+   than Moss's near-black, or the projects would look alike. Red, amber, the star, the white cards (light)
+   and the terminal's slab stay as they are: they mean the same in every project. */
+:root.proj-theme {
+  --bg: oklch(0.385 calc(0.072 * var(--pk)) var(--ph));
+  --on-bg-muted: oklch(0.86 calc(0.045 * var(--pk)) var(--ph));
+  --panel-2: oklch(0.965 calc(0.014 * var(--pk)) var(--ph));
+  --line: oklch(0.9 calc(0.026 * var(--pk)) var(--ph));
+  --ink: oklch(0.25 calc(0.04 * var(--pk)) var(--ph));
+  --muted: oklch(0.48 calc(0.05 * var(--pk)) var(--ph));
+  --accent: var(--bg);
+  --sel: oklch(0.875 calc(0.098 * var(--pk)) var(--ph)); --on-sel: oklch(0.25 calc(0.04 * var(--pk)) var(--ph));
+  --work: oklch(0.72 calc(0.06 * var(--pk)) var(--ph));
+}
+@media (prefers-color-scheme: dark) {
+  :root.proj-theme:not([data-theme="light"]) {
+    --bg: oklch(0.25 calc(0.05 * var(--pk)) var(--ph)); --on-bg: oklch(0.94 calc(0.012 * var(--pk)) var(--ph)); --on-bg-muted: oklch(0.76 calc(0.04 * var(--pk)) var(--ph));
+    --panel: oklch(0.29 calc(0.042 * var(--pk)) var(--ph)); --panel-2: oklch(0.325 calc(0.045 * var(--pk)) var(--ph)); --line: oklch(0.38 calc(0.045 * var(--pk)) var(--ph));
+    --ink: oklch(0.94 calc(0.015 * var(--pk)) var(--ph)); --muted: oklch(0.76 calc(0.035 * var(--pk)) var(--ph));
+    --accent: oklch(0.8 calc(0.1 * var(--pk)) var(--ph)); --on-accent: oklch(0.2 calc(0.04 * var(--pk)) var(--ph)); --sel: var(--accent); --on-sel: var(--on-accent);
+    --work: oklch(0.42 calc(0.06 * var(--pk)) var(--ph));
+  }
+}
+:root.proj-theme[data-theme="dark"] {
+  --bg: oklch(0.25 calc(0.05 * var(--pk)) var(--ph)); --on-bg: oklch(0.94 calc(0.012 * var(--pk)) var(--ph)); --on-bg-muted: oklch(0.76 calc(0.04 * var(--pk)) var(--ph));
+  --panel: oklch(0.29 calc(0.042 * var(--pk)) var(--ph)); --panel-2: oklch(0.325 calc(0.045 * var(--pk)) var(--ph)); --line: oklch(0.38 calc(0.045 * var(--pk)) var(--ph));
+  --ink: oklch(0.94 calc(0.015 * var(--pk)) var(--ph)); --muted: oklch(0.76 calc(0.035 * var(--pk)) var(--ph));
+  --accent: oklch(0.8 calc(0.1 * var(--pk)) var(--ph)); --on-accent: oklch(0.2 calc(0.04 * var(--pk)) var(--ph)); --sel: var(--accent); --on-sel: var(--on-accent);
+  --work: oklch(0.42 calc(0.06 * var(--pk)) var(--ph));
 }
 
 * { box-sizing: border-box; scrollbar-width: none; }
 /* No scrollbars anywhere: everything still scrolls with the trackpad or wheel. */
 ::-webkit-scrollbar { display: none; width: 0; height: 0; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--ink); font: 13.5px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; -webkit-user-select: none; }
+body { background: var(--bg); color: var(--ink); font: 13.5px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; -webkit-user-select: none; transition: background-color .3s ease; }
+@media (prefers-reduced-motion: reduce) { body { transition: none; } }
 .sel, .msg, pre, code, input, textarea { user-select: text; -webkit-user-select: text; }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
 .mono { font-family: var(--mono); }
@@ -413,29 +448,33 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
    cards, the header) the brighter set reads better in light mode; in dark mode the sets are the same. */
 .pdot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); vertical-align: 0; }
 .pdot.live { animation: pulse 1.4s ease-in-out infinite; }
-.pdot.all { background: currentColor; }
-.working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); }
-.working.on, .pj-pop, .pc-pop { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); }
+.working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); --pc8: var(--pcb8); --pc9: var(--pcb9); }
+.working.on, .pj-pop, .pc-pop { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9); }
 .pc-wrap { position: relative; display: inline-flex; flex: none; }
 .pdot-btn { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; margin: 0 -4px 0 -6px; }
 .pdot-btn:hover, .pdot-btn.on { background: color-mix(in srgb, currentColor 12%, transparent); }
 .pc-pop { position: absolute; top: 28px; left: -4px; z-index: 40; display: flex; flex-direction: column; gap: 7px; padding: 8px 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); white-space: nowrap; }
-.pc-title { font-size: 11.5px; color: var(--muted); }
+/* Just its name, as wide as the swatches (cut short with … when longer). */
+.pc-title { font-size: 12px; display: grid; width: 136px; }
+.pc-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-title b { color: var(--ink); font-weight: 650; }
-.pc-row { display: flex; gap: 7px; }
+.pc-row { display: grid; grid-template-columns: repeat(5, 20px); gap: 8px 9px; }   /* the ten, two rows of five, around the color wheel */
 .pc-sw { width: 20px; height: 20px; border-radius: 50%; background: var(--c); }
 .pc-sw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--c); }
 .pc-sw:hover { transform: scale(1.12); }
 /* The Projects chip: one project's cards alone; its list names every project, with the dot to recolor. */
 .pj-wrap { position: relative; display: inline-flex; }
 .pj-chip .pdot { width: 8px; height: 8px; }
+/* The chip: its dot (the colors, for the project shown or for all of them) and its name (the list). */
+.pj-chip { padding: 0 12px 0 10px; gap: 4px; }
+.pj-chip .pdot-btn { margin: 0 -2px 0 -4px; }
+.pj-open { display: inline-flex; align-items: center; gap: 7px; height: 100%; color: inherit; font: inherit; }
 .pj-car { font-size: 9px; opacity: 0.7; margin-left: 1px; }
 .pj-pop { position: absolute; top: 38px; left: 0; z-index: 30; min-width: 240px; max-height: min(480px, calc(100vh - 80px)); overflow-y: auto; padding: 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); }
 .pj-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .pj-row:hover { background: var(--panel-2); }
 .pj-row.on { background: var(--sel); color: var(--on-sel); }
 .pj-row .pdot-btn { margin: 0 -2px 0 -4px; }
-.pj-row.all .pdot { margin: 0 3px; }
 .pj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .pj-n { font: 600 11px var(--mono); color: var(--muted); }
 .pj-row.on .pj-n { color: inherit; opacity: 0.75; }
