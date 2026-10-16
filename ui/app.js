@@ -245,7 +245,11 @@ function bindMain() {
     if (pj) {
       pjRenaming = null;
       if (pj.dataset.pj === "toggle") pjOpen = !pjOpen;
-      else { projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {} leaveOtherProject(); }
+      else {
+        const was = projFilter;
+        projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
+        if (projFilter !== was) openTopWaiting();
+      }
       return renderMain();
     }
     if (pjOpen && !t.closest(".pj-wrap")) { pjOpen = false; pjRenaming = null; renderMain(); }
