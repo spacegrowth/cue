@@ -778,6 +778,16 @@ function setActive(id, sid, exact = false) {
   // Picked a session (any list, a chip, the live list's Enter): ready to type to it.
   focusComposer();
 }
+/** A project picked: the chat open from another project gives way to this one's oldest waiting on you
+ *  (or none), and its terminal closes with it. */
+function leaveOtherProject() {
+  const sid = quietOpen || active?.sid;
+  if (!sid) return;
+  const project = sessionOf(sid)?.project ?? findItem(active?.id)?.project ?? parkedOf(sid)?.project;
+  if (inProj(project)) return;
+  active = quietOpen = null;
+  if (termSid) closeTerm(true);
+}
 /** The next thing waiting on you that isn't on screen. */
 const nextUp = () => needsYou().find((i) => i.id !== active?.id && i.session_id !== active?.sid);
 function goNext() { const n = nextUp(); if (n) setActive(n.id, n.session_id); }

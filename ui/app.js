@@ -245,7 +245,7 @@ function bindMain() {
     if (pj) {
       pjRenaming = null;
       if (pj.dataset.pj === "toggle") pjOpen = !pjOpen;
-      else { projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {} }
+      else { projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {} leaveOtherProject(); }
       return renderMain();
     }
     if (pjOpen && !t.closest(".pj-wrap")) { pjOpen = false; pjRenaming = null; renderMain(); }
