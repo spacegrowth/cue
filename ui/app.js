@@ -280,7 +280,10 @@ function bindMain() {
     }
     // The ⋯ menu: toggle it, run an item, or close it on a click anywhere else.
     const mb = t.closest("[data-more]");
-    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = null; return renderMain(); }
+    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = null; movingProj = false; return renderMain(); }
+    if (t.closest("[data-move-ask]")) { movingProj = true; return renderMain(); }
+    const mvp = t.closest("[data-move-proj]");
+    if (mvp) { moreFor = handoffArm = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); return renderMain(); }
     const mc = t.closest("[data-cmd]");
     if (mc) {
       const { cmd, sid } = mc.dataset;
@@ -290,7 +293,7 @@ function bindMain() {
       invoke("session_command", { sessionId: sid, action: cmd }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
       return;
     }
-    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = null; renderMain(); }
+    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = null; movingProj = false; renderMain(); }
     if (t.closest(".more-menu [data-park]")) moreFor = handoffArm = null;   // Decide later: done with the menu too
     const cb = t.closest("[data-connect]");
     if (cb) { cb.disabled = true; invoke("connect_agent", { harness: cb.dataset.connect }).then((m) => toast(m), (e) => { toast(`Couldn't connect: ${e}`); cb.disabled = false; }); return; }
@@ -300,6 +303,8 @@ function bindMain() {
     if (tf) { const k = tf.dataset.turnFold; turnFold.set(k, tf.dataset.open !== "1"); renderMain(); return wantDetails(k.split("|")[0]); }
     const ta = t.closest("[data-turn-all]");
     if (ta) { const k = ta.dataset.turnAll; turnAll.has(k) ? turnAll.delete(k) : turnAll.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
+    const td = t.closest("[data-tray-done]");
+    if (td) { const k = td.dataset.trayDone; trayDone.has(k) ? trayDone.delete(k) : trayDone.add(k); return renderMain(); }
     const hb = t.closest("[data-helper]");
     if (hb) { const k = hb.dataset.helper; helperOpen.has(k) ? helperOpen.delete(k) : helperOpen.add(k); return renderMain(); }
     const sl = t.closest("[data-step]");

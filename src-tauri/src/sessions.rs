@@ -242,6 +242,14 @@ impl Sessions {
             s.compacting_ms = 0;
             s.compacted_ms = 0;
             s.changes = None;
+            // Back at work: no longer waiting on its background agents (their own list, from its log, says
+            // which still run). Counted again if its turn ends with some still at work.
+            if s.helpers > 0 {
+                if s.driven_by == helpers_words(s.helpers) {
+                    s.driven_by.clear();
+                }
+                s.helpers = 0;
+            }
         }
         if s.state != state {
             s.stuck_ms = 0;

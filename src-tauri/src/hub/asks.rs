@@ -290,7 +290,9 @@ pub(super) fn waiting_words(waiting_for: &str) -> String {
 }
 
 pub(super) fn notify_title(it: &Item) -> (String, String) {
-    let mut who = format!("{} · {}", it.origin.harness, if it.project.is_empty() { "?" } else { &it.project });
+    // Moved to another project in Cue: that one.
+    let project = crate::config::moved().remove(&it.origin.session_id).unwrap_or_else(|| it.project.clone());
+    let mut who = format!("{} · {}", it.origin.harness, if project.is_empty() { "?" } else { &project });
     if !it.origin.machine.is_empty() {
         who = format!("{who} on {}", crate::machines::display_name(&it.origin.machine));
     }

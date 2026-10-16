@@ -216,7 +216,7 @@ impl Hub {
         let handoffs = crate::leads::handoffs(&ids);
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
-        json!({
+        let mut snap = json!({
             "items": st.items,
             "history": st.history,
             // Every answer of the last day, in brief: today's numbers count these, not the History list.
@@ -238,7 +238,16 @@ impl Hub {
             "connections": crate::config::connections(),
             "usage": st.rates,
             "usage_file": crate::usage_file::read(),
-        })
+        });
+        drop(st);
+        let moved = crate::config::moved();
+        let taken = move_projects(&mut snap, &moved);
+        // Moves a new session took over (after /clear): saved, so they stay once the old session's gone.
+        if !taken.is_empty() {
+            let all: serde_json::Map<String, Value> = moved.into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect();
+            let _ = crate::config::set("project.moves", Value::Object(all));
+        }
+        snap
     }
 
     /// For `snapshot`, under one short lock: the session ids Cue knows, the live sessions it hasn't heard
@@ -346,5 +355,84 @@ impl Hub {
             // Unbundled dev binary: a plain notification Cue can't take back.
             let _ = app.notification().builder().title(title).body(body).show();
         }
+    }
+}
+
+/// A session moved to another project in Cue (Settings' project.moves): its cards, row, answers, parked entry
+/// and live entry say that project, and `folder_project` keeps its folder's, so it can be moved back.
+/// A session new in the process of a moved one (`/clear` starts a new one there) takes its move too: those
+/// come back, to be saved.
+fn move_projects(snap: &mut Value, moved: &HashMap<String, String>) -> HashMap<String, String> {
+    let pid_of = |row: &Value| row.get("agent_pid").or_else(|| row.get("pid")).and_then(Value::as_i64).filter(|p| *p > 0);
+    let sid_of = |row: &Value| row.get("session_id").and_then(Value::as_str).map(str::to_string);
+    let mut by_pid: HashMap<i64, String> = HashMap::new();
+    for list in ["sessions", "live"] {
+        for row in snap.get(list).and_then(Value::as_array).into_iter().flatten() {
+            if let (Some(pid), Some(to)) = (pid_of(row), sid_of(row).and_then(|sid| moved.get(&sid).cloned())) {
+                by_pid.insert(pid, to);
+            }
+        }
+    }
+    let mut taken = HashMap::new();
+    for list in ["sessions", "live"] {
+        for row in snap.get(list).and_then(Value::as_array).into_iter().flatten() {
+            if let (Some(pid), Some(sid)) = (pid_of(row), sid_of(row)) {
+                if let Some(to) = by_pid.get(&pid).filter(|_| !moved.contains_key(&sid)) {
+                    taken.insert(sid, to.clone());
+                }
+            }
+        }
+    }
+    if moved.is_empty() && taken.is_empty() {
+        return taken;
+    }
+    for list in ["items", "history", "answers", "sessions", "parked", "live"] {
+        let Some(rows) = snap.get_mut(list).and_then(Value::as_array_mut) else { continue };
+        for row in rows {
+            let Some(to) = sid_of(row).and_then(|sid| moved.get(&sid).or_else(|| taken.get(&sid)).cloned()) else { continue };
+            if let Some(o) = row.as_object_mut() {
+                let own = o.get("project").cloned().unwrap_or(Value::Null);
+                o.insert("folder_project".into(), own);
+                o.insert("project".into(), json!(to));
+            }
+        }
+    }
+    taken
+}
+
+#[cfg(test)]
+mod move_tests {
+    use super::*;
+
+    #[test]
+    fn a_moved_session_shows_under_its_new_project_and_keeps_its_folders() {
+        let mut snap = json!({
+            "items": [{ "session_id": "a", "project": "web" }, { "session_id": "b", "project": "web" }],
+            "sessions": [{ "session_id": "a", "project": "web" }],
+            "settings": { "project": "untouched" },
+        });
+        move_projects(&mut snap, &HashMap::from([("a".to_string(), "api".to_string())]));
+        assert_eq!(snap["items"][0], json!({ "session_id": "a", "project": "api", "folder_project": "web" }));
+        assert_eq!(snap["items"][1], json!({ "session_id": "b", "project": "web" }));
+        assert_eq!(snap["sessions"][0]["project"], "api");
+        assert_eq!(snap["settings"], json!({ "project": "untouched" }));
+    }
+
+    #[test]
+    fn a_new_session_in_a_moved_ones_process_takes_its_move() {
+        let mut snap = json!({
+            "sessions": [{ "session_id": "old", "project": "web", "agent_pid": 7 }, { "session_id": "new", "project": "web", "agent_pid": 7 }, { "session_id": "other", "project": "web", "agent_pid": 8 }],
+            "live": [{ "session_id": "quiet", "pid": 7, "cwd": "/x/web" }],
+        });
+        let taken = move_projects(&mut snap, &HashMap::from([("old".to_string(), "api".to_string())]));
+        assert_eq!(taken, HashMap::from([("new".to_string(), "api".to_string()), ("quiet".to_string(), "api".to_string())]));
+        assert_eq!(snap["sessions"][1]["project"], "api");
+        assert_eq!(snap["sessions"][2]["project"], "web", "another process keeps its own");
+        assert_eq!(snap["live"][0]["project"], "api", "a live entry says it too");
+        // Moved by you, it keeps yours.
+        let mut snap = json!({ "sessions": [{ "session_id": "old", "agent_pid": 7, "project": "web" }, { "session_id": "new", "agent_pid": 7, "project": "web" }] });
+        let taken = move_projects(&mut snap, &HashMap::from([("old".to_string(), "api".to_string()), ("new".to_string(), "web".to_string())]));
+        assert!(taken.is_empty());
+        assert_eq!(snap["sessions"][1]["project"], "web");
     }
 }

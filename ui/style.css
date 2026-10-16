@@ -379,6 +379,8 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .tray { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .tray-head b { font-weight: 650; }
+.tray-done { font-size: 12.5px; color: var(--muted); padding: 0 4px; border-radius: 6px; }
+.tray-done:hover { color: var(--ink); background: var(--panel-2); }
 .tray .bg-agent { margin-left: 0; }
 /* Its agents: one in full and the top of the next, the rest scrolled to, so several never fill the window. */
 .tray-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; }
@@ -1411,6 +1413,10 @@ button.tm-chip:hover { background: var(--panel-2); }
 .more-menu button:hover:not(:disabled) { background: var(--panel-2); }
 .more-menu button:disabled { opacity: .5; cursor: default; }
 .more-menu button.armed { color: var(--deny); }
+.proj-move button { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
+.proj-move button span { flex-basis: 100%; padding-left: 16px; margin-top: -2px; }
+.pm-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 4px; }
+.pm-none { font-size: 12px; color: var(--muted); padding: 6px 10px 8px; }
 
 /* "3 more ↓" over the bottom edge of a list that's cut off: small, quiet, out of the way until wanted. */
 .sec { position: relative; }

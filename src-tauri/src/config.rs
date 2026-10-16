@@ -43,7 +43,7 @@ pub fn effective() -> Value {
         "quick": { "phrases": quick_phrases() },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -123,13 +123,36 @@ pub fn context_keep() -> usize {
     load().pointer("/context/keep").and_then(Value::as_u64).unwrap_or(5).clamp(1, 50) as usize
 }
 
+/// Sessions moved to another project in Cue (session id: project), shown under it in place of their folder's.
+/// The agent stays in its folder. Each project trimmed; an empty one is dropped (its folder's again).
+const MOVES_MAX: usize = 500;
+fn moves(value: &Value) -> Result<Value, String> {
+    let mut out = serde_json::Map::new();
+    for (sid, p) in value.as_object().ok_or("moves must be session: project")? {
+        let p = p.as_str().ok_or("a project must be text")?.trim();
+        if !sid.is_empty() && !p.is_empty() {
+            out.insert(sid.clone(), json!(p));
+        }
+    }
+    if out.len() > MOVES_MAX {
+        return Err(format!("at most {MOVES_MAX} moved sessions"));
+    }
+    Ok(Value::Object(out))
+}
+/// The moved sessions: session id → the project it shows under.
+pub fn moved() -> std::collections::HashMap<String, String> {
+    load().pointer("/project/moves").and_then(Value::as_object)
+        .map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|p| (k.clone(), p.to_string()))).collect())
+        .unwrap_or_default()
+}
+
 pub fn history_keep() -> usize {
     load().pointer("/history/keep").and_then(Value::as_u64).unwrap_or(HISTORY_DEFAULT).max(10) as usize
 }
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -174,6 +197,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
         "project.pins" => pins(&value)?,
         "project.names" => names(&value)?,
+        "project.moves" => moves(&value)?,
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
             let phrases: Vec<String> = list.iter().filter_map(Value::as_str).map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|p| !p.is_empty()).collect();
@@ -418,6 +442,13 @@ mod tests {
         assert_eq!(names(&json!({ "x": "a".repeat(50) })), Ok(json!({ "x": "a".repeat(40) })));
         assert!(names(&json!({ "x": 3 })).is_err());
         assert!(names(&json!(["x"])).is_err());
+    }
+
+    #[test]
+    fn a_moved_session_names_its_project_and_an_empty_one_goes_back() {
+        assert_eq!(moves(&json!({ "s1": "  web ", "s2": "", "": "x" })), Ok(json!({ "s1": "web" })));
+        assert!(moves(&json!({ "s1": 3 })).is_err());
+        assert!(moves(&json!(["s1"])).is_err());
     }
 
     #[test]

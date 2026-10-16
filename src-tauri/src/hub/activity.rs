@@ -676,6 +676,10 @@ mod tests {
         assert_eq!((s.state.as_str(), s.driven_by.as_str(), s.helpers), ("agent", "1 background agent", 1), "at its prompt, waiting on its agent");
         assert!(hub.pending().is_empty(), "no card: its answer isn't in yet");
         assert_eq!(s.thread.last().map(|e| e.text.as_str()), Some("An agent is on it."), "what it said so far is in the chat");
+        // You write to it while they work: it's at work again, no longer waiting on them (no stale count).
+        hub.active_from_you(o.clone(), "and the ids".into(), vec![], "");
+        let s = hub.saved_sessions().into_iter().find(|s| s.origin.session_id == "s1").unwrap();
+        assert_eq!((s.state.as_str(), s.driven_by.as_str(), s.helpers), ("working", "", 0), "at work, not waiting on its agents");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

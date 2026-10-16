@@ -821,6 +821,7 @@ function stepLine(sid, x, all, plain = false) {
 // so no row or card of its own. Its steps come with the session's (from its own log). While it runs
 // its block sits above the message box, so chatting on doesn't scroll it away; once it's finished the
 // block folds under the Delegating step that started it.
+const trayDone = new Set();     // sessions whose tray lists its finished agents too
 const helperOpen = new Set();   // "sid|agent id": finished blocks you opened, running ones you folded
 const helpersOf = (sid) => stepFeeds.get(sid)?.helpers || [];
 const helperRunning = (h) => !!h.running;
@@ -845,8 +846,12 @@ function helperTray(sid) {
   const hs = helpersOf(sid);
   const running = hs.filter(helperRunning);
   if (!running.length) return "";
-  const done = hs.length - running.length;
-  return `<div class="tray"><div class="tray-head"><span class="dot-live"></span><b>${running.length} background agent${running.length === 1 ? "" : "s"} running</b>${done ? `<span class="dim"> · ${done} finished</span>` : ""}</div><div class="tray-list" data-tray-scroll="${esc(sid)}">${running.map((h) => helperBlock(sid, h, true)).join("")}</div></div>`;
+  // The finished ones, on a click: newest first, each folded (open one for its steps). They're also in the chat,
+  // under the step that started each.
+  const done = hs.filter((h) => !helperRunning(h)).sort((a, b) => (b.finished_ms || b.started_ms) - (a.finished_ms || a.started_ms));
+  const showDone = trayDone.has(sid) && done.length;
+  const doneBtn = done.length ? `<button class="tray-done" data-tray-done="${esc(sid)}" aria-expanded="${!!showDone}">· ${done.length} finished <span class="stx-chev">${showDone ? "⌄" : "›"}</span></button>` : "";
+  return `<div class="tray"><div class="tray-head"><span class="dot-live"></span><b>${running.length} background agent${running.length === 1 ? "" : "s"} running</b>${doneBtn}</div><div class="tray-list" data-tray-scroll="${esc(sid)}">${running.map((h) => helperBlock(sid, h, true)).join("")}${showDone ? done.map((h) => helperBlock(sid, h, false)).join("") : ""}</div></div>`;
 }
 /** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
@@ -984,8 +989,16 @@ function chatHtml(it, s, harness, paged = false) {
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
 const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
-/** One line under the chat: where the session is now. */
+/** Under the chat: where the session is now, and while any of its background agents run, their tray, whatever
+ *  state it's in (working on your message, your turn, waiting on them), so they never drop out of sight. */
 function statusLine(it, s) {
+  const tray = s?.session_id ? helperTray(s.session_id) : "";
+  // Waiting on them: the tray says it all.
+  if (tray && s.state === "agent" && s.helpers) return tray;
+  return whereNow(it, s) + tray;
+}
+/** One line under the chat: where the session is now. */
+function whereNow(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
   if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
   // Waiting for Enter on a screen before Claude Code starts ("Security notes … Press Enter to continue").
@@ -1002,8 +1015,6 @@ function statusLine(it, s) {
   // count since the turn started, so a long think doesn't look stuck.
   if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span>Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span></div>`;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}</div>`;
-  const tray = s?.session_id ? helperTray(s.session_id) : "";
-  if (tray) return tray;
   if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span>Waiting on ${esc(s.driven_by)}` : `Idle, waiting on ${esc(s.driven_by || "another agent")}`}</div>`;
   if (s?.state === "limited" && s.limit) {
     const l = s.limit, what = s.prompt ? `“${esc(s.prompt.length > 80 ? s.prompt.slice(0, 80) + "…" : s.prompt)}”` : "Your last message";
@@ -1032,9 +1043,17 @@ function nextBar() {
 
 /** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), a relay lead's Relay
  *  handoff (asks once more first: the lead steps down), and Decide later / Back to Waiting. */
-let moreFor = null, handoffArm = null;
+let moreFor = null, handoffArm = null, movingProj = false;
+/** ⋯ → Move to project: the projects it can show under instead, its folder's first. */
+function projMoveList(sid) {
+  const own = folderProject(sid), now = sessionOf(sid)?.project ?? findItem(active?.id)?.project ?? own;
+  const names = [...new Set([own, ...projectsKnown().map(([p]) => p)])].filter((p) => p && p !== now);
+  const rows = names.map((p) => `<button data-move-proj="${esc(p)}" data-sid="${esc(sid)}">${projDot(p)}${esc(projLabel(p))}${p === own ? "<span>Its folder's own</span>" : ""}</button>`).join("");
+  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div>${rows || `<div class="pm-none">No other projects yet</div>`}</div>`;
+}
 function moreMenu(sid, s, closable = false) {
   const open = moreFor === sid;
+  if (open && movingProj) return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="true">⋯</button>${projMoveList(sid)}</span>`;
   const busy = s?.state === "working";
   const m = crewOf(sid);
   const lead = m?.role === "lead" && m?.plugin === "relay";
@@ -1042,6 +1061,7 @@ function moreMenu(sid, s, closable = false) {
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
+      <button data-move-ask="${esc(sid)}">Move to project…<span>Show it under another project in Cue; the agent stays in its folder</span></button>
       ${later}${parkMenuItem(sid, s, closable)}
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;

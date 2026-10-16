@@ -186,6 +186,22 @@ function saveProjName(project) {
   setSetting("project.names", p.names);
   renderMain();
 }
+/** A session moved to another project in Cue (the chat's ⋯ → Move to project): Cue's state says the new
+ *  project, `folder_project` its folder's. Moved back to its folder's, it's dropped. The agent stays where it is. */
+const folderProject = (sid) => { const r = sessionOf(sid) || state.items.find((i) => i.session_id === sid) || parkedOf(sid); return r ? r.folder_project ?? r.project : ""; };
+function moveToProject(sid, project) {
+  const own = folderProject(sid);
+  const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
+  const { [sid]: _, ...rest } = p.moves || {};
+  p.moves = project && project !== own ? { ...rest, [sid]: project } : rest;
+  for (const r of [...state.sessions, ...state.items, ...state.history, ...(state.parked || [])]) {
+    if (r.session_id !== sid) continue;
+    r.folder_project ??= r.project;
+    r.project = project || own;
+  }
+  setSetting("project.moves", p.moves);
+  toast(`Moved to ${projLabel(project || own)}`);
+}
 /** The projects pinned beside All projects in the header (config.rs PINS_MAX), in the order pinned. */
 const PINS_MAX = 3;
 const projPins = () => (Array.isArray(state.settings?.project?.pins) ? state.settings.project.pins : []);
