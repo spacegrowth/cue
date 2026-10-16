@@ -22,9 +22,11 @@ function applyTheme() {
   const mode = state.settings?.appearance?.mode ?? "system";
   if (mode === "system") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.dataset.theme = mode;
+  retheme();
 }
 function renderMain() {
   projTheme();
+  retheme();
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
   if (dragSelecting() || folding || (mouseDown && onLink) || composing) { heldDraw = true; return; }
   const focused = document.activeElement;

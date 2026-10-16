@@ -48,8 +48,9 @@
 
 /* One project picked: every color of the window from its hue (--ph) and strength (--pk: 0 for Graphite),
    at Moss's own lightness and depth, so each is as calm as Moss. Dark gets a deeper, more colored ground
-   than Moss's near-black, or the projects would look alike. Red, amber, the star, the white cards (light)
-   and the terminal's slab stay as they are: they mean the same in every project. */
+   than Moss's near-black, or the projects would look alike. Red, amber, the star and the white cards (light)
+   stay as they are: they mean the same in every project. The slab (terminals, the usage chip) takes the hue
+   at Moss's own near-black. */
 :root.proj-theme {
   --bg: oklch(0.385 calc(0.072 * var(--pk)) var(--ph));
   --on-bg-muted: oklch(0.86 calc(0.045 * var(--pk)) var(--ph));
@@ -60,6 +61,7 @@
   --accent: var(--bg);
   --sel: oklch(0.875 calc(0.098 * var(--pk)) var(--ph)); --on-sel: oklch(0.25 calc(0.04 * var(--pk)) var(--ph));
   --work: oklch(0.72 calc(0.06 * var(--pk)) var(--ph));
+  --slab: oklch(0.245 calc(0.035 * var(--pk)) var(--ph)); --on-slab: oklch(0.93 calc(0.02 * var(--pk)) var(--ph));
 }
 @media (prefers-color-scheme: dark) {
   :root.proj-theme:not([data-theme="light"]) {
@@ -68,6 +70,7 @@
     --ink: oklch(0.94 calc(0.015 * var(--pk)) var(--ph)); --muted: oklch(0.76 calc(0.035 * var(--pk)) var(--ph));
     --accent: oklch(0.8 calc(0.1 * var(--pk)) var(--ph)); --on-accent: oklch(0.2 calc(0.04 * var(--pk)) var(--ph)); --sel: var(--accent); --on-sel: var(--on-accent);
     --work: oklch(0.42 calc(0.06 * var(--pk)) var(--ph));
+  --slab: oklch(0.16 calc(0.02 * var(--pk)) var(--ph)); --on-slab: oklch(0.9 calc(0.02 * var(--pk)) var(--ph));
   }
 }
 :root.proj-theme[data-theme="dark"] {
@@ -76,6 +79,7 @@
   --ink: oklch(0.94 calc(0.015 * var(--pk)) var(--ph)); --muted: oklch(0.76 calc(0.035 * var(--pk)) var(--ph));
   --accent: oklch(0.8 calc(0.1 * var(--pk)) var(--ph)); --on-accent: oklch(0.2 calc(0.04 * var(--pk)) var(--ph)); --sel: var(--accent); --on-sel: var(--on-accent);
   --work: oklch(0.42 calc(0.06 * var(--pk)) var(--ph));
+  --slab: oklch(0.16 calc(0.02 * var(--pk)) var(--ph)); --on-slab: oklch(0.9 calc(0.02 * var(--pk)) var(--ph));
 }
 
 * { box-sizing: border-box; scrollbar-width: none; }

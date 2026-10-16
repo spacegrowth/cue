@@ -252,6 +252,39 @@ function onTermOutput(p) {
   termQueue.push(p.data);
   if (!termFrame) termFrame = requestAnimationFrame(flushTerm);
 }
+/** The terminals open now (the session's and Cue's own shells), to recolor when the window's colors change. */
+const terms = new Set();
+let termKey = "";
+const rgbProbe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+/** A color variable as [r, g, b]: xterm takes only plain colors, and a project's are oklch(). */
+function rgbVar(name) {
+  const el = document.createElement("i");
+  el.style.color = `var(${name})`;
+  document.body.append(el);
+  const c = getComputedStyle(el).color;
+  el.remove();
+  rgbProbe.clearRect(0, 0, 1, 1);
+  rgbProbe.fillStyle = c;
+  rgbProbe.fillRect(0, 0, 1, 1);
+  return [...rgbProbe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+}
+function termTheme() {
+  const hex = (name) => "#" + rgbVar(name).map((v) => v.toString(16).padStart(2, "0")).join("");
+  const [r, g, b] = rgbVar("--sel");
+  return { background: hex("--slab"), foreground: hex("--on-slab"), cursor: hex("--sel"), cursorAccent: hex("--slab"), selectionBackground: `rgba(${r}, ${g}, ${b}, 0.35)` };
+}
+/** The open terminals in the window's colors now: the project's, light or dark. */
+function retheme() {
+  const root = document.documentElement;
+  const key = [root.className, root.dataset.theme, root.style.getPropertyValue("--ph"), root.style.getPropertyValue("--pk"), matchMedia("(prefers-color-scheme: dark)").matches].join("|");
+  if (key === termKey) return;
+  termKey = key;
+  if (!terms.size) return;
+  const theme = termTheme();
+  for (const t of terms) t.options.theme = theme;
+}
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
+
 /** What arrived since the last frame, decoded and written as one. */
 function flushTerm() {
   termFrame = 0;
@@ -269,8 +302,11 @@ function xterm(host) {
     fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
     // ⌥-drag: a selection of the terminal's own, even with tmux taking the mouse.
     macOptionClickForcesSelection: true,
-    theme: { background: cssVar("--slab"), foreground: cssVar("--on-slab"), cursor: cssVar("--sel"), cursorAccent: cssVar("--slab"), selectionBackground: "rgba(210, 222, 150, 0.35)" },
+    theme: termTheme(),
   });
+  terms.add(term);
+  const dispose = term.dispose.bind(term);
+  term.dispose = () => { terms.delete(term); dispose(); };
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(host);
