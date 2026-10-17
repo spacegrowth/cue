@@ -426,7 +426,7 @@ function sendWaitingNow(sid) {
   else return false;
   return true;
 }
-const sendTo = (sid, now = false) => sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => invoke("send_to_session", { sessionId: sid, text, images, now }));
+const sendTo = (sid, now = false) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => invoke("send_to_session", { sessionId: sid, text, images, now }));
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
 async function pullHeld(sid) {
@@ -655,13 +655,18 @@ const quickRow = (attrs, sid = "") => {
 /** Settings → Quick phrases as you type them (redraws keep them); saved when you leave a field. */
 let qpEdit = null;
 const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
+/** A box's images, before they're sent: each opens large, × takes it off. */
+function draftChips(key) {
+  const d = draft(key);
+  return d.images.length ? `<div class="chips">${d.images.map((im, n) => `<span class="chip"><button class="chip-img" data-draft-lightbox="${esc(key)}:${n}" aria-label="Open ${esc(im.name)}"><img src="${im.data}" alt="${esc(im.name)}"/></button><button class="chip-x" data-unattach="${esc(key)}:${n}" aria-label="Remove image">×</button></span>`).join("")}${d.images.length > 1 ? `<span class="chip-count">${d.images.length} images</span>` : ""}</div>` : "";
+}
 /** A text box that grows as you type (Shift+Enter = new line, Enter = send), optionally with images.
  *  The boxes that message a session (the ones with images) also get the quick phrases. */
 function box(key, placeholder, label, sendAttrs, images, alt = "") {
   const d = draft(key);
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
-  const chips = images && d.images.length ? `<div class="chips">${d.images.map((im, n) => `<span class="chip"><button class="chip-img" data-draft-lightbox="${esc(key)}:${n}" aria-label="Open ${esc(im.name)}"><img src="${im.data}" alt="${esc(im.name)}"/></button><button class="chip-x" data-unattach="${esc(key)}:${n}" aria-label="Remove image">×</button></span>`).join("")}${d.images.length > 1 ? `<span class="chip-count">${d.images.length} images</span>` : ""}</div>` : "";
+  const chips = images ? draftChips(key) : "";
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
@@ -1110,6 +1115,7 @@ function chatHtml(it, s, harness, paged = false) {
   const K = keyer();
   const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
+  const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
@@ -1134,7 +1140,7 @@ function chatHtml(it, s, harness, paged = false) {
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
-  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran));
+  })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
@@ -1142,6 +1148,22 @@ function chatHtml(it, s, harness, paged = false) {
   if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
+}
+/** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
+ *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said
+ *  (logs/mcp.rs with_live: after its next message); until then, just their names. */
+function restartLine(sid, r, latest) {
+  const when = `<span class="grow"></span><span class="dim nowrap">${ago(r.at_ms)} ago</span>`;
+  if (r.error) return `<div class="cv-result no"><span class="sent-check">✕</span><span>The restart didn't finish: ${esc(r.error)}</span>${when}</div>`;
+  const n = r.servers?.length;
+  const title = r.servers ? `Restarted with ${n} MCP server${n === 1 ? "" : "s"}` : "Restarted with the folder's MCP servers";
+  if (latest) mcpLoad(sid);
+  const d = latest ? mcpCache.get(sid)?.data : null;
+  const known = d?.live_known ? (d.servers || []).filter((m) => (r.servers ? r.servers.includes(m.name) : m.selected ?? m.enabled)) : null;
+  const list = known?.length ? known.map((m) => `<span class="rs-sv-it"><b>${esc(m.name)}</b>${mcpLiveWord(m)}</span>`).join("")
+    : r.servers?.length ? r.servers.map((s) => `<span class="rs-sv-it"><b>${esc(s)}</b></span>`).join("") : "";
+  const later = latest && !known?.length ? `<div class="rs-sv">Whether each one connected shows after its next message</div>` : "";
+  return `<div class="cv-result rs-line"><span class="sent-check">✓</span><span>${title}<span class="dim"> · ${r.secs}s</span></span>${when}${list ? `<div class="rs-sv">${list}</div>` : ""}${later}</div>`;
 }
 /** A turn's changed files, one per line, for the pill's tooltip. */
 const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}`).join("\n");
@@ -1210,6 +1232,7 @@ function projMoveList(sid) {
 function moreMenu(sid, s, closable = false) {
   const open = moreFor === sid;
   if (open && movingProj) return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="true">⋯</button>${projMoveList(sid)}</span>`;
+  if (open && mcpPicking) return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="true">⋯</button>${mcpPicker(sid)}</span>`;
   const busy = s?.state === "working";
   const m = crewOf(sid);
   const lead = m?.role === "lead" && m?.plugin === "relay";
@@ -1218,9 +1241,18 @@ function moreMenu(sid, s, closable = false) {
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show it under another project in Cue; the agent stays in its folder</span></button>
+      ${mcpItem(sid)}
       ${later}${parkMenuItem(sid, s, closable)}
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
+}
+/** ⋯ → MCP servers…, for a Claude Code session on this Mac: how many it runs with. */
+function mcpItem(sid) {
+  const s = sessionOf(sid);
+  if (s?.harness !== "claude" || s?.machine) return "";
+  mcpLoad(sid);
+  const n = mcpOnCount(sid);
+  return `<button data-mcp-ask="${esc(sid)}">${n == null ? "MCP servers…" : `MCP servers · ${n} on`}<span>Pick which it runs with; it restarts with them</span></button>`;
 }
 /** "claude-opus-5-5" → "Opus 5.5", "gpt-5.6-terra" → "GPT-5.6 Terra", "deepseek-v4-pro" → "DeepSeek V4 Pro". */
 function prettyModel(id) {
@@ -1402,6 +1434,15 @@ function parkedPane(p) {
     <div class="foot">${box(`s:${sid}`, `Message ${name}… sending resumes it first`, w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
 }
 
+/** Over a restarting session's chat and box: its steps (stop, start, load; hub/mod.rs Restart), the one it's on. */
+function restartCover(rs, name) {
+  const steps = [["stop", "Stop"], ["start", "Start"], ["load", rs.servers == null ? "Load MCP servers" : `Load ${rs.servers} MCP server${rs.servers === 1 ? "" : "s"}`]];
+  const at = steps.findIndex(([k]) => k === rs.step);
+  return `<div class="rs-cover"><div class="rs-card" role="status"><div class="rs-title">Restarting ${esc(name)}</div><div class="rs-bar"><i></i></div>
+    <div class="rs-steps">${steps.map(([, l], n) => `<span class="${n < at ? "done" : n === at ? "now" : ""}">${n < at ? "✓ " : ""}${esc(l)}</span>`).join("")}</div>
+    <div class="rs-note">Usually a few seconds. The conversation carries on where it was.</div></div></div>`;
+}
+
 function activePane() {
   if (quietOpen) return quietPane();
   const pk = parkedActive();
@@ -1448,6 +1489,12 @@ function activePane() {
   // The badge already says which agent: no "Claude Code" beside it. An executor's relay name and a crew's model stay.
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? esc(shortModel(cm.model)) : "";
   const onMachine = machTag(s?.machine || it?.machine);
+  // Restarting (after an MCP change): covered until it's back, with nothing to press meanwhile.
+  const rs = sid && state.restarting?.[sid];
+  if (rs) return `<div class="active-pane restarting">
+    <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
+    ${subHead(s?.cwd || it?.cwd, "", sid)}
+    ${chatBox(`m|${sid}`, chatHtml(it, s, harness, true))}${foot}${restartCover(rs, nameOf(sid, project))}</div>`;
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
@@ -1464,6 +1511,113 @@ function activePane() {
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
     ${termDock(sid)}${hvp ? hvp.foot : foot}</div>`;
 }
+// ---------- MCP servers: ⋯ → MCP servers… ----------
+// Every server Claude Code knows for the session's folder (mcp_for), each with a checkbox: checked =
+// it runs with it (`selected`). Restart session with these pins the session to the checked ones (mcp_apply: Cue
+// restarts it with them, conversation kept, and every later resume keeps them); "Back to the folder's
+// servers" drops that (mcp_apply_clear). The + New session form shows the same list for the folder typed.
+const mcpCache = new Map();   // sid or "f:<folder>" → { at, data, loading, err }
+const MCP_FRESH = 30000;
+function mcpLoad(sid, force = false) {
+  const c = mcpCache.get(sid) || { at: 0, data: null, loading: false };
+  mcpCache.set(sid, c);
+  if (c.loading || (!force && now() - c.at < MCP_FRESH)) return;
+  c.loading = true;
+  // A key "f:<folder>" is a folder with no session yet (the + New session form): its config alone.
+  (sid.startsWith("f:") ? invoke("mcp_for_folder", { cwd: sid.slice(2) }) : invoke("mcp_for", { sessionId: sid })).then((v) => { c.data = v || { servers: [] }; c.err = ""; c.at = now(); c.loading = false; renderMain(); }, (x) => { c.loading = false; c.at = now(); c.err = String(x || "couldn't read them"); renderMain(); });
+}
+let mcpPicking = false;      // the ⋯ menu shows the MCP picker instead of its items
+const mcpPick = new Map();   // key → Set of checked names, once you've changed a box (else what it has now)
+const mcpToolsOpen = new Set();   // "<key>|<server>": its tools unfolded in the list
+const mcpPickable = (m) => m.scope !== "session";   // any server with a definition can be passed; Claude Code's own can't
+function mcpChecked(key) {
+  if (mcpPick.has(key)) return mcpPick.get(key);
+  const servers = mcpCache.get(key)?.data?.servers || [];
+  return new Set(servers.filter((m) => mcpPickable(m) && (m.selected ?? m.enabled)).map((m) => m.name));
+}
+/** How many it runs with, for the ⋯ item (null until read). */
+function mcpOnCount(sid) {
+  const d = mcpCache.get(sid)?.data;
+  return d ? (d.servers || []).filter((m) => mcpPickable(m) && (m.selected ?? m.enabled)).length : null;
+}
+/** Where a server comes from, in a word or two. */
+function mcpScopeWord(m) {
+  if (m.scope === "user") return "always";
+  if (m.scope === "local") return "this folder";
+  if (m.scope === "project") return "project";
+  if (m.scope === "session") return "Claude Code's";
+  const from = String(m.from || "");
+  if (/\.claude\.json$/.test(from)) return "this folder";   // turned off here, kept by Cue
+  if (/\/mcp\/[^/]+\.json$/.test(from) && !/\.mcp\.json$/.test(from)) return "picked before";
+  const dir = from.replace(/ \(local\)$/, "").replace(/\/\.mcp\.json$/, "").replace(/\/+$/, "");
+  return `from ${dir.split("/").pop() || dir}`;
+}
+/** The checklist: pickable servers first, then Claude Code's own (shown, not checkable). */
+function mcpList(key, compact = false) {
+  mcpLoad(key);
+  const c = mcpCache.get(key);
+  if (!c?.data) return `<div class="mcp-none">${c?.err ? esc(`Couldn't read them: ${c.err}`) : "Reading…"}</div>`;
+  const servers = c.data.servers || [];
+  const on = mcpChecked(key);
+  const item = (m) => {
+    const can = mcpPickable(m);
+    const n = m.used ? `<span class="mcp-n ${m.failed > 0 ? "bad" : ""}">· ${m.used} call${m.used === 1 ? "" : "s"}</span>` : "";
+    // The tools the running session loaded from it, by name (logs/mcp.rs with_live), with the calls it
+    // made to each: a click unfolds them.
+    const tools = m.loaded || [], open = mcpToolsOpen.has(`${key}|${m.name}`);
+    const calls = (t) => (m.tools || []).find((u) => u.name === t)?.calls || 0;
+    const fold = tools.length ? `<button class="mcp-tfold" data-mcp="tools" data-sid="${esc(key)}" data-name="${esc(m.name)}" aria-expanded="${open}">· ${tools.length} tool${tools.length === 1 ? "" : "s"} ${open ? "▴" : "▾"}</button>` : "";
+    const list = open && tools.length ? `<div class="mcp-tools mono">${tools.map((t) => `<span>${esc(t)}${calls(t) ? `<span class="mcp-tn"> · ${calls(t)}</span>` : ""}</span>`).join("")}</div>` : "";
+    return `<label class="mcp-it ${can ? "" : "fixed"}"><input type="checkbox" data-mcp-pick="${esc(key)}" value="${esc(m.name)}" ${(can ? on.has(m.name) : m.selected ?? m.enabled) ? "checked" : ""} ${can ? "" : "disabled"}/><span class="mcp-nm">${esc(m.name)}</span><span class="mcp-sc">${esc(mcpScopeWord(m))}</span>${mcpLiveWord(m)}${n}${fold}</label>${list}`;
+  };
+  const mine = servers.filter(mcpPickable), theirs = servers.filter((m) => !mcpPickable(m));
+  if (!mine.length && !theirs.length) return `<div class="mcp-none">No MCP servers are set up in Claude Code</div>`;
+  return `<div class="mcp-list ${compact ? "compact" : ""}">${mine.map(item).join("")}${theirs.length ? `<div class="mcp-sub">Claude Code adds these itself</div>${theirs.map(item).join("")}` : ""}</div>`;
+}
+/** What the running session really has from a server (logs/mcp.rs with_live), so a tick never passes
+ *  for working: connected, waiting for sign-in, connecting, failed, or (one it should have) not loaded. */
+function mcpLiveWord(m) {
+  const w = { on: ["connected", "ok"], "sign-in": ["needs sign-in: /mcp in its terminal", "warn"], connecting: ["connecting", ""], failed: ["didn't connect", "bad"] }[m.live]
+    || (m.live === "off" && (m.selected ?? m.enabled) ? ["not loaded", "bad"] : null);
+  return w ? `<span class="mcp-live ${w[1]}">· ${w[0]}</span>` : "";
+}
+/** ⋯ → MCP servers…: the checklist, Restart session with these, Cancel, and (pinned) back to the folder's. */
+function mcpPicker(sid) {
+  const busy = sessionOf(sid)?.state === "working";
+  const d = mcpCache.get(sid)?.data;
+  const back = d?.pinned ? `<button class="mcp-back" data-mcp="clear" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Back to the folder's servers</button>` : "";
+  // Claude Code only records what connected once it's had a turn: just restarted, it can't be told yet.
+  const unknown = d?.running && !d.live_known ? `<div class="mcp-note">Whether each one connected shows after its next message</div>` : "";
+  return `<div class="more-menu mcp-pick"><div class="pm-title">MCP servers</div>${mcpList(sid)}${unknown}
+    ${busy ? `<div class="mcp-note">It's working; apply when it's idle</div>` : `<div class="mcp-note">Only this session restarts, with the ones checked; its conversation stays</div>`}
+    <div class="mcp-acts">${back}<span class="grow"></span><button class="btn small" data-mcp="cancel">Cancel</button><button class="btn small primary" data-mcp="apply" data-sid="${esc(sid)}" ${busy || !d ? "disabled" : ""}>Restart session with these</button></div></div>`;
+}
+function mcpClose(sid) { moreFor = handoffArm = null; mcpPicking = false; if (sid) mcpPick.delete(sid); }
+document.addEventListener("change", (e) => {
+  const cb = e.target.closest?.("[data-mcp-pick]");
+  if (!cb) return;
+  const key = cb.dataset.mcpPick;
+  const set = new Set(mcpChecked(key));
+  cb.checked ? set.add(cb.value) : set.delete(cb.value);
+  mcpPick.set(key, set);
+});
+document.addEventListener("click", async (e) => {
+  const ask = e.target.closest("[data-mcp-ask]");
+  if (ask) { mcpPicking = true; mcpPick.delete(ask.dataset.mcpAsk); mcpLoad(ask.dataset.mcpAsk, true); return renderMain(); }
+  const el = e.target.closest("[data-mcp]");
+  if (!el) return;
+  const k = el.dataset.mcp, sid = el.dataset.sid;
+  if (k === "cancel") { mcpClose(moreFor); return renderMain(); }
+  if (k === "tools") { e.preventDefault(); const t = `${sid}|${el.dataset.name}`; mcpToolsOpen.has(t) ? mcpToolsOpen.delete(t) : mcpToolsOpen.add(t); return renderMain(); }
+  if (k === "apply" || k === "clear") {
+    const names = [...mcpChecked(sid)];
+    mcpClose(sid);
+    renderMain();
+    try { toast(await (k === "apply" ? invoke("mcp_apply", { sessionId: sid, names }) : invoke("mcp_apply_clear", { sessionId: sid }))); }
+    catch (x) { toast(`Couldn't: ${x}`); }
+    return mcpLoad(sid, true);
+  }
+});
 // ---------- the chat's DOM lives on between draws ----------
 // renderMain rebuilds the whole window from a string; the chat (the Active pane's `.ap-chat`) is the one
 // part that would show it: steps land every half second while a session works, and a rebuilt chat

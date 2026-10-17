@@ -155,9 +155,10 @@ function newForm() {
     ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there; it sets up its hooks for the agents it finds.</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Agent</span><div class="seg">${agents.map((a) => `<button class="${newAgent === a ? "on" : ""}" data-lv="agent" data-agent="${a}">${esc(agentName(a))}</button>`).join("")}</div></div>
     <div class="nf-row"><span class="nf-k">Folder</span><div class="nf-fwrap"><input class="nf-in mono" data-text="new-cwd" placeholder="${newMachine ? `~/code/… on ${esc(machShort(newMachine))}` : "~/development/…"}" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>${folders.length ? `<button class="nf-fbtn" data-lv="folders" aria-label="Recent folders">▾</button>` : ""}${folderDrop(folders)}</div></div>
+    ${newAgent === "claude" && !newMachine && draft("new-cwd").text.trim() ? `<div class="nf-row"><span class="nf-k">MCP</span><div class="nf-mcp">${mcpList(`f:${draft("new-cwd").text.trim()}`, true)}</div></div>` : ""}
     ${newAgent === "claude" ? modelRow() : ""}
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
-    <div class="nf-row top"><span class="nf-k">Message</span><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on">${esc(draft("new-msg").text)}</textarea></div>
+    <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button></div>${draftChips("new-msg")}</div></div>
     ${state.settings?.sessions?.tmux_installed && !newMachine ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v ? CUE_MARK_SM : TERM_ICON}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
@@ -221,10 +222,15 @@ async function lvAct(act, d) {
     try {
       const typed = draft("new-flags").text.trim();
       const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
-      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine });
+      // The MCP servers you picked for it, only once you changed a box (else its folder's, unpinned).
+      const mk = `f:${cwd}`;
+      const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
+      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images });
+      mcpPick.delete(mk);
       rememberFolder(newMachine, cwd);
       toast(r.detail);
       draft("new-msg").text = draft("new-name").text = "";   // the rest stays as you set it, for the next one
+      draft("new-msg").images = [];
       newOpen = liveOpen = false;
       // Cue knows the new session already (it picked the id): open it here. Its terminal stays closed
       // (the strip, or ⌃`) until you open it — the reply box comes first.

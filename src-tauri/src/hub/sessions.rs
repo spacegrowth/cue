@@ -62,18 +62,17 @@ impl Hub {
         self.changed();
     }
 
-    pub fn started(&self, origin: Origin, message: &str, asks_trust: bool) {
+    pub fn started(&self, origin: Origin, message: &str, images: &[String], asks_trust: bool) {
         {
             let mut st = self.st();
             let sid = origin.session_id.clone();
             let msg = message.trim();
-            st.sessions.mark(&origin, if msg.is_empty() { "waiting" } else { "working" }, (!msg.is_empty()).then_some(msg));
+            let sent = !msg.is_empty() || !images.is_empty();
+            st.sessions.mark(&origin, if sent { "working" } else { "waiting" }, (!msg.is_empty()).then_some(msg));
             if asks_trust {
                 st.sessions.set_trust(&sid, now_ms());
             }
-            if !msg.is_empty() {
-                st.sessions.note(&sid, "you", msg, crate::config::context_keep());
-            }
+            st.sessions.note_with(&sid, "you", msg, images, crate::config::context_keep());
         }
         self.changed();
     }
@@ -278,6 +277,43 @@ impl Hub {
 
     /// A parked session running again on `origin`: its record back as it was, at its prompt, or
     /// working on `message` when it was resumed with one.
+    /// A restart begins (see `Restart`): its record kept to show while its agent is down.
+    pub fn restart_begin(&self, session_id: &str, servers: Option<Vec<String>>) {
+        let held = self.session_record(session_id);
+        {
+            let mut st = self.st();
+            st.restarting.insert(session_id.to_string(), super::Restart { step: "stop", since_ms: now_ms(), servers, held });
+        }
+        self.changed();
+    }
+
+    /// The restart's next step ("start", "load").
+    pub fn restart_step(&self, session_id: &str, step: &'static str) {
+        {
+            let mut st = self.st();
+            if let Some(r) = st.restarting.get_mut(session_id) {
+                r.step = step;
+            }
+        }
+        self.changed();
+    }
+
+    /// The restart is over: back (`error` None), or it failed (then it's wherever park and resume left
+    /// it). Either way its chat gets a line saying so.
+    pub fn restart_end(&self, session_id: &str, error: Option<&str>) {
+        {
+            let mut st = self.st();
+            let Some(r) = st.restarting.remove(session_id) else { return };
+            let now = now_ms();
+            let line = json!({ "at_ms": now, "secs": now.saturating_sub(r.since_ms).div_ceil(1000), "servers": r.servers, "error": error });
+            let list = st.restarted.entry(session_id.to_string()).or_default();
+            list.push(line);
+            let extra = list.len().saturating_sub(5);
+            list.drain(..extra);
+        }
+        self.changed();
+    }
+
     pub fn unparked(&self, p: crate::sessions::Parked, origin: Origin, message: &str) {
         let s = p.into_session(origin.clone());
         {

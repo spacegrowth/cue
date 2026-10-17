@@ -31,7 +31,7 @@ pub(crate) async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub
 /// The work behind Resume (the window's search). Blocking: it opens a terminal tab.
 pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
-    let line = focus::resume_line(&cwd, session_id)?;
+    let line = focus::resume_line_local(&cwd, session_id)?;
     let name = model::folder_of(&cwd);
     let tab = open_for_resume(&line, &cwd, &name)?;
     let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
@@ -116,7 +116,9 @@ pub(crate) async fn resume_parked(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
 pub(crate) fn resume_parked_session(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<String, String> {
     let p = h.parked(session_id).ok_or("it isn't parked any more")?;
     // Running again already (you resumed it in a terminal yourself): a second agent would share its
-    // conversation. It's live, so it just leaves Parked.
+    // conversation. It's live, so it just leaves Parked. The registry read fresh: the list Cue keeps is
+    // a tick old, so a session parked a moment ago (Restart, after an MCP change) would still be on it.
+    live::refresh();
     if p.session.origin.machine.is_empty() && live::claude().iter().any(|q| q.session_id == session_id) {
         h.take_parked(session_id);
         return Ok("It's already running".into());
@@ -172,7 +174,9 @@ pub(crate) fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &
     let session_id = p.session.origin.session_id.clone();
     let session_id = session_id.as_str();
     let o = p.session.origin.clone();
-    let mut line = focus::resume_line_for(&o.harness, &o.cwd, session_id)?;
+    // On this Mac, with its MCP selection when it has one (logs/mcp.rs), so the choice sticks.
+    let args = if o.machine.is_empty() { crate::logs::mcp::selection_flags(session_id) } else { vec![] };
+    let mut line = focus::resume_line_for_with(&o.harness, &o.cwd, session_id, &args)?;
     if !message.trim().is_empty() {
         line += &format!(" {}", focus::shq(message.trim()));
     }
@@ -347,9 +351,9 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
 /// optional first message and name. Cue picks the session id, so it knows the session at once (it
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
-pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>) -> Result<serde_json::Value, String> {
+pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default() };
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default() };
     let res = tauri::async_runtime::spawn_blocking(move || start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await
         .map_err(|e| e.to_string())?;
@@ -375,11 +379,18 @@ pub(crate) struct StartOpts {
     pub extra: String,
     /// A machine from + New → Machine to run it on (empty: this Mac). Always in tmux there.
     pub machine: String,
+    /// The MCP servers it runs with (a Claude Code session on this Mac): written as its selection
+    /// (logs/mcp.rs) under the id Cue picks, and passed as `--mcp-config <file> --strict-mcp-config`.
+    /// None: whatever its folder has on.
+    pub mcp: Option<Vec<String>>,
+    /// Images with the first message (pasted or dropped into its box): saved, their paths typed after it.
+    pub images: Vec<model::Upload>,
 }
 
 pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
+    let saved = crate::uploads::save(&opts.images)?;
     if !opts.machine.is_empty() {
-        return start_on_machine(h, agent, cwd, message, name, opts);
+        return start_on_machine(h, agent, cwd, message, name, opts, &saved);
     }
     let dir = cwd.trim();
     let dir = if let Some(rest) = dir.strip_prefix("~") { format!("{}{rest}", std::env::var("HOME").unwrap_or_default()) } else { dir.to_string() };
@@ -388,7 +399,13 @@ pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: 
     }
     let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
     let asks_trust = agent == "claude" && !focus::claude_trusts(&dir);
-    let line = focus::start_line_with(agent, &dir, &sid, message, name, &opts.perm, &opts.extra)?;
+    let mut args = vec![];
+    if let (Some(names), "claude", false) = (&opts.mcp, agent, sid.is_empty()) {
+        let path = crate::logs::mcp::selection_path(&sid);
+        crate::logs::mcp::write_selection(&path, &crate::logs::mcp::definitions(&dir), names)?;
+        args = crate::logs::mcp::flags_for(&path);
+    }
+    let line = focus::start_line_args(agent, &dir, &sid, &crate::uploads::with_paths(message, &saved), name, &opts.perm, &opts.extra, &args)?;
     let in_tmux = opts.tmux.map_or_else(config::tmux_sessions, |t| t && focus::tmux_installed());
     let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(&dir));
     // In tmux either way when it's installed: "Runs in iTerm" only adds a terminal tab showing it.
@@ -401,26 +418,33 @@ pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: 
     };
     if !sid.is_empty() {
         let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
-        h.started(origin, message, asks_trust);
+        h.started(origin, message, &paths_of(&saved), asks_trust);
         h.name_new(&sid, name);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} in {}", agent, tab.what) }))
 }
 
 /// + New session on a machine: in tmux there (Cue's terminal shows it, over SSH), in `cwd` there.
-pub(crate) fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
+pub(crate) fn start_on_machine(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts, saved: &[crate::uploads::Saved]) -> Result<serde_json::Value, String> {
     let m = machines::get(&opts.machine).ok_or(format!("{} isn't one of your machines (+ New → Machine)", opts.machine))?;
     let sid = if agent == "codex" { String::new() } else { focus::new_session_id() };
+    // Its images copied there first, so the paths in its first message open on that machine.
+    let there = crate::uploads::on_machine(&m.name, saved, &|_, _| {})?;
     // It starts where tmux opens the window (`cwd`): the line itself stays in that folder.
-    let line = focus::start_line_with(agent, ".", &sid, message, name, &opts.perm, &opts.extra)?;
+    let line = focus::start_line_with(agent, ".", &sid, &crate::uploads::with_paths(message, &there), name, &opts.perm, &opts.extra)?;
     let label = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| model::folder_of(cwd.trim()));
     let (pane, tty, dir) = machines::open_in_tmux(&m, &line, cwd, &label)?;
     if !sid.is_empty() {
         let origin = model::Origin { session_id: sid.clone(), harness: agent.to_string(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
-        h.started(origin, message, false);
+        h.started(origin, message, &paths_of(saved), false);
         h.name_new(&sid, name);
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {} on {}", agent, m.name) }))
+}
+
+/// The saved images' paths on this Mac, for the chat's copy of the first message.
+fn paths_of(saved: &[crate::uploads::Saved]) -> Vec<String> {
+    saved.iter().map(|s| s.path.clone()).collect()
 }
 
 /// Trust in Cue for a session Claude Code is asking "do you trust this folder?": its cursor moved onto
@@ -543,7 +567,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
     let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
     let label = if name.is_empty() { model::folder_of(&cwd) } else { name };
-    let line = focus::resume_line(&cwd, session_id)?;
+    let line = focus::resume_line_local(&cwd, session_id)?;
     // Its window in Cue first, empty: only once that's there does the old one end, so a tmux that won't
     // cooperate never leaves the session ended and nowhere.
     let mut tab = focus::open_in_tmux("", &cwd, &label)?;

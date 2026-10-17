@@ -3,6 +3,7 @@
 
 pub(crate) mod archive;
 pub(crate) mod live;
+pub(crate) mod mcp;
 pub(crate) mod steps;
 pub(crate) mod transcript;
 pub(crate) mod usage;

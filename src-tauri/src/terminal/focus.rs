@@ -100,6 +100,13 @@ fn permission_flags(agent: &str, perm: &str) -> Result<(&'static str, &'static s
 /// The same, with permissions (`perm`, see permission_flags) and any extra flags you typed (each word
 /// quoted on its own, so it's flags, never more shell).
 pub fn start_line_with(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str, perm: &str, extra: &str) -> Result<String, String> {
+    start_line_args(agent, cwd, session_id, message, name, perm, extra, &[])
+}
+
+/// The same, with arguments Cue adds itself (`args`, each quoted whole, so a path with spaces stays
+/// one argument), e.g. a session's MCP selection: `--mcp-config <file> --strict-mcp-config`.
+#[allow(clippy::too_many_arguments)]
+pub fn start_line_args(agent: &str, cwd: &str, session_id: &str, message: &str, name: &str, perm: &str, extra: &str, args: &[String]) -> Result<String, String> {
     let program = match agent {
         "claude" => "claude",
         "pi" => "pi",
@@ -108,6 +115,9 @@ pub fn start_line_with(agent: &str, cwd: &str, session_id: &str, message: &str, 
     };
     let (env, flags) = permission_flags(agent, perm)?;
     let mut line = format!("cd {} && {env}{program}{flags}", shq(cwd));
+    for a in args {
+        line += &format!(" {}", shq(a));
+    }
     for word in extra.split_whitespace() {
         line += &format!(" {}", shq(word));
     }
@@ -623,20 +633,41 @@ fn attach_in_new_window(session: &str) -> Result<String, String> {
 
 /// The command line that picks an older Claude Code session back up: `cd <folder> && claude --resume <id>`.
 pub fn resume_line(cwd: &str, session_id: &str) -> Result<String, String> {
+    resume_line_with(cwd, session_id, &[])
+}
+
+/// The same with extra arguments, each quoted whole: `cd <folder> && claude --resume <id> <args…>`
+/// (a session's MCP selection: `--mcp-config <file> --strict-mcp-config`).
+pub fn resume_line_with(cwd: &str, session_id: &str, args: &[String]) -> Result<String, String> {
     if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err("that isn't a Claude Code session id".into());
     }
-    Ok(format!("cd {} && claude --resume {}", shq(cwd), shq(session_id)))
+    let mut line = format!("cd {} && claude --resume {}", shq(cwd), shq(session_id));
+    for a in args {
+        line += &format!(" {}", shq(a));
+    }
+    Ok(line)
+}
+
+/// A Claude Code session on this Mac resumed as Cue left it: with its MCP selection when it has one
+/// (logs/mcp.rs), so a choice made in Cue sticks across park, close and restart.
+pub fn resume_line_local(cwd: &str, session_id: &str) -> Result<String, String> {
+    resume_line_with(cwd, session_id, &crate::logs::mcp::selection_flags(session_id))
 }
 
 /// The command line that picks a parked session back up, for its agent: `claude --resume <id>`,
 /// `codex resume <id>`, `pi --session <id>`, each in its folder.
 pub fn resume_line_for(harness: &str, cwd: &str, session_id: &str) -> Result<String, String> {
+    resume_line_for_with(harness, cwd, session_id, &[])
+}
+
+/// The same with extra arguments for Claude Code (see resume_line_with); other agents take none.
+pub fn resume_line_for_with(harness: &str, cwd: &str, session_id: &str, args: &[String]) -> Result<String, String> {
     if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err("Cue doesn't have a session id it can resume".into());
     }
     let program = match harness {
-        "claude" => return resume_line(cwd, session_id),
+        "claude" => return resume_line_with(cwd, session_id, args),
         "codex" => "codex resume",
         "pi" => "pi --session",
         other => return Err(format!("Cue can't resume a {other} session")),
@@ -1039,6 +1070,10 @@ mod start_tests {
         assert!(resume_line_for("pi", "/x", "a; rm -rf ~").is_err(), "only an id, never more shell");
         assert!(resume_line_for("codex", "/x", "").is_err());
         assert!(resume_line_for("bash", "/x", "S1").is_err());
+        let mcp = vec!["--mcp-config".to_string(), "/a b/mcp/3f2a-91.json".to_string(), "--strict-mcp-config".to_string()];
+        assert_eq!(resume_line_for_with("claude", "/x", "3f2a-91", &mcp).unwrap(), "cd '/x' && claude --resume '3f2a-91' '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config'");
+        assert_eq!(resume_line_for_with("codex", "/x", "a91f", &mcp).unwrap(), "cd '/x' && codex resume 'a91f'");
+        assert_eq!(start_line_args("claude", "/x", "S1", "hi", "", "ask", "--verbose", &mcp).unwrap(), "cd '/x' && claude '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config' '--verbose' --session-id 'S1' 'hi'");
     }
 
     #[test]

@@ -284,7 +284,7 @@ function bindMain() {
     }
     // The ⋯ menu: toggle it, run an item, or close it on a click anywhere else.
     const mb = t.closest("[data-more]");
-    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = null; movingProj = false; return renderMain(); }
+    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = null; movingProj = mcpPicking = false; return renderMain(); }
     if (t.closest("[data-move-ask]")) { movingProj = true; return renderMain(); }
     const mvp = t.closest("[data-move-proj]");
     if (mvp) { moreFor = handoffArm = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); return renderMain(); }
@@ -297,7 +297,7 @@ function bindMain() {
       invoke("session_command", { sessionId: sid, action: cmd }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
       return;
     }
-    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = null; movingProj = false; renderMain(); }
+    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = null; movingProj = mcpPicking = false; renderMain(); }
     if (t.closest(".more-menu [data-park]")) moreFor = handoffArm = null;   // Decide later: done with the menu too
     const cb = t.closest("[data-connect]");
     if (cb) { cb.disabled = true; invoke("connect_agent", { harness: cb.dataset.connect }).then((m) => toast(m), (e) => { toast(`Couldn't connect: ${e}`); cb.disabled = false; }); return; }

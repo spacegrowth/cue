@@ -83,6 +83,14 @@ pub fn refresh() -> bool {
     true
 }
 
+/// When a live Claude session's process started (ms, its registry entry's `startedAt`); None when it
+/// isn't running here.
+pub fn started_ms(session_id: &str) -> Option<u64> {
+    let pid = claude().into_iter().find(|q| q.session_id == session_id)?.pid;
+    let r: Value = serde_json::from_str(&std::fs::read_to_string(claude_sessions_dir().join(format!("{pid}.json"))).ok()?).ok()?;
+    r.get("startedAt").and_then(Value::as_u64)
+}
+
 /// Every live Claude session in the registry.
 pub fn claude() -> Vec<Quiet> {
     crate::locking::lock(&CLAUDE, "CLAUDE").clone()

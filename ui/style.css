@@ -645,6 +645,10 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .tdock + .foot { padding-top: 0; }
 .tdock + .foot .field { border-radius: 0 0 8px 8px; }
 .tdock + .foot .tplace-btn { border-radius: 0 0 0 8px; }
+/* The "/" menu there sits flush on the box, square at the bottom, so it covers the dock's strip whole
+   (floating 6px up, the dark strip showed in the gap and at its rounded corners). */
+.tdock + .foot .cmd-slot { bottom: 100%; }
+.tdock + .foot .cmd-menu { border-radius: 10px 10px 0 0; }
 /* Over a background agent's view (chat.js helperPane) there's no box for the dock to sit on: the dock is
    a card of its own, a little above the foot's line. */
 .tdock:has(+ .bg-view-foot) { border-radius: 12px; margin-bottom: 8px; }
@@ -1398,6 +1402,9 @@ button.tm-chip:hover { background: var(--panel-2); }
 .nf-reload:disabled { opacity: .4; cursor: default; }
 .nf-fwrap { position: relative; min-width: 0; }
 .nf-fwrap > .nf-in { padding-right: 28px; }
+.nf-msg { min-width: 0; }
+.nf-msg .nf-attach { position: absolute; right: 3px; top: 3px; width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+.nf-msg .nf-attach:hover { color: var(--accent); background: var(--panel-2); }
 .nf-fbtn { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 6px; color: var(--muted); font-size: 11px; }
 .nf-fbtn:hover { background: var(--panel-2); color: var(--ink); }
 .nf-drop { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; max-height: 220px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
@@ -1664,3 +1671,61 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .xp-sep { height: 1px; background: var(--line); margin: 6px 4px; }
 .xp-frame { flex: 1; border: 0; border-radius: 0 0 18px 0; background: var(--panel); }
 .xw-x { font-size: 20px; line-height: 1; color: var(--muted); background: none; border: 0; cursor: pointer; }
+
+/* ⋯ → MCP servers…: a checklist in the menu's place; the + New session form shows the same list inline. */
+.mcp-pick { width: 392px; max-width: calc(100vw - 32px); }
+.mcp-list { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; padding: 0 2px; }
+.mcp-it { display: flex; align-items: baseline; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.mcp-it:hover:not(.fixed) { background: var(--panel-2); }
+.mcp-it input { margin: 0; flex: none; accent-color: var(--accent); position: relative; top: 2px; }
+.mcp-it.fixed { cursor: default; color: var(--muted); }
+.mcp-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mcp-sc { font-size: 11px; font-weight: 500; color: var(--muted); white-space: nowrap; }
+.mcp-n { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.mcp-n.bad { color: var(--deny); }
+.mcp-live { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.mcp-live.ok { color: var(--accent); }
+.mcp-live.warn { color: #d99a3a; }
+.mcp-live.bad { color: var(--deny); }
+/* Restarting (after an MCP change): the chat and box under a cover, the head above it. */
+.active-pane.restarting .ap-head { position: relative; z-index: 3; }
+.rs-cover { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; background: color-mix(in srgb, var(--panel) 72%, transparent); }
+.rs-card { width: min(340px, 86%); box-sizing: border-box; background: var(--panel); border-radius: 14px; box-shadow: var(--shadow), 0 0 0 1px var(--line); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+.rs-title { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rs-bar { height: 4px; border-radius: 2px; background: var(--panel-2); overflow: hidden; }
+.rs-bar i { display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--accent); animation: rs-slide 1.4s ease-in-out infinite; }
+@keyframes rs-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.rs-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.rs-steps .done { color: var(--accent); }
+.rs-steps .now { color: var(--ink); }
+.rs-note { font-size: 12px; color: var(--muted); }
+/* The line it leaves in the chat: under its title, each server and how it did. */
+.rs-line { flex-wrap: wrap; row-gap: 4px; }
+.rs-sv { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 14px; padding-left: 30px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.rs-sv-it b { font-weight: 600; color: var(--ink); }
+.rs-sv-it .mcp-live { margin-left: 4px; }
+.mcp-tfold { font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; padding: 0 2px; border-radius: 4px; }
+.mcp-tfold:hover { color: var(--accent); }
+.mcp-tools .mcp-tn { color: var(--accent); }
+.mcp-tools { display: flex; flex-wrap: wrap; gap: 3px 10px; padding: 0 8px 8px 30px; font-size: 11px; color: var(--muted); }
+.mcp-sub { font-size: 11px; color: var(--muted); padding: 8px 8px 2px; }
+.mcp-none { font-size: 12px; color: var(--muted); padding: 6px 10px 8px; }
+.mcp-note { font-size: 11px; color: var(--muted); padding: 6px 10px 0; }
+/* "Back to the folder's servers" doesn't fit beside the two buttons: it takes a line of its own above them. */
+.mcp-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 6px 4px; }
+.more-menu .mcp-acts button.mcp-back { flex-basis: 100%; text-align: left; justify-content: flex-start; }
+.mcp-acts .grow { flex: 1; }
+.more-menu .mcp-acts .btn { display: inline-flex; flex-direction: row; align-items: center; font-weight: 600; }
+/* The ⋯ menu's row hover (a pale fill) isn't for the picker's buttons: the green one would lose its text. */
+.more-menu .mcp-acts .btn.primary:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); filter: brightness(1.12); }
+.more-menu .mcp-acts .btn:not(.primary):hover:not(:disabled) { background: var(--panel-2); color: var(--ink); border-color: var(--muted); }
+.more-menu button.mcp-back { white-space: nowrap; padding: 4px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.more-menu button.mcp-back:hover:not(:disabled) { background: none; color: var(--ink); }
+.set-note { font-size: 12.5px; color: var(--muted); margin: 14px 0 4px; }
+.mcp-tr { font: 500 10.5px var(--mono); color: var(--muted); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; margin-left: 8px; vertical-align: middle; }
+/* The same checklist in the + New session form, for the folder typed: compact, wrapping. */
+.nf-mcp { min-width: 0; flex: 1; }
+.mcp-list.compact { flex-direction: row; flex-wrap: wrap; gap: 2px 4px; max-height: 120px; padding: 0; }
+.mcp-list.compact .mcp-it { padding: 3px 8px 3px 4px; font-size: 12px; }
+.mcp-list.compact .mcp-sub { flex-basis: 100%; padding: 4px 4px 0; }
+.nf-mcp .mcp-none { padding: 4px 0; }

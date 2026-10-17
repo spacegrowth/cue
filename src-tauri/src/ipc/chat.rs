@@ -205,6 +205,180 @@ pub(crate) fn step_detail_for(h: &Hub, session_id: &str, ids: &[String]) -> serd
     steps_path(h, session_id).map(|path| steps::detail(&path, &ids)).unwrap_or_else(|| serde_json::json!({}))
 }
 
+/// A session's MCP servers: every scope, with what it called through each (logs/mcp.rs).
+#[tauri::command]
+pub(crate) async fn mcp_for(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mcp_for_session(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+/// Every configured MCP server, for Settings.
+#[tauri::command]
+pub(crate) async fn mcp_all() -> Vec<serde_json::Value> {
+    tauri::async_runtime::spawn_blocking(crate::logs::mcp::all).await.unwrap_or_default()
+}
+
+/// Turn a server on or off for the session's folder; the fresh list comes back. The session has to
+/// be restarted (mcp_restart) for Claude Code to notice.
+#[tauri::command]
+pub(crate) async fn mcp_set(hub: State<'_, Arc<Hub>>, session_id: String, name: String, on: bool) -> Result<serde_json::Value, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mcp_set_for(&h, &session_id, &name, on)).await.map_err(|e| e.to_string())?
+}
+
+/// A folder's MCP servers before any session runs there (the + New session form): the folder's config
+/// alone, no transcript. "~" stands for home.
+#[tauri::command]
+pub(crate) async fn mcp_for_folder(cwd: String) -> Result<serde_json::Value, String> {
+    let cwd = expand_home(&cwd);
+    tauri::async_runtime::spawn_blocking(move || crate::logs::mcp::for_session(&cwd, "")).await.map_err(|e| e.to_string())
+}
+
+/// Turn a server on or off for a folder (the + New session form): the session started there next loads it.
+#[tauri::command]
+pub(crate) async fn mcp_set_folder(cwd: String, name: String, on: bool) -> Result<serde_json::Value, String> {
+    let cwd = expand_home(&cwd);
+    tauri::async_runtime::spawn_blocking(move || { crate::logs::mcp::set_enabled(&cwd, &name, on)?; Ok(crate::logs::mcp::for_session(&cwd, "")) }).await.map_err(|e| e.to_string())?
+}
+
+fn expand_home(p: &str) -> String {
+    let p = p.trim().trim_end_matches('/');
+    match (p.strip_prefix("~"), std::env::var("HOME")) {
+        (Some(rest), Ok(home)) => format!("{home}{rest}"),
+        _ => p.to_string(),
+    }
+}
+
+/// Restart a session so Claude Code loads its MCP servers again: parked, then resumed at once.
+#[tauri::command]
+pub(crate) async fn mcp_restart(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mcp_restart_session(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+/// The folder a session's MCP config is read from: on this Mac only.
+fn mcp_cwd(h: &Hub, session_id: &str) -> Result<model::Origin, String> {
+    let o = h.session_origin(session_id).ok_or("Cue has no record of that session")?;
+    if !o.machine.is_empty() {
+        return Err("on another machine: change it there".into());
+    }
+    if o.harness != "claude" {
+        return Err("only Claude Code sessions have MCP servers Cue can read".into());
+    }
+    if o.cwd.is_empty() {
+        return Err("Cue doesn't know which folder it runs in".into());
+    }
+    Ok(o)
+}
+
+pub(crate) fn mcp_for_session(h: &Hub, session_id: &str) -> Result<serde_json::Value, String> {
+    let o = mcp_cwd(h, session_id)?;
+    let path = if o.transcript_path.is_empty() { steps_path(h, session_id).unwrap_or_default() } else { o.transcript_path.clone() };
+    // With what the running session really has from each (connected, waiting for sign-in, failed).
+    let v = crate::logs::mcp::for_session_id(&o.cwd, &path, session_id);
+    Ok(crate::logs::mcp::with_live(v, &path, crate::live::started_ms(session_id)))
+}
+
+pub(crate) fn mcp_set_for(h: &Hub, session_id: &str, name: &str, on: bool) -> Result<serde_json::Value, String> {
+    let o = mcp_cwd(h, session_id)?;
+    crate::logs::mcp::set_enabled(&o.cwd, name, on)?;
+    mcp_for_session(h, session_id)
+}
+
+/// Park, then resume right away: the same session (`claude --resume`), its conversation kept, with
+/// the MCP servers as the config now says. Not mid-turn.
+pub(crate) fn mcp_restart_session(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
+    mcp_cwd(h, session_id)?;
+    if h.session_record(session_id).is_some_and(|s| s.state == "working") {
+        return Err("it's mid-turn; try when it's idle".into());
+    }
+    let servers = crate::logs::mcp::read_selection(&crate::logs::mcp::selection_path(session_id)).map(|m| m.keys().cloned().collect());
+    h.restart_begin(session_id, servers);
+    let res = super::sessions::park(h, session_id).and_then(|_| {
+        h.restart_step(session_id, "start");
+        super::sessions::resume_parked_session(h, session_id, "")
+    });
+    if let Err(e) = &res {
+        h.restart_end(session_id, Some(e));
+        return res;
+    }
+    h.restart_step(session_id, "load");
+    restart_ends_when_running(h.clone(), session_id.to_string());
+    res
+}
+
+/// Its pane stays covered until its agent is running again: in Claude Code's list of running sessions
+/// on this Mac, checked a few times a second, for 20 s at most. One on a machine isn't in that list: its
+/// restart ends as soon as it's started there.
+fn restart_ends_when_running(h: Arc<Hub>, session_id: String) {
+    let here = h.session_origin(&session_id).is_some_and(|o| o.machine.is_empty());
+    std::thread::spawn(move || {
+        let until = crate::model::now_ms() + 20_000;
+        while here && crate::model::now_ms() < until {
+            live::refresh();
+            if live::claude().iter().any(|q| q.session_id == session_id) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        h.restart_end(&session_id, None);
+    });
+}
+
+/// Run a session with just these MCP servers: its selection written (logs/mcp.rs), then restarted
+/// with `--mcp-config <file> --strict-mcp-config`. The choice sticks: every later resume passes it too.
+#[tauri::command]
+pub(crate) async fn mcp_apply(hub: State<'_, Arc<Hub>>, session_id: String, names: Vec<String>) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mcp_apply_for(&h, &session_id, names)).await.map_err(|e| e.to_string())?
+}
+
+/// Back to the folder's servers: its selection dropped, then restarted without the flags.
+#[tauri::command]
+pub(crate) async fn mcp_apply_clear(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mcp_apply_clear_for(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+pub(crate) fn mcp_apply_for(h: &Arc<Hub>, session_id: &str, names: Vec<String>) -> Result<String, String> {
+    let o = mcp_cwd(h, session_id)?;
+    if h.session_record(session_id).is_some_and(|s| s.state == "working") {
+        return Err("it's mid-turn; try when it's idle".into());
+    }
+    let path = crate::logs::mcp::selection_path(session_id);
+    let before = std::fs::read(&path).ok();
+    let n = crate::logs::mcp::write_selection(&path, &crate::logs::mcp::definitions(&o.cwd), &names)?;
+    // Not restarted (it couldn't be parked): the selection it had stays.
+    if let Err(e) = mcp_restart_session(h, session_id) {
+        let _ = match before { Some(b) => std::fs::write(&path, b), None => std::fs::remove_file(&path) };
+        return Err(e);
+    }
+    Ok(match n {
+        0 => "Restarted with no MCP servers".into(),
+        1 => "Restarted with 1 MCP server".into(),
+        n => format!("Restarted with {n} MCP servers"),
+    })
+}
+
+pub(crate) fn mcp_apply_clear_for(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
+    mcp_cwd(h, session_id)?;
+    if h.session_record(session_id).is_some_and(|s| s.state == "working") {
+        return Err("it's mid-turn; try when it's idle".into());
+    }
+    let path = crate::logs::mcp::selection_path(session_id);
+    let before = std::fs::read(&path).ok();
+    if before.is_some() {
+        std::fs::remove_file(&path).map_err(|e| format!("Couldn't remove {}: {e}", path.display()))?;
+    }
+    if let Err(e) = mcp_restart_session(h, session_id) {
+        if let Some(b) = before {
+            let _ = std::fs::write(&path, b);
+        }
+        return Err(e);
+    }
+    Ok("Restarted with its folder's MCP servers".into())
+}
+
 /// A session's whole conversation as Cue logged it (search opens it, scrolled to the message you found).
 #[tauri::command]
 pub(crate) fn session_log(session_id: String) -> Vec<serde_json::Value> {

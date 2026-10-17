@@ -76,6 +76,25 @@ struct Store {
     just_ended: HashMap<String, u64>,
     /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
     unreachable: HashSet<String>,
+    /// Sessions Cue is restarting (stopped and started again, after an MCP change): see `Restart`.
+    restarting: HashMap<String, Restart>,
+    /// Each session's last few restarts, oldest first, for a line in its chat at the time it happened.
+    /// SHORTCUT: kept while Cue runs, not saved: a relaunch drops the lines (the restart itself is
+    /// done). Save them with the session (db) if they should outlive that.
+    restarted: HashMap<String, Vec<Value>>,
+}
+
+/// A restart in progress. Underneath it's a park and a resume, but the window never sees those: the
+/// session stays where it is (its record as it was before, `held`, while its agent is down), never on
+/// Parked, and its pane is covered until it's back. `step`: "stop", "start", then "load" until its agent
+/// is running again.
+#[derive(Clone)]
+struct Restart {
+    step: &'static str,
+    since_ms: u64,
+    /// The MCP servers it restarts with, by name, when it's pinned to a set (None: its folder's).
+    servers: Option<Vec<String>>,
+    held: Option<crate::sessions::Session>,
 }
 
 /// A review waiting for its lead.
@@ -216,13 +235,25 @@ impl Hub {
         let handoffs = crate::leads::handoffs(&ids);
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
+        // A session restarting stays in its place: its record from before while its agent is down, and
+        // not on Parked on the way.
+        let mut sessions = st.sessions.snapshot();
+        for (sid, r) in &st.restarting {
+            if let Some(s) = r.held.as_ref().filter(|_| !sessions.iter().any(|x| x.origin.session_id == *sid)) {
+                sessions.push(s.clone());
+            }
+        }
+        let parked: Vec<&crate::sessions::Parked> = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).collect();
+        let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len) }))).collect();
         let mut snap = json!({
             "items": st.items,
             "history": st.history,
             // Every answer of the last day, in brief: today's numbers count these, not the History list.
             "answers": st.answers,
-            "sessions": st.sessions.snapshot(),
-            "parked": st.parked,
+            "sessions": sessions,
+            "parked": parked,
+            "restarting": restarting,
+            "restarted": st.restarted,
             "reviews": reviews,
             "review_queue": Self::review_queue_view(&st),
             "unreachable": st.unreachable,
@@ -255,7 +286,8 @@ impl Hub {
     /// transcript, and every folder in play.
     fn snapshot_sources(&self) -> (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>) {
         let st = self.st();
-        let known: HashSet<String> = st.sessions.all().iter().map(|s| s.origin.session_id.clone()).chain(st.items.iter().map(|i| i.origin.session_id.clone())).collect();
+        // A restarting session's new agent shows up in Claude Code's list before Cue has its record back.
+        let known: HashSet<String> = st.sessions.all().iter().map(|s| s.origin.session_id.clone()).chain(st.items.iter().map(|i| i.origin.session_id.clone())).chain(st.restarting.keys().cloned()).collect();
         let pi = st.subscribed.values().map(|(o, at)| crate::live::Quiet {
             session_id: o.session_id.clone(),
             harness: o.harness.clone(),
