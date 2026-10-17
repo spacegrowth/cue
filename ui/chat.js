@@ -884,9 +884,16 @@ function helperReplyToBox(sid, id) {
   const text = `From the ${h.kind || "agent"} agent (${h.desc}):\n\n${reply}`;
   d.text = d.text.trim() ? `${d.text.replace(/\s+$/, "")}\n\n${text}` : text;
   saveDrafts();
+  closeHelperView();
+  focusComposer();
+}
+/** Back from an agent's or script's full view: the chat again, at its end (the newest message), not wherever
+ *  a fresh chat element happens to start. */
+function closeHelperView() {
   helperView = null;
   renderMain();
-  focusComposer();
+  const chat = document.querySelector("[data-chat]");
+  if (chat) chat.scrollTop = chat.scrollHeight;
 }
 /** The agent whose full view is open in this session's chat area, if it's still in the feed. Opening
  *  another session's chat ends the view: coming back lands in the chat, not the agent. */

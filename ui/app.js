@@ -309,7 +309,7 @@ function bindMain() {
     if (td) { const k = td.dataset.trayDone; trayDone.has(k) ? trayDone.delete(k) : trayDone.add(k); return renderMain(); }
     const hb = t.closest("[data-helper]");
     if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
-    if (t.closest("[data-helper-back]")) { helperView = null; return renderMain(); }
+    if (t.closest("[data-helper-back]")) return closeHelperView();
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const qp = t.closest("[data-quick]");
@@ -677,7 +677,7 @@ function bindMain() {
     }
     if (e.key === "Escape" && btwFor) { btwFor = null; return renderMain(); }
     // Esc in a background agent's full view: back to the chat.
-    if (e.key === "Escape" && !sheet && !lightbox && helperView && helperViewed(helperView.sid)) { helperView = null; return renderMain(); }
+    if (e.key === "Escape" && !sheet && !lightbox && helperView && helperViewed(helperView.sid)) return closeHelperView();
     if (e.key === "Escape") {
       // In History, Esc just closes the open row.
       if (view === "history") { histOpen = null; return renderMain(); }
