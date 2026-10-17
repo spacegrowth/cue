@@ -145,7 +145,10 @@ function askCue(ask: object) {
 					tries = 0;
 					s.write(JSON.stringify({ type: "ask", ...ask }) + "\n");
 				});
-				readline.createInterface({ input: s }).on("line", (line) => {
+				// The reader passes the socket's errors on; unheard, a refused connection (Cue restarting) would crash Pi.
+				const lines = readline.createInterface({ input: s });
+				lines.on("error", () => {});
+				lines.on("line", (line) => {
 					try {
 						const m = JSON.parse(line);
 						if (m.type === "decision") {
@@ -237,7 +240,10 @@ export default function (pi: ExtensionAPI) {
 				}
 			};
 			s.on("connect", () => s.write(JSON.stringify({ type: "subscribe", ...origin(ctx), commands: commands() }) + "\n"));
-			readline.createInterface({ input: s }).on("line", (line) => {
+			// The reader passes the socket's errors on; unheard, a refused connection (Cue restarting) would crash Pi.
+			const lines = readline.createInterface({ input: s });
+			lines.on("error", () => {});
+			lines.on("line", (line) => {
 				try {
 					const m = JSON.parse(line);
 					if (m.type === "commands") {

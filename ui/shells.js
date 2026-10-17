@@ -8,7 +8,7 @@
  *  go of it, and the next Cue gives each its tab back (restoreShells), in order, with its name, the
  *  one on show the same. Tucked away it shrinks to a small tab on the right edge, at its corner, and comes back
  *  from there; the button and that tab show a live dot while a shell runs something, and ✓ once that
- *  ends. + or ⌘⇧T opens a new shell tab. Full screen (its ⤢, or a double-click on its bar) it fills the window under the header. Its
+ *  ends. + or ⌘T opens a new shell tab. Full screen (its ⤢, or a double-click on its bar) it fills the window under the header. Its
  *  element lives outside the redraws (each puts it back over the columns). Where it is, top or bottom,
  *  full or not and tucked or not, is kept in this browser. */
 const shells = [];             // { id, where, mac, name, cwd, busy, what, kept, gen, term, fit, host, queue, frame }
@@ -41,7 +41,7 @@ function markShells() {
   document.querySelector(".shells-btn")?.setAttribute("aria-pressed", String(pipOut()));
 }
 
-/** ⌘⇧T: a new shell tab (at home), the terminal out, as ⌘T is in a terminal app. */
+/** ⌘T: a new shell tab (at home), the terminal out, as in a terminal app. */
 const newShellTab = () => openShell("");
 /** ⌘K inside it: the tab on show cleared, its prompt line the first. */
 const clearShell = () => {
@@ -75,7 +75,7 @@ function ensurePip() {
   pipEl.className = "pip";
   pipEl.hidden = true;
   pipEl.setAttribute("aria-label", "Terminal");
-  pipEl.innerHTML = `<div class="pip-bar"><div class="pip-tabs" role="tablist"></div><button class="pip-add" aria-label="New shell (⌘⇧T)">+</button><button class="pip-full" aria-label="Full screen" aria-pressed="false"></button><button class="pip-hide" aria-label="Tuck it away (⌘J)">⇥</button></div>
+  pipEl.innerHTML = `<div class="pip-bar"><div class="pip-tabs" role="tablist"></div><button class="pip-add" aria-label="New shell (⌘T)">+</button><button class="pip-full" aria-label="Full screen" aria-pressed="false"></button><button class="pip-hide" aria-label="Tuck it away (⌘J)">⇥</button></div>
     <div class="pip-slot"></div><div class="pip-grip edge-x" data-grip="x"></div><div class="pip-grip edge-y" data-grip="y"></div><div class="pip-grip corner" data-grip="xy"></div>
     <button class="pip-peek" aria-label="Bring the terminal back"><span aria-hidden="true">‹</span><span class="sh-live"></span></button>`;
   document.body.appendChild(pipEl);
