@@ -124,7 +124,9 @@ function renderMain() {
   // New target: jump to the end. Same chat, you were at the end (within 24 px, measured before the patch):
   // stay there (an image added to the box, or a step landing, mustn't push the last lines out of view).
   // Scrolled up to read: a row arriving leaves your place alone.
-  if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
+  // Back from a background agent's or script's view (chat.js closeHelperView): the end, whatever the view's scroll was.
+  if (chat && chatToEnd) { pinChatEnd(chat); holdChat = null; }
+  else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
   else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
   else if (chat && !kept && oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
@@ -200,9 +202,11 @@ function bindMain() {
   bindTips();
   document.body.append(picker);
   document.addEventListener("scroll", placeForward, true);
-  // Near the top of the chat: the next page of earlier messages comes in above.
+  // Near the top of the chat: the next page of earlier messages comes in above. Only the chat itself (a
+  // background agent's view fills the same element: its steps' top isn't the chat's), and only when it's
+  // you scrolling: not the scroll events of a chat code just put at its end (chat.js pinChatEnd).
   document.addEventListener("scroll", (e) => {
-    if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60) return;
+    if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || e.target.dataset.chatFor?.startsWith("h|") || Date.now() - chatPinnedAt < 400) return;
     const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
     if (sid) loadOlder(sid);
   }, true);   // the send-to menu follows its button

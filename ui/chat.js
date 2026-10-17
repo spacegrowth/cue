@@ -887,13 +887,30 @@ function helperReplyToBox(sid, id) {
   closeHelperView();
   focusComposer();
 }
-/** Back from an agent's or script's full view: the chat again, at its end (the newest message), not wherever
- *  a fresh chat element happens to start. */
+/** Back from an agent's or script's full view (‹ Back, Esc, "Put reply in the box"): the chat again, at its
+ *  end (the newest message), not wherever a fresh chat element happens to start. The draw lands it there
+ *  (`chatToEnd`, the path a newly opened chat takes in app.js renderMain), then it's pinned again a frame
+ *  later and once more when settled: whatever grows after the draw (the box growing to a draft, an image,
+ *  a table laid out late) would otherwise leave the end just out of view. */
+let chatToEnd = false;    // the next chat draw lands at its end; app.js renderMain consumes it
+let chatPinnedAt = 0;     // when code last put the chat at its end: the scroll events that come of it aren't you scrolling up
 function closeHelperView() {
   helperView = null;
+  chatToEnd = true;
   renderMain();
+  chatToEnd = false;
   const chat = document.querySelector("[data-chat]");
-  if (chat) chat.scrollTop = chat.scrollHeight;
+  if (!chat) return;
+  pinChatEnd(chat);
+  const again = () => { if (chat.isConnected && (chat.scrollTop === chat._pinTop || chat.scrollHeight - chat.scrollTop - chat.clientHeight < 24)) pinChatEnd(chat); };
+  requestAnimationFrame(again);
+  setTimeout(again, 250);
+}
+/** The chat at its end, by code (not you): the loader of earlier messages leaves the scroll events of it alone. */
+function pinChatEnd(chat) {
+  chat.scrollTop = chat.scrollHeight;
+  chat._pinTop = chat.scrollTop;
+  chatPinnedAt = Date.now();
 }
 /** The agent whose full view is open in this session's chat area, if it's still in the feed. Opening
  *  another session's chat ends the view: coming back lands in the chat, not the agent. */
@@ -935,8 +952,8 @@ function helperPane(sid, h) {
   h.items.slice(0, end).forEach((x) => steps.push(x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small" data-key="${esc(x.id || `s:${x.at_ms}`)}">${md(x.text)}</div>`));
   h.items.slice(end).forEach((x) => tail.push(x.text));
   const tok = helperTokens(h.tokens);
-  const body = helperViewTop(sid, h)
- + `<div class="bg-view-title" data-key="title"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b>${running ? liveDot(h) : ""}</div>
+  const top = helperViewTop(sid, h);
+  const body = top.hop + `<div class="bg-view-title" data-key="title"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b>${running ? liveDot(h) : ""}</div>
     <div class="bg-view-meta" data-key="meta"><span>${esc(h.desc)}</span>${model ? `<span>${esc(model)}</span>` : ""}${tok ? `<span>${tok}</span>` : ""}<span>${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far` : `finished · ${helperSpan(h)}`}</span>${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${h.items.filter((x) => x.t === "step").length + (h.more || 0)} steps</span></div>
     ${h.more ? `<div class="stx-more dim" data-key="more">${h.more} earlier steps not shown</div>` : ""}
     ${steps.length ? `<div class="stx-steps bg-view-steps" data-key="steps">${steps.join("")}</div>` : `<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`}
@@ -944,7 +961,7 @@ function helperPane(sid, h) {
   // Finished with a reply: a button puts it in the session's message box (only there; you send it).
   const toBox = !running && tail.length ? `<button class="btn" data-helper-reply="${esc(`${sid}|${h.id}`)}">Put reply in the box</button>` : "";
   const foot = helperViewFoot(running, running ? `Running inside this session's turn. It reports to the session, not to you.` : `What it reported went into the session's next reply.`, toBox);
-  return { body, foot };
+  return { bar: top.bar, body, foot };
 }
 /** The top of a full view: ‹ Back, and chips for the session's other background work (agents and scripts),
  *  running first then finished newest first: a click hops to that one. */
@@ -952,7 +969,8 @@ function helperViewTop(sid, h) {
   const others = helpersOf(sid).filter((x) => x.id !== h.id).sort((a, b) => (helperRunning(b) - helperRunning(a)) || ((b.finished_ms || b.started_ms) - (a.finished_ms || a.started_ms)));
   const chip = (x) => `<button class="bg-hop-b ${helperRunning(x) ? "live" : ""}" data-helper="${esc(`${sid}|${x.id}`)}">${helperRunning(x) ? liveDot(x) : ""}${x.script ? `<span class="bgtag script">SCRIPT</span><span class="dim">${esc(x.desc)}</span>` : `<b>${esc(x.kind || "agent")}</b><span class="dim">${esc(x.desc)}</span>`}${helperStuck(x) ? helperQuiet(x) : ""}</button>`;
   const hop = others.length ? `<div class="bg-hop" data-key="hop">${others.map(chip).join("")}</div>` : "";
-  return `<div class="bg-view-head" data-key="head"><button class="bg-back" data-helper-back="1"><span class="bg-back-ch">‹</span>Back to chat</button>${others.length ? `<span class="dim bg-hop-n">· ${others.length} other${others.length === 1 ? "" : "s"}</span>` : ""}</div>${hop}`;
+  const bar = `<div class="bg-view-head" data-key="head"><button class="bg-back" data-helper-back="1"><span class="bg-back-ch">‹</span>Back to chat</button>${others.length ? `<span class="dim bg-hop-n">· ${others.length} other${others.length === 1 ? "" : "s"}</span>` : ""}</div>`;
+  return { bar, hop };
 }
 const helperViewFoot = (live, text, extra = "") => `<div class="foot bg-view-foot">${live ? `<span class="dot-live"></span>` : ""}<span class="dim">${text}</span><span class="grow"></span>${extra}<button class="btn primary send" data-helper-back="1">Go to chat</button></div>`;
 /** A background script in full: the command it ran and its output at full height (the tail Cue has of
@@ -960,12 +978,13 @@ const helperViewFoot = (live, text, extra = "") => `<div class="foot bg-view-foo
 function scriptPane(sid, h) {
   const running = helperRunning(h);
   const shown = h.output.length, all = h.lines || shown;
-  const body = helperViewTop(sid, h) + `<div class="bg-view-title" data-key="title"><span class="bgtag script">SCRIPT</span><b>${esc(h.desc)}</b>${running ? liveDot(h) : ""}</div>
+  const top = helperViewTop(sid, h);
+  const body = top.hop + `<div class="bg-view-title" data-key="title"><span class="bgtag script">SCRIPT</span><b>${esc(h.desc)}</b>${running ? liveDot(h) : ""}</div>
     <div class="bg-view-meta" data-key="meta">${running ? `<span><span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far</span>` : `<span class="${h.failed ? "bad" : ""}">${h.failed ? "failed" : "finished"} · ${helperSpan(h)}</span>`}${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${all} line${all === 1 ? "" : "s"}${all > shown ? ` · last ${shown} shown` : ""}</span></div>
     ${h.command && h.command !== h.desc ? `<div class="bg-cmd" data-key="cmd">${esc(h.command)}</div>` : ""}
     ${shown ? `<div class="bg-out bg-view-out" data-key="out" data-bg-scroll="${esc(`${sid}|${h.id}|full`)}">${h.output.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : `<div class="dim" data-key="none">${running ? "No output yet." : "It wrote nothing."}</div>`}`;
   const foot = helperViewFoot(running, running ? `Running in the background. Its output goes to the session when it ends.` : h.failed ? `It ended with an error. The session was told, and its output is here.` : `It finished. The session was told, and its output is here.`);
-  return { body, foot };
+  return { bar: top.bar, body, foot };
 }
 /** The tray above the message box: every agent still at work, about one agent tall (the rest scrolled
  *  to inside it, app.js renderMain keeps where you were). "" when none. */
@@ -1441,7 +1460,7 @@ function activePane() {
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
-    ${hvp ? chatBox(`h|${sid}|${hv.id}`, hvp.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
+    ${hvp ? hvp.bar + chatBox(`h|${sid}|${hv.id}`, hvp.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
     ${termDock(sid)}${hvp ? hvp.foot : foot}</div>`;
 }
