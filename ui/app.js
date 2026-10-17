@@ -635,6 +635,8 @@ function bindMain() {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") { cmdSel = (cmdSel + (e.key === "ArrowDown" ? 1 : m.length - 1)) % m.length; return refreshCmd(mk); }
       return pickCmd(mk, m[cmdSel].name, e.key === "Enter");
     }
+    // ↑ / ↓ in a session's box: back and forth through the last messages you sent it (chat.js recallSent).
+    if (mk?.startsWith("s:") && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) return e.preventDefault();
     if (e.target.dataset?.text === "new-cwd") {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); return stepFolder(e.key === "ArrowDown" ? 1 : -1); }
       // Enter here only ever picks a folder (the highlighted one, else the list's first), never starts the

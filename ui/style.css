@@ -387,12 +387,14 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-scroll > * { flex: none; }
 .bg-agent .stx-say.small, .bg-view-steps .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
 /* A background agent in full (chat.js helperPane): in place of the chat, its steps at full height. */
-.bg-view-head { display: flex; align-items: center; }
-.bg-back { font-size: 12.5px; color: var(--muted); padding: 2px 6px; margin-left: -6px; border-radius: 6px; }
-.bg-back:hover { color: var(--ink); background: var(--panel-2); }
-.bg-hop-n { font-size: 12.5px; margin-left: 6px; }
+.bg-view-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+/* ‹ Back to chat: a real button on its own row, so it reads as the way out, not a caption. */
+.bg-back { height: 28px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.bg-back:hover { border-color: var(--muted); }
+.bg-back .bg-back-ch { font-size: 15px; font-weight: 800; line-height: 1; position: relative; top: -1px; }
+.bg-hop-n { font-size: 12.5px; }
 /* The session's other agents, as chips: a click opens that one in this view. */
-.bg-hop { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -8px; }
+.bg-hop { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; }
 .bg-hop-b { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--panel-2); font-size: 12px; max-width: 260px; min-width: 0; }
 .bg-hop-b:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .bg-hop-b b { font-weight: 650; flex: none; }
@@ -409,6 +411,15 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .tray-head b { font-weight: 650; }
 .tray-done { font-size: 12.5px; color: var(--muted); padding: 0 4px; border-radius: 6px; }
 .tray-done:hover { color: var(--ink); background: var(--panel-2); }
+/* The tray's head folds it to that row: its text and the chevron at the end are both the toggle. */
+.tray-fold { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 0 4px; margin-left: -4px; border-radius: 6px; color: inherit; }
+.tray-fold:hover { background: var(--panel-2); }
+.tray-fold .stx-chev { color: var(--muted); }
+/* Quiet: running, nothing for minutes. Amber, like a stalled session's sweep; its dot stops pulsing. */
+.bg-quiet { color: #d99a3a; font-weight: 650; white-space: nowrap; flex: none; }
+.dot-live.stuck { background: #d99a3a; animation: none; }
+/* "N bg" on a session's card and tile: how many agents and scripts it has in the background. */
+.bg-pill { flex: none; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
 .tray .bg-agent { margin-left: 0; }
 /* Its agents: one in full and the top of the next, the rest scrolled to, so several never fill the window. */
 .tray-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; }

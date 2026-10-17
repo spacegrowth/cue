@@ -321,13 +321,14 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
         }
         "edited" => {
             let t = transcript.filter(|t| !t.is_empty()).ok_or("that session has no log to read its edits from")?;
-            let files: Vec<String> = crate::logs::steps::edited_files(t)
+            // Each with who edited it ("by": "" the session itself, else its background agent's description).
+            let files: Vec<(String, String)> = crate::logs::steps::edited_files_by(t)
                 .into_iter()
-                .map(|f| if f.starts_with('/') { f } else { format!("{}/{f}", folder.trim_end_matches('/')) })
+                .map(|(f, by)| (if f.starts_with('/') { f } else { format!("{}/{f}", folder.trim_end_matches('/')) }, by))
                 .take(200)
                 .collect();
             let mut filters = std::collections::HashMap::new();
-            let out: Vec<Value> = files.iter().map(|f| edited_one(machine, f, &mut filters)).collect();
+            let out: Vec<Value> = files.iter().map(|(f, by)| { let mut v = edited_one(machine, f, &mut filters); v["by"] = json!(by); v }).collect();
             done(&format!("edited ({} files)", out.len()), 0);
             Ok(json!({ "files": out, "ms": start.elapsed().as_millis() as u64 }))
         }

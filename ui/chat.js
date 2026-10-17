@@ -526,6 +526,41 @@ function cmdList(sid, fresh) {
   return sessionOf(sid)?.harness === "claude" ? [BTW_CMD, ...list.filter((c) => c.name !== "btw")] : list;
 }
 const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
+// ---------- ↑ / ↓ in a session's box: the last messages you sent it, like a shell's history ----------
+// ↑ on the box's first line puts the message before into the box (older with each press, the last ten);
+// ↓ on the last line comes forward again and ends on what you were typing. Typing, or sending, starts over.
+const RECALL = 10;
+let recall = null;   // { key, list, idx, typed, set }: where you are in the list, and the text the last step put in
+function recallSent(e) {
+  const ta = e.target, key = ta.dataset.text, sid = sidOfKey(key);
+  if (!sid) return false;
+  const up = e.key === "ArrowUp";
+  const v = ta.value, at = ta.selectionStart;
+  // Only from the box's first line (↑) or last line (↓): elsewhere the arrows move the caret as usual.
+  if (up ? v.lastIndexOf("\n", at - 1) !== -1 : v.indexOf("\n", ta.selectionEnd) !== -1) return false;
+  if (!recall || recall.key !== key || recall.set !== v) {
+    const cur = current();
+    if ((cur?.s?.session_id || cur?.it?.session_id) !== sid) return false;
+    const seen = new Set();
+    const list = conversation(cur.it, cur.s).filter((x) => x.role === "you" && x.text.trim()).map((x) => x.text).filter((t) => !seen.has(t) && seen.add(t)).slice(-RECALL);
+    if (!list.length) return false;
+    recall = { key, list, idx: list.length, typed: v, set: v };
+  }
+  const { list } = recall;
+  if (up ? recall.idx === 0 : recall.idx >= list.length) return up;   // nothing older: the key is spent; nothing newer: the caret moves
+  recall.idx += up ? -1 : 1;
+  const text = recall.idx === list.length ? recall.typed : list[recall.idx];
+  recall.set = text;
+  ta.value = text;
+  draft(key).text = text;
+  saveDrafts();
+  grow(ta);
+  ta.setSelectionRange(text.length, text.length);
+  const b = ta.closest(".composer")?.querySelector(".btn.send");
+  if (b && !b.dataset.held) b.disabled = !text.trim() && !draft(key).images.length;
+  refreshCmd(key);
+  return true;
+}
 /** "/comp": the command name being typed (no space yet), else null. A leading space means a message. */
 const typingCmd = (text) => (/^\/[^\s]*$/.test(text) ? text.slice(1).toLowerCase() : null);
 /** "/model so": the command and the value being typed for it (one word, no space after yet), else null. */
@@ -822,12 +857,37 @@ function stepLine(sid, x, all, plain = false) {
 // its block sits above the message box, so chatting on doesn't scroll it away; once it's finished the
 // block folds under the Delegating step that started it.
 const trayDone = new Set();     // sessions whose tray lists its finished agents too
+const trayFolded = new Set();   // sessions whose tray is folded to its head row
 let helperView = null;          // { sid, id }: the agent whose full view fills the chat area (helperPane)
 const helpersOf = (sid) => stepFeeds.get(sid)?.helpers || [];
 const helperRunning = (h) => !!h.running;
 /** "1m 12s" of work: until it finished, or so far. */
 const helperSpan = (h) => { const ms = (h.finished_ms || Date.now()) - h.started_ms; const m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000); return m ? `${m}m ${sec}s` : `${sec}s`; };
 const helperModel = (h) => (h.model || "").replace(/^claude-/, "").replace(/-\d.*$/, "");
+/** "12k tokens" an agent has used so far; "" until it has used any (a script uses none). */
+const helperTokens = (n) => !(n > 0) ? "" : n < 1000 ? `${n} tokens` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k tokens`;
+/** Running but quiet for minutes (the feed says so): shown amber, with how long since it last did anything. */
+const helperStuck = (h) => helperRunning(h) && !!h.stuck;
+const helperQuiet = (h) => `<span class="bg-quiet">quiet · ${Math.max(1, Math.floor((Date.now() - (h.last_ms || h.started_ms)) / 60000))}m</span>`;
+/** The live dot: pulsing, or amber and still when it's quiet. */
+const liveDot = (h) => `<span class="dot-live ${helperStuck(h) ? "stuck" : ""}"></span>`;
+/** Where an agent's steps end and its reply begins: a finished one's last words are its reply. */
+const helperTail = (h) => { let end = h.items.length; if (!helperRunning(h)) while (end && h.items[end - 1].t === "say") end--; return end; };
+/** A finished agent's reply, into the session's message box (after what's typed there): nothing is sent,
+ *  the text is in the box for you to send. Closes the agent's view. */
+function helperReplyToBox(sid, id) {
+  const h = helpersOf(sid).find((x) => x.id === id);
+  if (!h || helperRunning(h) || h.script) return;
+  const reply = h.items.slice(helperTail(h)).map((x) => x.text).join("\n\n").trim();
+  if (!reply) return;
+  const key = `s:${sid}`, d = draft(key);
+  const text = `From the ${h.kind || "agent"} agent (${h.desc}):\n\n${reply}`;
+  d.text = d.text.trim() ? `${d.text.replace(/\s+$/, "")}\n\n${text}` : text;
+  saveDrafts();
+  helperView = null;
+  renderMain();
+  focusComposer();
+}
 /** The agent whose full view is open in this session's chat area, if it's still in the feed. Opening
  *  another session's chat ends the view: coming back lands in the chat, not the agent. */
 function helperViewed(sid) {
@@ -846,7 +906,8 @@ function helperBlock(sid, h, inTray) {
   // A script: its tag is solid, its name the description it was given (else the command), and it ends "failed" when it did.
   const tag = h.script ? `<span class="bgtag script">SCRIPT</span><b>${esc(h.desc)}</b>` : `<span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b><span class="dim-sep"> · ${esc(h.desc)}</span>`;
   const ended = h.script && h.failed ? `<span class="bad">failed</span>` : "finished";
-  const head = `<button class="bg-head" data-helper="${esc(k)}">${tag}<span class="dim">${model ? ` · ${esc(model)}` : ""} · ${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>` : `${ended} · ${helperSpan(h)}`}</span>${running ? `<span class="dot-live"></span>` : ""}<span class="stx-chev">›</span></button>`;
+  const tok = helperTokens(h.tokens);
+  const head = `<button class="bg-head" data-helper="${esc(k)}">${tag}<span class="dim">${model ? ` · ${esc(model)}` : ""}${tok ? ` · ${tok}` : ""} · ${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}` : `${ended} · ${helperSpan(h)}`}</span>${running ? liveDot(h) : ""}<span class="stx-chev">›</span></button>`;
   if (!(inTray && running)) return `<div class="bg-agent folded" data-key="h:${esc(h.id)}">${head}</div>`;
   // A script's body: its last lines of output (four rows; it follows the newest unless you scrolled up).
   if (h.script) return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${h.output.length ? `<div class="bg-out bg-scroll" data-bg-scroll="${esc(k)}">${h.output.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : `<div class="bg-out dim-out">No output yet.</div>`}</div>`;
@@ -863,38 +924,37 @@ function helperPane(sid, h) {
   const model = helperModel(h);
   const steps = [], tail = [];
   // Finished: its last words are its reply, shown apart from the steps.
-  let end = h.items.length;
-  if (!running) while (end && h.items[end - 1].t === "say") end--;
+  const end = helperTail(h);
   h.items.slice(0, end).forEach((x) => steps.push(x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small" data-key="${esc(x.id || `s:${x.at_ms}`)}">${md(x.text)}</div>`));
   h.items.slice(end).forEach((x) => tail.push(x.text));
-  // The session's other agents, running first then finished newest first: a click hops to that one.
-  const others = helpersOf(sid).filter((x) => x.id !== h.id).sort((a, b) => (helperRunning(b) - helperRunning(a)) || ((b.finished_ms || b.started_ms) - (a.finished_ms || a.started_ms)));
-  const hop = others.length ? `<div class="bg-hop" data-key="hop">${others.map((x) => `<button class="bg-hop-b ${helperRunning(x) ? "live" : ""}" data-helper="${esc(`${sid}|${x.id}`)}">${helperRunning(x) ? `<span class="dot-live"></span>` : ""}<b>${esc(x.kind || "agent")}</b><span class="dim">${esc(x.desc)}</span></button>`).join("")}</div>` : "";
+  const tok = helperTokens(h.tokens);
   const body = helperViewTop(sid, h)
- + `<div class="bg-view-title" data-key="title"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b>${running ? `<span class="dot-live"></span>` : ""}</div>
-    <div class="bg-view-meta" data-key="meta"><span>${esc(h.desc)}</span>${model ? `<span>${esc(model)}</span>` : ""}<span>${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far` : `finished · ${helperSpan(h)}`}</span><span>${h.items.filter((x) => x.t === "step").length + (h.more || 0)} steps</span></div>
+ + `<div class="bg-view-title" data-key="title"><span class="bgtag">BACKGROUND</span><b>${esc(h.kind || "agent")}</b>${running ? liveDot(h) : ""}</div>
+    <div class="bg-view-meta" data-key="meta"><span>${esc(h.desc)}</span>${model ? `<span>${esc(model)}</span>` : ""}${tok ? `<span>${tok}</span>` : ""}<span>${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far` : `finished · ${helperSpan(h)}`}</span>${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${h.items.filter((x) => x.t === "step").length + (h.more || 0)} steps</span></div>
     ${h.more ? `<div class="stx-more dim" data-key="more">${h.more} earlier steps not shown</div>` : ""}
     ${steps.length ? `<div class="stx-steps bg-view-steps" data-key="steps">${steps.join("")}</div>` : `<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`}
     ${tail.length ? `<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its reply</span><div class="msg">${md(tail.join("\n\n"))}</div></div>` : ""}`;
-  const foot = helperViewFoot(running, running ? `Running inside this session's turn. It reports to the session, not to you.` : `What it reported went into the session's next reply.`);
+  // Finished with a reply: a button puts it in the session's message box (only there; you send it).
+  const toBox = !running && tail.length ? `<button class="btn" data-helper-reply="${esc(`${sid}|${h.id}`)}">Put reply in the box</button>` : "";
+  const foot = helperViewFoot(running, running ? `Running inside this session's turn. It reports to the session, not to you.` : `What it reported went into the session's next reply.`, toBox);
   return { body, foot };
 }
 /** The top of a full view: ‹ Back, and chips for the session's other background work (agents and scripts),
  *  running first then finished newest first: a click hops to that one. */
 function helperViewTop(sid, h) {
   const others = helpersOf(sid).filter((x) => x.id !== h.id).sort((a, b) => (helperRunning(b) - helperRunning(a)) || ((b.finished_ms || b.started_ms) - (a.finished_ms || a.started_ms)));
-  const chip = (x) => `<button class="bg-hop-b ${helperRunning(x) ? "live" : ""}" data-helper="${esc(`${sid}|${x.id}`)}">${helperRunning(x) ? `<span class="dot-live"></span>` : ""}${x.script ? `<span class="bgtag script">SCRIPT</span><span class="dim">${esc(x.desc)}</span>` : `<b>${esc(x.kind || "agent")}</b><span class="dim">${esc(x.desc)}</span>`}</button>`;
+  const chip = (x) => `<button class="bg-hop-b ${helperRunning(x) ? "live" : ""}" data-helper="${esc(`${sid}|${x.id}`)}">${helperRunning(x) ? liveDot(x) : ""}${x.script ? `<span class="bgtag script">SCRIPT</span><span class="dim">${esc(x.desc)}</span>` : `<b>${esc(x.kind || "agent")}</b><span class="dim">${esc(x.desc)}</span>`}${helperStuck(x) ? helperQuiet(x) : ""}</button>`;
   const hop = others.length ? `<div class="bg-hop" data-key="hop">${others.map(chip).join("")}</div>` : "";
-  return `<div class="bg-view-head" data-key="head"><button class="bg-back" data-helper-back="1">‹ Back to chat</button>${others.length ? `<span class="dim bg-hop-n">· ${others.length} other${others.length === 1 ? "" : "s"}</span>` : ""}</div>${hop}`;
+  return `<div class="bg-view-head" data-key="head"><button class="bg-back" data-helper-back="1"><span class="bg-back-ch">‹</span>Back to chat</button>${others.length ? `<span class="dim bg-hop-n">· ${others.length} other${others.length === 1 ? "" : "s"}</span>` : ""}</div>${hop}`;
 }
-const helperViewFoot = (live, text) => `<div class="foot bg-view-foot">${live ? `<span class="dot-live"></span>` : ""}<span class="dim">${text}</span><span class="grow"></span><button class="btn primary send" data-helper-back="1">Go to chat</button></div>`;
+const helperViewFoot = (live, text, extra = "") => `<div class="foot bg-view-foot">${live ? `<span class="dot-live"></span>` : ""}<span class="dim">${text}</span><span class="grow"></span>${extra}<button class="btn primary send" data-helper-back="1">Go to chat</button></div>`;
 /** A background script in full: the command it ran and its output at full height (the tail Cue has of
  *  it, following the newest line), and once it ended, how. */
 function scriptPane(sid, h) {
   const running = helperRunning(h);
   const shown = h.output.length, all = h.lines || shown;
-  const body = helperViewTop(sid, h) + `<div class="bg-view-title" data-key="title"><span class="bgtag script">SCRIPT</span><b>${esc(h.desc)}</b>${running ? `<span class="dot-live"></span>` : ""}</div>
-    <div class="bg-view-meta" data-key="meta">${running ? `<span><span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far</span>` : `<span class="${h.failed ? "bad" : ""}">${h.failed ? "failed" : "finished"} · ${helperSpan(h)}</span>`}<span>${all} line${all === 1 ? "" : "s"}${all > shown ? ` · last ${shown} shown` : ""}</span></div>
+  const body = helperViewTop(sid, h) + `<div class="bg-view-title" data-key="title"><span class="bgtag script">SCRIPT</span><b>${esc(h.desc)}</b>${running ? liveDot(h) : ""}</div>
+    <div class="bg-view-meta" data-key="meta">${running ? `<span><span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far</span>` : `<span class="${h.failed ? "bad" : ""}">${h.failed ? "failed" : "finished"} · ${helperSpan(h)}</span>`}${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${all} line${all === 1 ? "" : "s"}${all > shown ? ` · last ${shown} shown` : ""}</span></div>
     ${h.command && h.command !== h.desc ? `<div class="bg-cmd" data-key="cmd">${esc(h.command)}</div>` : ""}
     ${shown ? `<div class="bg-out bg-view-out" data-key="out" data-bg-scroll="${esc(`${sid}|${h.id}|full`)}">${h.output.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : `<div class="dim" data-key="none">${running ? "No output yet." : "It wrote nothing."}</div>`}`;
   const foot = helperViewFoot(running, running ? `Running in the background. Its output goes to the session when it ends.` : h.failed ? `It ended with an error. The session was told, and its output is here.` : `It finished. The session was told, and its output is here.`);
@@ -913,7 +973,15 @@ function helperTray(sid) {
   const doneBtn = done.length ? `<button class="tray-done" data-tray-done="${esc(sid)}" aria-expanded="${!!showDone}">· ${done.length} finished <span class="stx-chev">${showDone ? "⌄" : "›"}</span></button>` : "";
   const na = running.filter((h) => !h.script).length, ns = running.length - na;
   const what = [na ? `${na} background agent${na === 1 ? "" : "s"}` : "", ns ? `${ns} script${ns === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
-  return `<div class="tray"><div class="tray-head"><span class="dot-live"></span><b>${what} running</b>${doneBtn}</div><div class="tray-list" data-tray-scroll="${esc(sid)}">${running.map((h) => helperBlock(sid, h, true)).join("")}${showDone ? done.map((h) => helperBlock(sid, h, false)).join("") : ""}</div></div>`;
+  // Quiet ones (running, nothing for minutes) are counted in amber; with several agents, their tokens are summed.
+  const nq = running.filter(helperStuck).length;
+  const tokens = na > 1 ? helperTokens(running.reduce((n, h) => n + (h.tokens || 0), 0)) : "";
+  // The head folds the tray to itself (per session, until you unfold it); "· N finished" works either way.
+  const folded = trayFolded.has(sid);
+  const fold = (inner) => `<button class="tray-fold" data-tray-fold="${esc(sid)}" aria-expanded="${!folded}">${inner}</button>`;
+  const head = `<div class="tray-head" data-key="tray-head">${fold(`<span class="dot-live ${nq ? "stuck" : ""}"></span><b>${what} running</b>${nq ? `<span class="bg-quiet"> · ${nq} quiet</span>` : ""}${tokens ? `<span class="dim"> · ${tokens}</span>` : ""}`)}${doneBtn}<span class="grow"></span>${fold(`<span class="stx-chev">${folded ? "›" : "⌄"}</span>`)}</div>`;
+  const list = folded && !showDone ? "" : `<div class="tray-list" data-key="tray-list" data-tray-scroll="${esc(sid)}">${folded ? "" : running.map((h) => helperBlock(sid, h, true)).join("")}${showDone ? done.map((h) => helperBlock(sid, h, false)).join("") : ""}</div>`;
+  return `<div class="tray ${folded ? "folded" : ""}" data-key="tray">${head}${list}</div>`;
 }
 /** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
@@ -1520,6 +1588,13 @@ function focusComposer() {
  *  box would clear). A frame later, so whatever takes focus next has done so first. */
 let pointedAt = 0;
 document.addEventListener("pointerdown", () => { pointedAt = Date.now(); }, true);
+// The tray's fold and an agent's "Put reply in the box": theirs alone, so they're handled here.
+document.addEventListener("click", (e) => {
+  const tf = e.target.closest("[data-tray-fold]");
+  if (tf) { const k = tf.dataset.trayFold; trayFolded.has(k) ? trayFolded.delete(k) : trayFolded.add(k); return renderMain(); }
+  const hr = e.target.closest("[data-helper-reply]");
+  if (hr) { const [sid, id] = hr.dataset.helperReply.split("|"); helperReplyToBox(sid, id); }
+});
 function homeFocus() {
   requestAnimationFrame(() => {
     const a = document.activeElement;

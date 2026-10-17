@@ -239,7 +239,7 @@ function liveRows() {
     const it = state.items.find((i) => i.session_id === s.session_id && i.status === "pending");
     const st = it && it.kind !== "waiting" ? "asks" : it || s.state === "waiting" ? "yours" : s.state === "working" ? "working" : s.state;
     const what = s.trust_ms ? "Asking you to trust its folder" : s.compacting_ms && st !== "asks" ? "Compacting…" : st === "asks" ? plain(summary(it)) : st === "working" ? (s.doing || (s.prompt ? `› ${s.prompt}` : "")) : plain(firstLine(lastSaid(s)));
-    return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), project: s.project || projOf(s.cwd), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false };
+    return { sid: s.session_id, harness: s.harness, name: bareName(nameOf(s.session_id, s.project)), project: s.project || projOf(s.cwd), cwd: s.cwd || "", machine: s.machine || "", st, since: it?.created_ms ?? s.since_ms, what, run: st === "working" && !!s.doing, it, quiet: false, bg: s.background || 0 };
   });
   for (const q of state.live || []) {
     rows.push({ sid: q.session_id, harness: q.harness, name: bareName(q.name) || baseName(q.cwd) || "session", project: q.project || projOf(q.cwd), cwd: q.cwd || "", machine: q.machine || "", st: q.status === "busy" ? "working" : "idle", since: q.since_ms, what: "", run: false, quiet: true });
@@ -364,7 +364,7 @@ function svItem(r, { leadHarness = "", crew = null } = {}) {
   const go = r.ghost && act !== "exec" ? "" : ` role="button" data-sv="${act}" data-sid="${esc(r.sid)}"`;
   const viewing = r.sid === (quietOpen || active?.sid) ? "on" : "";
   return `<div class="sx-item ${viewing} ${hot ? "hot" : ""} ${r.quiet ? "quiet" : ""} ${crew ? "lead" : ""} ${leadHarness ? "exec" : ""} ${ho ? "was" : ""}"${go}>
-    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${ho ? "" : svChipState(r)}${r.since && !r.quiet && !ho ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${ho && !crewOf(ho.to) ? newLeadBtn(ho, "btn") : ""}${svActs(r)}</span></div>
+    <div class="sx-iline">${r.harness === leadHarness ? "" : badge(r.harness)}<span class="sx-name">${esc(name)}</span>${r.where ? `<span class="sx-branch">${esc(r.where)}</span>` : ""}${newPill(r.sid)}${viewing ? VIEWING : ""}${leadTag}${ho ? "" : svChipState(r)}${r.bg ? `<span class="bg-pill">${r.bg} bg</span>` : ""}${r.since && !r.quiet && !ho ? `<span class="sx-age">${ago(r.since)}</span>` : ""}<span class="sx-acts">${ho && !crewOf(ho.to) ? newLeadBtn(ho, "btn") : ""}${svActs(r)}</span></div>
     ${lines.join("")}</div>`;
 }
 const svItems = (rs, leadHarness = "") => rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since).map((r) => svItem(r, { leadHarness })).join("");

@@ -84,15 +84,19 @@ async function load() {
 }
 
 /** This session's edits: each file it edited, with its changes now; ones with nothing left uncommitted
- *  listed after. */
+ *  listed after. The session's own files come first; what each of its background agents edited follows,
+ *  under a heading per agent (`by`: "" for the session, else the agent's description). */
 function renderEdits(s, results) {
   const files = [], quiet = [];
   const short = (p) => (s.folder && p.startsWith(s.folder.replace(/\/$/, "") + "/") ? p.slice(s.folder.replace(/\/$/, "").length + 1) : home(p));
   for (const r of results) {
     const f = r.diff && parseDiff(r.diff)[0];
-    if (f) files.push({ ...f, path: short(r.path), isNew: !!r.new }); else quiet.push({ path: short(r.path), note: r.note || "" });
+    if (f) files.push({ ...f, path: short(r.path), isNew: !!r.new, by: r.by || "" }); else quiet.push({ path: short(r.path), note: r.note || "" });
   }
-  show(s, files, [], "", quiet, results.length);
+  const own = files.filter((f) => !f.by), byAgent = new Map();
+  for (const f of files) if (f.by) (byAgent.get(f.by) || byAgent.set(f.by, []).get(f.by)).push(f);
+  for (const [by, fs] of byAgent) { fs[0].heading = `Edited by the ${by} agent`; own.push(...fs); }
+  show(s, own, [], "", quiet, results.length);
 }
 
 /** How many files open by themselves; the rest open when you click them. */
@@ -118,7 +122,7 @@ function show(s, files, bulk, note = "", quiet = [], edited = 0) {
   let opened = 0;
   $("body").innerHTML = why + files.map((x, i) => {
     const open = !x.unread && opened < OPEN_FIRST && ++opened;
-    return `
+    return `${x.heading ? `<div class="by-h">${esc(x.heading)}</div>` : ""}
     <details class="file" data-i="${i}" ${open ? "open" : ""}>
       <summary><span class="path">${esc(x.path)}</span>${x.isNew ? `<span class="tag">new</span>` : ""}${x.unread ? "" : `<span class="n add">+${x.add}</span><span class="n del">−${x.del}</span>`}<span class="chev">›</span></summary>
       <div class="lines">${open ? linesOf(x) : ""}</div>

@@ -105,10 +105,10 @@ impl Hub {
         // Its turn ended with background agents still at work (Claude Code's Agent tool): it's at its
         // prompt, but its answer isn't in yet; Claude Code wakes it when they report. So it waits on
         // them, not on you, and the chat shows them at work. (A message you send goes straight in.)
-        let helpers = if event == "stopped" && driven_by.is_empty() && origin.harness == "claude" && !origin.transcript_path.is_empty() {
-            crate::steps::running_helpers(&origin.transcript_path).len() as u64
+        let (helpers, background) = if event == "stopped" && driven_by.is_empty() && origin.harness == "claude" && !origin.transcript_path.is_empty() {
+            (crate::steps::running_helpers(&origin.transcript_path).len() as u64, crate::steps::running_background(&origin.transcript_path) as u64)
         } else {
-            0
+            (0, 0)
         };
         let driven_by = if helpers > 0 { crate::sessions::helpers_words(helpers) } else { driven_by.to_string() };
         // Another agent drives this session (a helper its lead started, labelled CUE_DRIVEN_BY): its finished turn is for that
@@ -121,6 +121,7 @@ impl Hub {
                 st.sessions.mark(&origin, "agent", None);
                 st.sessions.set_driven_by(&sid, &driven_by);
                 st.sessions.set_helpers(&sid, helpers);
+                st.sessions.set_background(&sid, background);
                 st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
                 if let Some(q) = &unread {
                     st.sessions.below_reply(&sid, q);
@@ -491,14 +492,23 @@ impl Hub {
         let with_helpers = self.st().sessions.with_helpers();
         for o in with_helpers {
             let left = crate::steps::running_helpers(&o.transcript_path).len() as u64;
+            let background = crate::steps::running_background(&o.transcript_path) as u64;
             let sid = o.session_id.clone();
             if left > 0 {
-                if self.st().sessions.set_helpers(&sid, left) {
+                let changed = {
+                    let mut st = self.st();
+                    st.sessions.set_helpers(&sid, left) | st.sessions.set_background(&sid, background)
+                };
+                if changed {
                     self.changed();
                 }
                 continue;
             }
-            self.st().sessions.set_helpers(&sid, 0);
+            {
+                let mut st = self.st();
+                st.sessions.set_helpers(&sid, 0);
+                st.sessions.set_background(&sid, background);
+            }
             self.changed();
             let me = self.shared();
             std::thread::spawn(move || {
@@ -512,6 +522,30 @@ impl Hub {
                     }
                 }
             });
+        }
+        // A background task that failed after running a while (noted by its session's steps feed): on the
+        // session, so the window and the add-on can say so, and a notification like a stuck session's.
+        let failures = crate::steps::take_task_failures();
+        if !failures.is_empty() {
+            let mut told: Vec<(String, String, String, String)> = vec![];
+            {
+                let mut st = self.st();
+                for f in failures {
+                    let Some(s) = st.sessions.all().into_iter().find(|s| s.origin.transcript_path == f.path) else { continue };
+                    let sid = s.origin.session_id.clone();
+                    if st.sessions.set_task_failed(&sid, f.at_ms, &f.desc, &f.line) {
+                        told.push((sid, s.project.clone(), f.desc, f.line));
+                    }
+                }
+            }
+            if !told.is_empty() {
+                self.changed();
+                if crate::config::flag("/notify/decisions") {
+                    for (sid, project, desc, line) in told {
+                        self.notify(&format!("task-failed-{sid}"), &format!("{project}: background task failed"), &(if line.is_empty() { desc } else { line }), "");
+                    }
+                }
+            }
         }
         // Compacting (from Cue, its terminal, or on its own) until its transcript says it's done; given up after 15 minutes.
         let compacted: Vec<(String, bool)> = {

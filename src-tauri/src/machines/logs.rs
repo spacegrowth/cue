@@ -77,6 +77,50 @@ pub fn stop_helper(copy: &str, agent_id: &str) {
     end(&local);
 }
 
+/// A background shell command's output file (Claude Code writes it where the launch text says, on the
+/// machine): for a session whose log is a copy (`copy`), copied the same way to `<copy minus .jsonl>/tasks/<id>.output`,
+/// where the chat tails it. The local path when a copy was started (or already runs); None for a log on this
+/// Mac, or an odd id or path. Starts the copy and returns; never waits on the machine.
+pub fn copy_task(copy: &str, task_id: &str, remote_out: &str) -> Option<PathBuf> {
+    let (m, local) = task_paths(copy, task_id)?;
+    if !remote_out.starts_with('/') {
+        return None;
+    }
+    let key = local.to_string_lossy().to_string();
+    let mut c = crate::locking::lock(copies(), "copies");
+    if c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None))) {
+        return Some(local);
+    }
+    let ch = start(&m, remote_out, &local).ok()?;
+    c.insert(key, ch);
+    Some(local)
+}
+
+/// Stop copying a background command's output (its session heard it ended: the file is complete).
+pub fn stop_task(copy: &str, task_id: &str) {
+    let Some((_, local)) = task_paths(copy, task_id) else { return };
+    end(&local);
+}
+
+/// For a background command of the session whose copy is `copy`: its machine and where its output is
+/// copied to. None when `copy` isn't a copy or the id is odd (see `helper_paths`).
+fn task_paths(copy: &str, task_id: &str) -> Option<(Machine, PathBuf)> {
+    if !valid_id(task_id) {
+        return None;
+    }
+    let copy = Path::new(copy);
+    std::fs::metadata(from_file(copy)).ok()?;
+    let dir = copy.parent()?.file_name()?.to_str()?;
+    let m = machines::list().into_iter().find(|m| dir_name(m) == dir)?;
+    let local = PathBuf::from(copy.to_str()?.strip_suffix(".jsonl")?).join("tasks").join(format!("{task_id}.output"));
+    Some((m, local))
+}
+
+/// A background task's id as Claude Code gives it (an agent's or a command's): letters, digits, - and _.
+fn valid_id(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 /// Whether `path` is Cue's copy of a log from another machine (a note of the machine's path sits beside it).
 pub fn is_copy(path: &str) -> bool {
     std::fs::metadata(from_file(Path::new(path))).is_ok()
@@ -85,7 +129,7 @@ pub fn is_copy(path: &str) -> bool {
 /// For a background agent of the session whose copy is `copy`: its machine, its log there, and where it's
 /// copied to. None when `copy` isn't a copy (no note of the machine's path beside it) or the id is odd.
 fn helper_paths(copy: &str, agent_id: &str) -> Option<(Machine, String, PathBuf)> {
-    if agent_id.is_empty() || !agent_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !valid_id(agent_id) {
         return None;
     }
     let copy = Path::new(copy);
@@ -134,11 +178,11 @@ fn start(m: &Machine, remote: &str, path: &PathBuf) -> Result<Child, String> {
 pub fn stop(m: &Machine, remote: &str) {
     let Some(path) = local_path(m, remote) else { return };
     end(&path);
-    // Its background agents' copies too.
-    let Some(agents) = path.to_str().and_then(|p| p.strip_suffix(".jsonl")).map(|p| format!("{p}/subagents/")) else { return };
+    // Its background agents' and commands' copies too (under its folder).
+    let Some(folder) = path.to_str().and_then(|p| p.strip_suffix(".jsonl")).map(|p| format!("{p}/")) else { return };
     let theirs: Vec<String> = {
         let c = crate::locking::lock(copies(), "copies");
-        c.keys().filter(|k| k.starts_with(&agents)).cloned().collect()
+        c.keys().filter(|k| k.starts_with(&folder)).cloned().collect()
     };
     for k in theirs {
         end(Path::new(&k));
@@ -210,6 +254,10 @@ mod tests {
         assert_eq!(Some(local), crate::logs::steps::helper_path_for_test(copy.to_str().unwrap(), "a0f65"));
         assert!(helper_paths("/nowhere/abc.jsonl", "a0f65").is_none(), "a log on this Mac (no note of a machine's path): nothing to copy");
         assert!(helper_paths("/nowhere/abc.jsonl", "../x").is_none());
+        // A background command's output: beside the agents, under the session's folder; same rules.
+        assert!(task_paths("/nowhere/abc.jsonl", "b1").is_none(), "a log on this Mac: nothing to copy");
+        assert!(task_paths("/nowhere/abc.jsonl", "../x").is_none());
+        assert!(copy_task("/nowhere/abc.jsonl", "b1", "/tmp/x.output").is_none());
     }
 
     #[test]

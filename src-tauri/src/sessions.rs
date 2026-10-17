@@ -34,6 +34,18 @@ pub struct Session {
     /// prompt meanwhile, in "agent" state, and Claude Code wakes it when they report. 0 = none.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub helpers: u64,
+    /// Background tasks it has running: those agents and its shell commands in the background alike
+    /// (the card counts them; `helpers` alone says what it waits on). 0 = none.
+    #[serde(default)]
+    pub background: u64,
+    /// A background task of its that failed after running a while: when (0 = none), what it was, and its
+    /// output's last line. Said once; cleared when the session's state changes.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub task_failed_ms: u64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub task_failed: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub task_failed_line: String,
     /// What you sent while it was busy, until it picks it up (its next turn starts or ends).
     pub queued: Option<Exchange>,
     pub since_ms: u64,
@@ -194,6 +206,10 @@ impl Sessions {
             thread: vec![],
             driven_by: String::new(),
             helpers: 0,
+            background: 0,
+            task_failed_ms: 0,
+            task_failed: String::new(),
+            task_failed_line: String::new(),
             queued: None,
             name: String::new(),
             rename_pending: false,
@@ -250,9 +266,13 @@ impl Sessions {
                 }
                 s.helpers = 0;
             }
+            s.background = 0;
         }
         if s.state != state {
             s.stuck_ms = 0;
+            s.task_failed_ms = 0;
+            s.task_failed.clear();
+            s.task_failed_line.clear();
         }
         if s.state != state {
             s.state = state.to_string();
@@ -718,6 +738,30 @@ impl Sessions {
     }
 
     /// Sessions at their prompt while their background agents work: (id, origin).
+    /// How many background tasks it runs (agents and shell commands). True when it changed.
+    pub fn set_background(&mut self, session_id: &str, n: u64) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.background != n => {
+                s.background = n;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// A background task of its failed after a while (`at_ms`: when): noted on the session. True when new.
+    pub fn set_task_failed(&mut self, session_id: &str, at_ms: u64, desc: &str, line: &str) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.task_failed_ms != at_ms => {
+                s.task_failed_ms = at_ms;
+                s.task_failed = desc.to_string();
+                s.task_failed_line = line.to_string();
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn with_helpers(&self) -> Vec<Origin> {
         self.0.values().filter(|s| s.state == "agent" && s.helpers > 0).map(|s| s.origin.clone()).collect()
     }
