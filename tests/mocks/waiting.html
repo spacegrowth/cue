@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Waiting column mock</title>
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: how much of Waiting you see when it's long. The app is the design preview (../preview.html)
+       with eight more sessions waiting on you; each option is a stylesheet on top of the real one. Pick
+       one above it, or press 1–2. Serve the repo root (python3 -m http.server) and open
+       /tests/mocks/waiting.html (?opt=a|c, ?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--on-bg); font: 13px var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    .opts { flex: none; display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid color-mix(in srgb, var(--on-bg) 14%, transparent); overflow-x: auto; }
+    .opt { flex: 1 1 0; min-width: 200px; text-align: left; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--on-bg) 6%, transparent); }
+    .opt:hover { background: color-mix(in srgb, var(--on-bg) 11%, transparent); }
+    .opt[aria-pressed="true"] { background: var(--sel); color: var(--on-sel); }
+    .opt b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+    .opt span { display: block; font-size: 11.5px; line-height: 1.35; opacity: .8; }
+    .opt kbd { float: right; font: 600 10px var(--mono); opacity: .6; }
+    #app { flex: 1; min-height: 0; width: 100%; border: 0; display: block; }
+  </style>
+</head>
+<body>
+  <div class="opts" id="opts"></div>
+  <iframe id="app" aria-label="Cue"></iframe>
+  <script src="mockapp.js"></script>
+  <script>
+    const OPTS = [
+      ["a", "A · Today", "Waiting stops at its last whole card and scrolls inside itself (a “N more ↓” that fades); Need to decide is a drawer under it, up to half the column."],
+      ["c", "C · Waiting runs on, Need to decide after it", "One list down the column: every Waiting card, then Need to decide's. You scroll the column; its headings stay at the top as you pass them. Header, Active and Sessions stay put."],
+    ];
+    // Each option: CSS over the app's own (markMore's inline max-heights are overridden where a list no longer scrolls).
+    const CSS = {
+      a: "",
+      c: `.col:has(> .sec-waiting) { overflow-y: auto !important; padding-bottom: 16px; }
+          .col:has(> .sec-waiting) > .sec { flex: none !important; max-height: none !important; }
+          .col:has(> .sec-waiting) .sec-body { max-height: none !important; overflow: visible !important; }
+          .col:has(> .sec-waiting) .more-below { display: none !important; }
+          /* Each section's heading stays at the column's top while you're in it. */
+          .col:has(> .sec-waiting) > .sec > .col-head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 4px 0 6px; margin-bottom: -4px; }`,
+    };
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    let opt = OPTS.some((o) => o[0] === q.get("opt")) ? q.get("opt") : "a";
+    const optsEl = document.getElementById("opts");
+    const drawOpts = () => { optsEl.innerHTML = OPTS.map(([k, t, d], n) => `<button class="opt" data-opt="${k}" aria-pressed="${k === opt}"><kbd>${n + 1}</kbd><b>${t}</b><span>${d}</span></button>`).join(""); };
+    drawOpts();
+    let app = null, styleEl = null;
+    function apply() {
+      styleEl.textContent = CSS[opt];
+      app.win.eval("renderMain()");
+      app.win.scrollTo(0, 0);
+    }
+    function pick(k) {
+      opt = k;
+      drawOpts();
+      history.replaceState(null, "", `?${new URLSearchParams({ ...Object.fromEntries(q), opt: k })}`);
+      apply();
+    }
+    optsEl.addEventListener("click", (e) => { const b = e.target.closest("[data-opt]"); if (b) pick(b.dataset.opt); });
+    const keys = (e) => { if (/^[1-2]$/.test(e.key) && !e.target.closest?.("input, textarea")) { e.preventDefault(); e.stopPropagation(); pick(OPTS[+e.key - 1][0]); } };
+    document.addEventListener("keydown", keys);
+
+    // Need to decide open, with three sessions in it.
+    MockApp.load(document.getElementById("app"), `?later=1&parked=sec${q.get("theme") ? `&theme=${q.get("theme")}` : ""}`).then((a) => {
+      app = a;
+      a.doc.addEventListener("keydown", keys, true);
+      styleEl = a.doc.createElement("style");
+      a.doc.head.appendChild(styleEl);
+      // Eight more sessions waiting on you: finished turns and a couple of permissions, oldest first as Cue lists them.
+      a.win.eval(`(() => {
+        const M = 60000, now = Date.now();
+        const turn = state.items.find((i) => i.kind === "waiting"), ask = state.items.find((i) => i.kind === "permission");
+        const more = [
+          ["auth", "auth-service", turn, "Rotated the signing keys and updated the verifier; the old tokens fail as expected."],
+          ["docs", "docs-site", turn, "The changelog page builds again; the broken anchor was a renamed heading."],
+          ["etl", "etl-jobs", ask, ""],
+          ["ui", "design-tokens", turn, "Dark mode colors now come from the tokens; three components still hard-code theirs."],
+          ["bench", "benchmarks", turn, "p95 went from 41 ms to 29 ms after the cache change. Want the flame graphs?"],
+          ["infra", "infra", ask, ""],
+          ["mail", "mailer", turn, "Bounces are parsed now; soft bounces retry twice before the address is paused."],
+          ["search", "search-index", turn, "Reindexed with the new analyzer; synonyms work for the product names you listed."],
+        ];
+        more.forEach(([sid, project, base, msg], n) => {
+          const s0 = state.sessions[0];
+          state.sessions.push({ ...s0, session_id: sid, project, name: "", cwd: "/Users/me/code/" + project, state: "waiting", since_ms: now - (40 + n) * M, machine: "", starred_ms: 0 });
+          const it = { ...base, id: "w" + sid, session_id: sid, project, created_ms: now - (40 + n) * M, machine: "" };
+          if (base.kind === "waiting") it.message = msg;
+          state.items.push(it);
+        });
+        // Two of them parked in Need to decide, as Later on their card does.
+        for (const sid of ["bench", "mail"]) setParked(sid, true);
+        renderMain();
+      })()`);
+      apply();
+    });
+  </script>
+</body>
+</html>

@@ -75,8 +75,9 @@ impl Hub {
             return;
         }
         // A prompt showing in its terminal that never reached Cue (a sandboxed command's network access).
-        if event == "terminal_ask" {
-            self.terminal_ask(origin, message, true);
+        // ("answer_lost": Cue's own answer never reached it, so it's asking there for sure.)
+        if event == "terminal_ask" || event == "answer_lost" {
+            self.terminal_ask_with(origin, message, true, None, event == "answer_lost");
             return;
         }
         // Anything else from the session: it got past such a prompt.

@@ -77,6 +77,11 @@ pub fn stop_helper(copy: &str, agent_id: &str) {
     end(&local);
 }
 
+/// Whether `path` is Cue's copy of a log from another machine (a note of the machine's path sits beside it).
+pub fn is_copy(path: &str) -> bool {
+    std::fs::metadata(from_file(Path::new(path))).is_ok()
+}
+
 /// For a background agent of the session whose copy is `copy`: its machine, its log there, and where it's
 /// copied to. None when `copy` isn't a copy (no note of the machine's path beside it) or the id is odd.
 fn helper_paths(copy: &str, agent_id: &str) -> Option<(Machine, String, PathBuf)> {

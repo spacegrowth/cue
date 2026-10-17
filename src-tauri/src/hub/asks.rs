@@ -4,6 +4,10 @@
 use super::*;
 use super::history::{first_line, push_history};
 
+/// No "asking in its terminal" card for a session answered in Cue this recently: Claude Code's
+/// permission notice (about six seconds after the prompt appears) plus the hook's way here.
+const ANSWERED_HERE_MS: u64 = 10_000;
+
 impl Hub {
     /// A blocking request arrived. Returns its id and the receiver the connection waits on.
     pub fn add_ask(
@@ -57,12 +61,14 @@ impl Hub {
     /// the terminal, naming the tool call it's about (the newest one still without a result). It goes
     /// once that call gets its result, or the session reports anything else.
     pub(super) fn terminal_ask(&self, origin: Origin, message: String, notify: bool) {
-        self.terminal_ask_with(origin, message, notify, None)
+        self.terminal_ask_with(origin, message, notify, None, false)
     }
 
     /// The same, with the dialog on its screen when Cue can read it (`dialog`, or looked up now): the card
     /// then shows its title and offers its choices as buttons, instead of only sending you to the terminal.
-    pub(super) fn terminal_ask_with(&self, origin: Origin, message: String, notify: bool, dialog: Option<crate::dialog::Dialog>) {
+    /// `sure`: the prompt is known to be there (Cue's own answer never reached the agent), so it's a card
+    /// even when it names the call you just answered.
+    pub(super) fn terminal_ask_with(&self, origin: Origin, message: String, notify: bool, dialog: Option<crate::dialog::Dialog>, sure: bool) {
         let sid = origin.session_id.clone();
         let path = origin.transcript_path.clone();
         let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
@@ -76,6 +82,19 @@ impl Hub {
             let mut st = self.st();
             // Cue already shows what it's asking.
             if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
+                return;
+            }
+            // The call you allowed in Cue moments ago, still running: Claude Code's "needs your permission"
+            // notice comes about six seconds after a prompt appears whether or not Cue's hook holds it,
+            // so an answer given just before lands first and the notice then names that very call. Not
+            // a card. (Another call's prompt, or a dialog on its screen, still is.)
+            let now = now_ms();
+            let same_call = |i: &Item| match (&call, &i.tool_use_id) {
+                (Some((tu, _, _)), Some(id)) => tu == id,
+                (Some((_, name, input)), None) => !name.is_empty() && name == &i.tool_name && input == &i.tool_input,
+                _ => false,
+            };
+            if !sure && dialog.is_none() && st.history.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid && i.resolved_ms.is_some_and(|r| now.saturating_sub(r) < ANSWERED_HERE_MS) && same_call(i)) {
                 return;
             }
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
@@ -398,6 +417,38 @@ mod tests {
         hub.event(origin, "stopped", "Done.".into(), vec![], "");
         let kinds: Vec<String> = hub.pending().iter().map(|i| i.kind.clone()).collect();
         assert_eq!(kinds, ["waiting"]);
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_late_permission_notice_for_a_call_just_allowed_here_isnt_a_card() {
+        let dir = std::env::temp_dir().join(format!("cue-late-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let path = dir.join("t.jsonl");
+        let call = |id: &str, cmd: &str| format!(r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"{id}","name":"Bash","input":{{"command":"{cmd}"}}}}]}}}}"#) + "\n";
+        std::fs::write(&path, call("tu1", "sleep 20")).unwrap();
+        let origin = Origin { session_id: "s1".into(), harness: "claude".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+        let hub = Hub::new(None);
+        let (id, _rx) = hub.add_ask(origin.clone(), "permission".into(), "Bash".into(), json!({"command": "sleep 20"}), json!([]), vec![]);
+        hub.finish(&id, "answered", "allowed");
+        // Claude Code's "needs your permission" notice, six seconds after the prompt appeared: after
+        // your answer, naming the call you allowed (still running). Not a card.
+        hub.event(origin.clone(), "terminal_ask", "Claude needs your permission to use Bash".into(), vec![], "");
+        assert!(hub.pending().iter().all(|i| i.kind != "terminal"), "it names the call you allowed: no card");
+        // Cue's own answer that never reached it: a card, the same call or not.
+        hub.event(origin.clone(), "answer_lost", "Your answer from Cue didn't reach it".into(), vec![], "");
+        assert_eq!(hub.pending().iter().filter(|i| i.kind == "terminal").count(), 1);
+        hub.event(origin.clone(), "active", "go on".into(), vec![], "");
+        assert!(hub.pending().iter().all(|i| i.kind != "terminal"));
+        // Another call's prompt right after (a sandboxed command's network access): a card.
+        std::io::Write::write_all(&mut std::fs::OpenOptions::new().append(true).open(&path).unwrap(), call("tu2", "curl -sI https://example.com").as_bytes()).unwrap();
+        hub.event(origin, "terminal_ask", "A sandboxed command needs network access".into(), vec![], "");
+        let items = hub.pending();
+        assert_eq!(items.iter().filter(|i| i.kind == "terminal").map(|i| i.tool_use_id.clone()).collect::<Vec<_>>(), [Some("tu2".to_string())]);
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

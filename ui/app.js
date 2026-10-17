@@ -303,10 +303,13 @@ function bindMain() {
     if (tf) { const k = tf.dataset.turnFold; turnFold.set(k, tf.dataset.open !== "1"); renderMain(); return wantDetails(k.split("|")[0]); }
     const ta = t.closest("[data-turn-all]");
     if (ta) { const k = ta.dataset.turnAll; turnAll.has(k) ? turnAll.delete(k) : turnAll.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
+    const cc = t.closest("[data-copy-code]");
+    if (cc) return copyCode(cc);
     const td = t.closest("[data-tray-done]");
     if (td) { const k = td.dataset.trayDone; trayDone.has(k) ? trayDone.delete(k) : trayDone.add(k); return renderMain(); }
     const hb = t.closest("[data-helper]");
-    if (hb) { const k = hb.dataset.helper; helperOpen.has(k) ? helperOpen.delete(k) : helperOpen.add(k); return renderMain(); }
+    if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
+    if (t.closest("[data-helper-back]")) { helperView = null; return renderMain(); }
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const qp = t.closest("[data-quick]");
@@ -671,6 +674,8 @@ function bindMain() {
       return renderMain();
     }
     if (e.key === "Escape" && btwFor) { btwFor = null; return renderMain(); }
+    // Esc in a background agent's full view: back to the chat.
+    if (e.key === "Escape" && !sheet && !lightbox && helperView && helperViewed(helperView.sid)) { helperView = null; return renderMain(); }
     if (e.key === "Escape") {
       // In History, Esc just closes the open row.
       if (view === "history") { histOpen = null; return renderMain(); }

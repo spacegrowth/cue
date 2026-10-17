@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Floating terminal mock</title>
+  <link rel="stylesheet" href="../../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: the terminal as a floater, like the Mac's picture in picture. Drag it by its bar; let go and it
+       springs to the right, top or bottom corner. Hidden, it tucks into the right edge with a tab still
+       showing (a live dot while something runs, ✓ / ✗ when it ends), as picture in picture does: drag it
+       past the edge, or Hide, ⌃`, or the terminal button by the usage meter. The tab, or the button,
+       brings it back. Its left corner resizes it. The app is the design preview (../preview.html?usage=meter).
+       Serve the repo root (python3 -m http.server) and open /tests/mocks/pip.html (?open=1, ?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); overflow: hidden; font: 13px var(--sans); }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+    body.moving #app { pointer-events: none; }
+    body.moving, body.moving * { user-select: none; }
+
+    .pip { position: fixed; z-index: 10; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); border-radius: 14px;
+      box-shadow: 0 26px 60px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      transition: left .42s cubic-bezier(.2, .9, .3, 1.12), top .42s cubic-bezier(.2, .9, .3, 1.12), transform .2s, box-shadow .2s; }
+    .pip[hidden] { display: none; }
+    .pip.drag { transition: none; transform: scale(1.015); box-shadow: 0 36px 80px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08); cursor: grabbing; }
+    .pip.sizing { transition: none; }
+    .pip .tbar { height: 34px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; }
+    .pip-hide { width: 26px; height: 24px; border-radius: 6px; opacity: .75; flex: none; font-size: 15px; }
+    .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+    .tslot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+    /* Its free corner (the one away from the edge it's snapped to) resizes it. */
+    .grip { position: absolute; left: -5px; width: 18px; height: 18px; touch-action: none; }
+    .pip[data-at="br"] .grip { top: -5px; cursor: nwse-resize; }
+    .pip[data-at="tr"] .grip { bottom: -5px; cursor: nesw-resize; }
+    /* Tucked away: all but a tab past the right edge; the tab, on its left, brings it back. */
+    .pip-tab { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 64px; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: 10px 0 0 10px; font-size: 13px; opacity: .9; }
+    .pip.tucked .pip-tab { display: flex; }
+    .pip.tucked .tbar, .pip.tucked .tslot, .pip.tucked .grip { visibility: hidden; }
+    .pip.tucked { cursor: pointer; }
+    .pip.tucked:hover { transform: translateX(-4px); }
+    .pip-live { font: 700 10px var(--sans); line-height: 1; }
+    .pip-live.run { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); animation: pulse 1.2s ease-in-out infinite; }
+    .pip-live.ok { color: var(--sel); } .pip-live.bad { color: #E8907F; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    @media (prefers-reduced-motion: reduce) { .pip { transition: none; } .pip-live.run { animation: none; } }
+  </style>
+</head>
+<body>
+  <iframe id="app" aria-label="Cue"></iframe>
+  <section class="pip" id="pip" aria-label="Terminal" data-at="br" hidden>
+    <div class="tbar" id="bar">
+      <div class="ttabs" role="tablist" id="tabs"></div>
+      <button class="pip-hide" id="hide" aria-label="Tuck it away (⌃`)">⇥</button>
+    </div>
+    <div class="tslot" id="slot"></div>
+    <div class="grip" id="grip" role="separator" aria-label="Resize"></div>
+    <button class="pip-tab" id="tab" aria-label="Bring the terminal back"><span aria-hidden="true">‹</span><span class="pip-live" id="tabLive"></span></button>
+  </section>
+  <script src="../../ui/vendor/xterm/xterm.js"></script>
+  <script src="../../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="fakeshell.js"></script>
+  <script src="termtabs.js"></script>
+  <script src="mockapp.js"></script>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    const frame = document.getElementById("app"), pip = document.getElementById("pip"), bar = document.getElementById("bar"), grip = document.getElementById("grip");
+    const { HOME, FOLDERS } = FakeShell;
+    const EDGE = 16, TAB = 22;   // its gap from the window's edges; how much of it shows tucked away
+    let app = null, header = () => {};
+    // Where it is: a right corner (tr / br), its size, and whether it's tucked into the edge. Kept for next time.
+    let at = { corner: "br", w: 560, h: 340, tucked: false };
+    try { Object.assign(at, JSON.parse(localStorage.getItem("mock.pip") || "{}")); } catch {}
+    const save = () => { try { localStorage.setItem("mock.pip", JSON.stringify(at)); } catch {} };
+    let ended = null;   // what finished while it was tucked away: { ok }
+
+    const tt = new TermTabs(document.getElementById("tabs"), document.getElementById("slot"), {
+      fontSize: 12, onKey: TermTabs.keys(() => tuck(true)),
+      onAdd: (btn) => TermTabs.menu(btn, FOLDERS, (cwd) => tt.add("shell", { cwd })),
+      onEmpty: () => { pip.hidden = true; mark(); },
+      onDone: (t, what, code) => { if (at.tucked || pip.hidden) ended = { ok: !code }; },
+      onChange: () => mark(),
+    });
+
+    // The room it moves in: under the app's header, inside the window.
+    const room = () => {
+      const top = app?.doc.querySelector(".top")?.getBoundingClientRect().bottom ?? 60;
+      return { top: top + 12, bottom: innerHeight - EDGE, right: innerWidth - EDGE };
+    };
+    const clampSize = () => {
+      const r = room();
+      at.w = Math.max(360, Math.min(at.w, innerWidth * 0.8));
+      at.h = Math.max(180, Math.min(at.h, r.bottom - r.top));
+    };
+    function place() {
+      clampSize();
+      const r = room();
+      pip.dataset.at = at.corner;
+      pip.classList.toggle("tucked", at.tucked);
+      Object.assign(pip.style, {
+        width: `${at.w}px`, height: `${at.h}px`,
+        left: `${at.tucked ? innerWidth - TAB : r.right - at.w}px`,
+        top: `${at.corner === "tr" ? r.top : r.bottom - at.h}px`,
+      });
+      tt.fit();
+    }
+    // Tucked away, or back out at its corner.
+    function tuck(t) {
+      at.tucked = t;
+      if (!t) ended = null;
+      save();
+      place();
+      if (t) frame.contentWindow?.focus(); else tt.current()?.term.focus();
+      mark();
+    }
+    // The button by the usage meter: out (pressed); a dot while anything runs; ✓ / ✗ for what ended while it was away.
+    function mark() {
+      const out = !pip.hidden && !at.tucked, running = tt.busy().length;
+      const live = running ? "run" : ended ? (ended.ok ? "ok" : "bad") : "";
+      header({ pressed: out, live: out ? "" : live });
+      const l = document.getElementById("tabLive");
+      l.className = `pip-live ${live}`;
+      l.textContent = live === "ok" ? "✓" : live === "bad" ? "✗" : "";
+    }
+    function toggle() {
+      if (pip.hidden) { pip.hidden = false; at.tucked = false; if (!tt.tabs.length) tt.add("shell", { cwd: HOME }); place(); tt.show(tt.active); return mark(); }
+      tuck(!at.tucked);
+    }
+
+    // Dragging by its bar (a press that doesn't move is a click on what's under it: a tab, +, ⇥).
+    // Let go past the right edge (a third of it beyond) and it tucks away; else it springs to the nearer right corner.
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest(".ttab-x")) return;
+      const x0 = e.clientX, y0 = e.clientY, r0 = pip.getBoundingClientRect();
+      let moved = false;
+      // From the press on, the app's frame lets the pointer through, so the page sees every move. (No
+      // pointer capture: a press that doesn't move must stay a click on the tab, + or ⇥ under it.)
+      document.body.classList.add("moving");
+      const move = (m) => {
+        if (!moved && Math.hypot(m.clientX - x0, m.clientY - y0) < 5) return;
+        if (!moved) { moved = true; pip.classList.add("drag"); }
+        pip.style.left = `${r0.left + m.clientX - x0}px`;
+        pip.style.top = `${r0.top + m.clientY - y0}px`;
+      };
+      const up = () => {
+        removeEventListener("pointermove", move);
+        document.body.classList.remove("moving");
+        if (!moved) return;
+        // (the click that ends a drag picks nothing)
+        addEventListener("click", (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
+        pip.classList.remove("drag");
+        const b = pip.getBoundingClientRect(), r = room();
+        if (b.right > innerWidth + b.width / 3) return tuck(true);
+        at.corner = b.top + b.height / 2 < (r.top + r.bottom) / 2 ? "tr" : "br";
+        save();
+        place();
+      };
+      addEventListener("pointermove", move);
+      addEventListener("pointerup", up, { once: true });
+    });
+    // Resizing from its free corner: it stays snapped to its edge, so it grows left (and away from its corner).
+    grip.addEventListener("pointerdown", (e) => {
+      grip.setPointerCapture(e.pointerId);
+      pip.classList.add("sizing");
+      document.body.classList.add("moving");
+      const x0 = e.clientX, y0 = e.clientY, w0 = at.w, h0 = at.h;
+      const move = (m) => { at.w = w0 + x0 - m.clientX; at.h = h0 + (at.corner === "br" ? y0 - m.clientY : m.clientY - y0); place(); };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", () => { grip.removeEventListener("pointermove", move); pip.classList.remove("sizing"); document.body.classList.remove("moving"); save(); }, { once: true });
+    });
+    document.getElementById("hide").onclick = () => tuck(true);
+    document.getElementById("tab").onclick = () => tuck(false);
+    pip.addEventListener("transitionend", (e) => { if (e.propertyName === "left" || e.propertyName === "top") tt.fit(); });
+    addEventListener("resize", () => !pip.hidden && place());
+
+    MockApp.load(frame, `?usage=meter${q.get("theme") ? `&theme=${q.get("theme")}` : ""}`).then((a) => {
+      app = a;
+      header = MockApp.headerButton(a, toggle, { after: "usage" });
+      MockApp.hotkey(a, toggle);
+      if (q.has("open")) { at.tucked = false; toggle(); }
+      mark();
+    });
+  </script>
+</body>
+</html>

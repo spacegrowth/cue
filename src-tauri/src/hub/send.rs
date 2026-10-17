@@ -13,7 +13,7 @@ impl Hub {
     fn settle_typed(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> bool {
         if text.starts_with('/') {
             if let Some(d) = crate::focus::dialog_on(origin) {
-                self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
+                self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
                 return true;
             }
         }
@@ -100,7 +100,7 @@ impl Hub {
                 if !name.is_empty() {
                     if let Some(d) = crate::focus::dialog_on(&origin) {
                         me.st().sessions.set_pending(&sid, false);
-                        me.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d));
+                        me.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
                         return;
                     }
                 }

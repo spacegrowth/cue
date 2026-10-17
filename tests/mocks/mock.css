@@ -1,0 +1,37 @@
+/* Shared by the terminal mocks: the Mac app's colors (ui/style.css), the tab strip, the + menu. */
+:root {
+  --bg: #3F4A22; --on-bg: #FFFFFF; --on-bg-muted: #CDD3B4; --panel: #FFFFFF; --panel-2: #F1F3EA; --line: #DCE0CB;
+  --ink: #1E2410; --muted: #5A6340; --sel: #D2DE96; --on-sel: #1E2410; --slab: #1E2410; --on-slab: #ECEFDF;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818; --line: #343B24;
+  --ink: #E9ECDF; --muted: #A8AF90; --sel: #B5C27A; --on-sel: #151A08; --slab: #0D0F08; --on-slab: #E0E5CC; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818; --line: #343B24;
+  --ink: #E9ECDF; --muted: #A8AF90; --sel: #B5C27A; --on-sel: #151A08; --slab: #0D0F08; --on-slab: #E0E5CC; color-scheme: dark; }
+.tbar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 6px 0 8px; }
+.ttabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.ttab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); opacity: .65; white-space: nowrap; flex: none; }
+.ttab:hover { opacity: .9; background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
+.ttab[aria-selected="true"] { opacity: 1; background: color-mix(in srgb, var(--on-slab) 14%, transparent); }
+.ttab.shell .ttab-name { font: 11.5px var(--mono); }
+.ttab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sel); }
+.ttab-x { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; font-size: 13px; line-height: 1; opacity: .6; margin-right: -4px; }
+.ttab-x:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 16%, transparent); }
+.ttab-add { width: 24px; height: 24px; border-radius: 6px; font-size: 16px; opacity: .7; flex: none; }
+.ttab-add:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+.tclose { height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); opacity: .75; flex: none; }
+.tclose:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+.tlast { font: 11.5px var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.term-host { width: 100%; height: 100%; }
+.term-host[hidden] { display: none; }
+.term-host .xterm-viewport { background: var(--slab) !important; }
+button:focus-visible, [role="button"]:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
+/* The + menu: where a new shell starts. */
+.tmenu { position: fixed; z-index: 50; min-width: 220px; padding: 4px; border-radius: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.5); font: 13px var(--sans); }
+.tmenu-h { padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.tmenu button { display: flex; width: 100%; gap: 12px; justify-content: space-between; align-items: baseline; padding: 7px 10px; border-radius: 6px; text-align: left; font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.tmenu button:hover, .tmenu button:focus-visible { background: var(--panel-2); outline: 0; }
+.tmenu-p { font: 11.5px var(--mono); color: var(--muted); }

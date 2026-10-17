@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Corner terminal mock</title>
+  <link rel="stylesheet" href="../../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: the terminal in the board's bottom-right corner, over the lower half of its two right columns
+       (Waiting and Sessions); Active stays clear, so a session's chat and a shell sit side by side.
+       ⤢ grows it to the columns' full height and back. The terminal button in the header (or ⌃`) shows
+       and hides it. The app is the design preview (../preview.html), unchanged.
+       Serve the repo root (python3 -m http.server) and open /tests/mocks/corner.html (?open=1, ?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); overflow: hidden; font: 13px var(--sans); }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+    .corner { position: fixed; z-index: 5; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); border-radius: 14px; box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.12); transition: top .22s cubic-bezier(.2, .8, .2, 1); }
+    .corner[hidden] { display: none; }
+    .corner .tbar { height: 34px; padding: 0 6px 0 8px; }
+    .grow-btn { width: 26px; height: 24px; border-radius: 6px; opacity: .75; font-size: 14px; flex: none; }
+    .grow-btn:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+    .tslot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+    @media (prefers-reduced-motion: reduce) { .corner { transition: none; } }
+  </style>
+</head>
+<body>
+  <iframe id="app" aria-label="Cue"></iframe>
+  <section class="corner" id="corner" aria-label="Terminal" hidden>
+    <div class="tbar">
+      <div class="ttabs" role="tablist" id="tabs"></div>
+      <button class="grow-btn" id="grow" aria-label="Full height">⤢</button>
+      <button class="tclose" id="hide" aria-label="Hide the terminal (⌃`)">Hide</button>
+    </div>
+    <div class="tslot" id="slot"></div>
+  </section>
+  <script src="../../ui/vendor/xterm/xterm.js"></script>
+  <script src="../../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="fakeshell.js"></script>
+  <script src="termtabs.js"></script>
+  <script src="mockapp.js"></script>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    const frame = document.getElementById("app"), corner = document.getElementById("corner"), growBtn = document.getElementById("grow");
+    const { HOME, FOLDERS } = FakeShell;
+    let app = null, full = false, pressed = () => {};
+    const tt = new TermTabs(document.getElementById("tabs"), document.getElementById("slot"), {
+      fontSize: 12, onKey: TermTabs.keys(() => show(false)),
+      onAdd: (btn) => TermTabs.menu(btn, FOLDERS, (cwd) => tt.add("shell", { cwd })),
+      onEmpty: () => show(false),
+    });
+
+    // Over Waiting and Sessions: from the left of Waiting to the right of Sessions, the lower half of the
+    // board (or all of it, grown), its foot on the board's.
+    function place() {
+      const d = app?.doc, board = d?.querySelector(".board"), cols = d ? [...d.querySelectorAll(".board > .col")] : [];
+      if (!board || cols.length < 3) return;
+      const b = board.getBoundingClientRect(), l = cols[1].getBoundingClientRect(), r = cols[2].getBoundingClientRect();
+      Object.assign(corner.style, { left: `${l.left}px`, width: `${r.right - l.left}px`, top: `${full ? b.top : b.top + b.height / 2}px`, height: "", bottom: `${innerHeight - b.bottom}px` });
+      tt.fit();
+    }
+    function show(open) {
+      corner.hidden = !open;
+      if (open) {
+        if (!tt.tabs.length) tt.add("shell", { cwd: HOME });
+        place();
+        tt.show(tt.active);
+      } else frame.contentWindow?.focus();
+      pressed({ pressed: open });
+    }
+    growBtn.onclick = () => {
+      full = !full;
+      growBtn.textContent = full ? "⤡" : "⤢";
+      growBtn.setAttribute("aria-label", full ? "Half height" : "Full height");
+      place();
+      tt.current()?.term.focus();
+    };
+    corner.addEventListener("transitionend", () => tt.fit());
+    document.getElementById("hide").onclick = () => show(false);
+    addEventListener("resize", place);
+
+    MockApp.load(frame, q.get("theme") ? `?theme=${q.get("theme")}` : "").then((a) => {
+      app = a;
+      const { doc } = a;
+      pressed = MockApp.headerButton(a, () => show(corner.hidden));
+      MockApp.hotkey(a, () => show(corner.hidden));
+      // Only on the Board (the columns it sits on): out of sight in Sessions and History, back with the Board.
+      MockApp.keep(doc, () => {
+        if (corner.hidden) return;
+        const onBoard = !!doc.querySelector(".board");
+        corner.style.visibility = onBoard ? "" : "hidden";
+        if (onBoard) place();
+      });
+      // The board's columns move when the window or the app's layout does: follow them.
+      new ResizeObserver(() => { if (!corner.hidden) place(); }).observe(doc.body);
+      if (q.has("open")) show(true);
+    });
+  </script>
+</body>
+</html>

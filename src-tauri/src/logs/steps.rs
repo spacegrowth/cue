@@ -56,6 +56,11 @@ pub enum Item {
         tool: String,
         #[serde(skip)]
         past: &'static str,
+        /// Bash: the command in full and the one-line description the session gave it (a background script's name).
+        #[serde(skip)]
+        command: String,
+        #[serde(skip)]
+        desc: String,
     },
 }
 
@@ -116,6 +121,8 @@ struct Feed {
 /// terminal of its own, and writes its log to `<session folder>/subagents/agent-<id>.jsonl`. Nothing
 /// can be sent to it from outside; it reports to its session. Here so the chat can show it at work
 /// (its steps, live) under the step that started it, and the session can be marked as waiting on it.
+/// Also a shell command run in the background (`script`): the same place and the same ending (Claude
+/// Code's task notice), but its body is the tail of its output file, not steps.
 #[derive(Serialize)]
 pub struct Helper {
     /// Claude Code's agent id.
@@ -135,12 +142,26 @@ pub struct Helper {
     more: usize,
     #[serde(skip)]
     feed: Option<Box<Feed>>,
+    /// A background shell command, not an agent: `command` ran, `output` is the tail of what it wrote
+    /// (`lines` in all), `failed` once its notice said so.
+    script: bool,
+    command: String,
+    output: Vec<String>,
+    lines: usize,
+    failed: bool,
+    #[serde(skip)]
+    out_path: Option<std::path::PathBuf>,
+    #[serde(skip)]
+    out_len: u64,
 }
 
 /// A helper's steps shown in the chat: the newest of them.
 const MAX_HELPER_ITEMS: usize = 80;
 /// Helpers remembered per session (finished ones go first, oldest first).
 const MAX_HELPERS: usize = 12;
+/// A background script's output shown: its last lines, read from the end of its file.
+const MAX_SCRIPT_LINES: usize = 200;
+const SCRIPT_TAIL_BYTES: u64 = 256 * 1024;
 
 impl Helper {
     /// Running: not reported finished, and its log doesn't end on an answer.
@@ -150,6 +171,9 @@ impl Helper {
 
     /// Read what its log added; true when its steps changed.
     fn catch_up(&mut self) -> bool {
+        if self.script {
+            return self.read_output();
+        }
         let Some(f) = self.feed.as_mut() else { return false };
         let before = f.version;
         f.catch_up();
@@ -167,6 +191,34 @@ impl Helper {
         if self.kind.is_empty() {
             self.kind = helper_kind(std::path::Path::new(&f.path));
         }
+        true
+    }
+}
+
+impl Helper {
+    /// A script's output file grew (or shrank): its tail again. True when what's shown changed.
+    fn read_output(&mut self) -> bool {
+        let Some(path) = self.out_path.as_ref() else { return false };
+        let Ok(mut file) = std::fs::File::open(path) else { return false };
+        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        if len == self.out_len {
+            return false;
+        }
+        self.out_len = len;
+        let from = len.saturating_sub(SCRIPT_TAIL_BYTES);
+        if file.seek(SeekFrom::Start(from)).is_err() {
+            return false;
+        }
+        let mut buf = Vec::new();
+        if file.read_to_end(&mut buf).is_err() {
+            return false;
+        }
+        let text = String::from_utf8_lossy(&buf);
+        // Cut mid-file: the first partial line goes.
+        let text = if from > 0 { text.split_once('\n').map(|(_, r)| r).unwrap_or("") } else { &text };
+        let all: Vec<&str> = text.lines().collect();
+        self.lines = all.len() + usize::from(from > 0);
+        self.output = all.iter().rev().take(MAX_SCRIPT_LINES).rev().map(|l| cut(&strip_ansi(l), LINE_CHARS)).collect();
         true
     }
 }
@@ -225,7 +277,7 @@ pub fn running_helpers(path: &str) -> Vec<String> {
     let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
     feed.used = Instant::now();
     feed.catch_up();
-    feed.helpers.iter().filter(|h| h.running()).map(|h| h.desc.clone()).collect()
+    feed.helpers.iter().filter(|h| h.running() && !h.script).map(|h| h.desc.clone()).collect()
 }
 
 /// How full the session's context is (the latest reply's tokens, as a share of the model's window), 0–100.
@@ -339,8 +391,28 @@ impl Feed {
         let path = helper_path(&self.path, &id);
         let kind = path.as_ref().map(|p| helper_kind(p)).unwrap_or_default();
         let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
-        self.helpers.push(Helper { id, step: step.to_string(), desc: s("description"), kind, model: s("resolvedModel"), started_ms: at_ms, finished_ms: 0, items: Vec::new(), more: 0, feed });
-        // The oldest finished ones go first; what's running is never dropped.
+        self.helpers.push(Helper { id, step: step.to_string(), desc: s("description"), kind, model: s("resolvedModel"), started_ms: at_ms, finished_ms: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, out_path: None, out_len: 0 });
+        self.trim_helpers();
+    }
+
+    /// A shell command went to the background (Claude Code's Bash tool, run in the background or moved
+    /// there on a timeout): remember it, with its output file from the launch text. Named by the
+    /// description the session gave it, else the command.
+    fn add_script(&mut self, step: &str, desc: &str, subject: &str, command: &str, launch: &str, extra: &Value, at_ms: u64) {
+        let id = extra.get("backgroundTaskId").and_then(Value::as_str).unwrap_or("").to_string();
+        if id.is_empty() || self.helpers.iter().any(|h| h.id == id) {
+            return;
+        }
+        let out_path = launch.split("Output is being written to: ").nth(1).and_then(|r| r.split_whitespace().next()).map(|p| std::path::PathBuf::from(p.trim_end_matches('.')));
+        // A session on another machine: its output file is there; nothing to read here (its end still shows).
+        let out_path = out_path.filter(|_| !crate::machines::logs::is_copy(&self.path));
+        let desc = if desc.trim().is_empty() { subject.to_string() } else { desc.trim().to_string() };
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, out_path, out_len: 0 });
+        self.trim_helpers();
+    }
+
+    /// The oldest finished ones go first; what's running is never dropped.
+    fn trim_helpers(&mut self) {
         while self.helpers.len() > MAX_HELPERS {
             match self.helpers.iter().position(|h| !h.running()) {
                 Some(i) => { self.helpers.remove(i); }
@@ -356,6 +428,11 @@ impl Feed {
         if let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) {
             if status != "running" {
                 h.finished_ms = at_ms;
+                if h.script {
+                    h.failed = status != "completed";
+                    h.read_output();   // its last lines, written before the notice
+                    return;
+                }
                 // Copied from another machine: its log is complete once it reports (a moment for its last lines).
                 let (copy, id) = (self.path.clone(), h.id.clone());
                 std::thread::spawn(move || {
@@ -599,7 +676,7 @@ impl Feed {
         let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else { return false };
         for turn in self.turns.iter_mut().rev().take(3) {
             for item in turn.items.iter_mut().rev() {
-                if let Item::Step { id: sid, tool, verb, past, result, bad, done, .. } = item {
+                if let Item::Step { id: sid, tool, verb, past, result, bad, done, subject, command, desc, .. } = item {
                     if sid == id {
                         let (r, b) = outcome(tool, block, extra);
                         *verb = past.to_string();
@@ -607,9 +684,14 @@ impl Feed {
                         *bad = b;
                         *done = true;
                         let launched = extra.filter(|x| x.get("status").and_then(Value::as_str) == Some("async_launched")).cloned();
-                        let step = sid.clone();
+                        let backgrounded = extra.filter(|x| x.get("backgroundTaskId").and_then(Value::as_str).is_some_and(|t| !t.is_empty())).cloned();
+                        let (step, subject, command, desc) = (sid.clone(), subject.clone(), command.clone(), desc.clone());
                         if let Some(x) = launched {
                             self.add_helper(&step, &x, at);
+                        } else if let Some(x) = backgrounded {
+                            *result = "in the background".into();
+                            *bad = false;
+                            self.add_script(&step, &desc, &subject, &command, &result_text(block), &x, at);
                         }
                         return true;
                     }
@@ -661,6 +743,8 @@ fn kind_of(path: &str) -> Kind {
 /// Every file the session edited or wrote, first edited first, as its log names it: Claude Code's Edit,
 /// MultiEdit, Write and NotebookEdit, Codex's apply_patch (every file in a patch; paths relative to the
 /// session's folder), Pi's edit and write. The whole log is read.
+/// A Claude Code session's background agents edit under their own logs (`<session folder>/subagents/`):
+/// those count as the session's edits too, after its own, in the order the agents started.
 pub fn edited_files(path: &str) -> Vec<String> {
     let kind = kind_of(path);
     let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
@@ -672,14 +756,32 @@ pub fn edited_files(path: &str) -> Vec<String> {
             out.push(p.to_string());
         }
     }
-    for line in text.lines() {
-        let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
-        for t in translate(kind, &e, &mut patches) {
-            for b in t.pointer("/message/content").and_then(Value::as_array).into_iter().flatten() {
-                let name = b.get("name").and_then(Value::as_str).unwrap_or("");
-                if b.get("type").and_then(Value::as_str) == Some("tool_use") && matches!(name, "Edit" | "MultiEdit" | "Write" | "NotebookEdit") {
-                    let input = &b["input"];
-                    add(&mut out, input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).unwrap_or(""));
+    let mut scan = |text: &str, out: &mut Vec<String>| {
+        for line in text.lines() {
+            let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
+            for t in translate(kind, &e, &mut patches) {
+                for b in t.pointer("/message/content").and_then(Value::as_array).into_iter().flatten() {
+                    let name = b.get("name").and_then(Value::as_str).unwrap_or("");
+                    if b.get("type").and_then(Value::as_str) == Some("tool_use") && matches!(name, "Edit" | "MultiEdit" | "Write" | "NotebookEdit") {
+                        let input = &b["input"];
+                        add(out, input.get("file_path").or_else(|| input.get("notebook_path")).and_then(Value::as_str).unwrap_or(""));
+                    }
+                }
+            }
+        }
+    };
+    scan(&text, &mut out);
+    if kind == Kind::Claude {
+        if let Some(folder) = path.strip_suffix(".jsonl") {
+            let mut logs: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(std::path::Path::new(folder).join("subagents")).into_iter().flatten().flatten()
+                .map(|d| d.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "jsonl") && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("agent-")))
+                .map(|p| (std::fs::metadata(&p).and_then(|m| m.created().or_else(|_| m.modified())).unwrap_or(std::time::UNIX_EPOCH), p))
+                .collect();
+            logs.sort();
+            for (_, p) in logs {
+                if let Ok(t) = std::fs::read_to_string(&p) {
+                    scan(&t, &mut out);
                 }
             }
         }
@@ -938,6 +1040,8 @@ fn step_of(b: &Value, at: u64) -> Item {
         bad: false,
         done: false,
         at_ms: at,
+        command: if tool == "Bash" { input.get("command").and_then(Value::as_str).unwrap_or("").to_string() } else { String::new() },
+        desc: if tool == "Bash" { input.get("description").and_then(Value::as_str).unwrap_or("").to_string() } else { String::new() },
         tool,
         past,
     }
@@ -1221,6 +1325,11 @@ mod tests {
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"Write","input":{"file_path":"/other/b.md"}},{"type":"tool_use","id":"t4","name":"Edit","input":{"file_path":"/r/a.rs"}}]}}"#,
         ].join("\n")).unwrap();
         assert_eq!(edited_files(claude.to_str().unwrap()), vec!["/r/a.rs", "/other/b.md"]);
+        // A background agent's edits, from its own log under the session's folder, come after the session's own.
+        let sub = dir.join("c").join("subagents");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("agent-a1.jsonl"), r#"{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"tool_use","id":"h1","name":"Edit","input":{"file_path":"/r/c.rs"}},{"type":"tool_use","id":"h2","name":"Edit","input":{"file_path":"/r/a.rs"}}]}}"#).unwrap();
+        assert_eq!(edited_files(claude.to_str().unwrap()), vec!["/r/a.rs", "/other/b.md", "/r/c.rs"]);
         let pi = dir.join("p.jsonl");
         std::fs::write(&pi, [
             r#"{"type":"session","version":3,"id":"s","cwd":"/a"}"#,
@@ -1399,6 +1508,46 @@ mod tests {
         f.catch_up();
         assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_background_script_shows_its_output_tail_until_its_session_hears_it_ended() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-script-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("b1.output");
+        std::fs::write(&out, "   Compiling cue v0.1.41\n").unwrap();
+        let launch = format!("Command running in background with ID: b1. Output is being written to: {}. You will be notified when it completes.", out.display());
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"build it"}}"#.to_string(),
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd /x && npx tauri build --bundles app","description":"Build Cue","run_in_background":true}}]}}"#.to_string(),
+            format!(r#"{{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{{"content":[{{"type":"tool_result","tool_use_id":"t1","content":"{launch}"}}]}},"toolUseResult":{{"stdout":"","stderr":"","interrupted":false,"backgroundTaskId":"b1"}}}}"#),
+        ].join("\n") + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        f.catch_up();
+        assert_eq!(f.helpers.len(), 1);
+        let h = &f.helpers[0];
+        assert!(h.script);
+        assert_eq!((h.id.as_str(), h.step.as_str(), h.desc.as_str(), h.command.as_str()), ("b1", "t1", "Build Cue", "cd /x && npx tauri build --bundles app"));
+        assert!(h.running());
+        assert_eq!((h.output.clone(), h.lines), (vec!["   Compiling cue v0.1.41".to_string()], 1));
+        assert_eq!(step(&f.turns[0].items[0]), ("Ran", "npx tauri build --bundles app", "in the background", false, true));
+        assert!(running_helpers(p).is_empty(), "a script isn't an agent the session waits on");
+        // More output: shown on the next read.
+        let v = f.version;
+        std::fs::write(&out, "   Compiling cue v0.1.41\n\x1b[32m    Finished\x1b[0m release\n").unwrap();
+        f.catch_up();
+        assert!(f.version > v);
+        assert_eq!(f.helpers[0].output[1], "    Finished release");
+        // Its notice: ended, and how.
+        let mut log = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","timestamp":"2026-10-04T10:01:00.000Z","message":{"content":"<task-notification>\n<task-id>b1</task-id>\n<status>failed</status>\n<summary>Background command failed</summary>\n</task-notification>"}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        let h = &f.helpers[0];
+        assert!(!h.running() && h.failed);
+        assert_eq!(h.finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

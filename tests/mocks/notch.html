@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notch terminal mock</title>
+  <link rel="stylesheet" href="../../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: Cue's terminal in the MacBook's notch. Hover the notch and it peeks; click it (or ⌃`) and it
+       opens down into a terminal, over whatever is on screen, any app. Closed, it shows what a shell is
+       running on either side of the camera, and a tick when it's done. A click outside puts it away.
+       Serve the repo root (python3 -m http.server) and open /tests/mocks/notch.html (?open=1). -->
+  <style>
+    /* The notch is black, so the terminal is too: one piece with the camera's cut-out. (Over mock.css's
+       themes, light and dark alike.) */
+    :root:root:root { --slab: #000; --on-slab: #E6EAD6; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body { font: 13px var(--sans); background: radial-gradient(120% 90% at 20% 10%, #6E7A45 0%, #3F4A22 45%, #1C2210 100%); }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+
+    .menubar { position: fixed; inset: 0 0 auto; height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #fff; background: rgba(20, 24, 10, 0.32); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 1; font-size: 13px; }
+    .menubar .l, .menubar .r { display: flex; gap: 18px; align-items: center; }
+    .menubar b { font-weight: 700; }
+    .win { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); width: min(1180px, 94vw); height: calc(100vh - 96px); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.25); background: var(--bg); }
+    .win iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .lights { position: absolute; top: 12px; left: 13px; display: flex; gap: 8px; pointer-events: none; }
+    .lights i { width: 12px; height: 12px; border-radius: 50%; background: #FF5F57; }
+    .lights i:nth-child(2) { background: #FEBC2E; }
+    .lights i:nth-child(3) { background: #28C840; }
+    .caption { position: fixed; left: 16px; bottom: 10px; color: rgba(255, 255, 255, 0.75); font-size: 12px; }
+    .caption kbd { font: 11px var(--mono); background: rgba(255, 255, 255, 0.16); border-radius: 4px; padding: 1px 5px; }
+
+    /* The notch: the camera's cut-out (CAM wide), and the panel it grows into. Closed it is just the
+       cut-out; peek and live widen it to show a little either side of the camera; open, it drops down. */
+    .notch {
+      --CAM: 190px; --W: min(780px, 94vw); --H: 420px;
+      position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 20;
+      width: var(--CAM); height: 32px; background: #000; color: var(--on-slab);
+      border-radius: 0 0 12px 12px;
+      transition: width .38s cubic-bezier(.2, .9, .25, 1.04), height .38s cubic-bezier(.2, .9, .25, 1.04), border-radius .38s;
+      cursor: pointer;
+    }
+    /* Its top corners curve out into the menu bar, as the cut-out's do. */
+    .notch::before, .notch::after { content: ""; position: absolute; top: 0; width: 10px; height: 10px; }
+    .notch::before { left: -10px; background: radial-gradient(circle at 0 100%, transparent 10px, #000 10.5px); }
+    .notch::after { right: -10px; background: radial-gradient(circle at 100% 100%, transparent 10px, #000 10.5px); }
+    .notch.peek { width: calc(var(--CAM) + 140px); }
+    .notch.live { width: calc(var(--CAM) + 220px); }
+    .notch.open { width: var(--W); height: calc(32px + var(--H)); border-radius: 0 0 26px 26px; cursor: default; box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.7); }
+    .clip { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+    /* Either side of the camera. */
+    .side { position: absolute; top: 0; height: 32px; width: calc(50% - var(--CAM) / 2); display: flex; align-items: center; white-space: nowrap; overflow: hidden; }
+    .side.l { left: 0; padding-left: 14px; }
+    .side.r { right: 0; padding-right: 10px; justify-content: flex-end; }
+    .mini { display: flex; align-items: center; gap: 8px; font: 600 12px var(--sans); }
+    .mini .cmd { font: 12px var(--mono); opacity: .9; overflow: hidden; text-overflow: ellipsis; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--sel); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .tick { color: var(--sel); font-weight: 700; }
+    .notch .ttabs, .notch .acts { display: none; }
+    .notch.open .mini { display: none; }
+    .notch.open .ttabs { display: flex; }
+    .notch.open .acts { display: flex; align-items: center; gap: 4px; }
+    .notch .ttab { height: 24px; }
+    /* The terminals: their own fixed size inside, so opening and closing clips them, never reflows them. */
+    .body { position: absolute; top: 32px; left: 50%; transform: translateX(-50%); width: var(--W); height: var(--H); padding: 6px 12px 14px 16px; opacity: 0; transition: opacity .15s; }
+    .notch.open .body { opacity: 1; transition-delay: .16s; }
+    @media (prefers-reduced-motion: reduce) { .notch, .body { transition: none; } .pulse { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="menubar"><div class="l"><b>Cue</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span></div><div class="r"><span>⌁</span><span>◔</span><span>Sun 11 Oct  9:41</span></div></div>
+  <div class="win"><iframe id="app" aria-label="Cue"></iframe><div class="lights" aria-hidden="true"><i></i><i></i><i></i></div></div>
+
+  <section class="notch" id="notch" aria-label="Terminal">
+    <div class="clip">
+      <div class="side l">
+        <span class="mini" id="miniL"></span>
+        <div class="ttabs" role="tablist" id="tabs"></div>
+      </div>
+      <div class="side r">
+        <span class="mini" id="miniR"></span>
+        <span class="acts"><button class="tclose" id="hide" aria-label="Put the terminal away (⌃`)">Hide ▴</button></span>
+      </div>
+      <div class="body"><div class="term-slot" id="slot" style="width:100%;height:100%"></div></div>
+    </div>
+  </section>
+  <div class="caption">Mock: hover the notch, click it or press <kbd>⌃`</kbd>. Run <code>npm test</code> or <code>sleep 5</code>, then click outside: the notch shows it running, then a tick.</div>
+
+  <script src="../../ui/vendor/xterm/xterm.js"></script>
+  <script src="../../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="fakeshell.js"></script>
+  <script src="termtabs.js"></script>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const notch = document.getElementById("notch"), frame = document.getElementById("app"), miniL = document.getElementById("miniL"), miniR = document.getElementById("miniR");
+    frame.src = "../preview.html";
+    const { HOME, FOLDERS } = FakeShell;
+    const TERM = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="3"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></svg>`;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+
+    let open = false, hover = false, done = null, doneTimer = 0;
+    const onKey = TermTabs.keys(() => setOpen(false));
+    const tt = new TermTabs(document.getElementById("tabs"), document.getElementById("slot"), {
+      fontSize: 12, onKey,
+      onAdd: (btn) => TermTabs.menu(btn, FOLDERS, (cwd) => tt.add("shell", { cwd })),
+      onEmpty: () => setOpen(false),
+      onChange: () => draw(),
+      onDone: (tab, what) => {
+        done = what;
+        clearTimeout(doneTimer);
+        doneTimer = setTimeout(() => { done = null; draw(); }, 4000);   // how long the tick stays up
+      },
+    });
+
+    // What the closed notch says: a command finishing (a tick, for a few seconds), else one running,
+    // else on hover a peek (the icon and how many tabs), else nothing: just the camera.
+    function draw() {
+      const busy = tt.busy();
+      notch.classList.toggle("open", open);
+      notch.classList.toggle("live", !open && !!(done || busy.length));
+      notch.classList.toggle("peek", !open && hover && !done && !busy.length);
+      if (done && !open) {
+        miniL.innerHTML = `<span class="tick">✓</span>`;
+        miniR.innerHTML = `<span class="cmd">${esc(done)}</span>`;
+      } else if (busy.length) {
+        miniL.innerHTML = `<span class="pulse"></span>`;
+        miniR.innerHTML = `<span class="cmd">${esc(busy[0].title)}${busy.length > 1 ? ` +${busy.length - 1}` : ""}</span>`;
+      } else {
+        miniL.innerHTML = TERM;
+        miniR.innerHTML = tt.tabs.length ? `${tt.tabs.length} tab${tt.tabs.length > 1 ? "s" : ""}` : "Terminal";
+      }
+    }
+    // Open: its tabs as you left them (the first time, one shell at home). Closed, they keep running.
+    function setOpen(o) {
+      open = o;
+      if (o) {
+        done = null;
+        if (!tt.tabs.length) tt.add("shell", { cwd: HOME });
+        tt.show(tt.active);
+      } else frame.contentWindow?.focus();
+      draw();
+    }
+    notch.addEventListener("mouseenter", () => { hover = true; draw(); });
+    notch.addEventListener("mouseleave", () => { hover = false; draw(); });
+    notch.addEventListener("click", () => { if (!open) setOpen(true); });
+    document.getElementById("hide").addEventListener("click", (e) => { e.stopPropagation(); setOpen(false); });
+    // A click anywhere else puts it away (the + menu is part of it).
+    const away = (e) => { if (open && !notch.contains(e.target) && !e.target.closest?.(".tmenu")) setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    // ⌃` from anywhere (in the app, a global shortcut: it works over any app).
+    const hot = (e) => { if (e.ctrlKey && e.key === "`" && !e.target.closest?.(".xterm")) { e.preventDefault(); setOpen(!open); } };
+    document.addEventListener("keydown", hot);
+    frame.addEventListener("load", () => {
+      frame.contentDocument.addEventListener("pointerdown", () => open && setOpen(false), true);
+      frame.contentDocument.addEventListener("keydown", hot, true);
+    });
+    draw();
+    if (q.has("open")) setOpen(true);
+  </script>
+</body>
+</html>

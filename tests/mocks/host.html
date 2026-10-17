@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Machine name mock</title>
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: where a card says which machine its session runs on, when its top line has no room for it.
+       The app is the design preview (../preview.html) with more sessions put on other machines (Working,
+       Starred, Parked); each option applied to its cards after every redraw. Pick an option above it, or
+       press 1–5. Serve the repo root (python3 -m http.server) and open /tests/mocks/host.html
+       (?opt=a…e, ?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--on-bg); font: 13px var(--sans); display: flex; flex-direction: column; overflow: hidden; }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    .opts { flex: none; display: flex; gap: 6px; padding: 10px 16px; align-items: stretch; border-bottom: 1px solid color-mix(in srgb, var(--on-bg) 14%, transparent); overflow-x: auto; }
+    .opt { flex: 1 1 0; min-width: 190px; text-align: left; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--on-bg) 6%, transparent); }
+    .opt:hover { background: color-mix(in srgb, var(--on-bg) 11%, transparent); }
+    .opt[aria-pressed="true"] { background: var(--sel); color: var(--on-sel); }
+    .opt b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+    .opt span { display: block; font-size: 11.5px; line-height: 1.35; opacity: .8; }
+    .opt kbd { float: right; font: 600 10px var(--mono); opacity: .6; }
+    #app { flex: 1; min-height: 0; width: 100%; border: 0; display: block; }
+  </style>
+</head>
+<body>
+  <div class="opts" id="opts"></div>
+  <iframe id="app" aria-label="Cue"></iframe>
+  <script src="mockapp.js"></script>
+  <script>
+    const OPTS = [
+      ["a", "A · Today", "The chip on the top line, cut to fit (my-lo…u-box) and pushing the state and buttons."],
+      ["b", "B · Second line", "Off the top line: the machine's chip, in full, opens the card's text line ([⌂ build-box] The backtest…)."],
+      ["c", "C · Monogram", "A small square with the machine's two letters and its own colour, on the top line. Full name in the open session."],
+      ["d", "D · Footer", "Its own small line at the card's foot, right-aligned, in full. The top line as on this Mac's cards."],
+      ["e", "E · Grouped", "No tag on Waiting's cards: another machine's go under its name, after this Mac's (not oldest first across machines). Elsewhere as B."],
+    ];
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    let opt = OPTS.some((o) => o[0] === q.get("opt")) ? q.get("opt") : "b";
+    const optsEl = document.getElementById("opts");
+    const drawOpts = () => { optsEl.innerHTML = OPTS.map(([k, t, d], n) => `<button class="opt" data-opt="${k}" aria-pressed="${k === opt}"><kbd>${n + 1}</kbd><b>${t}</b><span>${d}</span></button>`).join(""); };
+    drawOpts();
+
+    // Before it loads: the Parked drawer open on Parked (the iframe shares this page's storage).
+    try { localStorage.setItem("cue.drawer", "parked"); localStorage.setItem("cue.pkTab", "parked"); } catch {}
+
+    const CSS = `
+      /* The machine's mark, as the chip draws it (.mach::before): a small screen. */
+      .mglyph { display: inline-block; width: 8px; height: 6px; border: 1.3px solid currentColor; border-radius: 1.5px; box-shadow: 0 2.6px 0 -1.3px currentColor; opacity: .75; margin: 0 5px 2px 0; vertical-align: middle; flex: none; }
+      /* B: the chip itself, in full, at the head of the text line. */
+      .mach.mtext { margin: 0 6px 0 0; vertical-align: 1px; max-width: none; }
+      .mline-row { font-size: 12px; margin-top: 4px; opacity: .85; }
+      /* C: a monogram square in the machine's colour. */
+      .mono-chip { display: inline-grid; place-items: center; width: 22px; height: 17px; border-radius: 5px; font: 700 9.5px/1 var(--mono); letter-spacing: .02em; flex: none; margin-left: 2px;
+        color: var(--on-sel); background: hsl(var(--mh) 38% 62%); }
+      /* D: a line of its own at the card's foot. */
+      .mfoot { display: flex; justify-content: flex-end; align-items: center; margin-top: 6px; font: 600 10.5px var(--sans); opacity: .7; white-space: nowrap; overflow: hidden; }
+      .mfoot span { overflow: hidden; text-overflow: ellipsis; }
+      /* E: a machine's heading in a list. */
+      .mgroup { margin-top: 6px; display: flex; align-items: center; gap: 0; }
+      .mgroup .mglyph { opacity: 1; }
+    `;
+
+    /** The machine a chip names, as written on it in full: no user@, no domain. */
+    const fullName = (chip) => { const m = (chip.getAttribute("title") || "").replace(/^Runs on /, ""); const h = m.replace(/^[^@]*@/, ""); return /^[\d.]+$/.test(h) ? h : h.split(".")[0] || h || chip.textContent; };
+    const monogram = (n) => { const w = n.split(/[-_.\s]+/).filter(Boolean); return ((w[0] || "?")[0] + (w[1] ? w[1][0] : (w[0] || "?")[1] || "")).toUpperCase(); };
+    const hue = (n) => { let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360; return [95, 30, 200, 265, 340, 160][h % 6]; };
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    /** A card's root, and its text line (where B puts the machine). */
+    const cardOf = (chip) => chip.closest(".nrow, .working, .tl, .prow");
+    const textOf = (card) => card.matches(".nrow") ? card.querySelector(":scope > .nrow-text, :scope > div:not(.nrow-top):not(.nrow-acts)")
+      : card.matches(".working") ? card.querySelector(".agent-note, .doing, .prompt")
+      : card.matches(".tl") ? card.querySelector(".tl-title") : null;
+
+    let app = null;
+    function apply() {
+      const doc = app.doc;
+      for (const chip of doc.querySelectorAll(".mach:not([data-done])")) {
+        chip.dataset.done = "1";
+        if (opt === "a") continue;
+        const card = cardOf(chip), name = fullName(chip);
+        if (!card) continue;
+        if (opt === "c" || card.matches(".prow")) {
+          // (A Parked row has the room: it keeps the chip in full, except as a monogram in C.)
+          if (opt === "c") { chip.outerHTML = `<span class="mono-chip" data-done="1" style="--mh:${hue(name)}" aria-label="On ${esc(name)}">${esc(monogram(name))}</span>`; }
+          else { chip.textContent = name; chip.style.maxWidth = "none"; }
+          continue;
+        }
+        if (opt === "e" && card.closest(".sec-waiting") && card.matches(".nrow")) { chip.remove(); card.dataset.mach = name; continue; }
+        if (opt === "d") { chip.remove(); card.insertAdjacentHTML("beforeend", `<div class="mfoot"><i class="mglyph"></i><span>${esc(name)}</span></div>`); continue; }
+        // B (and E outside Waiting): the chip moves down, written in full.
+        chip.textContent = name;
+        chip.classList.add("mtext");
+        const t = textOf(card);
+        if (t) t.prepend(chip);
+        else { const row = doc.createElement("div"); row.className = "mline-row"; row.append(chip); (card.querySelector(".nrow-top, .card-head, .tl-top") || card.firstElementChild).after(row); }
+      }
+      if (opt === "e") group(doc);
+    }
+    /** E: in each list, another machine's cards after this Mac's, under the machine's name. */
+    function group(doc) {
+      for (const list of doc.querySelectorAll(".sec-waiting .sec-body")) {
+        if (list.querySelector(".mgroup")) continue;
+        const cards = [...list.querySelectorAll(":scope > [data-mach]")];
+        const by = new Map();
+        for (const c of cards) { if (!by.has(c.dataset.mach)) by.set(c.dataset.mach, []); by.get(c.dataset.mach).push(c); }
+        for (const [name, cs] of by) {
+          list.insertAdjacentHTML("beforeend", `<div class="col-sub mgroup"><i class="mglyph"></i>${esc(name.toUpperCase())} · ${cs.length}</div>`);
+          for (const c of cs) list.appendChild(c);
+        }
+      }
+    }
+    function pick(k) {
+      opt = k;
+      drawOpts();
+      history.replaceState(null, "", `?${new URLSearchParams({ ...Object.fromEntries(q), opt: k })}`);
+      app.win.eval("renderMain()");
+    }
+    optsEl.addEventListener("click", (e) => { const b = e.target.closest("[data-opt]"); if (b) pick(b.dataset.opt); });
+    const keys = (e) => { if (/^[1-5]$/.test(e.key) && !e.target.closest?.("input, textarea")) { e.preventDefault(); e.stopPropagation(); pick(OPTS[+e.key - 1][0]); } };
+    document.addEventListener("keydown", keys);
+
+    MockApp.load(document.getElementById("app"), `?later=1${q.get("theme") ? `&theme=${q.get("theme")}` : ""}`).then((a) => {
+      app = a;
+      a.doc.addEventListener("keydown", keys, true);
+      MockApp.style(a.doc, CSS);
+      // More of the sample sessions on other machines: two working, one starred, two parked.
+      a.win.eval(`(() => {
+        const S = (id) => state.sessions.find((s) => s.session_id === id);
+        const at = (id, m) => { const s = S(id); if (s) s.machine = m; for (const i of state.items) if (i.session_id === id) i.machine = m; };
+        at("eng", "gpu-01"); at("alerts", "me@my-long-ubuntu-box.lan"); at("web", "build-box");
+        if (S("eng")) S("eng").starred_ms = Date.now() - 3600e3;
+        const base = S("eng") || state.sessions[0];
+        state.parked = [
+          { ...base, session_id: "pk1", name: "migrations", project: "db", cwd: "/home/me/db", machine: "gpu-01", parked_ms: Date.now() - 3 * 3600e3, starred_ms: 0 },
+          { ...base, session_id: "pk2", name: "release-notes", project: "cue", cwd: "/Users/me/code/cue", machine: "", parked_ms: Date.now() - 26 * 3600e3, starred_ms: 0 },
+          { ...base, session_id: "pk3", name: "index-rebuild", project: "search", cwd: "/home/me/search", machine: "me@my-long-ubuntu-box.lan", parked_ms: Date.now() - 50 * 3600e3, starred_ms: 0 },
+        ];
+        renderMain();
+      })()`);
+      MockApp.keep(a.doc, apply);
+    });
+  </script>
+</body>
+</html>

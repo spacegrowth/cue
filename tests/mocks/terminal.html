@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terminal tabs mock</title>
+  <link rel="stylesheet" href="../../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: a session's built-in terminal with tabs. Its own screen first, then plain shells in its folder.
+       Serve the repo root (python3 -m http.server) and open /tests/mocks/terminal.html (?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); color: var(--ink); font: 13px var(--sans); display: flex; flex-direction: column; align-items: center; padding: 24px 16px; gap: 14px; }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    .pane { width: min(880px, 100%); flex: 1; min-height: 0; background: var(--panel); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55); }
+    .head { display: flex; align-items: baseline; gap: 8px; padding: 14px 18px 10px; border-bottom: 1px solid var(--line); }
+    .head b { font-size: 15px; }
+    .head .dim { color: var(--muted); font-size: 12px; }
+    .chat { flex: 1; min-height: 80px; overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 72%; padding: 9px 12px; border-radius: 12px; line-height: 1.45; }
+    .msg.you { align-self: flex-end; background: var(--sel); color: var(--on-sel); }
+    .msg.agent { background: var(--panel-2); }
+
+    /* The dock: one slab, the strip (tabs, close) over the terminal. */
+    .tdock { margin: 0 12px; display: flex; flex-direction: column; border-radius: 12px 12px 0 0; overflow: hidden; background: var(--slab); color: var(--on-slab); flex: none; }
+    .tslot { height: min(380px, 46vh); padding: 4px 6px 6px 10px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+    .tdock.shut .tslot { display: none; }
+
+    .foot { padding: 0 12px 12px; }
+    .field { border: 1px solid var(--line); border-radius: 0 0 8px 8px; background: var(--panel); display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 12px; }
+    .field textarea { flex: 1; resize: none; border: 0; outline: 0; background: none; color: var(--ink); font: 13px var(--sans); min-height: 20px; }
+    .send { background: var(--ink); color: var(--panel); border-radius: 6px; padding: 5px 12px; font-weight: 600; }
+
+    .keys { width: min(880px, 100%); color: var(--on-bg-muted); font-size: 12px; line-height: 1.7; }
+    .keys kbd { font: 11px var(--mono); background: color-mix(in srgb, var(--on-bg) 14%, transparent); color: var(--on-bg); border-radius: 4px; padding: 1px 5px; }
+    @media (max-width: 600px) { .msg { max-width: 90%; } .tslot { height: 50vh; } }
+  </style>
+</head>
+<body>
+  <div class="pane">
+    <div class="head"><b>agent-relay</b><span class="dim">main · Claude Code · in Cue</span></div>
+    <div class="chat">
+      <div class="msg you">Add a spend column to the board, summed from each session's usage log.</div>
+      <div class="msg agent">Packet 3 is done and staged. Spend resets when an executor is retired: keep it per session, or carry it over to the successor? I'd carry it over.</div>
+    </div>
+    <div class="tdock" id="dock">
+      <div class="tbar">
+        <div class="ttabs" role="tablist" id="tabs"></div>
+        <span class="tlast" id="last" hidden></span>
+        <button class="tclose" id="toggle" aria-expanded="true">Close ▾</button>
+      </div>
+      <div class="tslot" id="slot"></div>
+    </div>
+    <div class="foot"><div class="field"><textarea rows="1" placeholder="Reply to agent-relay…"></textarea><button class="send">Send</button></div></div>
+  </div>
+  <div class="keys">
+    Type into any tab. In a shell: <kbd>Tab</kbd> completes commands and paths (twice lists them), <kbd>↑</kbd><kbd>↓</kbd> history, <kbd>⌃C</kbd> <kbd>⌃L</kbd> <kbd>⌃A</kbd> <kbd>⌃E</kbd> <kbd>⌃U</kbd> <kbd>⌃W</kbd>, <code>help</code> lists the commands, <code>exit</code> closes the tab.<br />
+    Tabs: <kbd>⌘T</kbd> new shell · <kbd>⌘W</kbd> close it · <kbd>⌘1</kbd>…<kbd>⌘9</kbd> pick · <kbd>⌃Tab</kbd> / <kbd>⌃⇧Tab</kbd> next / previous · <kbd>⌃`</kbd> open / close the terminal.
+    In a browser, Chrome keeps <kbd>⌘T</kbd> <kbd>⌘W</kbd> <kbd>⌘1</kbd>… <kbd>⌃Tab</kbd>: use <kbd>⌥</kbd> in their place, or the + and × buttons.
+  </div>
+  <script src="../../ui/vendor/xterm/xterm.js"></script>
+  <script src="../../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="fakeshell.js"></script>
+  <script src="termtabs.js"></script>
+  <script>
+    const theme = new URLSearchParams(location.search).get("theme");
+    if (theme) document.documentElement.dataset.theme = theme;
+    const dock = document.getElementById("dock"), toggle = document.getElementById("toggle"), last = document.getElementById("last"), tabsEl = document.getElementById("tabs");
+    const onKey = TermTabs.keys(() => setOpen(false));
+    const tt = new TermTabs(tabsEl, document.getElementById("slot"), { fontSize: 12, onKey });
+    tt.add("agent");
+    tt.add("shell");
+    // Closed: the strip shows the open tab's last line, as the real one does.
+    function setOpen(open) {
+      dock.classList.toggle("shut", !open);
+      tabsEl.hidden = !open;
+      last.hidden = open;
+      toggle.textContent = open ? "Close ▾" : "Open ▴";
+      toggle.setAttribute("aria-expanded", open);
+      if (open) tt.show(tt.active);
+      else last.textContent = `${tt.current().title} · ${tt.lastLine()}`;
+    }
+    toggle.onclick = () => setOpen(dock.classList.contains("shut"));
+    document.addEventListener("keydown", (e) => { if (!e.target.closest?.(".xterm") && e.ctrlKey && e.key === "`") { e.preventDefault(); setOpen(dock.classList.contains("shut")); } });
+  </script>
+</body>
+</html>

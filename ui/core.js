@@ -502,6 +502,15 @@ function linkify(h) {
     .replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
 }
 /** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, quotes, code. Escapes first, so it's safe. */
+/** Copy on a code block or a command: what's in the block beside it, as plain text (a "$ " before a command isn't). */
+const COPY_BTN = `<button class="code-copy" data-copy-code aria-label="Copy">Copy</button>`;
+function copyCode(btn) {
+  const pre = btn.closest(".code-wrap")?.querySelector("pre")?.cloneNode(true);
+  if (!pre) return;
+  pre.querySelectorAll(".ps").forEach((el) => el.remove());
+  const text = pre.textContent;
+  if (text.trim()) invoke("copy_text", { text }).then(() => toast("Copied"), () => toast("Couldn't copy"));
+}
 function md(text) {
   const out = [];
   const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"));
@@ -511,7 +520,7 @@ function md(text) {
       // Long code folds to ~12 lines (scrolls inside); a dump doesn't push the conversation away.
       const code = chunk.replace(/^[a-z]*\n/, "").replace(/\n$/, "");
       const n = code.split("\n").length;
-      out.push(n > 12 ? `<pre class="long">${esc(code)}</pre><div class="code-more">${n} lines · scroll inside</div>` : `<pre>${esc(code)}</pre>`);
+      out.push(`<div class="code-wrap">${n > 12 ? `<pre class="long">${esc(code)}</pre><div class="code-more">${n} lines · scroll inside</div>` : `<pre>${esc(code)}</pre>`}${COPY_BTN}</div>`);
       return;
     }
     const LIST = /^\s*([-*•]|\d+[.)])\s+/;

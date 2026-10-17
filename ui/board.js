@@ -5,7 +5,7 @@ function projectsKnown() {
   const add = (p, need = false) => { if (!p) return; const r = m.get(p) || m.set(p, { n: 0, need: 0 }).get(p); r.n++; if (need) r.need++; };
   const asking = new Set(state.items.map((i) => i.session_id));
   for (const s of state.sessions) add(s.project, asking.has(s.session_id));
-  for (const q of state.live || []) add(projOf(q.cwd));
+  for (const q of state.live || []) add(q.project || projOf(q.cwd));
   for (const p of state.parked || []) if (!state.sessions.some((s) => s.session_id === p.session_id)) add(p.project);
   // Projects with nothing live now, but answers in History: listed too (with no count) in History, so it can be
   // narrowed to one. Not on the Board or Sessions: picked there, they'd show nothing.
@@ -212,7 +212,8 @@ function groups() {
     .sort((a, b) => !!idleNote(a) - !!idleNote(b));   // working first, then idle (minus the ones you hid)
   // Need to decide: parked sessions, with their finished turn if one is pending. Something it asks you
   // still goes in Waiting (the agent is blocked on it), so it shows in both.
-  const later = [...parked].filter((sid) => inProj(sessionOf(sid)?.project)).map((sid) => ({ sid, s: sessionOf(sid), it: state.items.find((i) => i.session_id === sid && i.kind === "waiting") }))
+  // (A parked one whose record is gone: its card's project says where it belongs.)
+  const later = [...parked].filter((sid) => inProj(sessionOf(sid)?.project ?? state.items.find((i) => i.session_id === sid)?.project)).map((sid) => ({ sid, s: sessionOf(sid), it: state.items.find((i) => i.session_id === sid && i.kind === "waiting") }))
     .filter((x) => x.s || x.it).sort((a, b) => (a.it?.created_ms ?? a.s.since_ms) - (b.it?.created_ms ?? b.s.since_ms));
   return { yours, decide, working, later };
 }
@@ -242,7 +243,7 @@ function requestBody(it) {
     const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
     return `<div class="qtabs">${tabs}<span class="qcount">${cur + 1} of ${qs.length}</span></div><div class="qtext">${esc(q.question)}${q.multiSelect ? `<span class="dim"> · pick any</span>` : ""}</div>${opts(q, cur)}${yours}<div class="row-btns">${nav}${submitAnswers(it)}</div>`;
   }
-  if (t === "bash") return `<pre class="slab">$ ${esc(i.command)}</pre>`;
+  if (t === "bash") return `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`;
   if (t === "edit" || t === "multiedit") {
     const edits = t === "multiedit" ? i.edits || [] : [{ old_string: i.old_string, new_string: i.new_string }];
     return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
@@ -345,17 +346,18 @@ function talkNote(it) {
 }
 const isPending = (it) => !!it && state.items.some((i) => i.id === it.id);
 function shelfDrawer(isOpen) {
-  const open = drawerOpen("parked"), tab = pkTab(), ps = state.parked || [];
+  // With a project picked, its own only (the counts too), as the rest of the Board.
+  const open = drawerOpen("parked"), tab = pkTab(), ps = (state.parked || []).filter((p) => inProj(p.project)), closedHere = closedList?.filter((c) => inProj(c.project));
   // Closed is asked for once (for its count), and again when you pick it, or after a minute while it shows.
   if (!closedLoading && (!closedList || (open && tab === "closed" && now() - closedAt > 60000))) queueMicrotask(loadClosed);
   const word = (t, label, n) => `<button class="shelf-word ${open && tab === t ? "on" : ""}" data-shelf="${t}">${label}${n ? ` <span>${n}</span>` : ""}</button>`;
   let body = "";
   if (open) {
-    const rows = tab === "parked" ? ps.map((p) => ({ ...p, kind: "parked", at: p.parked_ms })) : (closedList || []).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }));
+    const rows = tab === "parked" ? ps.map((p) => ({ ...p, kind: "parked", at: p.parked_ms })) : (closedHere || []).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }));
     body = rows.length ? rows.map((r) => parkedRow(r, isOpen(r.session_id))).join("")
       : `<div class="quiet-line">${tab === "parked" ? "Nothing parked. Park (in a session's ⋯ menu) stops it and keeps it here." : closedList ? "Nothing closed in the last 30 days." : "Looking…"}</div>`;
   }
-  return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "PARKED", ps.length)}<span class="shelf-sep">·</span>${word("closed", "CLOSED", closedList?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
+  return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "PARKED", ps.length)}<span class="shelf-sep">·</span>${word("closed", "CLOSED", closedHere?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
 }
 /** PARKED or CLOSED in the heading: opens the drawer on that list; the one already showing folds it. */
 function pickShelf(t) {
@@ -570,6 +572,9 @@ function boardView() {
   const inTalk = (i) => !i._team && talking(i);
   const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
   const talks = rows.filter(inTalk), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
+  // With a project picked, what's waiting in the others is off the Board, never out of mind: a line says
+  // how many, and shows all of them. (An agent blocked on you with nothing on screen was the bug.)
+  const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
   const needRows = talks.length || talkWork.length
     ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}${rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-oldest aria-expanded="${!oldestShut()}"><span class="fold-arrow">${oldestShut() ? "▸" : "▾"}</span> OLDEST FIRST · ${count(rest)}</button>${oldestShut() ? "" : draw(rest)}` : ""}`
     : draw(rest);
@@ -593,21 +598,21 @@ function boardView() {
 
   // One entry per session, its latest answer (the rest are in History).
   const seen = new Set();
-  const recent = state.history.filter((i) => { const k = i.session_id || i.id; return !seen.has(k) && seen.add(k); }).slice(0, RECENT);
+  const recent = state.history.filter((i) => inProj(i.project) && !seen.has(i.session_id || i.id) && seen.add(i.session_id || i.id)).slice(0, RECENT);
   const recentList = () => recent.length
     ? `<div class="card recent">${recent.map(recentEntry).join("")}
         ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
     : `<div class="empty-col">Your answers show up here.</div>`;
   // Starred, in the order you starred them (so they don't shuffle as they work).
   // A starred one you parked stays here too, as parked.
-  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
+  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
   const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
   const drawer = (name, title, count, body) => { const open = drawerOpen(name); return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`; };
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   return `<div class="board" style="grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)">
     <div class="col main"><div class="col-head">ACTIVE</div>${activePane()}</div>
     <div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 && !talks.length && !talkWork.length ? " · oldest first" : ""}</span></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}</div></div>
+      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 && !talks.length && !talkWork.length ? " · oldest first" : ""}</span></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
       ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
     </div>
     <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
@@ -665,7 +670,7 @@ let renameErrPrimed = false;
  *  said. A live session opens in Active; an ended one's message opens in place. */
 let searchResults = [], searchSeq = 0, searchTimer = 0, searchSel = 0;
 function liveChip() {
-  const rows = liveRows(), asks = rows.filter((r) => r.st === "asks").length, fresh = rows.filter((r) => isNewSession(r.sid)).length;
+  const rows = liveRows().filter((r) => inProj(r.project)), asks = rows.filter((r) => r.st === "asks").length, fresh = rows.filter((r) => isNewSession(r.sid)).length;
   return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}${fresh ? ` <span class="hsub">· ${fresh} new</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
 }
 // ---------- ★ in the header: the sessions you starred, and which of them need you ----------
@@ -674,9 +679,9 @@ let starNeeded = null;             // starred sessions that needed you at the la
 let starLitTill = 0;               // lit up until then: one of them just started needing you
 function starChip() {
   const stars = starredIds();
-  const rows = liveRows().filter((r) => stars.has(r.sid));
+  const rows = liveRows().filter((r) => stars.has(r.sid) && inProj(r.project));
   // Starred and parked: not live, but still yours to come back to.
-  for (const p of state.parked || []) if (isStarred(p.session_id) && !rows.some((r) => r.sid === p.session_id))
+  for (const p of state.parked || []) if (isStarred(p.session_id) && inProj(p.project) && !rows.some((r) => r.sid === p.session_id))
     rows.push({ sid: p.session_id, harness: p.harness, name: bareName(p.name) || baseName(p.cwd) || p.project || "session", project: p.project, cwd: p.cwd || "", st: "parked", since: p.parked_ms, what: "", parked: true });
   if (!rows.length) { starOpen = false; return ""; }
   const needs = rows.filter((r) => r.st === "asks" || r.st === "yours");

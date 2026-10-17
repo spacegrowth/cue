@@ -15,7 +15,7 @@ function movingDialog() {
 async function moveToCue(sid) {
   // A quiet one (Cue hasn't heard from it yet) is only in the live list: its name and folder from there.
   const q = (state.live || []).find((x) => x.session_id === sid);
-  const s = sessionOf(sid) || (q && { name: bareName(q.name) || baseName(q.cwd), harness: q.harness, project: projOf(q.cwd) });
+  const s = sessionOf(sid) || (q && { name: bareName(q.name) || baseName(q.cwd), harness: q.harness, project: q.project || projOf(q.cwd) });
   if (!s || moving) return;
   if (quietOpen === sid) quietOpen = null;   // it opens in Active as it moves
   moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "" };

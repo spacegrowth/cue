@@ -243,6 +243,8 @@ impl Hub {
             let st = self.st();
             st.parked.iter().map(|p| p.session.origin.session_id.clone()).chain(st.sessions.all().into_iter().map(|s| s.origin.session_id)).collect()
         };
+        // Under the project you moved it to, as live rows are (the snapshot's remap).
+        let moved = crate::config::moved();
         crate::db::closed(now_ms().saturating_sub(window_ms), max + skip.len())
             .into_iter()
             .filter(|(_, s)| !skip.contains(&s.origin.session_id))
@@ -250,6 +252,9 @@ impl Hub {
             .filter_map(|(at, s)| {
                 let mut v = serde_json::to_value(&s).ok()?;
                 v["ended_ms"] = json!(at);
+                if let Some(p) = moved.get(&s.origin.session_id) {
+                    v["project"] = json!(p);
+                }
                 Some(v)
             })
             .collect()

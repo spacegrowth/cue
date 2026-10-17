@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terminal view mock</title>
+  <link rel="stylesheet" href="../../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: Terminal as a fourth view, beside Board · Sessions · History. Its shells are listed down the
+       left by project; the one picked fills the rest. Its button in the switch shows a live dot while a
+       shell runs something, and ✓ / ✗ when that finishes while you're elsewhere. "Shell here" on a
+       session's chat opens one in its folder. The app is the design preview (../preview.html), unchanged;
+       the mock adds the button, Shell here, and the view over the app's content.
+       Serve the repo root (python3 -m http.server) and open /tests/mocks/view.html (?open=1, ?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); overflow: hidden; font: 13px var(--sans); }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    #app { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+    /* The view: where the app's content goes (under its header), on the app's own background. */
+    .tv { position: fixed; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; background: var(--bg); z-index: 5; }
+    .tv[hidden] { display: none; }
+    .tv-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
+    .tv-head { display: flex; align-items: center; justify-content: space-between; color: var(--on-bg); font: 700 11px var(--sans); letter-spacing: .08em; height: 22px; }
+    .tv-head span { opacity: .7; font-weight: 600; letter-spacing: 0; margin-left: 6px; }
+    .tv-new { height: 26px; padding: 0 10px; border-radius: 7px; background: var(--panel); color: var(--ink); font: 600 12px var(--sans); letter-spacing: 0; }
+    .tv-group { color: var(--on-bg-muted); font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; margin: 8px 2px 0; }
+    .tv-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--panel); color: var(--ink); border-radius: 12px; padding: 10px 10px 10px 12px; }
+    .tv-row[aria-selected="true"] { background: var(--sel); color: var(--on-sel); }
+    .tv-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: color-mix(in srgb, currentColor 25%, transparent); }
+    .tv-row .dot.run { background: #6E9E3A; animation: pulse 1.2s ease-in-out infinite; }
+    .tv-row .dot.ok { background: #6E9E3A; }
+    .tv-row .dot.bad { background: var(--deny, #9B2C1F); }
+    .tv-row .txt { min-width: 0; flex: 1; }
+    .tv-row .name { font: 600 13px var(--sans); }
+    .tv-row .sub { font: 11.5px var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tv-row .x { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; opacity: .5; font-size: 15px; }
+    .tv-row .x:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
+    .tv-empty { color: var(--on-bg-muted); font-size: 12.5px; line-height: 1.5; padding: 4px 2px; }
+    .tv-term { background: var(--slab); color: var(--on-slab); border-radius: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .tv-bar { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); font: 600 12px var(--sans); }
+    .tv-bar .where { font: 12px var(--mono); opacity: .65; }
+    .tv-bar .grow { flex: 1; }
+    .tv-slot { flex: 1; min-height: 0; padding: 6px 8px 8px 14px; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    @media (prefers-reduced-motion: reduce) { .tv-row .dot.run { animation: none; } }
+  </style>
+</head>
+<body>
+  <iframe id="app" aria-label="Cue"></iframe>
+  <div class="tv" id="tv" hidden>
+    <aside class="tv-list" id="list"></aside>
+    <section class="tv-term">
+      <div class="tv-bar"><span id="title"></span><span class="where" id="where"></span><span class="grow"></span><button class="tclose" id="closeTab">Close shell</button></div>
+      <div class="tv-slot" id="slot"></div>
+    </section>
+  </div>
+  <script src="../../ui/vendor/xterm/xterm.js"></script>
+  <script src="../../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="fakeshell.js"></script>
+  <script src="termtabs.js"></script>
+  <script src="mockapp.js"></script>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    const frame = document.getElementById("app"), tv = document.getElementById("tv"), esc = TermTabs.esc;
+    const { HOME, FOLDERS } = FakeShell;
+    const pretty = (p) => (p === HOME ? "~" : p.startsWith(HOME + "/") ? "~" + p.slice(HOME.length) : p);
+    const projectOf = (p) => (p.match(/^\/Users\/[^/]+\/code\/([^/]+)/) || [])[1] || "";
+    let on = false, app = null;
+    const ended = new Map();   // tab id -> { ok }: finished while you were in another view (until you look)
+
+    // The list: shells grouped by project (home and elsewhere last), each with what it runs.
+    const render = (tabs, active) => {
+      const groups = new Map();
+      for (const t of tabs) { const g = projectOf(t.driver.cwd) || "Elsewhere"; (groups.get(g) || groups.set(g, []).get(g)).push(t); }
+      const order = [...groups.keys()].sort((a, b) => (a === "Elsewhere") - (b === "Elsewhere") || a.localeCompare(b));
+      const row = (t) => {
+        const e = ended.get(t.id), dot = t.driver.busy ? "run" : e ? (e.ok ? "ok" : "bad") : "";
+        const sub = t.driver.busy ? `running · ${t.title}` : e ? `${e.ok ? "done" : `failed (exit ${e.code})`} · ${e.what}` : pretty(t.driver.cwd);
+        return `<button class="tv-row" role="tab" data-tab="${t.id}" aria-selected="${t.id === active}"><span class="dot ${dot}"></span><span class="txt"><div class="name">${esc(t.driver.busy ? "zsh" : t.title)}</div><div class="sub">${esc(sub)}</div></span><span class="x" data-tab-x="${t.id}" role="button" aria-label="Close ${esc(t.title)}">×</span></button>`;
+      };
+      return `<div class="tv-head">SHELLS<span>${tabs.length}</span><span style="flex:1"></span><button class="tv-new" data-tab-add>+ New</button></div>`
+        + (tabs.length ? order.map((g) => `<div class="tv-group">${esc(g)}</div>${groups.get(g).map(row).join("")}`).join("") : `<div class="tv-empty">No shells. + New starts one, in a project's folder or at home; Shell here on a session starts one in its folder.</div>`);
+    };
+    const tt = new TermTabs(document.getElementById("list"), document.getElementById("slot"), {
+      fontSize: 12.5, render,
+      onKey: TermTabs.keys(() => setView(false)),
+      onAdd: (btn) => TermTabs.menu(btn, FOLDERS, (cwd) => tt.add("shell", { cwd })),
+      onDone: (t, what, code) => { if (!on || t.id !== tt.active) ended.set(t.id, { ok: !code, code, what }); },
+      onChange: () => { header(); mark(); },
+    });
+    const header = () => {
+      const t = tt.current();
+      document.getElementById("title").textContent = t ? (t.driver.busy ? t.title : "zsh") : "";
+      document.getElementById("where").textContent = t ? pretty(t.driver.cwd) : "";
+      document.getElementById("closeTab").hidden = !t;
+    };
+    document.getElementById("closeTab").onclick = () => tt.close(tt.active);
+    // Looking at a shell clears what it finished.
+    document.getElementById("list").addEventListener("click", () => { if (ended.delete(tt.active)) tt.draw(); });
+
+    // The view covers the app's content, under its header.
+    function place() {
+      const d = app?.doc, top = d?.querySelector(".top"), a = d?.querySelector(".app");
+      if (!top || !a) return;
+      const cs = getComputedStyle(a), r = top.getBoundingClientRect();
+      Object.assign(tv.style, { top: `${r.bottom + 14}px`, left: cs.paddingLeft, right: cs.paddingRight, bottom: cs.paddingBottom });
+      tt.fit();
+    }
+    // In Terminal, or back to the view you were on (the app never left it).
+    function setView(v) {
+      on = v;
+      tv.hidden = !v;
+      if (v) {
+        if (!tt.tabs.length) tt.add("shell", { cwd: HOME });
+        place();
+        ended.delete(tt.active);
+        tt.show(tt.active);
+      } else frame.contentWindow?.focus();
+      tt.draw();
+    }
+    // A shell in this folder: the idle one already there, else a new one.
+    function shellHere(cwd) {
+      const t = tt.tabs.find((x) => x.driver.cwd === cwd && !x.driver.busy) || tt.add("shell", { cwd });
+      tt.active = t.id;
+      setView(true);
+    }
+    // The Terminal button: on while you're in it; a live dot while anything runs; ✓ / ✗ for what finished while you were away.
+    function mark() {
+      const b = app?.doc.querySelector("[data-mock-view]");
+      if (!b) return;
+      const running = tt.busy().length, bad = [...ended.values()].some((e) => !e.ok), ok = ended.size && !bad;
+      b.classList.toggle("on", on);
+      app.doc.querySelectorAll(".switch-view [data-view]").forEach((x) => on && x.classList.remove("on"));
+      b.querySelector(".mv-live").className = `mv-live ${running ? "run" : bad ? "bad" : ok ? "ok" : ""}`;
+      b.querySelector(".mv-live").textContent = !running && bad ? "✗" : !running && ok ? "✓" : "";
+    }
+
+    MockApp.load(frame, q.get("theme") ? `?theme=${q.get("theme")}` : "").then((a) => {
+      app = a;
+      const { win, doc } = a, icon = MockApp.icon(win, 13);
+      MockApp.style(doc, `
+        [data-mock-view] { display: inline-flex; align-items: center; gap: 6px; }
+        .mv-live { font-size: 11px; font-weight: 700; line-height: 1; }
+        .mv-live.run { width: 7px; height: 7px; border-radius: 50%; background: #6E9E3A; animation: mvpulse 1.2s ease-in-out infinite; }
+        .mv-live.ok { color: #6E9E3A; } .mv-live.bad { color: var(--deny); }
+        @keyframes mvpulse { 50% { opacity: .35; } }`);
+      MockApp.keep(doc, () => {
+        const sw = doc.querySelector(".switch-view");
+        if (sw && !sw.querySelector("[data-mock-view]")) { sw.insertAdjacentHTML("beforeend", `<button data-mock-view>${icon}Terminal<span class="mv-live"></span></button>`); mark(); }
+        else if (sw && on && sw.querySelector("[data-view].on")) mark();
+        // Shell here: in a session's chat header, by its ⋯.
+        const more = doc.querySelector(".active-pane [data-more]");
+        if (more && !doc.querySelector("[data-mock-here]")) more.closest(".more-wrap").insertAdjacentHTML("beforebegin", `<button class="btn" data-mock-here="${more.dataset.more}">${icon} Shell here</button>`);
+      });
+      doc.addEventListener("click", (e) => {
+        if (e.target.closest("[data-mock-view]")) { e.stopPropagation(); return setView(!on); }
+        const here = e.target.closest("[data-mock-here]");
+        if (here) { e.stopPropagation(); return shellHere(win.eval(`sessionOf(${JSON.stringify(here.dataset.mockHere)})`)?.cwd || HOME); }
+        if (e.target.closest(".switch-view [data-view]") && on) setView(false);
+      }, true);
+      MockApp.hotkey(a, () => setView(!on));
+      addEventListener("resize", place);
+      if (q.has("open")) setView(true);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lead handoff mock</title>
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: after a relay handoff, where's the new lead; and closing a lead without leaving its
+       executors behind. Static: open the file directly, or serve the repo root and open
+       /tests/mocks/handoff.html (?theme=dark|light). Press 1–5 for the screens. -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { background: var(--bg); color: var(--on-bg); font: 13px var(--sans); min-height: 100vh; }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    .opts { display: flex; gap: 6px; padding: 10px 16px; border-bottom: 1px solid color-mix(in srgb, var(--on-bg) 14%, transparent); overflow-x: auto; }
+    .opt { flex: 1 1 0; min-width: 180px; text-align: left; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--on-bg) 6%, transparent); }
+    .opt:hover { background: color-mix(in srgb, var(--on-bg) 11%, transparent); }
+    .opt[aria-pressed="true"] { background: var(--sel); color: var(--on-sel); }
+    .opt b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+    .opt span { display: block; font-size: 11.5px; line-height: 1.35; opacity: .8; }
+    .opt kbd { float: right; font: 600 10px var(--mono); opacity: .6; }
+    .stage { max-width: 860px; margin: 18px auto; padding: 0 16px; }
+    .why { color: var(--on-bg-muted); font-size: 12.5px; line-height: 1.5; margin: 0 0 14px; }
+    .why b { color: var(--on-bg); }
+
+    /* the app's pieces, enough to read the layout */
+    .pane { background: var(--panel); color: var(--ink); border-radius: 14px; overflow: hidden; box-shadow: 0 18px 40px -24px rgba(0,0,0,.6); }
+    .ph { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--bg); color: var(--on-bg); font: 700 10px var(--mono); flex: none; }
+    .ph .nm { font-weight: 700; font-size: 14px; }
+    .ph .sub { color: var(--muted); font-size: 12px; }
+    .ph .sp { flex: 1; }
+    .role { font: 700 9.5px var(--mono); letter-spacing: .04em; padding: 2px 5px; border-radius: 4px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+    .role.lead { background: var(--bg); color: var(--on-bg); border-color: var(--bg); }
+    .role.was { background: transparent; color: var(--muted); border-style: dashed; }
+    .btn { height: 26px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+    .btn.primary { background: var(--bg); border-color: var(--bg); color: var(--on-bg); }
+    .btn.deny { background: #B3412F; border-color: #B3412F; color: #fff; }
+    .team-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+    .tm-label { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-right: 2px; }
+    .tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-size: 12px; font-weight: 600; }
+    .tm-chip.me { background: var(--sel); color: var(--on-sel); border-color: var(--sel); }
+    .tm-chip.gone { opacity: .6; border-style: dashed; }
+    .tm-sub { font-weight: 500; color: var(--muted); font-size: 11px; }
+    .tm-chip.me .tm-sub { color: inherit; opacity: .7; }
+    .arrow { color: var(--muted); font-weight: 700; }
+    .chat { padding: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 180px; }
+    .cv-agent .meta { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .cv-agent .t { font-size: 13px; line-height: 1.5; }
+    .faded { opacity: .45; }
+    .hand { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 12px; background: var(--sel); color: var(--on-sel); }
+    .hand .tx { flex: 1; min-width: 0; line-height: 1.4; }
+    .hand .tx small { display: block; opacity: .75; font-size: 11.5px; }
+    .hand .btn { border-color: transparent; }
+    .hand .btn.ghost { background: transparent; border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); color: var(--on-sel); }
+    .note { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; }
+    .note .tx { flex: 1; }
+    .composer { margin: 0 14px 14px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+
+    /* Sessions tab */
+    .tile { background: var(--panel); color: var(--ink); border-radius: 14px; padding: 12px; box-shadow: 0 18px 40px -24px rgba(0,0,0,.6); }
+    .tile-h { display: flex; align-items: center; gap: 8px; font-weight: 700; margin-bottom: 8px; }
+    .pdot { width: 9px; height: 9px; border-radius: 50%; background: #7FA35A; }
+    .crew { border: 1px solid var(--line); border-radius: 12px; padding: 4px; display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+    .it { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 9px; }
+    .it.lead { background: var(--panel-2); }
+    .it .n { font-weight: 650; }
+    .it .st { font-size: 11.5px; color: var(--muted); }
+    .it .st.hot { color: #B3412F; font-weight: 650; }
+    .it .acts { margin-left: auto; display: flex; gap: 6px; }
+    .it .l2 { font-size: 12px; color: var(--muted); padding: 0 9px 6px 37px; margin-top: -4px; }
+    .execs { padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); }
+    .dot.idle { background: var(--line); }
+    .new-pill { font: 700 9.5px var(--mono); padding: 2px 6px; border-radius: 999px; background: var(--sel); color: var(--on-sel); }
+    .link { font-weight: 650; text-decoration: underline; text-underline-offset: 2px; }
+    .was-row { opacity: .7; }
+
+    .confirm { margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid #B3412F; background: color-mix(in srgb, #B3412F 7%, var(--panel)); }
+    .confirm h4 { margin: 0 0 6px; font-size: 13px; }
+    .confirm ul { margin: 6px 0 10px; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
+    .confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .cap { font: 700 10.5px var(--mono); letter-spacing: .05em; color: var(--on-bg-muted); margin: 0 0 6px 2px; text-transform: uppercase; }
+    @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="opts" id="opts"></div>
+  <div class="stage" id="stage"></div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    const OLD = "cue-lead-3", NEW = "cue-lead-4";
+    const execs = [["cue-chat-scroll", "working", "busy"], ["cue-install", "done, waiting for review", ""], ["cue-hub-split", "working", "busy"]];
+    const exChips = (me) => execs.map(([n, w]) => `<span class="tm-chip">${n} <span class="tm-sub">${w.split(",")[0]}</span> <span class="tm-sub">exec</span></span>`).join("");
+    const exRows = () => execs.map(([n, w, c]) => `<div class="it"><span class="dot ${c ? "" : "idle"}"></span><span class="n">${n}</span><span class="st">${w}</span><span class="acts"><button class="btn">Open</button></span></div>`).join("");
+
+    const S = [
+      ["1", "Old lead: where did it go", "The tab you were in. After the handoff its chat says where the work went, with a button to open the new lead.",
+        `<p class="why">Relay writes the old lead's id into the new lead's record (<b>predecessor</b>) and moves the executors over. Cue reads that, so the old lead knows who took over.</p>
+        <div class="pane">
+          <div class="ph"><span class="badge">C</span><span class="nm">${OLD}</span><span class="role was">WAS LEAD</span><span class="sp"></span><button class="btn">Close</button></div>
+          <div class="team-bar"><span class="tm-label">Handed off</span><span class="tm-chip me">${OLD}</span><span class="arrow">→</span><button class="tm-chip">${NEW} <span class="tm-sub">lead now</span></button><span class="tm-sub">· took its 3 executors</span></div>
+          <div class="chat">
+            <div class="cv-agent faded"><div class="meta">Claude · 3 min ago</div><div class="t">Handoff written to <code>handoff-cue-lead-4.md</code>. Starting the successor…</div></div>
+            <div class="hand"><div class="tx"><b>${NEW} took over 2 min ago</b><small>This session isn't leading anymore. Its executors report to ${NEW} now.</small></div><button class="btn primary">Open ${NEW}</button><button class="btn ghost">Close this one</button></div>
+          </div>
+          <div class="composer">Reply to ${OLD}…</div>
+        </div>`],
+      ["2", "New lead: where it came from", "The new lead's team bar names the lead it took over from. While that one is still open you can close it from here (Cue runs relay's close-predecessor).",
+        `<p class="why">Today the new lead asks you in its chat whether to close the old tab. This puts it in the team bar too, so you don't have to look for it.</p>
+        <div class="pane">
+          <div class="ph"><span class="badge">C</span><span class="nm">${NEW}</span><span class="role lead">LEAD</span><span class="new-pill">new</span><span class="sp"></span></div>
+          <div class="team-bar"><span class="tm-label">${NEW}'s team</span><span class="tm-chip me">${NEW} <span class="tm-sub">lead</span></span>${exChips()}</div>
+          <div class="chat">
+            <div class="note"><span class="tx">Took over from <button class="link">${OLD}</button> 2 min ago. It's still open, but it isn't leading anymore.</span><button class="btn">Close ${OLD}</button></div>
+            <div class="cv-agent"><div class="meta">Claude · 1 min ago</div><div class="t">Read the handoff. 3 executors in flight: cue-install reported and is waiting for review…</div></div>
+          </div>
+          <div class="composer">Reply to ${NEW}…</div>
+        </div>`],
+      ["3", "Sessions tab: both in one place", "The new lead takes the crew's place; the old one sits under it, dimmed, “handed off → cue-lead-4”, with Close. Neither row moves when you open it.",
+        `<p class="why">The new lead gets the <b>new</b> pill (same as a new session) and a line saying who it took over from. The old lead isn't shown as a lead any more, so it doesn't look like there are two.</p>
+        <div class="tile">
+          <div class="tile-h"><i class="pdot"></i>cue</div>
+          <div class="crew">
+            <div class="it lead"><span class="badge">C</span><span class="n">${NEW}</span><span class="new-pill">new</span><span class="role lead">LEAD</span><span class="st">your turn</span><span class="acts"><button class="btn">Open</button></span></div>
+            <div class="l2">took over from ${OLD} · 2 min ago</div>
+            <div class="execs">${exRows()}</div>
+            <div class="it was-row"><span class="badge">C</span><span class="n">${OLD}</span><span class="role was">WAS LEAD</span><span class="st">handed off → <b>${NEW}</b></span><span class="acts"><button class="btn">Close</button></span></div>
+          </div>
+        </div>`],
+      ["4", "Closing a lead: take its executors too", "Close on a lead that still has executors. Today Cue won't close it (“close them, or hand the lead off, first”). Here a second click closes all of them through relay: tabs closed, nothing left running.",
+        `<p class="why">Each executor gets relay's own <b>close</b> (it stops the process and closes its tab; staged work stays in its worktree), then the lead steps down and ends. A working executor or an unreviewed report is named, so you know what you're stopping.</p>
+        <div class="cols">
+          <div><p class="cap">first click</p>
+            <div class="tile"><div class="crew">
+              <div class="it lead"><span class="badge">C</span><span class="n">${NEW}</span><span class="role lead">LEAD</span><span class="st">your turn</span><span class="acts"><button class="btn deny">Close all 4?</button></span></div>
+              <div class="execs">${exRows()}</div>
+            </div>
+            <div class="confirm"><h4>Close ${NEW} and its 3 executors</h4>
+              <ul><li><b>cue-chat-scroll</b> and <b>cue-hub-split</b> are working: they stop</li><li><b>cue-install</b> reported and hasn't been reviewed: its changes stay staged in its worktree</li></ul>
+              <div class="row"><button class="btn">Keep them</button><button class="btn deny">Close all 4</button></div></div></div></div>
+          <div><p class="cap">then</p>
+            <div class="tile"><div class="tile-h"><i class="pdot"></i>cue</div>
+              <div class="note"><span class="tx">Closed ${NEW} and 3 executors. Nothing of theirs is still running.</span></div></div></div>
+        </div>`],
+      ["5", "Executors left behind", "If a lead goes away some other way (its tab closed, /relay:stop), its executors stay grouped under “lead closed”, with one button to close them all.",
+        `<p class="why">Today each one says <b>orphaned</b> and has to be closed by itself. This adds one Close for the group, and a Hand to… for passing them to a lead that's still running.</p>
+        <div class="tile">
+          <div class="tile-h"><i class="pdot"></i>cue</div>
+          <div class="crew">
+            <div class="it"><span class="badge">C</span><span class="n">${OLD}</span><span class="st hot">lead closed · 3 executors still running</span><span class="acts"><button class="btn">Hand to ${NEW}</button><button class="btn deny">Close all 3</button></span></div>
+            <div class="execs">${execs.map(([n]) => `<div class="it"><span class="dot"></span><span class="n">${n}</span><span class="st hot">orphaned</span></div>`).join("")}</div>
+          </div>
+        </div>`],
+    ];
+    let cur = S.some((s) => s[0] === q.get("s")) ? q.get("s") : "1";
+    const draw = () => {
+      document.getElementById("opts").innerHTML = S.map(([k, t, d]) => `<button class="opt" data-s="${k}" aria-pressed="${k === cur}"><kbd>${k}</kbd><b>${t}</b><span>${d}</span></button>`).join("");
+      document.getElementById("stage").innerHTML = S.find((s) => s[0] === cur)[3];
+    };
+    document.addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) { cur = b.dataset.s; draw(); } });
+    document.addEventListener("keydown", (e) => { if (S.some((s) => s[0] === e.key)) { cur = e.key; draw(); } });
+    draw();
+  </script>
+</body>
+</html>

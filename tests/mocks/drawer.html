@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terminal drawer mock</title>
+  <link rel="stylesheet" href="../../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="mock.css" />
+  <!-- Mock: a terminal of Cue's own, not a session's. The terminal button in the header (or ⌃`) opens a
+       drawer under whatever view is on; its tabs are shells, each started in a folder you pick.
+       The app above is the design preview (../preview.html), unchanged; the button is added to its header.
+       Serve the repo root (python3 -m http.server) and open /tests/mocks/drawer.html (?theme=dark|light). -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+    #app { flex: 1; min-height: 0; width: 100%; border: 0; display: block; }
+    /* The drawer: one slab across the window's foot; its top edge drags to resize. */
+    .drawer { flex: none; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); margin: 0 20px; border-radius: 12px 12px 0 0; box-shadow: 0 -12px 30px -20px rgba(0, 0, 0, 0.6); }
+    .drawer[hidden] { display: none; }
+    .grip { height: 8px; cursor: ns-resize; display: grid; place-items: center; touch-action: none; }
+    .grip::after { content: ""; width: 36px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--on-slab) 25%, transparent); }
+    .grip:hover::after, .grip.drag::after { background: color-mix(in srgb, var(--on-slab) 50%, transparent); }
+    .drawer .tbar { height: 30px; }
+    .tslot { flex: 1; min-height: 0; padding: 4px 6px 6px 10px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+    body.dragging, body.dragging * { cursor: ns-resize !important; user-select: none; }
+    body.dragging #app { pointer-events: none; }
+    /* Over: the drawer floats on the app instead of making room (the app keeps its full height). */
+    body.over .drawer { position: fixed; left: 20px; right: 20px; bottom: 0; z-index: 10; box-shadow: 0 -18px 50px -14px rgba(0, 0, 0, 0.55); }
+    /* The mock's own switch, to compare the two. */
+    .mockswitch { display: flex; align-items: center; gap: 2px; font: 600 11px var(--sans); opacity: .8; margin-right: 6px; flex: none; }
+    .mockswitch span { opacity: .6; margin-right: 4px; }
+    .mockswitch button { height: 22px; padding: 0 8px; border-radius: 5px; }
+    .mockswitch button[aria-pressed="true"] { background: color-mix(in srgb, var(--on-slab) 16%, transparent); }
+  </style>
+</head>
+<body>
+  <iframe id="app" aria-label="Cue"></iframe>
+  <section class="drawer" id="drawer" aria-label="Terminal" hidden>
+    <div class="grip" id="grip" role="separator" aria-orientation="horizontal" aria-label="Resize the terminal"></div>
+    <div class="tbar">
+      <div class="ttabs" role="tablist" id="tabs"></div>
+      <span class="mockswitch" role="group" aria-label="Layout"><span>Mock:</span><button data-layout="push">Push</button><button data-layout="over">Over</button></span>
+      <button class="tclose" id="hide" aria-label="Hide the terminal (⌃`)">Hide ▾</button>
+    </div>
+    <div class="tslot" id="slot"></div>
+  </section>
+  <script src="../../ui/vendor/xterm/xterm.js"></script>
+  <script src="../../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="fakeshell.js"></script>
+  <script src="termtabs.js"></script>
+  <script src="mockapp.js"></script>
+  <script>
+    const q = new URLSearchParams(location.search);
+    if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+    const frame = document.getElementById("app"), drawer = document.getElementById("drawer"), grip = document.getElementById("grip");
+    const { HOME, FOLDERS } = FakeShell;
+
+    const onKey = TermTabs.keys(() => toggle());
+    const tt = new TermTabs(document.getElementById("tabs"), document.getElementById("slot"), {
+      fontSize: 12, onKey,
+      onAdd: (btn) => TermTabs.menu(btn, FOLDERS, (cwd) => tt.add("shell", { cwd })),
+      onEmpty: () => show(false),
+    });
+
+    // Its height: dragged, and kept for next time (this browser only).
+    let height = 320;
+    try { height = +localStorage.getItem("mock.drawer.h") || height; } catch {}
+    const clamp = (h) => Math.max(140, Math.min(innerHeight - 180, h));
+    const size = () => { drawer.style.height = `${clamp(height)}px`; tt.fit(); };
+    grip.addEventListener("pointerdown", (e) => {
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add("drag");
+      document.body.classList.add("dragging");
+      const y0 = e.clientY, h0 = drawer.offsetHeight;
+      const move = (m) => { height = clamp(h0 + y0 - m.clientY); size(); };
+      const up = () => {
+        grip.classList.remove("drag");
+        document.body.classList.remove("dragging");
+        grip.removeEventListener("pointermove", move);
+        try { localStorage.setItem("mock.drawer.h", String(height)); } catch {}
+        tt.current()?.term.focus();
+      };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up, { once: true });
+    });
+    addEventListener("resize", size);
+
+    // Open: its tabs as you left them (the first time, one shell at home). Hidden, they keep running.
+    function show(open) {
+      drawer.hidden = !open;
+      if (open) {
+        if (!tt.tabs.length) tt.add("shell", { cwd: HOME });
+        size();
+        tt.show(tt.active);
+      } else frame.contentWindow?.focus();
+      markButton();
+    }
+    const toggle = () => show(drawer.hidden);
+    // Push (the app makes room) or over (it floats on the app): ?over=1, or the switch in its strip.
+    const layout = (over) => {
+      document.body.classList.toggle("over", over);
+      document.querySelectorAll("[data-layout]").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.layout === "over") === over)));
+      tt.fit();
+      tt.current()?.term.focus();
+    };
+    document.querySelector(".mockswitch").addEventListener("click", (e) => { const b = e.target.closest("[data-layout]"); if (b) layout(b.dataset.layout === "over"); });
+    layout(q.get("over") === "1");
+    document.getElementById("hide").onclick = () => show(false);
+
+    // The button in Cue's header, by Search.
+    let pressed = () => {};
+    const markButton = () => pressed({ pressed: !drawer.hidden });
+    MockApp.load(frame, q.get("theme") ? `?theme=${q.get("theme")}` : "").then((a) => {
+      pressed = MockApp.headerButton(a, toggle);
+      MockApp.hotkey(a, toggle);
+      if (q.has("open")) show(true);
+    });
+  </script>
+</body>
+</html>

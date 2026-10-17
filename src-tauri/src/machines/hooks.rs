@@ -37,8 +37,12 @@ quiet=20
 while :; do
   if [ -e "$d/out/$id.json" ]; then cat "$d/out/$id.json"; rm -f "$d/out/$id.json"; exit 0; fi
   [ -e "$d/in/$id.json" ] || quiet=600
-  seen=$(cat "$d/watching" 2>/dev/null || echo 0)
-  [ $(( $(date +%s) - ${seen:-0} )) -lt $quiet ] || { rm -f "$d/in/$id.json"; exit 0; }
+  # The stamp read as the watcher rewrites it comes back empty (once in a thousand reads: enough to hit
+  # within minutes at five a second): a moment's thing, not Cue gone, so it counts as now. No stamp at
+  # all: Cue never watched.
+  seen=$(cat "$d/watching" 2>/dev/null) || seen=0
+  [ -n "$seen" ] || seen=$(date +%s)
+  [ $(( $(date +%s) - seen )) -lt $quiet ] || { rm -f "$d/in/$id.json"; exit 0; }
   sleep 0.2 2>/dev/null || sleep 1
 done
 "#;
@@ -103,7 +107,8 @@ n=0; p=0
 while :; do
   [ "$(cat "$w" 2>/dev/null)" = $$ ] || exit 0
   if [ "$n" -eq 0 ]; then
-    date +%s >"$d/watching"
+    # Written whole (a rename), never truncated first: a hook reads it between writes.
+    date +%s >"$d/watching.new" 2>/dev/null && mv -f "$d/watching.new" "$d/watching"
     for x in $(pgrep -f '# cue-watch' 2>/dev/null); do
       case "$(cat "/proc/$x/comm" 2>/dev/null)" in sh|bash|dash|ash|zsh|ksh|busybox) ;; *) continue ;; esac
       grep -q "$v2" "/proc/$x/cmdline" 2>/dev/null && continue
@@ -274,8 +279,21 @@ fn new_session_seen(machine: &str, sid: &str) {
     }
 }
 
+/// The hook on the machine brought up to this Cue's, when it was set up there and has changed since
+/// (a fix in the script reaches the machine with the next connection, no setup to run again). Not set
+/// up: nothing is put there. Can't be checked (the line dropped): left as it is.
+fn refresh_hook(m: &Machine) {
+    let script = r#"f="$HOME/.cue/cue-hook"; t="$f.new"; cat >"$t" || exit 0; if [ -x "$f" ] && ! cmp -s "$t" "$f"; then chmod 755 "$t" && mv -f "$t" "$f" && echo updated; else rm -f "$t"; fi"#;
+    if let Ok(out) = machines::run_with_input(&m.host, script, SCRIPT) {
+        if out.trim() == "updated" {
+            eprintln!("cue: {}: its hook brought up to date", m.name);
+        }
+    }
+}
+
 /// One SSH stream: runs until the connection drops or the machine is removed.
 fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
+    refresh_hook(m);
     let mut child = machines::stream_command(&m.host, &watch_script()).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = child.stdout.take().ok_or("no output")?;
     let mut reached = false;
@@ -516,7 +534,7 @@ fn not_delivered(mut msg: Value) {
         o.remove(k);
     }
     o.insert("type".into(), json!("event"));
-    o.insert("event".into(), json!("terminal_ask"));
+    o.insert("event".into(), json!("answer_lost"));
     o.insert("message".into(), json!("Your answer from Cue didn't reach it (it had stopped waiting for Cue): it's asking in its terminal"));
     if let Some(mut s) = crate::hook::connect(Duration::from_millis(800)) {
         let _ = s.write_all(format!("{msg}\n").as_bytes());
@@ -837,6 +855,35 @@ mod tests {
         let out = run_sh(SCRIPT, &home, &["permission", "claude"], r#"{"session_id":"s1","tool_name":"Bash"}"#);
         answerer.join().unwrap();
         assert_eq!(out, r#"{"decision":"allow"}"#);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_permission_keeps_waiting_through_an_empty_read_of_the_stamp() {
+        let home = std::env::temp_dir().join(format!("cue-mh4-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/out")).unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        std::fs::write(home.join(".cue/watching"), format!("{now}\n")).unwrap();
+        let h2 = home.clone();
+        // The stamp is empty for a while (as it is for an instant each time the watcher rewrote it by
+        // truncating), then back; then Cue answers.
+        let answerer = std::thread::spawn(move || {
+            std::fs::write(h2.join(".cue/watching"), "").unwrap();
+            std::thread::sleep(Duration::from_millis(1200));
+            std::fs::write(h2.join(".cue/watching"), format!("{now}\n")).unwrap();
+            for _ in 0..50 {
+                std::thread::sleep(Duration::from_millis(100));
+                if let Some(f) = std::fs::read_dir(h2.join(".cue/in")).ok().and_then(|mut d| d.next()).and_then(|e| e.ok()) {
+                    let id = f.path().file_stem().unwrap().to_string_lossy().to_string();
+                    std::fs::write(h2.join(format!(".cue/out/{id}.json")), r#"{"decision":"allow"}"#).unwrap();
+                    return;
+                }
+            }
+        });
+        let out = run_sh(SCRIPT, &home, &["permission", "claude"], r#"{"session_id":"s1","tool_name":"Bash"}"#);
+        answerer.join().unwrap();
+        assert_eq!(out, r#"{"decision":"allow"}"#, "an empty read of the stamp isn't Cue gone");
         let _ = std::fs::remove_dir_all(&home);
     }
 

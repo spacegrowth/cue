@@ -370,12 +370,40 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-head b { font-weight: 650; flex: none; }
 .bg-head .dim { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bgtag { font: 800 9px var(--sans); letter-spacing: 0.08em; padding: 2px 5px; border-radius: 4px; line-height: 1.3; color: var(--muted); border: 1px dashed var(--muted); flex: none; }
+/* A background script's tag is solid (an agent's is dashed). */
+.bgtag.script { border-style: solid; }
+.bg-head .bad, .bg-view-meta .bad { color: var(--deny); font-weight: 650; }
+/* A script's output: terminal-dark, its lines as they came; in a block, four rows tall (the rest scrolled to). */
+.bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
+.bg-out div { white-space: pre; }
+.bg-out.bg-scroll { max-height: calc(4 * 17px + 12px); }
+.bg-out.dim-out { color: var(--on-slab); opacity: .6; font-family: var(--sans); font-size: 12px; }
+.bg-view-out { flex: 1; min-height: 120px; margin-left: 0; }
+.bg-cmd { background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.bg-hop-b .bgtag { font-size: 8px; }
 .bg-agent .stx-steps { margin-left: 2px; }
 /* Its steps: four rows (a step is 23px), the rest scrolled to inside the block. */
 .bg-scroll { max-height: calc(4 * 23px); overflow-y: auto; overscroll-behavior: contain; }
 .bg-scroll > * { flex: none; }
-.bg-agent .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
-.bg-note { font-size: 11.5px; color: var(--muted); }
+.bg-agent .stx-say.small, .bg-view-steps .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
+/* A background agent in full (chat.js helperPane): in place of the chat, its steps at full height. */
+.bg-view-head { display: flex; align-items: center; }
+.bg-back { font-size: 12.5px; color: var(--muted); padding: 2px 6px; margin-left: -6px; border-radius: 6px; }
+.bg-back:hover { color: var(--ink); background: var(--panel-2); }
+.bg-hop-n { font-size: 12.5px; margin-left: 6px; }
+/* The session's other agents, as chips: a click opens that one in this view. */
+.bg-hop { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -8px; }
+.bg-hop-b { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--panel-2); font-size: 12px; max-width: 260px; min-width: 0; }
+.bg-hop-b:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.bg-hop-b b { font-weight: 650; flex: none; }
+.bg-hop-b .dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bg-hop-b:not(.live) { opacity: .75; }
+.bg-view-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; margin-top: -6px; }
+.bg-view-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: -8px; }
+.bg-view-steps { margin-left: 0; }
+.bg-view-reply { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; user-select: text; -webkit-user-select: text; }
+.bg-view-k { display: block; font: 700 10px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.bg-view-foot { align-items: center; font-size: 12.5px; }
 .tray { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .tray-head b { font-weight: 650; }
@@ -604,6 +632,10 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .tdock + .foot { padding-top: 0; }
 .tdock + .foot .field { border-radius: 0 0 8px 8px; }
 .tdock + .foot .tplace-btn { border-radius: 0 0 0 8px; }
+/* Over a background agent's view (chat.js helperPane) there's no box for the dock to sit on: the dock is
+   a card of its own, a little above the foot's line. */
+.tdock:has(+ .bg-view-foot) { border-radius: 12px; margin-bottom: 8px; }
+.tdock + .bg-view-foot { padding-top: 10px; }
 @media (prefers-reduced-motion: reduce) { .tchev { transition: none; } }
 .btw-body { overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
 .btw-q { align-self: flex-end; max-width: 85%; padding: 6px 10px; border-radius: 12px 12px 4px 12px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13px; overflow-wrap: anywhere; }
@@ -615,6 +647,10 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .active-pane > .copied { bottom: 12px; }
 @keyframes copied { 0% { opacity: 0; transform: translateY(4px); } 10%, 75% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .act-head { font-size: 12px; font-weight: 650; color: var(--muted); }
+.code-wrap { position: relative; }
+.code-copy { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: 6px; font: 600 11px var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
+.code-wrap:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
+.code-copy:hover { background: color-mix(in srgb, var(--on-slab) 24%, var(--slab)); }
 .msg pre.long { max-height: 18em; overflow-y: auto; margin-bottom: 2px; }
 .nowrap { white-space: nowrap; }
 .code-more { font-size: 11px; color: var(--muted); margin-bottom: 9px; }
