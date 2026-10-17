@@ -1,7 +1,7 @@
 {
   "name": "cue",
   "private": true,
-  "version": "0.1.41",
+  "version": "0.1.42",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
