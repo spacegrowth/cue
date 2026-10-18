@@ -407,6 +407,8 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-hop-b .dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bg-hop-b:not(.live) { opacity: .75; }
 .bg-view-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; margin-top: -6px; }
+/* A script's title is what it does, in plain text (an agent's is its kind, in bold). */
+.bg-view-title.script { font-weight: 400; color: var(--ink); }
 .bg-view-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: -8px; }
 .bg-view-steps { margin-left: 0; }
 .bg-view-reply { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; user-select: text; -webkit-user-select: text; }
@@ -1748,10 +1750,9 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-strip .ins-bulb { width: 16px; height: 16px; }
 .ins-strip { cursor: pointer; }
 .ins-strip:not(.hot):hover { background: color-mix(in srgb, var(--panel-2) 60%, transparent); }
-/* Opened: the rest of its insights above the bar, on the panel, joined to it (one hairline between). */
-.ins-detail { border-bottom: 0; padding-bottom: 10px; }
-.ins-detail + .ins-strip { margin-top: 0; }
-.ins-detail + .ins-strip.hot { margin-top: 2px; }
+/* Opened: the bar on top like a title, the rest of its insights under it on the panel. */
+.ins-strip + .ins-detail { margin-top: 0; border-top: 0; padding-top: 10px; }
+.ins-strip.hot + .ins-detail { margin-top: 2px; }
 .ins-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ins-strip-text b { color: var(--ink); }
 .ins-strip .btn { height: 26px; }
@@ -1762,15 +1763,15 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: 999px; padding: 2px 8px; }
 button.ins-n { cursor: pointer; }
 .ins-line .ins-n { margin-left: auto; }
-/* When acting now saves something (past the hand-off point, a cache in its last minutes): the accent, filled
-   (moss with white in light, lime with dark in dark). Never on the opened card. */
-.ins-strip.hot { background: var(--accent); border-color: transparent; border-radius: 10px; padding: 6px 8px 6px 12px; color: color-mix(in srgb, var(--on-accent) 82%, transparent); }
-.ins-strip.hot b { color: var(--on-accent); }
-.ins-strip.hot .ins-bulb { stroke: var(--on-accent); }
-.ins-strip.hot .ins-bulb path:first-child { fill: var(--on-accent); }
-.ins-strip.hot .btn.primary { background: var(--on-accent); border-color: var(--on-accent); color: var(--accent); }
-.ins-strip.hot .ins-n { background: color-mix(in srgb, var(--on-accent) 16%, transparent); color: var(--on-accent); }
-.ins-strip.hot .ins-arrow { color: var(--on-accent); }
+/* When acting now saves something (past the hand-off point, a cache in its last minutes): the selected card's lime,
+   Cue's color for what needs you, in both themes. */
+.ins-strip.hot { background: var(--sel); border-color: transparent; border-radius: 10px; padding: 6px 8px 6px 12px; color: color-mix(in srgb, var(--on-sel) 78%, transparent); }
+.ins-strip.hot b { color: var(--on-sel); }
+.ins-strip.hot .ins-bulb { stroke: var(--on-sel); }
+.ins-strip.hot .ins-bulb path:first-child { fill: var(--on-sel); }
+.ins-strip.hot .btn.primary { background: var(--on-sel); border-color: var(--on-sel); color: var(--sel); }
+.ins-strip.hot .ins-n { background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
+.ins-strip.hot .ins-arrow { color: var(--on-sel); }
 /* What you just tapped, on its way: in place of the actions. */
 .ins-busy { flex: none; font-size: 12px; font-weight: 650; color: inherit; }
 .ins-lines { display: flex; flex-direction: column; }

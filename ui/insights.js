@@ -126,9 +126,9 @@ function handoffContinued(sid, ho) {
 }
 
 // The open session's insights sit above its box as one bar: the most pressing one's sentence and its one
-// action, "+N" for the rest. A click anywhere on it opens the rest above it (chart, every action, the other
-// insights as lines), on the panel; the bar itself stays as it was. It takes the accent color (moss with white
-// in light) only when acting now saves something: past the hand-off point (until you act on it or put it off),
+// action, "+N" for the rest. A click anywhere on it opens it: the bar rises like a title and the rest unfolds
+// under it (chart, every action, the other insights as lines), the bar itself as it was. It takes the selected
+// card's lime (Cue's color for what needs you) only when acting now saves something: past the hand-off point (until you act on it or put it off),
 // or your turn with its cache in its last minutes.
 const insOpen = new Set();      // sid: its insights opened, while Cue runs
 const insHotSeen = new Set();   // sid: its hand-off has had its colored moment (acted on, put off)
@@ -186,7 +186,7 @@ function handoffMain(sid, d, hot) {
   return h ? `<button class="${cls}" data-act="ins-fill" data-sid="${esc(sid)}" data-ins-cmd="/${esc(h.name)}">Hand off</button>`
     : `<button class="${cls}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
 }
-// The bar's arrow: up to open (the rest opens above it), down to fold.
+// The bar's arrow: up to open (the bar rises, the rest unfolds under it), down to fold.
 const CHEVRON_DOWN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
 const CHEVRON_UP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg>`;
 const insBusyNote = (sid) => `<span class="ins-busy" role="status">${esc(insBusy.get(sid))}</span>`;
@@ -217,14 +217,14 @@ function handoffInsight(sid, s) {
   const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : "";
   const bar = `<div class="ins-strip ${hot ? "hot" : ""}" ${open}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its insights" : "Show all of its insights"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button></div>`;
   if (!isOpen) return bar;
-  // Opened: the rest above the bar, on the panel (never colored): the chart, every action, the other insights.
+  // Opened: the bar rises like a title and the rest unfolds under it, on the panel: the chart, every action, the other insights.
   const lines = [cache, del].filter(Boolean).join("");
   const acts = d && !busy ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
   const body = d ? `${insChart(d.pts, d.mark)}
     <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
     <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.</div>
     ${acts}` : "";
-  return `<div class="ins ins-detail">${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}</div>${bar}`;
+  return `${bar}<div class="ins ins-detail">${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}</div>`;
 }
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------

@@ -1012,7 +1012,7 @@ function scriptPane(sid, h) {
   const running = helperRunning(h);
   const shown = h.output.length, all = h.lines || shown;
   const top = helperViewTop(sid, h);
-  const body = top.hop + `<div class="bg-view-title" data-key="title"><span class="bgtag script">SCRIPT</span><b>${esc(h.desc)}</b>${running ? liveDot(h) : ""}</div>
+  const body = top.hop + `<div class="bg-view-title script" data-key="title"><span class="bgtag script">SCRIPT</span><span>${esc(h.desc)}</span>${running ? liveDot(h) : ""}</div>
     <div class="bg-view-meta" data-key="meta">${running ? `<span><span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far</span>` : `<span class="${h.failed ? "bad" : ""}">${h.failed ? "failed" : "finished"} · ${helperSpan(h)}</span>`}${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${all} line${all === 1 ? "" : "s"}${all > shown ? ` · last ${shown} shown` : ""}</span></div>
     ${h.command && h.command !== h.desc ? `<div class="bg-cmd" data-key="cmd">${esc(h.command)}</div>` : ""}
     ${shown ? `<div class="bg-out bg-view-out" data-key="out" data-bg-scroll="${esc(`${sid}|${h.id}|full`)}">${h.output.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : `<div class="dim" data-key="none">${running ? "No output yet." : "It wrote nothing."}</div>`}`;
