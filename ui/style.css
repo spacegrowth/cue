@@ -1749,7 +1749,10 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ins-strip-text b { color: var(--ink); }
 .ins-strip .btn { height: 26px; }
-.ins-strip .linkish { white-space: nowrap; }
+/* Open (▾) and fold (▴): the arrow alone. */
+.ins-arrow { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; background: none; border: 0; padding: 0; border-radius: 6px; color: var(--muted); cursor: pointer; }
+.ins-arrow svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.ins-arrow:hover { color: var(--ink); }
 .ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: 999px; padding: 2px 8px; }
 button.ins-n { cursor: pointer; }
 .ins-line .ins-n { margin-left: auto; }
@@ -1761,7 +1764,7 @@ button.ins-n { cursor: pointer; }
 .ins-strip.hot .ins-bulb path:first-child { fill: var(--on-accent); }
 .ins-strip.hot .btn.primary { background: var(--on-accent); border-color: var(--on-accent); color: var(--accent); }
 .ins-strip.hot .ins-n { background: color-mix(in srgb, var(--on-accent) 16%, transparent); color: var(--on-accent); }
-.ins-strip.hot .linkish { color: var(--on-accent); }
+.ins-strip.hot .ins-arrow { color: var(--on-accent); }
 /* What you just tapped, on its way: in place of the actions. */
 .ins-busy { flex: none; font-size: 12px; font-weight: 650; color: inherit; }
 .ins-lines { display: flex; flex-direction: column; }

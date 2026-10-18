@@ -186,6 +186,9 @@ function handoffMain(sid, d, hot) {
   return h ? `<button class="${cls}" data-act="ins-fill" data-sid="${esc(sid)}" data-ins-cmd="/${esc(h.name)}">Hand off</button>`
     : `<button class="${cls}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
 }
+// The strip's open arrow and the card's fold arrow.
+const CHEVRON_DOWN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
+const CHEVRON_UP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg>`;
 const insBusyNote = (sid) => `<span class="ins-busy" role="status">${esc(insBusy.get(sid))}</span>`;
 
 /** The open session's insights above its box: handed off (what's next), else the strip, or the card opened. */
@@ -211,7 +214,7 @@ function handoffInsight(sid, s) {
     <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.</div>
     ${acts}` : "";
     return `<div class="ins">
-    <div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">${d ? "context this session re-reads, over time" : "for this session"}</span><span class="grow"></span><button class="linkish" ${open} aria-label="Fold the insights to one line">Fold ▴</button></div>
+    <div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">${d ? "context this session re-reads, over time" : "for this session"}</span><span class="grow"></span><button class="ins-arrow" ${open} aria-label="Fold the insights to one line">${CHEVRON_UP}</button></div>
     ${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}
   </div>`;
   }
@@ -224,7 +227,7 @@ function handoffInsight(sid, s) {
   const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
   const text = shown[0], rest = shown.length - 1;
   const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : "";
-  return `<div class="ins-strip ${hot ? "hot" : ""}">${BULB}<span class="ins-strip-text">${text}</span>${rest ? `<button class="ins-n" ${open} aria-label="${rest} more">+${rest}</button>` : ""}${act}<button class="linkish" ${open}>More ▾</button></div>`;
+  return `<div class="ins-strip ${hot ? "hot" : ""}">${BULB}<span class="ins-strip-text">${text}</span>${rest ? `<button class="ins-n" ${open} aria-label="${rest} more">+${rest}</button>` : ""}${act}<button class="ins-arrow" ${open} aria-label="Show all of its insights">${CHEVRON_DOWN}</button></div>`;
 }
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------
