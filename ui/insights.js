@@ -40,8 +40,8 @@ function insStale(s, sid) {
   const last = stepFeeds.get(sid)?.meta?.last_call_ms || insCache.get(sid)?.last_ms || 0;
   return !!s?.compacting_ms || (!!s?.compacted_ms && s.compacted_ms > last);
 }
-const insChoosing = new Set();  // sid: its hand-off insight's skill drop-up is open
-let insQuery = "";              // what's typed in that drop-up's search
+let insChoosing = "";           // Settings → Insights: the "host|agent" whose hand-off skill list is open
+let insQuery = "";              // what's typed in that list's search
 /** Where a hand-off skill choice is kept: per machine ("" is this Mac) and agent. */
 const insSkillKey = (s) => `${s.machine || ""}|${s.harness}`;
 const insSkills = () => state.settings?.insights?.skills || {};
@@ -51,7 +51,8 @@ const CUE_HANDOFF = "cue:handoff";   // Cue's own hand-off, as it's kept when ch
  *  SHORTCUT: reads the one-line description only; a skill that takes "resume" without saying so there gets
  *  Cue's message (which still works). Upgrade path: read the skill's own file on its host. */
 const takesResume = (sid, name) => /\bresume\b/i.test(cmdList(sid).find((c) => c.name === name)?.desc || "");
-const LENS = `<svg class="ins-lens" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><circle cx="10.5" cy="10.5" r="1.6" class="dot"></circle><path d="M20 20l-4.6-4.6"></path></svg>`;
+// Every insight's mark: a lit bulb (rays around it), in the theme's own color (style.css .ins-bulb).
+const BULB = `<svg class="ins-bulb" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></svg>`;
 
 function insLog(sid, rule, action, detail = "", tokens = 0) {
   invoke("insight_log", { sessionId: sid, rule, action, detail, tokens }).catch(() => {});
@@ -109,25 +110,47 @@ function handoffNext(sid, s, ho) {
     ? `<div class="ins-why">It's writing its hand-off note. Once it's done, continue in a new session from here.</div>`
     : `<div class="ins-why">Its hand-off note is written. Continue in a new session: it starts ${starts}, and this one closes (Closed keeps it).</div>
        <div class="ins-acts"><button class="btn primary" data-act="ins-continue" data-sid="${esc(sid)}">Continue in a new session</button></div>`;
-  return `<div class="ins"><div class="ins-head">${LENS}<span class="ins-tag">INSIGHT</span><span class="ins-note">hand-off · ${esc(ago(ho.sent_ms))} ago</span></div>${body}</div>`;
+  return `<div class="ins"><div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">hand-off · ${esc(ago(ho.sent_ms))} ago</span></div>${body}</div>`;
 }
 
-/** The open session's hand-off insight, when its context has grown several times over and it's your turn. */
-function handoffInsight(sid, s) {
-  // It stays while the session works too (like the background-agents tray), until you act on it.
-  if (!insOn("handoff") || !sid || !s) return "";
-  const pending = state.skill_handoffs?.[sid];
-  if (pending && !pending.next) return handoffNext(sid, s, pending);
+/** A hand-off that already continued: where it carries on now, and Close for this one. Hand-off isn't offered here
+ *  again: sending a hand-off skill again writes a new note, and Continue comes back. */
+function handoffContinued(sid, ho) {
+  const next = nameOf(ho.next, sessionOf(ho.next)?.project) || "its new session";
+  const close = svCloseArm === sid
+    ? `<button class="btn deny on" data-sv="close" data-sid="${esc(sid)}">Close?</button>`
+    : `<button class="btn" data-sv="close" data-sid="${esc(sid)}">Close this one</button>`;
+  return `<div class="ins"><div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">hand-off · continued ${esc(ago(ho.continued_ms || ho.sent_ms))} ago</span></div>
+    <div class="ins-why">It continued in <b>${esc(next)}</b>. Carry on there, and close this one when you're done with it (Closed keeps it).</div>
+    <div class="ins-acts"><button class="btn primary" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button>${close}</div></div>`;
+}
+
+// The open session's insights sit above its box as one strip: the most pressing one's sentence and its one
+// action, "+N" for the rest. Tapped, it opens in place into the full card (chart, every action, the other
+// insights as lines). The strip turns the accent color (moss with white in light) only when acting now saves
+// something: past the hand-off point (once, until you open it or act), or your turn with its cache in its last
+// minutes. The opened card is never colored: you're already looking.
+const insOpen = new Set();      // sid: its insights opened (More ▾), while Cue runs
+const insHotSeen = new Set();   // sid: its hand-off has had its one colored moment (opened, acted on, put off)
+// SHORTCUT: kept while Cue runs, so after a restart a session past its hand-off point colors once more. Upgrade
+// path: keep it on the Mac with the hand-off state (db, like skill_handoffs), so both apps share it.
+const HOT_CACHE_MS = 5 * 60000; // a cache this close to running out colors the strip
+// sid → what you just tapped ("Handing off…"), until it's done: shown in place of the actions, so nothing
+// goes twice and the tap shows at once, before the session's next state arrives.
+const insBusy = new Map();
+
+/** The open session's hand-off numbers, when its context has grown several times over: else null. */
+function handoffDue(sid, s) {
+  if (!insOn("handoff")) return null;
   const f = stepFeeds.get(sid), m = f?.meta;
-  if (!m || insStale(s, sid)) return "";
+  if (!m || insStale(s, sid)) return null;
   const bar = handoffBar(sid);
-  if ((m.context || 0) < bar.context || insLaterOf(sid) > m.context) return "";
+  if ((m.context || 0) < bar.context || insLaterOf(sid) > m.context) return null;
   // Grown from what the session started at (its first reply, read from the top of its log), not from the
   // first turns read here: a long session's log is only read from near its end, often just a few turns.
   const read = (f.turns || []).map((t) => t.context).filter((c) => c > 0);
   const early = m.start_context || median(read.slice(0, 3)), grew = early ? m.context / early : 0;
-  if (grew < bar.growth) return "";
-  insShown(sid, "handoff");
+  if (grew < bar.growth) return null;
   // What this session's machine has: the hand-off skill you chose for this machine and agent, else any
   // command named for it; else Cue's own hand-off. And compact.
   const cmds = cmdList(sid), chosen = insSkills()[insSkillKey(s)];
@@ -138,17 +161,6 @@ function handoffInsight(sid, s) {
     ...handoffs.map((c) => ({ cmd: `/${c.name}` })),
     ...cmds.filter((c) => c.name === "compact").map(() => ({ cmd: "/compact" })),
   ];
-  const where = s.machine ? `on ${machShort(s.machine)}` : "on this Mac";
-  // Choose the hand-off skill: a drop-up over its buttons, searchable, skills first; kept for this host and agent.
-  const choices = insChoosing.has(sid) ? cmds.filter((c) => fits(c) && c.kind !== "cue" && c.name !== "compact").sort((a, b) => (a.kind === "skill" ? 0 : 1) - (b.kind === "skill" ? 0 : 1) || a.name.localeCompare(b.name)) : [];
-  const q = insQuery.trim().toLowerCase().replace(/^\//, "");
-  const shown = choices.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.desc || "").toLowerCase().includes(q)).slice(0, 60);
-  const cueRow = !insChoosing.has(sid) || (q && !"cue's hand-off handoff".includes(q)) ? "" : `<button class="ins-pop-row ${chosen === CUE_HANDOFF ? "on" : ""}" data-act="ins-skill" data-sid="${esc(sid)}" data-name="${CUE_HANDOFF}"><span>Cue's hand-off</span><span class="dim">Writes HANDOFF.md; Continue starts the next session from it. Any agent</span></button>`;
-  const picker = !insChoosing.has(sid) ? "" : `<div class="ins-pop" role="dialog" aria-label="Choose the hand-off skill">
-      <input id="ins-search" class="ins-search" data-ins-search="${esc(sid)}" value="${esc(insQuery)}" placeholder="Search ${esc(where === "on this Mac" ? "this Mac's" : `${machShort(s.machine)}'s`)} ${esc(agentName(s.harness))} commands…" autocomplete="off" spellcheck="false">
-      <div class="ins-pop-list">${cueRow}${shown.length || cueRow ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-sid="${esc(sid)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${esc(insShort(c.desc || ""))}</span></button>`).join("") : `<div class="ins-pop-empty dim">${choices.length ? "Nothing matches." : "Reading its commands…"}</div>`}</div>
-      <div class="ins-pop-foot"><button class="linkish" data-act="ins-refresh" data-sid="${esc(sid)}">Added one just now? Look again</button><span class="grow"></span><span class="dim">Esc to close</span></div>
-    </div>`;
   // The chart: its first reply, then each turn read here, then its latest reply; time across.
   const mark = Math.max(early * bar.growth, bar.context);   // where both halves of the bar are cleared
   const turnPts = (f.turns || []).filter((t) => t.context > 0 && t.at_ms).map((t) => ({ t: t.at_ms, c: t.context }));
@@ -158,18 +170,61 @@ function handoffInsight(sid, s) {
   const crossed = pts.findIndex((p, i) => i > 0 && p.c >= mark && pts[i - 1].c < mark && !(i === 1 && pts.length > 2 && pts[1].t - pts[0].t > (pts.at(-1).t - pts[0].t) * 0.05));
   const since = (crossed > 0 ? ` It passed the hand-off point ${ago(pts[crossed].t)} ago.` : "") + (bar.cold ? " Its cache has run out, so its next reply writes all of it again: the cheapest moment to hand off." : "");
   const remind = Math.ceil((m.context * 1.25) / 50000) * 50000;
-  // /compact runs as Cue's own Compact does (⋯ → Compact); a hand-off skill goes in the box for you to send.
-  // No hand-off skill it can use (or you chose Cue's): Cue's own hand-off.
-  const cue = handoffs.length ? "" : `<button class="btn primary" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
-  const buttons = cue + opts.map((o, i) => `<button class="btn ${handoffs.length && i === 0 ? "primary" : ""}" data-act="${o.cmd === "/compact" ? "ins-compact" : "ins-fill"}" data-sid="${esc(sid)}" data-ins-cmd="${esc(o.cmd)}"><span class="mono">${esc(o.cmd)}</span></button>`).join("");
-  return `<div class="ins">
-    <div class="ins-head">${LENS}<span class="ins-tag">INSIGHT</span><span class="ins-note">context this session re-reads, over time</span><span class="grow"></span><button class="linkish" data-act="ins-choose" data-sid="${esc(sid)}">Choose the hand-off skill</button></div>
-    ${insChart(pts, mark)}
-    <div class="ins-axis mono"><span>start · ${esc(insTok(early))} · ${esc(ago(startT))} ago</span><b>now · ${esc(insTok(m.context))}</b></div>
-    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(m.context))}</b> of context, ${Math.round(grew)}× what it started with. ${since} A fresh session with a short summary starts back near ${esc(insTok(early))}.</div>
-    <div class="ins-acts-wrap">${picker}
-    <div class="ins-acts">${buttons}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${remind}">Remind me at ${esc(insTok(remind))}</button></div></div>
+  return { m, early, grew, pts, mark, startT, since, handoffs, opts, remind };
+}
+
+/** What a tap does, by its button: the hand-off skill (your click is the message), Cue's own hand-off when it
+ *  has none it can use (or you chose Cue's), and /compact as Cue's own Compact (⋯ → Compact). */
+function handoffButtons(sid, d) {
+  const cue = d.handoffs.length ? "" : `<button class="btn primary" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
+  return cue + d.opts.map((o, i) => `<button class="btn ${d.handoffs.length && i === 0 ? "primary" : ""}" data-act="${o.cmd === "/compact" ? "ins-compact" : "ins-fill"}" data-sid="${esc(sid)}" data-ins-cmd="${esc(o.cmd)}"><span class="mono">${esc(o.cmd)}</span></button>`).join("");
+}
+/** The strip's one action: the hand-off, by the same route as the card's first button. Filled only when the
+ *  strip is colored; on the quiet one it stays plain, so it doesn't pull the eye from the box's Send. */
+function handoffMain(sid, d, hot) {
+  const h = d.handoffs[0], cls = `btn ${hot ? "primary" : ""}`;
+  return h ? `<button class="${cls}" data-act="ins-fill" data-sid="${esc(sid)}" data-ins-cmd="/${esc(h.name)}">Hand off</button>`
+    : `<button class="${cls}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
+}
+const insBusyNote = (sid) => `<span class="ins-busy" role="status">${esc(insBusy.get(sid))}</span>`;
+
+/** The open session's insights above its box: handed off (what's next), else the strip, or the card opened. */
+function handoffInsight(sid, s) {
+  if (!sid || !s) return "";
+  const pending = insOn("handoff") && state.skill_handoffs?.[sid];
+  if (pending && !pending.next) return handoffNext(sid, s, pending);
+  if (pending?.next) return handoffContinued(sid, pending);
+  // It stays while the session works too (like the background-agents tray), until you act on it.
+  const d = handoffDue(sid, s);
+  const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
+  const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask) : "", del = delegateLine(sid);
+  if (!d && !cache && !del) return "";
+  if (d) insShown(sid, "handoff");
+  const busy = insBusy.has(sid);
+  const open = `data-act="ins-open" data-sid="${esc(sid)}"`;
+  if (insOpen.has(sid)) {
+    const lines = [cache, del].filter(Boolean).join("");
+    const acts = busy ? `<div class="ins-acts">${insBusyNote(sid)}</div>`
+      : d ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
+    const body = d ? `${insChart(d.pts, d.mark)}
+    <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
+    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.</div>
+    ${acts}` : "";
+    return `<div class="ins">
+    <div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">${d ? "context this session re-reads, over time" : "for this session"}</span><span class="grow"></span><button class="linkish" ${open} aria-label="Fold the insights to one line">Fold ▴</button></div>
+    ${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}
   </div>`;
+  }
+  // Folded: the most pressing one. A cache about to run out comes first (replying now is what saves it).
+  const hotCache = !!cw && cw.left > 0 && cw.left <= HOT_CACHE_MS && !ask;
+  const hot = !busy && (hotCache || (!!d && !insHotSeen.has(sid)));
+  const handoffText = d && (insHotSeen.has(sid)
+    ? `<b>Each reply re-reads ${esc(insTok(d.m.context))},</b> ${Math.round(d.grew)}× its start.`
+    : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
+  const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
+  const text = shown[0], rest = shown.length - 1;
+  const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : "";
+  return `<div class="ins-strip ${hot ? "hot" : ""}">${BULB}<span class="ins-strip-text">${text}</span>${rest ? `<button class="ins-n" ${open} aria-label="${rest} more">+${rest}</button>` : ""}${act}<button class="linkish" ${open}>More ▾</button></div>`;
 }
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------
@@ -198,24 +253,30 @@ function cacheWarn(sid) {
 function cacheLine(sid, ask = false) {
   const cw = cacheWarn(sid);
   if (!cw) return "";
-  const { c, left, warn } = cw;
+  const { left, warn } = cw;
   if (left > 0) {
     insShown(sid, "cache");
-    const mins = Math.max(1, Math.ceil(left / 60000)), arc = Math.round((left / warn) * 56.5 * 10) / 10;
-    return `<div class="ins-line"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="track"></circle><circle cx="12" cy="12" r="9" class="left" stroke-dasharray="${arc} 56.5" transform="rotate(-90 12 12)"></circle></svg><span><b>Cached ${mins} more min.</b> After that, ${ask ? "answering" : "its next reply"} re-writes ${esc(insTok(c.tokens))} tokens.</span></div>`;
+    const arc = Math.round((left / warn) * 56.5 * 10) / 10;
+    return `<div class="ins-line"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="track"></circle><circle cx="12" cy="12" r="9" class="left" stroke-dasharray="${arc} 56.5" transform="rotate(-90 12 12)"></circle></svg><span>${cacheText(cw, ask)}</span></div>`;
   }
-  return `<div class="ins-line cold"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="gone"></circle></svg><span>Cache expired · ${ask ? `answering re-writes ${esc(insTok(c.tokens))} tokens.` : `its next reply re-writes ${esc(insTok(c.tokens))} tokens. Starting something new? Hand off instead.`}</span></div>`;
+  return `<div class="ins-line cold"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="gone"></circle></svg><span>${cacheText(cw, ask)}</span></div>`;
+}
+/** cacheWarn's sentence, for its line and the open session's strip. */
+function cacheText({ c, left }, ask) {
+  if (left > 0) return `<b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> After that, ${ask ? "answering" : "its next reply"} re-writes ${esc(insTok(c.tokens))} tokens.`;
+  return `Cache expired · ${ask ? `answering re-writes ${esc(insTok(c.tokens))} tokens.` : `its next reply re-writes ${esc(insTok(c.tokens))} tokens. Starting something new? Hand off instead.`}`;
 }
 /** On a waiting card: the session has grown several times past where it started. Open it to hand off. */
 function handoffLine(sid) {
   if (!insOn("handoff") || !sid) return "";
   const s = sessionOf(sid), m = stepFeeds.get(sid)?.meta, c = insCache.get(sid);
   const pending = state.skill_handoffs?.[sid];
-  if (s && pending && !pending.next) return `<div class="ins-line">${LENS}<span><b>Hand-off note written.</b> Open it to continue in a new session.</span></div>`;
+  if (s && pending && !pending.next) return `<div class="ins-line">${BULB}<span><b>Hand-off note written.</b> Open it to continue in a new session.</span></div>`;
+  if (s && pending?.next) return `<div class="ins-line">${BULB}<span><b>Continued in ${esc(nameOf(pending.next, sessionOf(pending.next)?.project) || "a new session")}.</b> Close this one when you're done with it.</span></div>`;
   const ctx = m?.context || c?.tokens || 0, start = m?.start_context || c?.start || 0;
   const bar = handoffBar(sid);
   if (!s || s.state === "working" || insStale(s, sid) || ctx < bar.context || !start || ctx / start < bar.growth || insLaterOf(sid) > ctx) return "";
-  return `<div class="ins-line">${LENS}<span><b>${Math.round(ctx / start)}× its starting context</b> (${esc(insTok(ctx))}). ${bar.cold ? "Its cache is gone: the cheapest moment to hand off." : "Open it to hand off."}</span></div>`;
+  return `<div class="ins-line">${BULB}<span><b>${Math.round(ctx / start)}× its starting context</b> (${esc(insTok(ctx))}). ${bar.cold ? "Its cache is gone: the cheapest moment to hand off." : "Open it to hand off."}</span></div>`;
 }
 /** Sessions waiting on you (a reply or a decision, or put aside in Need to decide) whose log isn't open here, and a parked or closed one
  *  open in Active: ask the Mac for their insights' numbers (every 30 s). The board's cards on this Mac also
@@ -258,7 +319,7 @@ function resumeCost(sid) {
   if (!c && !insAsked.has(sid)) { insAsked.add(sid); invoke("insight_state", { sessionIds: [sid] }).then((r) => { if (r?.[sid]) { insCache.set(sid, r[sid]); renderMain(); } }).catch(() => {}); }
   if (!c?.tokens || !c.until_ms || c.tokens < CACHE_MIN_TOKENS) return "";
   const left = c.until_ms - now();
-  if (left > 0) return `<div class="ins-line" data-key="cost">${LENS}<span><b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> Resuming now re-reads its ${esc(insTok(c.tokens))} of context from the cache.</span></div>`;
+  if (left > 0) return `<div class="ins-line" data-key="cost">${BULB}<span><b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> Resuming now re-reads its ${esc(insTok(c.tokens))} of context from the cache.</span></div>`;
   insShown(sid, "cache");
   const fresh = c.start ? ` A new session from its last reply starts near ${esc(insTok(c.start))}.` : "";
   return `<div class="ins-line cold" data-key="cost"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="gone"></circle></svg><span>Its cache is gone: resuming re-writes <b>${esc(insTok(c.tokens))}</b> tokens on its first reply.${fresh}</span><button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh from its last reply</button></div>`;
@@ -266,13 +327,63 @@ function resumeCost(sid) {
 setInterval(insPoll, 30000);
 setTimeout(insPoll, 3000);   // and soon after the window opens, not 30 s in
 
+// ---------- could have delegated: looking around itself, or many areas in one long session ----------
+
+// sid → what it could have delegated (ipc insights_tab delegate_of), for the board's cards; whether relay is on.
+// From the turns history, which is read every 10 minutes: asked every minute is plenty.
+let insDelegate = new Map(), insRelay = false;
+async function delPoll() {
+  if (document.hidden || !insOn("delegate")) return;
+  const sids = [...new Set(state.items.map((i) => i.session_id))].filter(Boolean);
+  if (!sids.length) return;
+  try {
+    const r = (await invoke("insight_delegate", { sessionIds: sids })) || {};
+    const next = new Map(Object.entries(r.sessions || {}));
+    const changed = insRelay !== !!r.relay || JSON.stringify([...next]) !== JSON.stringify([...insDelegate]);
+    insDelegate = next;
+    insRelay = !!r.relay;
+    if (changed) renderMain();
+  } catch {}
+}
+setInterval(delPoll, 60000);
+setTimeout(delPoll, 4000);
+/** An area of a project as a short name: "." is its top level, a folder outside it its last part. */
+const areaName = (a) => (a === "." ? "top level" : a.split("/").filter(Boolean).at(-1) || a);
+/** On a waiting card: this session looked around itself where an agent could have, or ran long across
+ *  several areas where each could have had a session (relay, when it's on) or an agent of its own. */
+function delegateLine(sid) {
+  const text = delegateText(sid);
+  return text ? `<div class="ins-line">${BULB}<span>${text}</span></div>` : "";
+}
+/** A board card's insights as one line, the most pressing (a cache in its last minutes, else the hand-off,
+ *  what it could have delegated, the cache), with "+N" for the rest: they're all in its open strip.
+ *  `ask`: it waits on a decision, so only its cache counts. */
+function insCardLine(sid, ask = false) {
+  const cw = cacheWarn(sid), cache = cacheLine(sid, ask);
+  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), delegateLine(sid)] : [handoffLine(sid), delegateLine(sid), cache];
+  const [top, ...rest] = lines.filter(Boolean);
+  return top && rest.length ? top.replace(/<\/div>$/, `<span class="ins-n">+${rest.length}</span></div>`) : top || "";
+}
+/** delegateLine's sentence, for its line and the open session's strip: "" when there's nothing to say. */
+function delegateText(sid) {
+  const s = sessionOf(sid), d = insDelegate.get(sid);
+  if (!insOn("delegate") || !s || s.state === "working" || !d) return "";
+  insShown(sid, "delegate");
+  if (d.search) {
+    const later = d.search.later ? `its ${d.search.later} later repl${d.search.later === 1 ? "y" : "ies"} re-read ${esc(insTok(d.search.tokens))} of it` : "every reply after re-reads it";
+    return `<b>Could have sent an agent to look.</b> ${d.search.looks} reads and searches grew it ${esc(insTok(d.search.growth))}; ${later}.`;
+  }
+  const next = insRelay ? "relay, an executor per area" : "a background agent per area, each in its own worktree";
+  return `<b>${d.split.length} areas in one long session</b> (${esc(d.split.slice(0, 3).map(areaName).join(", "))}${d.split.length > 3 ? ", …" : ""}). Next time: ${next}.`;
+}
+
 // ---------- queue, don't interrupt ----------
 
 /** By the box while a session works and you've typed something: Now stops it, Queue keeps the work. */
 function queueNote(sid, s) {
   if (!insOn("queue") || s?.state !== "working" || !draft(`s:${sid}`).text.trim()) return "";
   insShown(sid, "queue");
-  return `<div class="ins-line ins-queue">${LENS}<span>Now stops its current step and what it was doing. Queue keeps the work and sends this when it's free.</span><button class="linkish" data-act="ins-queue-off">Got it</button></div>`;
+  return `<div class="ins-line ins-queue">${BULB}<span>Now stops its current step and what it was doing. Queue keeps the work and sends this when it's free.</span><button class="linkish" data-act="ins-queue-off">Got it</button></div>`;
 }
 
 // ---------- what you did with them ----------
@@ -292,12 +403,12 @@ function insSent(sid, text, now_) {
 }
 function insAct(act, d) {
   const sid = d.sid;
-  if (act === "ins-refresh") { cmdList(sid, true); return renderMain(); }
-  if (act === "ins-choose") { insQuery = ""; insChoosing.has(sid) ? insChoosing.delete(sid) : insChoosing.add(sid); renderMain(); return document.getElementById("ins-search")?.focus(); }
-  if (act === "ins-skill") { const s = sessionOf(sid); insChoosing.delete(sid); insQuery = ""; return s && setSetting("insights.skills", { ...insSkills(), [insSkillKey(s)]: d.name }); }
+  if (act === "ins-choose") { insQuery = ""; insChoosing = insChoosing === d.key ? "" : d.key; renderMain(); return document.getElementById("ins-search")?.focus(); }
+  if (act === "ins-skill") { insChoosing = ""; insQuery = ""; return setSetting("insights.skills", { ...insSkills(), [d.key]: d.name }); }
   if (act === "ins-find") { cmdLists.clear(); cmdMissed.clear(); insFindSkills(true); return renderMain(); }
   if (act === "ins-skill-forget") { const { [d.key]: _, ...rest } = insSkills(); return setSetting("insights.skills", rest); }
-  if (act === "ins-later") { insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
+  if (act === "ins-open") { insHotSeen.add(sid); insOpen.has(sid) ? insOpen.delete(sid) : insOpen.add(sid); return renderMain(); }
+  if (act === "ins-later") { insHotSeen.add(sid); insOpen.delete(sid); insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
   if (act === "ins-queue-off") { insLog(active?.sid || "", "queue", "dismissed"); return setSetting("insights.queue", false); }
   if (act === "ins-continue") {
     if (insContinuing.has(sid)) return;
@@ -311,8 +422,11 @@ function insAct(act, d) {
       renderMain();
     }, (e) => { insContinuing.delete(sid); toast(`Couldn't continue: ${e}`); renderMain(); });
   }
+  // The session a hand-off continued in.
+  if (act === "ins-goto") return sessionOf(sid) ? openSession(sid) : setActive(null, sid);
   if (act === "ins-cue") {
-    return invoke("handoff_cue", { sessionId: sid }).then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`));
+    return insRun(sid, "Handing off…", () => invoke("handoff_cue", { sessionId: sid })
+      .then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
   }
   if (act === "ins-fresh") {
     insLog(sid, "cache", "acted", "fresh", insCache.get(sid)?.tokens || 0);
@@ -323,15 +437,29 @@ function insAct(act, d) {
   }
   if (act === "ins-compact") {
     insLog(sid, "handoff", "acted", "/compact");
-    return invoke("session_command", { sessionId: sid, action: "compact" }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
+    // Mid-step, Cue's Compact is refused ("do this when its turn ends"): /compact goes as a queued message instead.
+    const go = sessionOf(sid)?.state === "working"
+      ? () => invoke("send_to_session", { sessionId: sid, text: "/compact", images: [], now: false }).then(() => toast("/compact queued: it compacts when this step ends"), (e) => toast(`Couldn't: ${e}`))
+      : () => invoke("session_command", { sessionId: sid, action: "compact" }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
+    return insRun(sid, "Compacting…", go);
   }
   if (act === "ins-fill") {
     // Your click on the command is the message: it goes as you'd send it, like Compact or a quick phrase.
     insSent(sid, d.insCmd, false);
     insLog(sid, "handoff", "acted", d.insCmd);
-    return invoke("send_to_session", { sessionId: sid, text: d.insCmd, images: [], now: false }).then((r) => toast(`${d.insCmd} sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`));
+    return insRun(sid, `Sending ${d.insCmd}…`, () => invoke("send_to_session", { sessionId: sid, text: d.insCmd, images: [], now: false })
+      .then((r) => toast(`${d.insCmd} sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
   }
-
+}
+/** A tap that sends something: says so in the insight at once (its buttons give way to `note`), then clears
+ *  once the Mac has answered. By then the session's own state says what came of it (writing its hand-off
+ *  note, compacting). A second tap while it's on its way does nothing. */
+function insRun(sid, note, go) {
+  if (insBusy.has(sid)) return;
+  insHotSeen.add(sid);
+  insBusy.set(sid, sessionOf(sid)?.state === "working" ? `${note.replace(/…$/, "")}: queued for when this step ends…` : note);
+  renderMain();
+  return go().finally(() => { insBusy.delete(sid); insOpen.delete(sid); renderMain(); });
 }
 
 document.addEventListener("input", (e) => {
@@ -340,18 +468,19 @@ document.addEventListener("input", (e) => {
   renderMain();
 });
 document.addEventListener("keydown", (e) => {
-  if (!insChoosing.size) return;
-  if (e.key === "Escape") { e.stopPropagation(); insChoosing.clear(); insQuery = ""; renderMain(); }
+  if (!insChoosing) return;
+  if (e.key === "Escape") { e.stopPropagation(); insChoosing = ""; insQuery = ""; renderMain(); }
   else if (e.key === "Enter" && e.target.matches?.("[data-ins-search]")) { e.preventDefault(); document.querySelector(".ins-pop .ins-pop-row")?.click(); }
 }, true);
 document.addEventListener("mousedown", (e) => {
-  if (insChoosing.size && !e.target.closest?.(".ins-pop, [data-act=ins-choose]")) { insChoosing.clear(); insQuery = ""; renderMain(); }
+  if (insChoosing && !e.target.closest?.(".ins-pop, [data-act=ins-choose]")) { insChoosing = ""; insQuery = ""; renderMain(); }
 });
 
 // ---------- Settings → Insights ----------
 /** Settings → Insights: each insight on or off, the last 30 days, and the hand-off skill per host and agent. */
 let insMachines = null;   // the machines you added (+ New → Machine), read once when this opens
 let insFound = null;      // host → its hand-off skills for Claude Code (null while being read)
+let insHostCmds = {};     // host → every Claude Code command it has, to choose from (null while being read)
 let insFoundAsks = 0;
 /** Ask each host which hand-off skills it has; while any is still being read (or a newer list is on its
  *  way, the one it had shown till then), ask again shortly. */
@@ -359,9 +488,28 @@ function insFindSkills(fresh) {
   if (fresh) insFoundAsks = 0;
   invoke("insight_host_skills", { fresh: !!fresh }).then((r) => {
     insFound = r?.hosts || {};
+    insHostCmds = r?.commands || {};
     renderMain();
     if ((r?.reading || Object.values(insFound).some((v) => v === null)) && ++insFoundAsks < 40) setTimeout(() => insFindSkills(false), 1500);
   }).catch(() => {});
+}
+/** Settings → Insights: the list a host and agent's hand-off skill is chosen from, while it's open:
+ *  searchable, skills first. Claude Code's are the host's own (read for your home folder there); the
+ *  other agents' logs don't list theirs, so only Cue's hand-off is offered for them. */
+function insPicker(k, h, a, chosen) {
+  if (insChoosing !== k) return "";
+  const all = a === "claude" ? insHostCmds[h.key] : [];
+  const choices = (all || []).filter((c) => !c.name.startsWith("relay:") && c.kind !== "cue" && c.name !== "compact")
+    .sort((x, y) => (x.kind === "skill" ? 0 : 1) - (y.kind === "skill" ? 0 : 1) || x.name.localeCompare(y.name));
+  const q = insQuery.trim().toLowerCase().replace(/^\//, "");
+  const shown = choices.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.desc || "").toLowerCase().includes(q)).slice(0, 60);
+  const cueRow = q && !"cue's hand-off handoff".includes(q) ? "" : `<button class="ins-pop-row ${chosen === CUE_HANDOFF ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${CUE_HANDOFF}"><span>Cue's hand-off</span><span class="dim">Writes HANDOFF.md; Continue starts the next session from it. Any agent</span></button>`;
+  const empty = a !== "claude" ? "" : `<div class="ins-pop-empty dim">${all === null ? "Reading its commands…" : choices.length ? "Nothing matches." : "No commands found."}</div>`;
+  return `<div class="ins-pop down" role="dialog" aria-label="Choose the hand-off skill">
+      <input id="ins-search" class="ins-search" data-ins-search="${esc(k)}" value="${esc(insQuery)}" placeholder="Search ${esc(h.name)}'s ${esc(agentName(a))} commands…" autocomplete="off" spellcheck="false">
+      <div class="ins-pop-list">${cueRow}${shown.length ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${esc(insShort(c.desc || ""))}</span></button>`).join("") : empty}</div>
+      <div class="ins-pop-foot">${a === "claude" ? `<button class="linkish" data-act="ins-find">Added one just now? Look again</button>` : ""}<span class="grow"></span><span class="dim">Esc to close</span></div>
+    </div>`;
 }
 function insSettings(st) {
   if (insMachines === null) { insMachines = []; invoke("machines_list").then((l) => { insMachines = l || []; renderMain(); }).catch(() => {}); }
@@ -375,12 +523,13 @@ function insSettings(st) {
       // Claude Code: what the host has (Cue reads its commands there); the others' logs don't list theirs.
       const found = a === "claude" ? insFound?.[h.key] : undefined;
       const usable = (found || []).filter((n) => !n.startsWith("relay:"));
-      const what = name ? `${name === CUE_HANDOFF ? "<span>Cue's hand-off</span>" : `<span class="mono">/${esc(name)}</span>`}<span class="dim">chosen</span><span class="grow"></span><button class="btn small" data-act="ins-skill-forget" data-key="${esc(k)}">Forget</button>`
+      const what = name ? `${name === CUE_HANDOFF ? "<span>Cue's hand-off</span>" : `<span class="mono">/${esc(name)}</span>`}<span class="dim">chosen</span>`
         : found === null ? `<span class="dim">Looking…</span>`
         : usable.length ? `<span class="mono">${usable.map((n) => `/${esc(n)}`).join(", ")}</span><span class="dim">found</span>`
         : a === "claude" && found ? `<span class="dim">None found: Cue's hand-off</span>`
         : `<span class="dim">Any skill with “handoff” in its name, else Cue's hand-off</span>`;
-      return `<div class="ins-skill-row"><span class="ins-skill-agent">${esc(agentName(a))}</span>${what}</div>`;
+      const acts = `<span class="grow"></span>${name ? `<button class="btn small" data-act="ins-skill-forget" data-key="${esc(k)}">Forget</button>` : ""}<button class="btn small" data-act="ins-choose" data-key="${esc(k)}">${name ? "Change" : "Choose"}</button>`;
+      return `<div class="ins-skill-row">${insPicker(k, h, a, name)}<span class="ins-skill-agent">${esc(agentName(a))}</span>${what}${acts}</div>`;
     }).join("");
     return setRow(esc(h.name), `<div class="ins-skill-rows">${lines}</div>`, "");
   }).join("");
@@ -389,9 +538,10 @@ function insSettings(st) {
     ${setRow("What they are", "Small notes from a session's own log, with the evidence. Each one offers what that session's machine already has, and sends it only when you click. Last 30 days: " + esc(insCountsLine()), "")}
     ${setRow("Hand off", "When a session's turns cost several times what its early ones did, offers its hand-off skill (else Cue's own: a note in HANDOFF.md, then Continue in a new session) or /compact.", toggle("insights.handoff", st.insights?.handoff ?? true))}
     ${setRow("Cache about to expire", "On a waiting card, the last minutes before its cached context runs out, and once it has. Claude Code says when; other agents' logs don't.", toggle("insights.cache", st.insights?.cache ?? true))}
+    ${setRow("Could have delegated", "On a waiting card, when a session did a lot of reading and searching itself (a background agent would have sent back a summary), or ran long across several areas of its project (relay, when it's on, or an agent per area).", toggle("insights.delegate", st.insights?.delegate ?? true))}
     ${setRow("Queue instead of interrupting", "While a session works and you've typed something: Now stops what it's doing, Queue keeps it.", toggle("insights.queue", st.insights?.queue ?? true))}
     <div class="set-group">Hand-off skill, by host</div>
-    ${setRow("How it's set", "Each host's agents have their own skills. Cue offers what a host has (any with “handoff” in its name, else its own hand-off), or the one you choose from a session's hand-off insight: kept for that host and agent.", `<button class="btn small" data-act="ins-find">Look again</button>`)}
+    ${setRow("How it's set", "Each host's agents have their own skills. Cue offers what a host has (any with “handoff” in its name, else its own hand-off), or the one you choose here: kept for that host and agent.", `<button class="btn small" data-act="ins-find">Look again</button>`)}
     ${hostRows}`;
 }
 let insCounts = null;
@@ -400,5 +550,5 @@ function insCountsLine() {
   const by = Object.fromEntries(insCounts.map((r) => [r.rule, r]));
   const part = (rule, label) => (by[rule] ? `${label}: shown ${by[rule].shown}, acted ${by[rule].acted}` : "");
   const saved = by.cache?.tokens ? ` · ${insTok(by.cache.tokens)} tokens not re-written` : "";
-  return [part("handoff", "Hand off"), part("cache", "Cache") + saved, part("queue", "Queue")].filter(Boolean).join(" · ") || "Nothing shown yet.";
+  return [part("handoff", "Hand off"), part("cache", "Cache") + saved, part("queue", "Queue"), part("delegate", "Delegate")].filter(Boolean).join(" · ") || "Nothing shown yet.";
 }

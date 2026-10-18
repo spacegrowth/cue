@@ -134,6 +134,10 @@ CREATE TABLE IF NOT EXISTS turns (
   waited_ms    INTEGER NOT NULL DEFAULT 0, -- how long the session had waited on you before it
   prompt       TEXT NOT NULL DEFAULT '',
   correction   TEXT NOT NULL DEFAULT '',
+  looks        INTEGER NOT NULL DEFAULT 0, -- reads and searches it ran itself
+  agents       INTEGER NOT NULL DEFAULT 0, -- background agents it started
+  relay        INTEGER NOT NULL DEFAULT 0, -- relay executors it spawned
+  areas        TEXT NOT NULL DEFAULT '',   -- the project areas it edited, one per line
   PRIMARY KEY (session_id, at_ms)
 );
 CREATE INDEX IF NOT EXISTS turns_at ON turns(at_ms);
@@ -204,6 +208,15 @@ fn open() -> rusqlite::Result<Connection> {
     if version < 2 {
         c.execute_batch("DELETE FROM turns; DELETE FROM turns_read;")?;
         c.pragma_update(None, "user_version", 2)?;
+    }
+    // What each turn looked up, delegated and edited (Insights' "could have delegated"): the columns, and
+    // every log read again so turns read before have them too. A new database has them already.
+    if version < 3 {
+        for col in ["looks INTEGER NOT NULL DEFAULT 0", "agents INTEGER NOT NULL DEFAULT 0", "relay INTEGER NOT NULL DEFAULT 0", "areas TEXT NOT NULL DEFAULT ''"] {
+            let _ = c.execute(&format!("ALTER TABLE turns ADD COLUMN {col}"), []);
+        }
+        c.execute_batch("DELETE FROM turns; DELETE FROM turns_read;")?;
+        c.pragma_update(None, "user_version", 3)?;
     }
     Ok(c)
 }
@@ -721,20 +734,22 @@ pub fn save_turns(path: &str, of: &TurnsOf, rows: &[crate::logs::steps::TurnRow]
         {
             let mut q = tx.prepare_cached(
                 "INSERT INTO turns (session_id, at_ms, tokens, context, prompt_chars, model, cwd, machine, harness, errors, interrupted, corrected,
-                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, relay, areas)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
                  ON CONFLICT(session_id, at_ms) DO UPDATE SET tokens = excluded.tokens, context = excluded.context, prompt_chars = excluded.prompt_chars,
                    model = excluded.model, cwd = excluded.cwd, machine = excluded.machine, harness = excluded.harness, errors = excluded.errors,
                    interrupted = excluded.interrupted, corrected = excluded.corrected, fresh = excluded.fresh, output = excluded.output,
                    cache_read = excluded.cache_read, write_5m = excluded.write_5m, write_1h = excluded.write_1h, first_write = excluded.first_write,
                    first_read = excluded.first_read, prompt = excluded.prompt, correction = excluded.correction,
+                   looks = excluded.looks, agents = excluded.agents, relay = excluded.relay, areas = excluded.areas,
                    -- An open turn is read again from its own start, without the reply before it: keep the wait read the first time.
                    waited_ms = CASE WHEN excluded.waited_ms > 0 THEN excluded.waited_ms ELSE turns.waited_ms END",
             )?;
             for t in rows.iter().filter(|t| t.at_ms > 0) {
                 let u = &t.usage;
                 q.execute(params![of.session_id, t.at_ms as i64, t.tokens as i64, t.context as i64, t.prompt_chars as i64, t.model, t.cwd, of.machine, of.harness, t.errors as i64, t.interrupted, t.corrected,
-                    u.fresh as i64, u.output as i64, u.read as i64, u.write_5m as i64, u.write_1h as i64, u.first_write as i64, u.first_read as i64, t.waited_ms as i64, t.prompt, t.correction])?;
+                    u.fresh as i64, u.output as i64, u.read as i64, u.write_5m as i64, u.write_1h as i64, u.first_write as i64, u.first_read as i64, t.waited_ms as i64, t.prompt, t.correction,
+                    t.looks as i64, t.agents as i64, t.relay as i64, t.areas])?;
             }
         }
         tx.execute(
@@ -764,48 +779,69 @@ pub struct StoredTurn {
     pub waited_ms: u64,
     pub prompt: String,
     pub correction: String,
+    pub looks: u64,
+    pub agents: u64,
+    pub relay: u64,
+    /// The project areas it edited, one per line.
+    pub areas: String,
 }
+
+const STORED_TURN: &str = "SELECT date(at_ms / 1000, 'unixepoch', 'localtime'), session_id, tokens, context, model, cwd, machine, errors, interrupted, corrected,
+   at_ms, harness, fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, relay, areas
+ FROM turns";
 
 /// Every turn since `since_ms`, oldest first.
 pub fn turns_since(since_ms: u64) -> Vec<StoredTurn> {
     with(|c| {
-        let mut q = c.prepare(
-            "SELECT date(at_ms / 1000, 'unixepoch', 'localtime'), session_id, tokens, context, model, cwd, machine, errors, interrupted, corrected,
-               at_ms, harness, fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction
-             FROM turns WHERE at_ms >= ?1 ORDER BY at_ms",
-        )?;
-        let rows = q.query_map(params![since_ms as i64], |r| {
-            Ok(StoredTurn {
-                day: r.get(0)?,
-                session_id: r.get(1)?,
-                tokens: r.get::<_, i64>(2)? as u64,
-                context: r.get::<_, i64>(3)? as u64,
-                model: r.get(4)?,
-                cwd: r.get(5)?,
-                machine: r.get(6)?,
-                errors: r.get::<_, i64>(7)? as u64,
-                interrupted: r.get(8)?,
-                corrected: r.get(9)?,
-                at_ms: r.get::<_, i64>(10)? as u64,
-                harness: r.get(11)?,
-                usage: crate::logs::steps::Usage {
-                    fresh: r.get::<_, i64>(12)? as u64,
-                    output: r.get::<_, i64>(13)? as u64,
-                    read: r.get::<_, i64>(14)? as u64,
-                    write_5m: r.get::<_, i64>(15)? as u64,
-                    write_1h: r.get::<_, i64>(16)? as u64,
-                    first_write: r.get::<_, i64>(17)? as u64,
-                    first_read: r.get::<_, i64>(18)? as u64,
-                    last_ms: 0,
-                },
-                waited_ms: r.get::<_, i64>(19)? as u64,
-                prompt: r.get(20)?,
-                correction: r.get(21)?,
-            })
-        })?;
+        let mut q = c.prepare(&format!("{STORED_TURN} WHERE at_ms >= ?1 ORDER BY at_ms"))?;
+        let rows = q.query_map(params![since_ms as i64], stored_turn)?;
         rows.collect()
     })
     .unwrap_or_default()
+}
+
+/// One session's turns, oldest first.
+pub fn turns_of(session_id: &str) -> Vec<StoredTurn> {
+    with(|c| {
+        let mut q = c.prepare_cached(&format!("{STORED_TURN} WHERE session_id = ?1 ORDER BY at_ms"))?;
+        let rows = q.query_map(params![session_id], stored_turn)?;
+        rows.collect()
+    })
+    .unwrap_or_default()
+}
+
+fn stored_turn(r: &rusqlite::Row) -> rusqlite::Result<StoredTurn> {
+    Ok(StoredTurn {
+        day: r.get(0)?,
+        session_id: r.get(1)?,
+        tokens: r.get::<_, i64>(2)? as u64,
+        context: r.get::<_, i64>(3)? as u64,
+        model: r.get(4)?,
+        cwd: r.get(5)?,
+        machine: r.get(6)?,
+        errors: r.get::<_, i64>(7)? as u64,
+        interrupted: r.get(8)?,
+        corrected: r.get(9)?,
+        at_ms: r.get::<_, i64>(10)? as u64,
+        harness: r.get(11)?,
+        usage: crate::logs::steps::Usage {
+            fresh: r.get::<_, i64>(12)? as u64,
+            output: r.get::<_, i64>(13)? as u64,
+            read: r.get::<_, i64>(14)? as u64,
+            write_5m: r.get::<_, i64>(15)? as u64,
+            write_1h: r.get::<_, i64>(16)? as u64,
+            first_write: r.get::<_, i64>(17)? as u64,
+            first_read: r.get::<_, i64>(18)? as u64,
+            last_ms: 0,
+        },
+        waited_ms: r.get::<_, i64>(19)? as u64,
+        prompt: r.get(20)?,
+        correction: r.get(21)?,
+        looks: r.get::<_, i64>(22)? as u64,
+        agents: r.get::<_, i64>(23)? as u64,
+        relay: r.get::<_, i64>(24)? as u64,
+        areas: r.get(25)?,
+    })
 }
 
 /// What each of `sessions` started at: the context of its first turn that carried one.

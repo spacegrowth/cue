@@ -305,6 +305,24 @@ function insightsTabView() {
     "Hand off when Cue offers it: past 300k and four times what it started with (150k and three times once its cache has run out), a fresh one with a short summary re-reads far less.",
     ls.length ? itabFig("How their context climbed", "amber: re-read above the start, past the hand-off point", `<div class="itab-tiles">${ls.slice(0, 6).map(itabClimb).join("")}</div>`) : "", l.usd ? bad("avoidable") : "");
 
+  // Could have delegated: turns that looked around themselves, and long sessions across several areas.
+  const dl = d.delegate || {}, dls = dl.sessions || [], dsp = dl.spread || [], dTop = Math.max(0.01, ...dls.map((r) => r.usd));
+  const used = `Already delegated: ${itabNum(dl.agents || 0)} background agent${dl.agents === 1 ? "" : "s"} in ${itabNum(dl.agent_sessions || 0)} session${dl.agent_sessions === 1 ? "" : "s"}${dl.relay_spawns ? `, ${itabNum(dl.relay_spawns)} relay executor${dl.relay_spawns === 1 ? "" : "s"}` : ""}.`;
+  const looked = dl.turns
+    ? `${itabNum(dl.turns)} turn${dl.turns === 1 ? "" : "s"} did ${dl.looks_min} or more reads and searches themselves, each growing its session's context by ${itabNum(dl.growth_min)} or more; later replies re-read ${itabNum(dl.tokens)} tokens of it.`
+    : "No turn did a lot of reading and searching itself.";
+  const spreadLine = dl.spread_count ? ` ${dl.spread_count} session${dl.spread_count === 1 ? "" : "s"} ran past the hand-off point editing in ${dl.areas_min} or more areas.` : "";
+  const delSess = dls.length ? itabFig("The turns that looked around", "reads and searches · what it grew · what was re-read", `<div class="itab-list">${dls.map((r) => itabSess(r, [`${r.looks} looks`, `+${itabNum(r.growth)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / dTop, r.at_ms)).join("")}</div>`) : "";
+  const delSpread = dsp.length ? itabFig("Long, across several areas", "its re-reads past the hand-off point are counted under Long sessions", `<div class="itab-list">${dsp.map((r) => itabSess(r, [`peak ${itabNum(r.peak_context)}`, esc(r.areas.slice(0, 4).map(areaName).join(", ") + (r.areas.length > 4 ? ", …" : "")), `<b>${r.areas.length} areas</b>`])).join("")}</div>`) : "";
+  const split = dl.relay
+    ? "For work across several areas, start a relay lead (/relay:mode): each area gets an executor with a small context of its own."
+    : "For work across several areas, a background agent per area, each in its own worktree, keeps every context small.";
+  const deleg = itabFind("Could have delegated", itabUsd(dl.usd || 0),
+    `${looked}${spreadLine} ${used}`,
+    "", "",
+    `Hand the looking to a background agent (“have an agent find where …”): it reads in a context of its own and sends back a summary. ${split}`,
+    `${delSess || delSpread ? `<div class="itab-evidence itab-pics">${delSess}${delSpread}</div>` : ""}`, dl.usd ? bad("avoidable") : "");
+
   // Corrections: which projects, which prompts.
   const ex = c.examples || [];
   const pair = (e) => {
@@ -333,7 +351,7 @@ function insightsTabView() {
     ${itabCard("Turns per day", `${(t.turns / d.days).toFixed(t.turns / d.days < 10 ? 1 : 0)} a day`, itabChart([{ vals: val("turns") }], days, (n) => String(Math.round(n))))}
   </div>${ins ? `<div class="itab-fine">Cue's insights: ${ins}</div>` : ""}`;
 
-  return `${ranges}${tiles}<div class="itab">${note}${where}${trends}${waiting}${long}${corr}</div>`;
+  return `${ranges}${tiles}<div class="itab">${note}${where}${trends}${waiting}${long}${deleg}${corr}</div>`;
 }
 
 /** A session's row clicked: a live one opens in Active, as search opens it; an ended one opens its whole

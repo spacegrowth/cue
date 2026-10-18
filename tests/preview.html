@@ -32,8 +32,9 @@
       const state = {
         now_ms: now, window_ms: 30 * M,
         settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] }, insights: { handoff: true, cache: true, queue: true, skills: /ins=1/.test(location.search) ? { "|claude": "relay:handoff", "build-box|codex": "handoff" } : {} } },
-        // ?ins=sent: agent-relay sent /handoff and hasn't continued (insights.js handoffNext); ?ins=sentcue: Cue's own.
-        skill_handoffs: /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
+        // ?ins=sent: agent-relay sent /handoff and hasn't continued (insights.js handoffNext); ?ins=sentcue: Cue's own;
+        // ?ins=continued: it continued in order-engine and is still open (handoffContinued).
+        skill_handoffs: /ins=continued/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 300000, next: "eng", continued_ms: Date.now() - 240000, resume: true } } : /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
         connections: { claude: { ok: true, events: ["PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"] }, pi: { ok: true } },
         // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
         sessions: [
@@ -381,6 +382,10 @@
           // ?cost=cold|warm: every session asked about has 600k of context; its cache gone, or 8 minutes left.
           if (cmd === "insight_state" && q.get("cost")) return Object.fromEntries(args.sessionIds.map((sid) => [sid, { until_ms: q.get("cost") === "warm" ? Date.now() + 8 * 60000 : Date.now() - 3 * 3600000, tokens: 600000, start: 45000, last_ms: Date.now() - 4 * 3600000 }]));
           if (cmd === "insight_state") return {};
+          // ?del=1: the board's sessions could have delegated (relay on): one looked around itself, one ran long across areas.
+          if (cmd === "insight_delegate") return /del=1/.test(location.search) ? { relay: true, sessions: {
+            det: { search: { looks: 46, growth: 132000, tokens: 1840000, usd: 0.92, later: 14 }, searches: 1, search_tokens: 1840000, search_usd: 0.92, split: [], agents: 0, relay: 0 },
+            sec: { search: null, searches: 0, search_tokens: 0, search_usd: 0, split: ["src", "tests", "scripts", "/x/shared/lib"], agents: 2, relay: 0 } } } : { relay: false, sessions: {} };
           if (cmd === "insight_host_skills") return { hosts: { "": ["handoff", "relay:handoff"], "build-box": [], "gpu-1": null }, reading: false };
           if (cmd === "insight_log") return;
           if (cmd === "insights_summary") {
@@ -447,7 +452,12 @@
               if (s.handoff_turn != null) s.turns = n - s.handoff_turn;
             });
             corrections.by_project = [["web-app", 31, 410], ["cue", 52, 1890], ["order-engine", 24, 720], ["agent-relay", 28, 1240], ["data-pipeline", 9, 530], ["backtester", 4, 260]].map(([project, count, turns]) => ({ project, count, turns }));
-            return { days, since_ms: Date.now() - days * D, totals, by_day, waiting, long, corrections, split, models,
+            // Could have delegated: turns that looked around themselves, and long sessions across several areas.
+            const dlr = [["c1", "cue", 64, 188000, 21, 4.1], ["c2", "order-engine", 52, 141000, 30, 3.2], ["q1", "data-pipeline", 38, 97000, 12, 1.4], ["c4", "web-app", 33, 84000, 6, 0.4]];
+            const delegate = { usd: 12.6, tokens: 25200000, turns: 31, looks_min: 30, growth_min: 80000, areas_min: 3, agents: 412, agent_sessions: 96, relay_spawns: 188, relay: !/relay=off/.test(location.search), spread_count: 3,
+              sessions: dlr.map(([sid, project, looks, growth, later, usd], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", last_ms: at(4 + i * 22), at_ms: at(4 + i * 22), prompt: "", looks, growth, later, usd, tokens: Math.round(usd * 2e6), turns: 1 + (i % 2) })),
+              spread: [["c7", "order-engine", ["src", "tests", "scripts", "web", "/x/shared/lib"], 520000], ["c3", "cue", ["src-tauri", "ui", "tests"], 410000], ["c8", "data-pipeline", ["dags", "lib", "sql"], 330000]].map(([sid, project, areas, peak], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", last_ms: at(9 + i * 40), areas, usd: 0, peak_context: peak })) };
+            return { days, since_ms: Date.now() - days * D, totals, by_day, waiting, long, delegate, corrections, split, models,
               insights: [{ rule: "cache", shown: 14, acted: 8, tokens: 2300000 }, { rule: "handoff", shown: 9, acted: 3, tokens: 0 }] };
           }
           if (cmd === "insight_counts") return [{ rule: "cache", shown: 14, acted: 8, tokens: 2300000 }, { rule: "handoff", shown: 9, acted: 3, tokens: 0 }];
@@ -594,6 +604,15 @@
         liveSpot = true;
         lvAct("new", {});
       }, 100);
+      // With ?ins=1: &inss=open opens agent-relay's insights (More ▾), =busy is Hand off just tapped, =seen its
+      // strip after its colored moment (insights.js handoffInsight).
+      const inss = new URLSearchParams(q).get("inss");
+      if (inss) setTimeout(() => {
+        if (inss === "open") insOpen.add("relay");
+        if (inss === "busy") insBusy.set("relay", "Handing off…");
+        if (inss !== "open") insHotSeen.add("relay");
+        renderMain();
+      }, 150);
     }, 300);
   </script>
 </body>

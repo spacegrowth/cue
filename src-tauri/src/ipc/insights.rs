@@ -42,7 +42,7 @@ pub(crate) fn insight_states(h: &Hub, session_ids: &[String]) -> serde_json::Val
 
 /// Each host's hand-off skills for Claude Code (`hosts`: "" is this Mac, then your machines by name): a
 /// list, or null while it's read for the first time; `reading` is true while a newer list is on its way
-/// for any of them. `fresh`: every folder's command list is read again (after you add a skill somewhere),
+/// for any of them; `commands`: every command it has (name, kind, desc), for choosing one in Settings. `fresh`: every folder's command list is read again (after you add a skill somewhere),
 /// so sessions' "/" menus and insights see it too, not only this list.
 #[tauri::command]
 pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_json::Value, String> {
@@ -52,12 +52,17 @@ pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_jso
             crate::commands::reread_all();
         }
         let mut out = serde_json::Map::new();
+        let mut all = serde_json::Map::new();
         let mut reading = false;
         for host in std::iter::once(String::new()).chain(crate::machines::list().into_iter().map(|m| m.name)) {
             out.insert(host.clone(), serde_json::json!(crate::commands::handoff_skills(&host)));
+            // Everything it has, for choosing one in Settings (null while it's read).
+            let cmds = crate::commands::for_folder(&crate::commands::home_folder(&host), &host)
+                .map(|l| l.into_iter().map(|c| serde_json::json!({ "name": c.name, "kind": c.kind, "desc": c.desc })).collect::<Vec<_>>());
+            all.insert(host.clone(), serde_json::json!(cmds));
             reading |= crate::commands::reading(&crate::commands::home_folder(&host), &host);
         }
-        serde_json::json!({ "hosts": out, "reading": reading })
+        serde_json::json!({ "hosts": out, "commands": all, "reading": reading })
     })
     .await
     .map_err(|e| e.to_string())
@@ -185,10 +190,14 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
     let new_id = started?;
     let log = local_log(h, session_id);
     let busy = log.as_deref().is_some_and(|p| steps::running_background(p) > 0);
-    let closed = !busy && super::end_session(h, session_id).is_ok();
+    // Not closed (it's working, say): its hand-off card then says where it continued and offers Close.
+    let close = if busy { Err("its background agents are still at work".to_string()) } else { super::end_session(h, session_id) };
     h.redraw();
-    Ok(serde_json::json!({ "session_id": new_id, "closed": closed,
-        "detail": if closed { "Continued in a new session; the old one is closed (Closed keeps it)" } else if busy { "Continued in a new session; the old one stays open until its background agents report back" } else { "Continued in a new session" } }))
+    let detail = match &close {
+        Ok(_) => "Continued in a new session; the old one is closed (Closed keeps it)".to_string(),
+        Err(e) => format!("Continued in a new session. The old one is still open ({e}): close it from its hand-off card"),
+    };
+    Ok(serde_json::json!({ "session_id": new_id, "closed": close.is_ok(), "detail": detail }))
 }
 
 /// A parked or closed session whose cache is gone: a new session of the same agent, folder and machine

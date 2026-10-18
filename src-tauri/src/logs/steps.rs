@@ -89,6 +89,67 @@ pub struct Turn {
     /// Its tokens by kind, for Insights' prices (the chat doesn't show them).
     #[serde(skip)]
     usage: Usage,
+    /// What it did itself that it could have handed to a helper, for Insights (the chat doesn't show it).
+    #[serde(skip)]
+    work: Work,
+}
+
+/// A turn's own looking around and delegating, for Insights' "could have delegated": reads and searches
+/// it ran itself, the background agents and relay executors it started, and the files it edited.
+#[derive(Clone, Default)]
+pub struct Work {
+    pub looks: u64,
+    pub agents: u64,
+    pub relay: u64,
+    /// Each file edited, once (at most MAX_EDITED).
+    pub edited: Vec<String>,
+}
+
+const MAX_EDITED: usize = 200;
+
+impl Work {
+    /// One tool call. A shell command counts as a look when it only reads (grep, cat, sed -n, git log …).
+    fn count(&mut self, block: &Value) {
+        let name = block.get("name").and_then(Value::as_str).unwrap_or("");
+        let input = block.get("input").unwrap_or(&Value::Null);
+        let arg = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or("");
+        match name {
+            "Read" | "Grep" | "Glob" | "WebFetch" | "WebSearch" => self.looks += 1,
+            "Bash" if is_look(arg("command")) => self.looks += 1,
+            "Bash" if arg("command").contains("relay spawn") => self.relay += 1,
+            "Agent" | "Task" => self.agents += 1,
+            "Skill" if arg("skill").starts_with("relay:spawn") => self.relay += 1,
+            "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => {
+                let f = if arg("file_path").is_empty() { arg("notebook_path") } else { arg("file_path") };
+                if !f.is_empty() && self.edited.len() < MAX_EDITED && !self.edited.iter().any(|e| e == f) {
+                    self.edited.push(f.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether a shell command only reads: its first word (after any `cd … &&`) is a reader.
+/// SHORTCUT: the first word only; `grep … | xargs sed -i` counts as a look. Upgrade path: every stage of the pipe.
+fn is_look(cmd: &str) -> bool {
+    let c = without_cd(cmd);
+    const READERS: [&str; 14] = ["grep ", "rg ", "cat ", "sed -n", "head ", "tail ", "find ", "ls", "wc ", "git log", "git show", "git grep", "git diff", "git blame"];
+    READERS.iter().any(|r| c.starts_with(r))
+}
+
+/// Where in a project an edited file is, so a session's edits can be told apart by area: its first folder
+/// under the session's folder (a file at the top is "."), else, outside it, its own folder. Cue's and Claude
+/// Code's own files and temporary ones aren't the project's: None.
+pub fn area_of(cwd: &str, path: &str) -> Option<String> {
+    if path.contains("/.claude/") || ["/tmp/", "/private/", "/var/folders/"].iter().any(|t| path.starts_with(t)) {
+        return None;
+    }
+    let base = cwd.trim_end_matches('/');
+    match path.strip_prefix(base).and_then(|r| r.strip_prefix('/')).filter(|_| !base.is_empty()) {
+        Some(rest) => Some(rest.split_once('/').map_or(".", |(top, _)| top).to_string()),
+        None => path.rsplit_once('/').map(|(dir, _)| dir.to_string()).filter(|d| !d.is_empty()),
+    }
 }
 
 /// A turn's tokens by kind, summed over its replies (each reply once): fresh input, output, cache reads,
@@ -569,6 +630,12 @@ pub struct TurnRow {
     /// Its prompt and, when corrected, your next one: the start of each, for Insights' examples.
     pub prompt: String,
     pub correction: String,
+    /// Reads and searches it ran itself, background agents and relay executors it started.
+    pub looks: u64,
+    pub agents: u64,
+    pub relay: u64,
+    /// The areas of the project it edited (area_of), each once, one per line.
+    pub areas: String,
 }
 
 /// Whether a prompt reads as correcting the turn before it. English openers only.
@@ -659,6 +726,15 @@ pub fn turn_rows(path: &str, from: u64, max: u64) -> (Vec<TurnRow>, u64) {
         waited_ms: i.checked_sub(1).filter(|_| !t.prompt.is_empty()).map(|p| feed.turns[p].usage.last_ms).filter(|&l| l > SANE_MS && t.at_ms > l).map_or(0, |l| t.at_ms - l),
         prompt: snippet(&t.prompt),
         correction: next_yours(i).filter(|next| reads_as_correction(&next.prompt)).map(|next| snippet(&next.prompt)).unwrap_or_default(),
+        looks: t.work.looks,
+        agents: t.work.agents,
+        relay: t.work.relay,
+        areas: {
+            let mut a: Vec<String> = t.work.edited.iter().filter_map(|f| area_of(&cwds[i], f)).collect();
+            a.sort();
+            a.dedup();
+            a.join("\n")
+        },
     }).collect();
     // The open turn starts the next read; none read: carry on after what was read.
     let next = if n > 0 { starts[n - 1] } else { from + end as u64 };
@@ -1040,7 +1116,7 @@ impl Feed {
                 if crate::logs::transcript::is_stop_hook(e) {
                     // Read from mid-file, its turn's start further back: the turn starts here, already hooked.
                     if self.turns.is_empty() {
-                        self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default() });
+                        self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
                     }
                     let Some(turn) = self.turns.last_mut().filter(|t| t.hooked_ms == 0) else { return false };
                     turn.hooked_ms = at.max(1);
@@ -1060,7 +1136,7 @@ impl Feed {
                 }
                 self.close_open("");
                 let prompt = if crate::logs::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
-                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default() });
+                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
                 ended // an empty turn isn't shown until something happens in it; a task that ended is
             }
             Some("assistant") => {
@@ -1076,6 +1152,9 @@ impl Feed {
                         }
                         Some("tool_use") => {
                             self.push(step_of(&b, at));
+                            if let Some(t) = self.turns.last_mut() {
+                                t.work.count(&b);
+                            }
                             changed = true;
                         }
                         _ => {}
@@ -1091,7 +1170,7 @@ impl Feed {
         if self.turns.is_empty() {
             // Started mid-file, inside a turn whose prompt is further back.
             let at = match &item { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms };
-            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default() });
+            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
         }
         let turn = self.turns.last_mut().unwrap();
         turn.items.push(item);
@@ -1770,6 +1849,37 @@ fn one_detail(tool: &str, input: &Value, block: &Value, extra: &Value) -> Value 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_edited_file_is_in_the_area_under_its_session_folder() {
+        assert_eq!(area_of("/r/cue", "/r/cue/ui/app.js").as_deref(), Some("ui"));
+        assert_eq!(area_of("/r/cue/", "/r/cue/README.md").as_deref(), Some("."));
+        assert_eq!(area_of("/r/cue", "/r/other/src/a.rs").as_deref(), Some("/r/other/src"), "outside it: its own folder");
+        assert_eq!(area_of("/r/cue", "/Users/x/.claude/projects/m/memory/a.md"), None);
+        assert_eq!(area_of("/r/cue", "/private/tmp/scratch/a.py"), None);
+        assert_eq!(area_of("/r/cue", "/r/cuex/a.rs").as_deref(), Some("/r/cuex"), "a sibling folder isn't inside it");
+    }
+
+    #[test]
+    fn a_turns_work_counts_its_looks_agents_relay_and_edits() {
+        let mut w = Work::default();
+        for b in [
+            json!({"name":"Read","input":{"file_path":"/r/a.rs"}}),
+            json!({"name":"Grep","input":{"pattern":"x"}}),
+            json!({"name":"Bash","input":{"command":"cd /r && grep -n x a.rs"}}),
+            json!({"name":"Bash","input":{"command":"cargo test"}}),
+            json!({"name":"Bash","input":{"command":"relay spawn --topic x"}}),
+            json!({"name":"Skill","input":{"skill":"relay:spawn"}}),
+            json!({"name":"Agent","input":{"description":"look"}}),
+            json!({"name":"Edit","input":{"file_path":"/r/a.rs"}}),
+            json!({"name":"Write","input":{"file_path":"/r/a.rs"}}),
+            json!({"name":"NotebookEdit","input":{"notebook_path":"/r/n.ipynb"}}),
+        ] {
+            w.count(&b);
+        }
+        assert_eq!((w.looks, w.agents, w.relay), (3, 1, 2));
+        assert_eq!(w.edited, vec!["/r/a.rs", "/r/n.ipynb"], "each file once");
+    }
+
     use super::*;
 
     #[test]
@@ -1882,6 +1992,7 @@ mod tests {
         assert_eq!((rows[1].usage.first_write, rows[1].usage.first_read), (3000, 0), "after two hours it wrote its context again");
         assert!(rows[0].corrected);
         assert_eq!((rows[0].prompt.as_str(), rows[0].correction.as_str()), ("add the tax column", "no, the total column"));
+        assert_eq!((rows[0].looks, rows[1].looks), (1, 0), "its read counted on its own turn");
     }
 
     #[test]

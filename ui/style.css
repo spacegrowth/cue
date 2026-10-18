@@ -1724,12 +1724,12 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .mcp-list.compact .mcp-sub { flex-basis: 100%; padding: 4px 4px 0; }
 .nf-mcp .mcp-none { padding: 4px 0; }
 
-/* ---------- Insights (insights.js): ink only, no color of their own. Set off by a line above and below:
-   the lens and INSIGHT, a bar chart as the evidence, one sentence, then the commands. ---------- */
+/* ---------- Insights (insights.js): ink, but for their bulb in the theme's own color. Set off by a line above and below:
+   the bulb and INSIGHT, a bar chart as the evidence, one sentence, then the commands. ---------- */
 .ins { margin: 10px 16px 0; padding: 12px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
 .ins-head { display: flex; align-items: center; gap: 7px; }
-.ins-lens { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
-.ins-lens .dot { fill: var(--ink); stroke: none; }
+.ins-bulb { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ins-bulb path:first-child { fill: var(--accent); }   /* the bulb is lit: filled, its rays stroked */
 .ins-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--ink); }
 .ins-note { font-size: 12.5px; color: var(--muted); }
 .ins-chart { position: relative; height: 64px; }
@@ -1743,12 +1743,34 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .ins-axis b { color: var(--ink); }
 .ins-why { font-size: 14px; line-height: 1.45; color: var(--ink); }
+/* The open session's insights folded to one strip above the box: the most pressing sentence, "+N", its one action. */
+.ins-strip { margin: 10px 16px 0; padding: 6px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.ins-strip .ins-bulb { width: 16px; height: 16px; }
+.ins-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ins-strip-text b { color: var(--ink); }
+.ins-strip .btn { height: 26px; }
+.ins-strip .linkish { white-space: nowrap; }
+.ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: 999px; padding: 2px 8px; }
+button.ins-n { cursor: pointer; }
+.ins-line .ins-n { margin-left: auto; }
+/* When acting now saves something (past the hand-off point, a cache in its last minutes): the accent, filled
+   (moss with white in light, lime with dark in dark). Never on the opened card. */
+.ins-strip.hot { background: var(--accent); border-color: transparent; border-radius: 10px; padding: 6px 8px 6px 12px; color: color-mix(in srgb, var(--on-accent) 82%, transparent); }
+.ins-strip.hot b { color: var(--on-accent); }
+.ins-strip.hot .ins-bulb { stroke: var(--on-accent); }
+.ins-strip.hot .ins-bulb path:first-child { fill: var(--on-accent); }
+.ins-strip.hot .btn.primary { background: var(--on-accent); border-color: var(--on-accent); color: var(--accent); }
+.ins-strip.hot .ins-n { background: color-mix(in srgb, var(--on-accent) 16%, transparent); color: var(--on-accent); }
+.ins-strip.hot .linkish { color: var(--on-accent); }
+/* What you just tapped, on its way: in place of the actions. */
+.ins-busy { flex: none; font-size: 12px; font-weight: 650; color: inherit; }
+.ins-lines { display: flex; flex-direction: column; }
 .ins-skill-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.ins-skill-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.ins-skill-row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .ins-skill-agent { width: 96px; color: var(--ink); }
 /* The hand-off skill drop-up: over the insight's buttons, searchable. */
-.ins-acts-wrap { position: relative; }
 .ins-pop { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 30; width: min(460px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ins-pop.down { bottom: auto; top: calc(100% + 4px); }
 .ins-search { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); outline: none; }
 .ins-search:focus { border-color: var(--ink); }
 .ins-pop-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
@@ -1770,10 +1792,12 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-ring .left { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
 .ins-ring .gone { stroke: var(--line); stroke-width: 2; stroke-dasharray: 2 3; }
 .ins-queue { margin: 8px 18px 6px; }
-.ins-queue .ins-lens { width: 13px; height: 13px; }
+.ins-queue .ins-bulb { width: 13px; height: 13px; }
 /* On the picked card (lime in both themes) insights take its own ink. */
 .nrow.on .ins-line, .nrow.on .ins-line b { color: var(--on-sel); }
-.nrow.on .ins-ring .left { stroke: var(--on-sel); }
+.nrow.on .ins-ring .left, .nrow.on .ins-bulb { stroke: var(--on-sel); }
+.nrow.on .ins-bulb path:first-child { fill: var(--on-sel); }
+.nrow.on .ins-n { color: var(--on-sel); background: color-mix(in srgb, var(--on-sel) 12%, transparent); }
 .nrow.on .ins-ring .track, .nrow.on .ins-ring .gone { stroke: color-mix(in srgb, var(--on-sel) 25%, transparent); }
 
 /* ---------- Insights tab ---------- */
