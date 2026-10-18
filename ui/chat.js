@@ -581,14 +581,14 @@ const typingCmd = (text) => (/^\/[^\s]*$/.test(text) ? text.slice(1).toLowerCase
 const typingArg = (text) => { const m = /^\/(\S+) (\S*)$/.exec(text); return m ? { name: m[1], q: m[2].toLowerCase() } : null; };
 /** Matches for what's typed: names that start with it first, then names that contain it. After a command
  *  that takes a set of values (/model, /effort…), those values, as "model sonnet" (what follows the "/"). */
-/** A command's values to pick. /model's are Claude Code's list, then each of those with its 1M-token
- *  context (`opus[1m]`, as + New's 1M context passes it), unless it's Default, already carries a
- *  bracket, or the list names that one itself. */
+/** A command's values to pick. /model's are each model with its 1M-token context first (`opus[1m]`, as
+ *  + New's 1M context passes it), then Claude Code's list. No 1M one for Default, a model that already
+ *  carries a bracket, or one the list names itself. */
 function argsOf(c) {
   const args = c?.args || [];
   if (c?.name !== "model") return args;
   const big = args.filter((v) => v.value !== "default" && !/\[.*\]$/.test(v.value) && !args.some((w) => w.value === `${v.value}[1m]`));
-  return [...args, ...big.map((v) => ({ value: `${v.value}[1m]`, label: `${v.label || v.value}, 1M context`, desc: "" }))];
+  return [...big.map((v) => ({ value: `${v.value}[1m]`, label: `${v.label || v.value}, 1M context`, desc: "" })), ...args];
 }
 function cmdMatches(key) {
   if (cmdShut === key) return [];

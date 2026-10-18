@@ -1797,10 +1797,11 @@ button.ins-n { cursor: pointer; }
 /* One-line insights: a waiting card's cache countdown, the note by Now. */
 .ins-line { display: flex; align-items: center; gap: 9px; font-size: 12.5px; line-height: 1.4; color: var(--muted); margin-top: 8px; }
 .ins-line b { color: var(--ink); }
-.ins-ring { width: 20px; height: 20px; flex: none; fill: none; }
-.ins-ring .track { stroke: var(--line); stroke-width: 3; }
-.ins-ring .left { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
-.ins-ring .gone { stroke: var(--line); stroke-width: 2; stroke-dasharray: 2 3; }
+.ins-ring { width: 20px; height: 20px; margin-right: -5px; flex: none; fill: none; }   /* takes the bulb's 15px, so its text lines up */
+.ins-ring .track { stroke: var(--line); stroke-width: 1.8; }
+.ins-ring .left { stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; }
+.ins-ring.soon .left { stroke: var(--amber); stroke-width: 2.2; }   /* its last 5 minutes: replying now saves it */
+.ins-ring .ins-bulb { stroke-width: 2.4; }
 .ins-queue { margin: 8px 18px 6px; }
 .ins-queue .ins-bulb { width: 13px; height: 13px; }
 /* On the picked card (lime in both themes) insights take its own ink. */
@@ -1808,7 +1809,7 @@ button.ins-n { cursor: pointer; }
 .nrow.on .ins-ring .left, .nrow.on .ins-bulb { stroke: var(--on-sel); }
 .nrow.on .ins-bulb path:first-child { fill: var(--on-sel); }
 .nrow.on .ins-n { color: var(--on-sel); background: color-mix(in srgb, var(--on-sel) 12%, transparent); }
-.nrow.on .ins-ring .track, .nrow.on .ins-ring .gone { stroke: color-mix(in srgb, var(--on-sel) 25%, transparent); }
+.nrow.on .ins-ring .track { stroke: color-mix(in srgb, var(--on-sel) 25%, transparent); }
 
 /* ---------- Insights tab ---------- */
 /* What the range cost and where it could have cost less: the range, the numbers, where the dollars went, three

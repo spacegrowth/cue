@@ -379,8 +379,8 @@
           // The "/" menu: a few of a session's commands.
           // A message kept in Cue while a session works (?held=1): Edit / Esc takes it back.
           if (cmd === "unhold_message") { const x = state.sessions.find((y) => y.session_id === args.sessionId); const h = x?.held || null; if (x) delete x.held; emit(); return h; }
-          // ?cost=cold|warm: every session asked about has 600k of context; its cache gone, or 8 minutes left.
-          if (cmd === "insight_state" && q.get("cost")) return Object.fromEntries(args.sessionIds.map((sid) => [sid, { until_ms: q.get("cost") === "warm" ? Date.now() + 8 * 60000 : Date.now() - 3 * 3600000, tokens: 600000, start: 45000, last_ms: Date.now() - 4 * 3600000 }]));
+          // ?cost=cold|warm|soon: every session asked about has 600k of context; its cache gone, or 8 or 3 minutes left.
+          if (cmd === "insight_state" && q.get("cost")) return Object.fromEntries(args.sessionIds.map((sid) => [sid, { until_ms: { warm: Date.now() + 8 * 60000, soon: Date.now() + 3 * 60000 }[q.get("cost")] || Date.now() - 3 * 3600000, tokens: 600000, start: 45000, last_ms: Date.now() - 4 * 3600000 }]));
           if (cmd === "insight_state") return {};
           // ?del=1: the board's sessions could have delegated (relay on): one looked around itself, one ran long across areas.
           if (cmd === "insight_delegate") return /del=1/.test(location.search) ? { relay: true, sessions: {

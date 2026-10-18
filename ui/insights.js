@@ -52,6 +52,8 @@ const CUE_HANDOFF = "cue:handoff";   // Cue's own hand-off, as it's kept when ch
  *  Cue's message (which still works). Upgrade path: read the skill's own file on its host. */
 const takesResume = (sid, name) => /\bresume\b/i.test(cmdList(sid).find((c) => c.name === name)?.desc || "");
 // Every insight's mark: a lit bulb (rays around it), in the theme's own color (style.css .ins-bulb).
+/** The bulb drawn small inside the cache's countdown ring (cacheLine). */
+const RING_BULB = `<g class="ins-bulb" transform="translate(12 12.4) scale(0.5) translate(-12 -12)"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></g>`;
 const BULB = `<svg class="ins-bulb" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></svg>`;
 
 function insLog(sid, rule, action, detail = "", tokens = 0) {
@@ -281,8 +283,8 @@ function cacheWarn(sid) {
   const left = c.until_ms - now(), warn = !c.ttl || c.ttl > CACHE_WARN_MS ? CACHE_WARN_MS : CACHE_WARN_SHORT_MS;
   return left > warn || -left > CACHE_COLD_FOR_MS ? null : { c, left, warn };
 }
-/** One line for a session that's waiting on you: a countdown ring in the cache's last minutes, a dashed
- *  one once it's gone. `ask`: it waits on a decision (your answer is what its next reply follows), not a
+/** One line for a session that's waiting on you: the bulb in a ring counting down the cache's last minutes
+ *  (amber in its last 5, when replying now is what saves it), the bulb alone once it's gone. `ask`: it waits on a decision (your answer is what its next reply follows), not a
  *  reply. "" when it isn't worth saying. */
 function cacheLine(sid, ask = false) {
   const cw = cacheWarn(sid);
@@ -290,10 +292,10 @@ function cacheLine(sid, ask = false) {
   const { left, warn } = cw;
   if (left > 0) {
     insShown(sid, "cache");
-    const arc = Math.round((left / warn) * 56.5 * 10) / 10;
-    return `<div class="ins-line"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="track"></circle><circle cx="12" cy="12" r="9" class="left" stroke-dasharray="${arc} 56.5" transform="rotate(-90 12 12)"></circle></svg><span>${cacheText(cw, ask)}</span></div>`;
+    const arc = Math.round((left / warn) * 66 * 10) / 10;
+    return `<div class="ins-line"><svg class="ins-ring ${left <= HOT_CACHE_MS ? "soon" : ""}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" class="track"></circle><circle cx="12" cy="12" r="10.5" class="left" stroke-dasharray="${arc} 66" transform="rotate(-90 12 12)"></circle>${RING_BULB}</svg><span>${cacheText(cw, ask)}</span></div>`;
   }
-  return `<div class="ins-line cold"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="gone"></circle></svg><span>${cacheText(cw, ask)}</span></div>`;
+  return `<div class="ins-line cold">${BULB}<span>${cacheText(cw, ask)}</span></div>`;
 }
 /** cacheWarn's sentence, for its line and the open session's strip. */
 function cacheText({ c, left }, ask) {
@@ -356,7 +358,7 @@ function resumeCost(sid) {
   if (left > 0) return `<div class="ins-line" data-key="cost">${BULB}<span><b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> Resuming now re-reads its ${esc(insTok(c.tokens))} of context from the cache.</span></div>`;
   insShown(sid, "cache");
   const fresh = c.start ? ` A new session from its last reply starts near ${esc(insTok(c.start))}.` : "";
-  return `<div class="ins-line cold" data-key="cost"><svg class="ins-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="gone"></circle></svg><span>Its cache is gone: resuming re-writes <b>${esc(insTok(c.tokens))}</b> tokens on its first reply.${fresh}</span><button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh from its last reply</button></div>`;
+  return `<div class="ins-line cold" data-key="cost">${BULB}<span>Its cache is gone: resuming re-writes <b>${esc(insTok(c.tokens))}</b> tokens on its first reply.${fresh}</span><button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh from its last reply</button></div>`;
 }
 setInterval(insPoll, 30000);
 setTimeout(insPoll, 3000);   // and soon after the window opens, not 30 s in

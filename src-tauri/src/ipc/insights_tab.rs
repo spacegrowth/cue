@@ -117,20 +117,21 @@ pub(crate) fn relay_on() -> bool {
 /// Only those with something to say.
 #[tauri::command]
 pub(crate) async fn insight_delegate(session_ids: Vec<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut out = serde_json::Map::new();
-        for sid in session_ids.iter().take(50) {
-            let turns = db::turns_of(sid);
-            let start = turns.iter().map(|t| t.context).find(|&c| c > 0).unwrap_or(0);
-            let d = delegate_of(&turns.iter().collect::<Vec<_>>(), start);
-            if d.search.is_some() || !d.split.is_empty() {
-                out.insert(sid.clone(), delegate_json(&d));
-            }
+    tauri::async_runtime::spawn_blocking(move || delegate_states(&session_ids)).await.map_err(|e| e.to_string())
+}
+
+/// What insight_delegate answers with (it reads the turns history: call it off the main thread).
+pub(crate) fn delegate_states(session_ids: &[String]) -> Value {
+    let mut out = serde_json::Map::new();
+    for sid in session_ids.iter().take(50) {
+        let turns = db::turns_of(sid);
+        let start = turns.iter().map(|t| t.context).find(|&c| c > 0).unwrap_or(0);
+        let d = delegate_of(&turns.iter().collect::<Vec<_>>(), start);
+        if d.search.is_some() || !d.split.is_empty() {
+            out.insert(sid.clone(), delegate_json(&d));
         }
-        json!({ "relay": relay_on(), "sessions": out })
-    })
-    .await
-    .map_err(|e| e.to_string())
+    }
+    json!({ "relay": relay_on(), "sessions": out })
 }
 
 fn delegate_json(d: &Delegate) -> Value {
