@@ -686,6 +686,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .end-dialog kbd { margin-left: 4px; opacity: .7; }
 .move-screen { font: 11.5px var(--mono); color: var(--on-slab); background: var(--slab); border-radius: 8px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tplace-btn:hover { background: color-mix(in srgb, var(--accent) 85%, var(--on-accent)); }
+/* Cue's own terminal: its corner tab is the terminal's dark, like the strip above the box (both open it), not another color. */
+.tplace-btn[data-act="term"] { background: var(--slab); color: var(--on-slab); }
+.tplace-btn[data-act="term"]:hover { background: color-mix(in srgb, var(--on-slab) 12%, var(--slab)); }
 .tplace-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quick:has(.tplace-btn) { padding-right: 130px; }
 /* The reply box joins the strip above it: its top corners stay square against the dock's flat
