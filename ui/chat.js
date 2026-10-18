@@ -372,10 +372,12 @@ function onDictation(p) {
   if (p.done) { dictating = null; return renderMain(); }
   if (p.text == null || !dictating) return;
   const { key, base } = dictating;
-  const text = base ? `${base} ${p.text}` : p.text;
+  setBox(key, base ? `${base} ${p.text}` : p.text);
+}
+/** A text box's words, kept as its draft and put in the box in place (no full redraw), caret at the end. */
+function setBox(key, text) {
   draft(key).text = text;
   saveDrafts();
-  // Update the box in place (no full redraw per word), caret at the end.
   const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
   if (el) {
     el.value = text;
@@ -384,6 +386,15 @@ function onDictation(p) {
     const b = el.closest(".composer")?.querySelector(".btn.send");
     if (b) b.disabled = !text.trim();
   }
+  return el;
+}
+/** Text an add-on puts in a chat's box ("fill"), after what's typed there, to send or edit from. */
+function onFill({ id, text }) {
+  if (!id || !text) return;
+  const had = draft(id).text.trimEnd();
+  const el = setBox(id, had ? `${had} ${text}` : text);
+  if (el) el.focus();
+  else renderMain();
 }
 function submitText(it) {
   endDictation(it.id);

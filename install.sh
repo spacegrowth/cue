@@ -75,6 +75,8 @@ install_app() {
     say "building Cue.app (first time takes a few minutes)…"
     # An optional add-on in src-tauri/ext/ (not part of this repo) is built in when it's there.
     local ext=""; [ -e "$ROOT/src-tauri/ext/mod.rs" ] && ext="--features ext"
+    # Its own bundle settings (helper programs it ships beside Cue), when it has them.
+    [ -n "$ext" ] && [ -e "$ROOT/src-tauri/ext/tauri.conf.json" ] && ext="$ext --config src-tauri/ext/tauri.conf.json"
     (cd "$ROOT" && npm install --silent && npx tauri build --bundles app $ext >/dev/null)
   fi
   quit_cue

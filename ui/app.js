@@ -834,6 +834,7 @@ async function boot() {
   restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
+  await T.event.listen("fill", (e) => onFill(e.payload));
   await T.event.listen("upload", (e) => onUpload(e.payload));
   await T.event.listen("select", (e) => {
     if (e.payload !== "usage") return setActive(e.payload);
