@@ -213,6 +213,10 @@ pub struct Meta {
     /// How many warm replies its next one costs once its cache is gone (prices::cold_x; 0: not known).
     #[serde(skip_serializing_if = "is_zero")]
     cold_x: u64,
+    /// The least context Claude Code has lately compacted sessions on its model at on its own
+    /// (auto_compact_at; 0: not seen enough to say).
+    #[serde(skip_serializing_if = "is_zero")]
+    auto_at: u64,
 }
 
 struct Feed {
@@ -605,11 +609,46 @@ pub fn set_window(session_id: &str, window: u64, for_model: bool) {
     }
 }
 
-/// What a waiting card's insights need from a session's log: when its cached context runs out (0 when
-/// its log doesn't say it caches), its context now, the context it started with, and when its latest
-/// reply came (a compaction since then makes the context count stale until its next reply), and how many
-/// warm replies a cold one costs (prices::cold_x).
-pub fn insight_state(path: &str) -> Option<(u64, u64, u64, u64, u64)> {
+/// What a waiting card's insights need from a session's log.
+#[derive(Serialize)]
+pub struct InsightState {
+    /// When its cached context runs out (0 when its log doesn't say it caches).
+    pub until_ms: u64,
+    /// Its context now, and the context it started with.
+    pub tokens: u64,
+    pub start: u64,
+    /// When its latest reply came (a compaction since then makes the context count stale until its next reply).
+    pub last_ms: u64,
+    /// How many warm replies a cold one costs (prices::cold_x).
+    pub cold_x: u64,
+    /// Where Claude Code has lately compacted sessions on its model on its own (auto_compact_at).
+    pub auto_at: u64,
+}
+
+/// How many of the latest auto-compactions on a model auto_compact_at looks at, and the fewest it says anything from.
+const AUTO_SEEN: u32 = 10;
+const AUTO_MIN: usize = 2;
+/// Where Claude Code has lately compacted sessions on `model` on its own: the least context of its last
+/// AUTO_SEEN auto-compactions (from the turns history), 0 below AUTO_MIN. Not a fixed point: its trigger
+/// moves (one model's sessions went from about 967k to anywhere between 206k and 474k between versions),
+/// so the least seen lately is the honest warning. Asked again every 10 minutes, as the history is read.
+fn auto_compact_at(model: &str) -> u64 {
+    static SEEN: Mutex<Option<HashMap<String, (Instant, u64)>>> = Mutex::new(None);
+    if model.is_empty() || cfg!(test) {
+        return 0;
+    }
+    let mut guard = crate::locking::lock(&SEEN, "AUTO_SEEN");
+    let seen = guard.get_or_insert_with(HashMap::new);
+    if let Some(&(_, v)) = seen.get(model).filter(|(at, _)| at.elapsed() < Duration::from_secs(600)) {
+        return v;
+    }
+    let all = crate::db::auto_compacts(model, AUTO_SEEN);
+    let v = if all.len() >= AUTO_MIN { all.into_iter().min().unwrap_or(0) } else { 0 };
+    seen.insert(model.to_string(), (Instant::now(), v));
+    v
+}
+
+pub fn insight_state(path: &str) -> Option<InsightState> {
     let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
     feeds.retain(|_, f| f.used.elapsed() < FORGET);
@@ -618,7 +657,7 @@ pub fn insight_state(path: &str) -> Option<(u64, u64, u64, u64, u64)> {
     feed.catch_up();
     let m = &feed.meta;
     let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
-    (m.context > 0).then_some((until, m.context, m.start_context, m.last_call_ms, m.cold_x))
+    (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, last_ms: m.last_call_ms, cold_x: m.cold_x, auto_at: m.auto_at })
 }
 
 pub fn context_pct(path: &str) -> Option<u8> {
@@ -664,6 +703,8 @@ pub struct TurnRow {
     pub relay: u64,
     /// The areas of the project it edited (area_of), each once, one per line.
     pub areas: String,
+    /// The context Claude Code compacted it at on its own (its log's compact_boundary; 0: it didn't).
+    pub auto_compact: u64,
 }
 
 /// Whether a prompt reads as correcting the turn before it. English openers only.
@@ -702,6 +743,7 @@ pub fn turn_rows(path: &str, from: u64, max: u64) -> (Vec<TurnRow>, u64) {
     feed.kind = kind;
     // Per turn, beside the feed's: when it started in the file, its model and folder, whether you stopped it.
     let (mut starts, mut models, mut cwds, mut stopped): (Vec<u64>, Vec<String>, Vec<String>, Vec<bool>) = Default::default();
+    let mut autos: Vec<u64> = Vec::new();
     let mut cwd = String::new();
     let mut pos = 0usize;
     for line in buf[..end].split(|&b| b == b'\n') {
@@ -729,6 +771,13 @@ pub fn turn_rows(path: &str, from: u64, max: u64) -> (Vec<TurnRow>, u64) {
             models.push(String::new());
             cwds.push(cwd.clone());
             stopped.push(false);
+            autos.push(0);
+        }
+        // Claude Code compacted it on its own, at this much context: kept with the turn it happened in.
+        if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") && e.pointer("/compactMetadata/trigger").and_then(Value::as_str) == Some("auto") {
+            if let (Some(a), Some(pre)) = (autos.last_mut(), e.pointer("/compactMetadata/preTokens").and_then(Value::as_u64)) {
+                *a = pre;
+            }
         }
         if let Some(m) = models.last_mut() {
             if !feed.meta.model.is_empty() {
@@ -763,6 +812,7 @@ pub fn turn_rows(path: &str, from: u64, max: u64) -> (Vec<TurnRow>, u64) {
             a.dedup();
             a.join("\n")
         },
+        auto_compact: autos[i],
     }).collect();
     // The open turn starts the next read; none read: carry on after what was read.
     let next = if n > 0 { starts[n - 1] } else { from + end as u64 };
@@ -916,6 +966,7 @@ impl Feed {
         self.close_scripts();
         if changed {
             self.meta.cold_x = super::prices::cold_x(&self.meta.model, self.meta.cache_ttl_s);
+            self.meta.auto_at = if self.kind == Kind::Claude { auto_compact_at(&self.meta.model) } else { 0 };
             if self.turns.len() > MAX_TURNS {
                 self.turns.drain(..self.turns.len() - MAX_TURNS);
             }
@@ -2070,6 +2121,22 @@ mod tests {
         assert!(rows[0].corrected);
         assert_eq!((rows[0].prompt.as_str(), rows[0].correction.as_str()), ("add the tax column", "no, the total column"));
         assert_eq!((rows[0].looks, rows[1].looks), (1, 0), "its read counted on its own turn");
+    }
+
+    #[test]
+    fn a_turns_row_keeps_where_claude_code_compacted_it_on_its_own() {
+        let path = std::env::temp_dir().join(format!("cue-turn-auto-{}.jsonl", std::process::id()));
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"go on"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"cache_read_input_tokens":250000,"cache_creation_input_tokens":0,"output_tokens":5}}}"#,
+            r#"{"type":"system","subtype":"compact_boundary","timestamp":"2026-10-04T10:01:00.000Z","compactMetadata":{"trigger":"auto","preTokens":252123}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:02:00.000Z","message":{"content":"and then"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:02:05.000Z","message":{"id":"m2","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"cache_read_input_tokens":9000,"cache_creation_input_tokens":0,"output_tokens":5}}}"#,
+            r#"{"type":"system","subtype":"compact_boundary","timestamp":"2026-10-04T10:03:00.000Z","compactMetadata":{"trigger":"manual","preTokens":9000}}"#,
+        ].join("\n") + "\n").unwrap();
+        let (rows, _) = turn_rows(path.to_str().unwrap(), 0, 1 << 20);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(rows.iter().map(|r| r.auto_compact).collect::<Vec<_>>(), vec![252123, 0], "on its own: kept with its turn; your /compact: not");
     }
 
     #[test]

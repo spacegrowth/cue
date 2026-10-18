@@ -377,8 +377,9 @@ impl Hub {
         let mut insight = HashMap::new();
         for (it, later) in waiting {
             let sid = &it.origin.session_id;
-            let Some((until, tokens, start, last, cold_x)) = crate::steps::insight_state(&it.origin.transcript_path) else { continue };
-            insight.insert(sid.clone(), serde_json::json!({ "until_ms": until, "tokens": tokens, "start": start, "last_ms": last, "cold_x": cold_x }));
+            let Some(st) = crate::steps::insight_state(&it.origin.transcript_path) else { continue };
+            let (until, last, tokens) = (st.until_ms, st.last_ms, st.tokens);
+            insight.insert(sid.clone(), serde_json::json!(st));
             // Codex logs don't say how long they cache: no heads-up.
             if until == 0 {
                 continue;

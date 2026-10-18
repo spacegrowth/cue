@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS turns (
   agents       INTEGER NOT NULL DEFAULT 0, -- background agents it started
   relay        INTEGER NOT NULL DEFAULT 0, -- relay executors it spawned
   areas        TEXT NOT NULL DEFAULT '',   -- the project areas it edited, one per line
+  auto_compact INTEGER NOT NULL DEFAULT 0, -- the context Claude Code compacted it at on its own (0: it didn't)
   PRIMARY KEY (session_id, at_ms)
 );
 CREATE INDEX IF NOT EXISTS turns_at ON turns(at_ms);
@@ -226,6 +227,13 @@ fn open() -> rusqlite::Result<Connection> {
             let _ = c.execute(&format!("ALTER TABLE handoffs ADD COLUMN {col}"), []);
         }
         c.pragma_update(None, "user_version", 4)?;
+    }
+    // Where Claude Code compacted a session on its own (insights' auto-compact heads-up): the column, and
+    // every log read again to fill it in (its turns are kept meanwhile, only brought up to date).
+    if version < 5 {
+        let _ = c.execute("ALTER TABLE turns ADD COLUMN auto_compact INTEGER NOT NULL DEFAULT 0", []);
+        c.execute_batch("DELETE FROM turns_read;")?;
+        c.pragma_update(None, "user_version", 5)?;
     }
     Ok(c)
 }
@@ -773,14 +781,14 @@ pub fn save_turns(path: &str, of: &TurnsOf, rows: &[crate::logs::steps::TurnRow]
         {
             let mut q = tx.prepare_cached(
                 "INSERT INTO turns (session_id, at_ms, tokens, context, prompt_chars, model, cwd, machine, harness, errors, interrupted, corrected,
-                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, relay, areas)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
+                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, relay, areas, auto_compact)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
                  ON CONFLICT(session_id, at_ms) DO UPDATE SET tokens = excluded.tokens, context = excluded.context, prompt_chars = excluded.prompt_chars,
                    model = excluded.model, cwd = excluded.cwd, machine = excluded.machine, harness = excluded.harness, errors = excluded.errors,
                    interrupted = excluded.interrupted, corrected = excluded.corrected, fresh = excluded.fresh, output = excluded.output,
                    cache_read = excluded.cache_read, write_5m = excluded.write_5m, write_1h = excluded.write_1h, first_write = excluded.first_write,
                    first_read = excluded.first_read, prompt = excluded.prompt, correction = excluded.correction,
-                   looks = excluded.looks, agents = excluded.agents, relay = excluded.relay, areas = excluded.areas,
+                   looks = excluded.looks, agents = excluded.agents, relay = excluded.relay, areas = excluded.areas, auto_compact = excluded.auto_compact,
                    -- An open turn is read again from its own start, without the reply before it: keep the wait read the first time.
                    waited_ms = CASE WHEN excluded.waited_ms > 0 THEN excluded.waited_ms ELSE turns.waited_ms END",
             )?;
@@ -788,7 +796,7 @@ pub fn save_turns(path: &str, of: &TurnsOf, rows: &[crate::logs::steps::TurnRow]
                 let u = &t.usage;
                 q.execute(params![of.session_id, t.at_ms as i64, t.tokens as i64, t.context as i64, t.prompt_chars as i64, t.model, t.cwd, of.machine, of.harness, t.errors as i64, t.interrupted, t.corrected,
                     u.fresh as i64, u.output as i64, u.read as i64, u.write_5m as i64, u.write_1h as i64, u.first_write as i64, u.first_read as i64, t.waited_ms as i64, t.prompt, t.correction,
-                    t.looks as i64, t.agents as i64, t.relay as i64, t.areas])?;
+                    t.looks as i64, t.agents as i64, t.relay as i64, t.areas, t.auto_compact as i64])?;
             }
         }
         tx.execute(
@@ -881,6 +889,16 @@ fn stored_turn(r: &rusqlite::Row) -> rusqlite::Result<StoredTurn> {
         relay: r.get::<_, i64>(24)? as u64,
         areas: r.get(25)?,
     })
+}
+
+/// The contexts Claude Code last compacted sessions on `model` at on its own, newest first (up to `n`).
+pub fn auto_compacts(model: &str, n: u32) -> Vec<u64> {
+    with(|c| {
+        let mut q = c.prepare_cached("SELECT auto_compact FROM turns WHERE model = ?1 AND auto_compact > 0 ORDER BY at_ms DESC LIMIT ?2")?;
+        let rows = q.query_map(params![model, n], |r| Ok(r.get::<_, i64>(0)? as u64))?;
+        rows.collect()
+    })
+    .unwrap_or_default()
 }
 
 /// What each of `sessions` started at: the context of its first turn that carried one.

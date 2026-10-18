@@ -38,8 +38,8 @@ pub(crate) fn insight_states(h: &Hub, session_ids: &[String]) -> serde_json::Val
     for sid in session_ids.iter().take(50) {
         let Some(log) = local_log(h, sid) else { continue };
         noticed |= notice_handoff_in(sid, &log);
-        if let Some((until_ms, context, start, last_ms, cold_x)) = steps::insight_state(&log) {
-            out.insert(sid.clone(), serde_json::json!({ "until_ms": until_ms, "tokens": context, "start": start, "last_ms": last_ms, "cold_x": cold_x }));
+        if let Some(st) = steps::insight_state(&log) {
+            out.insert(sid.clone(), serde_json::json!(st));
         }
     }
     if noticed {
@@ -262,7 +262,7 @@ pub(crate) fn insight_log(session_id: String, rule: String, action: String, deta
 
 /// Record one insight event: known rules and actions only, the detail kept short.
 pub(crate) fn record_insight(session_id: &str, rule: &str, action: &str, detail: &str, tokens: u64) {
-    const RULES: [&str; 3] = ["handoff", "cache", "queue"];
+    const RULES: [&str; 4] = ["handoff", "cache", "queue", "autocompact"];
     const ACTIONS: [&str; 4] = ["shown", "acted", "later", "dismissed"];
     if RULES.contains(&rule) && ACTIONS.contains(&action) {
         db::insight_event(session_id, rule, action, &detail.chars().take(80).collect::<String>(), tokens);
