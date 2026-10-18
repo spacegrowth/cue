@@ -604,6 +604,8 @@
         liveSpot = true;
         lvAct("new", {});
       }, 100);
+      // ?reader=1: the open chat's first long reply opens in the reader (chat.js readerPane).
+      if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
       // With ?ins=1: &inss=open opens agent-relay's insights (More ▾), =busy is Hand off just tapped, =seen its
       // strip after its colored moment (insights.js handoffInsight).
       const inss = new URLSearchParams(q).get("inss");

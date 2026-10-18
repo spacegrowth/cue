@@ -414,6 +414,28 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-view-reply { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; user-select: text; -webkit-user-select: text; }
 .bg-view-k { display: block; font: 700 10px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 .bg-view-foot { align-items: center; font-size: 12.5px; }
+/* The reader (chat.js readerPane): one reply in one column, larger type, in place of the chat. Its bar sits
+   above the chat area like a background agent's Back row; the text size is a variable (three steps). */
+.rd-head { padding-bottom: 2px; }
+.rd-seg { display: inline-flex; align-items: center; height: 30px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.rd-seg button { height: 100%; min-width: 30px; padding: 0 8px; color: var(--ink); font-size: 14px; font-weight: 700; }
+.rd-seg button + button, .rd-seg .rd-of + button { border-left: 1px solid var(--line); }
+.rd-seg button:hover:not(:disabled) { background: var(--panel-2); }
+.rd-seg button:disabled { color: var(--muted); opacity: .5; }
+.rd-seg .rd-of { padding: 0 10px; font-size: 12px; font-weight: 650; color: var(--muted); border-left: 1px solid var(--line); height: 100%; display: inline-flex; align-items: center; }
+.rd-seg .rd-a.small { font-size: 11px; }
+.rd-seg .rd-a.big { font-size: 16px; }
+.rd { max-width: 34em; width: 100%; margin: 0 auto; padding: 18px 4px 40px; font-size: var(--rd-size, 17px); line-height: 1.65; user-select: text; -webkit-user-select: text; }
+.rd-by { font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: 14px; }
+.rd .msg p, .rd .msg ul, .rd .msg ol, .rd .msg pre, .rd .msg .md-table, .rd .msg blockquote { margin-bottom: .85em; }
+.rd .msg li { margin: .25em 0; }
+.rd .msg h4 { font-size: 1.18em; line-height: 1.3; margin: 1.3em 0 .5em; }
+.rd .msg code { font-size: .88em; }
+.rd .msg pre { font-size: .82em; line-height: 1.55; }
+.rd .msg table { font-size: .9em; }
+.rd .msg th { font-size: .85em; }
+.rd-ask { align-items: center; font-size: 13px; }
+.rd-ask-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--deny); flex: none; align-self: center; }
 .tray { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
 .tray-head b { font-weight: 650; }

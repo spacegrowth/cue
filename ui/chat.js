@@ -1019,6 +1019,80 @@ function scriptPane(sid, h) {
   const foot = helperViewFoot(running, running ? `Running in the background. Its output goes to the session when it ends.` : h.failed ? `It ended with an error. The session was told, and its output is here.` : `It finished. The session was told, and its output is here.`);
   return { bar: top.bar, body, foot };
 }
+// ---------- Reader: one reply, set for reading ----------
+// Read on a long reply: it fills the chat area in one column, larger type, ‹ › to its other replies, three
+// text sizes (remembered). Read-only on purpose: no box, so permissions, questions, the queue and the rest
+// stay in the chat alone. Reply goes to the chat's box; ‹ Chat (or Esc) back to the reply in the chat.
+let readerView = null;   // { sid, key }: the reply open in the reader; key as chatHtml's ("<sid>:<at_ms>")
+const READER_SIZES = [15, 17, 20];
+let readerSize = 1;      // index into READER_SIZES
+try { const n = localStorage.getItem("cue.readerSize"); if (n != null && READER_SIZES[+n]) readerSize = +n; } catch {}
+/** The session's replies the reader steps through, oldest first, keyed as in the chat. */
+function readerReplies(it, s) {
+  const id = s?.session_id || it?.id;
+  return conversation(it, s).filter((e) => e.role === "agent" && e.text.trim()).map((e) => ({ key: `${id}:${e.at_ms}`, text: e.text, at_ms: e.at_ms }));
+}
+/** The reply open in this session's reader, with where it sits among the others; null when none (or it's gone). */
+function readerViewed(sid, it, s) {
+  if (!readerView) return null;
+  if (readerView.sid !== sid) { readerView = null; return null; }
+  const all = readerReplies(it, s), at = all.findIndex((r) => r.key === readerView.key);
+  return at < 0 ? null : { all, at };
+}
+/** The reader is on screen (not just remembered behind another view). */
+const readerShown = () => !!readerView && !!document.querySelector(".rd-head");
+function openReader(sid, key) {
+  readerView = { sid, key };
+  renderMain();
+}
+/** ‹ › (and ← →): the previous or next reply, if there is one. */
+function stepReader(dir) {
+  const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
+  const rv = sid && readerViewed(sid, cur.it, cur.s);
+  const next = rv && rv.all[rv.at + dir];
+  if (!next) return;
+  readerView = { sid, key: next.key };
+  renderMain();
+}
+function sizeReader(dir) {
+  const n = Math.max(0, Math.min(READER_SIZES.length - 1, readerSize + dir));
+  if (n === readerSize) return;
+  readerSize = n;
+  try { localStorage.setItem("cue.readerSize", String(n)); } catch {}
+  renderMain();
+}
+/** Back to the chat, at the reply you were reading (its start in view). */
+function closeReader() {
+  const key = readerView?.key;
+  readerView = null;
+  renderMain();
+  const btn = key && document.querySelector(`[data-read="${CSS.escape(key)}"], [data-fwd="${CSS.escape(key)}"]`);
+  btn?.closest(".cv-agent")?.scrollIntoView({ block: "start" });
+}
+/** Reply: to the chat's own box, at the chat's end, the cursor in it. */
+function replyFromReader() {
+  readerView = null;
+  drawAtChatEnd();
+  focusComposer();
+}
+function copyReader() {
+  const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
+  const rv = sid && readerViewed(sid, cur.it, cur.s);
+  if (rv) invoke("copy_text", { text: rv.all[rv.at].text }).then(() => toast("Copied"), () => toast("Couldn't copy"));
+}
+/** The reader, in place of the chat: a bar (‹ Chat, ‹ n of m ›, text size, Copy, Reply), the reply in one
+ *  column, and a foot only when the session is asking you something (then Back to chat answers it there). */
+function readerPane(sid, it, s, harness, rv) {
+  const r = rv.all[rv.at], n = rv.all.length;
+  const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button><span class="grow"></span>
+    <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
+    <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
+    <button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</div>`;
+  const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(r.text)}</div>${localImages(r.text)}</div>`;
+  const asks = isPending(it) && it.kind !== "waiting";
+  const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b>${it.kind === "question" ? "" : `<span class="dim"> · ${esc(verb(it))}</span>`}</span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";
+  return { bar, body, foot };
+}
 /** The tray above the message box: every agent still at work, about one agent tall (the rest scrolled
  *  to inside it, app.js renderMain keeps where you were). "" when none. */
 function helperTray(sid) {
@@ -1167,7 +1241,7 @@ function chatHtml(it, s, harness, paged = false) {
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
+      <div class="cv-acts">${long && paged && sid ? `<button class="cv-more" data-read="${esc(key)}">Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
@@ -1522,6 +1596,9 @@ function activePane() {
   const cm = crewOf(sid);
   // A background agent opened in full (helperPane): it takes the chat area and the box, under the same head.
   const hv = sid ? helperViewed(sid) : null, hvp = hv && helperPane(sid, hv);
+  // A reply open in the reader (readerPane): the same place, read-only, the box and insight bar out of the way.
+  const rv = sid && !hvp ? readerViewed(sid, it, s) : null, rvp = rv && readerPane(sid, it, s, harness, rv);
+  const full = hvp ? { ...hvp, forKey: `h|${sid}|${hv.id}` } : rvp ? { ...rvp, forKey: `r|${sid}|${rv.all[rv.at].key}` } : null;
   // The badge already says which agent: no "Claude Code" beside it. An executor's relay name and a crew's model stay.
   const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? esc(shortModel(cm.model)) : "";
   const onMachine = machTag(s?.machine || it?.machine);
@@ -1543,9 +1620,9 @@ function activePane() {
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
-    ${hvp ? hvp.bar + chatBox(`h|${sid}|${hv.id}`, hvp.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
+    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
-    ${sid && s && !hvp ? handoffInsight(sid, s) : ""}${termDock(sid)}${hvp ? hvp.foot : foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${sid && s && !full ? handoffInsight(sid, s) : ""}${termDock(sid)}${full ? full.foot : foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 // ---------- MCP servers: ⋯ → MCP servers… ----------
 // Every server Claude Code knows for the session's folder (mcp_for), each with a checkbox: checked =

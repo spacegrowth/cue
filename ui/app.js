@@ -128,6 +128,8 @@ function renderMain() {
   // Scrolled up to read: a row arriving leaves your place alone.
   // Back from a background agent's or script's view (chat.js closeHelperView): the end, whatever the view's scroll was.
   if (chat && chatToEnd) { pinChatEnd(chat); holdChat = null; }
+  // A reply just opened in the reader (chat.js readerPane): its start, wherever the chat was.
+  else if (chat && !kept && chat.dataset.chatFor?.startsWith("r|")) { chat.scrollTop = 0; holdChat = null; }
   else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
   else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
@@ -211,7 +213,7 @@ function bindMain() {
   // background agent's view fills the same element: its steps' top isn't the chat's), and only when it's
   // you scrolling: not the scroll events of a chat code just put at its end (chat.js pinChatEnd).
   document.addEventListener("scroll", (e) => {
-    if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || e.target.dataset.chatFor?.startsWith("h|") || Date.now() - chatPinnedAt < 400) return;
+    if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || /^[hr]\|/.test(e.target.dataset.chatFor || "") || Date.now() - chatPinnedAt < 400) return;
     const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
     if (sid) loadOlder(sid);
   }, true);   // the send-to menu follows its button
@@ -329,6 +331,15 @@ function bindMain() {
     const hb = t.closest("[data-helper]");
     if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
     if (t.closest("[data-helper-back]")) return closeHelperView();
+    const rd = t.closest("[data-read]");
+    if (rd) { const k = rd.dataset.read; return openReader(k.slice(0, k.lastIndexOf(":")), k); }
+    if (t.closest("[data-reader-back]")) return closeReader();
+    if (t.closest("[data-reader-reply]")) return replyFromReader();
+    if (t.closest("[data-reader-copy]")) return copyReader();
+    const rs = t.closest("[data-reader-step]");
+    if (rs) return stepReader(+rs.dataset.readerStep);
+    const rz = t.closest("[data-reader-size]");
+    if (rz) return sizeReader(+rz.dataset.readerSize);
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const qp = t.closest("[data-quick]");
@@ -702,6 +713,8 @@ function bindMain() {
     if (e.key === "Escape" && btwFor) { btwFor = null; return renderMain(); }
     // Esc in a background agent's full view: back to the chat.
     if (e.key === "Escape" && !sheet && !lightbox && helperView && helperViewed(helperView.sid)) return closeHelperView();
+    // …and in the reader.
+    if (e.key === "Escape" && !sheet && !lightbox && readerShown()) return closeReader();
     if (e.key === "Escape") {
       // In History, Esc just closes the open row.
       if (view === "history") { histOpen = null; return renderMain(); }
@@ -759,6 +772,8 @@ function bindMain() {
     if (e.key === ",") { sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
     if (sheet) return;
     if (e.key === "n") return goNext();
+    // In the reader, ← → step through the session's replies.
+    if (readerShown() && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); return stepReader(e.key === "ArrowRight" ? 1 : -1); }
     // ← → step through the chip you clicked (Waiting if you haven't).
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); return openFromChip(chipNav || "waiting", e.key === "ArrowRight" ? 1 : -1); }
     const it = current()?.it;
