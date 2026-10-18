@@ -133,6 +133,18 @@ pub(crate) fn steps_path(h: &Hub, session_id: &str) -> Option<String> {
         .or_else(|| codex_log(session_id))
 }
 
+/// Where Codex keeps its sessions' logs: ~/.codex/sessions (CODEX_HOME moves ~/.codex).
+pub(crate) fn codex_sessions_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    std::env::var("CODEX_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".codex")).join("sessions")
+}
+
+/// Where Pi keeps its sessions' logs: ~/.pi/agent/sessions (PI_CODING_AGENT_DIR moves ~/.pi/agent).
+pub(crate) fn pi_sessions_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    std::env::var("PI_CODING_AGENT_DIR").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".pi/agent")).join("sessions")
+}
+
 /// A Codex session's rollout log, `~/.codex/sessions/<year>/<month>/<day>/rollout-<time>-<session id>.jsonl`
 /// (CODEX_HOME moves ~/.codex), newest days first. Looked up once per session.
 pub(crate) fn codex_log(session_id: &str) -> Option<String> {
@@ -143,8 +155,7 @@ pub(crate) fn codex_log(session_id: &str) -> Option<String> {
     if let Some(p) = crate::locking::lock(&FOUND, "FOUND").get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
         return Some(p.clone());
     }
-    let home = std::env::var("HOME").unwrap_or_default();
-    let root = std::env::var("CODEX_HOME").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".codex")).join("sessions");
+    let root = codex_sessions_dir();
     let tail = format!("-{session_id}.jsonl");
     let sorted = |dir: &std::path::Path| -> Vec<std::path::PathBuf> {
         let mut v: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).collect();
@@ -176,8 +187,7 @@ pub(crate) fn pi_log(session_id: &str) -> Option<String> {
     if let Some(p) = crate::locking::lock(&FOUND, "FOUND").get_or_insert_with(Default::default).get(session_id).filter(|p| std::path::Path::new(p).is_file()) {
         return Some(p.clone());
     }
-    let home = std::env::var("HOME").unwrap_or_default();
-    let root = std::env::var("PI_CODING_AGENT_DIR").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from(home).join(".pi/agent")).join("sessions");
+    let root = pi_sessions_dir();
     let tail = format!("_{session_id}.jsonl");
     let found = std::fs::read_dir(root).ok()?.filter_map(Result::ok).filter_map(|d| std::fs::read_dir(d.path()).ok()).flatten().filter_map(Result::ok)
         .map(|f| f.path()).find(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&tail)))?
@@ -289,11 +299,38 @@ pub(crate) fn mcp_set_for(h: &Hub, session_id: &str, name: &str, on: bool) -> Re
 /// the MCP servers as the config now says. Not mid-turn.
 pub(crate) fn mcp_restart_session(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
     mcp_cwd(h, session_id)?;
+    restart_with(h, session_id, true)
+}
+
+/// ⋯ → Restart session: stop its agent and resume the same conversation, so it picks up what it reads
+/// only when it starts (new skills, MCP servers, settings). The same steps, and the same cover over its
+/// pane, as a restart for its MCP servers. Any agent Cue can stop and resume, on this Mac or a machine.
+#[tauri::command]
+pub(crate) async fn restart_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || restart_session_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+/// What restart_session does (it waits on the agent: call it off the main thread).
+pub(crate) fn restart_session_now(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
+    let o = h.session_origin(session_id).ok_or("Cue has no record of that session")?;
+    if !["claude", "codex", "pi"].contains(&o.harness.as_str()) || o.cwd.is_empty() {
+        return Err("Cue can't stop and resume this one".to_string());
+    }
+    restart_with(h, session_id, false)
+}
+
+/// Stop a session and resume it, keeping any MCP servers it's pinned to (Claude Code on this Mac).
+fn restart_with(h: &Arc<Hub>, session_id: &str, mcp: bool) -> Result<String, String> {
     if h.session_record(session_id).is_some_and(|s| s.state == "working") {
         return Err("it's mid-turn; try when it's idle".into());
     }
     let servers = crate::logs::mcp::read_selection(&crate::logs::mcp::selection_path(session_id)).map(|m| m.keys().cloned().collect());
-    h.restart_begin(session_id, servers);
+    // What it starts with may have changed (that's often why it's restarted): its "/" commands are read again.
+    if let Some(o) = h.session_origin(session_id) {
+        crate::commands::forget(&o.cwd, &o.machine);
+    }
+    h.restart_begin(session_id, servers, mcp);
     let res = super::sessions::park(h, session_id).and_then(|_| {
         h.restart_step(session_id, "start");
         super::sessions::resume_parked_session(h, session_id, "")
@@ -311,7 +348,7 @@ pub(crate) fn mcp_restart_session(h: &Arc<Hub>, session_id: &str) -> Result<Stri
 /// on this Mac, checked a few times a second, for 20 s at most. One on a machine isn't in that list: its
 /// restart ends as soon as it's started there.
 fn restart_ends_when_running(h: Arc<Hub>, session_id: String) {
-    let here = h.session_origin(&session_id).is_some_and(|o| o.machine.is_empty());
+    let here = h.session_origin(&session_id).is_some_and(|o| o.machine.is_empty() && o.harness == "claude");
     std::thread::spawn(move || {
         let until = crate::model::now_ms() + 20_000;
         while here && crate::model::now_ms() < until {

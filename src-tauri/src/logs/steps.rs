@@ -78,6 +78,47 @@ pub struct Turn {
     /// hook's follow-up, not its answer: the chat folds it under "After a stop hook" (transcript::is_stop_hook).
     #[serde(skip_serializing_if = "is_zero")]
     hooked_ms: u64,
+    /// Tokens the session's own replies in this turn went through (input, cache reads and writes,
+    /// output), summed per API call: what the turn cost, in tokens. Insights draw it as a bar.
+    #[serde(skip_serializing_if = "is_zero")]
+    tokens: u64,
+    /// How much context its last reply carried (input, cache reads and writes): the session's context
+    /// as of this turn. Insights draw it as the growth line.
+    #[serde(skip_serializing_if = "is_zero")]
+    context: u64,
+    /// Its tokens by kind, for Insights' prices (the chat doesn't show them).
+    #[serde(skip)]
+    usage: Usage,
+}
+
+/// A turn's tokens by kind, summed over its replies (each reply once): fresh input, output, cache reads,
+/// cache writes kept 5 minutes and kept an hour; what its first reply wrote and read (a reply after a long
+/// wait writes the whole context again); and when its last reply came.
+#[derive(Clone, Copy, Default)]
+pub struct Usage {
+    pub fresh: u64,
+    pub output: u64,
+    pub read: u64,
+    pub write_5m: u64,
+    pub write_1h: u64,
+    pub first_write: u64,
+    pub first_read: u64,
+    pub last_ms: u64,
+}
+
+impl Usage {
+    fn add(&mut self, fresh: u64, read: u64, write_5m: u64, write_1h: u64, output: u64, at_ms: u64) {
+        if self.last_ms == 0 {
+            self.first_write = write_5m + write_1h;
+            self.first_read = read;
+        }
+        self.fresh += fresh;
+        self.read += read;
+        self.write_5m += write_5m;
+        self.write_1h += write_1h;
+        self.output += output;
+        self.last_ms = at_ms.max(self.last_ms).max(1);
+    }
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -93,6 +134,21 @@ pub struct Meta {
     context: u64,
     window: u64,
     cost: Option<f64>,
+    /// When its latest reply came (from the log's timestamps), and how long the provider keeps that
+    /// reply's context cached (Claude Code says, per reply: an hour or 5 minutes; 0 when the log doesn't
+    /// say, or nothing was cached, as behind a proxy that strips it). Past that, the next reply pays to
+    /// write the whole context again.
+    #[serde(skip_serializing_if = "is_zero")]
+    last_call_ms: u64,
+    #[serde(skip_serializing_if = "is_zero")]
+    cache_ttl_s: u64,
+    /// The context its first reply carried, from the top of its log (a feed opened mid-file reads the
+    /// first part once for it): what the session started at, so insights can say how far it has grown.
+    #[serde(skip_serializing_if = "is_zero")]
+    start_context: u64,
+    /// When that first reply came.
+    #[serde(skip_serializing_if = "is_zero")]
+    start_ms: u64,
 }
 
 struct Feed {
@@ -119,6 +175,11 @@ struct Feed {
     tokens: u64,
     /// Background tasks of this session that failed after a while, until the hub takes them.
     failures: Vec<TaskFailure>,
+    /// Claude Code: the reply whose usage was counted last. It writes one line per content block, each
+    /// with the same usage, so a turn's tokens count each reply once.
+    last_reply: String,
+    /// Codex: its running total of tokens; a turn's tokens are what it grew by.
+    codex_total: u64,
 }
 
 /// A background agent a Claude Code session started: it runs inside the session's process, with no
@@ -380,6 +441,18 @@ pub fn model_of(path: &str) -> Option<String> {
     Some(feed.meta.model.clone()).filter(|m| !m.is_empty())
 }
 
+/// What the session last said (its latest turn's last words), for the session that continues its hand-off.
+pub fn last_say(path: &str) -> Option<String> {
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    let turn = feed.turns.last()?;
+    turn.items.iter().rev().find_map(|i| match i { Item::Say { text, .. } if !text.trim().is_empty() => Some(text.trim().to_string()), _ => None })
+}
+
 /// Each Claude session's context window as its status line last said (by session id), and each model's
 /// as a session on it last said. Its transcript doesn't say, and the model's name doesn't always either
 /// (a 1M window without "[1m]"). Kept on disk: a status line only runs when its session does something,
@@ -444,6 +517,21 @@ pub fn set_window(session_id: &str, window: u64, for_model: bool) {
     }
 }
 
+/// What a waiting card's insights need from a session's log: when its cached context runs out (0 when
+/// its log doesn't say it caches), its context now, the context it started with, and when its latest
+/// reply came (a compaction since then makes the context count stale until its next reply).
+pub fn insight_state(path: &str) -> Option<(u64, u64, u64, u64)> {
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    let m = &feed.meta;
+    let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
+    (m.context > 0).then_some((until, m.context, m.start_context, m.last_call_ms))
+}
+
 pub fn context_pct(path: &str) -> Option<u8> {
     let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
@@ -455,16 +543,171 @@ pub fn context_pct(path: &str) -> Option<u8> {
     (m.window > 0).then(|| (m.context * 100 / m.window).min(100) as u8)
 }
 
+/// A time a reply's line really carried (2001 on): a line without one still marks the turn as replied to.
+const SANE_MS: u64 = 1_000_000_000_000;
+
+/// One turn of a session, as Insights keeps it (logs/turns.rs): what it cost and how it went, and the start
+/// of its prompt (and of the next one, when that corrected it).
+pub struct TurnRow {
+    pub at_ms: u64,
+    pub tokens: u64,
+    pub context: u64,
+    pub prompt_chars: u64,
+    pub model: String,
+    pub cwd: String,
+    /// Steps that failed (a command's non-zero exit, an edit that didn't apply).
+    pub errors: u64,
+    /// You stopped it mid-turn.
+    pub interrupted: bool,
+    /// Your next prompt read as a correction ("no, …", "actually …", "still broken").
+    pub corrected: bool,
+    /// Its tokens by kind (for prices, and what a late answer re-wrote).
+    pub usage: Usage,
+    /// How long the session had waited on you since its reply before (0: not known, as for a log's first
+    /// turn read here).
+    pub waited_ms: u64,
+    /// Its prompt and, when corrected, your next one: the start of each, for Insights' examples.
+    pub prompt: String,
+    pub correction: String,
+}
+
+/// Whether a prompt reads as correcting the turn before it. English openers only.
+/// SHORTCUT: a fixed list of openers, blind to corrections phrased any other way; upgrade to a judgment
+/// the person can tune when the turns history is used for more than counting.
+fn reads_as_correction(prompt: &str) -> bool {
+    let p = prompt.trim_start().to_lowercase();
+    const OPENERS: [&str; 30] = ["no ", "no,", "no.", "nope", "wrong", "that's not", "thats not", "not that", "not what i", "actually", "wait", "stop", "undo", "revert", "i meant", "i said", "you missed", "you forgot", "you didn't", "you broke", "why did you", "why are you", "still not", "still broken", "still failing", "it's still", "doesn't work", "didn't work", "does not work", "did not work"];
+    OPENERS.iter().any(|o| p.starts_with(o)) || p == "no"
+}
+
+/// A prompt's first 160 characters as you wrote them: a long block of instructions appended in brackets at
+/// its end (a dictation's or a tool's) is left out, or it would fill the snippet.
+fn snippet(prompt: &str) -> String {
+    let p = prompt.trim_end();
+    let bare = p.strip_suffix(')').and_then(|rest| rest.rfind('(').filter(|&i| p.len() - i > 40 && !rest[i + 1..].contains(['(', ')'])).map(|i| rest[..i].trim_end())).filter(|b| !b.is_empty());
+    bare.unwrap_or(p).chars().take(160).collect()
+}
+
+/// The turns in `path` from byte `from` on, for Insights: every complete turn, and the open last one too.
+/// Returns them with the byte where that open turn starts, so the next read begins there and finishes it.
+/// Reads at most `max` bytes, whole lines only.
+pub fn turn_rows(path: &str, from: u64, max: u64) -> (Vec<TurnRow>, u64) {
+    let Ok(file) = std::fs::File::open(path) else { return (Vec::new(), from) };
+    let mut file = file;
+    if file.seek(SeekFrom::Start(from)).is_err() {
+        return (Vec::new(), from);
+    }
+    let mut buf = Vec::new();
+    if file.take(max).read_to_end(&mut buf).is_err() {
+        return (Vec::new(), from);
+    }
+    let Some(end) = buf.iter().rposition(|&b| b == b'\n').map(|i| i + 1) else { return (Vec::new(), from) };
+    let kind = kind_of(path);
+    let mut feed = Feed::start(path, 0, 0);
+    feed.kind = kind;
+    // Per turn, beside the feed's: when it started in the file, its model and folder, whether you stopped it.
+    let (mut starts, mut models, mut cwds, mut stopped): (Vec<u64>, Vec<String>, Vec<String>, Vec<bool>) = Default::default();
+    let mut cwd = String::new();
+    let mut pos = 0usize;
+    for line in buf[..end].split(|&b| b == b'\n') {
+        let at = from + pos as u64;
+        pos += line.len() + 1;
+        let Ok(e) = serde_json::from_slice::<Value>(line) else { continue };
+        if let Some(c) = e.get("cwd").or_else(|| e.pointer("/payload/cwd")).and_then(Value::as_str).filter(|c| !c.is_empty()) {
+            cwd = c.to_string();
+        }
+        feed.observe(&e);
+        for c in translate(kind, &e, &mut feed.patches) {
+            if c.get("type").and_then(Value::as_str) == Some("user") {
+                let blocks = content_blocks(&c);
+                let text: String = blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
+                if text.trim_start().starts_with("[Request interrupted") {
+                    if let Some(s) = stopped.last_mut() {
+                        *s = true;
+                    }
+                }
+            }
+            feed.take(&c);
+        }
+        while starts.len() < feed.turns.len() {
+            starts.push(at);
+            models.push(String::new());
+            cwds.push(cwd.clone());
+            stopped.push(false);
+        }
+        if let Some(m) = models.last_mut() {
+            if !feed.meta.model.is_empty() {
+                m.clone_from(&feed.meta.model);
+            }
+        }
+    }
+    let n = feed.turns.len();
+    // A turn Claude Code started itself (a background task reporting back) has no prompt: it wasn't you
+    // answering late, and the turn a correction corrects is the one before your next prompt.
+    let next_yours = |i: usize| feed.turns[i + 1..].iter().find(|t| !t.prompt.is_empty());
+    let rows = feed.turns.iter().enumerate().map(|(i, t)| TurnRow {
+        at_ms: t.at_ms,
+        tokens: t.tokens,
+        context: t.context,
+        prompt_chars: t.prompt.chars().count() as u64,
+        model: models[i].clone(),
+        cwd: cwds[i].clone(),
+        errors: t.items.iter().filter(|x| matches!(x, Item::Step { bad: true, .. })).count() as u64,
+        interrupted: stopped[i],
+        corrected: next_yours(i).is_some_and(|next| reads_as_correction(&next.prompt)),
+        usage: t.usage,
+        waited_ms: i.checked_sub(1).filter(|_| !t.prompt.is_empty()).map(|p| feed.turns[p].usage.last_ms).filter(|&l| l > SANE_MS && t.at_ms > l).map_or(0, |l| t.at_ms - l),
+        prompt: snippet(&t.prompt),
+        correction: next_yours(i).filter(|next| reads_as_correction(&next.prompt)).map(|next| snippet(&next.prompt)).unwrap_or_default(),
+    }).collect();
+    // The open turn starts the next read; none read: carry on after what was read.
+    let next = if n > 0 { starts[n - 1] } else { from + end as u64 };
+    (rows, next)
+}
+
+/// How far into a log to look for its first reply's context (the start a feed opened mid-file misses).
+const HEAD_BYTES: u64 = 1024 * 1024;
+
+/// The context a session's first reply carried, and when, from the top of its log: what it started at.
+fn start_of(path: &str, kind: Kind) -> (u64, u64) {
+    let Ok(file) = std::fs::File::open(path) else { return (0, 0) };
+    let mut buf = Vec::new();
+    if file.take(HEAD_BYTES).read_to_end(&mut buf).is_err() {
+        return (0, 0);
+    }
+    let end = buf.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let mut head = Feed::start(path, 0, 0);
+    head.kind = kind;
+    for e in lines(&String::from_utf8_lossy(&buf[..end])) {
+        head.observe(&e);
+        for c in translate(kind, &e, &mut head.patches) {
+            head.take(&c);
+        }
+        if head.meta.start_context > 0 {
+            return (head.meta.start_context, head.meta.start_ms);
+        }
+    }
+    (0, 0)
+}
+
 impl Feed {
     fn open(path: &str, version: u64) -> Feed {
         let len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let offset = len.saturating_sub(START_BYTES);
-        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new() }
+        let mut f = Feed::start(path, version, offset);
+        if offset > 0 {
+            (f.meta.start_context, f.meta.start_ms) = start_of(path, f.kind);
+        }
+        f
+    }
+
+    fn start(path: &str, version: u64, offset: u64) -> Feed {
+        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0 }
     }
 
     /// A background agent's log, read from its start (it's small: one task).
     fn open_helper(path: &str) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new() }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0 }
     }
 
     /// A background agent just started (its launch result came in): remember it and open its log.
@@ -630,6 +873,35 @@ impl Feed {
                             m.context = all;
                         }
                         self.tokens += all + n(u.get("output_tokens"));
+                        let reply = msg.get("id").and_then(Value::as_str).unwrap_or("");
+                        if reply.is_empty() || reply != self.last_reply {
+                            self.last_reply = reply.to_string();
+                            if let Some(t) = self.turns.last_mut() {
+                                t.tokens += all + n(u.get("output_tokens"));
+                                // Claude Code splits what it wrote by how long it's kept; an older log doesn't.
+                                let cc = u.get("cache_creation");
+                                let hour = n(cc.and_then(|c| c.get("ephemeral_1h_input_tokens"))).min(wrote);
+                                t.usage.add(fresh, read, wrote - hour, hour, n(u.get("output_tokens")), stamp(e));
+                                if all > 0 {
+                                    t.context = all;
+                                    if m.start_context == 0 {
+                                        m.start_context = all;
+                                        m.start_ms = stamp(e);
+                                    }
+                                }
+                            }
+                            m.last_call_ms = stamp(e).max(m.last_call_ms);
+                            let cc = u.get("cache_creation");
+                            m.cache_ttl_s = if n(cc.and_then(|c| c.get("ephemeral_1h_input_tokens"))) > 0 {
+                                3600
+                            } else if n(cc.and_then(|c| c.get("ephemeral_5m_input_tokens"))) > 0 {
+                                300
+                            } else if read == 0 && wrote == 0 {
+                                0
+                            } else {
+                                m.cache_ttl_s // only reads this time: the cache it read keeps its lifetime
+                            };
+                        }
                         let model = msg.get("model").and_then(Value::as_str).unwrap_or("");
                         if !model.is_empty() && !model.starts_with('<') {
                             m.model = model.to_string();
@@ -658,10 +930,30 @@ impl Feed {
                         let input = n(last.and_then(|l| l.get("input_tokens")));
                         if input > 0 {
                             m.context = input;
+                            if let Some(t) = self.turns.last_mut() {
+                                t.context = input;
+                                if m.start_context == 0 {
+                                    m.start_context = input;
+                                    m.start_ms = stamp(e);
+                                }
+                            }
                         }
                         let w = n(info.get("model_context_window"));
                         if w > 0 {
                             m.window = w;
+                        }
+                        let total = n(info.get("total_token_usage").and_then(|t| t.get("total_tokens")));
+                        // A new call (the session's running total grew; it repeats when nothing did). Its own
+                        // usage is `last`: the first total read may be everything before, when the read
+                        // started mid-file, so it isn't this turn's.
+                        if total > self.codex_total {
+                            if let Some(t) = self.turns.last_mut() {
+                                t.tokens += if self.codex_total > 0 { total - self.codex_total } else { n(last.and_then(|l| l.get("total_tokens"))) };
+                                let cached = n(last.and_then(|l| l.get("cached_input_tokens")));
+                                t.usage.add(input.saturating_sub(cached), cached, 0, 0, n(last.and_then(|l| l.get("output_tokens"))), stamp(e));
+                            }
+                            self.codex_total = total;
+                            m.last_call_ms = stamp(e).max(m.last_call_ms);
                         }
                     }
                 }
@@ -681,6 +973,18 @@ impl Feed {
                         if all > 0 {
                             m.context = all;
                         }
+                        if let Some(t) = self.turns.last_mut() {
+                            t.tokens += all + n(u.get("output"));
+                            t.usage.add(fresh, read, wrote, 0, n(u.get("output")), stamp(e));
+                            if all > 0 {
+                                t.context = all;
+                                if m.start_context == 0 {
+                                    m.start_context = all;
+                                    m.start_ms = stamp(e);
+                                }
+                            }
+                        }
+                        m.last_call_ms = stamp(e).max(m.last_call_ms);
                         if let Some(c) = u.pointer("/cost/total").and_then(Value::as_f64) {
                             m.cost = Some(m.cost.unwrap_or(0.0) + c);
                         }
@@ -736,7 +1040,7 @@ impl Feed {
                 if crate::logs::transcript::is_stop_hook(e) {
                     // Read from mid-file, its turn's start further back: the turn starts here, already hooked.
                     if self.turns.is_empty() {
-                        self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0 });
+                        self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default() });
                     }
                     let Some(turn) = self.turns.last_mut().filter(|t| t.hooked_ms == 0) else { return false };
                     turn.hooked_ms = at.max(1);
@@ -756,7 +1060,7 @@ impl Feed {
                 }
                 self.close_open("");
                 let prompt = if crate::logs::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
-                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0 });
+                self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default() });
                 ended // an empty turn isn't shown until something happens in it; a task that ended is
             }
             Some("assistant") => {
@@ -787,7 +1091,7 @@ impl Feed {
         if self.turns.is_empty() {
             // Started mid-file, inside a turn whose prompt is further back.
             let at = match &item { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms };
-            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0 });
+            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default() });
         }
         let turn = self.turns.last_mut().unwrap();
         turn.items.push(item);
@@ -863,6 +1167,15 @@ fn kind_of(path: &str) -> Kind {
         Some("session") if e.get("version").is_some() => Kind::Pi,
         Some("session_meta") => Kind::Codex,
         _ => Kind::Claude,
+    }
+}
+
+/// Whose log this is, as a harness: "claude", "codex" or "pi" (see `kind_of`).
+pub fn harness_of(path: &str) -> &'static str {
+    match kind_of(path) {
+        Kind::Claude => "claude",
+        Kind::Codex => "codex",
+        Kind::Pi => "pi",
     }
 }
 
@@ -1499,7 +1812,7 @@ mod tests {
     }
 
     fn feed_of(jsonl: &str) -> Feed {
-        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new() };
+        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0 };
         for e in lines(jsonl) {
             f.take(&e);
         }
@@ -1521,6 +1834,82 @@ mod tests {
 {"type":"user","timestamp":"2026-10-04T10:00:20.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t3","is_error":true,"content":"Exit code 1\nTests: 3 failed"}]},"toolUseResult":"Error: Exit code 1"}
 {"type":"assistant","timestamp":"2026-10-04T10:00:22.000Z","isSidechain":true,"message":{"content":[{"type":"text","text":"a helper's words"}]}}
 {"type":"assistant","timestamp":"2026-10-04T10:00:25.000Z","message":{"content":[{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"npm test"}}]}}"#;
+
+    #[test]
+    fn each_turn_counts_its_replies_tokens_once_and_the_cache_lifetime_is_kept() {
+        // Claude Code writes a reply as one line per content block, each repeating the reply's usage.
+        let path = std::env::temp_dir().join(format!("cue-turn-tokens-{}.jsonl", std::process::id()));
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"add the tax column"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"On it."}],"usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"cache_creation":{"ephemeral_1h_input_tokens":200,"ephemeral_5m_input_tokens":0},"output_tokens":50}}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/r/a.rs"}}],"usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"cache_creation":{"ephemeral_1h_input_tokens":200,"ephemeral_5m_input_tokens":0},"output_tokens":50}}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:01:00.000Z","message":{"content":"and the total"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:01:09.000Z","message":{"id":"m2","model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":5,"cache_read_input_tokens":3000,"cache_creation_input_tokens":0,"output_tokens":20}}}"#,
+        ].join("\n") + "\n").unwrap();
+        let mut f = Feed::open(path.to_str().unwrap(), 1);
+        f.catch_up();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(f.turns.iter().map(|t| t.tokens).collect::<Vec<_>>(), vec![1260, 3025]);
+        assert_eq!(f.turns.iter().map(|t| t.context).collect::<Vec<_>>(), vec![1210, 3005], "each turn keeps the context its last reply carried");
+        assert_eq!(f.meta.cache_ttl_s, 3600, "a reply that only read the cache keeps the lifetime it was written with");
+        assert_eq!(f.meta.start_context, 1210, "the session's start is its first reply's context");
+        assert_eq!(f.meta.last_call_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:09.000Z").unwrap());
+    }
+
+    #[test]
+    fn a_snippet_leaves_out_appended_instructions() {
+        assert_eq!(snippet("No, the card did show up (Voice: listening, not reading. Answer in one or two short sentences.)"), "No, the card did show up");
+        assert_eq!(snippet("Fix the fill (partial) price"), "Fix the fill (partial) price");
+        assert_eq!(snippet("(only a long bracketed note, nothing before it at all here)"), "(only a long bracketed note, nothing before it at all here)");
+    }
+
+    #[test]
+    fn a_turns_row_splits_its_tokens_and_knows_how_long_it_waited() {
+        let path = std::env::temp_dir().join(format!("cue-turn-rows-{}.jsonl", std::process::id()));
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"add the tax column"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"On it."}],"usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"cache_creation":{"ephemeral_1h_input_tokens":150,"ephemeral_5m_input_tokens":50},"output_tokens":50}}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/r/a.rs"}}],"usage":{"input_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200,"cache_creation":{"ephemeral_1h_input_tokens":150,"ephemeral_5m_input_tokens":50},"output_tokens":50}}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T12:00:05.000Z","message":{"content":"no, the total column"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T12:00:09.000Z","message":{"id":"m2","model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":3000,"output_tokens":20}}}"#,
+        ].join("\n") + "\n").unwrap();
+        let (rows, _) = turn_rows(path.to_str().unwrap(), 0, 1 << 20);
+        let _ = std::fs::remove_file(&path);
+        let u = rows[0].usage;
+        assert_eq!((u.fresh, u.read, u.write_5m, u.write_1h, u.output), (10, 1000, 50, 150, 50), "each reply once, its writes by lifetime");
+        assert_eq!(rows[0].waited_ms, 0, "nothing before the first turn");
+        assert_eq!(rows[1].waited_ms, 2 * 3600 * 1000, "from its reply before to this prompt");
+        assert_eq!((rows[1].usage.first_write, rows[1].usage.first_read), (3000, 0), "after two hours it wrote its context again");
+        assert!(rows[0].corrected);
+        assert_eq!((rows[0].prompt.as_str(), rows[0].correction.as_str()), ("add the tax column", "no, the total column"));
+    }
+
+    #[test]
+    fn a_feed_opened_mid_file_still_knows_the_context_its_session_started_with() {
+        // A long session: only its last START_BYTES are read for the chat, so its first reply is read
+        // from the top of the log on its own.
+        let path = std::env::temp_dir().join(format!("cue-start-ctx-{}.jsonl", std::process::id()));
+        let reply = |id: &str, ctx: u64| format!(r#"{{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{{"id":"{id}","model":"claude-opus-5-5","content":[{{"type":"text","text":"ok"}}],"usage":{{"input_tokens":0,"cache_read_input_tokens":{ctx},"cache_creation_input_tokens":0,"output_tokens":5}}}}}}"#);
+        let mut log = String::new();
+        log.push_str(r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"start"}}"#);
+        log.push('\n');
+        log.push_str(&reply("m0", 20000));
+        log.push('\n');
+        let filler = format!(r#"{{"type":"user","timestamp":"2026-10-04T10:01:00.000Z","message":{{"content":"{}"}}}}"#, "x".repeat(4000));
+        while (log.len() as u64) < START_BYTES + 200_000 {
+            log.push_str(&filler);
+            log.push('\n');
+        }
+        log.push_str(&reply("m9", 300000));
+        log.push('\n');
+        std::fs::write(&path, log).unwrap();
+        let mut f = Feed::open(path.to_str().unwrap(), 1);
+        f.catch_up();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(f.meta.context, 300000);
+        assert_eq!(f.meta.start_context, 20000, "read from the top of the log, not the first turn the chat sees");
+        assert_eq!(f.meta.start_ms, crate::logs::transcript::iso_ms("2026-10-04T10:00:05.000Z").unwrap());
+    }
 
     #[test]
     fn steps_read_as_lines_with_how_they_went() {

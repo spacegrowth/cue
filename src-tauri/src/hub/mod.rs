@@ -60,6 +60,13 @@ struct Store {
     /// Limits already announced (scope + reset), so each one notifies once going out and once coming back.
     told_out: HashSet<String>,
     told_back: HashSet<String>,
+    /// Sessions told their cache is about to run out while waiting on you (cache_tick's heads-up, by the rule
+    /// the card's countdown and the header's "going cold" use too): session → the expiry it was told
+    /// about, once per expiry. (Answering in time is counted by the insights themselves: insight_events.)
+    cold_warned: HashMap<String, u64>,
+    /// The board's cards on this Mac: their cache's expiry and their context, as of the last cache_tick
+    /// (insights.js counts down from these; ipc::insight_states has the same shape).
+    insight: HashMap<String, Value>,
     /// Reviews typed into a lead: executor → (its lead, when). "in review" until it's no longer done
     /// (15 minutes at most). A lead takes one review at a time: Review waits until it's free again.
     review_sent: HashMap<String, (String, u64)>,
@@ -76,7 +83,7 @@ struct Store {
     just_ended: HashMap<String, u64>,
     /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
     unreachable: HashSet<String>,
-    /// Sessions Cue is restarting (stopped and started again, after an MCP change): see `Restart`.
+    /// Sessions Cue is restarting (stopped and started again: after an MCP change, or ⋯ → Restart session): see `Restart`.
     restarting: HashMap<String, Restart>,
     /// Each session's last few restarts, oldest first, for a line in its chat at the time it happened.
     /// SHORTCUT: kept while Cue runs, not saved: a relaunch drops the lines (the restart itself is
@@ -94,6 +101,8 @@ struct Restart {
     since_ms: u64,
     /// The MCP servers it restarts with, by name, when it's pinned to a set (None: its folder's).
     servers: Option<Vec<String>>,
+    /// Restarted for its MCP servers (⋯ → MCP servers…), not a plain ⋯ → Restart session.
+    mcp: bool,
     held: Option<crate::sessions::Session>,
 }
 
@@ -233,6 +242,9 @@ impl Hub {
         let crew = crate::leads::view(&ids);
         // A lead that handed off: which lead took over (relay's handoff), so its chat and row can say so.
         let handoffs = crate::leads::handoffs(&ids);
+        // Hand-offs through a hand-off skill (insights.js): pending ones offer "Continue in a new session".
+        // Read before the hub's lock, not under it.
+        let skill_handoffs = crate::db::handoffs();
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
@@ -244,7 +256,7 @@ impl Hub {
             }
         }
         let parked: Vec<&crate::sessions::Parked> = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).collect();
-        let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len) }))).collect();
+        let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len), "mcp": r.mcp }))).collect();
         let mut snap = json!({
             "items": st.items,
             "history": st.history,
@@ -259,6 +271,9 @@ impl Hub {
             "unreachable": st.unreachable,
             "crew": crew,
             "handoffs": handoffs,
+            // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
+            "insight": st.insight,
+            "skill_handoffs": skill_handoffs,
             "live": live,
             "branches": branches,
             "projects": projects,

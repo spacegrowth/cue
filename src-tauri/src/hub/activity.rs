@@ -25,6 +25,13 @@ const LOG_LAG_MS: u64 = 10_000;
 /// the next turn's prompt, not the prompt of the turn now ending.
 const TAKEN_SETTLE_MS: u64 = 3000;
 
+/// How long before a waiting session's cache runs out Cue gives you a heads-up: an hour's cache in its last
+/// 10 minutes, a 5-minute one in its last 2; and the least context worth one. insights.js cacheWarn counts
+/// the card down by the same rule (CACHE_WARN_MS, CACHE_WARN_SHORT_MS, CACHE_MIN_TOKENS).
+const COLD_WARN_MS: u64 = 10 * 60_000;
+const COLD_WARN_SHORT_MS: u64 = 2 * 60_000;
+const COLD_MIN_TOKENS: u64 = 50_000;
+
 impl Hub {
     /// Your message queued during the turn that just ended, unless the turn read it (absorbed between
     /// steps) or it's this turn's own prompt (taken from the queue a while ago).
@@ -165,6 +172,8 @@ impl Hub {
                     st.items.push(it);
                             (id, t)
                 };
+                // Its card lands with its cache and context numbers, not at the next tick.
+                self.cache_tick();
                 self.changed();
                 self.turn_changes(&sid);
                 // A lead's turn ended: its next queued review goes (after a moment, for its hooks to settle).
@@ -346,6 +355,60 @@ impl Hub {
         }
     }
 
+    /// The board's cards' insight numbers (their cache's expiry and their context, from the end of their
+    /// logs: steps::insight_state), kept for the state the window gets, and the heads-up before a waiting
+    /// session's cache runs out. Off the main thread: every ~10 s and as a turn ends. Cards on this Mac
+    /// only: another machine's log is never looked up from here (the window asks for those itself).
+    fn cache_tick(&self) {
+        let now = now_ms();
+        let waiting: Vec<(Item, bool)> = {
+            let st = self.st();
+            st.items
+                .iter()
+                .filter(|i| i.status == "pending" && i.origin.machine.is_empty() && !i.origin.transcript_path.is_empty() && matches!(i.origin.harness.as_str(), "claude" | "codex"))
+                .map(|i| (i.clone(), st.sessions.is_later(&i.origin.session_id)))
+                .collect()
+        };
+        let mut heads_up = vec![];
+        let mut insight = HashMap::new();
+        for (it, later) in waiting {
+            let sid = &it.origin.session_id;
+            let Some((until, tokens, start, last)) = crate::steps::insight_state(&it.origin.transcript_path) else { continue };
+            insight.insert(sid.clone(), serde_json::json!({ "until_ms": until, "tokens": tokens, "start": start, "last_ms": last }));
+            // Codex logs don't say how long they cache: no heads-up.
+            if until == 0 {
+                continue;
+            }
+            // A 5-minute cache is always inside 10 minutes: told in its last 2, not as its turn ends.
+            let warn = if until.saturating_sub(last) > COLD_WARN_MS { COLD_WARN_MS } else { COLD_WARN_SHORT_MS };
+            if until <= now || until - now > warn || tokens < COLD_MIN_TOKENS || later {
+                continue;
+            }
+            heads_up.push((it, until, tokens));
+        }
+        let heads_up = {
+            let mut st = self.st();
+            st.insight = insight;
+            st.cold_warned.retain(|_, until| *until > now);
+            let mut told = vec![];
+            for (it, until, _) in heads_up {
+                if st.cold_warned.insert(it.origin.session_id.clone(), until) != Some(until) {
+                    told.push((it, until));
+                }
+            }
+            told
+        };
+        if crate::config::flag("/notify/cold") {
+            for (it, until) in heads_up {
+                // The card's own notification, replaced: Reply on it still goes to the session.
+                let project = crate::config::moved().remove(&it.origin.session_id).unwrap_or_else(|| it.project.clone());
+                let mins = (until - now).div_ceil(60_000);
+                let (_, what) = notify_title(&it);
+                self.notify(&it.id, &format!("{project} · cache runs out in {mins}m"), &what, if it.kind == "waiting" { "turn" } else { "" });
+            }
+        }
+    }
+
     /// Every ~10s: catch turns that died without a hook reaching Cue, and announce limits that lifted.
     pub fn usage_tick(&self) {
         // A lead that came free without a Stop reaching Cue still gets its queued reviews.
@@ -375,6 +438,7 @@ impl Hub {
                 }
             }
         }
+        self.cache_tick();
         // A limit whose reset time passed: say so once, per scope.
         let mut back: Vec<(String, usize)> = vec![];
         {

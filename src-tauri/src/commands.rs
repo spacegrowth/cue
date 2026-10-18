@@ -150,6 +150,25 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
     Some(from_setup(r.pointer("/response/response").unwrap_or(&Value::Null)))
 }
 
+/// The hand-off skills Claude Code has for you on a host (`machine` empty: this Mac): its commands with
+/// "handoff" in their name, from its list for your home folder (skills you install for yourself apply in
+/// every folder). None while it's being read. To read them again after adding a skill, `forget_all` first:
+/// every folder's list goes, so each session's "/" menu and insights see it too.
+pub fn handoff_skills(machine: &str) -> Option<Vec<String>> {
+    // Your home folder there: this Mac's, or where a machine's connection starts.
+    let folder = if machine.is_empty() { std::env::var("HOME").unwrap_or_default() } else { ".".to_string() };
+    let list = for_folder(&folder, machine)?;
+    Some(list.into_iter().filter(|c| { let n = c.name.to_lowercase(); n.contains("handoff") || n.contains("hand-off") }).map(|c| c.name).collect())
+}
+
+/// Forget one folder's list (`machine` empty: this Mac), so its next "/" menu asks Claude Code again: a
+/// restarted session's, which may have skills or plugins added since its list was read.
+pub fn forget(cwd: &str, machine: &str) {
+    let key = if machine.is_empty() { cwd.to_string() } else { format!("{machine}:{cwd}") };
+    crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).remove(&key);
+    crate::db::forget_commands(&key);
+}
+
 /// Forget every folder's list: the next ask, for any folder, reads it from Claude Code again. Refresh
 /// under a "/" menu and Reload beside + New's model list both do this, so one press brings a new
 /// skill, plugin or model everywhere, not in one place.

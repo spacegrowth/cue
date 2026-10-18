@@ -35,7 +35,7 @@ function renderMain() {
   const focusId = !focusKey && focused?.matches?.("input[id], select[id]") ? focused.id : null;   // e.g. a quick phrase field, the Model pick
   const caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
-  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail";
+  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   // A background agent's steps (chat.js helperBlock), by agent: where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
@@ -47,12 +47,12 @@ function renderMain() {
   const counts = headerChips();
   const lifted = liftChat();
   document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${starChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
+    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
       ${usageChip()}${shellsBtn()}${extPanelBtn()}
-      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
+      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
-    ${view === "history" ? historyView() : view === "sessions" ? sessionsView() : boardView()}
+    ${view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : boardView()}
   </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
@@ -288,6 +288,14 @@ function bindMain() {
     if (t.closest("[data-move-ask]")) { movingProj = true; return renderMain(); }
     const mvp = t.closest("[data-move-proj]");
     if (mvp) { moreFor = handoffArm = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); return renderMain(); }
+    const rsb = t.closest("[data-restart]");
+    if (rsb) {
+      const sid = rsb.dataset.restart;
+      moreFor = handoffArm = null;
+      renderMain();
+      // Its "/" commands are read again after (a skill added since shows up): the Mac forgets its list too.
+      return invoke("restart_session", { sessionId: sid }).then((m) => { cmdLists.delete(sid); cmdMissed.delete(sid); if (m) toast(m); }, (e) => toast(`Couldn't restart: ${e}`));
+    }
     const mc = t.closest("[data-cmd]");
     if (mc) {
       const { cmd, sid } = mc.dataset;
@@ -344,6 +352,7 @@ function bindMain() {
     if (t.closest("[data-fold-oldest]")) return foldOldest();
     // An ended Claude Code session, opened from search: back to work, as an older one resumes.
     if (t.closest("[data-act=convo-resume]")) return resumeOlder({ session_id: convo.sid, name: convo.name });
+    if (t.closest("[data-act=convo-close]")) { sheet = null; return renderMain(); }
     if (t.closest("[data-act=convo-back]")) { sheet = "search"; renderMain(); return document.querySelector(".search-in")?.focus(); }
     const co = t.closest("[data-act=convo-open]");
     if (co) { sheet = null; return setActive(null, co.dataset.sid); }
@@ -356,7 +365,6 @@ function bindMain() {
     if (sr) return pickResult(+sr.dataset.sr);
     const starEl = t.closest("[data-star]");
     if (starEl) return toggleStar(starEl.dataset.star);
-    if (t.closest("[data-star-chip]")) { starOpen = !starOpen; liveOpen = newOpen = false; return renderMain(); }
     const rn = t.closest("[data-rename]");
     if (rn) {
       renaming = rn.dataset.rename;
@@ -442,8 +450,7 @@ function bindMain() {
     if (xt) return openExec(xt.dataset.execTerm);
     // A button in the row (Allow / Deny in the starred list) does its own thing, not "open".
     const sv = t.closest("button[data-act], button[data-wake]") ? null : t.closest("[data-sv]");
-    if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; starOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
-    if (starOpen && !t.closest(".st-wrap")) { starOpen = false; renderMain(); }
+    if (sv) { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; return svAct(sv.dataset.sv, sv.dataset.sid); }
     if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = newOpen = false; renderMain(); }
     const rn2 = t.closest("[data-act=rename-again], [data-act=rename-dismiss]");
     if (rn2) {
@@ -461,8 +468,10 @@ function bindMain() {
     const goS = t.closest("[data-act=go-session]");
     if (goS) { invoke("focus_session_id", { sessionId: goS.dataset.sid }).then((r) => toast(`Jumped to ${r}`)).catch((e) => toast(`Couldn't jump: ${e}`)); return; }
     // Parked: Resume (↺ on its row, or the button), Resume & send, Unpark, Park, its earlier messages, fold.
+    // ↺ on a row of one whose cache is gone and whose context is big opens it first, to say what resuming costs
+    // (once: with it open, ↺ resumes).
     const wk = t.closest("[data-wake]");
-    if (wk) return wakeParked(wk.dataset.wake);
+    if (wk) return wk.closest(".active-pane") || active?.sid === wk.dataset.wake ? wakeParked(wk.dataset.wake) : insColdResume(wk.dataset.wake).then((cold) => (cold ? setActive(null, wk.dataset.wake) : wakeParked(wk.dataset.wake)));
     const wsd = t.closest("[data-wake-send]");
     if (wsd) return wakeParked(wsd.dataset.wakeSend, draft(`s:${wsd.dataset.wakeSend}`).text.trim());
     const svf = t.closest("[data-sv-fold]");
@@ -507,6 +516,7 @@ function bindMain() {
     if (al) { const it = findItem(al.dataset.id); return it && respond(it, { behavior: "allow_always", permission: it.suggestions[+al.dataset.always] }); }
     const actEl = t.closest("[data-act]");
     const act = actEl?.dataset.act;
+    if (act?.startsWith("ins-")) return insAct(act, actEl.dataset);
     if (act === "next") return goNext();
     if (act === "set-tab") { setTab = actEl.dataset.tab; try { localStorage.setItem("cue.setTab", setTab); } catch {} const b = document.querySelector(".sheet-body"); if (b) b.scrollTop = 0; return renderMain(); }
     if (act === "test-notify") return invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`));
@@ -656,7 +666,6 @@ function bindMain() {
       if (nfFolderOpen && e.key === "Tab") { closeFolders(); renderMain(); }
     }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
-    if (starOpen && e.key === "Escape") { starOpen = false; return renderMain(); }
     if (pjRenaming && e.key === "Escape") { pjRenaming = null; return renderMain(); }
     if ((pjOpen || colorFor) && e.key === "Escape") { pjOpen = false; colorFor = null; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
@@ -768,6 +777,7 @@ function setState(s) {
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
   for (const g of ghosts.values()) setTimeout(leaveGhosts, Math.max(0, g.at + LINGER_MS - Date.now()) + 50);
   state = s;
+  for (const [sid, c] of Object.entries(s.insight || {})) insCache.set(sid, c);   // the board's numbers, as of this change
   // A rename Cue's update doesn't have yet keeps showing (no flash of the old name).
   for (const [sid, r] of renamedNow) {
     const x = sessionOf(sid);
@@ -847,6 +857,10 @@ async function boot() {
   // The live "what it's doing · 3s" counts every second, without redrawing everything.
   setInterval(() => {
     document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
+    // The going-cold chip counts down; once its soonest goes cold, the chip redraws without it.
+    let coldDone = false;
+    document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
+    if (coldDone) renderMain();
     document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
   }, 1000);
 }

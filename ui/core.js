@@ -5,7 +5,7 @@ const invoke = T.core.invoke;
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
 let clockSkew = 0;          // backend clock − browser clock, so bars line up with the backend's timestamps
 let sheet = null;           // null | "settings"
-let view = "board";         // "board" | "sessions" | "history" — the switch in the header
+let view = "board";         // "board" | "sessions" | "history" | "insights" — the switch in the header
 let histOpen = null;        // the History row that's open (one at a time)
 let histShown = null;       // the open row we've already scrolled to (so a redraw doesn't yank it back)
 let active = null;          // { id, sid }: what the Active pane shows. Sticky: it stays after you act.
@@ -27,7 +27,7 @@ let revealed = "";             // the selection last scrolled into view (only a 
 const seenCards = new Set();  // Waiting cards already on screen once (only new arrivals animate)
 let cardsPrimed = false;        // the first draw just takes stock: nothing "arrives" at launch
 let slideDir = 0;           // +1 / -1: the next redraw slides the Active pane in from the right / left
-let chipNav = null;         // the header chip you're stepping through ("waiting" | "asking" | "working")
+let chipNav = null;         // the header chip you're stepping through ("waiting" | "asking" | "cold")
 let forward = null;         // { key, text, from, fromSid, to } — an agent message being sent on to another session
 let lightbox = null;        // { srcs: [...], i } — an image opened full size
 let lastSent = null;        // { sid, text, images, via, at }: how the last message went out
@@ -42,6 +42,11 @@ function ago(ms) {
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
+}
+/** How long until a cache runs out, for the header's "going cold" chip ("in 8m 05s"). */
+function coldIn(until) {
+  const s = Math.max(0, Math.round((until - now()) / 1000));
+  return s < 60 ? `in ${s}s` : `in ${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
 }
 const firstLine = (s) => String(s ?? "").split("\n").find((l) => l.trim()) || "";
 const shortPath = (p) => { const parts = String(p).split("/"); return parts.length > 3 ? "…/" + parts.slice(-3).join("/") : p; };
@@ -785,7 +790,7 @@ function restoreSpot() {
   let spot = null;
   try { spot = JSON.parse(localStorage.getItem(SPOT) || "null"); } catch {}
   if (!spot) return;
-  if (["board", "sessions", "history"].includes(spot.view)) view = spot.view;
+  if (["board", "sessions", "history", "insights"].includes(spot.view)) view = spot.view;
   // Only if that session is still around; otherwise the usual oldest-first pick stands.
   const card = state.items.find((i) => i.session_id === spot.sid);
   if (spot.sid && (card || sessionOf(spot.sid) || parkedOf(spot.sid))) active = { id: card?.id || null, sid: spot.sid };

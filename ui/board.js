@@ -398,7 +398,7 @@ function laterRow({ sid, s, it }) {
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
     <div class="nrow-top">${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}<span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
     ${cardCrew(sid)}
-    ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}</div>`;
+    ${text ? `<div class="nrow-text">${esc(text)}</div>` : ""}${handoffLine(sid)}${cacheLine(sid)}</div>`;
 }
 /** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
 function needRow(it, ghost, open = false) {
@@ -418,7 +418,7 @@ function needRow(it, ghost, open = false) {
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
     <div class="nrow-top">${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}<span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${talkNote(it)}${cardCrew(it.session_id)}
-    <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
+    <div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>${it.kind === "waiting" ? handoffLine(it.session_id) + cacheLine(it.session_id) : cacheLine(it.session_id, true)}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
 /** A lead whose team needs you while it has nothing waiting itself: a slim card holding the team's tree.
  *  Its title line opens the lead; a row in the tree opens that executor. */
@@ -675,38 +675,6 @@ function liveChip() {
   const rows = liveRows().filter((r) => inProj(r.project)), asks = rows.filter((r) => r.st === "asks").length, fresh = rows.filter((r) => isNewSession(r.sid)).length;
   return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}${fresh ? ` <span class="hsub">· ${fresh} new</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
 }
-// ---------- ★ in the header: the sessions you starred, and which of them need you ----------
-let starOpen = false;              // its list is open
-let starNeeded = null;             // starred sessions that needed you at the last draw
-let starLitTill = 0;               // lit up until then: one of them just started needing you
-function starChip() {
-  const stars = starredIds();
-  const rows = liveRows().filter((r) => stars.has(r.sid) && inProj(r.project));
-  // Starred and parked: not live, but still yours to come back to.
-  for (const p of state.parked || []) if (isStarred(p.session_id) && inProj(p.project) && !rows.some((r) => r.sid === p.session_id))
-    rows.push({ sid: p.session_id, harness: p.harness, name: bareName(p.name) || baseName(p.cwd) || p.project || "session", project: p.project, cwd: p.cwd || "", st: "parked", since: p.parked_ms, what: "", parked: true });
-  if (!rows.length) { starOpen = false; return ""; }
-  const needs = rows.filter((r) => r.st === "asks" || r.st === "yours");
-  // It lights up when one newly needs you, then goes quiet: lit all the time, you'd stop seeing it.
-  if (starNeeded && needs.some((r) => !starNeeded.has(r.sid))) { starLitTill = now() + 6000; setTimeout(renderMain, 6100); }
-  starNeeded = new Set(needs.map((r) => r.sid));
-  const lit = now() < starLitTill;
-  return `<span class="st-wrap"><button class="hchip st-chip ${starOpen ? "on" : ""} ${lit ? "hot" : ""}" data-star-chip title="Sessions you starred">${STAR_ICON}${rows.length}<span class="hlbl"> starred</span>${needs.length ? `<span class="hsub"> · ${needs.length} need${needs.length === 1 ? "s" : ""} you</span>` : ""}</button>${starOpen ? starPop(rows) : ""}</span>`;
-}
-/** The starred sessions: the ones that need you first. Click one to open it; ★ unstars it. */
-function starPop(rows) {
-  const sorted = [...rows].sort((a, b) => svRank(a) - svRank(b) || a.since - b.since);
-  // Live: under its name, what it's doing now (or asking, or last said), redrawn as it changes; a permission
-  // it asks for can be answered right here.
-  const row = (r) => {
-    const what = r.what || (r.it ? plain(summary(r.it)) : "");   // a finished turn: its message
-    const ask = r.st === "asks" && r.it?.kind === "permission" ? `<span class="st-acts"><button class="btn deny" data-act="deny" data-id="${esc(r.it.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(r.it.id)}">Allow</button></span>` : "";
-    return `<div class="lv-row st-row ${r.sid === (quietOpen || active?.sid) ? "on" : ""}" role="button" data-sv="${r.quiet ? "quiet" : "open"}" data-sid="${esc(r.sid)}">
-      <div class="st-line">${projDot(r.project || projOf(r.cwd), r.st === "working")}${badge(r.harness)}<span class="lv-name">${esc(r.name)}</span>${r.parked ? `${P_SIGN}<span class="sx-st">parked</span>` : `${newPill(r.sid)}${svChipState(r)}${placeIcon(r.sid)}`}<span class="age">${ago(r.since)}</span><span class="lv-acts">${r.parked && !waking.has(r.sid) ? `<button class="btn" data-wake="${esc(r.sid)}">↺ Resume</button>` : ""}${starBtn(r.sid)}</span></div>
-      ${what || ask ? `<div class="st-now ${r.st === "asks" ? "hot" : ""}">${r.run ? `<span class="dot-live"></span>` : ""}<span class="st-what ${r.st === "asks" && r.it && isBash(r.it) ? "mono" : ""}">${esc(what)}</span>${ask}</div>` : ""}</div>`;
-  };
-  return `<div class="lv-pop st-pop"><div class="st-head">Starred<span>${rows.length}</span></div><div class="lv-list">${sorted.map(row).join("")}</div><div class="lv-foot"><span class="lv-keys">Star a session on its card to follow it</span></div></div>`;
-}
 /** A newer Cue turned up in the background: a small card in the header's middle, until you choose. */
 const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${esc(upd.version)} is out</b>${upd.status === "installing" ? `<div class="dim">Installing… Cue restarts by itself.</div>` : upd.status.startsWith("error:") ? `<div class="dim">${esc(upd.status.slice(6))}</div>` : ""}</div>
   <button class="btn primary small" data-upd="install" ${upd.status === "installing" ? "disabled" : ""}>Update and restart</button><button class="btn small" data-upd="later">Later</button></div>`;
@@ -844,13 +812,16 @@ const moreShown = new Map();
 let moreFrame = 0;
 const moreWoke = new Set();
 
-// ---------- header chips: what's waiting, what's asking, what's working; click to open the oldest ----------
-/** Each chip's list, oldest first: what a click steps through. Idle sessions aren't "working". */
+// ---------- header chips: what's waiting, what's asking, what's going cold; click to open the oldest ----------
+/** Each chip's list, oldest first (going cold: soonest first): what a click steps through. */
 function chipList(kind) {
-  const { yours, decide, working } = groups();
+  const { yours, decide } = groups();
   if (kind === "waiting") return yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
   if (kind === "asking") return decide.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
-  return working.filter((s) => !idleNote(s)).sort((a, b) => a.since_ms - b.since_ms).map((s) => ({ id: null, sid: s.session_id, project: s.project, since: s.since_ms }));
+  // Waiting on you with its cache counting down on its card (insights.js cacheWarn): the soonest to run out first.
+  return [...yours, ...decide].map((i) => ({ id: i.id, sid: i.session_id, project: i.project, w: cacheWarn(i.session_id) }))
+    .filter((x) => x.w && x.w.left > 0)
+    .map((x) => ({ id: x.id, sid: x.sid, project: x.project, since: x.w.c.until_ms })).sort((a, b) => a.since - b.since);
 }
 function headerChips() {
   const chip = (kind, label, extra, cls, dot) => {
@@ -861,13 +832,13 @@ function headerChips() {
     if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
     return `<button class="hchip ${cls}" data-chip="${kind}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
   };
-  const waiting = chipList("waiting");
+  const waiting = chipList("waiting"), cold = chipList("cold");
   const oldest = waiting[0] ? now() - waiting[0].since : 0;
   // Stronger the longer the oldest has waited: soft under 5 minutes, then half, then solid at 15.
   const heat = oldest >= 15 * 60000 ? "hot" : oldest >= 5 * 60000 ? "warm" : "";
   const html = chip("waiting", "waiting", waiting[0] ? `oldest ${ago(waiting[0].since)}` : "", heat, "z")
-    + chip("asking", "asking you", "", "", "ask")
-    + chip("working", "working", "", "", "w");
+    + chip("cold", "going cold", cold[0] ? `<span data-cold-in="${cold[0].since}">${coldIn(cold[0].since)}</span>` : "", "cold", "c")
+    + chip("asking", "asking you", "", "", "ask");
   return html || `<span class="hall" data-tauri-drag-region>all clear</span>`;
 }
 /** Where the Active pane sits in a chip's list (-1 when it's showing something else). */

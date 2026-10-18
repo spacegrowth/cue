@@ -121,6 +121,22 @@ fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+/// Every copy of a machine's session log on this Mac, with the machine it's from (by name). Only the
+/// copies: nothing on the machine is looked at.
+pub fn copied_logs() -> Vec<(String, PathBuf)> {
+    let names: HashMap<String, String> = machines::list().into_iter().map(|m| (dir_name(&m), m.name)).collect();
+    let mut out = Vec::new();
+    let Ok(dirs) = std::fs::read_dir(crate::server::cue_dir().join("machines")) else { return out };
+    for d in dirs.flatten() {
+        let dir = d.file_name().to_string_lossy().to_string();
+        let machine = names.get(&dir).cloned().unwrap_or(dir);
+        let Ok(files) = std::fs::read_dir(d.path()) else { continue };
+        // Sessions' own logs only: a background agent's sits a folder down, under its session's.
+        out.extend(files.flatten().map(|f| f.path()).filter(|p| p.extension().is_some_and(|e| e == "jsonl")).map(|p| (machine.clone(), p)));
+    }
+    out
+}
+
 /// Whether `path` is Cue's copy of a log from another machine (a note of the machine's path sits beside it).
 pub fn is_copy(path: &str) -> bool {
     std::fs::metadata(from_file(Path::new(path))).is_ok()

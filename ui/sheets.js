@@ -200,9 +200,12 @@ async function resumeOlder(r) {
   } catch (e) { toast(`Couldn't resume it: ${e}`); }
 }
 let convo = null, convoScrolled = false;  // the conversation opened from search, and whether it's been scrolled to its hit
-async function openConvo(r, hitAt) {
-  const items = await invoke("session_log", { sessionId: r.session_id }).catch(() => []);
-  convo = { sid: r.session_id, hitAt, name: r.name || r.project, harness: r.harness, items: Array.isArray(items) ? items : [] };
+async function openConvo(r, hitAt, from = "search") {
+  let items = await invoke("session_log", { sessionId: r.session_id }).catch(() => []);
+  // Nothing in Cue's log (a session from before Cue, or one it didn't hold): its Claude Code transcript,
+  // the messages up to the one you found.
+  if (!items?.length && r.harness === "claude") items = await invoke("transcript_page", { sessionId: r.session_id, beforeMs: hitAt ? hitAt + 60_000 : now() + 86_400_000, limit: 200 }).catch(() => []);
+  convo = { sid: r.session_id, hitAt, from, name: r.name || r.project, harness: r.harness, items: Array.isArray(items) ? items : [] };
   sheet = "convo";
   convoScrolled = false;
   renderMain();
@@ -216,7 +219,7 @@ function convoSheet() {
     if (e.role === "you") return `<div class="cv-you${hit}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${when(e.at_ms)}</div></div>`;
     return `<div class="cv-agent${hit}"><div class="cv-meta">${esc(e.role === "peer" ? "Another session" : agentName(c.harness))}${e.role === "peer" ? "" : machTag(live?.machine)} · ${when(e.at_ms)}</div><div class="msg cv-text">${md(e.text)}</div></div>`;
   }).join("");
-  return `<div class="sheet convo-sheet"><div class="sheet-head"><button class="btn" data-act="convo-back">← Results</button>${badge(c.harness)}<h3>${esc(c.name)}</h3>
+  return `<div class="sheet convo-sheet"><div class="sheet-head">${c.from === "search" ? `<button class="btn" data-act="convo-back">← Results</button>` : `<button class="btn" data-act="convo-close">← ${esc(c.from)}</button>`}${badge(c.harness)}<h3>${esc(c.name)}</h3>
       <span class="dim" style="font-size:12px">${live ? (live.state === "working" ? "working" : "live") : "ended"} · ${c.items.length} messages</span><span class="grow"></span>
       ${live ? `<button class="btn primary" data-act="convo-open" data-sid="${esc(c.sid)}">Open in Active</button>` : c.harness === "claude" ? `<button class="btn primary" data-act="convo-resume">Resume</button>` : ""}<kbd>Esc</kbd></div>
     <div class="sheet-body convo-body">${msgs || `<div class="dim">Nothing logged for this session.</div>`}</div></div>`;
@@ -431,7 +434,7 @@ function mcpSettings() {
   return `<div class="set-note">Pick the servers a session runs with from its ⋯ menu → MCP servers. Claude Code loads them when the session starts.</div>${list || (mcpAllList ? `<div class="set-sub">No MCP servers are set up in Claude Code.</div>` : "")}`;
 }
 /** Settings, in tabs so no one page runs long. The last tab you looked at opens next time. */
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["mcp", "MCP"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["insights", "Insights"], ["mcp", "MCP"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
@@ -450,6 +453,7 @@ function settingsSheet() {
     ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
     ${setRow("When an agent finishes its turn", "Tells you which session is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
     ${setRow("When an agent needs a decision", "Permissions and questions.", toggle("notify.decisions", st.notify?.decisions ?? true))}
+    ${setRow("Before a cache runs out", "10 minutes before a session waiting on you would have to write its whole conversation again.", toggle("notify.cold", st.notify?.cold ?? true))}
     ${setRow("Sound", "What every notification plays. Click one to hear it.", seg("notify.sound", st.notify?.sound ?? "pluck", SOUNDS))}
     <div class="set-group">Mac</div>
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
@@ -474,6 +478,7 @@ function settingsSheet() {
     ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
     <div class="set-group">History</div>
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
+    insights: insSettings(st),
     mcp: mcpSettings(),
     usage: `
     <div class="set-group">Usage</div>

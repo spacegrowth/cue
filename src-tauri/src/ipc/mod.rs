@@ -2,6 +2,8 @@
 //! lists them in `generate_handler!`.
 
 mod chat;
+mod insights;
+mod insights_tab;
 mod machines;
 mod restore;
 mod sessions;
@@ -10,6 +12,8 @@ mod state;
 mod terminal;
 
 pub(crate) use chat::*;
+pub(crate) use insights::*;
+pub(crate) use insights_tab::*;
 pub(crate) use machines::*;
 pub(crate) use restore::*;
 pub(crate) use sessions::*;

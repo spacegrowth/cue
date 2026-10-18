@@ -278,11 +278,11 @@ impl Hub {
     /// A parked session running again on `origin`: its record back as it was, at its prompt, or
     /// working on `message` when it was resumed with one.
     /// A restart begins (see `Restart`): its record kept to show while its agent is down.
-    pub fn restart_begin(&self, session_id: &str, servers: Option<Vec<String>>) {
+    pub fn restart_begin(&self, session_id: &str, servers: Option<Vec<String>>, mcp: bool) {
         let held = self.session_record(session_id);
         {
             let mut st = self.st();
-            st.restarting.insert(session_id.to_string(), super::Restart { step: "stop", since_ms: now_ms(), servers, held });
+            st.restarting.insert(session_id.to_string(), super::Restart { step: "stop", since_ms: now_ms(), servers, mcp, held });
         }
         self.changed();
     }

@@ -26,13 +26,15 @@ pub fn effective() -> Value {
     // (flag() falls back to true, so defaults that are off must be listed here.)
     json!({
         "history": { "keep": history_keep() },
-        "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "sound": crate::sounds::choice() },
+        "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "cold": b("/notify/cold", true), "sound": crate::sounds::choice() },
         // Read from macOS, so it matches System Settings → Login Items.
         "login": { "open": login::enabled() },
         "tray": { "show": tray_shown() },
         // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
         "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::terminal::focus::tmux_installed(), "terminal": crate::terminal::focus::terminal_name() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
+        // Insights (ui/insights.js): each one on its own; they only ever fill the reply box.
+        "insights": { "handoff": b("/insights/handoff", true), "cache": b("/insights/cache", true), "queue": b("/insights/queue", true), "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
@@ -152,7 +154,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "insights.handoff", "insights.cache", "insights.queue", "insights.skills"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -191,6 +193,16 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             let map = value.as_object().ok_or("colors must be folder: swatch")?;
             if !map.values().all(|v| v.as_u64().is_some_and(|n| n < 10)) {
                 return Err("a swatch is 0 to 9".into());
+            }
+            value
+        }
+        // The skill that hands a session off, per machine and agent ("build-box|claude", "|codex" for this
+        // Mac): one command name each, as the session's "/" menu lists it.
+        "insights.skills" => {
+            let map = value.as_object().ok_or("skills must be machine|agent: skill")?;
+            let one_name = |v: &Value| v.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 120 && !s.chars().any(char::is_whitespace));
+            if map.len() > 200 || !map.iter().all(|(k, v)| k.len() <= 200 && k.contains('|') && one_name(v)) {
+                return Err("each hand-off skill is one command name".into());
             }
             value
         }

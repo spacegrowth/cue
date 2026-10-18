@@ -346,6 +346,7 @@ function placeTerm(hadFocus) {
   if (hadFocus) termObj?.focus();
 }
 const reply = (it) => deliver(it.session_id, `s:${it.session_id}`, (text, images) => {
+  insSent(it.session_id, text, false);
   answered(it.id);
   return invoke("reply", { id: it.id, text, images }).catch((e) => { answered(it.id, false); throw e; });
 });
@@ -426,7 +427,7 @@ function sendWaitingNow(sid) {
   else return false;
   return true;
 }
-const sendTo = (sid, now = false) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => invoke("send_to_session", { sessionId: sid, text, images, now }));
+const sendTo = (sid, now = false) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
 async function pullHeld(sid) {
@@ -1242,9 +1243,17 @@ function moreMenu(sid, s, closable = false) {
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show it under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
+      ${restartItem(sid, s)}
       ${later}${parkMenuItem(sid, s, closable)}
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
+}
+/** ⋯ → Restart session: stopped and resumed with the same conversation, so it loads what it reads only at
+ *  start (a skill added since, MCP servers, settings). Covered while it restarts, as an MCP restart is. */
+function restartItem(sid, s) {
+  if (!s || !["claude", "codex", "pi"].includes(s.harness) || !s.cwd || crewOf(sid)?.role === "executor") return "";
+  const busy = s.state === "working";
+  return `<button data-restart="${esc(sid)}" ${busy ? "disabled" : ""}>Restart session<span>${busy ? "When this turn ends" : "Same conversation, fresh start: picks up new skills, MCP servers and settings"}</span></button>`;
 }
 /** ⋯ → MCP servers…, for a Claude Code session on this Mac: how many it runs with. */
 function mcpItem(sid) {
@@ -1430,13 +1439,13 @@ function parkedPane(p) {
       ${closed ? `<button class="btn" data-park-closed="${esc(sid)}" ${w ? "disabled" : ""}>Park</button>` : `<button class="btn" data-unpark="${esc(sid)}" ${w ? "disabled" : ""}>Unpark</button>`}
       <button class="btn primary" data-wake="${esc(sid)}" ${w ? "disabled" : ""}>${w ? "Resuming…" : "Resume"}</button></div>
     ${subHead(p.cwd, "", "", "")}
-    ${chatBox(`p|${sid}`, `${more}${rows || `<div class="dim cv-empty" data-key="empty">Cue kept no messages from it.</div>`}${line}`)}
+    ${chatBox(`p|${sid}`, `${more}${rows || `<div class="dim cv-empty" data-key="empty">Cue kept no messages from it.</div>`}${line}${w ? "" : resumeCost(sid)}`)}
     <div class="foot">${box(`s:${sid}`, `Message ${name}… sending resumes it first`, w ? "Resuming…" : "Resume & send", `data-wake-send="${esc(sid)}"`, false)}</div></div>`;
 }
 
 /** Over a restarting session's chat and box: its steps (stop, start, load; hub/mod.rs Restart), the one it's on. */
 function restartCover(rs, name) {
-  const steps = [["stop", "Stop"], ["start", "Start"], ["load", rs.servers == null ? "Load MCP servers" : `Load ${rs.servers} MCP server${rs.servers === 1 ? "" : "s"}`]];
+  const steps = [["stop", "Stop"], ["start", "Start"], ["load", !rs.mcp ? "Load skills and settings" : rs.servers == null ? "Load MCP servers" : `Load ${rs.servers} MCP server${rs.servers === 1 ? "" : "s"}`]];
   const at = steps.findIndex(([k]) => k === rs.step);
   return `<div class="rs-cover"><div class="rs-card" role="status"><div class="rs-title">Restarting ${esc(name)}</div><div class="rs-bar"><i></i></div>
     <div class="rs-steps">${steps.map(([, l], n) => `<span class="${n < at ? "done" : n === at ? "now" : ""}">${n < at ? "✓ " : ""}${esc(l)}</span>`).join("")}</div>
@@ -1481,7 +1490,7 @@ function activePane() {
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
     const now = busy ? `<button class="btn send-now" data-act="send-to" data-now="1" data-sid="${esc(sid)}">Now <kbd>⌘↵</kbd></button>` : "";
-    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now)}</div>`;
+    foot = `${queueNote(sid, s)}<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   // A background agent opened in full (helperPane): it takes the chat area and the box, under the same head.
@@ -1509,7 +1518,7 @@ function activePane() {
     ${sessTabs(sid)}
     ${hvp ? hvp.bar + chatBox(`h|${sid}|${hv.id}`, hvp.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
-    ${termDock(sid)}${hvp ? hvp.foot : foot}</div>`;
+    ${sid && s && !hvp ? handoffInsight(sid, s) : ""}${termDock(sid)}${hvp ? hvp.foot : foot}</div>`;
 }
 // ---------- MCP servers: ⋯ → MCP servers… ----------
 // Every server Claude Code knows for the session's folder (mcp_for), each with a checkbox: checked =

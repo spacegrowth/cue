@@ -21,6 +21,8 @@
       try { localStorage.setItem("cue.parked", JSON.stringify(q.get("parked") ? q.get("parked").split(",") : [])); } catch {}
       // ?settab=<tab>: Settings opens on that tab.
       if (q.get("settab")) try { localStorage.setItem("cue.setTab", q.get("settab")); } catch {}
+      // ?qdraft=1: something typed in the working order-engine's box (the queue note by Now, insights.js).
+      if (q.get("qdraft")) try { localStorage.setItem("preview.drafts", JSON.stringify({ "s:eng": { text: "also keep the old key valid for a day", images: [] } })); } catch {}
       // ?later=1: Need to decide open (it starts folded).
       try { localStorage.setItem("cue.laterOpen", q.get("later") === "1" ? "1" : "0"); } catch {}
       const now = Date.now(), M = 60000;
@@ -29,7 +31,9 @@
       const relayMsg = "Packet 3 is done and staged (not committed).\n\n**What changed**\n- The board now shows token spend per executor, summed from each session's usage log.\n- A new `spend` column sorts high to low; totals sit in the footer.\n- `relay:list` prints the same number.\n\nTested: unit tests pass, and I opened the board against your live sessions — the numbers match `/cost` in each tab.\n\nOne thing to decide: spend resets when an executor is retired. Keep it per session, or carry it over to the successor? I'd carry it over.";
       const state = {
         now_ms: now, window_ms: 30 * M,
-        settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] } },
+        settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] }, insights: { handoff: true, cache: true, queue: true, skills: /ins=1/.test(location.search) ? { "|claude": "relay:handoff", "build-box|codex": "handoff" } : {} } },
+        // ?ins=sent: agent-relay sent /handoff and hasn't continued (insights.js handoffNext); ?ins=sentcue: Cue's own.
+        skill_handoffs: /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
         connections: { claude: { ok: true, events: ["PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"] }, pi: { ok: true } },
         // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
         sessions: [
@@ -334,6 +338,12 @@
                   ] : []),
                 ] };
             }
+            // ?ins=1: agent-relay's turns have grown expensive and its cache has 8 minutes left (insights.js);
+            // ins=noskill: the same, on a machine with no hand-off skill.
+            if (args.sessionId === "relay" && /ins=/.test(location.search)) {
+              const turns = Array.from({ length: 24 }, (_, i) => ({ at_ms: now - (90 - i * 3.5) * M, prompt: i ? "" : "add the tax column", more: 0, items: [{ t: "say", text: "Done.", at_ms: now - (89 - i * 3.5) * M }], tokens: Math.round(40000 + 18000 * Math.pow(i, 1.35)), context: Math.round(470000 + 130000 * Math.pow(i / 23, 1.3)) }));
+              return { version: 1, meta: { model: "claude-opus-5-5", context: 600000, window: 1000000, last_call_ms: now - 52 * M, cache_ttl_s: 3600, start_context: 45000, start_ms: now - 6 * 60 * M }, turns };
+            }
             if (args.sessionId !== "relay") return { version: 0, turns: [] };
             const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });
             const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
@@ -368,6 +378,82 @@
           // The "/" menu: a few of a session's commands.
           // A message kept in Cue while a session works (?held=1): Edit / Esc takes it back.
           if (cmd === "unhold_message") { const x = state.sessions.find((y) => y.session_id === args.sessionId); const h = x?.held || null; if (x) delete x.held; emit(); return h; }
+          // ?cost=cold|warm: every session asked about has 600k of context; its cache gone, or 8 minutes left.
+          if (cmd === "insight_state" && q.get("cost")) return Object.fromEntries(args.sessionIds.map((sid) => [sid, { until_ms: q.get("cost") === "warm" ? Date.now() + 8 * 60000 : Date.now() - 3 * 3600000, tokens: 600000, start: 45000, last_ms: Date.now() - 4 * 3600000 }]));
+          if (cmd === "insight_state") return {};
+          if (cmd === "insight_host_skills") return { "": ["handoff", "relay:handoff"], "build-box": [], "gpu-1": null };
+          if (cmd === "insight_log") return;
+          if (cmd === "insights_summary") {
+            const days = args.days, D = 86400000, H = 3600000, rnd = (n) => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+            const key = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+            if (/itab=empty/.test(location.search)) return { days, since_ms: Date.now() - days * D, totals: { turns: 0, sessions: 0, tokens: 0, usd: 0, priced: 1 }, by_day: [], waiting: { usd: 0, tokens: 0, turns: 0, share_of_writes: 0, sessions: [] }, long: { usd: 0, tokens: 0, sessions: [], handoffs: { sent: 0, continued: 0 } }, corrections: { count: 0, share: 0, examples: [], by_project: [] }, split: {}, models: [], insights: [] };
+            // About the owner's last 30 days: ~5,500 turns, ~250 late answers re-writing ~59M tokens (≈ $470).
+            const by_day = [];
+            for (let k = days - 1; k >= 0; k--) {
+              const t = Date.now() - k * D, wd = new Date(t).getDay();
+              if ((wd === 0 || wd === 6) && rnd(k) < 0.6) continue;
+              const turns = Math.round(130 + rnd(k + 1) * 140), tokens = Math.round(turns * (150000 + rnd(k + 2) * 180000));
+              const wait_tokens = Math.round(rnd(k + 8) * rnd(k + 9) * 8400000);
+              by_day.push({ day: key(t), turns, tokens, usd: +(tokens * 2.6e-6).toFixed(2), median_context: Math.round(60000 + rnd(k + 4) * 90000 + (days - k) * 400), errors: Math.round(rnd(k + 5) * 14), interrupted: Math.round(rnd(k + 6) * 5), corrected: Math.round(rnd(k + 7) * 12), wait_tokens, wait_usd: +(wait_tokens * 7.9e-6).toFixed(2), long_usd: +(rnd(k + 10) * 16).toFixed(2) });
+            }
+            const sum = (k) => by_day.reduce((a, r) => a + r[k], 0);
+            const turns = sum("turns"), corrected = sum("corrected");
+            const totals = { turns, tokens: sum("tokens"), sessions: Math.round(days * 3.4), usd: +sum("usd").toFixed(2), priced: 0.97 };
+            const at = (h) => Date.now() - h * H;
+            const ws = [["relay", "agent-relay", 9, 51840000, 0.21], ["c1", "cue", 7, 30 * H, 0.16], ["c2", "order-engine", 5, 2 * D + 5 * H, 0.11], ["q1", "data-pipeline", 6, 9 * H, 0.08], ["c3", "cue", 4, 14 * H, 0.06], ["c4", "web-app", 3, 3 * H + 20 * 60000, 0.04], ["c5", "filings-bot", 3, 70 * 60000, 0.03], ["c6", "backtester", 2, 26 * H, 0.02]];
+            const wUsd = sum("wait_usd"), wTok = sum("wait_tokens"), lUsd = sum("long_usd");
+            const waiting = { usd: +wUsd.toFixed(2), tokens: wTok, turns: Math.round(wTok / 236000), share_of_writes: 0.8,
+              sessions: ws.map(([sid, project, times, wait, sh], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", usd: +(wUsd * sh).toFixed(2), tokens: Math.round(wTok * sh), times, longest_wait_ms: wait, last_ms: at(5 + i * 19) })) };
+            const ls = [["c1", "cue", 45000, 610000, 212, 0.18], ["relay", "agent-relay", 38000, 480000, 164, 0.14], ["c7", "order-engine", 52000, 390000, 120, 0.09], ["c3", "cue", 30000, 340000, 96, 0.06], ["c8", "data-pipeline", 41000, 320000, 88, 0.04]];
+            const long = { usd: +lUsd.toFixed(2), tokens: Math.round(lUsd * 3.2e6),
+              sessions: ls.map(([sid, project, s0, peak, n, sh], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", usd: +(lUsd * sh).toFixed(2), start_context: s0, peak_context: peak, turns: n, last_ms: at(3 + i * 31) })),
+              handoffs: { sent: 7, continued: 5 } };
+            const ex = [
+              ["c1", "cue", "Make the Back row in the agent view stay put when the steps scroll", "No, the Back row should stay above the steps, not float over them. And Back must land at the chat's end."],
+              ["relay", "agent-relay", "Add a spend column to the board", "Sort it high to low, and keep the status column where it was. The test in board.test.ts checks the order."],
+              ["c2", "order-engine", "Fix the fill price on partial exits", "That changed entries too. Only exits: the entry price is right. Check it against yesterday's replay."],
+              ["q1", "data-pipeline", "Backfill the missing days", "Only the weekdays in September, not the whole year. Dry-run first and show me the count."],
+              ["c4", "web-app", "Tidy up the settings page", "I meant the spacing, not the copy. Leave every label as it was."],
+              ["c3", "cue", "Show the MCP servers in the session menu", "From the ⋯ menu, not the header. And list what it called through each."],
+            ];
+            const corrections = { count: corrected, share: +(corrected / turns).toFixed(3),
+              examples: ex.map(([sid, project, prompt, correction], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", at_ms: at(2 + i * 17), prompt, correction, usd: +(0.6 + rnd(i) * 3).toFixed(2) })) };
+            // Where it went: the late answers' re-writes and the long sessions' re-reads, the rest split by kind.
+            const rest = totals.usd - wUsd - lUsd;
+            const split = { fresh: +(rest * 0.04).toFixed(2), output: +(rest * 0.17).toFixed(2), read: +(rest * 0.43).toFixed(2), write: +(rest * 0.36).toFixed(2), rewrite: waiting.usd, long: long.usd };
+            const models = [["claude-opus-5-5", 0.71], ["claude-fable-5-1", 0.16], ["claude-sonnet-5-5", 0.09], ["claude-haiku-5-5", 0.01], ["gpt-5.2-codex", 0]].map(([model, sh]) => ({ model, usd: +(totals.usd * sh).toFixed(2), tokens: Math.round(totals.tokens * (sh || 0.03)) }));
+            // Late answers, mostly left overnight and over lunch on weekdays: when the wait began, how long, what it re-wrote.
+            waiting.answers = Array.from({ length: Math.min(400, waiting.turns) }, (_, i) => {
+              const r = ws[Math.floor(rnd(i + 30) * rnd(i + 31) * ws.length)], night = rnd(i + 32) < 0.55;
+              const waited = night ? (8 + rnd(i + 33) * 10) * H : rnd(i + 34) < 0.5 ? (6 + rnd(i + 35) * 54) * 60000 : (1 + rnd(i + 36) * 5) * H;
+              const tokens = Math.round(40000 + rnd(i + 37) * rnd(i + 38) * 560000);
+              return { session_id: r[0], project: r[1], cwd: `/x/${r[1]}`, machine: "", harness: "claude", at_ms: Date.now() - rnd(i + 39) * days * D, waited_ms: Math.round(waited), tokens, usd: +(tokens * (waited > H ? 7.8e-6 : 4.8e-6)).toFixed(2) };
+            }).sort((a, b) => b.usd - a.usd);
+            waiting.grid_usd = Array(168).fill(0); waiting.grid_turns = Array(168).fill(0);
+            waiting.answers.forEach((a, i) => {
+              const night = a.waited_ms >= 8 * H, wd = Math.floor(rnd(i + 40) * (rnd(i + 41) < 0.85 ? 5 : 7));
+              const h = night ? [17, 18, 19, 20, 21, 22, 23, 0][Math.floor(rnd(i + 42) * 8)] : [9, 10, 11, 12, 12, 13, 14, 15, 16][Math.floor(rnd(i + 43) * 9)];
+              waiting.grid_usd[wd * 24 + h] += a.usd; waiting.grid_turns[wd * 24 + h]++;
+            });
+            waiting.grid_usd = waiting.grid_usd.map((x) => +x.toFixed(2));
+            // Each long session's climb: slow, then steep past its hand-off point.
+            long.sessions.forEach((s, j) => {
+              const n = s.turns + 40 + j * 15, pts = [];
+              for (let i = 0; i < n; i++) pts.push([i, Math.round(s.start_context + (s.peak_context - s.start_context) * Math.pow(i / (n - 1), 1.1 + j * 0.15) * (0.94 + rnd(i + j * 99) * 0.06))]);
+              const step = Math.max(1, Math.ceil(n / 60));
+              s.climb = pts.filter((_, i) => i % step === 0 || i === n - 1);
+              s.climb_turns = n;
+              s.handoff_turn = pts.find(([, c]) => c >= 300000 && c >= 4 * s.start_context)?.[0] ?? null;
+              if (s.handoff_turn != null) s.turns = n - s.handoff_turn;
+            });
+            corrections.by_project = [["web-app", 31, 410], ["cue", 52, 1890], ["order-engine", 24, 720], ["agent-relay", 28, 1240], ["data-pipeline", 9, 530], ["backtester", 4, 260]].map(([project, count, turns]) => ({ project, count, turns }));
+            return { days, since_ms: Date.now() - days * D, totals, by_day, waiting, long, corrections, split, models,
+              insights: [{ rule: "cache", shown: 14, acted: 8, tokens: 2300000 }, { rule: "handoff", shown: 9, acted: 3, tokens: 0 }] };
+          }
+          if (cmd === "insight_counts") return [{ rule: "cache", shown: 14, acted: 8, tokens: 2300000 }, { rule: "handoff", shown: 9, acted: 3, tokens: 0 }];
+          // ?ins=cue: a host with no hand-off skill, so its insight offers Cue's own.
+          if (cmd === "session_commands" && /ins=cue/.test(location.search)) return [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }];
+          if (cmd === "session_commands" && /ins=1/.test(location.search)) return [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }, { name: "relay:handoff", kind: "skill", desc: "Hand this lead off to a fresh successor: it writes its notes and opens the next one" }];
           if (cmd === "session_commands") return [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }, { name: "clear", kind: "command", desc: "Start over: clear the conversation" }, { name: "context", kind: "command", desc: "How full the context is" }, { name: "model", kind: "command", desc: "Set the AI model for Claude Code", hint: "<model>", args: [{ value: "default", label: "Default (recommended)", desc: "Opus 5.5 · Best for everyday, complex tasks" }, { value: "opus", label: "Opus 5.5", desc: "For complex work and everyday tasks" }, { value: "sonnet", label: "Sonnet 5.5", desc: "Most efficient for simpler tasks" }, { value: "haiku", label: "Haiku 4.5", desc: "Fastest for quick answers" }] }, { name: "effort", kind: "command", desc: "Set effort level for model usage", hint: "<low|medium|high|xhigh|max|auto>", args: ["low", "medium", "high", "xhigh", "max", "auto"].map((v) => ({ value: v, label: v, desc: "" })) }, { name: "rename", kind: "command", desc: "Rename the current conversation", hint: "[name]", args: [] }, { name: "commit-push-merge", kind: "skill", desc: "Land in-flight work: commit, push, and merge" }, { name: "relay:spawn", kind: "skill", desc: "Start an executor on a packet" }, { name: "relay:verify", kind: "skill", desc: "Check an executor's report against what it staged" }];
           if (cmd === "focus_session") return "iTerm session";
           if (cmd === "close_session") return "Closed its iTerm tab";
@@ -385,10 +471,12 @@
   <script src="../ui/vendor/xterm/addon-webgl.js"></script>
   <script src="../ui/core.js"></script>
   <script src="../ui/chat.js"></script>
+  <script src="../ui/insights.js"></script>
   <script src="../ui/shells.js"></script>
   <script src="../ui/board.js"></script>
   <script src="../ui/sessions.js"></script>
   <script src="../ui/history.js"></script>
+  <script src="../ui/insights_tab.js"></script>
   <script src="../ui/extensions.js"></script>
   <script src="../ui/sheets.js"></script>
   <script src="../ui/app.js"></script>
@@ -408,6 +496,8 @@
       if (rowQ) { document.querySelector(`[data-row="${rowQ}"]`)?.click(); const second = new URLSearchParams(q).get("row2"); if (second) setTimeout(() => document.querySelector(`[data-row="${second}"]`)?.click(), 50); }
       // ?view=sessions: the Sessions view.
       if (/view=sessions/.test(q)) document.querySelector('[data-view="sessions"]')?.click();
+      // ?tab=insights: the Insights view (&itab=empty: no turns read yet).
+      if (/tab=insights/.test(q)) document.querySelector('[data-view="insights"]')?.click();
       // ?keys=l,ArrowDown,…: press these keys in order, on whatever has focus (to check shortcuts).
       const keysQ = new URLSearchParams(q).get("keys");
       if (keysQ) keysQ.split(",").forEach((k, i) => setTimeout(() => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: k.replace(/^Meta\+/, ""), metaKey: k.startsWith("Meta+"), bubbles: true })), 100 + i * 60));
@@ -455,15 +545,17 @@
         setActive(null, "relay");
         if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
       }
+      // &inspick=1 (with ?ins=1&open=relay): its hand-off insight's skill drop-up open.
+      if (/inspick=1/.test(q)) setTimeout(() => insAct("ins-choose", { sid: "relay" }), 600);
       // ?open=<session id>: that session's chat in Active (e.g. names: at its prompt while background agents work).
       const openQ = new URLSearchParams(q).get("open");
       if (openQ && openQ !== "term") setTimeout(() => setActive(null, openQ), 80);
       // &restart=done|failed: the line a finished (or failed) restart leaves in that session's chat.
       const rsDone = new URLSearchParams(q).get("restart");
       if (openQ && /^(done|failed)$/.test(rsDone || "")) setTimeout(() => { state.restarted = { [openQ]: [{ at_ms: Date.now() - 60000, secs: 6, servers: ["linear", "chrome-devtools", "sentry"], error: rsDone === "failed" ? "it's mid-turn; try when it's idle" : null }] }; (window.__listeners.state || []).forEach((f) => f({ payload: structuredClone(state) })); }, 200);
-      // &restart=stop|start|load: that session restarting (after an MCP change), on that step.
+      // &restart=stop|start|load: that session restarting (after an MCP change; &restartkind=plain: ⋯ → Restart session), on that step.
       const rsQ = new URLSearchParams(q).get("restart");
-      if (openQ && rsQ && !/^(done|failed)$/.test(rsQ)) setTimeout(() => { state.restarting = { [openQ]: { step: rsQ, since_ms: Date.now(), servers: 3 } }; (window.__listeners.state || []).forEach((f) => f({ payload: structuredClone(state) })); }, 200);
+      if (openQ && rsQ && !/^(done|failed)$/.test(rsQ)) setTimeout(() => { state.restarting = { [openQ]: { step: rsQ, since_ms: Date.now(), servers: 3, mcp: !/restartkind=plain/.test(location.search) } }; (window.__listeners.state || []).forEach((f) => f({ payload: structuredClone(state) })); }, 200);
       // &mcp=menu: its ⋯ menu open (the MCP servers item); &mcp=1: ⋯ → MCP servers…, the picker open;
       // &mcp=tools: that, with linear's tools unfolded.
       const mcpQ = new URLSearchParams(q).get("mcp");

@@ -81,6 +81,72 @@ CREATE TABLE IF NOT EXISTS commands (
   data        TEXT NOT NULL            -- the list as JSON
 );
 
+-- Insights (see insights.rs): each time one was shown, acted on, put off or dismissed, and what acting
+-- on it saved, in tokens, where that's known. What the Insights settings count; nothing else reads it.
+-- SHORTCUT: grows by a few rows per session; fine for years. Upgrade path: prune rows older than a year.
+CREATE TABLE IF NOT EXISTS insight_events (
+  at_ms       INTEGER NOT NULL,
+  session_id  TEXT NOT NULL,
+  rule        TEXT NOT NULL,           -- 'handoff' | 'cache' | 'queue'
+  action      TEXT NOT NULL,           -- 'shown' | 'acted' | 'later' | 'dismissed'
+  detail      TEXT NOT NULL DEFAULT '',-- what was picked ('/relay:handoff', '/compact')
+  tokens      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS insight_events_at ON insight_events(at_ms);
+
+-- Hand-offs (insights.js): a session that sent its hand-off skill, until you continue it in a new one
+-- (then which). Kept here so a hand-off you left mid-way is still offered after a restart.
+CREATE TABLE IF NOT EXISTS handoffs (
+  session_id   TEXT PRIMARY KEY,
+  skill        TEXT NOT NULL,           -- the skill it sent ('handoff'): the new one starts with '/<skill> resume'
+  sent_ms      INTEGER NOT NULL,
+  next_session TEXT NOT NULL DEFAULT '',
+  continued_ms INTEGER NOT NULL DEFAULT 0,
+  resume       INTEGER NOT NULL DEFAULT 1 -- 1: the skill takes 'resume'; 0: Cue's own message starts the new one
+);
+
+-- The Insights tab (logs/turns.rs reads each session's own log into it, a few MB at a time in the
+-- background): one row per turn, what it cost and how it went, with the start of its prompt (and of the
+-- next, when that corrected it) for the tab's examples. A turn still open when read is read again next
+-- time, so rows are upserted by (session_id, at_ms).
+-- SHORTCUT: grows by a row per turn and is never pruned; small rows, fine for years. Upgrade path: drop
+-- rows older than the longest range the tab shows.
+CREATE TABLE IF NOT EXISTS turns (
+  session_id   TEXT NOT NULL,
+  at_ms        INTEGER NOT NULL,        -- when its prompt was sent
+  tokens       INTEGER NOT NULL DEFAULT 0,
+  context      INTEGER NOT NULL DEFAULT 0, -- the context its last reply carried
+  prompt_chars INTEGER NOT NULL DEFAULT 0,
+  model        TEXT NOT NULL DEFAULT '',
+  cwd          TEXT NOT NULL DEFAULT '',
+  machine      TEXT NOT NULL DEFAULT '', -- '' = this Mac
+  harness      TEXT NOT NULL DEFAULT '', -- 'claude' | 'codex' | 'pi'
+  errors       INTEGER NOT NULL DEFAULT 0,
+  interrupted  INTEGER NOT NULL DEFAULT 0,
+  corrected    INTEGER NOT NULL DEFAULT 0,
+  fresh        INTEGER NOT NULL DEFAULT 0, -- tokens by kind (logs/steps.rs Usage)
+  output       INTEGER NOT NULL DEFAULT 0,
+  cache_read   INTEGER NOT NULL DEFAULT 0,
+  write_5m     INTEGER NOT NULL DEFAULT 0,
+  write_1h     INTEGER NOT NULL DEFAULT 0,
+  first_write  INTEGER NOT NULL DEFAULT 0, -- what its first reply wrote into the cache
+  first_read   INTEGER NOT NULL DEFAULT 0,
+  waited_ms    INTEGER NOT NULL DEFAULT 0, -- how long the session had waited on you before it
+  prompt       TEXT NOT NULL DEFAULT '',
+  correction   TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (session_id, at_ms)
+);
+CREATE INDEX IF NOT EXISTS turns_at ON turns(at_ms);
+
+-- How far logs/turns.rs has read each log: the byte its next read starts at (where its open turn
+-- starts), and the file's size and modified time then, so an unchanged log isn't opened again.
+CREATE TABLE IF NOT EXISTS turns_read (
+  path        TEXT PRIMARY KEY,
+  offset      INTEGER NOT NULL,
+  size        INTEGER NOT NULL,
+  mtime_ms    INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS drafts (
   -- SHORTCUT: draft images are stored inline as data URLs (up to 6 × 15 MB); fine for a few drafts.
   -- Upgrade path: save them to uploads/ and keep paths, like sent images.
@@ -128,9 +194,16 @@ fn open() -> rusqlite::Result<Connection> {
     c.pragma_update(None, "synchronous", "NORMAL")?;
     c.execute_batch(SCHEMA)?;
     import_old_files(&c);
-    if c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))? < 1 {
+    let version = c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?;
+    if version < 1 {
         regroup_projects(&c);
-        c.pragma_update(None, "user_version", 1)?;
+    }
+    // Turns read before Cue counted a Codex read's first call, and when it took Claude Code's own turns (a
+    // background task reporting back) for answers of yours: they only hold what the logs say, so they're
+    // read again.
+    if version < 2 {
+        c.execute_batch("DELETE FROM turns; DELETE FROM turns_read;")?;
+        c.pragma_update(None, "user_version", 2)?;
     }
     Ok(c)
 }
@@ -520,7 +593,6 @@ pub fn unqueue_review(exec: &str) {
     with(|c| c.execute("DELETE FROM review_queue WHERE exec = ?1", params![exec]));
 }
 
-/// Save one draft; an empty one (no text, no images) is removed.
 // ---------- "/" commands by folder ----------
 
 /// A folder's kept command list and when it was read, if any.
@@ -549,6 +621,12 @@ pub fn clear_commands() {
     with(|c| c.execute("DELETE FROM commands", []).map(|_| ()));
 }
 
+/// Forget one folder's kept list (its key as commands.rs makes it), so it's read again.
+pub fn forget_commands(cwd: &str) {
+    with(|c| c.execute("DELETE FROM commands WHERE cwd = ?1", params![cwd]).map(|_| ()));
+}
+
+/// Save one draft; an empty one (no text, no images) is removed.
 pub fn set_draft(key: &str, text: &str, images: &Value) {
     with(|c| {
         if text.trim().is_empty() && images.as_array().map_or(true, |a| a.is_empty()) {
@@ -573,6 +651,183 @@ pub fn rewrite_paths(old: &str, new: &str) {
         tx.execute("UPDATE exchanges SET images = replace(images, ?1, ?2), text = replace(text, ?1, ?2)", params![old, new])?;
         tx.commit()
     });
+}
+
+// ---------- insights ----------
+
+/// One thing an insight did, or you did with it (see insight_events above).
+pub fn insight_event(session_id: &str, rule: &str, action: &str, detail: &str, tokens: u64) {
+    with(|c| c.execute("INSERT INTO insight_events (at_ms, session_id, rule, action, detail, tokens) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![now_ms() as i64, session_id, rule, action, detail, tokens as i64]));
+}
+
+/// A session sent its hand-off skill (or Cue's own): it's offered "Continue in a new session" until it does.
+/// `resume`: the skill takes "resume" for the new session; otherwise Cue's own message starts it.
+pub fn handoff_sent(session_id: &str, skill: &str, resume: bool) {
+    with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = ?4, next_session = '', continued_ms = 0",
+        params![session_id, skill, now_ms() as i64, resume]));
+}
+
+/// It continued in `next`: the link between the two.
+pub fn handoff_continued(session_id: &str, next: &str) {
+    with(|c| c.execute("UPDATE handoffs SET next_session = ?2, continued_ms = ?3 WHERE session_id = ?1", params![session_id, next, now_ms() as i64]));
+}
+
+/// One hand-off: its skill, the session it continued in ("" while it hasn't), and whether the skill takes "resume".
+pub fn handoff(session_id: &str) -> Option<(String, String, bool)> {
+    use rusqlite::OptionalExtension;
+    with(|c| c.query_row("SELECT skill, next_session, resume FROM handoffs WHERE session_id = ?1", params![session_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional()).flatten()
+}
+
+/// Hand-offs of the last 30 days: session → { skill, sent_ms, next, continued_ms }.
+pub fn handoffs() -> Value {
+    let since = now_ms().saturating_sub(30 * 24 * 3600 * 1000) as i64;
+    let rows = with(|c| {
+        let mut q = c.prepare("SELECT session_id, skill, sent_ms, next_session, continued_ms, resume FROM handoffs WHERE sent_ms >= ?1")?;
+        let rows = q.query_map(params![since], |r| Ok((r.get::<_, String>(0)?, json!({ "skill": r.get::<_, String>(1)?, "sent_ms": r.get::<_, i64>(2)?, "next": r.get::<_, String>(3)?, "continued_ms": r.get::<_, i64>(4)?, "resume": r.get::<_, bool>(5)? }))))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+    }).unwrap_or_default();
+    Value::Object(rows.into_iter().collect())
+}
+
+/// Per insight since `since_ms`: how often it was shown and acted on, and the tokens acting on it saved.
+pub fn insight_counts(since_ms: u64) -> Vec<(String, u64, u64, u64)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT rule, SUM(action = 'shown'), SUM(action = 'acted'), SUM(CASE WHEN action = 'acted' THEN tokens ELSE 0 END) FROM insight_events WHERE at_ms >= ?1 GROUP BY rule ORDER BY rule")?;
+        let rows = q.query_map(params![since_ms as i64], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64, r.get::<_, i64>(3)? as u64)))?;
+        rows.collect()
+    }).unwrap_or_default()
+}
+
+// ---------- turns: the Insights tab ----------
+
+/// Where logs/turns.rs left off in a log: (offset, size, modified time), if it has read it before.
+pub fn turns_read(path: &str) -> Option<(u64, u64, u64)> {
+    use rusqlite::OptionalExtension;
+    with(|c| c.query_row("SELECT offset, size, mtime_ms FROM turns_read WHERE path = ?1", params![path], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64, r.get::<_, i64>(2)? as u64))).optional()).flatten()
+}
+
+/// Who a log's turns belong to: its session, its machine ('' = this Mac) and its agent.
+pub struct TurnsOf<'a> {
+    pub session_id: &'a str,
+    pub machine: &'a str,
+    pub harness: &'a str,
+}
+
+/// A log's turns (new ones added, ones read before brought up to date) and where its next read starts,
+/// in one go: a crash between the two never counts a turn twice or skips one.
+pub fn save_turns(path: &str, of: &TurnsOf, rows: &[crate::logs::steps::TurnRow], read: (u64, u64, u64)) {
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        {
+            let mut q = tx.prepare_cached(
+                "INSERT INTO turns (session_id, at_ms, tokens, context, prompt_chars, model, cwd, machine, harness, errors, interrupted, corrected,
+                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)
+                 ON CONFLICT(session_id, at_ms) DO UPDATE SET tokens = excluded.tokens, context = excluded.context, prompt_chars = excluded.prompt_chars,
+                   model = excluded.model, cwd = excluded.cwd, machine = excluded.machine, harness = excluded.harness, errors = excluded.errors,
+                   interrupted = excluded.interrupted, corrected = excluded.corrected, fresh = excluded.fresh, output = excluded.output,
+                   cache_read = excluded.cache_read, write_5m = excluded.write_5m, write_1h = excluded.write_1h, first_write = excluded.first_write,
+                   first_read = excluded.first_read, prompt = excluded.prompt, correction = excluded.correction,
+                   -- An open turn is read again from its own start, without the reply before it: keep the wait read the first time.
+                   waited_ms = CASE WHEN excluded.waited_ms > 0 THEN excluded.waited_ms ELSE turns.waited_ms END",
+            )?;
+            for t in rows.iter().filter(|t| t.at_ms > 0) {
+                let u = &t.usage;
+                q.execute(params![of.session_id, t.at_ms as i64, t.tokens as i64, t.context as i64, t.prompt_chars as i64, t.model, t.cwd, of.machine, of.harness, t.errors as i64, t.interrupted, t.corrected,
+                    u.fresh as i64, u.output as i64, u.read as i64, u.write_5m as i64, u.write_1h as i64, u.first_write as i64, u.first_read as i64, t.waited_ms as i64, t.prompt, t.correction])?;
+            }
+        }
+        tx.execute(
+            "INSERT INTO turns_read (path, offset, size, mtime_ms) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(path) DO UPDATE SET offset = excluded.offset, size = excluded.size, mtime_ms = excluded.mtime_ms",
+            params![path, read.0 as i64, read.1 as i64, read.2 as i64],
+        )?;
+        tx.commit()
+    });
+}
+
+/// One stored turn, as the Insights tab sums it: `day` is its local date ("2026-10-17").
+pub struct StoredTurn {
+    pub day: String,
+    pub session_id: String,
+    pub tokens: u64,
+    pub context: u64,
+    pub model: String,
+    pub cwd: String,
+    pub machine: String,
+    pub errors: u64,
+    pub interrupted: bool,
+    pub corrected: bool,
+    pub at_ms: u64,
+    pub harness: String,
+    pub usage: crate::logs::steps::Usage,
+    pub waited_ms: u64,
+    pub prompt: String,
+    pub correction: String,
+}
+
+/// Every turn since `since_ms`, oldest first.
+pub fn turns_since(since_ms: u64) -> Vec<StoredTurn> {
+    with(|c| {
+        let mut q = c.prepare(
+            "SELECT date(at_ms / 1000, 'unixepoch', 'localtime'), session_id, tokens, context, model, cwd, machine, errors, interrupted, corrected,
+               at_ms, harness, fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction
+             FROM turns WHERE at_ms >= ?1 ORDER BY at_ms",
+        )?;
+        let rows = q.query_map(params![since_ms as i64], |r| {
+            Ok(StoredTurn {
+                day: r.get(0)?,
+                session_id: r.get(1)?,
+                tokens: r.get::<_, i64>(2)? as u64,
+                context: r.get::<_, i64>(3)? as u64,
+                model: r.get(4)?,
+                cwd: r.get(5)?,
+                machine: r.get(6)?,
+                errors: r.get::<_, i64>(7)? as u64,
+                interrupted: r.get(8)?,
+                corrected: r.get(9)?,
+                at_ms: r.get::<_, i64>(10)? as u64,
+                harness: r.get(11)?,
+                usage: crate::logs::steps::Usage {
+                    fresh: r.get::<_, i64>(12)? as u64,
+                    output: r.get::<_, i64>(13)? as u64,
+                    read: r.get::<_, i64>(14)? as u64,
+                    write_5m: r.get::<_, i64>(15)? as u64,
+                    write_1h: r.get::<_, i64>(16)? as u64,
+                    first_write: r.get::<_, i64>(17)? as u64,
+                    first_read: r.get::<_, i64>(18)? as u64,
+                    last_ms: 0,
+                },
+                waited_ms: r.get::<_, i64>(19)? as u64,
+                prompt: r.get(20)?,
+                correction: r.get(21)?,
+            })
+        })?;
+        rows.collect()
+    })
+    .unwrap_or_default()
+}
+
+/// What each of `sessions` started at: the context of its first turn that carried one.
+pub fn start_contexts(sessions: &[&str]) -> std::collections::HashMap<String, u64> {
+    with(|c| {
+        // SQLite takes the bare `context` from the row MIN(at_ms) picked.
+        let mut q = c.prepare_cached("SELECT context, MIN(at_ms) FROM turns WHERE session_id = ?1 AND context > 0")?;
+        let mut out = std::collections::HashMap::new();
+        for sid in sessions {
+            if let Some(ctx) = q.query_row(params![sid], |r| r.get::<_, Option<i64>>(0))? {
+                out.insert(sid.to_string(), ctx as u64);
+            }
+        }
+        Ok(out)
+    })
+    .unwrap_or_default()
+}
+
+/// Hand-offs sent since `since_ms`, and how many of them were continued in a new session.
+pub fn handoff_counts(since_ms: u64) -> (u64, u64) {
+    with(|c| c.query_row("SELECT COUNT(*), COALESCE(SUM(next_session != ''), 0) FROM handoffs WHERE sent_ms >= ?1", params![since_ms as i64], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64)))).unwrap_or((0, 0))
 }
 
 // ---------- one-time import of the files Cue used before the database ----------
