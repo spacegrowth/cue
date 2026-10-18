@@ -477,7 +477,26 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-meta { font-size: 11px; font-weight: 650; color: var(--muted); margin-bottom: 3px; }
 .cv-more { font-size: 12px; font-weight: 650; color: var(--accent); margin-top: 4px; }
 /* Under an agent message: fold, and send it on to another session (shown on hover; always on the latest). */
-.cv-acts { display: flex; gap: 14px; align-items: center; margin-top: 8px; }
+.cv-acts { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+/* Listen and Read under a reply: real buttons, not links. */
+.cv-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: var(--panel-2); border: 1px solid var(--line); }
+.cv-pill:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.cv-pill.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+/* A reply read out (Listen): what it read in gray, the sentence it's on in lime, the word it's saying underlined. */
+::highlight(cue-said) { color: var(--muted); }
+::highlight(cue-say) { background-color: var(--sel); color: var(--on-sel); }
+::highlight(cue-word) { background-color: var(--accent); color: var(--on-accent); text-decoration: underline 2px; text-underline-offset: 3px; }
+.ls-line { display: flex; align-items: center; gap: 8px; margin: 0 16px 6px; padding: 5px 6px 5px 12px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
+.ls-line .btn, .ls-player .btn { display: inline-flex; align-items: center; gap: 6px; }
+.ls-btn { display: inline-flex; align-items: center; gap: 6px; }
+.ls-player { align-items: center; gap: 10px; font-size: 12.5px; }
+.ls-player .ls-pp { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.ls-player .rd-seg button.on { background: var(--sel); color: var(--on-sel); }
+.ls-of { min-width: 60px; }
+.ls-track { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.ls-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.ls-then { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+
 /* A real button (a tinted pill), not a text link, so it doesn't read as part of the message. */
 .cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
 .cv-fwd:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }

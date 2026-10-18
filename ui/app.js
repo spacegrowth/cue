@@ -60,6 +60,8 @@ function renderMain() {
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
   placeExt();   // the open session's extension tab, over the slot left for it
+  const lc = current();
+  listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
   document.querySelectorAll("[data-tray-scroll]").forEach((el) => { el.scrollTop = trayScrolls.get(el.dataset.trayScroll) ?? 0; });
@@ -334,6 +336,16 @@ function bindMain() {
     const hb = t.closest("[data-helper]");
     if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
     if (t.closest("[data-helper-back]")) return closeHelperView();
+    const ls = t.closest("[data-listen]");
+    if (ls) { const k = ls.dataset.listen; return listening?.key === k ? listenToggle() : listenPlay(k.slice(0, k.lastIndexOf(":")), k, !!ls.dataset.listenReader); }
+    if (t.closest("[data-listen-toggle]")) return listenToggle();
+    if (t.closest("[data-listen-stop]")) return listenStop();
+    const lk = t.closest("[data-listen-skip]");
+    if (lk) return listenSkip(+lk.dataset.listenSkip);
+    const lsp = t.closest("[data-listen-speed]");
+    if (lsp) return listenFaster(+lsp.dataset.listenSpeed);
+    if (t.closest("[data-listen-then]")) return listenThenNext();
+    if (!t.closest("button, a, input") && listenFrom(e)) return;
     const rd = t.closest("[data-read]");
     if (rd) { const k = rd.dataset.read; return openReader(k.slice(0, k.lastIndexOf(":")), k); }
     if (t.closest("[data-reader-back]")) return closeReader();
@@ -776,6 +788,8 @@ function bindMain() {
     if (sheet) return;
     if (e.key === "n") return goNext();
     // In the reader, ← → step through the session's replies.
+    // …and Space reads it out, or pauses.
+    if (readerShown() && e.key === " ") { e.preventDefault(); return listening ? listenToggle() : document.querySelector("[data-listen-reader]")?.click(); }
     if (readerShown() && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); return stepReader(e.key === "ArrowRight" ? 1 : -1); }
     // ← → step through the chip you clicked (Waiting if you haven't).
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); return openFromChip(chipNav || "waiting", e.key === "ArrowRight" ? 1 : -1); }
