@@ -49,7 +49,8 @@ function livePop(rows) {
     <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div>
     <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>${liveSpot ? "⌘K" : "⌘L"}</kbd> open / close</span></div></div>`;
 }
-/** + New session: agent, folder (recent ones offered), an optional first message, and (Claude) a name. */
+/** + New session: agent, folder (recent ones offered), an optional first message (images pasted, dropped or
+ *  picked; the mic dictates it), and (Claude) a name. */
 /** + New session: how much it may do without asking, per agent (Rust turns these into its flags). */
 const PERMS = {
   claude: [["ask", "Ask"], ["auto", "Auto"], ["edits", "Accept edits"], ["plan", "Plan"], ["skip", "Skip all"]],
@@ -158,7 +159,7 @@ function newForm() {
     ${newAgent === "claude" && !newMachine && draft("new-cwd").text.trim() ? `<div class="nf-row"><span class="nf-k">MCP</span><div class="nf-mcp">${mcpList(`f:${draft("new-cwd").text.trim()}`, true)}</div></div>` : ""}
     ${newAgent === "claude" ? modelRow() : ""}
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
-    <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button></div>${draftChips("new-msg")}</div></div>
+    <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button><button class="icon-btn nf-attach nf-mic ${dictating?.key === "new-msg" ? "on" : ""}" data-mic="new-msg" aria-label="${dictating?.key === "new-msg" ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button></div>${draftChips("new-msg")}</div></div>
     ${state.settings?.sessions?.tmux_installed && !newMachine ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v ? CUE_MARK_SM : TERM_ICON}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
@@ -214,10 +215,11 @@ async function lvAct(act, d) {
   if (act === "models-reload") { readModels(true); return renderMain(); }
   if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
   if (act === "folder") return pickFolder(d.cwd);
-  if (act === "cancel") { liveOpen = newOpen = false; closeFolders(); return renderMain(); }
+  if (act === "cancel") { endDictation("new-msg"); liveOpen = newOpen = false; closeFolders(); return renderMain(); }
   if (act === "start") {
     const cwd = draft("new-cwd").text.trim();
     if (!cwd) return toast("Pick a folder first");
+    endDictation("new-msg");
     if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
     try {
       const typed = draft("new-flags").text.trim();
