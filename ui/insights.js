@@ -170,19 +170,53 @@ function handoffDue(sid, s) {
   const crossed = pts.findIndex((p, i) => i > 0 && p.c >= mark && pts[i - 1].c < mark && !(i === 1 && pts.length > 2 && pts[1].t - pts[0].t > (pts.at(-1).t - pts[0].t) * 0.05));
   const since = (crossed > 0 ? ` It passed the hand-off point ${ago(pts[crossed].t)} ago.` : "") + (bar.cold ? " Its cache has run out, so its next reply writes all of it again: the cheapest moment to hand off." : "");
   const remind = Math.ceil((m.context * 1.25) / 50000) * 50000;
-  return { m, early, grew, pts, mark, startT, since, handoffs, opts, remind };
+  const pick = opts.some((o) => o.cmd === "/compact") ? handoffPick(sid, s, f) : { compact: false, why: "" };
+  return { m, early, grew, pts, mark, startT, since, handoffs, opts, remind, ...pick };
+}
+
+const COMMIT_RE = /\bgit\s+(commit|push)\b/;
+const TEST_RE = /\b(test|tests|pytest|jest|vitest|cargo\s+(test|nextest)|go\s+test|run\.sh)\b/;
+/** Hand off or compact first, from the session's own steps: a piece of work that just landed (committed,
+ *  or its tests passed, with nothing edited since), a session that has compacted before, or one spread over
+ *  several areas starts fresh better; one in the middle of a change keeps going better with /compact. Hand
+ *  off when nothing says. `why`: the reason, for the opened card.
+ *  SHORTCUT: only the turns read here (a long log is read from near its end) and the step's first line.
+ *  Upgrade path: keep the last commit and compaction with the turns history (logs/turns.rs). */
+function handoffPick(sid, s, f) {
+  const steps = (f.turns || []).flatMap((t) => (t.items || []).filter((i) => i.t === "step"));
+  let landed = "", editedSince = false, failing = false;
+  for (let i = steps.length - 1; i >= 0 && !landed; i--) {
+    const st = steps[i];
+    if (st.kind === "edit") editedSince = true;
+    if (st.kind !== "run" || !st.done) continue;
+    if (COMMIT_RE.test(st.subject)) { if (!st.bad) landed = "committed"; }
+    else if (TEST_RE.test(st.subject)) { if (st.bad) failing = failing || !editedSince; else landed = "tests"; }
+  }
+  const ctx = (f.turns || []).map((t) => t.context).filter((c) => c > 0);
+  const compacted = !!s?.compacted_ms || ctx.some((c, i) => i > 0 && c < ctx[i - 1] * 0.5);
+  const areas = insDelegate.get(sid)?.split?.length || 0;
+  if (landed && !editedSince) return { compact: false, why: landed === "committed" ? "Its work is committed, so a fresh session starts clean from here." : "Its tests passed with nothing edited since, so this piece looks done." };
+  if (compacted) return { compact: false, why: "It has compacted before: another summary of a summary loses more, so a written note is safer." };
+  if (areas >= 3) return { compact: false, why: `It has worked across ${areas} areas: a fresh session for what's next keeps them apart.` };
+  if (failing || editedSince) return { compact: true, why: failing ? "It's in the middle of a fix (its tests are failing), so /compact keeps it going in place." : "It's in the middle of a change, so /compact keeps it going in place." };
+  return { compact: false, why: "" };
 }
 
 /** What a tap does, by its button: the hand-off skill (your click is the message), Cue's own hand-off when it
  *  has none it can use (or you chose Cue's), and /compact as Cue's own Compact (⋯ → Compact). */
 function handoffButtons(sid, d) {
-  const cue = d.handoffs.length ? "" : `<button class="btn primary" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
-  return cue + d.opts.map((o, i) => `<button class="btn ${d.handoffs.length && i === 0 ? "primary" : ""}" data-act="${o.cmd === "/compact" ? "ins-compact" : "ins-fill"}" data-sid="${esc(sid)}" data-ins-cmd="${esc(o.cmd)}"><span class="mono">${esc(o.cmd)}</span></button>`).join("");
+  // The pick (handoffPick) first and filled, the other after it.
+  const first = d.compact ? "/compact" : d.handoffs.length ? d.opts[0].cmd : "";
+  const btn = (o) => `<button class="btn ${o.cmd === first ? "primary" : ""}" data-act="${o.cmd === "/compact" ? "ins-compact" : "ins-fill"}" data-sid="${esc(sid)}" data-ins-cmd="${esc(o.cmd)}"><span class="mono">${esc(o.cmd)}</span></button>`;
+  const cue = d.handoffs.length ? "" : `<button class="btn ${d.compact ? "" : "primary"}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
+  const opts = [...d.opts].sort((a, b) => (b.cmd === first) - (a.cmd === first));
+  return d.compact ? opts.map(btn).join("") + cue : cue + opts.map(btn).join("");
 }
-/** The strip's one action: the hand-off, by the same route as the card's first button. Filled only when the
- *  strip is colored; on the quiet one it stays plain, so it doesn't pull the eye from the box's Send. */
+/** The strip's one action: the pick (handoffPick), by the same route as the card's first button. Filled only
+ *  when the strip is colored; on the quiet one it stays plain, so it doesn't pull the eye from the box's Send. */
 function handoffMain(sid, d, hot) {
   const h = d.handoffs[0], cls = `btn ${hot ? "primary" : ""}`;
+  if (d.compact) return `<button class="${cls}" data-act="ins-compact" data-sid="${esc(sid)}" data-ins-cmd="/compact">Compact</button>`;
   return h ? `<button class="${cls}" data-act="ins-fill" data-sid="${esc(sid)}" data-ins-cmd="/${esc(h.name)}">Hand off</button>`
     : `<button class="${cls}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
 }
@@ -222,7 +256,7 @@ function handoffInsight(sid, s) {
   const acts = d && !busy ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
   const body = d ? `${insChart(d.pts, d.mark)}
     <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
-    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.</div>
+    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.${d.why ? ` ${esc(d.why)}` : ""}</div>
     ${acts}` : "";
   return `${bar}<div class="ins ins-detail">${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}</div>`;
 }

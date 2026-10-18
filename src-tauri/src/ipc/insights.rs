@@ -38,8 +38,8 @@ pub(crate) fn insight_states(h: &Hub, session_ids: &[String]) -> serde_json::Val
     for sid in session_ids.iter().take(50) {
         let Some(log) = local_log(h, sid) else { continue };
         noticed |= notice_handoff_in(sid, &log);
-        if let Some((until_ms, context, start, last_ms)) = steps::insight_state(&log) {
-            out.insert(sid.clone(), serde_json::json!({ "until_ms": until_ms, "tokens": context, "start": start, "last_ms": last_ms }));
+        if let Some((until_ms, context, start, last_ms, cold_x)) = steps::insight_state(&log) {
+            out.insert(sid.clone(), serde_json::json!({ "until_ms": until_ms, "tokens": context, "start": start, "last_ms": last_ms, "cold_x": cold_x }));
         }
     }
     if noticed {

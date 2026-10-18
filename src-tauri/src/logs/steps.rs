@@ -210,6 +210,9 @@ pub struct Meta {
     /// When that first reply came.
     #[serde(skip_serializing_if = "is_zero")]
     start_ms: u64,
+    /// How many warm replies its next one costs once its cache is gone (prices::cold_x; 0: not known).
+    #[serde(skip_serializing_if = "is_zero")]
+    cold_x: u64,
 }
 
 struct Feed {
@@ -604,8 +607,9 @@ pub fn set_window(session_id: &str, window: u64, for_model: bool) {
 
 /// What a waiting card's insights need from a session's log: when its cached context runs out (0 when
 /// its log doesn't say it caches), its context now, the context it started with, and when its latest
-/// reply came (a compaction since then makes the context count stale until its next reply).
-pub fn insight_state(path: &str) -> Option<(u64, u64, u64, u64)> {
+/// reply came (a compaction since then makes the context count stale until its next reply), and how many
+/// warm replies a cold one costs (prices::cold_x).
+pub fn insight_state(path: &str) -> Option<(u64, u64, u64, u64, u64)> {
     let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
     feeds.retain(|_, f| f.used.elapsed() < FORGET);
@@ -614,7 +618,7 @@ pub fn insight_state(path: &str) -> Option<(u64, u64, u64, u64)> {
     feed.catch_up();
     let m = &feed.meta;
     let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
-    (m.context > 0).then_some((until, m.context, m.start_context, m.last_call_ms))
+    (m.context > 0).then_some((until, m.context, m.start_context, m.last_call_ms, m.cold_x))
 }
 
 pub fn context_pct(path: &str) -> Option<u8> {
@@ -911,6 +915,7 @@ impl Feed {
         }
         self.close_scripts();
         if changed {
+            self.meta.cold_x = super::prices::cold_x(&self.meta.model, self.meta.cache_ttl_s);
             if self.turns.len() > MAX_TURNS {
                 self.turns.drain(..self.turns.len() - MAX_TURNS);
             }

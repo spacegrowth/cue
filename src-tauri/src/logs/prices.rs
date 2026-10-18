@@ -56,9 +56,29 @@ pub fn cost(model: &str, u: &Usage) -> Option<f64> {
     Some((u.fresh as f64 * r.input + u.output as f64 * r.output + u.read as f64 * r.read + u.write_5m as f64 * r.write_5m + u.write_1h as f64 * r.write_1h) / 1e6)
 }
 
+/// How many warm replies one cold reply costs on `model`, rounded: re-writing its context into a cache kept
+/// `ttl_s` (an hour, else 5 minutes) against reading it back. 0 when the model isn't priced or nothing is
+/// cached. Insights say this, not dollars: on a subscription nothing is billed, but the ratio holds.
+pub fn cold_x(model: &str, ttl_s: u64) -> u64 {
+    match rates(model) {
+        // The nudge keeps an exact half (3.75 / 0.3) from rounding down on float error.
+        Some(r) if ttl_s > 0 && r.read > 0.0 => ((if ttl_s >= 3600 { r.write_1h } else { r.write_5m }) / r.read + 1e-9).round() as u64,
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cold_reply_is_counted_in_warm_ones() {
+        assert_eq!(cold_x("claude-opus-5-5", 3600), 40, "$8 an hour's write against $0.20 a read");
+        assert_eq!(cold_x("claude-opus-5-5", 300), 25);
+        assert_eq!(cold_x("claude-sonnet-4-5", 300), 13, "a tenth of input: 1.25 / 0.1");
+        assert_eq!(cold_x("claude-opus-5-5", 0), 0, "nothing cached");
+        assert_eq!(cold_x("gpt-5", 3600), 0, "unpriced");
+    }
 
     #[test]
     fn the_longest_match_wins_and_providers_dont_matter() {
