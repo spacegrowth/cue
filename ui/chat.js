@@ -509,16 +509,18 @@ const CMD_RETRY_MS = 60000;
 const BTW_CMD = { name: "btw", kind: "cue", desc: "Ask on the side: answered in a panel here, never added to the chat" };
 let cmdSel = 0, cmdShut = null;           // highlighted row; the box whose menu Esc closed (until you type)
 /** The session's "/" commands, read once per session (Cue keeps a folder's list a week). `fresh`: you
- *  pressed Refresh, so every list the window holds goes and this one is read from Claude Code again. */
+ *  pressed Refresh, so every list the window holds goes and this one is read from Claude Code again.
+ *  While Cue reads a newer list it gives the one it had, and the newer one takes its place when it's in. */
 function cmdList(sid, fresh) {
   if (!sid) return [];
   if (fresh) { cmdLists.clear(); cmdMissed.clear(); }
   if (!cmdLists.has(sid) && Date.now() - (cmdMissed.get(sid) || 0) > CMD_RETRY_MS) {
     cmdLists.set(sid, null);
     const missed = () => { cmdLists.delete(sid); cmdMissed.set(sid, Date.now()); };
-    const ask = (n) => invoke("session_commands", { sessionId: sid, fresh: !!fresh && n === 0 }).then((l) => {
-      if (l) { cmdLists.set(sid, l); cmdMissed.delete(sid); return refreshCmd(`s:${sid}`); }
-      if (n < 40) setTimeout(() => ask(n + 1), 600); else missed();
+    const ask = (n) => invoke("session_commands", { sessionId: sid, fresh: !!fresh && n === 0 }).then(({ list, reading }) => {
+      if (list && JSON.stringify(list) !== JSON.stringify(cmdLists.get(sid))) { cmdLists.set(sid, list); cmdMissed.delete(sid); refreshCmd(`s:${sid}`); }
+      if (list && !reading) return;
+      if (n < 40) setTimeout(() => ask(n + 1), 600); else if (!list) missed();
     }).catch(missed);
     ask(0);
   }

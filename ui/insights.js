@@ -336,13 +336,14 @@ document.addEventListener("mousedown", (e) => {
 let insMachines = null;   // the machines you added (+ New → Machine), read once when this opens
 let insFound = null;      // host → its hand-off skills for Claude Code (null while being read)
 let insFoundAsks = 0;
-/** Ask each host which hand-off skills it has; while any is still being read, ask again shortly. */
+/** Ask each host which hand-off skills it has; while any is still being read (or a newer list is on its
+ *  way, the one it had shown till then), ask again shortly. */
 function insFindSkills(fresh) {
   if (fresh) insFoundAsks = 0;
   invoke("insight_host_skills", { fresh: !!fresh }).then((r) => {
-    insFound = r || {};
+    insFound = r?.hosts || {};
     renderMain();
-    if (Object.values(insFound).some((v) => v === null) && ++insFoundAsks < 40) setTimeout(() => insFindSkills(false), 1500);
+    if ((r?.reading || Object.values(insFound).some((v) => v === null)) && ++insFoundAsks < 40) setTimeout(() => insFindSkills(false), 1500);
   }).catch(() => {});
 }
 function insSettings(st) {

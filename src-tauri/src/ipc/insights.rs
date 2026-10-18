@@ -40,21 +40,24 @@ pub(crate) fn insight_states(h: &Hub, session_ids: &[String]) -> serde_json::Val
     serde_json::Value::Object(out)
 }
 
-/// Each host's hand-off skills for Claude Code ("" is this Mac, then your machines by name): a list, or
-/// null while it's being read. `fresh`: every folder's command list is read again (after you add a skill
-/// somewhere), so sessions' "/" menus and insights see it too, not only this list.
+/// Each host's hand-off skills for Claude Code (`hosts`: "" is this Mac, then your machines by name): a
+/// list, or null while it's read for the first time; `reading` is true while a newer list is on its way
+/// for any of them. `fresh`: every folder's command list is read again (after you add a skill somewhere),
+/// so sessions' "/" menus and insights see it too, not only this list.
 #[tauri::command]
 pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_json::Value, String> {
     let fresh = fresh.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         if fresh {
-            crate::commands::forget_all();
+            crate::commands::reread_all();
         }
         let mut out = serde_json::Map::new();
+        let mut reading = false;
         for host in std::iter::once(String::new()).chain(crate::machines::list().into_iter().map(|m| m.name)) {
             out.insert(host.clone(), serde_json::json!(crate::commands::handoff_skills(&host)));
+            reading |= crate::commands::reading(&crate::commands::home_folder(&host), &host);
         }
-        serde_json::Value::Object(out)
+        serde_json::json!({ "hosts": out, "reading": reading })
     })
     .await
     .map_err(|e| e.to_string())

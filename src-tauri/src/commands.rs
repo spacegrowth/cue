@@ -3,10 +3,12 @@
 //! commands, plugins'), with what each does and what it takes, when it's asked to set up over its SDK
 //! protocol (`-p --input-format stream-json`, an `initialize` request). That needs no model and starts
 //! no conversation. Cue asks, reads the reply and stops it: once per folder, the first time its "/"
-//! menu is opened, then kept for a week. Sooner only when you ask: Refresh under the "/" menu, or
-//! Reload beside + New's model list, either of which forgets every folder's list (`forget_all`), so
-//! the next "/" or + New asks again. (The handshake runs in the folder, so that folder's Claude
-//! settings load then, which is why it isn't done on a timer.)
+//! menu is opened, then kept for a week. Sooner when you add a skill, command or plugin for yourself
+//! (a list read before that is out of date), or when you ask: Refresh under the "/" menu, or Reload
+//! beside + New's model list, either of which puts every folder's list out of date (`reread_all`).
+//! An out-of-date list is still what's shown while Claude Code is asked again, and the new one takes
+//! its place when it's in (`reading` says one is on its way). (The handshake runs in the folder, so
+//! that folder's Claude settings load then, which is why it isn't done on a timer.)
 //!
 //! The same reply lists the models and output styles there are, so `/model` and `/output-style` offer
 //! them as choices (a bare `/model` opens a picker in its terminal, where Cue can't show it).
@@ -47,7 +49,8 @@ static LISTS: Mutex<Option<HashMap<String, (u64, Vec<Cmd>)>>> = Mutex::new(None)
 /// Folders being read now.
 static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-/// The commands for a Claude session in `cwd`, or None while they're being read (ask again shortly).
+/// The commands for a Claude session in `cwd`, or None while they're read for the first time (ask
+/// again shortly).
 pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
     for_folder(cwd, "")
 }
@@ -72,7 +75,10 @@ pub fn for_folder(cwd: &str, machine: &str) -> Option<Vec<Cmd>> {
             crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).insert(cwd.to_string(), kept.clone());
         }),
     };
-    let fresh = cached.as_ref().is_some_and(|(at, _)| now.saturating_sub(*at) < KEEP_MS);
+    // Out of date after a week, or once you've added something of yours since (on this Mac: another
+    // machine's folders are never looked at from here).
+    let since = if machine.is_empty() { yours_changed_ms(&std::env::var("HOME").unwrap_or_default()) } else { 0 };
+    let fresh = cached.as_ref().is_some_and(|(at, _)| now.saturating_sub(*at) < KEEP_MS && *at > since);
     if !fresh {
         let started = crate::locking::lock(&READING, "READING").get_or_insert_with(HashSet::new).insert(cwd.to_string());
         if started {
@@ -90,6 +96,29 @@ pub fn for_folder(cwd: &str, machine: &str) -> Option<Vec<Cmd>> {
         }
     }
     cached.map(|(_, list)| list)
+}
+
+/// Whether a folder's list (`machine` empty: this Mac) is being read now: the one `for_folder` gave
+/// is out of date and a new one is on its way, so ask again shortly to show it.
+pub fn reading(cwd: &str, machine: &str) -> bool {
+    let key = if machine.is_empty() { cwd.to_string() } else { format!("{machine}:{cwd}") };
+    crate::locking::lock(&READING, "READING").get_or_insert_with(HashSet::new).contains(&key)
+}
+
+/// When your own skills, commands or plugins on this Mac (under `home`) last changed (a skill added or
+/// removed, a plugin installed): they apply in every folder, so a list read before then is out of date.
+fn yours_changed_ms(home: &str) -> u64 {
+    if home.is_empty() {
+        return 0;
+    }
+    let claude = std::path::Path::new(home).join(".claude");
+    [claude.join("skills"), claude.join("commands"), claude.join("plugins").join("installed_plugins.json")]
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+        .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .max()
+        .unwrap_or(0)
 }
 
 /// The folder in a key made by `for_folder`.
@@ -152,37 +181,46 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
 
 /// The hand-off skills Claude Code has for you on a host (`machine` empty: this Mac): its commands with
 /// "handoff" in their name, from its list for your home folder (skills you install for yourself apply in
-/// every folder). None while it's being read. To read them again after adding a skill, `forget_all` first:
-/// every folder's list goes, so each session's "/" menu and insights see it too.
+/// every folder). None while it's read for the first time. To read them again after adding a skill on
+/// another machine, `reread_all` first: every folder's list is read again, so each session's "/" menu
+/// and insights see it too.
 pub fn handoff_skills(machine: &str) -> Option<Vec<String>> {
-    // Your home folder there: this Mac's, or where a machine's connection starts.
-    let folder = if machine.is_empty() { std::env::var("HOME").unwrap_or_default() } else { ".".to_string() };
-    let list = for_folder(&folder, machine)?;
+    let list = for_folder(&home_folder(machine), machine)?;
     Some(list.into_iter().filter(|c| { let n = c.name.to_lowercase(); n.contains("handoff") || n.contains("hand-off") }).map(|c| c.name).collect())
 }
 
-/// Forget one folder's list (`machine` empty: this Mac), so its next "/" menu asks Claude Code again: a
-/// restarted session's, which may have skills or plugins added since its list was read.
-pub fn forget(cwd: &str, machine: &str) {
-    let key = if machine.is_empty() { cwd.to_string() } else { format!("{machine}:{cwd}") };
-    crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).remove(&key);
-    crate::db::forget_commands(&key);
+/// Your home folder on a host: this Mac's, or where a machine's connection starts.
+pub fn home_folder(machine: &str) -> String {
+    if machine.is_empty() { std::env::var("HOME").unwrap_or_default() } else { ".".to_string() }
 }
 
-/// Forget every folder's list: the next ask, for any folder, reads it from Claude Code again. Refresh
-/// under a "/" menu and Reload beside + New's model list both do this, so one press brings a new
-/// skill, plugin or model everywhere, not in one place.
-pub fn forget_all() {
-    crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).clear();
-    crate::db::clear_commands();
+/// Put one folder's list (`machine` empty: this Mac) out of date, so its next "/" menu asks Claude Code
+/// again, showing this one until the answer's in: a restarted session's, which may have skills or
+/// plugins added since its list was read.
+pub fn reread(cwd: &str, machine: &str) {
+    let key = if machine.is_empty() { cwd.to_string() } else { format!("{machine}:{cwd}") };
+    if let Some(kept) = crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).get_mut(&key) {
+        kept.0 = 0;
+    }
+    crate::db::stale_commands(Some(&key));
+}
+
+/// Put every folder's list out of date: the next ask, for any folder, reads it from Claude Code again,
+/// showing the old one until then. Refresh under a "/" menu and Reload beside + New's model list both do
+/// this, so one press brings a new skill, plugin or model everywhere, not in one place.
+pub fn reread_all() {
+    for kept in crate::locking::lock(&LISTS, "LISTS").get_or_insert_with(HashMap::new).values_mut() {
+        kept.0 = 0;
+    }
+    crate::db::stale_commands(None);
 }
 
 /// The models Claude Code offers (the choices /model takes), for picking one before a session starts.
-/// Read in `cwd`; `fresh` forgets every folder's list first, so Claude Code is asked again. None
-/// while it's being read; empty when it lists none.
+/// Read in `cwd`; `fresh` puts every folder's list out of date first, so Claude Code is asked again
+/// (`reading` says when that's in). None while it's read for the first time; empty when it lists none.
 pub fn models_for(cwd: &str, fresh: bool) -> Option<Vec<Arg>> {
     if fresh {
-        forget_all();
+        reread_all();
     }
     for_session(cwd).map(|l| l.into_iter().find(|c| c.name == "model").map(|c| c.args).unwrap_or_default())
 }
@@ -369,6 +407,39 @@ mod tests {
         assert_eq!(for_session("/x/kept"), Some(kept), "and from memory the second time");
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_out_of_date_list_is_still_given_until_the_new_one_is_in() {
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-cmds-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let kept = vec![Cmd { name: "compact".into(), kind: "command".into(), desc: "Summarize".into(), hint: String::new(), args: vec![] }];
+        crate::db::set_commands("/x/stale", crate::model::now_ms(), &kept);
+        assert_eq!(for_session("/x/stale"), Some(kept.clone()));
+        reread_all();
+        // Asked again (the folder isn't there, so that read fails), and the old list is what's given meanwhile.
+        assert_eq!(for_session("/x/stale"), Some(kept.clone()), "Refresh doesn't empty the menu");
+        assert_eq!(crate::db::commands("/x/stale"), Some((0, kept.clone())), "kept, out of date");
+        reread("/x/stale", "");
+        assert_eq!(for_session("/x/stale"), Some(kept));
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_skill_added_for_yourself_puts_lists_read_before_it_out_of_date() {
+        let home = std::env::temp_dir().join(format!("cue-cmds-home-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(yours_changed_ms(home.to_str().unwrap()), 0, "nothing of yours yet");
+        let before = crate::model::now_ms() - 1_000;
+        std::fs::create_dir_all(home.join(".claude/skills/handoff")).unwrap();
+        assert!(yours_changed_ms(home.to_str().unwrap()) > before, "the skills folder changed when one was added");
+        assert_eq!(yours_changed_ms(""), 0);
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

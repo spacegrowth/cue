@@ -616,14 +616,13 @@ pub fn set_commands(cwd: &str, read_ms: u64, list: &[crate::commands::Cmd]) {
     });
 }
 
-/// Refresh: every folder's list goes, so each is read again when next asked.
-pub fn clear_commands() {
-    with(|c| c.execute("DELETE FROM commands", []).map(|_| ()));
-}
-
-/// Forget one folder's kept list (its key as commands.rs makes it), so it's read again.
-pub fn forget_commands(cwd: &str) {
-    with(|c| c.execute("DELETE FROM commands WHERE cwd = ?1", params![cwd]).map(|_| ()));
+/// Put one folder's kept list (its key as commands.rs makes it), or every folder's (None), out of date:
+/// it's read again when next asked, and kept to show until then.
+pub fn stale_commands(cwd: Option<&str>) {
+    with(|c| match cwd {
+        Some(cwd) => c.execute("UPDATE commands SET read_ms = 0 WHERE cwd = ?1", params![cwd]).map(|_| ()),
+        None => c.execute("UPDATE commands SET read_ms = 0", []).map(|_| ()),
+    });
 }
 
 /// Save one draft; an empty one (no text, no images) is removed.
@@ -1033,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn a_folders_commands_are_kept_with_when_they_were_read_until_cleared() {
+    fn a_folders_commands_are_kept_with_when_they_were_read_and_kept_when_out_of_date() {
         let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("cue-db-cmds-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -1047,8 +1046,12 @@ mod tests {
         assert_eq!(commands("/x/cue"), Some((1_000, list.clone())));
         set_commands("/x/cue", 2_000, &[]);
         assert_eq!(commands("/x/cue"), Some((2_000, vec![])), "the newer read wins");
-        clear_commands();
-        assert!(commands("/x/cue").is_none());
+        set_commands("/x/other", 3_000, &list);
+        stale_commands(Some("/x/cue"));
+        assert_eq!(commands("/x/cue"), Some((0, vec![])), "out of date, still there to show");
+        assert_eq!(commands("/x/other"), Some((3_000, list.clone())), "only that folder");
+        stale_commands(None);
+        assert_eq!(commands("/x/other"), Some((0, list.clone())));
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -76,11 +76,13 @@ let modelsReading = false;
 function readModels(fresh) {
   if (modelsReading) return;
   modelsReading = true;
-  // Reload forgets every folder's list in Cue too (one read serves both), so the "/" menus re-read as well.
+  // Reload has Cue read every folder's list again too (one read serves both), so the "/" menus re-read as well.
   if (fresh) { cmdLists.clear(); cmdMissed.clear(); }
-  const ask = (again) => invoke("models_list", { fresh: again ? false : fresh }).then((l) => {
-    if (!l) return setTimeout(() => ask(true), 1500);   // still being read: a Claude Code start takes a moment
-    modelsReading = false; modelsKnown = l; remember("models", JSON.stringify(l)); renderMain();
+  const ask = (again) => invoke("models_list", { fresh: again ? false : fresh }).then(({ models: l, reading }) => {
+    // Still being read (a Claude Code start takes a moment): the list Cue had, if any, until the new one's in.
+    if (l) { modelsKnown = l; remember("models", JSON.stringify(l)); }
+    if (!l || reading) { renderMain(); return setTimeout(() => ask(true), 1500); }
+    modelsReading = false; renderMain();
   }, () => { modelsReading = false; renderMain(); });
   ask(false);
 }

@@ -23,41 +23,47 @@ pub(crate) async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String
 
 /// The "/" menu for a session's box. Claude Code: the commands it has enabled for the folder, read
 /// from it once and kept a week. Pi: its own commands plus what its extension reported when it
-/// connected. Codex: its own commands. None while a list is being read (ask again shortly). `fresh`:
-/// Refresh was pressed: every kept Claude Code list is forgotten and this one read again; a Pi
+/// connected. Codex: its own commands. `list` is null while a list is read for the first time, and
+/// `reading` is true while a newer one than `list` is on its way: ask again shortly either way. `fresh`:
+/// Refresh was pressed: every kept Claude Code list is read again (shown until the new one's in); a Pi
 /// session is asked for its list again.
 #[tauri::command]
-pub(crate) fn session_commands(hub: State<Arc<Hub>>, session_id: String, fresh: Option<bool>) -> Option<Vec<commands::Cmd>> {
+pub(crate) fn session_commands(hub: State<Arc<Hub>>, session_id: String, fresh: Option<bool>) -> serde_json::Value {
     let fresh = fresh == Some(true);
     if fresh {
-        commands::forget_all();
+        commands::reread_all();
     }
+    let done = |list: Option<Vec<commands::Cmd>>| serde_json::json!({ "list": list, "reading": false });
     // A session that reported its commands (Pi): those, or a fresh set once it answers.
     if hub.agent_commands(&session_id).is_some() && fresh && hub.ask_agent_commands(&session_id) {
-        return None;
+        return done(None);
     }
     if let Some(list) = hub.agent_commands(&session_id) {
-        return Some(list);
+        return done(Some(list));
     }
     let (cwd, machine) = match hub.session_origin(&session_id) {
         Some(o) if o.harness == "claude" => (o.cwd, o.machine),
-        Some(o) if o.harness == "codex" => return Some(commands::for_codex()),
-        Some(o) if o.harness == "pi" => return Some(commands::for_pi(&[])),
-        Some(_) => return Some(vec![]),
+        Some(o) if o.harness == "codex" => return done(Some(commands::for_codex())),
+        Some(o) if o.harness == "pi" => return done(Some(commands::for_pi(&[]))),
+        Some(_) => return done(Some(vec![])),
         None => match live::claude().into_iter().find(|q| q.session_id == session_id) {
             Some(q) => (q.cwd, String::new()),
-            None => return Some(vec![]),
+            None => return done(Some(vec![])),
         },
     };
-    commands::for_folder(&cwd, &machine)
+    let list = commands::for_folder(&cwd, &machine);
+    serde_json::json!({ "list": list, "reading": commands::reading(&cwd, &machine) })
 }
 
 /// The models to pick from in + New: what your Claude Code offers, read in your home folder (the list
 /// is Claude Code's, not a folder's). The window keeps it until you press Reload (`fresh`), which asks
-/// again. None while it's being read (ask again shortly).
+/// again. `models` is null while it's read for the first time, and `reading` true while a newer list is
+/// on its way: ask again shortly either way.
 #[tauri::command]
-pub(crate) fn models_list(fresh: bool) -> Option<Vec<commands::Arg>> {
-    commands::models_for(&std::env::var("HOME").unwrap_or_default(), fresh)
+pub(crate) fn models_list(fresh: bool) -> serde_json::Value {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let models = commands::models_for(&home, fresh);
+    serde_json::json!({ "models": models, "reading": commands::reading(&home, "") })
 }
 
 /// Off the window's thread: finding the tab runs AppleScript over every terminal window, and waits on
@@ -328,7 +334,7 @@ fn restart_with(h: &Arc<Hub>, session_id: &str, mcp: bool) -> Result<String, Str
     let servers = crate::logs::mcp::read_selection(&crate::logs::mcp::selection_path(session_id)).map(|m| m.keys().cloned().collect());
     // What it starts with may have changed (that's often why it's restarted): its "/" commands are read again.
     if let Some(o) = h.session_origin(session_id) {
-        crate::commands::forget(&o.cwd, &o.machine);
+        crate::commands::reread(&o.cwd, &o.machine);
     }
     h.restart_begin(session_id, servers, mcp);
     let res = super::sessions::park(h, session_id).and_then(|_| {
