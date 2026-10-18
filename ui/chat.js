@@ -581,13 +581,22 @@ const typingCmd = (text) => (/^\/[^\s]*$/.test(text) ? text.slice(1).toLowerCase
 const typingArg = (text) => { const m = /^\/(\S+) (\S*)$/.exec(text); return m ? { name: m[1], q: m[2].toLowerCase() } : null; };
 /** Matches for what's typed: names that start with it first, then names that contain it. After a command
  *  that takes a set of values (/model, /effort…), those values, as "model sonnet" (what follows the "/"). */
+/** A command's values to pick. /model's are Claude Code's list, then each of those with its 1M-token
+ *  context (`opus[1m]`, as + New's 1M context passes it), unless it's Default, already carries a
+ *  bracket, or the list names that one itself. */
+function argsOf(c) {
+  const args = c?.args || [];
+  if (c?.name !== "model") return args;
+  const big = args.filter((v) => v.value !== "default" && !/\[.*\]$/.test(v.value) && !args.some((w) => w.value === `${v.value}[1m]`));
+  return [...args, ...big.map((v) => ({ value: `${v.value}[1m]`, label: `${v.label || v.value}, 1M context`, desc: "" }))];
+}
 function cmdMatches(key) {
   if (cmdShut === key) return [];
   const list = cmdList(sidOfKey(key));
   const a = typingArg(draft(key).text);
   if (a) {
     const c = list.find((x) => x.name === a.name);
-    const hits = (c?.args || []).filter((v) => [v.value, v.label].some((t) => t.toLowerCase().includes(a.q)));
+    const hits = argsOf(c).filter((v) => [v.value, v.label].some((t) => t.toLowerCase().includes(a.q)));
     // Typed out in full: nothing left to pick.
     if (hits.length === 1 && hits[0].value.toLowerCase() === a.q) return [];
     return hits.map((v) => ({ name: `${c.name} ${v.value}`, label: v.label !== v.value ? v.label : "", desc: v.desc, arg: true }));
@@ -958,7 +967,7 @@ function helperBlock(sid, h, inTray) {
   const head = `<button class="bg-head" data-helper="${esc(k)}">${tag}<span class="dim">${model ? ` · ${esc(model)}` : ""}${tok ? ` · ${tok}` : ""} · ${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}` : `${ended} · ${helperSpan(h)}`}</span>${running ? liveDot(h) : ""}<span class="stx-chev">›</span></button>`;
   if (!(inTray && running)) return `<div class="bg-agent folded" data-key="h:${esc(h.id)}">${head}</div>`;
   // A script's body: its last lines of output (four rows; it follows the newest unless you scrolled up).
-  if (h.script) return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${h.output.length ? `<div class="bg-out bg-scroll" data-bg-scroll="${esc(k)}">${h.output.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : `<div class="bg-out dim-out">No output yet.</div>`}</div>`;
+  if (h.script) return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${h.output.length ? `<div class="bg-out bg-scroll" data-bg-scroll="${esc(k)}">${h.output.map((l) => `<div>${esc(l)}</div>`).join("")}</div>` : ""}</div>`;
   const steps = h.items.map((x) => x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small">${md(x.text)}</div>`).join("");
   return `<div class="bg-agent" data-key="h:${esc(h.id)}">${head}${h.more ? `<div class="stx-more dim">${h.more} earlier steps not shown</div>` : ""}<div class="stx-steps bg-scroll" data-bg-scroll="${esc(k)}">${steps}</div></div>`;
 }

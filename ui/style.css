@@ -382,7 +382,6 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
 .bg-out div { white-space: pre; }
 .bg-out.bg-scroll { max-height: calc(4 * 17px + 12px); }
-.bg-out.dim-out { color: var(--on-slab); opacity: .6; font-family: var(--sans); font-size: 12px; }
 .bg-view-out { flex: 1; min-height: 120px; margin-left: 0; }
 .bg-cmd { background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
 .bg-hop-b .bgtag { font-size: 8px; }

@@ -49,15 +49,10 @@ static LISTS: Mutex<Option<HashMap<String, (u64, Vec<Cmd>)>>> = Mutex::new(None)
 /// Folders being read now.
 static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-/// The commands for a Claude session in `cwd`, or None while they're read for the first time (ask
-/// again shortly).
-pub fn for_session(cwd: &str) -> Option<Vec<Cmd>> {
-    for_folder(cwd, "")
-}
-
-/// The same for a folder on one of your machines (`machine` empty: this Mac). Read there, over its
-/// connection: the folder isn't on this Mac, and its skills and plugins are the machine's. Kept under
-/// "machine:folder", apart from a Mac folder of the same name.
+/// The commands for a Claude session in `cwd` on one of your machines (`machine` empty: this Mac), or
+/// None while they're read for the first time (ask again shortly). Another machine's are read there,
+/// over its connection: the folder isn't on this Mac, and its skills and plugins are the machine's. Kept
+/// under "machine:folder", apart from a Mac folder of the same name.
 pub fn for_folder(cwd: &str, machine: &str) -> Option<Vec<Cmd>> {
     if cwd.is_empty() {
         return Some(vec![]);
@@ -216,13 +211,15 @@ pub fn reread_all() {
 }
 
 /// The models Claude Code offers (the choices /model takes), for picking one before a session starts.
-/// Read in `cwd`; `fresh` puts every folder's list out of date first, so Claude Code is asked again
-/// (`reading` says when that's in). None while it's read for the first time; empty when it lists none.
-pub fn models_for(cwd: &str, fresh: bool) -> Option<Vec<Arg>> {
+/// Read in `cwd` on a host (`machine` empty: this Mac), whose Claude Code may name them its own way (a
+/// proxy's `claude-opus-5-5[1m]`); `fresh` puts every folder's list out of date first, so Claude Code is
+/// asked again (`reading` says when that's in). None while it's read for the first time; empty when it
+/// lists none.
+pub fn models_for(cwd: &str, machine: &str, fresh: bool) -> Option<Vec<Arg>> {
     if fresh {
         reread_all();
     }
-    for_session(cwd).map(|l| l.into_iter().find(|c| c.name == "model").map(|c| c.args).unwrap_or_default())
+    for_folder(cwd, machine).map(|l| l.into_iter().find(|c| c.name == "model").map(|c| c.args).unwrap_or_default())
 }
 
 /// The list from Claude Code's setup reply: `commands` (name, description, argumentHint, builtin), with
@@ -403,8 +400,8 @@ mod tests {
         crate::db::set_commands("/x/kept", crate::model::now_ms(), &kept);
         // On the calling thread, as the window's thread calls it: it answers from the file, at once,
         // without the lock being taken inside its own lookup (that hung Cue once).
-        assert_eq!(for_session("/x/kept"), Some(kept.clone()));
-        assert_eq!(for_session("/x/kept"), Some(kept), "and from memory the second time");
+        assert_eq!(for_folder("/x/kept", ""), Some(kept.clone()));
+        assert_eq!(for_folder("/x/kept", ""), Some(kept), "and from memory the second time");
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -419,13 +416,13 @@ mod tests {
         crate::db::reset();
         let kept = vec![Cmd { name: "compact".into(), kind: "command".into(), desc: "Summarize".into(), hint: String::new(), args: vec![] }];
         crate::db::set_commands("/x/stale", crate::model::now_ms(), &kept);
-        assert_eq!(for_session("/x/stale"), Some(kept.clone()));
+        assert_eq!(for_folder("/x/stale", ""), Some(kept.clone()));
         reread_all();
         // Asked again (the folder isn't there, so that read fails), and the old list is what's given meanwhile.
-        assert_eq!(for_session("/x/stale"), Some(kept.clone()), "Refresh doesn't empty the menu");
+        assert_eq!(for_folder("/x/stale", ""), Some(kept.clone()), "Refresh doesn't empty the menu");
         assert_eq!(crate::db::commands("/x/stale"), Some((0, kept.clone())), "kept, out of date");
         reread("/x/stale", "");
-        assert_eq!(for_session("/x/stale"), Some(kept));
+        assert_eq!(for_folder("/x/stale", ""), Some(kept));
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

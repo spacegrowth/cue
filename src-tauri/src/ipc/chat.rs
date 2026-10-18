@@ -55,15 +55,17 @@ pub(crate) fn session_commands(hub: State<Arc<Hub>>, session_id: String, fresh: 
     serde_json::json!({ "list": list, "reading": commands::reading(&cwd, &machine) })
 }
 
-/// The models to pick from in + New: what your Claude Code offers, read in your home folder (the list
-/// is Claude Code's, not a folder's). The window keeps it until you press Reload (`fresh`), which asks
-/// again. `models` is null while it's read for the first time, and `reading` true while a newer list is
-/// on its way: ask again shortly either way.
+/// The models to pick from in + New: what Claude Code offers on the machine the session starts on
+/// (`machine` empty or absent: this Mac), read in your home folder there (the list is Claude Code's, not
+/// a folder's). The window keeps it until you press Reload (`fresh`), which asks again. `models` is null
+/// while it's read for the first time, and `reading` true while a newer list is on its way: ask again
+/// shortly either way.
 #[tauri::command]
-pub(crate) fn models_list(fresh: bool) -> serde_json::Value {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let models = commands::models_for(&home, fresh);
-    serde_json::json!({ "models": models, "reading": commands::reading(&home, "") })
+pub(crate) fn models_list(fresh: bool, machine: Option<String>) -> serde_json::Value {
+    let machine = machine.unwrap_or_default();
+    let home = commands::home_folder(&machine);
+    let models = commands::models_for(&home, &machine, fresh);
+    serde_json::json!({ "models": models, "reading": commands::reading(&home, &machine) })
 }
 
 /// Off the window's thread: finding the tab runs AppleScript over every terminal window, and waits on

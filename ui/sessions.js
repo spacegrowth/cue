@@ -66,35 +66,41 @@ let newModel = remembered("newModel") || "default";
 // An early build saved its "Other…" marker as a model ("\uFFFDother"): drop that, wherever it's kept.
 for (const k of ["newModel", "newModelOther"]) if (/^\uFFFD?other$/.test(remembered(k) || "")) { remember(k, k === "newModel" ? "default" : ""); if (k === "newModel") newModel = "default"; }
 let newModel1m = remembered("newModel1m") === "true";
-/** Claude Code's models, as last read: kept on this Mac until you press Reload (a new Claude Code, or a
- *  changed config, shows up then). Read once, the first time the row is drawn with nothing kept.
- *  SHORTCUT: this Mac's list also for a session on another machine; the aliases (opus, sonnet…) are
- *  the same there, dated ids may not be. Ask that machine's Claude Code (machine_check could carry
- *  its list) if one ever differs. */
-let modelsKnown = (() => { try { return JSON.parse(remembered("models") || "null"); } catch { return null; } })();
-let modelsReading = false;
-function readModels(fresh) {
-  if (modelsReading) return;
-  modelsReading = true;
+/** Claude Code's models on each machine ("" this Mac), as last read there: each machine's Claude Code
+ *  names them its own way (one behind a proxy may list `claude-opus-5-5[1m]`). Kept until you press
+ *  Reload (a new Claude Code, or a changed config, shows up then). Read once per machine, the first
+ *  time the row is drawn for it with nothing kept. */
+const modelsKey = (m) => (m ? `models.${m}` : "models");
+const modelsKept = new Map();
+const modelsOf = (m) => {
+  if (!modelsKept.has(m)) modelsKept.set(m, (() => { try { return JSON.parse(remembered(modelsKey(m)) || "null"); } catch { return null; } })());
+  return modelsKept.get(m);
+};
+/** The machines whose list is being read now. */
+const modelsReadingOn = new Set();
+function readModels(fresh, machine = newMachine) {
+  if (modelsReadingOn.has(machine)) return;
+  modelsReadingOn.add(machine);
   // Reload has Cue read every folder's list again too (one read serves both), so the "/" menus re-read as well.
   if (fresh) { cmdLists.clear(); cmdMissed.clear(); }
-  const ask = (again) => invoke("models_list", { fresh: again ? false : fresh }).then(({ models: l, reading }) => {
+  const ask = (again) => invoke("models_list", { fresh: again ? false : fresh, machine }).then(({ models: l, reading }) => {
     // Still being read (a Claude Code start takes a moment): the list Cue had, if any, until the new one's in.
-    if (l) { modelsKnown = l; remember("models", JSON.stringify(l)); }
+    if (l) { modelsKept.set(machine, l); remember(modelsKey(machine), JSON.stringify(l)); }
     if (!l || reading) { renderMain(); return setTimeout(() => ask(true), 1500); }
-    modelsReading = false; renderMain();
-  }, () => { modelsReading = false; renderMain(); });
+    modelsReadingOn.delete(machine); renderMain();
+  }, () => { modelsReadingOn.delete(machine); renderMain(); });
   ask(false);
 }
 /** You typed the model yourself ("Other…"): anything Claude Code's list doesn't name, a full id or a
  *  dated one, `claude-opus-5-5[1m]` included. An empty one is still "Other…", with nothing to pass yet. */
-const modelIsOther = () => newModel !== "default" && !(modelsKnown || []).some((m) => m.value === newModel);
+const modelIsOther = () => newModel !== "default" && !(modelsOf(newMachine) || []).some((m) => m.value === newModel);
 /** Its flag for the start line ("" for Default, or an Other left empty: Claude Code picks). The 1M
  *  context goes on as `[1m]`, unless the id you typed already carries a bracket. */
 const modelFlag = () => newModel === "default" || !newModel ? "" : `--model ${newModel}${newModel1m && !/\[.*\]$/.test(newModel) ? "[1m]" : ""}`;
 function modelRow() {
-  if (!modelsKnown && !modelsReading) readModels(false);
-  const list = modelsKnown, other = modelIsOther(), pick = other ? OTHER : newModel;
+  const modelsReading = modelsReadingOn.has(newMachine);
+  if (!modelsOf(newMachine) && !modelsReading) readModels(false);
+  const list = modelsOf(newMachine), other = modelIsOther(), pick = other ? OTHER : newModel;
   const opts = [...(list || [{ value: "default", label: "Default" }]), { value: OTHER, label: "Other…" }];
   const cur = opts.find((m) => m.value === pick);
   const hint = modelsReading ? "asking Claude Code…" : !list ? "couldn't read Claude Code's list" : other ? (newModel ? "passed as --model, as typed" : "a full id, an alias, or one with [1m]") : cur?.desc || "";
