@@ -1746,6 +1746,12 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 /* The open session's insights folded to one strip above the box: the most pressing sentence, "+N", its one action. */
 .ins-strip { margin: 10px 16px 0; padding: 6px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .ins-strip .ins-bulb { width: 16px; height: 16px; }
+.ins-strip { cursor: pointer; }
+.ins-strip:not(.hot):hover { background: color-mix(in srgb, var(--panel-2) 60%, transparent); }
+/* Opened: the rest of its insights above the bar, on the panel, joined to it (one hairline between). */
+.ins-detail { border-bottom: 0; padding-bottom: 10px; }
+.ins-detail + .ins-strip { margin-top: 0; }
+.ins-detail + .ins-strip.hot { margin-top: 2px; }
 .ins-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ins-strip-text b { color: var(--ink); }
 .ins-strip .btn { height: 26px; }

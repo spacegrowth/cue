@@ -125,13 +125,13 @@ function handoffContinued(sid, ho) {
     <div class="ins-acts"><button class="btn primary" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button>${close}</div></div>`;
 }
 
-// The open session's insights sit above its box as one strip: the most pressing one's sentence and its one
-// action, "+N" for the rest. Tapped, it opens in place into the full card (chart, every action, the other
-// insights as lines). The strip turns the accent color (moss with white in light) only when acting now saves
-// something: past the hand-off point (once, until you open it or act), or your turn with its cache in its last
-// minutes. The opened card is never colored: you're already looking.
-const insOpen = new Set();      // sid: its insights opened (More ▾), while Cue runs
-const insHotSeen = new Set();   // sid: its hand-off has had its one colored moment (opened, acted on, put off)
+// The open session's insights sit above its box as one bar: the most pressing one's sentence and its one
+// action, "+N" for the rest. A click anywhere on it opens the rest above it (chart, every action, the other
+// insights as lines), on the panel; the bar itself stays as it was. It takes the accent color (moss with white
+// in light) only when acting now saves something: past the hand-off point (until you act on it or put it off),
+// or your turn with its cache in its last minutes.
+const insOpen = new Set();      // sid: its insights opened, while Cue runs
+const insHotSeen = new Set();   // sid: its hand-off has had its colored moment (acted on, put off)
 // SHORTCUT: kept while Cue runs, so after a restart a session past its hand-off point colors once more. Upgrade
 // path: keep it on the Mac with the hand-off state (db, like skill_handoffs), so both apps share it.
 const HOT_CACHE_MS = 5 * 60000; // a cache this close to running out colors the strip
@@ -186,7 +186,7 @@ function handoffMain(sid, d, hot) {
   return h ? `<button class="${cls}" data-act="ins-fill" data-sid="${esc(sid)}" data-ins-cmd="/${esc(h.name)}">Hand off</button>`
     : `<button class="${cls}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
 }
-// The strip's open arrow and the card's fold arrow.
+// The bar's arrow: up to open (the rest opens above it), down to fold.
 const CHEVRON_DOWN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
 const CHEVRON_UP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg>`;
 const insBusyNote = (sid) => `<span class="ins-busy" role="status">${esc(insBusy.get(sid))}</span>`;
@@ -203,31 +203,28 @@ function handoffInsight(sid, s) {
   const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask) : "", del = delegateLine(sid);
   if (!d && !cache && !del) return "";
   if (d) insShown(sid, "handoff");
-  const busy = insBusy.has(sid);
+  const busy = insBusy.has(sid), isOpen = insOpen.has(sid);
   const open = `data-act="ins-open" data-sid="${esc(sid)}"`;
-  if (insOpen.has(sid)) {
-    const lines = [cache, del].filter(Boolean).join("");
-    const acts = busy ? `<div class="ins-acts">${insBusyNote(sid)}</div>`
-      : d ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
-    const body = d ? `${insChart(d.pts, d.mark)}
-    <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
-    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.</div>
-    ${acts}` : "";
-    return `<div class="ins">
-    <div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">${d ? "context this session re-reads, over time" : "for this session"}</span><span class="grow"></span><button class="ins-arrow" ${open} aria-label="Fold the insights to one line">${CHEVRON_UP}</button></div>
-    ${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}
-  </div>`;
-  }
-  // Folded: the most pressing one. A cache about to run out comes first (replying now is what saves it).
+  // The bar: the most pressing one. A cache about to run out comes first (replying now is what saves it). It
+  // looks the same folded or opened (only its arrow turns), and a click anywhere on it opens or folds it.
   const hotCache = !!cw && cw.left > 0 && cw.left <= HOT_CACHE_MS && !ask;
-  const hot = !busy && (hotCache || (!!d && !insHotSeen.has(sid)));
+  const hot = hotCache || (!!d && !insHotSeen.has(sid));
   const handoffText = d && (insHotSeen.has(sid)
     ? `<b>Each reply re-reads ${esc(insTok(d.m.context))},</b> ${Math.round(d.grew)}× its start.`
     : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
   const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
   const text = shown[0], rest = shown.length - 1;
   const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : "";
-  return `<div class="ins-strip ${hot ? "hot" : ""}">${BULB}<span class="ins-strip-text">${text}</span>${rest ? `<button class="ins-n" ${open} aria-label="${rest} more">+${rest}</button>` : ""}${act}<button class="ins-arrow" ${open} aria-label="Show all of its insights">${CHEVRON_DOWN}</button></div>`;
+  const bar = `<div class="ins-strip ${hot ? "hot" : ""}" ${open}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its insights" : "Show all of its insights"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button></div>`;
+  if (!isOpen) return bar;
+  // Opened: the rest above the bar, on the panel (never colored): the chart, every action, the other insights.
+  const lines = [cache, del].filter(Boolean).join("");
+  const acts = d && !busy ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
+  const body = d ? `${insChart(d.pts, d.mark)}
+    <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
+    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.</div>
+    ${acts}` : "";
+  return `<div class="ins ins-detail">${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}</div>${bar}`;
 }
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------
@@ -410,7 +407,8 @@ function insAct(act, d) {
   if (act === "ins-skill") { insChoosing = ""; insQuery = ""; return setSetting("insights.skills", { ...insSkills(), [d.key]: d.name }); }
   if (act === "ins-find") { cmdLists.clear(); cmdMissed.clear(); insFindSkills(true); return renderMain(); }
   if (act === "ins-skill-forget") { const { [d.key]: _, ...rest } = insSkills(); return setSetting("insights.skills", rest); }
-  if (act === "ins-open") { insHotSeen.add(sid); insOpen.has(sid) ? insOpen.delete(sid) : insOpen.add(sid); return renderMain(); }
+  // Opening keeps its colored moment (the bar stays as it was); acting on it, or Remind me, ends it.
+  if (act === "ins-open") { insOpen.has(sid) ? insOpen.delete(sid) : insOpen.add(sid); return renderMain(); }
   if (act === "ins-later") { insHotSeen.add(sid); insOpen.delete(sid); insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
   if (act === "ins-queue-off") { insLog(active?.sid || "", "queue", "dismissed"); return setSetting("insights.queue", false); }
   if (act === "ins-continue") {
