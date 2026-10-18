@@ -886,7 +886,7 @@ function stepLine(sid, x, all, plain = false) {
 // block folds under the Delegating step that started it.
 const trayDone = new Set();     // sessions whose tray lists its finished agents too
 const trayFolded = new Set();   // sessions whose tray is folded to its head row
-let helperView = null;          // { sid, id }: the agent whose full view fills the chat area (helperPane)
+let helperView = null;          // { sid, id }: the agent whose full view fills the chat area (helperPane); id null: the newest still running, once its feed is in
 const helpersOf = (sid) => stepFeeds.get(sid)?.helpers || [];
 const helperRunning = (h) => !!h.running;
 /** "1m 12s" of work: until it finished, or so far. */
@@ -950,6 +950,12 @@ function pinChatEnd(chat) {
 function helperViewed(sid) {
   if (!helperView) return null;
   if (helperView.sid !== sid) { helperView = null; return null; }
+  if (!helperView.id) {
+    const newest = helpersOf(sid).filter(helperRunning).sort((a, b) => b.started_ms - a.started_ms)[0];
+    if (newest) helperView.id = newest.id;
+    else if (stepFeeds.has(sid)) helperView = null;   // nothing running any more: the chat
+    if (!newest) return null;
+  }
   return helpersOf(sid).find((h) => h.id === helperView.id) || null;
 }
 /** One agent's block, in the tray or under the Delegating step that started it: who it is and how long;

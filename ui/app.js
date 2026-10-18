@@ -328,6 +328,9 @@ function bindMain() {
     if (cc) return copyCode(cc);
     const td = t.closest("[data-tray-done]");
     if (td) { const k = td.dataset.trayDone; trayDone.has(k) ? trayDone.delete(k) : trayDone.add(k); return renderMain(); }
+    // A card's "N bg": open its session (its item, on a waiting card) with the newest still running in full.
+    const bo = t.closest("[data-bg-open]");
+    if (bo) { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; helperView = { sid, id: null }; return it ? setActive(it) : openSession(sid); }
     const hb = t.closest("[data-helper]");
     if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
     if (t.closest("[data-helper-back]")) return closeHelperView();

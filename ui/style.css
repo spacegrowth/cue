@@ -450,6 +450,8 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .dot-live.stuck { background: #d99a3a; animation: none; }
 /* "N bg" on a session's card and tile: how many agents and scripts it has in the background. */
 .bg-pill { flex: none; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
+button.bg-pill { border: 0; cursor: pointer; }
+button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
 .tray .bg-agent { margin-left: 0; }
 /* Its agents: one in full and the top of the next, the rest scrolled to, so several never fill the window. */
 .tray-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; }

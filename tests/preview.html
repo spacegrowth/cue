@@ -39,7 +39,7 @@
         // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
         sessions: [
           sess("relay", "agent-relay", "claude", "waiting", 11, [seg("working", 30, 11), seg("waiting", 11)]),
-          sess("det", "backtester", "claude", "waiting", 4, [seg("working", 30, 4), seg("waiting", 4)]),
+          { ...sess("det", "backtester", "claude", "waiting", 4, [seg("working", 30, 4), seg("waiting", 4)]), background: 1 },
           sess("sec", "filings-bot", "pi", "waiting", 1, [seg("working", 16, 1), seg("waiting", 1)]),
           sess("pipe", "data-pipeline", "claude", "deciding", 3, [seg("working", 24, 3), seg("waiting", 3)]),
           sess("web", "web-app", "pi", "deciding", 1, [seg("working", 30, 21), seg("waiting", 21, 18), seg("working", 18, 1), seg("waiting", 1)]),
@@ -606,6 +606,8 @@
       }, 100);
       // ?reader=1: the open chat's first long reply opens in the reader (chat.js readerPane).
       if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
+      // ?bg=1: the "2 bg" on the names card is clicked, opening that session onto its newest running agent.
+      if (/bg=1/.test(q)) setTimeout(() => document.querySelector('[data-bg-open="names"]')?.click(), 600);
       // With ?ins=1: &inss=open opens agent-relay's insights (More ▾), =busy is Hand off just tapped, =seen its
       // strip after its colored moment (insights.js handoffInsight).
       const inss = new URLSearchParams(q).get("inss");
