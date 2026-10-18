@@ -24,6 +24,8 @@ function applyTheme() {
   else document.documentElement.dataset.theme = mode;
   retheme();
 }
+/** The chat app.js last said was open ("chat-open"), so it's said only when it changes. */
+let chatOpenTold;
 function renderMain() {
   projTheme();
   retheme();
@@ -131,6 +133,9 @@ function renderMain() {
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
   else if (chat && !kept && oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
   activeKey = key;
+  // Which chat is open, told to an add-on (once each time it changes).
+  const openNow = chat ? active?.sid || null : null;
+  if (openNow !== chatOpenTold) { chatOpenTold = openNow; T.event.emit("chat-open", { sid: openNow }).catch(() => {}); }
   // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
@@ -220,6 +225,8 @@ function bindMain() {
   app.addEventListener("focusin", (e) => { const sid = sidOfKey(e.target.dataset?.text || ""); if (sid) cmdList(sid); });
   app.addEventListener("click", (e) => {
     const t = e.target;
+    // An add-on's open menu closes on a click anywhere else.
+    if (extPickOpen && !t.closest(".xp-menu, [data-ext-open]")) { extPickOpen = null; renderMain(); }
     if (lightbox) { lightbox = null; return renderMain(); }
     // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
     // Clear: forget this session's side questions (they were only ever in this window).
@@ -425,6 +432,10 @@ function bindMain() {
     if (hs) { const [kind, dir] = hs.dataset.chipStep.split(":"); return openFromChip(kind, +dir); }
     const hc = t.closest("[data-chip]");
     if (hc) return openFromChip(hc.dataset.chip);
+    const xp = t.closest("button[data-ext-pick]");
+    if (xp) return setExtPick(xp.dataset.extPick, xp.dataset.val);
+    const xo = t.closest("[data-ext-open]");
+    if (xo) { extPickOpen = extPickOpen === xo.dataset.extOpen ? null : xo.dataset.extOpen; return renderMain(); }
     const setBtn = t.closest("[data-set]");
     if (setBtn) return setSetting(setBtn.dataset.set, JSON.parse(setBtn.dataset.val));
     const at = t.closest("[data-attach]");

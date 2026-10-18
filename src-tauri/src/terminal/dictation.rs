@@ -22,7 +22,13 @@ pub fn start(app: AppHandle, d: &Dictation) -> Result<(), String> {
     if slot.is_some() {
         return Ok(()); // already listening
     }
-    let mut child: Child = Command::new(helper()?).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
+    // An add-on's own dictation, when it has one (the same lines as cue-listen's), else cue-listen.
+    #[cfg(feature = "ext")]
+    let own = crate::ext::dictation();
+    #[cfg(not(feature = "ext"))]
+    let own: Option<Command> = None;
+    let mut cmd = match own { Some(c) => c, None => Command::new(helper()?) };
+    let mut child: Child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     *slot = child.stdin.take();
     let out = child.stdout.take().ok_or("no output from the dictation helper")?;
     std::thread::spawn(move || {

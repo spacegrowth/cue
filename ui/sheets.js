@@ -265,12 +265,35 @@ const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glas
 const seg = (key, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${JSON.stringify(v) === JSON.stringify(cur) ? "on" : ""}" data-set="${key}" data-val='${esc(JSON.stringify(v))}'>${esc(l)}</button>`).join("")}</div>`;
 const toggle = (key, on) => `<button class="toggle ${on ? "on" : ""}" data-set="${key}" data-val="${!on}" role="switch" aria-checked="${on}" aria-label="${esc(key)}"><span></span></button>`;
 const setRow = (title, sub, control) => `<div class="set-row"><div class="set-text"><div class="set-title">${title}</div>${sub ? `<div class="set-sub">${sub}</div>` : ""}</div>${control}</div>`;
-/** Settings rows an add-on adds (fetched when Settings opens; none without one). */
+/** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a
+ *  tab of its own; the others show under Agents. */
 let extSections = null;
-function extRows() {
+function extLoad() {
   if (!extSections) { extSections = []; invoke("ext_settings").then((v) => { extSections = v || []; renderMain(); }, () => {}); }
-  return extSections.map((g) => `<div class="set-group">${esc(g.group)}</div>${(g.rows || []).map((r) =>
-    `<div class="set-row ${r.art ? "with-art" : ""}"><div class="set-text"><div class="set-title">${esc(r.title)}</div>${r.sub ? `<div class="set-sub">${r.sub}</div>` : ""}</div>${r.art ? `<div class="set-art">${r.art}</div>` : ""}</div>`).join("")}`).join("");
+  return extSections;
+}
+/** The add-on's groups in tab `tab` (null: those without one). */
+function extRows(tab = null) {
+  return extLoad().filter((g) => (g.tab || null) === tab).map((g) => `<div class="set-group">${esc(g.group)}</div>${(g.rows || []).map((r) =>
+    `<div class="set-row ${r.art ? "with-art" : ""}"><div class="set-text"><div class="set-title">${esc(r.title)}</div>${r.sub ? `<div class="set-sub">${r.sub}</div>` : ""}</div>${r.art ? `<div class="set-art">${r.art}</div>` : ""}${r.pick ? extPick(r.pick) : ""}</div>${r.pick && extPickOpen === r.pick.id ? extMenu(r.pick) : ""}`).join("")}`).join("");
+}
+/** An add-on row's choice: a few options side by side; more behind a button, listed under its row once
+ *  clicked (`extPickOpen`: whose), in the sheet's own flow so nothing clips it. */
+let extPickOpen = null;
+function extPick(p) {
+  const opts = p.options || [];
+  if (opts.length <= 3) return `<div class="seg">${opts.map(([v, l]) => `<button class="${v === p.value ? "on" : ""}" data-ext-pick="${esc(p.id)}" data-val="${esc(v)}">${esc(l)}</button>`).join("")}</div>`;
+  const cur = opts.find(([v]) => v === p.value) || opts[0] || ["", ""];
+  const open = extPickOpen === p.id;
+  return `<button class="xp-btn" data-ext-open="${esc(p.id)}" aria-haspopup="listbox" aria-expanded="${open}"><span class="xp-name">${esc(cur[1])}</span><span class="xp-caret">${open ? "▴" : "▾"}</span></button>`;
+}
+function extMenu(p) {
+  return `<div class="xp-menu" role="listbox">${(p.options || []).map(([v, l]) => `<button role="option" aria-selected="${v === p.value}" class="xp-opt ${v === p.value ? "on" : ""}" data-ext-pick="${esc(p.id)}" data-val="${esc(v)}">${esc(l)}</button>`).join("")}</div>`;
+}
+/** Tell the add-on, then draw its rows afresh. */
+function setExtPick(id, value) {
+  extPickOpen = null;
+  invoke("ext_set", { id, value }).then(() => { extSections = null; renderMain(); }, (e) => toast(`Couldn't change it: ${e}`));
 }
 /** Updates: what Cue found (from GitHub's latest release, checked by Cue itself). `offer`: a newer
  *  version found in the background, shown as a card until you update or put it off. */
@@ -440,7 +463,9 @@ function settingsSheet() {
   const st = state.settings || {};
   const c = state.connections || {};
   const keep = st.history?.keep ?? 300;
-  const tab = SET_TABS.some(([k]) => k === setTab) ? setTab : "general";
+  // The add-on's own tabs after Cue's.
+  const tabs = [...SET_TABS, ...[...new Set(extLoad().map((g) => g.tab).filter(Boolean))].map((t) => [`ext:${t}`, t])];
+  const tab = tabs.some(([k]) => k === setTab) ? setTab : "general";
   const pane = {
     general: `
     <div class="set-group">Updates</div>
@@ -484,8 +509,8 @@ function settingsSheet() {
     <div class="set-group">Usage</div>
     ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}
     ${setRow("Usage file", `Your own meters beside Claude Code's: a CSV you keep up to date (a proxy's budget, credits, tokens). Header <code>label,spent,limit,unit,resets_at</code>, then up to 3 rows; only <code>spent</code> is required. Cue only reads it, whenever it changes.`, `<input class="path-in" id="usage-file" data-usage-file value="${esc(st.usage?.file || "~/.cue/usage.csv")}" spellcheck="false" aria-label="Usage file"/>`)}`,
-  }[tab];
-  return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3>${upd.current ? `<span class="set-ver">Cue ${esc(upd.current)}</span>` : ""}<span class="grow"></span><kbd>Esc</kbd></div><div class="set-tabs seg" role="tablist">${SET_TABS.map(([k, l]) => `<button role="tab" class="${tab === k ? "on" : ""}" aria-selected="${tab === k}" data-act="set-tab" data-tab="${k}">${l}</button>`).join("")}</div><div class="sheet-body">
+  }[tab] ?? extRows(tab.slice(4));
+  return `<div class="sheet"><div class="sheet-head"><h3>Settings</h3>${upd.current ? `<span class="set-ver">Cue ${esc(upd.current)}</span>` : ""}<span class="grow"></span><kbd>Esc</kbd></div><div class="set-tabs seg" role="tablist">${tabs.map(([k, l]) => `<button role="tab" class="${tab === k ? "on" : ""}" aria-selected="${tab === k}" data-act="set-tab" data-tab="${k}">${l}</button>`).join("")}</div><div class="sheet-body">
     ${pane}
   </div></div>`;
 }

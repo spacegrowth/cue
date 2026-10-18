@@ -791,6 +791,14 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel-2); flex: none; }
 .seg button { padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; }
 .seg button.on { background: var(--accent); color: var(--on-accent); }
+/* An add-on row's choice of many (sheets.js extPick): a button, and the choices listed under its row. */
+.xp-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: 9px; background: var(--panel-2); color: var(--ink); font-size: 12.5px; font-weight: 650; }
+.xp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp-caret { color: var(--muted); font-size: 11px; }
+.xp-menu { margin: 0 0 10px; max-height: 300px; overflow-y: auto; padding: 6px; border-radius: 12px; background: var(--panel-2); display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.xp-opt { text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--ink); }
+.xp-opt:hover { background: var(--line); }
+.xp-opt.on { background: var(--accent); color: var(--on-accent); }
 .seg button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
 .seg button.with-icon svg { flex: none; }
 .toggle { position: relative; width: 40px; height: 24px; border-radius: 999px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); flex: none; }

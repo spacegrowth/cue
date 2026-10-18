@@ -27,13 +27,23 @@ pub(crate) async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
     .map_err(|e| e.to_string())?
 }
 
-/// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art? }] }]); none without one.
+/// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art?, pick? }] }], `pick`: { id, value,
+/// options: [[value, label]] }); none without one.
 #[tauri::command]
 pub(crate) fn ext_settings() -> serde_json::Value {
     #[cfg(feature = "ext")]
     return ext::settings();
     #[cfg(not(feature = "ext"))]
     serde_json::json!([])
+}
+
+/// One of an add-on's Settings picks changed (a row's `pick`: its `id`, the option picked).
+#[tauri::command]
+pub(crate) fn ext_set(id: String, value: String) -> Result<(), String> {
+    #[cfg(feature = "ext")]
+    return ext::set(&id, &value);
+    #[cfg(not(feature = "ext"))]
+    Err(format!("nothing to set {id} to {value}"))
 }
 
 /// Updates: is a newer Cue out (the latest release on GitHub, signed with Cue's update key)? Always
