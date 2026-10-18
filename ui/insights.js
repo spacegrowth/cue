@@ -259,17 +259,22 @@ function handoffInsight(sid, s) {
     : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
   const shown = [hotCache && cacheText(cw, ask), handoffText, au && autoText(au), cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
   const text = shown[0], rest = shown.length - 1;
+  // Opened, the panel never repeats the bar's own line; with nothing else to show, the bar doesn't open at all.
+  const lead = hotCache ? "cache" : d ? "handoff" : au ? "auto" : cw ? "cache" : "del";
+  const lines = [lead !== "auto" && auto, lead !== "cache" && cache, lead !== "del" && del].filter(Boolean).join("");
+  const opens = !!d || !!lines;
   const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : au && canCompact(sid) ? `<button class="btn" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact</button>` : "";
-  const bar = `<div class="ins-strip ${hot ? "hot" : ""}" ${open}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its insights" : "Show all of its insights"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button></div>`;
-  if (!isOpen) return bar;
-  // Opened: the bar rises like a title and the rest unfolds under it, on the panel: the chart, every action, the other insights.
-  const lines = [auto, cache, del].filter(Boolean).join("");
+  const arrow = opens ? `<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its insights" : "Show all of its insights"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button>` : "";
+  const bar = `<div class="ins-strip ${hot ? "hot" : ""} ${opens ? "" : "whole"}" ${opens ? open : ""}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}${arrow}</div>`;
+  if (!isOpen || !opens) return bar;
+  // Opened: the bar rises like a title and the rest unfolds under it, on the panel: the other insights the bar's
+  // +N counts first (one line each), then the chart and every action.
   const acts = d && !busy ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
   const body = d ? `${insChart(d.pts, d.mark)}
     <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
     <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.${d.why ? ` ${esc(d.why)}` : ""}</div>
     ${acts}` : "";
-  return `${bar}<div class="ins ins-detail">${body}${lines ? `<div class="ins-lines">${lines}</div>` : ""}</div>`;
+  return `${bar}<div class="ins ins-detail">${lines ? `<div class="ins-lines">${lines}</div>` : ""}${body}</div>`;
 }
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------

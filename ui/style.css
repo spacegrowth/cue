@@ -1797,6 +1797,9 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-strip + .ins-detail { margin-top: 0; border-top: 0; padding-top: 10px; }
 .ins-strip.hot + .ins-detail { margin-top: 2px; }
 .ins-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nothing more to open: no arrow, not clickable, and its whole sentence (wrapping) in place of the cut one. */
+.ins-strip.whole { cursor: default; }
+.ins-strip.whole .ins-strip-text { white-space: normal; }
 .ins-strip-text b { color: var(--ink); }
 .ins-strip .btn { height: 26px; }
 /* Open (▾) and fold (▴): the arrow alone. */
