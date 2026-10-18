@@ -107,6 +107,10 @@ impl Hub {
             if origin.harness == "claude" {
                 self.limits_lifted(&origin.session_id);
             }
+            // It wrote its hand-off note itself: its card offers "Continue in a new session".
+            if crate::ipc::notice_handoff(self, &origin.session_id) {
+                self.changed();
+            }
         }
         let (message, followup) = split_turn(message, &turn, &crate::config::turn_mode());
         // Its turn ended with background agents still at work (Claude Code's Agent tool): it's at its

@@ -30,14 +30,50 @@ pub(crate) async fn insight_state(hub: State<'_, Arc<Hub>>, session_ids: Vec<Str
 }
 
 /// The numbers insight_state answers with (it reads the sessions' logs: call it off the main thread).
+/// A hand-off note one of them wrote is taken here too (notice_handoff_in): a machine's log copy can
+/// trail its turn's end, when Cue looks first.
 pub(crate) fn insight_states(h: &Hub, session_ids: &[String]) -> serde_json::Value {
     let mut out = serde_json::Map::new();
+    let mut noticed = false;
     for sid in session_ids.iter().take(50) {
-        if let Some((until_ms, context, start, last_ms)) = local_log(h, sid).and_then(|p| steps::insight_state(&p)) {
+        let Some(log) = local_log(h, sid) else { continue };
+        noticed |= notice_handoff_in(sid, &log);
+        if let Some((until_ms, context, start, last_ms)) = steps::insight_state(&log) {
             out.insert(sid.clone(), serde_json::json!({ "until_ms": until_ms, "tokens": context, "start": start, "last_ms": last_ms }));
         }
     }
+    if noticed {
+        h.redraw();
+    }
     serde_json::Value::Object(out)
+}
+
+/// A session wrote its hand-off note itself (steps::handoff_note): kept like Cue's own hand-off, with the
+/// note's path, so its card offers "Continue in a new session". Called as its turn ends. True when Cue
+/// took it (the caller redraws).
+pub(crate) fn notice_handoff(h: &Hub, session_id: &str) -> bool {
+    local_log(h, session_id).is_some_and(|log| notice_handoff_in(session_id, &log))
+}
+
+/// notice_handoff, from the session's log as read here (its own, or Cue's copy of a machine's). The
+/// note's path is only passed on, never looked up: on another machine it's that machine's.
+fn notice_handoff_in(session_id: &str, log: &str) -> bool {
+    let Some((note, at_ms)) = steps::handoff_note(log) else { return false };
+    let Some(fresh) = note_is_new(db::handoff(session_id).as_ref(), at_ms) else { return false };
+    db::handoff_noted(session_id, CUE_HANDOFF, &note, at_ms, fresh);
+    true
+}
+
+/// Whether a hand-off note written at `at_ms` is news, given the hand-off Cue has for its session: None
+/// when it's no newer than the note already kept, the hand-off sent, or its continuing (an old write
+/// doesn't offer Continue again); else Some(true) for a new hand-off (none kept, or that one continued),
+/// Some(false) when it's the note of the hand-off waiting to continue.
+fn note_is_new(kept: Option<&db::Handoff>, at_ms: u64) -> Option<bool> {
+    match kept {
+        None => Some(true),
+        Some(k) if at_ms <= k.note_ms || at_ms <= k.sent_ms.max(k.continued_ms) => None,
+        Some(k) => Some(!k.next.is_empty()),
+    }
 }
 
 /// Each host's hand-off skills for Claude Code (`hosts`: "" is this Mac, then your machines by name): a
@@ -87,7 +123,8 @@ Facts only: no pasted logs or long code, and never secrets or credentials. Don't
 /// The message that starts the next session, when its hand-off skill doesn't take "resume" (or it was
 /// Cue's own): pick up the note, check it, carry on. `last`: what the old session last said. `noted`: it
 /// wrote a hand-off note; otherwise (a new session in place of a closed one) its last reply is all there is.
-fn resume_ask(last: &str, noted: bool) -> String {
+/// `note`: where Cue saw it written ("" when it didn't).
+fn resume_ask(last: &str, noted: bool, note: &str) -> String {
     // SHORTCUT: the reply's first 1500 characters; a longer one loses its end. Upgrade path: its last
     // paragraphs, where a hand-off says where the note is.
     let last: String = last.chars().take(1500).collect();
@@ -95,7 +132,8 @@ fn resume_ask(last: &str, noted: bool) -> String {
     if !noted {
         return format!("Carry on from an earlier session in this folder.{said}\n\nIt left no hand-off note. Check git status, the branch and the files that reply names, say briefly where things stand, then ask me what to pick up.");
     }
-    format!("Carry on from the previous session's hand-off.{said}\n\nRead its hand-off note (HANDOFF.md at the project root, unless that reply says it's elsewhere). Check it against git status, the branch and the files it names, and say briefly what still matches and what doesn't. Then carry on with its next step, unless an open decision needs me first: then ask only that. Leave the note in place until its work is done.")
+    let at = if note.is_empty() { " (HANDOFF.md at the project root, unless that reply says it's elsewhere)".to_string() } else { format!(" at {note}") };
+    format!("Carry on from the previous session's hand-off.{said}\n\nRead its hand-off note{at}. Check it against git status, the branch and the files it names, and say briefly what still matches and what doesn't. Then carry on with its next step, unless an open decision needs me first: then ask only that. Leave the note in place until its work is done.")
 }
 
 /// You sent a session its hand-off skill (`skill`, without the slash): remembered until it continues in a
@@ -166,7 +204,7 @@ fn next_name(name: &str, folder: &str) -> String {
 static CONTINUING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
-    let (skill, next, takes_resume) = db::handoff(session_id).ok_or("it hasn't handed off")?;
+    let db::Handoff { skill, next, resume: takes_resume, note, .. } = db::handoff(session_id).ok_or("it hasn't handed off")?;
     if !next.is_empty() {
         return Err("it already continued in a new session".into());
     }
@@ -177,7 +215,7 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
     if !claimed {
         return Err("it's already starting its new session".into());
     }
-    let started = start_after(h, session_id, |last| if takes_resume { format!("/{skill} resume") } else { resume_ask(last, true) });
+    let started = start_after(h, session_id, |last| if takes_resume { format!("/{skill} resume") } else { resume_ask(last, true, &note) });
     if let Some(new_id) = started.as_ref().ok().filter(|id| !id.is_empty()) {
         db::handoff_continued(session_id, new_id);
     }
@@ -207,7 +245,7 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
 pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let new_id = start_after(&h, &session_id, |last| resume_ask(last, false))?;
+        let new_id = start_after(&h, &session_id, |last| resume_ask(last, false, ""))?;
         h.redraw();
         Ok(serde_json::json!({ "session_id": new_id, "detail": "Started fresh from its last reply" }))
     })
@@ -244,11 +282,71 @@ mod tests {
 
     #[test]
     fn resume_ask_quotes_the_last_reply() {
-        let m = resume_ask("Note is in HANDOFF.md.\nNext: run the tests.", true);
+        let m = resume_ask("Note is in HANDOFF.md.\nNext: run the tests.", true, "");
         assert!(m.contains("> Note is in HANDOFF.md.\n> Next: run the tests."));
         assert!(m.starts_with("Carry on from the previous session's hand-off."));
-        assert!(!resume_ask("", true).contains("Its last reply"));
-        assert!(resume_ask("Done.", false).contains("It left no hand-off note"));
+        assert!(!resume_ask("", true, "").contains("Its last reply"));
+        assert!(resume_ask("Done.", false, "").contains("It left no hand-off note"));
+    }
+
+    #[test]
+    fn resume_ask_names_the_note_where_it_was_written() {
+        let m = resume_ask("Done.", true, "/home/me/proj/docs/mac-security-handoff.md");
+        assert!(m.contains("Read its hand-off note at /home/me/proj/docs/mac-security-handoff.md. Check it"), "{m}");
+        assert!(!m.contains("HANDOFF.md at the project root"));
+        let old = resume_ask("Done.", true, "");
+        assert!(old.contains("Read its hand-off note (HANDOFF.md at the project root, unless that reply says it's elsewhere). Check it"), "{old}");
+    }
+
+    #[test]
+    fn a_note_counts_only_when_newer_than_the_hand_off_kept() {
+        let kept = |sent_ms, next: &str, continued_ms, note_ms| db::Handoff { skill: CUE_HANDOFF.into(), sent_ms, next: next.into(), continued_ms, note_ms, ..Default::default() };
+        // None kept: a new hand-off.
+        assert_eq!(note_is_new(None, 100), Some(true));
+        // Waiting to continue: a note written after it was sent is its note; one from before isn't.
+        assert_eq!(note_is_new(Some(&kept(100, "", 0, 0)), 150), Some(false));
+        assert_eq!(note_is_new(Some(&kept(100, "", 0, 0)), 90), None);
+        // Already continued: the old write doesn't offer Continue again; a newer one is a new hand-off.
+        assert_eq!(note_is_new(Some(&kept(100, "new-1", 200, 150)), 150), None);
+        assert_eq!(note_is_new(Some(&kept(100, "new-1", 200, 0)), 180), None);
+        assert_eq!(note_is_new(Some(&kept(100, "new-1", 200, 150)), 250), Some(true));
+        // The note already kept, read again (by a log clock ahead of the Mac's): not news.
+        assert_eq!(note_is_new(Some(&kept(100, "", 0, 500)), 500), None);
+    }
+
+    #[test]
+    fn a_note_the_session_wrote_offers_continue_once() {
+        let _g = db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-noted-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        db::reset();
+        let log = dir.join("s1.jsonl");
+        // A Write of `file` and its result, as Claude Code logs them.
+        let write = |at: &str, id: &str, file: &str| {
+            let call = serde_json::json!({"type":"assistant","timestamp":at,"message":{"content":[{"type":"tool_use","id":id,"name":"Write","input":{"file_path":file}}]}});
+            let result = serde_json::json!({"type":"user","timestamp":at,"message":{"content":[{"type":"tool_result","tool_use_id":id,"content":"ok"}]}});
+            format!("{call}\n{result}\n")
+        };
+        let prompt = serde_json::json!({"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"hand off"}});
+        std::fs::write(&log, format!("{prompt}\n{}", write("2026-10-04T10:00:05.000Z", "w1", "/r/HANDOFF.md"))).unwrap();
+        let p = log.to_str().unwrap();
+        assert!(notice_handoff_in("s1", p));
+        let h = db::handoff("s1").unwrap();
+        assert_eq!((h.skill.as_str(), h.resume, h.note.as_str(), h.next.as_str()), (CUE_HANDOFF, false, "/r/HANDOFF.md", ""));
+        assert!(!notice_handoff_in("s1", p), "the same note again is no news");
+        // It continued; the old write doesn't bring Continue back, a new note does.
+        db::handoff_continued("s1", "s2");
+        assert!(!notice_handoff_in("s1", p));
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        std::io::Write::write_all(&mut f, write("2099-01-01T00:00:00.000Z", "w2", "/r/notes/next-handoff.md").as_bytes()).unwrap();
+        assert!(notice_handoff_in("s1", p));
+        let h = db::handoff("s1").unwrap();
+        assert_eq!((h.note.as_str(), h.next.as_str()), ("/r/notes/next-handoff.md", ""));
+        std::env::remove_var("CUE_HOME");
+        db::reset();
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS handoffs (
   sent_ms      INTEGER NOT NULL,
   next_session TEXT NOT NULL DEFAULT '',
   continued_ms INTEGER NOT NULL DEFAULT 0,
-  resume       INTEGER NOT NULL DEFAULT 1 -- 1: the skill takes 'resume'; 0: Cue's own message starts the new one
+  resume       INTEGER NOT NULL DEFAULT 1, -- 1: the skill takes 'resume'; 0: Cue's own message starts the new one
+  note         TEXT NOT NULL DEFAULT '',  -- its hand-off note's path, as its log names it ('' when Cue didn't see it written)
+  note_ms      INTEGER NOT NULL DEFAULT 0 -- when that note was written, by its log's clock
 );
 
 -- The Insights tab (logs/turns.rs reads each session's own log into it, a few MB at a time in the
@@ -217,6 +219,13 @@ fn open() -> rusqlite::Result<Connection> {
         }
         c.execute_batch("DELETE FROM turns; DELETE FROM turns_read;")?;
         c.pragma_update(None, "user_version", 3)?;
+    }
+    // A hand-off note Cue saw a session write (its path, and when): the columns. A new database has them already.
+    if version < 4 {
+        for col in ["note TEXT NOT NULL DEFAULT ''", "note_ms INTEGER NOT NULL DEFAULT 0"] {
+            let _ = c.execute(&format!("ALTER TABLE handoffs ADD COLUMN {col}"), []);
+        }
+        c.pragma_update(None, "user_version", 4)?;
     }
     Ok(c)
 }
@@ -674,10 +683,23 @@ pub fn insight_event(session_id: &str, rule: &str, action: &str, detail: &str, t
 }
 
 /// A session sent its hand-off skill (or Cue's own): it's offered "Continue in a new session" until it does.
-/// `resume`: the skill takes "resume" for the new session; otherwise Cue's own message starts it.
+/// `resume`: the skill takes "resume" for the new session; otherwise Cue's own message starts it. A note
+/// seen before is forgotten (this hand-off writes its own); when it was written is kept, so it isn't taken again.
 pub fn handoff_sent(session_id: &str, skill: &str, resume: bool) {
-    with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = ?4, next_session = '', continued_ms = 0",
+    with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = ?4, next_session = '', continued_ms = 0, note = ''",
         params![session_id, skill, now_ms() as i64, resume]));
+}
+
+/// A session wrote its hand-off note (`note`: its path as its log names it; `at_ms`: when, by the log).
+/// `fresh`: a new hand-off (none waiting to continue), kept as `skill` with Cue's own message starting the
+/// next session; otherwise the one waiting keeps its skill and only learns where its note is.
+pub fn handoff_noted(session_id: &str, skill: &str, note: &str, at_ms: u64, fresh: bool) {
+    if fresh {
+        with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume, note, note_ms) VALUES (?1, ?2, ?3, 0, ?4, ?5) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = 0, next_session = '', continued_ms = 0, note = ?4, note_ms = ?5",
+            params![session_id, skill, now_ms() as i64, note, at_ms as i64]));
+    } else {
+        with(|c| c.execute("UPDATE handoffs SET note = ?2, note_ms = ?3 WHERE session_id = ?1", params![session_id, note, at_ms as i64]));
+    }
 }
 
 /// It continued in `next`: the link between the two.
@@ -685,10 +707,27 @@ pub fn handoff_continued(session_id: &str, next: &str) {
     with(|c| c.execute("UPDATE handoffs SET next_session = ?2, continued_ms = ?3 WHERE session_id = ?1", params![session_id, next, now_ms() as i64]));
 }
 
-/// One hand-off: its skill, the session it continued in ("" while it hasn't), and whether the skill takes "resume".
-pub fn handoff(session_id: &str) -> Option<(String, String, bool)> {
+/// One session's hand-off, as kept (see the handoffs table).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Handoff {
+    pub skill: String,
+    pub sent_ms: u64,
+    /// The session it continued in ("" while it hasn't), and when.
+    pub next: String,
+    pub continued_ms: u64,
+    /// The skill takes "resume".
+    pub resume: bool,
+    /// Its note's path as its log names it ("" when Cue didn't see it written), and when it was written.
+    pub note: String,
+    pub note_ms: u64,
+}
+
+/// One session's hand-off, if it has one.
+pub fn handoff(session_id: &str) -> Option<Handoff> {
     use rusqlite::OptionalExtension;
-    with(|c| c.query_row("SELECT skill, next_session, resume FROM handoffs WHERE session_id = ?1", params![session_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).optional()).flatten()
+    with(|c| c.query_row("SELECT skill, sent_ms, next_session, continued_ms, resume, note, note_ms FROM handoffs WHERE session_id = ?1", params![session_id], |r| Ok(Handoff {
+        skill: r.get(0)?, sent_ms: r.get::<_, i64>(1)? as u64, next: r.get(2)?, continued_ms: r.get::<_, i64>(3)? as u64, resume: r.get(4)?, note: r.get(5)?, note_ms: r.get::<_, i64>(6)? as u64,
+    })).optional()).flatten()
 }
 
 /// Hand-offs of the last 30 days: session → { skill, sent_ms, next, continued_ms }.

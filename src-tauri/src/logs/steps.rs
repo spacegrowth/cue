@@ -241,6 +241,10 @@ struct Feed {
     last_reply: String,
     /// Codex: its running total of tokens; a turn's tokens are what it grew by.
     codex_total: u64,
+    /// Its writes of a hand-off note (`is_handoff_note`) still waiting for their result: path by call id.
+    note_calls: HashMap<String, String>,
+    /// The newest hand-off note it wrote since your last prompt, and when (its result's time, by the log).
+    note: Option<(String, u64)>,
 }
 
 /// A background agent a Claude Code session started: it runs inside the session's process, with no
@@ -514,6 +518,26 @@ pub fn last_say(path: &str) -> Option<String> {
     turn.items.iter().rev().find_map(|i| match i { Item::Say { text, .. } if !text.trim().is_empty() => Some(text.trim().to_string()), _ => None })
 }
 
+/// A hand-off note: a file named HANDOFF.md, or any .md whose name says hand-off ("handoff", "hand-off" or
+/// "hand_off", in any case), wherever it is. Only the name counts: another file in a handoff/ folder doesn't.
+pub fn is_handoff_note(path: &str) -> bool {
+    let name = path.rsplit(['/', '\\']).next().unwrap_or("").to_lowercase();
+    name.ends_with(".md") && ["handoff", "hand-off", "hand_off"].iter().any(|w| name.contains(w))
+}
+
+/// The hand-off note the session wrote itself, if its last work did: its newest Write of a hand-off note
+/// (`is_handoff_note`) that went through, with no prompt of yours after it. Its path as the log names it
+/// (on the session's machine: a string to pass on, never looked up here), and when, by the log's clock.
+pub fn handoff_note(path: &str) -> Option<(String, u64)> {
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    feed.note.clone()
+}
+
 /// Each Claude session's context window as its status line last said (by session id), and each model's
 /// as a session on it last said. Its transcript doesn't say, and the model's name doesn't always either
 /// (a 1M window without "[1m]"). Kept on disk: a status line only runs when its session does something,
@@ -778,12 +802,12 @@ impl Feed {
     }
 
     fn start(path: &str, version: u64, offset: u64) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0 }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None }
     }
 
     /// A background agent's log, read from its start (it's small: one task).
     fn open_helper(path: &str) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0 }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None }
     }
 
     /// A background agent just started (its launch result came in): remember it and open its log.
@@ -1136,6 +1160,11 @@ impl Feed {
                 }
                 self.close_open("");
                 let prompt = if crate::logs::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
+                // Your prompt: it went on working after its note, so that note isn't where it stopped.
+                if !prompt.is_empty() {
+                    self.note = None;
+                    self.note_calls.clear();
+                }
                 self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
                 ended // an empty turn isn't shown until something happens in it; a task that ended is
             }
@@ -1151,6 +1180,10 @@ impl Feed {
                             }
                         }
                         Some("tool_use") => {
+                            let file = b.pointer("/input/file_path").and_then(Value::as_str).unwrap_or("");
+                            if !self.helper && b.get("name").and_then(Value::as_str) == Some("Write") && is_handoff_note(file) {
+                                self.note_calls.insert(b.get("id").and_then(Value::as_str).unwrap_or("").to_string(), file.to_string());
+                            }
                             self.push(step_of(&b, at));
                             if let Some(t) = self.turns.last_mut() {
                                 t.work.count(&b);
@@ -1183,6 +1216,12 @@ impl Feed {
     /// A tool call's result came in: fill in how it went.
     fn finish(&mut self, block: &Value, extra: Option<&Value>, at: u64) -> bool {
         let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else { return false };
+        // A hand-off note written: kept once the write went through.
+        if let Some(note) = self.note_calls.remove(id) {
+            if block.get("is_error").and_then(Value::as_bool) != Some(true) {
+                self.note = Some((note, at));
+            }
+        }
         for turn in self.turns.iter_mut().rev().take(3) {
             for item in turn.items.iter_mut().rev() {
                 if let Item::Step { id: sid, tool, verb, past, result, bad, done, subject, command, desc, .. } = item {
@@ -1922,7 +1961,7 @@ mod tests {
     }
 
     fn feed_of(jsonl: &str) -> Feed {
-        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0 };
+        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None };
         for e in lines(jsonl) {
             f.take(&e);
         }
@@ -1933,6 +1972,39 @@ mod tests {
             Item::Step { verb, subject, result, bad, done, .. } => (verb, subject, result, *bad, *done),
             Item::Say { .. } => panic!("not a step"),
         }
+    }
+
+    #[test]
+    fn a_hand_off_note_is_known_by_its_name() {
+        for yes in ["/r/HANDOFF.md", "handoff.md", "/r/docs/mac-security-handoff.md", "/r/handoff-2026-10-18.md", "/r/Hand-Off.MD", "/r/next_hand_off.md"] {
+            assert!(is_handoff_note(yes), "{yes}");
+        }
+        for no in ["/r/src/handoff.rs", "/r/handoff/notes.md", "/r/handoff/", "/r/HANDOFF.txt", "/r/README.md", ""] {
+            assert!(!is_handoff_note(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn a_hand_off_note_counts_when_written_whole_and_it_went_through() {
+        let call = |id: &str, tool: &str, file: &str| format!(r#"{{"type":"assistant","timestamp":"2026-10-04T10:00:05.000Z","message":{{"content":[{{"type":"tool_use","id":"{id}","name":"{tool}","input":{{"file_path":"{file}"}}}}]}}}}"#);
+        let result = |id: &str, at: &str, error: bool| format!(r#"{{"type":"user","timestamp":"{at}","message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","is_error":{error},"content":"ok"}}]}}}}"#);
+        let prompt = |text: &str| format!(r#"{{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{{"content":"{text}"}}}}"#);
+        let note = |log: Vec<String>| feed_of(&log.join("\n")).note;
+        // Written, and it went through: the path as written, and when its result came.
+        let at = crate::logs::transcript::iso_ms("2026-10-04T10:00:06.000Z").unwrap();
+        assert_eq!(note(vec![prompt("hand off"), call("w1", "Write", "/r/HANDOFF.md"), result("w1", "2026-10-04T10:00:06.000Z", false)]), Some(("/r/HANDOFF.md".to_string(), at)));
+        // Edited rather than written whole, or another file: not a hand-off.
+        assert_eq!(note(vec![call("e1", "Edit", "/r/HANDOFF.md"), result("e1", "2026-10-04T10:00:06.000Z", false)]), None);
+        assert_eq!(note(vec![call("e2", "MultiEdit", "/r/HANDOFF.md"), result("e2", "2026-10-04T10:00:06.000Z", false)]), None);
+        assert_eq!(note(vec![call("w2", "Write", "/r/src/handoff.rs"), result("w2", "2026-10-04T10:00:06.000Z", false)]), None);
+        // The write failed, or its result isn't in yet.
+        assert_eq!(note(vec![call("w3", "Write", "/r/HANDOFF.md"), result("w3", "2026-10-04T10:00:06.000Z", true)]), None);
+        assert_eq!(note(vec![call("w4", "Write", "/r/HANDOFF.md")]), None);
+        // The newest one counts.
+        let two = note(vec![call("w5", "Write", "/r/HANDOFF.md"), result("w5", "2026-10-04T10:00:06.000Z", false), call("w6", "Write", "/r/b-handoff.md"), result("w6", "2026-10-04T10:00:09.000Z", false)]);
+        assert_eq!(two.map(|(p, _)| p).as_deref(), Some("/r/b-handoff.md"));
+        // You gave it more to do after it: that note isn't where it stopped.
+        assert_eq!(note(vec![call("w7", "Write", "/r/HANDOFF.md"), result("w7", "2026-10-04T10:00:06.000Z", false), prompt("now fix the test")]), None);
     }
 
     const T: &str = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"fix the token expiry"}}
