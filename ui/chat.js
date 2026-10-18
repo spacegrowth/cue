@@ -69,7 +69,7 @@ async function deliver(sid, key, call) {
   const entry = { sid, text, images, at: now(), via: null };
   outbox.push(entry);
   delete drafts[key];
-  renderMain();
+  drawAtChatEnd();
   try {
     const r = await call(typed, images);
     entry.via = String(r || "sent").replace(/^sent via /, "");
@@ -904,6 +904,11 @@ let chatToEnd = false;    // the next chat draw lands at its end; app.js renderM
 let chatPinnedAt = 0;     // when code last put the chat at its end: the scroll events that come of it aren't you scrolling up
 function closeHelperView() {
   helperView = null;
+  drawAtChatEnd();
+}
+/** Draw, landing the chat at its end (and keeping it there while what's below settles). Also after you
+ *  send: your message is the newest, wherever you had scrolled to. */
+function drawAtChatEnd() {
   chatToEnd = true;
   renderMain();
   chatToEnd = false;
@@ -1520,7 +1525,7 @@ function activePane() {
     ${sessTabs(sid)}
     ${hvp ? hvp.bar + chatBox(`h|${sid}|${hv.id}`, hvp.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
-    ${sid && s && !hvp ? handoffInsight(sid, s) : ""}${termDock(sid)}${hvp ? hvp.foot : foot}</div>`;
+    ${sid && s && !hvp ? handoffInsight(sid, s) : ""}${termDock(sid)}${hvp ? hvp.foot : foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 // ---------- MCP servers: ⋯ → MCP servers… ----------
 // Every server Claude Code knows for the session's folder (mcp_for), each with a checkbox: checked =

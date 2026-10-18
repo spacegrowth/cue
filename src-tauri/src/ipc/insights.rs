@@ -131,15 +131,30 @@ pub(crate) async fn handoff_continue(hub: State<'_, Arc<Hub>>, session_id: Strin
 }
 
 /// A new session in place of `session_id`: the same agent, folder and machine (Claude Code: the same
-/// model), started with `first`, given what the old one last said. Returns the new session's id.
+/// model), started with `first`, given what the old one last said, and named after it, numbered on
+/// (next_name). Returns the new session's id.
 fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> String) -> Result<String, String> {
     let o = h.session_origin(session_id).ok_or("Cue has no record of that session")?;
     let log = local_log(h, session_id);
     let model = (o.harness == "claude").then(|| log.as_deref().and_then(steps::model_of)).flatten();
     let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
-    let started = super::start_session_with(h, &o.harness, &o.cwd, &first, "", &opts)?;
+    let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd));
+    let started = super::start_session_with(h, &o.harness, &o.cwd, &first, &name, &opts)?;
     Ok(started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string())
+}
+
+/// The name of the session that carries on from one named `name` (else from its folder): "cue-ios" →
+/// "cue-ios-2", "cue-ios-2" → "cue-ios-3". A relay tag in front ("[Lead] …") isn't carried over.
+fn next_name(name: &str, folder: &str) -> String {
+    let name = name.trim();
+    let name = name.strip_prefix('[').and_then(|r| r.split_once(']')).map(|(_, rest)| rest.trim()).unwrap_or(name);
+    let base = if name.is_empty() { folder.trim() } else { name };
+    match base.rsplit_once('-') {
+        Some((stem, n)) if !stem.is_empty() && !n.is_empty() && n.len() <= 3 && n.chars().all(|c| c.is_ascii_digit()) => format!("{stem}-{}", n.parse::<u32>().unwrap_or(1) + 1),
+        _ if base.is_empty() => String::new(),
+        _ => format!("{base}-2"),
+    }
 }
 
 /// Hand-offs continuing right now: a second click while the new session starts doesn't start another.
@@ -225,5 +240,14 @@ mod tests {
         assert!(m.starts_with("Carry on from the previous session's hand-off."));
         assert!(!resume_ask("", true).contains("Its last reply"));
         assert!(resume_ask("Done.", false).contains("It left no hand-off note"));
+    }
+
+    #[test]
+    fn the_next_session_is_numbered_on_from_the_old_ones_name() {
+        assert_eq!(next_name("cue-ios", "cue"), "cue-ios-2");
+        assert_eq!(next_name("cue-ios-2", "cue"), "cue-ios-3");
+        assert_eq!(next_name("", "cue"), "cue-2");
+        assert_eq!(next_name("[Lead] cue-9", "cue"), "cue-10");
+        assert_eq!(next_name("", ""), "");
     }
 }

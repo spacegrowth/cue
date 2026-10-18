@@ -859,7 +859,12 @@ fn same_message(a: &str, b: &str, paths: &[&str]) -> bool {
         paths.iter().fold(t.to_string(), |acc, p| acc.replace(&crate::uploads::escape_path(p), " ").replace(p, " "))
     };
     let squash = |t: &str| strip(t).split_whitespace().filter(|w| !w.starts_with('/')).collect::<Vec<_>>().join(" ");
-    let (a, b) = (squash(a), squash(b));
+    // Nothing but a command ("/handoff"): its words are the message, the same when they're the same.
+    let bare = |t: &str| strip(t).split_whitespace().collect::<Vec<_>>().join(" ");
+    let (a, b) = match (squash(a), squash(b)) {
+        (x, y) if x.is_empty() && y.is_empty() => return !bare(a).is_empty() && bare(a) == bare(b),
+        xy => xy,
+    };
     if a.is_empty() || b.is_empty() {
         return false;
     }
@@ -1101,6 +1106,17 @@ mod tests {
         s.note("i", "you", &cut, 50);
         s.note("i", "you", &long, 50);
         assert_eq!(s.thread("i").len(), 1);
+    }
+
+    #[test]
+    fn a_command_sent_from_cue_and_reported_back_is_one_message() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "k".into(), ..Default::default() }, "working", None);
+        s.note("k", "you", "/handoff", 50); // Claude Code's prompt hook
+        s.note("k", "you", "/handoff", 50); // Cue's own copy, once the send returns
+        assert_eq!(s.thread("k").iter().filter(|e| e.role == "you").count(), 1);
+        s.note("k", "you", "/compact", 50); // another command: its own message
+        assert_eq!(s.thread("k").iter().filter(|e| e.role == "you").count(), 2);
     }
 
     #[test]

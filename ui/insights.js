@@ -90,6 +90,17 @@ function insChart(pts, mark) {
   </div>`;
 }
 
+// sid → { name, starts }: "Continue in a new session" pressed, the new session not started yet.
+const insContinuing = new Map();
+/** Over the old session's chat while its next one starts: what's happening, and what comes of it. */
+function continueCover(sid) {
+  const c = insContinuing.get(sid);
+  if (!c) return "";
+  const starts = c.starts ? `with <span class="mono">${esc(c.starts)}</span>` : "from its hand-off note";
+  return `<div class="rs-cover"><div class="rs-card" role="status"><div class="rs-title">Continuing ${esc(c.name)} in a new session</div><div class="rs-bar"><i></i></div>
+    <div class="rs-note">It starts ${starts} and opens here. This one closes (Closed keeps it).</div></div></div>`;
+}
+
 /** A hand-off sent and not continued yet (kept on the Mac, so it's here after a restart too): while it writes
  *  its note, say so; once it has, the one next step, a new session with "/<skill> resume" in its box. */
 function handoffNext(sid, s, ho) {
@@ -289,10 +300,16 @@ function insAct(act, d) {
   if (act === "ins-later") { insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
   if (act === "ins-queue-off") { insLog(active?.sid || "", "queue", "dismissed"); return setSetting("insights.queue", false); }
   if (act === "ins-continue") {
+    if (insContinuing.has(sid)) return;
+    const s = sessionOf(sid), ho = state.skill_handoffs?.[sid];
+    insContinuing.set(sid, { name: nameOf(sid, s?.project), starts: ho?.resume ? `/${ho.skill} resume` : "" });
+    renderMain();
     return invoke("handoff_continue", { sessionId: sid }).then((r) => {
+      insContinuing.delete(sid);
       if (r.session_id) setActive(null, r.session_id);
       toast(r.detail);
-    }, (e) => toast(`Couldn't continue: ${e}`));
+      renderMain();
+    }, (e) => { insContinuing.delete(sid); toast(`Couldn't continue: ${e}`); renderMain(); });
   }
   if (act === "ins-cue") {
     return invoke("handoff_cue", { sessionId: sid }).then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`));
