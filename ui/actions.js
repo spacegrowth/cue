@@ -21,7 +21,7 @@ let actLast = null;             // the last run, for ⌘⇧E: { pl, id }
 let actPromptInit = false;      // Settings → Actions has put the prompt in its box
 const ACT_FRESH = 10000, ACT_FRESH_REMOTE = 60000;
 /** Cue's own prompt, shown when no project has been read yet (the backend keeps the one in use). */
-const ACT_PROMPT = "Look at this project and set up its Cue actions in .cue/actions.json (shared with the repo) and .cue/actions.local.json (only for me). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
+const ACT_PROMPT = "Look at this project and set up its Cue actions in .cue/actions.local.json (only for me, not shared with the repo). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
 const ACT_SOURCES = [["shared", "THIS PROJECT", ".cue/actions.json · shared with the repo"], ["local", "MINE", ".cue/actions.local.json · only you"]];
 
 // ---------- where: a project's actions are in a checkout (a folder, and a machine) ----------
@@ -416,7 +416,6 @@ function actEditSheet() {
     ${fld("Command", `<input class="ac-in mono" data-text="ac-run" placeholder="npm ci" spellcheck="false" autocomplete="off" value="${esc(draft("ac-run").text)}"/>`, `One line, run by your shell in <code>${esc(homeless(e.pl.folder))}</code>.`)}
     ${fld("It", segs("keep", [[false, "Runs once"], [true, "Keeps running"]]), e.keep ? "A server or a watcher: Cue shows its port, with Restart and Stop." : "")}
     ${fld("While an agent works", segs("ask", [[false, "Just run"], [true, "Ask: now or after the turn"]]), e.ask ? "For what could trip an agent mid-turn (an install, a clean)." : "")}
-    ${fld("Keep it", segs("scope", [["local", "Only for me"], ["shared", "Shared with the repo"]]))}
     <div class="ac-json"><span class="ac-jf">${esc(file)}</span><code data-ac-json>${esc(actJson(f))}</code>${fileNote ? `<span class="ac-jn">${esc(fileNote)}</span>` : ""}</div>
   </div><div class="ac-sheet-foot">${e.oldId ? `<button class="btn deny" data-ac="ed-delete">Delete</button>` : ""}<span class="grow"></span><button class="btn" data-ac="close">Cancel</button><button class="btn" data-ac="ed-try">▶ Try it</button><button class="btn primary" data-ac="ed-save">Save</button></div></div>`;
 }
