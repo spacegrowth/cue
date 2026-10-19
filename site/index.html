@@ -94,6 +94,8 @@ h2 { font: 800 clamp(28px, 4vw, 40px)/1.12 var(--display); letter-spacing: -0.01
 .shot { border-radius: 14px; overflow: hidden; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
 /* A tall screenshot (steps) stays a readable size instead of filling its column. */
 .shot.tall { max-width: 460px; justify-self: center; }
+.wrap > .shot.window { margin-top: 32px; }
+.wrap > .text .sub { max-width: 760px; }
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 32px; }
 .mini { background: var(--panel); border-radius: 14px; padding: 18px 20px; box-shadow: 0 0 0 1px var(--line); }
 .mini b { display: block; font-size: 16px; margin-bottom: 4px; }
@@ -222,6 +224,33 @@ footer .grow { flex: 1; }
   <section>
     <div class="wrap split flip">
       <div class="text">
+        <p class="eyebrow">Actions and Listen</p>
+        <h2>Run your project's commands from the reply</h2>
+        <p class="sub">Under the agent's latest reply sit your project's own buttons: build, test, start a dev server. Click one instead of asking the agent to run it. Cue runs it in the background and the button shows how it's going.</p>
+        <ul>
+          <li>Two or three per project, kept in Cue on your Mac, never in the repository</li>
+          <li>A new or changed command runs only once you've allowed it</li>
+          <li><b>Listen</b> reads a reply out loud, in your Mac's voice or a natural one that runs on your Mac; <b>Read</b> opens a long reply full width</li>
+        </ul>
+      </div>
+      <div class="shot tall"><img src="shots/actions.png" alt="A finished reply with Listen, Read, the project's Install and Test actions, two more folded away with one of them running, and Send to." width="1308" height="1466"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="text">
+        <p class="eyebrow">Insights</p>
+        <h2>What your sessions cost, and where they could cost less</h2>
+        <p class="sub">Cue reads each session's own log on your Mac and adds it up: tokens and dollars by day and by model, and the part that was avoidable. That's a cache written again because a session waited on you too long, or a long conversation read again past the point where it should have handed off. A waiting session counts down its cache, and can write its hand-off note before the cache runs out.</p>
+      </div>
+      <div class="shot window"><img src="shots/insights.png" alt="Insights: 30 days of sessions, where the dollars went with the avoidable part in amber, each day, each model, and trends." width="2720" height="1720"><span class="lights"><i></i><i></i><i></i></span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap split flip">
+      <div class="text">
         <p class="eyebrow">Set up</p>
         <h2>Connect your agents in one click</h2>
         <p class="sub">On first launch Cue lists the agents it finds on your Mac. Connect adds its hooks to each agent's settings, after backing the file up; your other settings and hooks stay exactly as they were.</p>
@@ -245,6 +274,9 @@ footer .grow { flex: 1; }
         <div class="mini"><b>History and stats</b><span>What you answered today, how long agents waited, and the longest wait.</span></div>
         <div class="mini"><b>Search everything</b><span>Live, closed and older sessions, and what was said in them. Resume an old one.</span></div>
         <div class="mini"><b>Dictation</b><span>Talk instead of typing, on-device, with Apple's speech recognition.</span></div>
+        <div class="mini"><b>Projects</b><span>Sessions group by repository. Give a project a color, pin it beside All projects, or move a session to another.</span></div>
+        <div class="mini"><b>MCP servers per session</b><span>See which servers a session has and what it called through each; turn one off, or run it with just the ones you pick.</span></div>
+        <div class="mini"><b>Start fresh</b><span>When a session's cache has run out, start a new one from its last reply instead of paying to read the whole conversation again.</span></div>
         <div class="mini"><b>Updates itself</b><span>Signed updates from GitHub, offered in the menu bar icon's menu.</span></div>
       </div>
     </div>

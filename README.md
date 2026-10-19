@@ -22,6 +22,25 @@ tabs to find who's waiting. A Mac app (macOS 13 or later, Apple silicon and Inte
 The terminal keeps working too: answer there or in Cue, whichever is first wins, and Cue clears
 the card either way.
 
+## Also in Cue
+
+- **Actions** — your project's own buttons (build, test, start a dev server) under the agent's latest
+  reply: click one instead of asking the agent to run it. Two or three per project, kept in Cue on
+  your Mac (never in the repository); a new or changed command runs only once you've allowed it. See
+  [docs/actions.md](docs/actions.md).
+- **Listen and Read** — Listen reads a reply out loud, in your Mac's voice or a natural voice that runs
+  on your Mac (Settings → Voice); Read opens a long reply full width.
+- **Insights** — what your sessions cost, by day and by model, and the part that was avoidable: caches
+  written again after a session waited on you, and long conversations read again past their hand-off
+  point. A waiting session counts down its cache and can write its hand-off note before it runs out,
+  or start fresh from its last reply once it has.
+- **Steps, Diff and background agents** — what a session read, edited and ran between your message and
+  its reply; what it changed; and the agents it sent off, each at work under it.
+- **Projects** — sessions group by repository, with a color and a pin each; move a session to another
+  project from its ⋯ menu (Settings → General → Reset projects… undoes every change).
+
+<p align="center"><img src="site/shots/insights.png" width="860" alt="Insights: where the dollars went, the avoidable part in amber, each day and each model."></p>
+
 ## Install
 
 1. Download `Cue-<version>.dmg` from the [latest release](https://github.com/spacegrowth/cue/releases/latest),
