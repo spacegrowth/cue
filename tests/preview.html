@@ -229,32 +229,25 @@
       // (&running=1: its Web one too); order-engine (working) has an Install that asks first.
       const actFx = {}, actPrompt = { text: "" };
       const actEmit = (folder) => (listeners.actions || []).forEach((f) => f({ payload: { folder, machine: "" } }));
-      const A = (id, name, run, source, o = {}) => ({ id, name, run, source, keep: false, ask: false, suggest: [], pinned: false, hidden: false, allowed: true, state: {}, ...o });
+      const A = (id, name, run, source, o = {}) => ({ id, name, run, source, keep: false, ask: false, allowed: true, state: {}, ...o });
       const actSuggestQ = /suggest=1/.test(location.search), actRunQ = /running=1/.test(location.search);
       const actOf = (folder) => actFx[folder] ||= folder.endsWith("/agent-relay") ? { files: { shared: true, local: true, localIgnored: false }, actions: [
-        A("shared:Install", "Install", "npm ci", "shared", { ask: true, suggest: ["package.json", "package-lock.json"], state: { exit: 0, secs: 14, at: now - 26 * 60 * M } }),
-        A("shared:Migrate db", "Migrate db", "npm run db:migrate", "shared", { suggest: ["migrations/**"], state: actSuggestQ ? { exit: 1, secs: 3, at: now - 0.5 * M } : { exit: 0, secs: 4, at: now - 3 * 60 * M } }),
-        A("shared:Test", "Test", "npm test", "shared", { suggest: ["src/**"], state: actSuggestQ ? { running: true, since: now - 8000 } : { exit: 1, secs: 41, at: now - 2 * 60 * M } }),
-        A("shared:API", "API", "npm run dev:api", "shared", { keep: true, suggest: ["server/**"], state: { running: true, since: now - 42 * M, port: 4000 } }),
+        A("shared:Install", "Install", "npm ci", "shared", { ask: true, state: { exit: 0, secs: 14, at: now - 26 * 60 * M } }),
+        A("shared:Test", "Test", "npm test", "shared", { state: actSuggestQ ? { running: true, since: now - 8000 } : { exit: 1, secs: 41, at: now - 2 * 60 * M } }),
+        A("shared:API", "API", "npm run dev:api", "shared", { keep: true, state: { running: true, since: now - 42 * M, port: 4000 } }),
         A("local:Web", "Web", "npm run dev -- --port 5173", "local", { keep: true, state: actRunQ ? { running: true, since: now - 9 * M, port: 5173 } : { exit: 0, secs: 3100, at: now - 20 * 60 * M } }),
-        A("local:Clean cache", "Clean cache", "rm -rf node_modules/.cache .next", "local", { ask: true }),
-        A("package.json:lint", "lint", "npm run lint", "package.json", { pinned: true }),
-        A("package.json:build", "build", "npm run build", "package.json"),
-        A("package.json:typecheck", "typecheck", "npm run typecheck", "package.json", { allowed: false }),
-        A("Makefile:release", "release", "make release", "Makefile", { hidden: true }),
       ] } : folder.endsWith("/order-engine") ? { files: { shared: true, local: false, localIgnored: null }, actions: [
-        A("shared:Install", "Install", "uv sync", "shared", { ask: true, suggest: ["pyproject.toml", "uv.lock"] }),
+        A("shared:Install", "Install", "uv sync", "shared", { ask: true }),
         A("shared:Test", "Test", "uv run pytest -q", "shared", { suggest: ["router/**", "tests/**"], state: { exit: 0, secs: 22, at: now - 50 * M } }),
       ] } : { files: { shared: false, local: false, localIgnored: null }, actions: [] };
       const actList = (folder) => { const f = actOf(folder); return structuredClone({ actions: f.actions, files: f.files, pending: f.actions.filter((a) => !a.allowed).map((a) => ({ id: a.id, name: a.name, run: a.run, source: a.source, why: a.was ? "changed" : "new", ...(a.was ? { was: a.was } : {}) })), prompt: actPrompt.text || "Look at this project and set up its Cue actions in .cue/actions.json (shared with the repo) and .cue/actions.local.json (only for me). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why." }); };
-      const actGlob = (g) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*")}$`);
       const actLogText = (a) => a.name === "Test" ? "> agent-relay@1.4.0 test\n> vitest run\n\n ✓ src/board.test.ts (12)\n ✓ src/list.test.ts (8)\n ✗ src/spend.test.ts (3)\n   × sums each executor's usage\n     expected 1.32 to equal 1.31\n\n Test Files  1 failed | 2 passed (3)\n      Tests  1 failed | 22 passed (23)" : a.name === "Migrate db" ? "> npm run db:migrate\nApplying 0042_add_spend.sql…\nerror: column \"spend\" already exists\nMigration failed: nothing was applied." : a.keep ? `> ${a.run}\n\n  VITE v5.4.2  ready in 412 ms\n\n  ➜  Local:   http://localhost:${a.state.port || 5173}/\n  ➜  Network: use --host to expose\n${Array.from({ length: 30 }, (_, n) => `[${n}:0${n % 10}] GET /api/board 200 ${12 + n}ms`).join("\n")}` : `> ${a.run}\n\nadded 812 packages in 14s`;
       function fakeActions(cmd, args) {
         if (cmd === "actions_running") {
           ["/Users/me/code/agent-relay", "/Users/me/code/order-engine"].forEach(actOf);
           const rs = Object.entries(actFx).flatMap(([folder, f]) => f.actions.filter((a) => a.state.running && a.keep).map((a) => ({ folder, machine: "", project: folder.split("/").pop(), branch: "main", checkout: folder.split("/").pop(), id: a.id, name: a.name, port: a.state.port || null, since: a.state.since })));
           // ?worktrees=1: a worktree of agent-relay runs its own dev server too.
-          if (q.has("worktrees")) rs.push({ folder: "/Users/me/code/agent-relay-fix", machine: "", project: "agent-relay", branch: "fix-spend", checkout: "agent-relay-fix", id: "package.json:dev", name: "dev", port: 5174, since: Date.now() - 6 * 60000 });
+          if (q.has("worktrees")) rs.push({ folder: "/Users/me/code/agent-relay-fix", machine: "", project: "agent-relay", branch: "fix-spend", checkout: "agent-relay-fix", id: "local:Web", name: "Web", port: 5174, since: Date.now() - 6 * 60000 });
           return rs;
         }
         if (cmd === "project_for_folder") {
@@ -266,7 +259,6 @@
         const f = actOf(args.folder), a = f.actions.find((x) => x.id === args.id);
         switch (cmd) {
           case "actions_list": return actList(args.folder);
-          case "actions_suggest": return f.actions.filter((x) => !x.hidden).flatMap((x) => { const hit = args.paths.find((p) => x.suggest.some((g) => actGlob(g).test(p))); return hit ? [{ id: x.id, name: x.name, why: hit }] : []; });
           case "actions_allow": for (const x of f.actions) if (args.ids.includes(x.id)) { x.allowed = true; delete x.was; } return actList(args.folder);
           case "actions_run": case "actions_restart": {
             if (!a.allowed) throw "Allow it first";
@@ -285,8 +277,6 @@
             return actList(args.folder);
           }
           case "actions_delete": f.actions = f.actions.filter((x) => x.id !== args.id); return actList(args.folder);
-          case "actions_pin": a.pinned = args.pinned; return actList(args.folder);
-          case "actions_hide": a.hidden = args.hidden; return actList(args.folder);
         }
       }
       // ?trust=1: once agent-relay's actions are read, its agent adds one and changes another (an "actions" event).

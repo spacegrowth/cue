@@ -1,14 +1,13 @@
 //! Actions: a project's buttons for its developer commands (install, test, clean a cache, start a dev
-//! server). They belong to the project (a folder, and the machine it's on for a remote session), not to a
-//! session: they run any time, an agent working or not. Written down in the project's .cue/actions.json
-//! (shared with the repo) and .cue/actions.local.json (yours), and found in its package.json, justfile
-//! and Makefile (files.rs). Cue runs them in tmux (run.rs), so a server it started is never lost.
+//! server), usually two or three. They belong to the project (a folder, and the machine it's on for a
+//! remote session), not to a session: they run any time, an agent working or not. Written down in the
+//! project's .cue/actions.json (shared with the repo) and .cue/actions.local.json (yours) (files.rs).
+//! Cue runs them in tmux (run.rs), so a server it started is never lost.
 //!
 //! Nothing from a file runs before you allow it, and a changed command asks again: what you allowed is
 //! kept in Cue's own folder (never in the project, so a repo can't allow itself), per project, with what
 //! each one ran, so the trust sheet can show the old command beside the new. Actions you save in Cue's
-//! edit sheet are allowed by being saved. Pinned and hidden found ones, and each action's last run, are
-//! kept there too. Every run is logged to actions.log in Cue's folder.
+//! edit sheet are allowed by being saved. Each action's last run is kept there too. Every run is logged to actions.log in Cue's folder.
 //!
 //! The window hears "actions" ({folder, machine}) whenever a project's actions or their states change:
 //! states are looked at every second while something runs (a machine's every 3), and the files of the
@@ -82,7 +81,7 @@ fn store_path() -> std::path::PathBuf {
 /// Held while the record is read and written back, so two changes never lose one.
 static STORE: Mutex<()> = Mutex::new(());
 
-/// Every project's record: {"<machine>|<folder>": {allowed: {id: what it ran}, pinned: [id], hidden: [id], last: {id: {exit, secs, at}}}}.
+/// Every project's record: {"<machine>|<folder>": {allowed: {id: what it ran}, last: {id: {exit, secs, at}}}}.
 fn store() -> Value {
     std::fs::read_to_string(store_path()).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).filter(Value::is_object).unwrap_or_else(|| json!({}))
 }
@@ -108,19 +107,6 @@ fn edit_record(folder: &str, machine: &str, f: impl FnOnce(&mut Value)) {
     if std::fs::write(&tmp, serde_json::to_string_pretty(&all).unwrap_or_default() + "\n").is_ok() {
         let _ = std::fs::rename(&tmp, &path);
     }
-}
-
-fn ids_in(rec: &Value, list: &str) -> HashSet<String> {
-    rec[list].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect()
-}
-
-/// Add or take out `id` in one of the record's lists.
-fn set_in(rec: &mut Value, list: &str, id: &str, on: bool) {
-    let mut ids: Vec<String> = rec[list].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).filter(|i| i != id).collect();
-    if on {
-        ids.push(id.to_string());
-    }
-    rec[list] = json!(ids);
 }
 
 fn allow(rec: &mut Value, a: &Action) {
@@ -161,14 +147,12 @@ fn read_folder(folder: &str, machine: &str) -> Result<files::Folder, String> {
         let mine = mine_dir(folder, machine);
         for name in files::FILES {
             let p = if name == files::LOCAL { std::path::Path::new(&mine).join(name) } else { dir.join(name) };
-            // (A case-insensitive disk has "justfile" and "Justfile" as one: once.)
-            if p.is_file() && !f.texts.iter().any(|(n, _)| n.eq_ignore_ascii_case(name)) {
+            if p.is_file() {
                 if let Ok(b) = std::fs::read(&p) {
                     f.texts.push((name.to_string(), String::from_utf8_lossy(&b[..b.len().min(files::FILE_MAX)]).to_string()));
                 }
             }
         }
-        f.locks = files::LOCKS.iter().filter(|l| dir.join(l).exists()).map(|l| l.to_string()).collect();
         f.local_ignored = match crate::safe_git::run("", folder, &[], &["check-ignore", "-q", "--", files::LOCAL]) {
             Ok((_, 0)) => Some(true),
             Ok((_, 1)) => Some(false),
@@ -179,11 +163,10 @@ fn read_folder(folder: &str, machine: &str) -> Result<files::Folder, String> {
     let host = crate::machines::get(machine).ok_or_else(|| format!("{machine} isn't one of your machines any more (+ New → Machine)"))?.host;
     let git = crate::safe_git::sh_words(&crate::safe_git::words(".", &[], &["check-ignore", "-q", "--", files::LOCAL]));
     let script = format!(
-        "cd {} 2>/dev/null || {{ echo '@@cue-nodir'; exit 0; }}\nfor f in {}; do [ -f \"$f\" ] && {{ printf '\\n@@cue-file %s\\n' \"$f\"; head -c {} \"$f\"; }}; done\nfor f in {}; do [ -e \"$f\" ] && printf '\\n@@cue-lock %s\\n' \"$f\"; done\n{git} >/dev/null 2>&1; printf '\\n@@cue-ignored %s\\n' $?\n",
+        "cd {} 2>/dev/null || {{ echo '@@cue-nodir'; exit 0; }}\nfor f in {}; do [ -f \"$f\" ] && {{ printf '\\n@@cue-file %s\\n' \"$f\"; head -c {} \"$f\"; }}; done\n{git} >/dev/null 2>&1; printf '\\n@@cue-ignored %s\\n' $?\n",
         crate::machines::remote_dir(folder),
         files::FILES.iter().map(|f| crate::terminal::focus::shq(f)).collect::<Vec<_>>().join(" "),
         files::FILE_MAX,
-        files::LOCKS.join(" "),
     );
     let out = crate::machines::run(&host, &script)?;
     if out.trim_start().starts_with("@@cue-nodir") {
@@ -198,11 +181,9 @@ fn parse_remote(out: &str) -> files::Folder {
     for chunk in out.split("\n@@cue-").skip(1) {
         let (head, body) = chunk.split_once('\n').unwrap_or((chunk, ""));
         if let Some(name) = head.strip_prefix("file ") {
-            if files::FILES.contains(&name) && !f.texts.iter().any(|(n, _)| n.eq_ignore_ascii_case(name)) {
+            if files::FILES.contains(&name) {
                 f.texts.push((name.to_string(), body.to_string()));
             }
-        } else if let Some(name) = head.strip_prefix("lock ") {
-            f.locks.push(name.trim().to_string());
         } else if let Some(code) = head.strip_prefix("ignored ") {
             f.local_ignored = match code.trim() {
                 "0" => Some(true),
@@ -212,12 +193,6 @@ fn parse_remote(out: &str) -> files::Folder {
         }
     }
     f
-}
-
-/// A found one that keeps running, by its name: a dev server or a watcher.
-fn keeps_running(name: &str) -> bool {
-    let n = name.to_ascii_lowercase();
-    ["dev", "start", "serve", "watch", "storybook"].iter().any(|w| n == *w || n.starts_with(&format!("{w}:")) || n.starts_with(&format!("{w}-")))
 }
 
 /// A project's actions, in order: the shared file's, yours, then the found ones not already there. And
@@ -241,11 +216,6 @@ fn gather(folder: &str, machine: &str) -> Result<Gathered, String> {
             None => {}
         }
     }
-    let mut found = files::dedupe(&actions, files::found(&f));
-    for a in &mut found {
-        a.keep = keeps_running(&a.name);
-    }
-    actions.extend(found);
     Ok(Gathered { actions, folder: f, errors })
 }
 
@@ -334,21 +304,16 @@ fn listing(folder: &str, machine: &str) -> Result<Value, String> {
         note_ended(s);
     }
     let rec = record(folder, machine);
-    let (pinned, hidden) = (ids_in(&rec, "pinned"), ids_in(&rec, "hidden"));
     let mut actions = vec![];
     let mut pending = vec![];
     for a in &g.actions {
         let id = a.id();
         let ok = allowed(&rec, a);
-        let mut v = json!({
-            "id": id, "name": a.name, "run": a.run, "source": a.source, "keep": a.keep, "ask": a.ask, "suggest": a.suggest,
-            "pinned": pinned.contains(&id), "hidden": hidden.contains(&id), "allowed": ok, "state": state_of(a, folder, machine, &seen, &rec),
-        });
-        if let Some(s) = &a.script {
-            v["script"] = json!(s);
-        }
-        actions.push(v);
-        if !ok && !hidden.contains(&id) {
+        actions.push(json!({
+            "id": id, "name": a.name, "run": a.run, "source": a.source, "keep": a.keep, "ask": a.ask,
+            "allowed": ok, "state": state_of(a, folder, machine, &seen, &rec),
+        }));
+        if !ok {
             let was = rec["allowed"][&id].as_str();
             let mut p = json!({ "id": id, "name": a.name, "run": a.trusted(), "why": if was.is_some() { "changed" } else { "new" }, "source": a.source });
             if let Some(w) = was {
@@ -414,7 +379,7 @@ fn stamp(folder: &str) -> u64 {
     let dir = std::path::Path::new(folder);
     let mut s = String::new();
     let mine = mine_dir(folder, "");
-    for f in files::FILES.iter().chain(files::LOCKS.iter()) {
+    for f in files::FILES.iter() {
         let at = if *f == files::LOCAL { std::path::Path::new(&mine).join(f) } else { dir.join(f) };
         if let Ok(m) = std::fs::metadata(at) {
             let t = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0);
@@ -589,8 +554,6 @@ pub struct Edited {
     pub keep: bool,
     #[serde(default)]
     pub ask: bool,
-    #[serde(default)]
-    pub suggest: Vec<String>,
 }
 
 /// Save an action from Cue's edit sheet into the shared file or yours (`keep`), in place of `old_id`
@@ -609,8 +572,7 @@ fn save(folder: &str, machine: &str, e: Edited, keep: &str, old_id: Option<&str>
     if run.is_empty() || run.contains('\n') || run.len() > 2000 {
         return Err("The command is one line".into());
     }
-    let suggest: Vec<String> = e.suggest.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-    let a = Action { source: source.into(), name, run, keep: e.keep, ask: e.ask, suggest, script: None };
+    let a = Action { source: source.into(), name, run, keep: e.keep, ask: e.ask };
     let g = gather(folder, machine)?;
     let old = old_id.and_then(|o| o.split_once(':')).filter(|(s, _)| matches!(*s, "shared" | "local"));
     let same_file_old = old.filter(|(s, _)| *s == source).map(|(_, n)| n);
@@ -637,41 +599,21 @@ fn save(folder: &str, machine: &str, e: Edited, keep: &str, old_id: Option<&str>
     listing(folder, machine)
 }
 
-/// Delete a file's action (from its file); a found one is hidden instead.
+/// Delete an action from its file.
 fn delete(folder: &str, machine: &str, id: &str) -> Result<Value, String> {
     let g = gather(folder, machine)?;
     let a = find(&g, id)?;
-    if a.found() {
-        edit_record(folder, machine, |rec| set_in(rec, "hidden", id, true));
-    } else {
-        let file = if a.source == "shared" { files::SHARED } else { files::LOCAL };
-        let t = files::without_action(g.folder.text(file), &a.name)?;
-        write_file(folder, machine, file, &t)?;
-        edit_record(folder, machine, |rec| {
-            if let Some(m) = rec["allowed"].as_object_mut() {
-                m.remove(id);
-            }
-        });
-        log(folder, machine, &a.name, "deleted");
-    }
+    let file = if a.source == "shared" { files::SHARED } else { files::LOCAL };
+    let t = files::without_action(g.folder.text(file), &a.name)?;
+    write_file(folder, machine, file, &t)?;
+    edit_record(folder, machine, |rec| {
+        if let Some(m) = rec["allowed"].as_object_mut() {
+            m.remove(id);
+        }
+    });
+    log(folder, machine, &a.name, "deleted");
     changed(folder, machine);
     listing(folder, machine)
-}
-
-/// The actions whose `suggest` patterns match a file a turn changed: {id, name, why} (why: the first
-/// such file, relative to the project).
-fn suggest(folder: &str, machine: &str, paths: &[String]) -> Result<Vec<Value>, String> {
-    let g = gather(folder, machine)?;
-    let hidden = ids_in(&record(folder, machine), "hidden");
-    let rel: Vec<String> = paths.iter().map(|p| files::relative(folder, p)).filter(|p| !p.is_empty()).collect();
-    Ok(g.actions
-        .iter()
-        .filter(|a| !hidden.contains(&a.id()))
-        .filter_map(|a| {
-            let why = rel.iter().find(|p| a.suggest.iter().any(|pat| files::glob(pat, p)))?;
-            Some(json!({ "id": a.id(), "name": a.name, "why": why }))
-        })
-        .collect())
 }
 
 /// Every running action, across projects: this Mac's, and those on machines Cue has seen actions on.
@@ -815,43 +757,10 @@ pub async fn actions_delete(folder: String, machine: Option<String>, id: String)
     off(move || delete(&folder, &mach(machine), &id)).await
 }
 
-/// Pin a found one (or not). The list again.
-#[tauri::command]
-pub async fn actions_pin(folder: String, machine: Option<String>, id: String, pinned: bool) -> Result<Value, String> {
-    let folder = top(folder, &machine);
-    off(move || {
-        let m = mach(machine);
-        edit_record(&folder, &m, |rec| set_in(rec, "pinned", &id, pinned));
-        changed(&folder, &m);
-        listing(&folder, &m)
-    })
-    .await
-}
-
-/// Hide one (or show it again). The list again.
-#[tauri::command]
-pub async fn actions_hide(folder: String, machine: Option<String>, id: String, hidden: bool) -> Result<Value, String> {
-    let folder = top(folder, &machine);
-    off(move || {
-        let m = mach(machine);
-        edit_record(&folder, &m, |rec| set_in(rec, "hidden", &id, hidden));
-        changed(&folder, &m);
-        listing(&folder, &m)
-    })
-    .await
-}
-
 /// Every running action: [{folder, machine, project, branch, checkout, id, name, port, since}].
 #[tauri::command]
 pub async fn actions_running() -> Result<Vec<Value>, String> {
     off(|| Ok(running())).await
-}
-
-/// The actions to offer under a reply whose turn changed `paths`: [{id, name, why}].
-#[tauri::command]
-pub async fn actions_suggest(folder: String, machine: Option<String>, paths: Vec<String>) -> Result<Vec<Value>, String> {
-    let folder = top(folder, &machine);
-    off(move || suggest(&folder, &mach(machine), &paths)).await
 }
 
 /// The project a folder belongs to (+ New's Project line): {name, own, how: "put"|"repo-says"|"repo"|
@@ -942,47 +851,13 @@ mod tests {
     }
 
     #[test]
-    fn found_actions_are_listed_once_ask_for_their_script_and_can_be_pinned_or_hidden() {
-        let s = Scratch::new("found");
-        s.write("package.json", r#"{"scripts": {"dev": "vite", "test": "vitest", "build": "vite build"}}"#);
-        s.write("pnpm-lock.yaml", "");
-        s.write(files::LOCAL, r#"{"actions": [{"name": "Test", "run": "pnpm vitest run"}]}"#);
-        let v = listing(&s.project, "").unwrap();
-        let ids: Vec<&str> = v["actions"].as_array().unwrap().iter().map(|a| a["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["local:Test", "package.json:dev", "package.json:build"], "test is in the local file already");
-        assert_eq!(v["actions"][1]["run"], "pnpm run dev");
-        assert_eq!(v["actions"][1]["keep"], true, "dev keeps running");
-        assert_eq!(v["actions"][2]["keep"], false);
-        assert_eq!(v["files"]["local"], true);
-        assert_eq!(v["files"]["shared"], false);
-        let p = pending_of(&v);
-        assert_eq!(p.len(), 3);
-        assert_eq!(v["pending"][1]["run"], "vite", "a found one asks for what it really runs");
-        actions_hide_now(&s.project, "package.json:build", true);
-        actions_pin_now(&s.project, "package.json:dev", true);
-        let v = listing(&s.project, "").unwrap();
-        assert_eq!(v["actions"][1]["pinned"], true);
-        assert_eq!(v["actions"][2]["hidden"], true);
-        assert_eq!(pending_of(&v).len(), 2, "a hidden one doesn't ask");
-        assert!(delete(&s.project, "", "package.json:dev").is_ok());
-        assert_eq!(listing(&s.project, "").unwrap()["actions"][1]["hidden"], true, "deleting a found one hides it");
-    }
-
-    fn actions_hide_now(folder: &str, id: &str, on: bool) {
-        edit_record(folder, "", |rec| set_in(rec, "hidden", id, on));
-    }
-    fn actions_pin_now(folder: &str, id: &str, on: bool) {
-        edit_record(folder, "", |rec| set_in(rec, "pinned", id, on));
-    }
-
-    #[test]
     fn saving_writes_the_file_allows_it_and_moves_it_between_files() {
         let s = Scratch::new("save");
         s.write(files::SHARED, "{\n  \"about\": [\"ours\"],\n  \"actions\": [{\"name\": \"Lint\", \"run\": \"npm run lint\", \"x\": 1}]\n}\n");
-        let v = save(&s.project, "", Edited { name: "API".into(), run: "npm run dev:api".into(), keep: true, suggest: vec!["server/**".into()], ..Default::default() }, "local", None).unwrap();
+        let v = save(&s.project, "", Edited { name: "API".into(), run: "npm run dev:api".into(), keep: true, ..Default::default() }, "local", None).unwrap();
         let local: Value = serde_json::from_str(&std::fs::read_to_string(std::path::Path::new(&s.project).join(files::LOCAL)).unwrap()).unwrap();
         assert_eq!(local["about"], json!(files::ABOUT), "a new file gets Cue's notes");
-        assert_eq!(local["actions"][0], json!({"name": "API", "run": "npm run dev:api", "keep": true, "suggest": ["server/**"]}));
+        assert_eq!(local["actions"][0], json!({"name": "API", "run": "npm run dev:api", "keep": true}));
         let api = v["actions"].as_array().unwrap().iter().find(|a| a["id"] == "local:API").unwrap();
         assert_eq!(api["allowed"], true, "saved is allowed");
         // Edit Lint into the local file: it leaves the shared one, which keeps its notes.
@@ -997,15 +872,6 @@ mod tests {
     }
 
     #[test]
-    fn a_turns_changed_files_suggest_the_actions_that_watch_them() {
-        let s = Scratch::new("suggest");
-        s.write(files::SHARED, r#"{"actions": [{"name": "Install", "run": "npm ci", "suggest": ["package.json", "package-lock.json"]}, {"name": "Migrate", "run": "x", "suggest": ["db/migrations/*.sql"]}, {"name": "API", "run": "y", "suggest": ["server/**"]}]}"#);
-        let got = suggest(&s.project, "", &[format!("{}/server/routes/a.ts", s.project), "README.md".into(), "package.json".into()]).unwrap();
-        assert_eq!(got, [json!({"id": "shared:Install", "name": "Install", "why": "package.json"}), json!({"id": "shared:API", "name": "API", "why": "server/routes/a.ts"})]);
-        assert!(suggest(&s.project, "", &["db/migrations/old/1.sql".into(), "/elsewhere/package.json".into()]).unwrap().is_empty());
-    }
-
-    #[test]
     fn the_prompt_is_cues_until_you_write_your_own() {
         let _s = Scratch::new("prompt");
         assert_eq!(prompt(), PROMPT);
@@ -1016,13 +882,11 @@ mod tests {
 
     #[test]
     fn a_machines_files_are_read_from_one_trips_output() {
-        let out = "login noise\n@@cue-file .cue/actions.json\n{\"actions\": []}\n@@cue-file package.json\n{\"scripts\": {\"a\": \"b\"}}\n@@cue-lock yarn.lock\n\n@@cue-ignored 1\n";
+        let out = "login noise\n@@cue-file .cue/actions.json\n{\"actions\": []}\n@@cue-file package.json\n{}\n\n@@cue-ignored 1\n";
         let f = parse_remote(out);
         assert_eq!(f.text(files::SHARED), Some("{\"actions\": []}"));
-        assert_eq!(f.text("package.json"), Some("{\"scripts\": {\"a\": \"b\"}}"));
-        assert_eq!(f.locks, ["yarn.lock"]);
+        assert_eq!(f.text("package.json"), None, "only the two files");
         assert_eq!(f.local_ignored, Some(false));
-        assert_eq!(files::found(&f)[0].run, "yarn run a");
     }
 
     fn tmux_here(args: &[&str]) -> String {

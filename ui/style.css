@@ -2048,8 +2048,6 @@ button.ins-n { cursor: pointer; }
 .cv-acts:has(.ac-sugs) { flex-wrap: wrap; row-gap: 6px; }
 .ac-sugs { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; }
 .ac-sug { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ac-sug .ac-why { font-weight: 500; color: var(--muted); }
-.ac-sug:hover .ac-why { color: inherit; }
 .ac-sug.on .ac-live { background: currentColor; }
 .ac-sug.bad { color: var(--deny); }
 .ac-sug.wait { color: var(--muted); background: transparent; border-style: dashed; }

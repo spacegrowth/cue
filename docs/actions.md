@@ -1,7 +1,7 @@
 # Actions
 
 Actions are a project's buttons for its developer commands: install, test, clean a cache, start a dev
-server. They belong to the project (its folder, and the machine it's on for a session there), not to a
+server. A project usually has two or three, so you run them yourself instead of asking the agent to. They belong to the project (its folder, and the machine it's on for a session there), not to a
 session: they run any time, whether an agent is working or not, and whether a session is open or not.
 
 Cue runs each one in a tmux session of its own, so a server it started keeps running when Cue quits or
@@ -12,12 +12,12 @@ Cue's own and ends when Cue quits. A session's actions on another machine run th
 
 - **⌘E** opens the actions of the open project: type to find one, **Return** runs it (or restarts one
   that's running), **⌘Return** runs it and opens its output. **⌘⇧E** runs the last action again.
-- The **Actions** tab of an open session lists them all: running, the project's, yours, and the ones
-  Cue found, each with its last run. A failed run shows its last lines.
+- Under the agent's latest reply, each action is a button. Click one to run it; the button then says
+  how it's going ("Installing… 8s", "✓ Install · 12s", "✗ Test · exit 1": click it for its output).
+- The **Actions** tab of an open session lists them all: running, the project's and yours, each with
+  its last run. A failed run shows its last lines.
 - A project's chip in the top bar gets a dot for each action running in it; click the dots for Log,
   Restart and Stop, and to run the rest.
-- Under an agent's reply, Cue offers the actions whose files that turn changed ("Install · package.json
-  changed").
 
 ## Which project a session is in
 
@@ -59,8 +59,8 @@ Both have the same shape:
     "..."
   ],
   "actions": [
-    { "name": "Install", "run": "npm ci", "suggest": ["package.json", "package-lock.json"], "ask": true },
-    { "name": "API", "run": "npm run dev:api", "keep": true, "suggest": ["server/**"] }
+    { "name": "Install", "run": "npm ci", "ask": true },
+    { "name": "API", "run": "npm run dev:api", "keep": true }
   ]
 }
 ```
@@ -68,8 +68,6 @@ Both have the same shape:
 - `name` and `run` (one line, run by your login shell in the project's folder) are all an action needs.
 - `"keep": true` for a server or a watcher that keeps running: Cue shows its port (read from what it
   prints, such as `http://localhost:5173`), and Restart and Stop.
-- `suggest` lists files whose change in an agent's turn offers the action under the reply. `*` matches
-  within one folder, `**` any number of folders; a plain path matches that file only.
 - `"ask": true` for a command that could trip an agent working in the project (an install, a clean):
   run while that project's session is working, Cue asks whether to run it now or after the turn.
 
@@ -79,22 +77,10 @@ into a new file, and keeps a file's own notes and any keys it doesn't know when 
 You can also add, change and delete actions in Cue: **+ New action** or the edit button on one, in the
 Actions tab. It shows the line it writes, and you choose which file it goes in.
 
-## Found actions
-
-Cue also lists what it finds in the project's own files:
-
-- `package.json` scripts, run with the package manager its lockfile names (`pnpm-lock.yaml`: pnpm,
-  `yarn.lock`: yarn, `bun.lockb` or `bun.lock`: bun, else npm): `npm run test`.
-- `justfile` recipes: `just test`.
-- `Makefile` targets: `make clean` (plain targets only, not `.PHONY`, patterns or variables).
-
-One with the same name or command as an action in the files isn't listed twice. Pin the ones you use,
-hide the ones you don't, or edit one to copy it into your own file.
-
 ## Trust
 
 Cue never runs a command from a file before you allow it. The first time a project's actions are
-listed, and whenever one is added or its command changes (a found one's: its script), Cue shows them,
+listed, and whenever one is added or its command changes, Cue shows them,
 the old command struck through beside a changed one, and runs nothing until you click **Allow**. What
 you allowed is kept in Cue's own folder, never in the project, so a repository can't allow its own.
 Actions you save in Cue's edit sheet are allowed by being saved.

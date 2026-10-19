@@ -1,18 +1,16 @@
 // Cue UI — actions: a project's own buttons for its developer commands (install, test, clean a cache, a dev
 // server). They belong to the project (its folder, and its machine for a remote session), not to a session:
 // they run any time, an agent working or not. Cue runs each in tmux (actions.rs), so a server it started is
-// never lost. Where they show: ⌘E (a palette over the window; ⌘⇧E runs the last one again), under an agent's
-// reply (the ones its changed files suggest), dots on the project chips in the header for what's running (a
-// click: their popover), and the Actions tab in the open session's tab row (every one, to run, edit, pin or
-// hide). Actions from files (the repo's, yours, or found in package.json, a justfile or a Makefile) run only
-// once you've allowed them (the trust sheet), and again whenever their command changes.
+// never lost. A project has a few (two or three, in its .cue/actions.json and .cue/actions.local.json). Where
+// they show: as buttons under the agent's latest reply, ⌘E (a palette over the window; ⌘⇧E runs the last one
+// again), dots on the project chips in the header for what's running (a click: their popover), and the Actions
+// tab in the open session's tab row (every one, to run and edit). A command from a file runs only once you've
+// allowed it (the trust sheet), and again whenever it changes.
 const actLists = new Map();     // `${machine}|${folder}` → { at, data, loading, err }: actions_list
 let actRunning = [], actRunningAt = 0;   // actions_running(): what runs now in every project (the chips' dots)
-const actSuggests = new Map();  // session id → { pk, list }: actions_suggest for the files its last turn changed
 const actTails = new Map();     // `${key}|${id}|${at}` → the last lines of a failed run, under its row
 const actQueued = new Map();    // session id → [{ pl, id, log }]: "After this turn", run when its turn ends
 const actTabOn = new Set();     // sessions showing the Actions tab
-const actHiddenOpen = new Set(); // projects whose hidden found actions are listed
 let actPal = null;              // ⌘E: { pl, sel, shown } while open
 let actPop = null;              // a chip's dots clicked: { project, where }
 let actEdit = null;             // the edit sheet: { pl, oldId, keep, ask, scope, copied }
@@ -24,8 +22,7 @@ let actPromptInit = false;      // Settings → Actions has put the prompt in it
 const ACT_FRESH = 10000, ACT_FRESH_REMOTE = 60000;
 /** Cue's own prompt, shown when no project has been read yet (the backend keeps the one in use). */
 const ACT_PROMPT = "Look at this project and set up its Cue actions in .cue/actions.json (shared with the repo) and .cue/actions.local.json (only for me). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
-const ACT_SOURCES = [["shared", "THIS PROJECT", ".cue/actions.json · shared with the repo"], ["local", "MINE", ".cue/actions.local.json · only you"], ["package.json", "FROM PACKAGE.JSON", "found"], ["justfile", "FROM JUSTFILE", "found"], ["Makefile", "FROM MAKEFILE", "found"]];
-const actFound = (a) => !["shared", "local"].includes(a?.source);
+const ACT_SOURCES = [["shared", "THIS PROJECT", ".cue/actions.json · shared with the repo"], ["local", "MINE", ".cue/actions.local.json · only you"]];
 
 // ---------- where: a project's actions are in a checkout (a folder, and a machine) ----------
 const actKey = (pl) => `${pl.machine || ""}|${pl.folder}`;
@@ -68,7 +65,7 @@ function actSessionOn(pl) {
 /** A session in that folder mid-turn (an "ask" action then asks first). */
 const actWorking = (pl) => state.sessions.find((x) => x.cwd && actFolder(x.cwd, x.machine) === pl.folder && (x.machine || "") === pl.machine && x.state === "working") || null;
 
-// ---------- what Cue knows: the list, what runs, what a turn suggests ----------
+// ---------- what Cue knows: the list, and what runs ----------
 /** A project's actions (actions_list), read when first wanted and again when stale; null until in. */
 function actData(pl, force = false, why = "") {
   if (!pl?.folder) return null;
@@ -86,11 +83,11 @@ function actData(pl, force = false, why = "") {
 function actTake(pl, v, why = "") {
   if (!v || !Array.isArray(v.actions)) return actData(pl, true);
   const c = actLists.get(actKey(pl)) || { at: Date.now(), loading: false, err: "" };
-  const before = c.data ? new Set(actFilePending(c.data).map((p) => `${p.id}|${p.run}`)) : null;
+  const before = c.data ? new Set((c.data.pending || []).map((p) => `${p.id}|${p.run}`)) : null;
   c.data = v;
   c.at = Date.now();
   actLists.set(actKey(pl), c);
-  const fresh = actFilePending(v).filter((p) => !before?.has(`${p.id}|${p.run}`));
+  const fresh = (v.pending || []).filter((p) => !before?.has(`${p.id}|${p.run}`));
   if (why === "event" && before && fresh.length && !sheet) { actTrust = { pl, then: null, changed: !!actSessionOn(pl) }; sheet = "act-trust"; }
   renderMain();
 }
@@ -98,9 +95,6 @@ function actRunningLoad() {
   actRunningAt = Date.now();
   invoke("actions_running").then((v) => { actRunning = Array.isArray(v) ? v : []; renderMain(); }, () => {});
 }
-/** What waits for your OK in a list, all at once: what the project's own action files bring. A script Cue found
- *  (package.json, justfile, Makefile) asks for itself at its first run, so a long package.json isn't a wall. */
-const actFilePending = (d) => (d?.pending || []).filter((p) => p.source === "shared" || p.source === "local");
 const actFind = (pl, id) => actLists.get(actKey(pl))?.data?.actions.find((a) => a.id === id) || null;
 const actIsQueued = (pl, id) => [...actQueued.values()].some((l) => l.some((q) => q.id === id && actKey(q.pl) === actKey(pl)));
 // Cue says a project's states or files changed: read it again, and what runs everywhere.
@@ -108,7 +102,6 @@ T.event.listen("actions", (e) => {
   const p = e.payload || {}, pl = actPlaceAt(p.folder || "", p.machine || "");
   actRunningLoad();
   if (actLists.has(actKey(pl))) actData(pl, true, "event");
-  for (const [sid] of actSuggests) { const x = sessionOf(sid); if (x?.cwd && actFolder(x.cwd, x.machine) === pl.folder) actSuggests.delete(sid); }
 });
 /** Called with each new state, before it's taken: a session that was working and isn't any more ended its
  *  turn, so what you put off until then runs now. */
@@ -259,10 +252,10 @@ function actEditAll(pl) {
 }
 
 // ---------- C · ⌘E ----------
-/** What ⌘E lists: what runs first, then the project's, yours, pinned found ones, the other found ones. */
+/** What ⌘E lists: what runs first, then the project's, then yours. */
 function actPalList(d) {
-  const rank = (a) => (a.state?.running ? 0 : a.source === "shared" ? 1 : a.source === "local" ? 2 : a.pinned ? 3 : 4);
-  return d.actions.filter((a) => !a.hidden).map((a, i) => [a, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(([a]) => a);
+  const rank = (a) => (a.state?.running ? 0 : a.source === "shared" ? 1 : 2);
+  return d.actions.map((a, i) => [a, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(([a]) => a);
 }
 function actPalToggle() {
   if (actPal) { actPal = null; renderMain(); return focusComposer(); }
@@ -284,7 +277,7 @@ function actPalette() {
   const row = (a, n) => {
     const st = a.state || {}, last = actLastRun(st);
     const right = st.running ? `<span class="ac-st on">${actUp(st)}</span><span class="ac-hint">↵ restart</span>`
-      : !a.allowed && (a.source === "shared" || a.source === "local") ? `<span class="ac-tag">NEEDS YOUR OK</span>` : last ? `<span class="ac-st ${st.exit ? "bad" : ""}">${last}</span>` : "";
+      : !a.allowed ? `<span class="ac-tag">NEEDS YOUR OK</span>` : last ? `<span class="ac-st ${st.exit ? "bad" : ""}">${last}</span>` : "";
     return `<div class="ac-prow ${n === actPal.sel ? "sel" : ""}" role="button" data-ac="run" ${acAttrs(pl, a.id)}>${st.running ? `<i class="ac-live"></i>` : `<span class="ac-play">▶</span>`}<span class="ac-pname">${esc(a.name)}</span><code class="ac-cmd">${esc(a.run)}</code><span class="grow"></span>${right}</div>`;
   };
   const body = !pl ? `<div class="ac-empty">Open a session, or pick a project at the top, to see its actions.</div>`
@@ -297,31 +290,24 @@ function actPalette() {
     <div class="lv-foot">${pl ? `<button data-ac="edit-all" ${acAttrs(pl)}>Edit actions…</button><button data-ac="ask-agent" ${acAttrs(pl)}>Ask the agent to set up actions</button>` : ""}<span class="lv-keys"><kbd>↵</kbd> run · <kbd>⌘↵</kbd> and its output · <kbd>⌘⇧E</kbd> again</span></div></div></div>`;
 }
 
-// ---------- D · under a reply ----------
-/** After the reply that ended a turn which changed files: the actions whose "suggest" patterns match them,
- *  each with why. Nothing when none match. A click runs one; the button then says how it's going. */
-function actSuggestHtml(s, at) {
-  if (!s?.changes?.files?.length || !s.cwd || s.state === "working") return "";
-  const pl = actPlace(s), sid = s.session_id;
-  const paths = s.changes.files.map((f) => f.path), pk = paths.join("\n");
-  let c = actSuggests.get(sid);
-  if (!c || c.pk !== pk) {
-    actSuggests.set(sid, (c = { pk, list: null }));
-    invoke("actions_suggest", { folder: pl.folder, machine: pl.machine, paths }).then((v) => { c.list = Array.isArray(v) ? v : []; if (c.list.length) renderMain(); }, () => { c.list = []; });
-  }
-  if (!c.list?.length) return "";
-  actData(pl);
-  return `<span class="ac-sugs"><span class="ac-div" aria-hidden="true"></span>${c.list.map((g) => actSugBtn(pl, g, at)).join("")}</span>`;
+// ---------- D · under the latest reply ----------
+/** Under the agent's latest reply: the project's actions as buttons, so you run one yourself instead of
+ *  asking the agent to. A click runs it; the button then says how it's going. */
+function actReplyHtml(s, at) {
+  if (!s?.cwd) return "";
+  const pl = actPlace(s), d = actData(pl);
+  if (!d?.actions?.length) return "";
+  return `<span class="ac-sugs"><span class="ac-div" aria-hidden="true"></span>${d.actions.map((a) => actSugBtn(pl, a, at)).join("")}</span>`;
 }
-function actSugBtn(pl, g, at) {
-  const a = actFind(pl, g.id), st = a?.state || {}, name = esc(a?.name || g.name), ids = acAttrs(pl, g.id);
-  if (actIsQueued(pl, g.id)) return `<span class="cv-pill ac-sug wait">${name} · runs after this turn</span>`;
-  if (st.running && a?.keep) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}><i class="ac-live"></i>${name} · ${actUp(st)}</button>`;
-  if (st.running) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}>${esc(actIng(a?.name || g.name))}… <span data-ago="${+st.since || now()}">${ago(+st.since || now())}</span></button>`;
+function actSugBtn(pl, a, at) {
+  const st = a.state || {}, name = esc(a.name), ids = acAttrs(pl, a.id);
+  if (actIsQueued(pl, a.id)) return `<span class="cv-pill ac-sug wait">${name} · runs after this turn</span>`;
+  if (st.running && a.keep) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}><i class="ac-live"></i>${name} · ${actUp(st)}</button>`;
+  if (st.running) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}>${esc(actIng(a.name))}… <span data-ago="${+st.since || now()}">${ago(+st.since || now())}</span></button>`;
   if (st.at && st.at >= at && st.exit != null) return st.exit === 0
     ? `<button class="cv-pill ac-sug" data-ac="log" ${ids}>✓ ${name} · ${actSecs(st.secs)}</button>`
     : `<button class="cv-pill ac-sug bad" data-ac="log" ${ids}>✗ ${name} · exit ${esc(st.exit)}</button>`;
-  return `<button class="cv-pill ac-sug" data-ac="run" ${ids}>▶ ${name}<span class="ac-why"> · ${esc(shortPath(g.why || ""))} changed</span></button>`;
+  return `<button class="cv-pill ac-sug" data-ac="run" ${ids}>▶ ${name}</button>`;
 }
 
 // ---------- E · dots on the project chips ----------
@@ -346,7 +332,7 @@ function actPopHtml() {
     return `<div class="ac-poprow"><i class="ac-live"></i><span class="ac-pname">${esc(r.name)}</span>${where ? `<span class="ac-where mono">${esc(where)}</span>` : ""}<span class="ac-st">${actUp({ port: r.port, since: r.since })}</span><span class="grow"></span>
       <button class="btn small" data-ac="log" ${ids}>Log</button><button class="btn small" data-ac="restart" ${ids}>⟳ Restart</button><button class="btn small" data-ac="stop" ${ids}>Stop</button></div>`;
   }).join("");
-  const rest = d ? d.actions.filter((a) => !a.hidden && !a.state?.running && (!actFound(a) || a.pinned)) : [];
+  const rest = d ? d.actions.filter((a) => !a.state?.running) : [];
   return `<div class="ac-pop" role="dialog" aria-label="Actions in ${esc(projLabel(p))}">
     <div class="ac-poph">RUNNING</div>${running || `<div class="ac-empty">Nothing running.</div>`}
     ${rest.length ? `<div class="ac-poph">RUN</div><div class="ac-poprun">${rest.map((a) => `<button class="cv-pill" data-ac="run" ${acAttrs(pl, a.id)}>▶ ${esc(a.name)}</button>`).join("")}</div>` : ""}
@@ -367,46 +353,40 @@ function actPage(sid) {
   if (!x?.cwd) return `<div class="ac-empty">This session has no folder Cue knows, so no actions.</div>`;
   const pl = actPlace(x), c = actLists.get(actKey(pl)), d = actData(pl);
   if (!d) return `<div class="ac-empty">${c?.err ? `Couldn't read its actions: ${esc(c.err)}` : "Reading this project's actions…"}</div>`;
-  const shown = d.actions.filter((a) => !a.hidden || actHiddenOpen.has(actKey(pl)));
-  const hidden = d.actions.filter((a) => a.hidden).length;
+  const shown = d.actions;
   const running = shown.filter((a) => a.state?.running);
   const sec = (src, head, sub) => {
     const rows = shown.filter((a) => a.source === src && !a.state?.running);
     return rows.length ? `<div class="ac-head">${head}<span>${sub}</span></div>${rows.map((a) => actRow(pl, a)).join("")}` : "";
   };
-  const fp = actFilePending(d).length;
+  const fp = (d.pending || []).length;
   const pend = fp ? `<div class="ac-note"><span>${fp === 1 ? "One action" : `${fp} actions`} from this project's files ${fp === 1 ? "needs" : "need"} your OK before ${fp === 1 ? "it runs" : "they run"}.</span><button class="btn small" data-ac="trust" ${acAttrs(pl)}>Review…</button></div>` : "";
   const ign = d.files?.local && d.files.localIgnored === false ? `<div class="ac-note"><span>Git doesn't ignore <code>.cue/actions.local.json</code>, so it could be committed. Add it to <code>.gitignore</code> to keep it yours.</span></div>` : "";
   const any = d.actions.length;
   return `<div class="ac-page">${pend}${ign}
     ${running.length ? `<div class="ac-head">RUNNING<span>${running.length}</span></div>${running.map((a) => actRow(pl, a)).join("")}` : ""}
     ${ACT_SOURCES.map(([s, h, sub]) => sec(s, h, sub)).join("")}
-    ${any ? "" : `<div class="ac-empty">No actions yet for ${esc(projLabel(pl.project))}. Add one, or ask the agent to set them up from what the project uses (package.json, a justfile, a Makefile, its README).</div>`}
-    ${hidden ? `<button class="ac-more" data-ac="hidden" ${acAttrs(pl)}>${actHiddenOpen.has(actKey(pl)) ? "Hide the hidden ones again" : `${hidden} hidden · Show them`}</button>` : ""}
+    ${any ? "" : `<div class="ac-empty">No actions yet for ${esc(projLabel(pl.project))}. Add the two or three you run most, or ask the agent to set them up from what the project uses.</div>`}
     <div class="ac-foot"><button class="btn" data-ac="new" ${acAttrs(pl)}>+ New action</button><button class="btn" data-ac="ask-agent" ${acAttrs(pl)}>Ask the agent to set up actions</button><span class="grow"></span><span class="lv-keys"><kbd>⌘E</kbd> run one from anywhere</span></div></div>`;
 }
 /** One action: its name, its command, how it last went; ▶ Run and ✎, or Log, ⟳ Restart and Stop while it runs. */
 function actRow(pl, a) {
   const st = a.state || {}, ids = acAttrs(pl, a.id), last = actLastRun(st);
-  const tags = `${a.keep ? `<span class="ac-tag">KEEPS RUNNING</span>` : ""}${a.ask ? `<span class="ac-tag">ASKS</span>` : ""}${a.pinned ? `<span class="ac-tag">PINNED</span>` : ""}${a.hidden ? `<span class="ac-tag">HIDDEN</span>` : ""}${!a.allowed ? `<span class="ac-tag warn">NEEDS YOUR OK</span>` : ""}`;
+  const tags = `${a.keep ? `<span class="ac-tag">KEEPS RUNNING</span>` : ""}${a.ask ? `<span class="ac-tag">ASKS</span>` : ""}${!a.allowed ? `<span class="ac-tag warn">NEEDS YOUR OK</span>` : ""}`;
   const where = st.running ? `<span class="ac-st on">${actUp(st)}${st.noTmux ? " · ends when Cue quits" : ""}</span>` : actIsQueued(pl, a.id) ? `<span class="ac-st">runs after this turn</span>` : last ? `<span class="ac-st ${st.exit ? "bad" : ""}">${last}</span>` : "";
-  const found = actFound(a)
-    ? `<button class="btn small" data-ac="pin" data-on="${a.pinned ? "" : "1"}" ${ids}>${a.pinned ? "Unpin" : "Pin"}</button><button class="btn small" data-ac="hide" data-on="${a.hidden ? "" : "1"}" ${ids}>${a.hidden ? "Unhide" : "Hide"}</button>`
-    : "";
   const btns = st.running
     ? `<button class="btn small" data-ac="log" ${ids}>Log</button><button class="btn small" data-ac="restart" ${ids}>⟳ Restart</button><button class="btn small" data-ac="stop" ${ids}>Stop</button>`
-    : `${last ? `<button class="btn small" data-ac="log" ${ids}>Log</button>` : ""}${found}<button class="btn small primary" data-ac="run" ${ids}>▶ Run</button>`;
+    : `${last ? `<button class="btn small" data-ac="log" ${ids}>Log</button>` : ""}<button class="btn small primary" data-ac="run" ${ids}>▶ Run</button>`;
   return `<div class="ac-row ${st.running ? "on" : ""}"><div class="ac-main"><div class="ac-line">${st.running ? `<i class="ac-live"></i>` : ""}<span class="ac-pname">${esc(a.name)}</span>${tags}${where}</div><code class="ac-cmd">${esc(a.run)}</code>${!st.running && st.exit ? actTail(pl, a) : ""}</div>
-    <div class="ac-btns">${btns}<button class="ac-edit" data-ac="edit" ${ids} aria-label="${actFound(a) ? `Copy ${esc(a.name)} into Mine and edit it` : `Edit ${esc(a.name)}`}">✎</button></div></div>`;
+    <div class="ac-btns">${btns}<button class="ac-edit" data-ac="edit" ${ids} aria-label="Edit ${esc(a.name)}">✎</button></div></div>`;
 }
 
 // ---------- the sheets: edit, trust, ask, output ----------
 function actEditOpen(pl, id) {
-  const a = id ? actFind(pl, id) : null, copied = !!a && actFound(a);
-  actEdit = { pl, oldId: a && !copied ? a.id : null, keep: !!a?.keep, ask: !!a?.ask, scope: a?.source === "shared" ? "shared" : "local", copied: copied ? a.source : "" };
+  const a = id ? actFind(pl, id) : null;
+  actEdit = { pl, oldId: a ? a.id : null, keep: !!a?.keep, ask: !!a?.ask, scope: a?.source === "shared" ? "shared" : "local" };
   draft("ac-name").text = a?.name || "";
   draft("ac-run").text = a?.run || "";
-  draft("ac-suggest").text = (a?.suggest || []).join(", ");
   actPal = actPop = null;
   sheet = "act-edit";
   renderMain();
@@ -414,14 +394,13 @@ function actEditOpen(pl, id) {
 }
 /** What the edit sheet would save. */
 function actForm() {
-  const e = actEdit, suggest = draft("ac-suggest").text.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
-  return { name: draft("ac-name").text.trim(), run: draft("ac-run").text.trim(), keep: e.keep, ask: e.ask, suggest };
+  const e = actEdit;
+  return { name: draft("ac-name").text.trim(), run: draft("ac-run").text.trim(), keep: e.keep, ask: e.ask };
 }
 /** The line it writes, as it'll be in the file. */
 function actJson(f) {
   const o = { name: f.name || "…", run: f.run || "…" };
   if (f.keep) o.keep = true;
-  if (f.suggest.length) o.suggest = f.suggest;
   if (f.ask) o.ask = true;
   return JSON.stringify(o).replace(/":/g, "\": ").replace(/,"/g, ", \"").replace(/^\{/, "{ ").replace(/\}$/, " }");
 }
@@ -433,12 +412,10 @@ function actEditSheet() {
   const fileNote = [exists === false ? "Cue makes the file, with notes for agents at its top." : "", e.scope === "local" && d?.files?.localIgnored === false ? "Git doesn't ignore it yet: add it to .gitignore to keep it yours." : ""].filter(Boolean).join(" ");
   const fld = (label, ctl, sub = "") => `<div class="ac-f"><div class="ac-fl">${label}</div><div>${ctl}${sub ? `<div class="ac-fs">${sub}</div>` : ""}</div></div>`;
   return `<div class="sheet ac-sheet"><div class="sheet-head"><h3>${e.oldId ? "Edit action" : "New action"}</h3><span class="dim">${esc(projLabel(e.pl.project))}${e.pl.machine ? ` · on ${esc(machName(e.pl.machine))}` : ""}</span><span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
-    ${e.copied ? `<div class="set-note">A copy in Mine: the one from ${esc(e.copied)} stays as it is.</div>` : ""}
     ${fld("Name", `<input class="ac-in" data-text="ac-name" maxlength="40" placeholder="Install" spellcheck="false" value="${esc(draft("ac-name").text)}"/>`)}
     ${fld("Command", `<input class="ac-in mono" data-text="ac-run" placeholder="npm ci" spellcheck="false" autocomplete="off" value="${esc(draft("ac-run").text)}"/>`, `One line, run by your shell in <code>${esc(homeless(e.pl.folder))}</code>.`)}
     ${fld("It", segs("keep", [[false, "Runs once"], [true, "Keeps running"]]), e.keep ? "A server or a watcher: Cue shows its port, with Restart and Stop." : "")}
     ${fld("While an agent works", segs("ask", [[false, "Just run"], [true, "Ask: now or after the turn"]]), e.ask ? "For what could trip an agent mid-turn (an install, a clean)." : "")}
-    ${fld("Suggest it when", `<input class="ac-in mono" data-text="ac-suggest" placeholder="package.json, migrations/**" spellcheck="false" autocomplete="off" value="${esc(draft("ac-suggest").text)}"/>`, "These files changed in an agent's turn: it's offered under the reply.")}
     ${fld("Keep it", segs("scope", [["local", "Only for me"], ["shared", "Shared with the repo"]]))}
     <div class="ac-json"><span class="ac-jf">${esc(file)}</span><code data-ac-json>${esc(actJson(f))}</code>${fileNote ? `<span class="ac-jn">${esc(fileNote)}</span>` : ""}</div>
   </div><div class="ac-sheet-foot">${e.oldId ? `<button class="btn deny" data-ac="ed-delete">Delete</button>` : ""}<span class="grow"></span><button class="btn" data-ac="close">Cancel</button><button class="btn" data-ac="ed-try">▶ Try it</button><button class="btn primary" data-ac="ed-save">Save</button></div></div>`;
@@ -462,17 +439,14 @@ async function actDelete() {
   try { const v = await invoke("actions_delete", { folder: e.pl.folder, machine: e.pl.machine, id: e.oldId }); sheet = null; actEdit = null; toast(`Deleted ${draft("ac-name").text.trim()}`); actTake(e.pl, v); }
   catch (x) { toast(`Couldn't delete it: ${x}`); }
 }
-/** The trust sheet's rows: the action files' new and changed ones, and the one you pressed ▶ on, if it's waiting. */
-function actTrustList(t, d) {
-  const all = d?.pending || [], files = actFilePending(d), it = t.then && all.find((p) => p.id === t.then.id);
-  return it && !files.includes(it) ? [...files, it] : files;
-}
+/** The trust sheet's rows: the files' new and changed ones. */
+const actTrustList = (t, d) => d?.pending || [];
 function actTrustSheet() {
   const t = actTrust, d = actLists.get(actKey(t.pl))?.data, pend = actTrustList(t, d);
   const fresh = pend.filter((p) => p.why !== "changed"), changed = pend.filter((p) => p.why === "changed");
   const shared = pend.some((p) => p.source === "shared");
   const title = t.changed ? "The agent changed this project's actions" : shared ? `${projLabel(t.pl.project)} shares actions in its repo` : `New actions in ${projLabel(t.pl.project)}`;
-  const from = (p) => ({ shared: ".cue/actions.json", local: ".cue/actions.local.json" }[p.source] || p.source);
+  const from = (p) => (p.source === "shared" ? ".cue/actions.json" : ".cue/actions.local.json");
   const row = (p) => `<div class="ac-trow"><span class="ac-pname">${esc(p.name)}</span><span class="ac-from">${esc(from(p))}</span>${p.was ? `<code class="ac-cmd was">${esc(p.was)}</code>` : ""}<code class="ac-cmd">${esc(p.run)}</code></div>`;
   const n = pend.length;
   return `<div class="sheet ac-sheet"><div class="sheet-head"><h3>${esc(title)}</h3><span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
@@ -585,11 +559,6 @@ document.addEventListener("click", (e) => {
     toast(`${actFind(k.pl, k.id)?.name || "It"} runs after this turn`);
     return renderMain();
   }
-  if (ac === "pin" || ac === "hide") {
-    const key = ac === "pin" ? "pinned" : "hidden";
-    return invoke(`actions_${ac}`, { folder: pl.folder, machine: pl.machine, id, [key]: !!t.dataset.on }).then((v) => actTake(pl, v), (x) => toast(`Couldn't: ${x}`));
-  }
-  if (ac === "hidden") { const k = actKey(pl); actHiddenOpen.has(k) ? actHiddenOpen.delete(k) : actHiddenOpen.add(k); return renderMain(); }
   if (ac === "tab") {
     const sid = t.dataset.sid;
     extTabOf.delete(sid);
