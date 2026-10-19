@@ -2103,7 +2103,8 @@ button.ins-n { cursor: pointer; }
 /* Send to… keeps the row's right end; the actions between fold into "N more" first. */
 .cv-acts .cv-fwd { flex: none; margin-left: auto; }
 .ac-sug { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.ac-sug.on .ac-live { background: currentColor; }
+.ac-sug.on .ac-live, .ac-more.on .ac-live { background: currentColor; }
+.ac-more.on { color: var(--on-sel); }
 .ac-sug.bad { color: var(--deny); }
 .ac-sug.wait { color: var(--muted); background: transparent; border-style: dashed; }
 /* The dots on a project's chip (one per running action) and the popover they open. */

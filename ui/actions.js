@@ -298,7 +298,8 @@ function actReplyHtml(s, at) {
   if (!d?.actions?.length) return "";
   return `<span class="ac-sugs"><span class="ac-div" aria-hidden="true"></span>${d.actions.map((a) => actSugBtn(pl, a, at)).join("")}<button class="cv-pill ac-more" data-ac="more" ${acAttrs(pl)} data-at="${at}" hidden></button></span>`;
 }
-/** Each reply's actions on one row: the last ones that don't fit are hidden, and "N more" shows them in a menu. */
+/** Each reply's actions on one row: the last ones that don't fit are hidden, and "N more" shows them in a menu.
+ *  While one of those runs, "N more" says so as a running one does: lit, with its live dot. */
 function actFit() {
   document.querySelectorAll(".ac-sugs").forEach((row) => {
     const items = [...row.children].filter((c) => !c.matches(".ac-div, .ac-more")), more = row.querySelector(".ac-more");
@@ -309,9 +310,11 @@ function actFit() {
       items[items.length - 1 - n].hidden = true;
       n++;
       more.hidden = false;
-      more.textContent = `${n} more ▾`;
       more.dataset.n = n;
     }
+    const live = items.some((c) => c.hidden && c.classList.contains("on"));
+    more.classList.toggle("on", live);
+    more.innerHTML = `${live ? `<i class="ac-live"></i>` : ""}${n} more ▾`;
   });
 }
 addEventListener("resize", () => actFit());
