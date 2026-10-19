@@ -114,14 +114,6 @@ function actTurnEnds(next) {
 }
 
 // ---------- words ----------
-const ACT_VERBS = /^(install|test|build|lint|format|clean|migrate|deploy|seed|check|compile|generate|bundle|typecheck|update|upgrade|reset|start|serve|watch|sync|fetch|publish|release|bench|package|prune|rebuild|reinstall|restart|run|stop|set|push|pull)$/i;
-/** "Install" → "Installing", "Migrate db" → "Migrating db"; a name that isn't a verb: "Running Docs". */
-function actIng(name) {
-  const [w, ...rest] = String(name).split(" ");
-  if (!ACT_VERBS.test(w)) return `Running ${name}`;
-  const ing = /[^aeiou][aeiou][bdgmnprt]$/i.test(w) && w.length <= 4 ? w + w.slice(-1) + "ing" : /[^e]e$/i.test(w) ? w.slice(0, -1) + "ing" : w + "ing";
-  return [ing, ...rest].join(" ");
-}
 const actSecs = (s) => (s == null ? "" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m${Math.round(s % 60) ? ` ${Math.round(s % 60)}s` : ""}`);
 /** When a run ended: "2h", "yesterday", "3 days". */
 function actWhen(at) {
@@ -278,7 +270,7 @@ function actPalette() {
     const st = a.state || {}, last = actLastRun(st);
     const right = st.running ? `<span class="ac-st on">${actUp(st)}</span><span class="ac-hint">↵ restart</span>`
       : !a.allowed ? `<span class="ac-tag">NEEDS YOUR OK</span>` : last ? `<span class="ac-st ${st.exit ? "bad" : ""}">${last}</span>` : "";
-    return `<div class="ac-prow ${n === actPal.sel ? "sel" : ""}" role="button" data-ac="run" ${acAttrs(pl, a.id)}>${st.running ? `<i class="ac-live"></i>` : `<span class="ac-play">▶</span>`}<span class="ac-pname">${esc(a.name)}</span><code class="ac-cmd">${esc(a.run)}</code><span class="grow"></span>${right}</div>`;
+    return `<div class="ac-prow ${n === actPal.sel ? "sel" : ""}" role="button" data-ac="run" ${acAttrs(pl, a.id)}>${st.running ? `<i class="ac-live"></i>` : `<span class="ac-play">${RUN_ICON}</span>`}<span class="ac-pname">${esc(a.name)}</span><code class="ac-cmd">${esc(a.run)}</code><span class="grow"></span>${right}</div>`;
   };
   const body = !pl ? `<div class="ac-empty">Open a session, or pick a project at the top, to see its actions.</div>`
     : !d ? `<div class="ac-empty">${c?.err ? `Couldn't read its actions: ${esc(c.err)}` : "Reading its actions…"}</div>`
@@ -303,11 +295,11 @@ function actSugBtn(pl, a, at) {
   const st = a.state || {}, name = esc(a.name), ids = acAttrs(pl, a.id);
   if (actIsQueued(pl, a.id)) return `<span class="cv-pill ac-sug wait">${name} · runs after this turn</span>`;
   if (st.running && a.keep) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}><i class="ac-live"></i>${name} · ${actUp(st)}</button>`;
-  if (st.running) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}>${esc(actIng(a.name))}… <span data-ago="${+st.since || now()}">${ago(+st.since || now())}</span></button>`;
+  if (st.running) return `<button class="cv-pill ac-sug on" data-ac="log" ${ids}><i class="ac-live"></i>${name} · <span data-ago="${+st.since || now()}">${ago(+st.since || now())}</span></button>`;
   if (st.at && st.at >= at && st.exit != null) return st.exit === 0
     ? `<button class="cv-pill ac-sug" data-ac="log" ${ids}>✓ ${name} · ${actSecs(st.secs)}</button>`
     : `<button class="cv-pill ac-sug bad" data-ac="log" ${ids}>✗ ${name} · exit ${esc(st.exit)}</button>`;
-  return `<button class="cv-pill ac-sug" data-ac="run" ${ids}>▶ ${name}</button>`;
+  return `<button class="cv-pill ac-sug" data-ac="run" ${ids}>${RUN_ICON}${name}</button>`;
 }
 
 // ---------- E · dots on the project chips ----------
@@ -335,7 +327,7 @@ function actPopHtml() {
   const rest = d ? d.actions.filter((a) => !a.state?.running) : [];
   return `<div class="ac-pop" role="dialog" aria-label="Actions in ${esc(projLabel(p))}">
     <div class="ac-poph">RUNNING</div>${running || `<div class="ac-empty">Nothing running.</div>`}
-    ${rest.length ? `<div class="ac-poph">RUN</div><div class="ac-poprun">${rest.map((a) => `<button class="cv-pill" data-ac="run" ${acAttrs(pl, a.id)}>▶ ${esc(a.name)}</button>`).join("")}</div>` : ""}
+    ${rest.length ? `<div class="ac-poph">RUN</div><div class="ac-poprun">${rest.map((a) => `<button class="cv-pill" data-ac="run" ${acAttrs(pl, a.id)}>${RUN_ICON}${esc(a.name)}</button>`).join("")}</div>` : ""}
     <div class="ac-popfoot">${pl ? `<button data-ac="pal" ${acAttrs(pl)}>All actions <kbd>⌘E</kbd></button><button data-ac="edit-all" ${acAttrs(pl)}>Edit actions…</button>` : ""}</div></div>`;
 }
 

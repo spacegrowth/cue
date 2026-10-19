@@ -1098,7 +1098,7 @@ function readerPane(sid, it, s, harness, rv) {
   const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button>${who}<span class="grow"></span>${term}
     <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
-    ${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${PLAY_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</div>`;
+    ${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</div>`;
   const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(r.text)}</div>${localImages(r.text)}</div>`;
   const asks = isPending(it) && it.kind !== "waiting";
   const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b>${it.kind === "question" ? "" : `<span class="dim"> · ${esc(verb(it))}</span>`}</span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";
@@ -1423,10 +1423,11 @@ function listenKeep(sid) {
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>`;
 const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>`;
 const BOOK_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>`;
-/** Listen under a reply: Listen, Listening while it reads this one (a click pauses), Resume when paused on it. */
+/** Listen under a reply: Listen, Listening while it reads this one (a click pauses), Resume when paused on it. The
+ *  speaker, not ▶, so it isn't taken for one of the project's actions beside it. */
 function listenBtn(key) {
   const on = listening?.key === key;
-  return `<button class="cv-pill ${on ? "on" : ""}" data-listen="${esc(key)}">${on && listening.playing ? PAUSE_ICON : PLAY_ICON}${on ? (listening.playing ? "Listening" : "Resume") : "Listen"}</button>`;
+  return `<button class="cv-pill ls-pill ${on ? "on" : ""} ${on && listening.playing ? "playing" : ""}" data-listen="${esc(key)}">${SPEAKER_ICON}${on ? (listening.playing ? "Listening" : "Resume") : "Listen"}</button>`;
 }
 /** Above the chat's box while a reply is read out: in its own session, how far; in another, whose (a click goes there). */
 function listenLine(sid) {

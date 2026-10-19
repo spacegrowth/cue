@@ -537,10 +537,11 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* core.js hearing: the speaker beside a session's name on its cards while Listen reads one of its replies. */
 .hearing { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%; margin-left: 6px; background: var(--sel); color: var(--on-sel); vertical-align: -5px; }
 .hearing .hw1, .hearing .hw2 { opacity: .45; }
-.hearing.on .hw1 { animation: hearing 1.2s ease-in-out infinite; }
-.hearing.on .hw2 { animation: hearing 1.2s ease-in-out .3s infinite; }
+/* Listen's own speaker (chat.js listenBtn): its waves move the same way while it reads that reply. */
+.hearing.on .hw1, .ls-pill.playing .hw1 { animation: hearing 1.2s ease-in-out infinite; }
+.hearing.on .hw2, .ls-pill.playing .hw2 { animation: hearing 1.2s ease-in-out .3s infinite; }
 @keyframes hearing { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .hearing.on .hw1, .hearing.on .hw2 { animation: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hearing.on .hw1, .hearing.on .hw2, .ls-pill.playing .hw1, .ls-pill.playing .hw2 { animation: none; opacity: 1; } }
 .ls-of { min-width: 60px; }
 .ls-track { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .ls-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
@@ -2122,7 +2123,7 @@ button.ins-n { cursor: pointer; }
 .ac-prow.sel { background: var(--sel); color: var(--on-sel); }
 .ac-prow.sel .ac-cmd, .ac-prow.sel .ac-st, .ac-prow.sel .ac-hint { color: color-mix(in srgb, var(--on-sel) 72%, transparent); }
 .ac-prow.sel .ac-live { background: var(--on-sel); }
-.ac-play { flex: none; width: 7px; font-size: 9px; color: var(--muted); }
+.ac-play { flex: none; display: inline-flex; color: var(--muted); }
 .ac-prow .ac-pname { flex: none; max-width: 40%; }
 .ac-hint { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .ac-pal .lv-foot { gap: 14px; }

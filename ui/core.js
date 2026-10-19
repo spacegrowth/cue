@@ -78,8 +78,10 @@ const nameSpan = (sid, project, cls = "proj") => `<span class="${cls}">${esc(nam
 const hearing = (sid) => {
   const l = typeof listening === "undefined" ? null : listening;
   if (!l || !sid || l.sid !== sid) return "";
-  return `<span class="hearing ${l.playing ? "on" : ""}" role="img" aria-label="${l.playing ? "Reading it out" : "Paused reading it out"}"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="hw1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="hw2" d="M18.5 7a7 7 0 0 1 0 10"/></svg></span>`;
+  return `<span class="hearing ${l.playing ? "on" : ""}" role="img" aria-label="${l.playing ? "Reading it out" : "Paused reading it out"}">${SPEAKER_ICON}</span>`;
 };
+/** A speaker (Listen, and the cards' mark while it reads); its waves move where an "on" class around it says. */
+const SPEAKER_ICON = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="hw1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="hw2" d="M18.5 7a7 7 0 0 1 0 10"/></svg>`;
 /** A machine's name: what you renamed it to, else its first part (no user@, no domain). (Notifications
  *  do the same: machines::display_name.) */
 const machName = (m) => {
@@ -864,6 +866,8 @@ const bareName = (n) => String(n || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i
 /** Cue's mark (the app icon without its tile): an open C around a dot. */
 /** The mark at 14px, and a terminal (a prompt in a window), for the "Runs in" choice. */
 const CUE_MARK_SM = `<svg width="14" height="14" viewBox="200 200 624 624" aria-hidden="true"><circle cx="512" cy="512" r="250" fill="none" stroke="currentColor" stroke-width="92" stroke-dasharray="1180 400" stroke-linecap="round" transform="rotate(40 512 512)"/><circle cx="512" cy="512" r="84" fill="currentColor"/></svg>`;
+/** A bare prompt: what runs an action (a command), told apart from Listen's speaker. */
+const RUN_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg>`;
 const TERM_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="3"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/></svg>`;
 const CUE_MARK = `<svg width="28" height="28" viewBox="200 200 624 624" aria-hidden="true"><circle cx="512" cy="512" r="250" fill="none" stroke="currentColor" stroke-width="92" stroke-dasharray="1180 400" stroke-linecap="round" transform="rotate(40 512 512)"/><circle cx="512" cy="512" r="84" fill="#B5C27A"/></svg>`;
 // Drafts survive a restart: each session's unsent text and images are saved in ~/.cue/cue.db.
