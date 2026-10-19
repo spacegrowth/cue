@@ -3,6 +3,7 @@
 
 pub(crate) mod dialog;
 pub(crate) mod dictation;
+pub(crate) mod speak;
 pub(crate) mod focus;
 pub(crate) mod shell;
 pub(crate) mod shells;

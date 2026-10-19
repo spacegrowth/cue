@@ -1181,6 +1181,7 @@ function listenSay() {
   const r = shown && x.range?.getBoundingClientRect(), box = root.closest(".chat-scroll, .chat") || document.documentElement;
   const vb = box.getBoundingClientRect();
   if (r && (r.top < vb.top + 40 || r.bottom > vb.bottom - 60)) (x.range.startContainer.parentElement.closest(LISTEN_BLOCKS) || root).scrollIntoView({ block: "center", behavior: "smooth" });
+  if (kokoroOn()) return kokoroSay(x, sents[l.i + 1], run);
   const u = new SpeechSynthesisUtterance(x.say);
   u.rate = LISTEN_SPEEDS[listenSpeed];
   u.onboundary = (e) => { if (run === listenRun && e.name === "word") { const now = listenRoot(l.key); if (now) listenMark(listenSents(now), l.i, [e.charIndex, e.charLength || (x.say.slice(e.charIndex).match(/^\S+/)?.[0].length ?? 0)]); } };
@@ -1189,6 +1190,118 @@ function listenSay() {
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
   listenTell();
+}
+// ---------- Natural voices (Kokoro) ----------
+// The voice Cue reads out in is a setting (voice.pick, Settings → Voice): "" the Mac's own (System Settings →
+// Spoken Content), else a Kokoro voice. Each Kokoro voice is downloaded on its own (0.5 MB), the first with the
+// voice engine they all use (about 125 MB), through cue-speak (Kokoro on this Mac, terminal/speak.rs). Listen
+// then reads in it a sentence at a time, the next one made while this one plays; its marks follow where the
+// sound is ({"at"}). If it fails or quits mid-sentence, Listen goes on in the Mac's voice from that sentence and
+// says so once.
+const voicePick = () => state.settings?.voice?.pick || "";
+/** What cue-speak said of itself: the engine is here (`ready`), the voices here (`have`) and the space it all
+ *  takes (`mb`), a macOS with the Apple bug (`risky`), none on this Mac (`none`: Intel); the voice being got and
+ *  how far (`getting`, `progress`), and that it failed this run (`broke`). */
+let kokoro = { known: false, ready: false, have: [], mb: 0, risky: false, none: false, getting: null, progress: 0, broke: false, bye: false };
+const kokoroOn = () => !!voicePick() && kokoro.have.includes(voicePick()) && !kokoro.broke;
+let kokoroAt = null;   // the sentence it's saying: { run, x, ms }
+function kokoroTell(line) { invoke("speak_send", { line }).catch((e) => kokoroLine({ error: String(e), id: kokoroAt?.run, get: kokoro.getting })); }
+function kokoroStatus(again = false) { if (again || !kokoro.known) { kokoro.known = true; kokoroTell({ status: true }); } }
+function kokoroSay(x, next, run) {
+  kokoroAt = { run, x, ms: 0 };
+  kokoroTell({ say: x.say, voice: voicePick(), speed: LISTEN_SPEEDS[listenSpeed], id: run, ...(next ? { next: next.say } : {}) });
+  listenTell();
+}
+function kokoroHush() { if (kokoroAt) { kokoroAt = null; kokoroTell({ stop: true }); } }
+/** One of cue-speak's lines. */
+function kokoroLine(v) {
+  if (v.status) { Object.assign(kokoro, v.status); return renderMain(); }
+  if (v.progress != null) { kokoro.progress = v.progress; return setProgress(); }
+  // A voice got: it's the one Cue reads in now.
+  if (v.got) { kokoro.getting = null; kokoro.ready = true; if (!kokoro.have.includes(v.got)) kokoro.have.push(v.got); pickVoice(v.got); kokoroStatus(true); return; }
+  if (v.removed) { Object.assign(kokoro, { ready: false, have: [], mb: 0 }); pickVoice(""); return; }
+  if (v.error && v.get) { kokoro.getting = null; toast(v.error); return renderMain(); }
+  const a = kokoroAt, l = listening;
+  if (v.playing != null && a?.run === v.playing) a.ms = v.ms;
+  else if (v.at != null && a?.run === v.at && a.ms && l) {
+    // The word that far through the sentence's letters. SHORTCUT: assumes an even pace across letters, so the mark
+    // can sit a word early or late on long or numeric words; the upgrade is word timings from Kokoro's predicted
+    // durations (synthesizeDetailed), sent by cue-speak with each sentence.
+    const at = Math.round((v.ms / a.ms) * a.x.say.length), words = [...a.x.say.matchAll(/\S+/g)];
+    const w = words.findLast((m) => m.index <= at) || words[0];
+    const now = listenRoot(l.key);
+    if (w && now) listenMark(listenSents(now), l.i, [w.index, w[0].length]);
+  } else if (v.done != null && a?.run === v.done && v.end) { kokoroAt = null; if (l) { l.i++; listenSay(); } }
+  else if (v.bye) kokoro.bye = true;
+  // It retired after its 100 sentences (cue-speak): the sentence sent as it went, again to the fresh one.
+  else if (v.gone && kokoro.bye) { kokoro.bye = false; if (a) kokoroSay(a.x, null, a.run); }
+  else if (v.gone && kokoro.getting) { kokoro.getting = null; toast("The download stopped"); renderMain(); }
+  else if (v.error || v.gone) {
+    // Kokoro failing mid-sentence: the Mac's voice goes on from that sentence.
+    if (!a || (v.id != null && v.id !== a.run)) return;
+    kokoroAt = null; kokoro.broke = true;
+    toast("The natural voice stopped: going on in your Mac's voice");
+    if (l?.playing) listenSay();
+  }
+}
+/** The voice Cue reads out in ("" the Mac's own). */
+function pickVoice(id) {
+  kokoro.broke = false;
+  invoke("set_setting", { key: "voice.pick", value: id }).catch((e) => toast(`Couldn't pick it: ${e}`));
+}
+/** Get a voice (and the engine, the first time). */
+function getVoice(id) {
+  kokoro.getting = id;
+  kokoro.progress = 0;
+  kokoroTell({ get: id });
+  renderMain();
+}
+/** Kokoro's American English voices, as Settings lists them (each has a sample in ui/voices/). */
+const KOKORO_VOICES = [["af_heart", "Heart", "woman"], ["af_bella", "Bella", "woman"], ["af_nicole", "Nicole", "woman"], ["af_sarah", "Sarah", "woman"],
+  ["af_sky", "Sky", "woman"], ["af_alloy", "Alloy", "woman"], ["af_aoede", "Aoede", "woman"], ["af_jessica", "Jessica", "woman"], ["af_kore", "Kore", "woman"],
+  ["af_nova", "Nova", "woman"], ["af_river", "River", "woman"], ["am_adam", "Adam", "man"], ["am_michael", "Michael", "man"], ["am_echo", "Echo", "man"],
+  ["am_eric", "Eric", "man"], ["am_fenrir", "Fenrir", "man"], ["am_liam", "Liam", "man"], ["am_onyx", "Onyx", "man"], ["am_puck", "Puck", "man"]];
+let voiceListOpen = false;
+/** Settings → Voice: the voice Cue reads out in, a dropdown of your Mac's voice and Kokoro's, each with ▶ for a
+ *  sample (downloaded or not), its size and Download, or ✓ once it's here. */
+function voiceSettings() {
+  kokoroStatus();
+  const k = kokoro, pick = kokoroOn() || (voicePick() && k.have.includes(voicePick())) ? voicePick() : "";
+  const name = pick ? KOKORO_VOICES.find(([id]) => id === pick)?.[1] || pick : "Your Mac's voice";
+  const btn = `<button class="xp-btn" data-voice-list aria-haspopup="listbox" aria-expanded="${voiceListOpen}"><span class="xp-name">${esc(name)}</span><span class="xp-caret">${voiceListOpen ? "▴" : "▾"}</span></button>`;
+  const row = (id, title, sub, end) => `<div class="kv ${pick === id ? "on" : ""}" role="option" aria-selected="${pick === id}">${id ? `<button class="kv-play" data-voice-sample="${id}" aria-label="Hear ${esc(title)}">${PLAY_ICON}</button>` : ""}<span class="kv-text"><span class="kv-name">${esc(title)}</span>${sub ? `<span class="kv-sub">${sub}</span>` : ""}</span>${end}</div>`;
+  const mac = row("", "Your Mac's voice", "The one picked in System Settings → Accessibility → Spoken Content", pick ? `<button class="btn" data-voice-pick="">Use</button>` : `<span class="kv-state">In use</span>`);
+  const voices = k.none ? "" : KOKORO_VOICES.map(([id, title, who]) => {
+    const end = k.getting === id ? `<span class="kk-bar"><span class="kk-fill" data-kokoro-progress style="width: ${Math.round(k.progress * 100)}%"></span></span><span class="dim kv-size" data-kokoro-pct>${Math.round(k.progress * 100)}%</span>`
+      : pick === id ? `<span class="kv-state">✓ In use</span>`
+      : k.have.includes(id) ? `<span class="kv-state">✓</span><button class="btn" data-voice-pick="${id}">Use</button>`
+      : `<span class="dim kv-size">${k.ready ? "0.5 MB" : "125 MB"}</span><button class="btn" data-voice-get="${id}" ${k.getting ? "disabled" : ""}>Download</button>`;
+    return row(id, title, who, end);
+  }).join("");
+  const about = k.none ? "Natural voices need a Mac with Apple silicon."
+    : `Natural voices are Kokoro, an open voice model, run on this Mac: nothing Cue reads out leaves it. Each comes from Hugging Face when you download it; the first brings the voice engine they all use (125 MB), after that a voice is 0.5 MB.`
+      + (k.risky ? ` <b>On macOS 26.4 and 26.5</b> an Apple bug can stop one now and then; Cue then goes on in your Mac's voice. macOS 26.6 fixes it.` : "");
+  return `<div class="set-group">Reading out loud</div>
+    ${setRow("Voice", "What Cue reads replies out in (Listen, under a reply and in the reader). ▶ plays a sample.", btn)}
+    ${voiceListOpen ? `<div class="kv-list" role="listbox">${mac}${voices}</div>` : ""}
+    <div class="set-row"><div class="set-text"><div class="set-sub">${about}</div></div>${k.have.length ? `<span class="dim kv-size">${k.mb} MB on this Mac</span><button class="btn" data-kokoro-remove>Remove all</button>` : ""}</div>`;
+}
+let voiceSample = null;
+/** ▶ beside a voice: its sample (shipped with Cue), again to stop it. */
+function playSample(id) {
+  const same = voiceSample?.id === id && !voiceSample.a.paused;
+  voiceSample?.a.pause();
+  voiceSample = null;
+  if (same) return;
+  const a = new Audio(`voices/${id}.m4a`);
+  voiceSample = { id, a };
+  a.play().catch(() => toast("Couldn't play the sample"));
+}
+/** A download's bar, without redrawing Settings. */
+function setProgress() {
+  const p = Math.round((kokoro.progress || 0) * 100);
+  document.querySelectorAll("[data-kokoro-progress]").forEach((el) => { el.style.width = `${p}%`; });
+  document.querySelectorAll("[data-kokoro-pct]").forEach((el) => { el.textContent = `${p}%`; });
 }
 /** Its count and button on screen, without redrawing the chat. */
 function listenTell() {
@@ -1210,7 +1323,7 @@ function listenNext() {
   listenSay();
 }
 function listenPlay(sid, key, reader = false) {
-  if (!window.speechSynthesis) return toast("This Mac can't read it out");
+  if (!window.speechSynthesis && !kokoroOn()) return toast("This Mac can't read it out");
   openMsgs.add(key);   // a folded reply opens to be read
   const cur = current();
   listening = { sid, key, i: 0, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [] };
@@ -1221,6 +1334,7 @@ function listenPause() {
   if (!listening) return;
   listenRun++;
   speechSynthesis.cancel();
+  kokoroHush();
   listening.playing = false;
   renderMain();
 }
@@ -1239,6 +1353,7 @@ function listenSkip(dir) {
 function listenStop() {
   listenRun++;
   if (window.speechSynthesis) speechSynthesis.cancel();
+  kokoroHush();
   const was = listening;
   listening = null;
   listenUnmark();

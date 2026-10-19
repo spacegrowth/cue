@@ -502,6 +502,23 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-player .ls-pp { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
 .ls-player .rd-seg button.on { background: var(--sel); color: var(--on-sel); }
 .ls-player .ls-speeds button { min-width: 0; padding: 0 7px; font-size: 11px; font-weight: 650; }
+/* Settings → Voice (chat.js voiceSettings): the voices under the dropdown, each with ▶, its size and Download, or
+   ✓ once here; the one in use in lime. */
+.kv-list { display: flex; flex-direction: column; gap: 4px; padding: 0 0 12px; }
+.kv { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 4px 8px 4px 4px; border-radius: 10px; background: var(--panel); }
+.kv:not(:has(.kv-play)) { padding-left: 14px; }
+.kv.on { background: var(--sel); color: var(--on-sel); }
+.kv-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.kv-name { font-size: 12.5px; font-weight: 650; }
+.kv-sub { font-size: 11px; color: var(--muted); }
+.kv.on .kv-sub { color: inherit; opacity: .75; }
+.kv-state { font-size: 12px; font-weight: 650; }
+.kv-size { font-size: 12px; white-space: nowrap; }
+.kv-play { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); flex: none; }
+.kv-play:hover { background: var(--panel-2); }
+.kv.on .kv-play { color: inherit; }
+.kk-bar { width: 140px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.kk-fill { display: block; height: 100%; background: var(--accent); transition: width .3s; }
 /* core.js hearing: the speaker beside a session's name on its cards while Listen reads one of its replies. */
 .hearing { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%; margin-left: 6px; background: var(--sel); color: var(--on-sel); vertical-align: -5px; }
 .hearing .hw1, .hearing .hw2 { opacity: .45; }

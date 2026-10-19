@@ -21,6 +21,12 @@ pub(crate) fn dictate_stop(d: State<dictation::Dictation>) {
     dictation::stop(&d)
 }
 
+/// Listen's natural voices: a line to cue-speak (its lines come back as "speak" events).
+#[tauri::command]
+pub(crate) fn speak_send(app: tauri::AppHandle, s: State<crate::terminal::speak::Speak>, line: serde_json::Value) -> Result<(), String> {
+    crate::terminal::speak::send(app, &s, &line)
+}
+
 /// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
 #[tauri::command]
 pub(crate) async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {

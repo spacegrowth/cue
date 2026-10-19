@@ -12,3 +12,6 @@ src-tauri/ext
 dist/
 # Local release settings (scripts/release.sh)
 .release.env
+
+# Swift builds of the voices helper (src-tauri/speak)
+src-tauri/speak/.build/

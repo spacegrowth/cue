@@ -346,6 +346,14 @@ function bindMain() {
     const lsp = t.closest("[data-listen-speed]");
     if (lsp) return listenFaster(+lsp.dataset.listenSpeed);
     if (t.closest("[data-listen-then]")) return listenThenNext();
+    if (t.closest("[data-voice-list]")) { voiceListOpen = !voiceListOpen; return renderMain(); }
+    const vs = t.closest("[data-voice-sample]");
+    if (vs) return playSample(vs.dataset.voiceSample);
+    const vg = t.closest("[data-voice-get]");
+    if (vg) return getVoice(vg.dataset.voiceGet);
+    const vp = t.closest("[data-voice-pick]");
+    if (vp) return pickVoice(vp.dataset.voicePick);
+    if (t.closest("[data-kokoro-remove]")) { kokoroTell({ remove: true }); return; }
     const lo = t.closest("[data-listen-open]");
     if (lo) return setActive(null, lo.dataset.listenOpen);
     if (!t.closest("button, a, input") && listenFrom(e)) return;
@@ -874,6 +882,7 @@ async function boot() {
   restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
+  await T.event.listen("speak", (e) => kokoroLine(e.payload));
   await T.event.listen("fill", (e) => onFill(e.payload));
   await T.event.listen("upload", (e) => onUpload(e.payload));
   await T.event.listen("select", (e) => {

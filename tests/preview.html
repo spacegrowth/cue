@@ -285,6 +285,25 @@
         app: { getVersion: async () => "0.1.5" },
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           console.log("[cue-preview]", cmd, JSON.stringify(args));
+          // Natural voices (cue-speak): ?voices=1 has the engine with Heart and Bella here; a voice downloads in a
+          // second; a sentence "plays" at about 55 ms a letter, saying where it is every 80 ms, as cue-speak does.
+          if (cmd === "speak_send") {
+            const L = args.line, tell = (v) => setTimeout(() => (listeners.speak || []).forEach((f) => f({ payload: v })), 0);
+            const kv = (window.__voices ||= /voices=1/.test(q) ? ["af_heart", "af_bella"] : []);
+            if (L.status) tell({ status: { ready: kv.length > 0, have: kv, mb: kv.length ? 125 + kv.length : 0, risky: true } });
+            if (L.get) { [0.2, 0.5, 0.8, 1].forEach((p, i) => setTimeout(() => { if (p < 1) return tell({ progress: p }); kv.push(L.get); tell({ got: L.get }); }, 250 * (i + 1))); }
+            if (L.remove) tell({ removed: true });
+            const sp = window.__speak ||= { said: [] };
+            if (L.stop && sp.id != null) { clearInterval(sp.t); tell({ done: sp.id, end: false }); sp.id = null; }
+            if (L.say != null) {
+              clearInterval(sp.t); if (sp.id != null) tell({ done: sp.id, end: false });
+              const ms = Math.round(L.say.length * 55 / (L.speed || 1)), t0 = Date.now(), id = L.id;
+              sp.id = id; sp.said.push({ say: L.say, voice: L.voice, speed: L.speed });
+              tell({ playing: id, ms });
+              sp.t = setInterval(() => { const at = Date.now() - t0; if (at >= ms) { clearInterval(sp.t); sp.id = null; tell({ done: id, end: true }); } else tell({ at: id, ms: at }); }, 80);
+            }
+            return null;
+          }
           // ?xt=1: Settings → Extensions with three: one on, one updated and asking for more, one off.
           if (cmd === "ext_list" && /xt=1/.test(q)) return { root: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions", programs_allowed: false, list: [
             { name: "boxes", title: "Containers", panel: "Containers", add: "A new container", version: "0.3.0", capabilities: ["sessions.read", "programs.run"], programs: ["docker", "mutagen"], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/boxes" },
@@ -428,7 +447,7 @@
             ? { full: "npm test", output: ["> relay@1.4.0 test", "> vitest run", "", " FAIL  test/board.test.ts > columns > spend sorts high to low", "   expected [ 'name', 'status', 'spend' ] to equal [ 'name', 'spend', 'status' ]", "", " Tests  1 failed | 40 passed (41)"], skipped: 0, gap_at: 40 }
             : id.startsWith("b") && ["b1", "b2", "b5"].includes(id) ? { full: "/Users/me/code/agent-relay/src/board.ts", diff: [[" ", "  const cols = ['name', 'status'];"], ["-", "  const total = 0;"], ["+", "  const total = rows.reduce((s, r) => s + r.spend, 0);"], ["+", "  footer.push(fmt(total));"]], skipped: 0 }
             : { full: "/Users/me/code/agent-relay/test/board.test.ts" }]));
-          if (cmd === "set_setting") { const [a, b] = args.key.split("."); state.settings[a][b] = args.value; setTimeout(emit, 10); return; }
+          if (cmd === "set_setting") { const [a, b] = args.key.split("."); (state.settings[a] ||= {})[b] = args.value; setTimeout(emit, 10); return; }
           // Earlier messages, a page at a time: 75 made-up ones before the thread.
           if (cmd === "session_log_page") { const all = Array.from({ length: 75 }, (_, n) => ({ at_ms: Date.now() - 3 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
           if (cmd === "transcript_page") { const all = Array.from({ length: 40 }, (_, n) => ({ at_ms: Date.now() - 9 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `From the transcript ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }

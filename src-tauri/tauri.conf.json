@@ -58,7 +58,8 @@
       "hardenedRuntime": false
     },
     "externalBin": [
-      "binaries/cue-listen"
+      "binaries/cue-listen",
+      "binaries/cue-speak"
     ],
     "resources": {
       "../pi/cue.ts": "pi/cue.ts",

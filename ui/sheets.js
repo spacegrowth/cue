@@ -457,14 +457,14 @@ function mcpSettings() {
   return `<div class="set-note">Pick the servers a session runs with from its ⋯ menu → MCP servers. Claude Code loads them when the session starts.</div>${list || (mcpAllList ? `<div class="set-sub">No MCP servers are set up in Claude Code.</div>` : "")}`;
 }
 /** Settings, in tabs so no one page runs long. The last tab you looked at opens next time. */
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["insights", "Insights"], ["mcp", "MCP"], ["actions", "Actions"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["mcp", "MCP"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
   const c = state.connections || {};
   const keep = st.history?.keep ?? 300;
-  // The add-on's own tabs after Cue's.
-  const tabs = [...SET_TABS, ...[...new Set(extLoad().map((g) => g.tab).filter(Boolean))].map((t) => [`ext:${t}`, t])];
+  // The add-on's own tabs after Cue's; its groups in a tab Cue has too (Voice) go under Cue's own rows there.
+  const tabs = [...SET_TABS, ...[...new Set(extLoad().map((g) => g.tab).filter(Boolean))].filter((t) => !SET_TABS.some(([, l]) => l === t)).map((t) => [`ext:${t}`, t])];
   const tab = tabs.some(([k]) => k === setTab) ? setTab : "general";
   const pane = {
     general: `
@@ -503,6 +503,7 @@ function settingsSheet() {
     ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
     <div class="set-group">History</div>
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
+    voice: voiceSettings() + extRows("Voice"),
     insights: insSettings(st),
     mcp: mcpSettings(),
     actions: actSettings(),

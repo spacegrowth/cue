@@ -33,6 +33,8 @@ pub fn effective() -> Value {
         // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
         "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::terminal::focus::tmux_installed(), "terminal": crate::terminal::focus::terminal_name() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
+        // The voice Cue reads out in: "" the Mac's own, else a natural one ("af_heart"), downloaded in Settings → Voice.
+        "voice": { "pick": c.pointer("/voice/pick").and_then(Value::as_str).unwrap_or("") },
         // Insights (ui/insights.js): each one on its own; they only ever fill the reply box.
         "insights": { "handoff": b("/insights/handoff", true), "cache": b("/insights/cache", true), "queue": b("/insights/queue", true), "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // The first-launch "Connect your agents" screen, closed with Done.
@@ -184,7 +186,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.skills", "actions.prompt"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.skills", "actions.prompt", "voice.pick"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -236,6 +238,10 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             }
             value
         }
+        "voice.pick" => match value.as_str() {
+            Some(v) if v.len() <= 24 && v.chars().all(|c| c.is_ascii_lowercase() || c == '_') => json!(v),
+            _ => return Err("the voice must be one of Kokoro's names, or empty for the Mac's own".into()),
+        },
         // Your actions prompt ("" is Cue's own again).
         "actions.prompt" => return crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
