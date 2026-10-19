@@ -1278,29 +1278,35 @@ const KOKORO_VOICES = [["af_heart", "Heart", "woman"], ["af_bella", "Bella", "wo
   ["af_nova", "Nova", "woman"], ["af_river", "River", "woman"], ["am_adam", "Adam", "man"], ["am_michael", "Michael", "man"], ["am_echo", "Echo", "man"],
   ["am_eric", "Eric", "man"], ["am_fenrir", "Fenrir", "man"], ["am_liam", "Liam", "man"], ["am_onyx", "Onyx", "man"], ["am_puck", "Puck", "man"]];
 let voiceListOpen = false;
-/** Settings → Voice: the voice Cue reads out in, a dropdown of your Mac's voice and Kokoro's, each with ▶ for a
- *  sample (downloaded or not), its size and Download, or ✓ once it's here. */
+/** Settings → Voice: one Voice row, a picker showing the voice in use (▶ plays it); open, a short list: your Mac's
+ *  voice, then Kokoro's women and men, one line each with ▶ and In use, ✓ (here: a click uses it) or ↓ 0.5 MB.
+ *  Before the first one it says once that it brings the voice engine (125 MB); a download shows its bar. */
 function voiceSettings() {
   kokoroStatus();
-  const k = kokoro, pick = kokoroOn() || (voicePick() && k.have.includes(voicePick())) ? voicePick() : "";
-  const name = pick ? KOKORO_VOICES.find(([id]) => id === pick)?.[1] || pick : "Your Mac's voice";
-  const btn = `<button class="xp-btn" data-voice-list aria-haspopup="listbox" aria-expanded="${voiceListOpen}"><span class="xp-name">${esc(name)}</span><span class="xp-caret">${voiceListOpen ? "▴" : "▾"}</span></button>`;
-  const row = (id, title, sub, end) => `<div class="kv ${pick === id ? "on" : ""}" role="option" aria-selected="${pick === id}">${id ? `<button class="kv-play" data-voice-sample="${id}" aria-label="Hear ${esc(title)}">${PLAY_ICON}</button>` : ""}<span class="kv-text"><span class="kv-name">${esc(title)}</span>${sub ? `<span class="kv-sub">${sub}</span>` : ""}</span>${end}</div>`;
-  const mac = row("", "Your Mac's voice", "The one picked in System Settings → Accessibility → Spoken Content", pick ? `<button class="btn" data-voice-pick="">Use</button>` : `<span class="kv-state">In use</span>`);
-  const voices = k.none ? "" : KOKORO_VOICES.map(([id, title, who]) => {
-    const end = k.getting === id ? `<span class="kk-bar"><span class="kk-fill" data-kokoro-progress style="width: ${Math.round(k.progress * 100)}%"></span></span><span class="dim kv-size" data-kokoro-pct>${Math.round(k.progress * 100)}%</span>`
-      : pick === id ? `<span class="kv-state">✓ In use</span>`
-      : k.have.includes(id) ? `<span class="kv-state">✓</span><button class="btn" data-voice-pick="${id}">Use</button>`
-      : `<span class="dim kv-size">${k.ready ? "0.5 MB" : "125 MB"}</span><button class="btn" data-voice-get="${id}" ${k.getting ? "disabled" : ""}>Download</button>`;
-    return row(id, title, who, end);
-  }).join("");
-  const about = k.none ? "Natural voices need a Mac with Apple silicon."
-    : `Natural voices are Kokoro, an open voice model, run on this Mac: nothing Cue reads out leaves it. Each comes from Hugging Face when you download it; the first brings the voice engine they all use (125 MB), after that a voice is 0.5 MB.`
-      + (k.risky ? ` <b>On macOS 26.4 and 26.5</b> an Apple bug can stop one now and then; Cue then goes on in your Mac's voice. macOS 26.6 fixes it.` : "");
+  const k = kokoro, pick = voicePick() && k.have.includes(voicePick()) ? voicePick() : "";
+  const nameOf = (id) => (id ? KOKORO_VOICES.find(([v]) => v === id)?.[1] || id : "Your Mac's voice");
+  const play = (id, name) => `<button class="vp-play" data-voice-sample="${id}" aria-label="Hear ${esc(name)}">${PLAY_ICON}</button>`;
+  const btn = `<div class="vp-btn ${voiceListOpen ? "open" : ""}">${play(pick, nameOf(pick))}<button class="vp-open" data-voice-list aria-haspopup="listbox" aria-expanded="${voiceListOpen}"><span>${esc(nameOf(pick))}</span><span class="vp-caret">▾</span></button></div>`;
+  const state = (id) => {
+    if (k.getting === id) {
+      const p = Math.round(k.progress * 100);
+      return `<span class="vp-get"><span class="kk-bar"><span class="kk-fill" data-kokoro-progress style="width: ${p}%"></span></span><span class="dim" data-kokoro-pct>${k.ready ? `${p}%` : `${Math.round(k.progress * 125)} of 125 MB`}</span></span>`;
+    }
+    if (pick === id) return `<span class="vp-state">In use</span>`;
+    if (!id || k.have.includes(id)) return `<button class="vp-use" data-voice-pick="${id}">${id ? "✓" : "Use"}</button>`;
+    return `<button class="vp-down" data-voice-get="${id}" ${k.getting ? "disabled" : ""}>↓ ${k.ready ? "0.5 MB" : "Get"}</button>`;
+  };
+  const line = (id, name) => `<div class="vp-line ${pick === id ? "on" : ""}" role="option" aria-selected="${pick === id}" ${!id || k.have.includes(id) ? `data-voice-pick="${id}"` : ""}>${play(id, name)}<span class="vp-name">${esc(name)}</span>${state(id)}</div>`;
+  const group = (who, title) => `<div class="vp-sec">${title}</div>${KOKORO_VOICES.filter(([, , w]) => w === who).map(([id, name]) => line(id, name)).join("")}`;
+  const list = !voiceListOpen ? "" : `<div class="vp-list" role="listbox">
+    <div class="vp-sec">Your Mac</div>${line("", "Your Mac's voice")}
+    ${k.none ? `<div class="vp-intro">Natural voices need a Mac with Apple silicon.</div>`
+      : `${k.ready ? "" : `<div class="vp-intro"><b>Natural voices</b>Kokoro, run on this Mac: nothing it reads leaves it. The first one brings the voice engine (125 MB, once); each after that is 0.5 MB. ▶ plays any of them first.</div>`}
+    ${group("woman", "Natural · Women")}${group("man", "Natural · Men")}`}</div>`;
+  const about = k.ready && k.have.length ? `<div class="vp-note">Natural voices (Kokoro) run on this Mac: nothing Cue reads out leaves it. ${k.mb} MB · <button class="vp-link" data-kokoro-remove>Remove</button></div>` : "";
+  const risky = k.ready && k.risky ? `<div class="vp-note warn">macOS 26.4 and 26.5 have an Apple bug that can stop a natural voice now and then; Cue then goes on in your Mac's voice. macOS 26.6 fixes it.</div>` : "";
   return `<div class="set-group">Reading out loud</div>
-    ${setRow("Voice", "What Cue reads replies out in (Listen, under a reply and in the reader). ▶ plays a sample.", btn)}
-    ${voiceListOpen ? `<div class="kv-list" role="listbox">${mac}${voices}</div>` : ""}
-    <div class="set-row"><div class="set-text"><div class="set-sub">${about}</div></div>${k.have.length ? `<span class="dim kv-size">${k.mb} MB on this Mac</span><button class="btn" data-kokoro-remove>Remove all</button>` : ""}</div>`;
+    <div class="set-row vp-row"><div class="set-text"><div class="set-title">Voice</div><div class="set-sub">Listen reads replies out in it.</div>${about}${risky}</div><div class="vp">${btn}${list}</div></div>`;
 }
 let voiceSample = null;
 /** ▶ beside a voice: its sample (shipped with Cue), again to stop it. */
@@ -1308,7 +1314,10 @@ function playSample(id) {
   const same = voiceSample?.id === id && !voiceSample.a.paused;
   voiceSample?.a.pause();
   voiceSample = null;
+  if (window.speechSynthesis) speechSynthesis.cancel();
   if (same) return;
+  // Your Mac's voice: said by it, the same words as the natural voices' samples.
+  if (!id) { if (window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance("Packet three is done and staged. Here's what changed, and what I'd check before you commit.")); return; }
   const a = new Audio(`voices/${id}.m4a`);
   voiceSample = { id, a };
   a.play().catch(() => toast("Couldn't play the sample"));
@@ -1317,7 +1326,7 @@ function playSample(id) {
 function setProgress() {
   const p = Math.round((kokoro.progress || 0) * 100);
   document.querySelectorAll("[data-kokoro-progress]").forEach((el) => { el.style.width = `${p}%`; });
-  document.querySelectorAll("[data-kokoro-pct]").forEach((el) => { el.textContent = `${p}%`; });
+  document.querySelectorAll("[data-kokoro-pct]").forEach((el) => { el.textContent = kokoro.ready ? `${p}%` : `${Math.round((kokoro.progress || 0) * 125)} of 125 MB`; });
 }
 /** Its count and button on screen, without redrawing the chat. */
 function listenTell() {

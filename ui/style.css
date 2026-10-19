@@ -502,22 +502,37 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-player .ls-pp { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
 .ls-player .rd-seg button.on { background: var(--sel); color: var(--on-sel); }
 .ls-player .ls-speeds button { min-width: 0; padding: 0 7px; font-size: 11px; font-weight: 650; }
-/* Settings → Voice (chat.js voiceSettings): the voices under the dropdown, each with ▶, its size and Download, or
-   ✓ once here; the one in use in lime. */
-.kv-list { display: flex; flex-direction: column; gap: 4px; padding: 0 0 12px; }
-.kv { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 4px 8px 4px 4px; border-radius: 10px; background: var(--panel); }
-.kv:not(:has(.kv-play)) { padding-left: 14px; }
-.kv.on { background: var(--sel); color: var(--on-sel); }
-.kv-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.kv-name { font-size: 12.5px; font-weight: 650; }
-.kv-sub { font-size: 11px; color: var(--muted); }
-.kv.on .kv-sub { color: inherit; opacity: .75; }
-.kv-state { font-size: 12px; font-weight: 650; }
-.kv-size { font-size: 12px; white-space: nowrap; }
-.kv-play { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); flex: none; }
-.kv-play:hover { background: var(--panel-2); }
-.kv.on .kv-play { color: inherit; }
-.kk-bar { width: 140px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+/* Settings → Voice (chat.js voiceSettings): a picker (▶ and the voice in use); open, a short list under it in the
+   sheet's flow, one line a voice, the one in use in lime. */
+.set-row.vp-row { align-items: flex-start; }
+.vp-row .set-text { align-self: flex-start; }
+.vp { width: 320px; flex: none; display: flex; flex-direction: column; gap: 6px; }
+.vp-btn { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.vp-btn.open { border-color: var(--muted); }
+.vp-open { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 100%; padding: 0 8px 0 2px; font-size: 13px; font-weight: 650; color: var(--ink); }
+.vp-caret { font-size: 10px; color: var(--muted); }
+.vp-play { width: 26px; height: 26px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--panel-2); color: var(--accent); }
+.vp-play svg { width: 9px; height: 9px; }
+.vp-play:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.vp-list { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 6px; box-shadow: 0 18px 40px -22px rgba(15, 20, 5, .45); }
+.vp-sec { font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 8px 4px; }
+.vp-line { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 6px; border-radius: 8px; }
+.vp-line[data-voice-pick]:not(.on) { cursor: pointer; }
+.vp-line[data-voice-pick]:not(.on):hover { background: var(--panel-2); }
+.vp-line.on { background: var(--sel); color: var(--on-sel); }
+.vp-line.on .vp-play { background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: inherit; }
+.vp-name { flex: 1; min-width: 0; font-size: 13px; }
+.vp-line.on .vp-name { font-weight: 650; }
+.vp-state, .vp-use, .vp-down { font-size: 12px; font-weight: 650; white-space: nowrap; color: inherit; }
+.vp-down { color: var(--accent); }
+.vp-down:disabled { opacity: .4; }
+.vp-get { display: flex; align-items: center; gap: 6px; font-size: 11.5px; white-space: nowrap; }
+.vp-intro { margin: 6px; padding: 10px; border-radius: 10px; background: var(--panel-2); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.vp-intro b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 2px; }
+.vp-note { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+.vp-note.warn { color: var(--ink); background: color-mix(in srgb, #d99a3a 18%, transparent); border-radius: 8px; padding: 6px 10px; }
+.vp-link { font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.kk-bar { width: 90px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .kk-fill { display: block; height: 100%; background: var(--accent); transition: width .3s; }
 /* core.js hearing: the speaker beside a session's name on its cards while Listen reads one of its replies. */
 .hearing { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%; margin-left: 6px; background: var(--sel); color: var(--on-sel); vertical-align: -5px; }

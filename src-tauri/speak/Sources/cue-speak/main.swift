@@ -27,14 +27,20 @@ func emit(_ obj: [String: Any]) {
   FileHandle.standardOutput.write((line + "\n").data(using: .utf8)!)
 }
 
-/// Marks a finished download (Cue's data folder), so "ready" doesn't mean loading the model to find out.
-let readyFile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-  .appendingPathComponent("dev.spacegrowth.cue/kokoro-ready")
 /// FluidAudio's cache: Kokoro's models with the voices (ANE/<voice>.bin), and its pronouncer.
 let cacheDirs = ["kokoro-82m-coreml", "kokoro"].map {
   FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache/fluidaudio/Models/\($0)")
 }
 let voiceDir = cacheDirs[0].appendingPathComponent("ANE")
+
+/// The voice engine is here: Kokoro's models and vocab, and its pronouncer (whoever downloaded them).
+func engineHere() -> Bool {
+  let fm = FileManager.default
+  let models = ["KokoroAlbert", "KokoroAlignment", "KokoroNoise_v2", "KokoroPostAlbert", "KokoroProsody_v2", "KokoroTail_v2", "KokoroVocoder"]
+  return fm.fileExists(atPath: voiceDir.appendingPathComponent("vocab.json").path)
+    && models.allSatisfy { fm.fileExists(atPath: voiceDir.appendingPathComponent("\($0).mlmodelc").path) }
+    && !((try? fm.contentsOfDirectory(atPath: cacheDirs[1].path)) ?? []).isEmpty
+}
 
 /// The voices here ("af_bella"…), and how much it all takes, in MB.
 func onDisk() -> (have: [String], mb: Int) {
@@ -77,13 +83,12 @@ final class Speaker {
   func heard(_ o: [String: Any]) async {
     if o["status"] != nil {
       let d = onDisk()
-      emit(["status": ["ready": FileManager.default.fileExists(atPath: readyFile.path), "risky": risky, "have": d.have, "mb": d.mb]])
+      emit(["status": ["ready": engineHere(), "risky": risky, "have": engineHere() ? d.have : [], "mb": d.mb]])
     } else if let voice = o["get"] as? String {
       await get(voice)
     } else if o["remove"] != nil {
       stop()
       for d in cacheDirs { try? FileManager.default.removeItem(at: d) }
-      try? FileManager.default.removeItem(at: readyFile)
       emit(["removed": true])
     } else if o["stop"] != nil {
       stop()
@@ -100,12 +105,10 @@ final class Speaker {
   /// most of it); after that, just its 0.5 MB.
   private func get(_ voice: String) async {
     do {
-      if !FileManager.default.fileExists(atPath: readyFile.path) {
+      if !engineHere() {
         try await KokoroAneResourceDownloader.ensureModels(progressHandler: { p in emit(["progress": p.fractionCompleted * 0.7]) })
         try await KokoroAneResourceDownloader.ensureG2PAssets(progressHandler: { p in emit(["progress": 0.7 + p.fractionCompleted * 0.28]) })
         try await load()
-        try? FileManager.default.createDirectory(at: readyFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: readyFile.path, contents: nil)
       }
       try await KokoroAneResourceDownloader.ensureVoicePack(voice, repoDirectory: voiceDir)
       emit(["got": voice])

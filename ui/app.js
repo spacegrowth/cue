@@ -352,7 +352,7 @@ function bindMain() {
     const vg = t.closest("[data-voice-get]");
     if (vg) return getVoice(vg.dataset.voiceGet);
     const vp = t.closest("[data-voice-pick]");
-    if (vp) return pickVoice(vp.dataset.voicePick);
+    if (vp) { voiceListOpen = false; return pickVoice(vp.dataset.voicePick); }
     if (t.closest("[data-kokoro-remove]")) { kokoroTell({ remove: true }); return; }
     const lo = t.closest("[data-listen-open]");
     if (lo) return setActive(null, lo.dataset.listenOpen);
