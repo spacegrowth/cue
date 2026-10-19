@@ -345,10 +345,14 @@ function bindMain() {
     const lsp = t.closest("[data-listen-speed]");
     if (lsp) return listenFaster(+lsp.dataset.listenSpeed);
     if (t.closest("[data-listen-then]")) return listenThenNext();
+    const lo = t.closest("[data-listen-open]");
+    if (lo) return setActive(null, lo.dataset.listenOpen);
     if (!t.closest("button, a, input") && listenFrom(e)) return;
     const rd = t.closest("[data-read]");
     if (rd) { const k = rd.dataset.read; return openReader(k.slice(0, k.lastIndexOf(":")), k); }
     if (t.closest("[data-reader-back]")) return closeReader();
+    const rt = t.closest("[data-reader-term]");
+    if (rt) { closeReader(); return openTerm(rt.dataset.readerTerm); }
     if (t.closest("[data-reader-reply]")) return replyFromReader();
     if (t.closest("[data-reader-copy]")) return copyReader();
     const rs = t.closest("[data-reader-step]");

@@ -1090,7 +1090,12 @@ function copyReader() {
  *  column, and a foot only when the session is asking you something (then Back to chat answers it there). */
 function readerPane(sid, it, s, harness, rv) {
   const r = rv.all[rv.at], n = rv.all.length;
-  const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button><span class="grow"></span>
+  // The reader has the pane to itself (activePane leaves out the session's head, bar, tabs and terminal strip):
+  // its one bar says which session it is, and that it's waiting in its terminal when it is (an amber Terminal, as
+  // the strip goes amber; a click: the chat, with the terminal open).
+  const who = `<span class="badge h-${esc(harness || "other")}">${agentLetter(harness)}</span><span class="proj rd-name">${esc(nameOf(sid, it?.project || s?.project))}</span>`;
+  const term = inTmux(sid) && waitsInTerminal(sid) ? `<button class="rd-term" data-reader-term="${esc(sid)}" aria-label="Waiting in its terminal: open it"><span class="tlive"></span>Terminal</button>` : "";
+  const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button>${who}<span class="grow"></span>${term}
     <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
     ${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${PLAY_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</div>`;
@@ -1100,22 +1105,32 @@ function readerPane(sid, it, s, harness, rv) {
   return { bar, body, foot: listenPlayer(r.key) + foot };
 }
 // ---------- Listen: a reply read out loud ----------
-// Listen under any reply (and in the reader) reads it out a sentence at a time in the Mac's voice, at 1×, 1.25× or
-// 1.5× (remembered). The sentence it's on goes lime with the word it's saying underlined, what it read goes gray
+// Listen under any reply (and in the reader) reads it out a sentence at a time in the Mac's voice, at 1× to 2× in
+// quarter steps (remembered). The sentence it's on goes lime with the word it's saying underlined, what it read goes gray
 // (CSS highlights over the reply as shown, so the chat's own HTML is untouched), and it scrolls along. A click on a
 // sentence starts there. Code blocks are said as "Code block." once, a table a row at a time. In the chat one line
 // above the box says it's listening (Pause, Stop); in the reader the foot is its player, and it goes on to the next
-// reply when "Then the next reply" is on. Leaving the session stops it.
-let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there) }
+// reply when "Then the next reply" is on. Opening another session keeps it reading (from the reply as last shown);
+// that session's line says whose reply it is, a click goes back, and there the marks are where it got to.
+let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies) }
 let listenRun = 0;       // bumped on every start, pause and stop: an old sentence's end is ignored
-const LISTEN_SPEEDS = [1, 1.25, 1.5];
+const LISTEN_SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 let listenSpeed = 0, listenThen = true;
-try { const n = localStorage.getItem("cue.listenSpeed"); if (n != null && LISTEN_SPEEDS[+n]) listenSpeed = +n; listenThen = localStorage.getItem("cue.listenThen") !== "0"; } catch {}
+try { listenSpeed = Math.max(0, LISTEN_SPEEDS.indexOf(Number(localStorage.getItem("cue.listenRate")))); listenThen = localStorage.getItem("cue.listenThen") !== "0"; } catch {}
 const LISTEN_BLOCKS = "p, li, h1, h2, h3, h4, h5, h6, pre, tr, blockquote";
 /** The reply `key` as shown: in the reader when it's open on it, else its bubble in the chat. */
 function listenRoot(key) {
   return [...document.querySelectorAll(".rd[data-rdkey] .msg")].find((m) => m.closest(".rd").dataset.rdkey === key)
     || [...document.querySelectorAll("[data-listen]")].find((b) => b.dataset.listen === key)?.closest(".cv-agent")?.querySelector(".msg") || null;
+}
+/** What it reads from: the reply on screen, else (its session not open) a copy of it as it was last shown. */
+function listenSource(l) {
+  const root = listenRoot(l.key);
+  if (root) { l.html = root.innerHTML; return root; }
+  if (l.html == null) return null;
+  const el = document.createElement("div");
+  el.innerHTML = l.html;
+  return el;
 }
 /** A reply's sentences as shown, in reading order: each its text (what's said), and a Range over it when it's
  *  marked (not a table row or a code block). */
@@ -1156,19 +1171,19 @@ function listenMark(sents, i, w) {
 function listenUnmark() { if (CSS.highlights) ["cue-said", "cue-say", "cue-word"].forEach((h) => CSS.highlights.delete(h)); }
 /** Say the sentence it's on, then the next, to the end (and then the reader's next reply, when that's on). */
 function listenSay() {
-  const l = listening, root = l && listenRoot(l.key);
+  const l = listening, root = l && listenSource(l);
   if (!root) return listenStop();
-  const sents = listenSents(root);
+  const sents = listenSents(root), shown = root.isConnected;
   l.n = sents.length;
   if (l.i >= sents.length) return listenNext();
   const x = sents[l.i], run = ++listenRun;
-  listenMark(sents, l.i, null);
-  const r = x.range?.getBoundingClientRect(), box = root.closest(".chat-scroll, .chat") || document.documentElement;
+  if (shown) listenMark(sents, l.i, null); else listenUnmark();
+  const r = shown && x.range?.getBoundingClientRect(), box = root.closest(".chat-scroll, .chat") || document.documentElement;
   const vb = box.getBoundingClientRect();
   if (r && (r.top < vb.top + 40 || r.bottom > vb.bottom - 60)) (x.range.startContainer.parentElement.closest(LISTEN_BLOCKS) || root).scrollIntoView({ block: "center", behavior: "smooth" });
   const u = new SpeechSynthesisUtterance(x.say);
   u.rate = LISTEN_SPEEDS[listenSpeed];
-  u.onboundary = (e) => { if (run === listenRun && e.name === "word") { const now = listenRoot(l.key); listenMark(now ? listenSents(now) : sents, l.i, [e.charIndex, e.charLength || (x.say.slice(e.charIndex).match(/^\S+/)?.[0].length ?? 0)]); } };
+  u.onboundary = (e) => { if (run === listenRun && e.name === "word") { const now = listenRoot(l.key); if (now) listenMark(listenSents(now), l.i, [e.charIndex, e.charLength || (x.say.slice(e.charIndex).match(/^\S+/)?.[0].length ?? 0)]); } };
   u.onend = () => { if (run !== listenRun) return; l.i++; listenSay(); };
   u.onerror = () => { if (run === listenRun) listenStop(); };
   speechSynthesis.cancel();
@@ -1181,21 +1196,24 @@ function listenTell() {
   document.querySelectorAll("[data-listen-of]").forEach((el) => { el.textContent = l ? `${Math.min(l.i + 1, l.n)} of ${l.n}` : ""; });
   document.querySelectorAll(".ls-fill").forEach((el) => { el.style.width = l ? `${Math.round((Math.min(l.i + 1, l.n) / Math.max(1, l.n)) * 100)}%` : "0"; });
 }
-/** Done with this reply: on to the next when it was started in the reader with "Then the next reply". */
+/** Done with this reply: on to the next when it was started in the reader with "Then the next reply" (its session
+ *  open or not: then the next of its replies as they were when it was last open). */
 function listenNext() {
   const l = listening, cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
-  const all = l.reader && listenThen && sid === l.sid ? readerReplies(cur.it, cur.s) : [];
+  if (sid === l.sid) l.all = readerReplies(cur.it, cur.s);
+  const all = l.reader && listenThen ? l.all || [] : [];
   const next = all[all.findIndex((r) => r.key === l.key) + 1];
   if (!next) return listenStop();
   if (readerView?.key === l.key) readerView = { sid, key: next.key };
-  listening = { ...l, key: next.key, i: 0, n: 0 };
+  listening = { ...l, key: next.key, i: 0, n: 0, html: md(next.text) };
   renderMain();
   listenSay();
 }
 function listenPlay(sid, key, reader = false) {
   if (!window.speechSynthesis) return toast("This Mac can't read it out");
   openMsgs.add(key);   // a folded reply opens to be read
-  listening = { sid, key, i: 0, n: 0, playing: true, reader };
+  const cur = current();
+  listening = { sid, key, i: 0, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [] };
   renderMain();
   listenSay();
 }
@@ -1216,7 +1234,7 @@ const listenToggle = () => (listening?.playing ? listenPause() : listenResume())
 function listenSkip(dir) {
   if (!listening) return;
   listening.i = Math.max(0, Math.min(listening.n - 1, listening.i + dir));
-  if (listening.playing) listenSay(); else { const root = listenRoot(listening.key); if (root) listenMark(listenSents(root), listening.i, null); listenTell(); }
+  if (listening.playing) listenSay(); else { const root = listenSource(listening); if (root?.isConnected) listenMark(listenSents(root), listening.i, null); listenTell(); }
 }
 function listenStop() {
   listenRun++;
@@ -1228,7 +1246,7 @@ function listenStop() {
 }
 function listenFaster(n) {
   listenSpeed = n;
-  try { localStorage.setItem("cue.listenSpeed", String(n)); } catch {}
+  try { localStorage.setItem("cue.listenRate", String(LISTEN_SPEEDS[n])); } catch {}
   if (listening?.playing) listenSay();
   renderMain();
 }
@@ -1249,10 +1267,9 @@ function listenFrom(ev) {
   listenSay();
   return true;
 }
-// Leaving the session (or its reply going away) stops it; the marks follow a redraw of the chat.
+// The marks follow a redraw of the chat (and come back with its session).
 function listenKeep(sid) {
-  if (!listening) return;
-  if (listening.sid !== sid) return listenStop();
+  if (!listening || listening.sid !== sid) return;
   const root = listenRoot(listening.key);
   if (root) listenMark(listenSents(root), listening.i, null);
   listenTell();
@@ -1265,11 +1282,12 @@ function listenBtn(key) {
   const on = listening?.key === key;
   return `<button class="cv-pill ${on ? "on" : ""}" data-listen="${esc(key)}">${on && listening.playing ? PAUSE_ICON : PLAY_ICON}${on ? (listening.playing ? "Listening" : "Resume") : "Listen"}</button>`;
 }
-/** Above the chat's box while one of this session's replies is read out. */
+/** Above the chat's box while a reply is read out: in its own session, how far; in another, whose (a click goes there). */
 function listenLine(sid) {
   const l = listening;
-  if (!l || l.sid !== sid) return "";
-  return `<div class="ls-line" data-key="listen"><b>${l.playing ? "Listening" : "Paused"}</b><span class="dim"> · sentence <span data-listen-of="1">${Math.min(l.i + 1, l.n)} of ${l.n}</span>${listenSpeed ? ` · ${LISTEN_SPEEDS[listenSpeed]}×` : ""}</span><span class="grow"></span>
+  if (!l || !sid) return "";
+  const where = l.sid === sid ? `sentence <span data-listen-of="1">${Math.min(l.i + 1, l.n)} of ${l.n}</span>` : `<button class="ls-where" data-listen-open="${esc(l.sid)}">${esc(nameOf(l.sid, sessionOf(l.sid)?.project))}</button>`;
+  return `<div class="ls-line" data-key="listen"><b>${l.playing ? "Listening" : "Paused"}</b><span class="dim"> · ${where}${listenSpeed ? ` · ${LISTEN_SPEEDS[listenSpeed]}×` : ""}</span><span class="grow"></span>
     <button class="btn" data-listen-toggle="1" aria-label="${l.playing ? "Pause" : "Go on"}">${l.playing ? PAUSE_ICON : PLAY_ICON}</button><button class="btn" data-listen-stop="1">Stop</button></div>`;
 }
 /** The reader's foot while it reads the reply open there: a sentence back, pause, a sentence on, how far, speed,
@@ -1801,6 +1819,9 @@ function activePane() {
     <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
     ${subHead(s?.cwd || it?.cwd, "", sid)}
     ${chatBox(`m|${sid}`, chatHtml(it, s, harness, true))}${foot}${restartCover(rs, nameOf(sid, project))}</div>`;
+  // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.
+  if (rvp) return `<div class="active-pane reading ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
+    ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>

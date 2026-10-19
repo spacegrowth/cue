@@ -416,7 +416,14 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-view-foot { align-items: center; font-size: 12.5px; }
 /* The reader (chat.js readerPane): one reply in one column, larger type, in place of the chat. Its bar sits
    above the chat area like a background agent's Back row; the text size is a variable (three steps). */
-.rd-head { padding-bottom: 2px; }
+.rd-head { padding: 12px 18px 2px; gap: 6px; }
+.rd-head > * { flex: none; }
+.rd-head > .rd-name { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 40px; }
+.rd-head > .grow { flex: 1 1 0; }
+/* Waiting in its terminal, in the reader's bar: the terminal strip's waiting amber, as a chip. */
+.rd-term { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: 999px; background: color-mix(in srgb, #d99a3a 32%, var(--slab)); color: var(--on-slab); font-size: 11.5px; font-weight: 650; white-space: nowrap; flex: none; }
+.rd-term:hover { background: color-mix(in srgb, #d99a3a 44%, var(--slab)); }
+.rd-term .tlive { background: #d99a3a; }
 .rd-seg { display: inline-flex; align-items: center; height: 30px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
 .rd-seg button { height: 100%; min-width: 30px; padding: 0 8px; color: var(--ink); font-size: 14px; font-weight: 700; }
 .rd-seg button + button, .rd-seg .rd-of + button { border-left: 1px solid var(--line); }
@@ -487,6 +494,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 ::highlight(cue-say) { background-color: var(--sel); color: var(--on-sel); }
 ::highlight(cue-word) { background-color: var(--accent); color: var(--on-accent); text-decoration: underline 2px; text-underline-offset: 3px; }
 .ls-line { display: flex; align-items: center; gap: 8px; margin: 0 16px 6px; padding: 5px 6px 5px 12px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
+.ls-where { font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.ls-where:hover { text-decoration-color: currentColor; }
 .ls-line .btn, .ls-player .btn { display: inline-flex; align-items: center; gap: 6px; }
 .ls-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ls-player { align-items: center; gap: 10px; font-size: 12.5px; }
