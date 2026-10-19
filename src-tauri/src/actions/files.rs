@@ -1,47 +1,27 @@
-//! A project's actions as they're written down: its two files (.cue/actions.json, shared with the repo,
-//! and .cue/actions.local.json, yours). Reading and writing only: what's allowed or running lives
-//! elsewhere (mod.rs, run.rs).
+//! A project's actions as they're written down: one file of yours per project, in Cue's own folder (never
+//! in the project, so nothing of it is shared with the repo). Reading and writing only: which file is
+//! a project's, what's allowed or running lives elsewhere (mod.rs, run.rs).
 
 use serde_json::{json, Map, Value};
 
-/// The shared file, committed with the project.
-pub const SHARED: &str = ".cue/actions.json";
-/// Yours: Cue says when git doesn't ignore it, and never edits .gitignore itself.
-pub const LOCAL: &str = ".cue/actions.local.json";
-/// The files Cue reads in a project folder, in this order.
-pub const FILES: [&str; 2] = [SHARED, LOCAL];
-/// The most of one file Cue reads.
+/// The most of a file Cue reads.
 pub const FILE_MAX: usize = 256 * 1024;
 
-/// The notes at the top of both files, Cue's own: for the person and for an agent asked to set them up.
+/// The notes at the top of the file, Cue's own: for the person and for an agent asked to set them up.
 /// A file written without them gets them; a file's own are kept as they are.
 pub const ABOUT: [&str; 6] = [
-    "Actions are buttons in Cue for this project: install, test, start a server, clean a cache. Cue shows them under the agent's latest reply.",
-    "Each needs a name and a one-line shell command, run by the person's shell in this folder.",
+    "Actions are buttons in Cue for the project in \"folder\": install, test, start a server, clean a cache. Cue shows them under the agent's latest reply.",
+    "Each needs a name and a one-line shell command, run by the person's shell in that folder.",
     "\"keep\": true for a server or watcher that keeps running; Cue shows its port, Restart and Stop.",
     "\"ask\": true if running it while an agent is working could trip the agent (install, clean): Cue asks.",
     "Keep it to the two or three the person runs most, from what the project really uses (package.json, justfile, Makefile, README, docker-compose).",
     "Cue asks the person before running anything new or changed.",
 ];
 
-/// What Cue read of a project folder: each file's text (None: not there).
-#[derive(Default, Clone, Debug)]
-pub struct Folder {
-    pub texts: Vec<(String, String)>,
-    /// Whether git ignores the local file: None outside a repository (or when git couldn't say).
-    pub local_ignored: Option<bool>,
-}
-
-impl Folder {
-    pub fn text(&self, file: &str) -> Option<&str> {
-        self.texts.iter().find(|(f, _)| f == file).map(|(_, t)| t.as_str())
-    }
-}
-
-/// One action, from one of the two files.
+/// One action.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Action {
-    /// "shared" | "local".
+    /// "local" (yours; the one kind there is now, kept in its id so what you allowed stays allowed).
     pub source: String,
     pub name: String,
     /// The command line Cue runs.
@@ -61,7 +41,7 @@ impl Action {
     }
 }
 
-/// The actions in one of the two files (`source` "shared" or "local"). An entry without a name or a
+/// The actions in a file (`source` as each one's). An entry without a name or a
 /// command is left out; a file that isn't JSON is an error (Cue says so and never writes over it).
 pub fn parse(text: &str, source: &str) -> Result<Vec<Action>, String> {
     if text.trim().is_empty() {
@@ -85,8 +65,8 @@ pub fn parse(text: &str, source: &str) -> Result<Vec<Action>, String> {
 }
 
 /// The file's JSON to change: its own (keys and order kept), or a new one, with Cue's notes first when it
-/// has none. Refuses a file that isn't JSON rather than lose what's in it.
-fn editable(text: Option<&str>) -> Result<Map<String, Value>, String> {
+/// has none and `folder` (the project's) after them. Refuses a file that isn't JSON rather than lose what's in it.
+fn editable(text: Option<&str>, folder: &str) -> Result<Map<String, Value>, String> {
     let mut m = match text.filter(|t| !t.trim().is_empty()) {
         Some(t) => match serde_json::from_str::<Value>(t).map_err(|e| format!("Fix the file first: it isn't valid JSON ({e})"))? {
             Value::Object(m) => m,
@@ -97,6 +77,9 @@ fn editable(text: Option<&str>) -> Result<Map<String, Value>, String> {
     if !m.contains_key("about") {
         let mut with = Map::new();
         with.insert("about".into(), json!(ABOUT));
+        if !m.contains_key("folder") {
+            with.insert("folder".into(), json!(folder));
+        }
         with.extend(std::mem::take(&mut m));
         m = with;
     }
@@ -110,10 +93,15 @@ fn written(m: Map<String, Value>) -> String {
     serde_json::to_string_pretty(&Value::Object(m)).unwrap_or_default() + "\n"
 }
 
+/// A new file for the project in `folder`: Cue's notes, the folder, no actions yet.
+pub fn fresh(folder: &str) -> String {
+    written(editable(None, folder).unwrap_or_default())
+}
+
 /// The file with `a` saved in it: the entry named `old` (else `a.name`) changed in place, its other keys
 /// kept, or a new entry at the end. `keep`/`ask` are written only when on.
-pub fn with_action(text: Option<&str>, old: Option<&str>, a: &Action) -> Result<String, String> {
-    let mut m = editable(text)?;
+pub fn with_action(text: Option<&str>, folder: &str, old: Option<&str>, a: &Action) -> Result<String, String> {
+    let mut m = editable(text, folder)?;
     let list = m.get_mut("actions").and_then(Value::as_array_mut).ok_or("no actions list")?;
     let is = |e: &Value, n: &str| e["name"].as_str().map(str::trim) == Some(n);
     let at = old.and_then(|o| list.iter().position(|e| is(e, o))).or_else(|| list.iter().position(|e| is(e, &a.name)));
@@ -141,8 +129,8 @@ pub fn with_action(text: Option<&str>, old: Option<&str>, a: &Action) -> Result<
 }
 
 /// The file without the action named `name` (everything else as it was).
-pub fn without_action(text: Option<&str>, name: &str) -> Result<String, String> {
-    let mut m = editable(text)?;
+pub fn without_action(text: Option<&str>, folder: &str, name: &str) -> Result<String, String> {
+    let mut m = editable(text, folder)?;
     if let Some(list) = m.get_mut("actions").and_then(Value::as_array_mut) {
         list.retain(|e| e["name"].as_str().map(str::trim) != Some(name));
     }
@@ -156,7 +144,7 @@ mod tests {
     #[test]
     fn writing_a_file_keeps_its_notes_its_other_keys_and_each_entrys_own() {
         let text = r#"{"about": ["ours"], "version": 2, "actions": [{"name": "API", "run": "npm run dev:api", "keep": true, "color": "lime"}, {"name": "Lint", "run": "npm run lint"}]}"#;
-        let out = with_action(Some(text), Some("API"), &Action { name: "Server".into(), run: "npm run dev".into(), keep: false, ask: true, ..Default::default() }).unwrap();
+        let out = with_action(Some(text), "/p", Some("API"), &Action { name: "Server".into(), run: "npm run dev".into(), keep: false, ask: true, ..Default::default() }).unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["about"], json!(["ours"]), "its own notes stay");
         assert_eq!(v["version"], 2);
@@ -167,25 +155,26 @@ mod tests {
         let keys: Vec<&String> = v.as_object().unwrap().keys().collect();
         assert_eq!(keys, ["about", "version", "actions"], "order kept");
         // Parsed back as written.
-        let a = parse(&out, "shared").unwrap();
+        let a = parse(&out, "local").unwrap();
         assert_eq!((a[0].name.as_str(), a[0].ask, a[0].keep), ("Server", true, false));
-        assert_eq!(a[0].id(), "shared:Server");
+        assert_eq!(a[0].id(), "local:Server");
     }
 
     #[test]
     fn a_new_file_gets_cues_notes_first_and_a_broken_one_is_never_written_over() {
-        let out = with_action(None, None, &Action { name: "Install".into(), run: "npm ci".into(), ..Default::default() }).unwrap();
+        let out = with_action(None, "/p", None, &Action { name: "Install".into(), run: "npm ci".into(), ..Default::default() }).unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["about"], json!(ABOUT));
+        assert_eq!(v["folder"], "/p", "which project's it is");
         assert_eq!(v["actions"], json!([{"name": "Install", "run": "npm ci"}]));
-        let no_notes = with_action(Some(r#"{"actions": [], "x": 1}"#), None, &Action { name: "T".into(), run: "t".into(), ..Default::default() }).unwrap();
+        let no_notes = with_action(Some(r#"{"actions": [], "x": 1}"#), "/p", None, &Action { name: "T".into(), run: "t".into(), ..Default::default() }).unwrap();
         let keys: Vec<String> = serde_json::from_str::<Value>(&no_notes).unwrap().as_object().unwrap().keys().cloned().collect();
-        assert_eq!(keys, ["about", "actions", "x"]);
-        assert!(with_action(Some("{ not json"), None, &Action { name: "T".into(), run: "t".into(), ..Default::default() }).is_err());
-        assert!(parse("{ not json", "shared").is_err());
-        let two = with_action(Some(&out), None, &Action { name: "install".into(), run: "pnpm i".into(), ..Default::default() });
+        assert_eq!(keys, ["about", "folder", "actions", "x"]);
+        assert!(with_action(Some("{ not json"), "/p", None, &Action { name: "T".into(), run: "t".into(), ..Default::default() }).is_err());
+        assert!(parse("{ not json", "local").is_err());
+        let two = with_action(Some(&out), "/p", None, &Action { name: "install".into(), run: "pnpm i".into(), ..Default::default() });
         assert!(two.unwrap_err().contains("already"), "two of one name");
-        let gone = without_action(Some(&out), "Install").unwrap();
+        let gone = without_action(Some(&out), "/p", "Install").unwrap();
         assert_eq!(serde_json::from_str::<Value>(&gone).unwrap()["actions"], json!([]));
     }
 

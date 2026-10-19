@@ -31,10 +31,9 @@ A session's project comes from its folder, by the first of three rules that says
 3. **Its git repository**, by its main checkout's name, so every worktree and subfolder of `web-app`
    is `web-app`. Outside a repository, the folder's own name.
 
-A session's actions are its checkout's: a session in `web-app/ui` has web-app's, run in web-app. A
-worktree's are its own (its branch's `.cue/actions.json`), run in the worktree, so they run that
-branch's code. Yours (`.cue/actions.local.json`) and what you allowed are kept once for the whole
-repository, in its main checkout, so a new worktree has them too.
+A session's actions run at the top of its checkout: a session in `web-app/ui` runs web-app's in web-app,
+and a worktree's run in the worktree, so they run that branch's code. The actions themselves, and what
+you allowed, are kept once for the whole repository, so a new worktree has them too.
 
 A running action is on its project's chip by the folder it runs in, never by a session: it stays there
 with every session closed. When two checkouts of a project run actions, each row says its branch.
@@ -42,22 +41,20 @@ with every session closed. When two checkouts of a project run actions, each row
 On another machine Cue never reads the repository from this Mac: a session there is in its folder's
 project unless you put the folder in another, and its actions are its folder's.
 
-## The two files
+## Where they're kept
 
-A project's actions are written in its checkout:
-
-- `.cue/actions.json`: shared with everyone who works on the repo. Commit it.
-- `.cue/actions.local.json`: only for you. Add it to your `.gitignore` (Cue says when git doesn't ignore
-  it; it never edits `.gitignore` itself).
-
-Both have the same shape:
+Actions are yours. Cue keeps them in its own folder, one file per project, in
+`~/Library/Application Support/dev.spacegrowth.cue/actions/mine/` (named after the project's folder),
+never in the project, so nothing is shared with its repository. A remote project's file is on this Mac
+too; its actions still run on its machine.
 
 ```json
 {
   "about": [
-    "Actions are buttons in Cue for this project: install, test, start a server, clean a cache.",
+    "Actions are buttons in Cue for the project in \"folder\": install, test, start a server, clean a cache.",
     "..."
   ],
+  "folder": "/Users/you/web-app",
   "actions": [
     { "name": "Install", "run": "npm ci", "ask": true },
     { "name": "API", "run": "npm run dev:api", "keep": true }
@@ -75,14 +72,14 @@ The `about` notes at the top are for whoever edits the file, people and agents a
 into a new file, and keeps a file's own notes and any keys it doesn't know when it saves an action.
 
 You can also add, change and delete actions in Cue: **+ New action** or the edit button on one, in the
-Actions tab. It shows the line it writes, and you choose which file it goes in.
+Actions tab. It shows the line it writes.
 
 ## Trust
 
-Cue never runs a command from a file before you allow it. The first time a project's actions are
-listed, and whenever one is added or its command changes, Cue shows them,
+Cue never runs a command written in the file (by an agent, or by hand) before you allow it. Whenever
+one is added or its command changes there, Cue shows them,
 the old command struck through beside a changed one, and runs nothing until you click **Allow**. What
-you allowed is kept in Cue's own folder, never in the project, so a repository can't allow its own.
+you allowed is kept apart from the file (`actions/projects.json`), so an agent can't allow its own.
 Actions you save in Cue's edit sheet are allowed by being saved.
 
 Every run is logged, with its command, folder and exit code, in `actions.log` in Cue's folder.
@@ -91,5 +88,6 @@ Every run is logged, with its command, folder and exit code, in `actions.log` in
 
 **Ask the agent to set up actions** (in ⌘E and the Actions tab) puts Cue's actions prompt into the box
 of the project's open session, for you to read and send yourself: it asks the agent to look at the
-project and write its actions into the two files, following the notes at the top. Cue never sends it
-for you. Change the prompt in **Settings → Actions** (**Reset to Cue's** puts it back).
+project and write its actions into the project's file (Cue makes it first, with its notes at the top,
+and the prompt names it). Cue never sends it for you. An agent on another machine can't reach the file
+on this Mac: add a remote project's actions with **+ New action**. Change the prompt in **Settings → Actions** (**Reset to Cue's** puts it back).

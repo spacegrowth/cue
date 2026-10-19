@@ -1,17 +1,17 @@
 //! Actions: a project's buttons for its developer commands (install, test, clean a cache, start a dev
 //! server), usually two or three. They belong to the project (a folder, and the machine it's on for a
-//! remote session), not to a session: they run any time, an agent working or not. Written down in the
-//! project's .cue/actions.json (shared with the repo) and .cue/actions.local.json (yours) (files.rs).
-//! Cue runs them in tmux (run.rs), so a server it started is never lost.
+//! remote session), not to a session: they run any time, an agent working or not. Written down in a
+//! file of yours per project in Cue's own folder, actions/mine/ (files.rs): nothing in the project, so
+//! nothing is shared with its repo. Cue runs them in tmux (run.rs), so a server it started is never lost.
 //!
-//! Nothing from a file runs before you allow it, and a changed command asks again: what you allowed is
-//! kept in Cue's own folder (never in the project, so a repo can't allow itself), per project, with what
+//! Nothing from the file runs before you allow it (an agent may have written it), and a changed command
+//! asks again: what you allowed is kept apart from it (actions/projects.json), per project, with what
 //! each one ran, so the trust sheet can show the old command beside the new. Actions you save in Cue's
 //! edit sheet are allowed by being saved. Each action's last run is kept there too. Every run is logged to actions.log in Cue's folder.
 //!
 //! The window hears "actions" ({folder, machine}) whenever a project's actions or their states change:
 //! states are looked at every second while something runs (a machine's every 3), and the files of the
-//! projects on this Mac the window listed lately every 2 s (a machine's are read when it lists them).
+//! projects the window listed lately every 2 s.
 
 pub mod files;
 pub mod run;
@@ -26,7 +26,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 /// Cue's actions prompt, when you haven't written your own (Settings → Actions).
-pub const PROMPT: &str = "Look at this project and set up its Cue actions in .cue/actions.json (shared with the repo) and .cue/actions.local.json (only for me). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
+/// `{file}` is the project's file (`mine_path`), put in when the prompt goes into the box.
+pub const PROMPT: &str = "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the \"about\" notes at the top of the file first and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
 
 /// The actions prompt in use: yours, else Cue's.
 pub fn prompt() -> String {
@@ -61,9 +62,8 @@ fn top(folder: String, machine: &Option<String>) -> String {
     crate::logs::live::checkout_top(&folder).map(|t| t.to_string_lossy().to_string()).unwrap_or(folder)
 }
 
-/// Where your own actions (.cue/actions.local.json) are kept: on this Mac a worktree's are its main
-/// checkout's (git doesn't copy an ignored file into a new worktree, and they're yours for the whole
-/// project); otherwise the folder's.
+/// The folder your actions are kept for: on this Mac a worktree's are its main checkout's (they're
+/// yours for the whole project); otherwise the folder.
 fn mine_dir(folder: &str, machine: &str) -> String {
     if !machine.is_empty() {
         return folder.to_string();
@@ -72,6 +72,18 @@ fn mine_dir(folder: &str, machine: &str) -> String {
         Some(r) if r.join(".git").is_dir() => r.to_string_lossy().to_string(),
         _ => folder.to_string(),
     }
+}
+
+/// The project's file of actions, in Cue's folder: actions/mine/<folder's name>[-<machine>]-<hash>.json.
+fn mine_path(folder: &str, machine: &str) -> std::path::PathBuf {
+    let dir = mine_dir(folder, machine);
+    let base = dir.rsplit('/').find(|p| !p.is_empty()).unwrap_or("project");
+    let tidy = |t: &str| t.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '-' }).collect::<String>();
+    let mut name = tidy(base).trim_start_matches('.').to_string();
+    if !machine.is_empty() {
+        name = format!("{name}-{}", tidy(machine));
+    }
+    crate::server::cue_dir().join("actions").join("mine").join(format!("{name}-{:08x}.json", run::fnv(&key(folder, machine)) as u32))
 }
 
 fn store_path() -> std::path::PathBuf {
@@ -132,91 +144,37 @@ fn log(folder: &str, machine: &str, name: &str, what: &str) {
 
 // ---------- reading a project ----------
 
-/// What a project folder holds (files.rs reads it): on this Mac from disk, on a machine in one SSH trip
-/// (never a look at that path on this Mac).
-fn read_folder(folder: &str, machine: &str) -> Result<files::Folder, String> {
+/// The project's file, as text (None: not there yet). Its folder on this Mac must be there; a machine's
+/// is never looked at from here (its file is on this Mac anyway).
+fn read_mine(folder: &str, machine: &str) -> Result<Option<String>, String> {
     if !folder.starts_with('/') && !folder.starts_with('~') {
         return Err("that isn't a project folder".into());
     }
-    let mut f = files::Folder::default();
-    if machine.is_empty() {
-        let dir = std::path::Path::new(folder);
-        if !dir.is_dir() {
-            return Err(format!("{folder} isn't a folder"));
-        }
-        let mine = mine_dir(folder, machine);
-        for name in files::FILES {
-            let p = if name == files::LOCAL { std::path::Path::new(&mine).join(name) } else { dir.join(name) };
-            if p.is_file() {
-                if let Ok(b) = std::fs::read(&p) {
-                    f.texts.push((name.to_string(), String::from_utf8_lossy(&b[..b.len().min(files::FILE_MAX)]).to_string()));
-                }
-            }
-        }
-        f.local_ignored = match crate::safe_git::run("", folder, &[], &["check-ignore", "-q", "--", files::LOCAL]) {
-            Ok((_, 0)) => Some(true),
-            Ok((_, 1)) => Some(false),
-            _ => None,
-        };
-        return Ok(f);
+    if machine.is_empty() && !std::path::Path::new(folder).is_dir() {
+        return Err(format!("{folder} isn't a folder"));
     }
-    let host = crate::machines::get(machine).ok_or_else(|| format!("{machine} isn't one of your machines any more (+ New → Machine)"))?.host;
-    let git = crate::safe_git::sh_words(&crate::safe_git::words(".", &[], &["check-ignore", "-q", "--", files::LOCAL]));
-    let script = format!(
-        "cd {} 2>/dev/null || {{ echo '@@cue-nodir'; exit 0; }}\nfor f in {}; do [ -f \"$f\" ] && {{ printf '\\n@@cue-file %s\\n' \"$f\"; head -c {} \"$f\"; }}; done\n{git} >/dev/null 2>&1; printf '\\n@@cue-ignored %s\\n' $?\n",
-        crate::machines::remote_dir(folder),
-        files::FILES.iter().map(|f| crate::terminal::focus::shq(f)).collect::<Vec<_>>().join(" "),
-        files::FILE_MAX,
-    );
-    let out = crate::machines::run(&host, &script)?;
-    if out.trim_start().starts_with("@@cue-nodir") {
-        return Err(format!("{folder} isn't a folder on {machine}"));
+    match std::fs::read(mine_path(folder, machine)) {
+        Ok(b) => Ok(Some(String::from_utf8_lossy(&b[..b.len().min(files::FILE_MAX)]).to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
     }
-    Ok(parse_remote(&out))
 }
 
-/// The remote read's output (`read_folder`) as a Folder.
-fn parse_remote(out: &str) -> files::Folder {
-    let mut f = files::Folder::default();
-    for chunk in out.split("\n@@cue-").skip(1) {
-        let (head, body) = chunk.split_once('\n').unwrap_or((chunk, ""));
-        if let Some(name) = head.strip_prefix("file ") {
-            if files::FILES.contains(&name) {
-                f.texts.push((name.to_string(), body.to_string()));
-            }
-        } else if let Some(code) = head.strip_prefix("ignored ") {
-            f.local_ignored = match code.trim() {
-                "0" => Some(true),
-                "1" => Some(false),
-                _ => None,
-            };
-        }
-    }
-    f
-}
-
-/// A project's actions, in order: the shared file's, yours, then the found ones not already there. And
-/// what Cue read, and each file's error (a file that isn't JSON).
+/// A project's actions, in the file's order, what Cue read, and the file's error (it isn't JSON).
 struct Gathered {
     actions: Vec<Action>,
-    folder: files::Folder,
-    errors: serde_json::Map<String, Value>,
+    text: Option<String>,
+    error: Option<String>,
 }
 
 fn gather(folder: &str, machine: &str) -> Result<Gathered, String> {
-    let f = read_folder(folder, machine)?;
-    let mut errors = serde_json::Map::new();
-    let mut actions = vec![];
-    for (file, source) in [(files::SHARED, "shared"), (files::LOCAL, "local")] {
-        match f.text(file).map(|t| files::parse(t, source)) {
-            Some(Ok(a)) => actions.extend(a),
-            Some(Err(e)) => {
-                errors.insert(source.into(), json!(format!("{file} {e}")));
-            }
-            None => {}
-        }
-    }
-    Ok(Gathered { actions, folder: f, errors })
+    let text = read_mine(folder, machine)?;
+    let (actions, error) = match text.as_deref().map(|t| files::parse(t, "local")) {
+        Some(Ok(a)) => (a, None),
+        Some(Err(e)) => (vec![], Some(format!("{} {e}", mine_path(folder, machine).display()))),
+        None => (vec![], None),
+    };
+    Ok(Gathered { actions, text, error })
 }
 
 fn find(g: &Gathered, id: &str) -> Result<Action, String> {
@@ -295,7 +253,7 @@ fn note_ended(s: &run::Seen) {
     }
 }
 
-/// The project's actions for the window: {actions, files, pending, prompt, errors}.
+/// The project's actions for the window: {actions, file: {path, there}, error, pending, prompt}.
 fn listing(folder: &str, machine: &str) -> Result<Value, String> {
     let g = gather(folder, machine)?;
     let tag = run::project_tag(folder, machine);
@@ -325,8 +283,8 @@ fn listing(folder: &str, machine: &str) -> Result<Value, String> {
     watch(folder, machine, &seen);
     Ok(json!({
         "actions": actions,
-        "files": { "shared": g.folder.text(files::SHARED).is_some(), "local": g.folder.text(files::LOCAL).is_some(), "localIgnored": g.folder.local_ignored },
-        "errors": g.errors,
+        "file": { "path": mine_path(folder, machine).to_string_lossy(), "there": g.text.is_some() },
+        "error": g.error,
         "pending": pending,
         "prompt": prompt(),
     }))
@@ -343,7 +301,7 @@ fn changed(folder: &str, machine: &str) {
     }
 }
 
-/// A project Cue keeps an eye on: listed lately (its files, on this Mac), or with something running.
+/// A project Cue keeps an eye on: listed lately (its file), or with something running.
 struct Watched {
     folder: String,
     machine: String,
@@ -359,7 +317,7 @@ const LISTED_FOR: Duration = Duration::from_secs(600);
 
 /// The project was just listed (with these sessions): watch its files, and what runs in it.
 fn watch(folder: &str, machine: &str, seen: &[run::Seen]) {
-    let stamp = if machine.is_empty() { stamp(folder) } else { 0 };
+    let stamp = stamp(folder, machine);
     let mut w = crate::locking::lock(&WATCH, "actions WATCH");
     let e = w.get_or_insert_with(HashMap::new).entry(key(folder, machine)).or_insert_with(|| Watched { folder: folder.into(), machine: machine.into(), listed: Instant::now(), stamp, running: HashMap::new() });
     e.listed = Instant::now();
@@ -374,29 +332,25 @@ fn track(s: &run::Seen) {
     e.running.insert(s.session.clone(), s.clone());
 }
 
-/// The project's files' names, sizes and times on this Mac, as one number: it changes when any of them does.
-fn stamp(folder: &str) -> u64 {
-    let dir = std::path::Path::new(folder);
-    let mut s = String::new();
-    let mine = mine_dir(folder, "");
-    for f in files::FILES.iter() {
-        let at = if *f == files::LOCAL { std::path::Path::new(&mine).join(f) } else { dir.join(f) };
-        if let Ok(m) = std::fs::metadata(at) {
+/// The project's file's size and time, as one number: it changes when the file does.
+fn stamp(folder: &str, machine: &str) -> u64 {
+    match std::fs::metadata(mine_path(folder, machine)) {
+        Ok(m) => {
             let t = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0);
-            s.push_str(&format!("{f}:{}:{t};", m.len()));
+            run::fnv(&format!("{}:{t}", m.len()))
         }
+        Err(_) => 0,
     }
-    run::fnv(&s)
 }
 
 /// One look: the running actions' states (this Mac's every time, a machine's every third), and the
 /// watched projects' files (every second time). Changes go to the window.
 fn tick(n: u64) {
-    let (machines, files): (HashSet<String>, Vec<(String, String, u64)>) = {
+    let (machines, files): (HashSet<String>, Vec<(String, String, String, u64)>) = {
         let w = crate::locking::lock(&WATCH, "actions WATCH");
         let all = w.as_ref().map(|m| m.values().collect::<Vec<_>>()).unwrap_or_default();
         let machines = all.iter().filter(|e| !e.running.is_empty()).map(|e| e.machine.clone()).filter(|m| m.is_empty() || n % 3 == 0).collect();
-        let files = if n % 2 == 0 { all.iter().filter(|e| e.machine.is_empty() && e.listed.elapsed() < LISTED_FOR).map(|e| (key(&e.folder, &e.machine), e.folder.clone(), e.stamp)).collect() } else { vec![] };
+        let files = if n % 2 == 0 { all.iter().filter(|e| e.listed.elapsed() < LISTED_FOR).map(|e| (key(&e.folder, &e.machine), e.folder.clone(), e.machine.clone(), e.stamp)).collect() } else { vec![] };
         (machines, files)
     };
     let mut events: Vec<(String, String)> = vec![];
@@ -455,15 +409,15 @@ fn tick(n: u64) {
             }
         }
     }
-    for (k, folder, before) in files {
-        let now = stamp(&folder);
+    for (k, folder, machine, before) in files {
+        let now = stamp(&folder, &machine);
         if now != before {
             let mut w = crate::locking::lock(&WATCH, "actions WATCH");
             if let Some(e) = w.as_mut().and_then(|x| x.get_mut(&k)) {
                 e.stamp = now;
             }
             drop(w);
-            events.push((folder, String::new()));
+            events.push((folder, machine));
         }
     }
     events.sort();
@@ -529,20 +483,21 @@ fn stop_one(folder: &str, machine: &str, id: &str) -> Result<Value, String> {
     Ok(state_of(&a, folder, machine, &seen, &record(folder, machine)))
 }
 
-/// Write one of the project's two files (whole, put in place at once).
-fn write_file(folder: &str, machine: &str, file: &str, text: &str) -> Result<(), String> {
-    if machine.is_empty() {
-        let dir = if file == files::LOCAL { mine_dir(folder, machine) } else { folder.to_string() };
-        let path = std::path::Path::new(&dir).join(file);
-        std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        let tmp = path.with_extension("json.cue-tmp");
-        std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
-        return std::fs::rename(&tmp, &path).map_err(|e| e.to_string());
+/// Write the project's file (whole, put in place at once).
+fn write_mine(folder: &str, machine: &str, text: &str) -> Result<(), String> {
+    let path = mine_path(folder, machine);
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.cue-tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+/// The project's file, made (with Cue's notes) when it isn't there yet, for an agent to fill: its path.
+fn ensure_mine(folder: &str, machine: &str) -> Result<String, String> {
+    if read_mine(folder, machine)?.is_none() {
+        write_mine(folder, machine, &files::fresh(folder))?;
     }
-    let host = crate::machines::get(machine).ok_or_else(|| format!("{machine} isn't one of your machines any more"))?.host;
-    let q = crate::terminal::focus::shq;
-    let script = format!("cd {} && mkdir -p .cue && cat > {tmp} && mv -f {tmp} {}", crate::machines::remote_dir(folder), q(file), tmp = q(&format!("{file}.cue-tmp")));
-    crate::machines::run_with_input(&host, &script, text).map(|_| ())
+    Ok(mine_path(folder, machine).to_string_lossy().to_string())
 }
 
 /// An action as the edit sheet sends it.
@@ -556,14 +511,8 @@ pub struct Edited {
     pub ask: bool,
 }
 
-/// Save an action from Cue's edit sheet into the shared file or yours (`keep`), in place of `old_id`
-/// when it's one of the files' (moved to the other file, it leaves the first). Saved is allowed.
-fn save(folder: &str, machine: &str, e: Edited, keep: &str, old_id: Option<&str>) -> Result<Value, String> {
-    let (file, source) = match keep {
-        "shared" => (files::SHARED, "shared"),
-        "local" => (files::LOCAL, "local"),
-        _ => return Err("Keep it shared or only for you".into()),
-    };
+/// Save an action from Cue's edit sheet into the project's file, in place of `old_id`. Saved is allowed.
+fn save(folder: &str, machine: &str, e: Edited, old_id: Option<&str>) -> Result<Value, String> {
     let name = e.name.split_whitespace().collect::<Vec<_>>().join(" ");
     let run = e.run.trim().to_string();
     if name.is_empty() || name.chars().count() > 60 {
@@ -572,40 +521,30 @@ fn save(folder: &str, machine: &str, e: Edited, keep: &str, old_id: Option<&str>
     if run.is_empty() || run.contains('\n') || run.len() > 2000 {
         return Err("The command is one line".into());
     }
-    let a = Action { source: source.into(), name, run, keep: e.keep, ask: e.ask };
+    let a = Action { source: "local".into(), name, run, keep: e.keep, ask: e.ask };
     let g = gather(folder, machine)?;
-    let old = old_id.and_then(|o| o.split_once(':')).filter(|(s, _)| matches!(*s, "shared" | "local"));
-    let same_file_old = old.filter(|(s, _)| *s == source).map(|(_, n)| n);
-    let text = files::with_action(g.folder.text(file), same_file_old, &a)?;
-    write_file(folder, machine, file, &text)?;
-    if let Some((s, n)) = old.filter(|(s, _)| *s != source) {
-        let other = if s == "shared" { files::SHARED } else { files::LOCAL };
-        let t = files::without_action(g.folder.text(other), n)?;
-        write_file(folder, machine, other, &t)?;
-    }
+    let old = old_id.and_then(|o| o.split_once(':')).map(|(_, n)| n);
+    let text = files::with_action(g.text.as_deref(), folder, old, &a)?;
+    write_mine(folder, machine, &text)?;
     edit_record(folder, machine, |rec| {
-        if let Some((s, n)) = old {
-            let was = format!("{s}:{n}");
-            if was != a.id() {
-                if let Some(m) = rec["allowed"].as_object_mut() {
-                    m.remove(&was);
-                }
+        if let Some(was) = old_id.filter(|w| *w != a.id()) {
+            if let Some(m) = rec["allowed"].as_object_mut() {
+                m.remove(was);
             }
         }
         allow(rec, &a);
     });
-    log(folder, machine, &a.name, &format!("saved ({keep}): {}", a.run));
+    log(folder, machine, &a.name, &format!("saved: {}", a.run));
     changed(folder, machine);
     listing(folder, machine)
 }
 
-/// Delete an action from its file.
+/// Delete an action from the file.
 fn delete(folder: &str, machine: &str, id: &str) -> Result<Value, String> {
     let g = gather(folder, machine)?;
     let a = find(&g, id)?;
-    let file = if a.source == "shared" { files::SHARED } else { files::LOCAL };
-    let t = files::without_action(g.folder.text(file), &a.name)?;
-    write_file(folder, machine, file, &t)?;
+    let t = files::without_action(g.text.as_deref(), folder, &a.name)?;
+    write_mine(folder, machine, &t)?;
     edit_record(folder, machine, |rec| {
         if let Some(m) = rec["allowed"].as_object_mut() {
             m.remove(id);
@@ -646,7 +585,7 @@ async fn off<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + '
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
-/// The project's actions: {actions: [Action], files: {shared, local, localIgnored}, errors, pending, prompt}.
+/// The project's actions: {actions: [Action], file: {path, there}, error, pending, prompt}.
 #[tauri::command]
 pub async fn actions_list(folder: String, machine: Option<String>) -> Result<Value, String> {
     let folder = top(folder, &machine);
@@ -744,11 +683,18 @@ pub async fn actions_term_open(app: AppHandle, folder: String, machine: Option<S
     .await
 }
 
-/// Save one from the edit sheet into `keep` ("shared" | "local"), in place of `old_id`. The list again.
+/// Save one from the edit sheet, in place of `old_id`. The list again.
 #[tauri::command]
-pub async fn actions_save(folder: String, machine: Option<String>, action: Edited, keep: String, old_id: Option<String>) -> Result<Value, String> {
+pub async fn actions_save(folder: String, machine: Option<String>, action: Edited, old_id: Option<String>) -> Result<Value, String> {
     let folder = top(folder, &machine);
-    off(move || save(&folder, &mach(machine), action, &keep, old_id.as_deref())).await
+    off(move || save(&folder, &mach(machine), action, old_id.as_deref())).await
+}
+
+/// The project's file for an agent to fill (made, with Cue's notes, when it isn't there): its path.
+#[tauri::command]
+pub async fn actions_file(folder: String, machine: Option<String>) -> Result<String, String> {
+    let folder = top(folder, &machine);
+    off(move || ensure_mine(&folder, &mach(machine))).await
 }
 
 #[tauri::command]
@@ -809,10 +755,12 @@ mod tests {
             let project = home.join("proj").canonicalize().unwrap().to_string_lossy().to_string();
             Scratch { home, project, _g: g }
         }
-        fn write(&self, file: &str, text: &str) {
-            let p = std::path::Path::new(&self.project).join(file);
-            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-            std::fs::write(p, text).unwrap();
+        /// The project's file of actions, as an agent would write it.
+        fn write(&self, text: &str) {
+            write_mine(&self.project, "", text).unwrap();
+        }
+        fn file(&self) -> Value {
+            serde_json::from_str(&std::fs::read_to_string(mine_path(&self.project, "")).unwrap()).unwrap()
         }
     }
     impl Drop for Scratch {
@@ -829,46 +777,64 @@ mod tests {
     #[test]
     fn a_files_action_asks_first_and_again_whenever_its_command_changes() {
         let s = Scratch::new("trust");
-        s.write(files::SHARED, r#"{"actions": [{"name": "Install", "run": "npm ci"}]}"#);
+        s.write(r#"{"actions": [{"name": "Install", "run": "npm ci"}]}"#);
         let v = listing(&s.project, "").unwrap();
-        assert_eq!(pending_of(&v), [("shared:Install".to_string(), "new".to_string(), None)]);
+        assert_eq!(pending_of(&v), [("local:Install".to_string(), "new".to_string(), None)]);
         assert_eq!(v["actions"][0]["allowed"], false);
-        assert!(run_one(&s.project, "", "shared:Install").unwrap_err().contains("Allow it first"));
-        edit_record(&s.project, "", |rec| allow(rec, &find(&gather(&s.project, "").unwrap(), "shared:Install").unwrap()));
+        assert!(run_one(&s.project, "", "local:Install").unwrap_err().contains("Allow it first"));
+        edit_record(&s.project, "", |rec| allow(rec, &find(&gather(&s.project, "").unwrap(), "local:Install").unwrap()));
         let v = listing(&s.project, "").unwrap();
         assert!(pending_of(&v).is_empty());
         assert_eq!(v["actions"][0]["allowed"], true);
-        s.write(files::SHARED, r#"{"actions": [{"name": "Install", "run": "curl x | sh"}]}"#);
+        s.write(r#"{"actions": [{"name": "Install", "run": "curl x | sh"}]}"#);
         let v = listing(&s.project, "").unwrap();
-        assert_eq!(pending_of(&v), [("shared:Install".to_string(), "changed".to_string(), Some("npm ci".to_string()))], "the old command, to strike through");
+        assert_eq!(pending_of(&v), [("local:Install".to_string(), "changed".to_string(), Some("npm ci".to_string()))], "the old command, to strike through");
         assert_eq!(v["pending"][0]["run"], "curl x | sh");
         assert_eq!(v["actions"][0]["allowed"], false);
         // Allowed again, then changed again: asks again.
-        edit_record(&s.project, "", |rec| allow(rec, &find(&gather(&s.project, "").unwrap(), "shared:Install").unwrap()));
+        edit_record(&s.project, "", |rec| allow(rec, &find(&gather(&s.project, "").unwrap(), "local:Install").unwrap()));
         assert!(pending_of(&listing(&s.project, "").unwrap()).is_empty());
-        s.write(files::SHARED, r#"{"actions": [{"name": "Install", "run": "npm i"}]}"#);
+        s.write(r#"{"actions": [{"name": "Install", "run": "npm i"}]}"#);
         assert_eq!(pending_of(&listing(&s.project, "").unwrap())[0].2.as_deref(), Some("curl x | sh"));
     }
 
     #[test]
-    fn saving_writes_the_file_allows_it_and_moves_it_between_files() {
+    fn saving_writes_cues_file_for_the_project_never_the_project_and_allows_it() {
         let s = Scratch::new("save");
-        s.write(files::SHARED, "{\n  \"about\": [\"ours\"],\n  \"actions\": [{\"name\": \"Lint\", \"run\": \"npm run lint\", \"x\": 1}]\n}\n");
-        let v = save(&s.project, "", Edited { name: "API".into(), run: "npm run dev:api".into(), keep: true, ..Default::default() }, "local", None).unwrap();
-        let local: Value = serde_json::from_str(&std::fs::read_to_string(std::path::Path::new(&s.project).join(files::LOCAL)).unwrap()).unwrap();
-        assert_eq!(local["about"], json!(files::ABOUT), "a new file gets Cue's notes");
-        assert_eq!(local["actions"][0], json!({"name": "API", "run": "npm run dev:api", "keep": true}));
+        let v = save(&s.project, "", Edited { name: "API".into(), run: "npm run dev:api".into(), keep: true, ..Default::default() }, None).unwrap();
+        assert!(mine_path(&s.project, "").starts_with(s.home.join("actions").join("mine")), "in Cue's folder");
+        assert!(!std::path::Path::new(&s.project).join(".cue").exists(), "nothing in the project");
+        let f = s.file();
+        assert_eq!(f["about"], json!(files::ABOUT), "a new file gets Cue's notes");
+        assert_eq!(f["folder"], s.project.as_str());
+        assert_eq!(f["actions"][0], json!({"name": "API", "run": "npm run dev:api", "keep": true}));
+        assert_eq!(v["file"]["there"], true);
         let api = v["actions"].as_array().unwrap().iter().find(|a| a["id"] == "local:API").unwrap();
         assert_eq!(api["allowed"], true, "saved is allowed");
-        // Edit Lint into the local file: it leaves the shared one, which keeps its notes.
-        let v = save(&s.project, "", Edited { name: "Lint".into(), run: "npm run lint -- --fix".into(), ..Default::default() }, "local", Some("shared:Lint")).unwrap();
-        let shared: Value = serde_json::from_str(&std::fs::read_to_string(std::path::Path::new(&s.project).join(files::SHARED)).unwrap()).unwrap();
-        assert_eq!(shared, json!({"about": ["ours"], "actions": []}));
-        assert!(v["actions"].as_array().unwrap().iter().any(|a| a["id"] == "local:Lint" && a["allowed"] == true));
-        assert!(save(&s.project, "", Edited { name: "x".into(), run: "a\nb".into(), ..Default::default() }, "local", None).is_err());
-        assert!(save(&s.project, "", Edited { name: "x".into(), run: "a".into(), ..Default::default() }, "elsewhere", None).is_err());
-        let v = delete(&s.project, "", "local:API").unwrap();
-        assert!(!v["actions"].as_array().unwrap().iter().any(|a| a["id"] == "local:API"));
+        // Renamed in place: the old name's OK goes with it.
+        let v = save(&s.project, "", Edited { name: "Server".into(), run: "npm run dev:api".into(), keep: true, ..Default::default() }, Some("local:API")).unwrap();
+        assert_eq!(v["actions"].as_array().unwrap().iter().map(|a| a["id"].as_str().unwrap()).collect::<Vec<_>>(), ["local:Server"]);
+        assert!(record(&s.project, "")["allowed"]["local:API"].is_null());
+        assert!(save(&s.project, "", Edited { name: "x".into(), run: "a\nb".into(), ..Default::default() }, None).is_err());
+        let v = delete(&s.project, "", "local:Server").unwrap();
+        assert!(v["actions"].as_array().unwrap().is_empty());
+        // Another project (a machine's folder of the same path too) has its own file.
+        assert_ne!(mine_path(&s.project, ""), mine_path(&s.project, "box"));
+        assert_ne!(mine_path(&s.project, ""), mine_path(&format!("{}/x", s.project), ""));
+    }
+
+    #[test]
+    fn asking_the_agent_makes_the_file_with_cues_notes_once() {
+        let s = Scratch::new("ensure");
+        let v = listing(&s.project, "").unwrap();
+        assert_eq!(v["file"]["there"], false);
+        let path = ensure_mine(&s.project, "").unwrap();
+        assert_eq!(path, v["file"]["path"].as_str().unwrap());
+        assert_eq!(s.file()["actions"], json!([]));
+        s.write(r#"{"actions": [{"name": "T", "run": "t"}]}"#);
+        ensure_mine(&s.project, "").unwrap();
+        assert_eq!(s.file()["actions"][0]["name"], "T", "never written over");
+        assert!(PROMPT.contains("{file}"));
     }
 
     #[test]
@@ -878,15 +844,6 @@ mod tests {
         assert_eq!(set_prompt("  Set up actions.  ").unwrap(), "Set up actions.");
         assert_eq!(crate::config::effective()["actions"]["prompt"], "Set up actions.");
         assert_eq!(set_prompt("").unwrap(), PROMPT);
-    }
-
-    #[test]
-    fn a_machines_files_are_read_from_one_trips_output() {
-        let out = "login noise\n@@cue-file .cue/actions.json\n{\"actions\": []}\n@@cue-file package.json\n{}\n\n@@cue-ignored 1\n";
-        let f = parse_remote(out);
-        assert_eq!(f.text(files::SHARED), Some("{\"actions\": []}"));
-        assert_eq!(f.text("package.json"), None, "only the two files");
-        assert_eq!(f.local_ignored, Some(false));
     }
 
     fn tmux_here(args: &[&str]) -> String {
@@ -902,12 +859,12 @@ mod tests {
             return;
         }
         let s = Scratch::new("tmux");
-        s.write(files::SHARED, r#"{"actions": [{"name": "Once", "run": "echo hi; exit 3"}, {"name": "Wait", "run": "echo 'Listening on 127.0.0.1:4321'; sleep 30", "keep": true}]}"#);
+        s.write(r#"{"actions": [{"name": "Once", "run": "echo hi; exit 3"}, {"name": "Wait", "run": "echo 'Listening on 127.0.0.1:4321'; sleep 30", "keep": true}]}"#);
         let all: Vec<Action> = gather(&s.project, "").unwrap().actions;
         edit_record(&s.project, "", |rec| all.iter().for_each(|a| allow(rec, a)));
         let names: Vec<String> = all.iter().map(|a| run::session_name(&s.project, "", &a.id(), &a.name)).collect();
         let result = std::panic::catch_unwind(|| {
-            let st = run_one(&s.project, "", "shared:Once").unwrap();
+            let st = run_one(&s.project, "", "local:Once").unwrap();
             assert_eq!(st["running"], true);
             let mut done = Value::Null;
             for _ in 0..150 {
@@ -925,13 +882,13 @@ mod tests {
             assert!(log.lines().any(|l| l == "hi"), "{log}");
             assert!(!log.contains("Pane is dead"));
             // Kept as its last run, and logged.
-            assert_eq!(record(&s.project, "")["last"]["shared:Once"]["exit"], 3);
+            assert_eq!(record(&s.project, "")["last"]["local:Once"]["exit"], 3);
             let logged = std::fs::read_to_string(s.home.join("actions.log")).unwrap_or_default();
             assert!(logged.contains("Once: run echo hi; exit 3") && logged.contains("Once: exit 3"), "{logged}");
             // Run again: a fresh run in the same session.
-            run_one(&s.project, "", "shared:Once").unwrap();
+            run_one(&s.project, "", "local:Once").unwrap();
 
-            let st = run_one(&s.project, "", "shared:Wait").unwrap();
+            let st = run_one(&s.project, "", "local:Wait").unwrap();
             assert_eq!(st["running"], true);
             let mut port = None;
             for _ in 0..100 {
@@ -945,10 +902,10 @@ mod tests {
             let v = listing(&s.project, "").unwrap();
             assert_eq!(v["actions"][1]["state"]["running"], true);
             assert_eq!(v["actions"][1]["state"]["port"], 4321);
-            assert!(running().iter().any(|r| r["id"] == "shared:Wait" && r["folder"] == s.project.as_str() && r["port"] == 4321));
-            let st = stop_one(&s.project, "", "shared:Wait").unwrap();
+            assert!(running().iter().any(|r| r["id"] == "local:Wait" && r["folder"] == s.project.as_str() && r["port"] == 4321));
+            let st = stop_one(&s.project, "", "local:Wait").unwrap();
             assert_eq!(st["running"], false, "{st}");
-            assert!(!running().iter().any(|r| r["id"] == "shared:Wait"));
+            assert!(!running().iter().any(|r| r["id"] == "local:Wait"));
         });
         for n in &names {
             tmux_here(&["kill-session", "-t", &format!("={n}")]);

@@ -1,11 +1,11 @@
 // Cue UI — actions: a project's own buttons for its developer commands (install, test, clean a cache, a dev
 // server). They belong to the project (its folder, and its machine for a remote session), not to a session:
 // they run any time, an agent working or not. Cue runs each in tmux (actions.rs), so a server it started is
-// never lost. A project has a few (two or three, in its .cue/actions.json and .cue/actions.local.json). Where
+// never lost. A project has a few (two or three, in a file of yours in Cue's folder, never in the project). Where
 // they show: as buttons under the agent's latest reply, ⌘E (a palette over the window; ⌘⇧E runs the last one
 // again), dots on the project chips in the header for what's running (a click: their popover), and the Actions
-// tab in the open session's tab row (every one, to run and edit). A command from a file runs only once you've
-// allowed it (the trust sheet), and again whenever it changes.
+// tab in the open session's tab row (every one, to run and edit). A command an agent wrote in the file runs
+// only once you've allowed it (the trust sheet), and again whenever it changes.
 const actLists = new Map();     // `${machine}|${folder}` → { at, data, loading, err }: actions_list
 let actRunning = [], actRunningAt = 0;   // actions_running(): what runs now in every project (the chips' dots)
 const actTails = new Map();     // `${key}|${id}|${at}` → the last lines of a failed run, under its row
@@ -13,7 +13,7 @@ const actQueued = new Map();    // session id → [{ pl, id, log }]: "After this
 const actTabOn = new Set();     // sessions showing the Actions tab
 let actPal = null;              // ⌘E: { pl, sel, shown } while open
 let actPop = null;              // a chip's dots clicked: { project, where }
-let actEdit = null;             // the edit sheet: { pl, oldId, keep, ask, scope, copied }
+let actEdit = null;             // the edit sheet: { pl, oldId, keep, ask }
 let actTrust = null;            // the trust sheet: { pl, then: { id, log } | null, changed }
 let actAsk = null;              // "Run now / After this turn": { pl, id, log, sid }
 let actLogView = null;          // the output sheet: { pl, id, name, text, pinned, top }
@@ -21,8 +21,7 @@ let actLast = null;             // the last run, for ⌘⇧E: { pl, id }
 let actPromptInit = false;      // Settings → Actions has put the prompt in its box
 const ACT_FRESH = 10000, ACT_FRESH_REMOTE = 60000;
 /** Cue's own prompt, shown when no project has been read yet (the backend keeps the one in use). */
-const ACT_PROMPT = "Look at this project and set up its Cue actions in .cue/actions.local.json (only for me, not shared with the repo). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
-const ACT_SOURCES = [["shared", "THIS PROJECT", ".cue/actions.json · shared with the repo"], ["local", "MINE", ".cue/actions.local.json · only you"]];
+const ACT_PROMPT = "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the \"about\" notes at the top of the file first and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
 
 // ---------- where: a project's actions are in a checkout (a folder, and a machine) ----------
 const actKey = (pl) => `${pl.machine || ""}|${pl.folder}`;
@@ -218,13 +217,20 @@ function actTail(pl, a) {
 }
 
 // ---------- asking the agent ----------
-/** Cue's actions prompt into the box of a session on that project, as a draft: you press Send. */
-function actAskAgent(pl) {
+/** Cue's actions prompt into the box of a session on that project, as a draft: you press Send. Cue makes
+ *  the project's file first (its notes at the top), and the prompt names it. A machine's agent can't reach
+ *  the file on this Mac, so there it's + New action. */
+async function actAskAgent(pl) {
   const s = actSessionOn(pl);
   actPal = actPop = null;
   if (sheet?.startsWith("act-")) sheet = null;
+  if (pl.machine) { renderMain(); return toast(`Its agent is on ${machName(pl.machine)} and your actions are kept on this Mac: add them with + New action`); }
   if (!s) { renderMain(); return toast(`No session is open on ${pl.project}: start one there, then ask it`); }
-  const prompt = actLists.get(actKey(pl))?.data?.prompt || ACT_PROMPT;
+  let file;
+  try { file = await invoke("actions_file", { folder: pl.folder, machine: pl.machine }); }
+  catch (x) { renderMain(); return toast(`Couldn't make its actions file: ${x}`); }
+  const ask = actLists.get(actKey(pl))?.data?.prompt || ACT_PROMPT;
+  const prompt = ask.includes("{file}") ? ask.replaceAll("{file}", file) : `${ask}\n\nThe file: ${file}`;
   const key = `s:${s.session_id}`, d = draft(key);
   if (!d.text.includes(prompt)) d.text = d.text.trim() ? `${d.text.trimEnd()}\n\n${prompt}` : prompt;
   saveDrafts();
@@ -246,7 +252,7 @@ function actEditAll(pl) {
 // ---------- C · ⌘E ----------
 /** What ⌘E lists: what runs first, then the project's, then yours. */
 function actPalList(d) {
-  const rank = (a) => (a.state?.running ? 0 : a.source === "shared" ? 1 : 2);
+  const rank = (a) => (a.state?.running ? 0 : 1);
   return d.actions.map((a, i) => [a, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(([a]) => a);
 }
 function actPalToggle() {
@@ -347,17 +353,14 @@ function actPage(sid) {
   if (!d) return `<div class="ac-empty">${c?.err ? `Couldn't read its actions: ${esc(c.err)}` : "Reading this project's actions…"}</div>`;
   const shown = d.actions;
   const running = shown.filter((a) => a.state?.running);
-  const sec = (src, head, sub) => {
-    const rows = shown.filter((a) => a.source === src && !a.state?.running);
-    return rows.length ? `<div class="ac-head">${head}<span>${sub}</span></div>${rows.map((a) => actRow(pl, a)).join("")}` : "";
-  };
+  const rest = shown.filter((a) => !a.state?.running);
   const fp = (d.pending || []).length;
-  const pend = fp ? `<div class="ac-note"><span>${fp === 1 ? "One action" : `${fp} actions`} from this project's files ${fp === 1 ? "needs" : "need"} your OK before ${fp === 1 ? "it runs" : "they run"}.</span><button class="btn small" data-ac="trust" ${acAttrs(pl)}>Review…</button></div>` : "";
-  const ign = d.files?.local && d.files.localIgnored === false ? `<div class="ac-note"><span>Git doesn't ignore <code>.cue/actions.local.json</code>, so it could be committed. Add it to <code>.gitignore</code> to keep it yours.</span></div>` : "";
+  const pend = fp ? `<div class="ac-note"><span>${fp === 1 ? "One action" : `${fp} actions`} written by an agent ${fp === 1 ? "needs" : "need"} your OK before ${fp === 1 ? "it runs" : "they run"}.</span><button class="btn small" data-ac="trust" ${acAttrs(pl)}>Review…</button></div>` : "";
+  const bad = d.error ? `<div class="ac-note"><span>Couldn't read your actions file: ${esc(d.error)}</span></div>` : "";
   const any = d.actions.length;
-  return `<div class="ac-page">${pend}${ign}
+  return `<div class="ac-page">${pend}${bad}
     ${running.length ? `<div class="ac-head">RUNNING<span>${running.length}</span></div>${running.map((a) => actRow(pl, a)).join("")}` : ""}
-    ${ACT_SOURCES.map(([s, h, sub]) => sec(s, h, sub)).join("")}
+    ${rest.length ? `<div class="ac-head">MINE<span>only you, kept in Cue</span></div>${rest.map((a) => actRow(pl, a)).join("")}` : ""}
     ${any ? "" : `<div class="ac-empty">No actions yet for ${esc(projLabel(pl.project))}. Add the two or three you run most, or ask the agent to set them up from what the project uses.</div>`}
     <div class="ac-foot"><button class="btn" data-ac="new" ${acAttrs(pl)}>+ New action</button><button class="btn" data-ac="ask-agent" ${acAttrs(pl)}>Ask the agent to set up actions</button><span class="grow"></span><span class="lv-keys"><kbd>⌘E</kbd> run one from anywhere</span></div></div>`;
 }
@@ -376,7 +379,7 @@ function actRow(pl, a) {
 // ---------- the sheets: edit, trust, ask, output ----------
 function actEditOpen(pl, id) {
   const a = id ? actFind(pl, id) : null;
-  actEdit = { pl, oldId: a ? a.id : null, keep: !!a?.keep, ask: !!a?.ask, scope: a?.source === "shared" ? "shared" : "local" };
+  actEdit = { pl, oldId: a ? a.id : null, keep: !!a?.keep, ask: !!a?.ask };
   draft("ac-name").text = a?.name || "";
   draft("ac-run").text = a?.run || "";
   actPal = actPop = null;
@@ -399,9 +402,8 @@ function actJson(f) {
 function actEditSheet() {
   const e = actEdit, f = actForm(), d = actLists.get(actKey(e.pl))?.data;
   const segs = (k, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${e[k] === v ? "on" : ""}" data-ac="ed-set" data-k="${k}" data-v="${esc(JSON.stringify(v))}">${esc(l)}</button>`).join("")}</div>`;
-  const file = e.scope === "shared" ? ".cue/actions.json" : ".cue/actions.local.json";
-  const exists = e.scope === "shared" ? d?.files?.shared : d?.files?.local;
-  const fileNote = [exists === false ? "Cue makes the file, with notes for agents at its top." : "", e.scope === "local" && d?.files?.localIgnored === false ? "Git doesn't ignore it yet: add it to .gitignore to keep it yours." : ""].filter(Boolean).join(" ");
+  const file = d?.file?.path ? homeless(d.file.path) : "Your actions file, in Cue's folder";
+  const fileNote = d?.file?.there === false ? "Cue makes the file, with notes for agents at its top. It's yours, never in the project." : "";
   const fld = (label, ctl, sub = "") => `<div class="ac-f"><div class="ac-fl">${label}</div><div>${ctl}${sub ? `<div class="ac-fs">${sub}</div>` : ""}</div></div>`;
   return `<div class="sheet ac-sheet"><div class="sheet-head"><h3>${e.oldId ? "Edit action" : "New action"}</h3><span class="dim">${esc(projLabel(e.pl.project))}${e.pl.machine ? ` · on ${esc(machName(e.pl.machine))}` : ""}</span><span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
     ${fld("Name", `<input class="ac-in" data-text="ac-name" maxlength="40" placeholder="Install" spellcheck="false" value="${esc(draft("ac-name").text)}"/>`)}
@@ -416,11 +418,11 @@ async function actSave(andRun = false) {
   const e = actEdit, f = actForm();
   if (!f.name || !f.run) return toast(f.name ? "Give it a command" : "Give it a name");
   try {
-    const v = await invoke("actions_save", { folder: e.pl.folder, machine: e.pl.machine, action: f, keep: e.scope, oldId: e.oldId });
+    const v = await invoke("actions_save", { folder: e.pl.folder, machine: e.pl.machine, action: f, oldId: e.oldId });
     sheet = null;
     actEdit = null;
     actTake(e.pl, v);
-    const a = (v?.actions || []).find((x) => x.name === f.name && x.source === e.scope);
+    const a = (v?.actions || []).find((x) => x.name === f.name);
     if (andRun && a) return actGo(e.pl, a.id, true);
     toast(`Saved ${f.name}`);
   } catch (x) { toast(`Couldn't save it: ${x}`); }
@@ -435,13 +437,11 @@ const actTrustList = (t, d) => d?.pending || [];
 function actTrustSheet() {
   const t = actTrust, d = actLists.get(actKey(t.pl))?.data, pend = actTrustList(t, d);
   const fresh = pend.filter((p) => p.why !== "changed"), changed = pend.filter((p) => p.why === "changed");
-  const shared = pend.some((p) => p.source === "shared");
-  const title = t.changed ? "The agent changed this project's actions" : shared ? `${projLabel(t.pl.project)} shares actions in its repo` : `New actions in ${projLabel(t.pl.project)}`;
-  const from = (p) => (p.source === "shared" ? ".cue/actions.json" : ".cue/actions.local.json");
-  const row = (p) => `<div class="ac-trow"><span class="ac-pname">${esc(p.name)}</span><span class="ac-from">${esc(from(p))}</span>${p.was ? `<code class="ac-cmd was">${esc(p.was)}</code>` : ""}<code class="ac-cmd">${esc(p.run)}</code></div>`;
+  const title = t.changed ? "The agent changed this project's actions" : `New actions in ${projLabel(t.pl.project)}`;
+  const row = (p) => `<div class="ac-trow"><span class="ac-pname">${esc(p.name)}</span>${p.was ? `<code class="ac-cmd was">${esc(p.was)}</code>` : ""}<code class="ac-cmd">${esc(p.run)}</code></div>`;
   const n = pend.length;
   return `<div class="sheet ac-sheet"><div class="sheet-head"><h3>${esc(title)}</h3><span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
-    <div class="set-note">Cue runs a command from a file only once you've allowed it, and asks again whenever it changes. These run in <code>${esc(homeless(t.pl.folder))}</code>${t.pl.machine ? ` on ${esc(machName(t.pl.machine))}` : ""}.</div>
+    <div class="set-note">Cue runs a command written in your actions file (by an agent, or by hand) only once you've allowed it, and asks again whenever it changes. These run in <code>${esc(homeless(t.pl.folder))}</code>${t.pl.machine ? ` on ${esc(machName(t.pl.machine))}` : ""}.</div>
     ${fresh.length ? `<div class="ac-head">NEW<span>${fresh.length}</span></div>${fresh.map(row).join("")}` : ""}
     ${changed.length ? `<div class="ac-head">CHANGED<span>${changed.length}</span></div>${changed.map(row).join("")}` : ""}
     ${n ? "" : `<div class="ac-empty">Nothing waits for your OK now.</div>`}
@@ -503,7 +503,7 @@ const actPromptNow = () => [...actLists.values()].find((c) => c.data?.prompt)?.d
 function actSettings() {
   if (!actPromptInit) { draft("ac-prompt").text = actPromptNow(); actPromptInit = true; }
   const t = draft("ac-prompt").text, saved = actPromptNow();
-  return `<div class="set-note">Actions are a project's own buttons for its commands: install, test, clean a cache, start a server. They live in its folder, in <code>.cue/actions.json</code> (shared with the repo) and <code>.cue/actions.local.json</code> (only you). <kbd>⌘E</kbd> runs one; the Actions tab of a session lists them all.</div>
+  return `<div class="set-note">Actions are a project's own buttons for its commands: install, test, clean a cache, start a server. They're yours: Cue keeps them in its own folder, one file per project, never in the project or its repo. <kbd>⌘E</kbd> runs one; the Actions tab of a session lists them all.</div>
     <div class="set-group">Ask the agent to set up actions</div>
     <div class="set-sub ac-psub">What Cue puts in the session's box when you ask (you press Send). ${saved === ACT_PROMPT ? "This is Cue's own." : "This is yours."}</div>
     <textarea class="ac-prompt" data-text="ac-prompt" rows="5" spellcheck="false">${esc(t)}</textarea>
