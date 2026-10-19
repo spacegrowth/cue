@@ -470,7 +470,7 @@ async function actAllow() {
 function actAskSheet() {
   const k = actAsk, a = actFind(k.pl, k.id), s = sessionOf(k.sid);
   return `<div class="sheet ac-sheet narrow"><div class="sheet-head"><h3>${esc(s ? nameOf(s.session_id, s.project) : "Its agent")} is working</h3><span class="grow"></span><kbd>Esc</kbd></div><div class="sheet-body">
-    <div class="ac-ask"><b>${esc(a?.name || k.id)}</b> <code class="ac-cmd">${esc(a?.run || "")}</code> could trip it up mid-turn. Run it now anyway, or once this turn ends?</div>
+    <div class="ac-ask"><b>${esc(a?.name || k.id)}</b> could trip it up mid-turn:<code class="ac-cmd">${esc(a?.run || "")}</code>Run it now anyway, or once this turn ends?</div>
   </div><div class="ac-sheet-foot"><button class="btn" data-ac="close">Cancel</button><span class="grow"></span><button class="btn" data-ac="ask-later">After this turn</button><button class="btn primary" data-ac="ask-now">▶ Run now</button></div></div>`;
 }
 function actLogSheet() {
