@@ -7,9 +7,11 @@
 //   {"status": true}                                → {"status": {"ready", "risky", "have": [voice], "mb"}}
 //   {"get": voice}                                  → {"progress": 0–1} as it comes, then {"got": voice}
 //   {"remove": true}                                → all of it: {"removed": true}
-//   {"say": text, "voice", "speed", "id", "next"?}  → {"playing": id, "ms": how long}, {"at": id, "ms": how far} as it
-//                                                     plays (what you hear: the output's delay counted), then
+//   {"say": text, "voice", "speed", "id", "next"?}  → {"playing": id, "ms": how long, "words": [ms each of the text's
+//                                                     words starts at] (Words.swift)}, {"at": id, "ms": how far} as
+//                                                     it plays (what you hear: the output's delay counted), then
 //                                                     {"done": id, "end": true}
+//   {"pause": true} / {"resume": true}              → what's playing holds where it is / goes on from there
 //   {"stop": true}                                  → what's playing ends: {"done": id, "end": false}
 // "next" is the sentence after, made while this one plays so there's no gap between them. Problems come out as
 // {"error": "…", "id"?}.
@@ -58,8 +60,9 @@ final class Speaker {
   private let engine = AVAudioEngine()
   private let player = AVAudioPlayerNode()
   private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
-  /// Sentences made ahead ("voice|speed|text" → samples), the newest few.
-  private var made: [(key: String, samples: [Float])] = []
+  /// Sentences made or being made ("voice|speed|text"), the newest few: the next one is made while this one
+  /// plays, and its say waits for that rather than making it again.
+  private var made: [(key: String, task: Task<Made, Error>)] = []
   /// The sentence playing, and whether it was stopped.
   private var playing: Int?
   private var stopped = false
@@ -84,6 +87,10 @@ final class Speaker {
       emit(["removed": true])
     } else if o["stop"] != nil {
       stop()
+    } else if o["pause"] != nil {
+      if playing != nil { player.pause() }
+    } else if o["resume"] != nil {
+      if playing != nil { player.play() }
     } else if let text = o["say"] as? String {
       await say(text, voice: o["voice"] as? String ?? "af_heart", speed: Float(o["speed"] as? Double ?? 1), id: o["id"] as? Int ?? 0, next: o["next"] as? String)
     }
@@ -113,23 +120,47 @@ final class Speaker {
     loaded = true
   }
 
-  private func samples(_ text: String, voice: String, speed: Float) async throws -> [Float] {
+  /// A sentence's sound, with the silence Kokoro puts around it cut to a short pause (it starts every sentence
+  /// with about 300 ms of it), and when each of its words starts.
+  struct Made { let samples: [Float]; let words: [Int]? }
+
+  private func made(_ text: String, voice: String, speed: Float) -> Task<Made, Error> {
     let key = "\(voice)|\(speed)|\(text)"
-    if let hit = made.first(where: { $0.key == key }) { return hit.samples }
-    try await load()
-    let s = try await kokoro.synthesizeDetailed(text: text, voice: voice, speed: speed).samples
-    made.append((key, s))
+    if let hit = made.first(where: { $0.key == key }) { return hit.task }
+    let task = Task { () throws -> Made in
+      try await self.load()
+      let r = try await self.kokoro.synthesizeDetailed(text: text, voice: voice, speed: speed)
+      var parts: [Int] = []
+      for w in Words.said(text, r) { parts.append(Words.parts((try? await self.kokoro.englishPhonemes(for: w)) ?? w)) }
+      let (s, cut) = Speaker.trimmed(r.samples)
+      return Made(samples: s, words: Words.starts(text, r, parts: parts)?.map { max(0, $0 - cut) })
+    }
+    made.append((key, task))
     if made.count > 3 { made.removeFirst() }
-    return s
+    return task
+  }
+
+  /// `s` with its silence before and after cut to 50 ms and 120 ms, and how many ms went from its start.
+  static func trimmed(_ s: [Float]) -> ([Float], Int) {
+    let win = 240   // 10 ms
+    let loud = { (i: Int) -> Bool in
+      let end = min(s.count, i + win)
+      return sqrt(s[i..<end].reduce(0) { $0 + $1 * $1 } / Float(max(1, end - i))) > 0.01
+    }
+    guard let first = stride(from: 0, to: s.count, by: win).first(where: loud),
+          let last = stride(from: s.count - 1, through: 0, by: -win).first(where: { loud(max(0, $0 - win + 1)) }) else { return (s, 0) }
+    let a = max(0, first - 1_200), b = min(s.count, last + 2_880)
+    return (Array(s[a..<b]), a / 24)
   }
 
   private func say(_ text: String, voice: String, speed: Float, id: Int, next: String?) async {
     stop()
-    let s: [Float]
-    do { s = try await samples(text, voice: voice, speed: speed) } catch {
+    let m: Made
+    do { m = try await made(text, voice: voice, speed: speed).value } catch {
       emit(["error": "Kokoro couldn't say it: \(error.localizedDescription)", "id": id])
       return
     }
+    let s = m.samples
     guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(1, s.count))) else { return }
     buf.frameLength = AVAudioFrameCount(s.count)
     s.withUnsafeBufferPointer { src in buf.floatChannelData![0].update(from: src.baseAddress!, count: s.count) }
@@ -140,12 +171,15 @@ final class Speaker {
     playing = id
     stopped = false
     said += 1
+    // Its clock from zero: the player's time runs on after a sentence ends, so without this the next one would
+    // seem over at once.
+    player.stop()
     player.scheduleBuffer(buf, completionHandler: nil)
     player.play()
-    emit(["playing": id, "ms": Int(Double(s.count) / 24.0)])
+    emit(["playing": id, "ms": Int(Double(s.count) / 24.0), "words": m.words ?? []])
     tick(id, total: Double(s.count) / 24.0)
     // The next one, made while this one plays.
-    if let next, !next.isEmpty { Task { _ = try? await self.samples(next, voice: voice, speed: speed) } }
+    if let next, !next.isEmpty { _ = made(next, voice: voice, speed: speed) }
   }
 
   /// Where what you hear is, every 80 ms: the player's position less the output's delay. It's done when that

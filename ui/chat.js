@@ -1169,6 +1169,19 @@ function listenMark(sents, i, w) {
   }
 }
 function listenUnmark() { if (CSS.highlights) ["cue-said", "cue-say", "cue-word"].forEach((h) => CSS.highlights.delete(h)); }
+/** The reply being read as shown, with its sentences, worked out again only when asked (`fresh`: after a redraw)
+ *  or when the reply on screen is another element: the word marks move many times a second. */
+function listenView(l, fresh = false) {
+  const root = listenRoot(l.key);
+  if (!root) return (l.view = null);
+  if (fresh || l.view?.root !== root) l.view = { root, sents: listenSents(root) };
+  return l.view;
+}
+/** The marks where it is: the sentence `l.i` and the word in it (`l.w`, [at, length] in its words), if shown. */
+function listenMarkNow(l, fresh = false) {
+  const v = listenView(l, fresh);
+  if (v) listenMark(v.sents, l.i, l.w);
+}
 /** Say the sentence it's on, then the next, to the end (and then the reader's next reply, when that's on). */
 function listenSay() {
   const l = listening, root = l && listenSource(l);
@@ -1177,14 +1190,15 @@ function listenSay() {
   l.n = sents.length;
   if (l.i >= sents.length) return listenNext();
   const x = sents[l.i], run = ++listenRun;
-  if (shown) listenMark(sents, l.i, null); else listenUnmark();
+  l.w = null;
+  if (shown) { l.view = { root, sents }; listenMark(sents, l.i, null); } else listenUnmark();
   const r = shown && x.range?.getBoundingClientRect(), box = root.closest(".chat-scroll, .chat") || document.documentElement;
   const vb = box.getBoundingClientRect();
   if (r && (r.top < vb.top + 40 || r.bottom > vb.bottom - 60)) (x.range.startContainer.parentElement.closest(LISTEN_BLOCKS) || root).scrollIntoView({ block: "center", behavior: "smooth" });
   if (kokoroOn()) return kokoroSay(x, sents[l.i + 1], run);
   const u = new SpeechSynthesisUtterance(x.say);
   u.rate = LISTEN_SPEEDS[listenSpeed];
-  u.onboundary = (e) => { if (run === listenRun && e.name === "word") { const now = listenRoot(l.key); if (now) listenMark(listenSents(now), l.i, [e.charIndex, e.charLength || (x.say.slice(e.charIndex).match(/^\S+/)?.[0].length ?? 0)]); } };
+  u.onboundary = (e) => { if (run === listenRun && e.name === "word") { l.w = [e.charIndex, e.charLength || (x.say.slice(e.charIndex).match(/^\S+/)?.[0].length ?? 0)]; listenMarkNow(l); } };
   u.onend = () => { if (run !== listenRun) return; l.i++; listenSay(); };
   u.onerror = () => { if (run === listenRun) listenStop(); };
   speechSynthesis.cancel();
@@ -1208,7 +1222,7 @@ let kokoroAt = null;   // the sentence it's saying: { run, x, ms }
 function kokoroTell(line) { invoke("speak_send", { line }).catch((e) => kokoroLine({ error: String(e), id: kokoroAt?.run, get: kokoro.getting })); }
 function kokoroStatus(again = false) { if (again || !kokoro.known) { kokoro.known = true; kokoroTell({ status: true }); } }
 function kokoroSay(x, next, run) {
-  kokoroAt = { run, x, ms: 0 };
+  kokoroAt = { run, x, ms: 0, words: [], wi: -1 };
   kokoroTell({ say: x.say, voice: voicePick(), speed: LISTEN_SPEEDS[listenSpeed], id: run, ...(next ? { next: next.say } : {}) });
   listenTell();
 }
@@ -1222,15 +1236,17 @@ function kokoroLine(v) {
   if (v.removed) { Object.assign(kokoro, { ready: false, have: [], mb: 0 }); pickVoice(""); return; }
   if (v.error && v.get) { kokoro.getting = null; toast(v.error); return renderMain(); }
   const a = kokoroAt, l = listening;
-  if (v.playing != null && a?.run === v.playing) a.ms = v.ms;
+  if (v.playing != null && a?.run === v.playing) { a.ms = v.ms; a.words = v.words || []; }
   else if (v.at != null && a?.run === v.at && a.ms && l) {
-    // The word that far through the sentence's letters. SHORTCUT: assumes an even pace across letters, so the mark
-    // can sit a word early or late on long or numeric words; the upgrade is word timings from Kokoro's predicted
-    // durations (synthesizeDetailed), sent by cue-speak with each sentence.
-    const at = Math.round((v.ms / a.ms) * a.x.say.length), words = [...a.x.say.matchAll(/\S+/g)];
-    const w = words.findLast((m) => m.index <= at) || words[0];
-    const now = listenRoot(l.key);
-    if (w && now) listenMark(listenSents(now), l.i, [w.index, w[0].length]);
+    // The word being heard: from when each starts (cue-speak's Words.swift, from Kokoro's own timings; the words
+    // are the sentence's, split on spaces as here), else as far through its letters as through its sound.
+    const words = [...a.x.say.matchAll(/\S+/g)], t = a.words;
+    const wi = t.length === words.length ? Math.max(0, t.findLastIndex((ms) => ms <= v.ms))
+      : Math.max(0, words.findLastIndex((m) => m.index <= (v.ms / a.ms) * a.x.say.length));
+    if (wi === a.wi || !words[wi]) return;   // the same word: nothing moves
+    a.wi = wi;
+    l.w = [words[wi].index, words[wi][0].length];
+    listenMarkNow(l);
   } else if (v.done != null && a?.run === v.done && v.end) { kokoroAt = null; if (l) { l.i++; listenSay(); } }
   else if (v.bye) kokoro.bye = true;
   // It retired after its 100 sentences (cue-speak): the sentence sent as it went, again to the fresh one.
@@ -1330,11 +1346,12 @@ function listenPlay(sid, key, reader = false) {
   renderMain();
   listenSay();
 }
+// Pause holds the sentence where it is (a natural voice's sound pauses, and Resume goes on from that word); the
+// Mac's voice starts the sentence again on Resume, as Safari's speech can't be relied on to pause.
 function listenPause() {
   if (!listening) return;
-  listenRun++;
-  speechSynthesis.cancel();
-  kokoroHush();
+  if (kokoroAt) kokoroTell({ pause: true });
+  else { listenRun++; speechSynthesis.cancel(); }
   listening.playing = false;
   renderMain();
 }
@@ -1342,13 +1359,18 @@ function listenResume() {
   if (!listening) return;
   listening.playing = true;
   renderMain();
-  listenSay();
+  if (kokoroAt) kokoroTell({ resume: true });
+  else listenSay();
 }
 const listenToggle = () => (listening?.playing ? listenPause() : listenResume());
 function listenSkip(dir) {
   if (!listening) return;
   listening.i = Math.max(0, Math.min(listening.n - 1, listening.i + dir));
-  if (listening.playing) listenSay(); else { const root = listenSource(listening); if (root?.isConnected) listenMark(listenSents(root), listening.i, null); listenTell(); }
+  listening.w = null;
+  if (listening.playing) return listenSay();
+  kokoroHush();   // paused: Resume starts the sentence skipped to
+  listenMarkNow(listening);
+  listenTell();
 }
 function listenStop() {
   listenRun++;
@@ -1363,6 +1385,7 @@ function listenFaster(n) {
   listenSpeed = n;
   try { localStorage.setItem("cue.listenRate", String(LISTEN_SPEEDS[n])); } catch {}
   if (listening?.playing) listenSay();
+  else kokoroHush();   // paused: Resume says the sentence again at this speed
   renderMain();
 }
 function listenThenNext() {
@@ -1385,8 +1408,7 @@ function listenFrom(ev) {
 // The marks follow a redraw of the chat (and come back with its session).
 function listenKeep(sid) {
   if (!listening || listening.sid !== sid) return;
-  const root = listenRoot(listening.key);
-  if (root) listenMark(listenSents(root), listening.i, null);
+  listenMarkNow(listening, true);
   listenTell();
 }
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>`;

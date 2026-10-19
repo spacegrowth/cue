@@ -291,6 +291,7 @@
           // Natural voices (cue-speak): ?voices=1 has the engine with Heart and Bella here; a voice downloads in a
           // second; a sentence "plays" at about 55 ms a letter, saying where it is every 80 ms, as cue-speak does.
           if (cmd === "speak_send") {
+            if (window.__speakBridge) return window.__speakBridge(args.line);   // a test's own (the real cue-speak)
             const L = args.line, tell = (v) => setTimeout(() => (listeners.speak || []).forEach((f) => f({ payload: v })), 0);
             const kv = (window.__voices ||= /voices=1/.test(q) ? ["af_heart", "af_bella"] : []);
             if (L.status) tell({ status: { ready: kv.length > 0, have: kv, mb: kv.length ? 125 + kv.length : 0, risky: true } });
