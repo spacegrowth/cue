@@ -108,7 +108,7 @@ const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);
 const parkedOf = (sid) => (state.parked || []).find((p) => p.session_id === sid);
 /** Sessions that ended in the last 30 days (at most 30), the Parked drawer's Closed tab: asked for when
  *  that tab shows (again after a minute), not part of every state update. */
-let closedList = null, closedAt = 0, closedLoading = false;
+let closedList = null, closedAt = 0, closedLoading = false, closedAskedFor = null;
 const closedOf = (sid) => (closedList || []).find((c) => c.session_id === sid);
 async function loadClosed() {
   if (closedLoading) return;
@@ -796,6 +796,10 @@ function current() {
     // Not when you opened an old answer yourself (from Recently answered): then show exactly that.
     if (!active.exact && !isPending(it)) { const next = state.items.find((i) => i.session_id === active.sid); if (next) { it = next; active.id = next.id; } }
     if (it || s) return { it, s };
+    // It just ended (Closed was last asked for before it did): ask again and keep it open, so it shows
+    // as closed with Resume instead of Active moving on. Once per session, so one that isn't there still moves on.
+    if (active.sid && closedAskedFor !== active.sid) { closedAskedFor = active.sid; queueMicrotask(loadClosed); return null; }
+    if (active.sid && closedLoading) return null;
   }
   const first = needsYou()[0];
   active = first ? { id: first.id, sid: first.session_id } : null;
