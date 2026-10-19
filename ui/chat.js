@@ -1450,11 +1450,12 @@ function listenKeep(sid) {
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M7 4l13 8-13 8z" fill="currentColor"/></svg>`;
 const PAUSE_ICON = `<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 4h4v16H6zM14 4h4v16h-4z" fill="currentColor"/></svg>`;
 const BOOK_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>`;
-/** Listen under a reply: Listen, Listening while it reads this one (a click pauses), Resume when paused on it. The
- *  speaker, not ▶, so it isn't taken for one of the project's actions beside it. */
+/** Listen under a reply: the speaker and Listen; while it reads this one, ‖ Pause; paused on it, ▶ Resume (the
+ *  same marks as the line above the box). Actions beside it are >_, so its ▶ isn't taken for one. */
 function listenBtn(key) {
   const on = listening?.key === key;
-  return `<button class="cv-pill ls-pill ${on ? "on" : ""} ${on && listening.playing ? "playing" : ""}" data-listen="${esc(key)}">${SPEAKER_ICON}${on ? (listening.playing ? "Listening" : "Resume") : "Listen"}</button>`;
+  const [icon, label] = !on ? [SPEAKER_ICON, "Listen"] : listening.playing ? [PAUSE_ICON, "Pause"] : [PLAY_ICON, "Resume"];
+  return `<button class="cv-pill ls-pill ${on ? "on" : ""}" data-listen="${esc(key)}">${icon}${label}</button>`;
 }
 /** Above the chat's box while a reply is read out: in its own session, how far; in another, whose (a click goes there). */
 function listenLine(sid) {
