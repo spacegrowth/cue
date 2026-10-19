@@ -27,7 +27,7 @@ use tauri::{AppHandle, Emitter};
 
 /// Cue's actions prompt, when you haven't written your own (Settings → Actions).
 /// `{file}` is the project's file (`mine_path`), put in when the prompt goes into the box.
-pub const PROMPT: &str = "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the \"about\" notes at the top of the file first and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
+pub const PROMPT: &str = "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
 
 /// The actions prompt in use: yours, else Cue's.
 pub fn prompt() -> String {
@@ -285,6 +285,7 @@ fn listing(folder: &str, machine: &str) -> Result<Value, String> {
         "actions": actions,
         "file": { "path": mine_path(folder, machine).to_string_lossy(), "there": g.text.is_some() },
         "error": g.error,
+        "left_out": g.text.as_deref().map(files::left_out).unwrap_or_default(),
         "pending": pending,
         "prompt": prompt(),
     }))
@@ -494,8 +495,13 @@ fn write_mine(folder: &str, machine: &str, text: &str) -> Result<(), String> {
 
 /// The project's file, made (with Cue's notes) when it isn't there yet, for an agent to fill: its path.
 fn ensure_mine(folder: &str, machine: &str) -> Result<String, String> {
-    if read_mine(folder, machine)?.is_none() {
-        write_mine(folder, machine, &files::fresh(folder))?;
+    match read_mine(folder, machine)? {
+        None => write_mine(folder, machine, &files::fresh(folder))?,
+        Some(t) => {
+            if let Some(t) = files::notes_refreshed(&t) {
+                write_mine(folder, machine, &t)?;
+            }
+        }
     }
     Ok(mine_path(folder, machine).to_string_lossy().to_string())
 }

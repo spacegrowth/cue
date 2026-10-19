@@ -8,15 +8,27 @@ use serde_json::{json, Map, Value};
 pub const FILE_MAX: usize = 256 * 1024;
 
 /// The notes at the top of the file, Cue's own: for the person and for an agent asked to set them up.
-/// A file written without them gets them; a file's own are kept as they are.
-pub const ABOUT: [&str; 6] = [
+/// A file written without them gets them; a file's own are kept as they are, unless they're an older
+/// Cue's (`OLD_ABOUT`), which give way to these.
+pub const ABOUT: [&str; 7] = [
+    "Actions are buttons in Cue for the project in \"folder\": install, test, start a server, clean a cache. Cue shows them under the agent's latest reply.",
+    "Each needs a \"name\" and a \"run\" (a one-line shell command, run by the person's shell in that folder). Any other key is ignored.",
+    "Like this: {\"name\": \"Install\", \"run\": \"npm ci\", \"ask\": true}",
+    "\"keep\": true for a server or watcher that keeps running; Cue shows its port, Restart and Stop.",
+    "\"ask\": true if running it while an agent is working could trip the agent (install, clean): Cue asks.",
+    "Keep it to the two or three the person runs most, from what the project really uses (package.json, justfile, Makefile, README, docker-compose).",
+    "Cue asks the person before running anything new or changed.",
+];
+
+/// Cue's notes as earlier Cues wrote them (they didn't name the keys, so an agent guessed "command").
+const OLD_ABOUT: [&[&str]; 1] = [&[
     "Actions are buttons in Cue for the project in \"folder\": install, test, start a server, clean a cache. Cue shows them under the agent's latest reply.",
     "Each needs a name and a one-line shell command, run by the person's shell in that folder.",
     "\"keep\": true for a server or watcher that keeps running; Cue shows its port, Restart and Stop.",
     "\"ask\": true if running it while an agent is working could trip the agent (install, clean): Cue asks.",
     "Keep it to the two or three the person runs most, from what the project really uses (package.json, justfile, Makefile, README, docker-compose).",
     "Cue asks the person before running anything new or changed.",
-];
+]];
 
 /// One action.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -64,6 +76,45 @@ pub fn parse(text: &str, source: &str) -> Result<Vec<Action>, String> {
     Ok(out)
 }
 
+/// What a file's entries left out say, one line each: an entry with no "name" or no "run" isn't an
+/// action, and nothing else would tell the person why it isn't there.
+pub fn left_out(text: &str) -> Vec<String> {
+    let Ok(v) = serde_json::from_str::<Value>(text) else { return vec![] };
+    let Some(list) = v.get("actions").and_then(Value::as_array) else { return vec![] };
+    let has = |a: &Value, k: &str| a[k].as_str().is_some_and(|t| !t.trim().is_empty());
+    list.iter()
+        .filter(|a| !has(a, "name") || !has(a, "run"))
+        .map(|a| {
+            let who = a["name"].as_str().map(str::trim).filter(|n| !n.is_empty()).map(|n| format!("\"{n}\"")).unwrap_or_else(|| "One".into());
+            let missing = if has(a, "name") { "\"run\"" } else if has(a, "run") { "\"name\"" } else { "\"name\" and \"run\"" };
+            let other = a.as_object().and_then(|o| o.keys().find(|k| matches!(k.as_str(), "command" | "cmd" | "script" | "shell")).cloned());
+            match other.filter(|_| !has(a, "run")) {
+                Some(k) => format!("{who} has \"{k}\" where Cue reads \"run\""),
+                None => format!("{who} has no {missing}"),
+            }
+        })
+        .collect()
+}
+
+/// The file with Cue's notes brought up to date when they're an older Cue's; None when there's nothing to change.
+pub fn notes_refreshed(text: &str) -> Option<String> {
+    let mut m = match serde_json::from_str::<Value>(text).ok()? {
+        Value::Object(m) => m,
+        _ => return None,
+    };
+    if !older_notes(&m) {
+        return None;
+    }
+    m.insert("about".into(), json!(ABOUT));
+    Some(written(m))
+}
+
+/// The file's notes are an older Cue's, word for word (ones you've changed are yours and stay).
+fn older_notes(m: &Map<String, Value>) -> bool {
+    let notes = m.get("about").and_then(Value::as_array).and_then(|a| a.iter().map(Value::as_str).collect::<Option<Vec<&str>>>());
+    notes.is_some_and(|n| OLD_ABOUT.iter().any(|o| *o == n.as_slice()))
+}
+
 /// The file's JSON to change: its own (keys and order kept), or a new one, with Cue's notes first when it
 /// has none and `folder` (the project's) after them. Refuses a file that isn't JSON rather than lose what's in it.
 fn editable(text: Option<&str>, folder: &str) -> Result<Map<String, Value>, String> {
@@ -74,6 +125,9 @@ fn editable(text: Option<&str>, folder: &str) -> Result<Map<String, Value>, Stri
         },
         None => Map::new(),
     };
+    if older_notes(&m) {
+        m.insert("about".into(), json!(ABOUT));
+    }
     if !m.contains_key("about") {
         let mut with = Map::new();
         with.insert("about".into(), json!(ABOUT));
@@ -183,5 +237,26 @@ mod tests {
         let a = parse(r#"{"actions": [{"name": "A", "run": "a"}, {"name": "", "run": "b"}, {"run": "c"}, {"name": "D"}, {"name": "A", "run": "again"}, {"name": "E", "run": "e", "suggest": "x/*"}]}"#, "local").unwrap();
         assert_eq!(a.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["A", "E"]);
         assert!(parse("", "local").unwrap().is_empty());
+    }
+
+    #[test]
+    fn what_a_file_left_out_is_said_and_a_guessed_key_is_named() {
+        let t = r#"{"actions": [{"name": "A", "run": "a"}, {"name": "Install", "command": "npm ci"}, {"name": "B"}, {"run": "c"}, {"x": 1}]}"#;
+        assert_eq!(left_out(t), [r#""Install" has "command" where Cue reads "run""#, r#""B" has no "run""#, r#"One has no "name""#, r#"One has no "name" and "run""#]);
+        assert!(left_out(r#"{"actions": [{"name": "A", "run": "a"}]}"#).is_empty());
+        assert!(left_out("{ not json").is_empty());
+    }
+
+    #[test]
+    fn an_older_cues_notes_give_way_and_yours_stay() {
+        let old = json!({"about": OLD_ABOUT[0], "folder": "/p", "actions": [{"name": "T", "run": "t"}]}).to_string();
+        let v: Value = serde_json::from_str(&notes_refreshed(&old).unwrap()).unwrap();
+        assert_eq!(v["about"], json!(ABOUT));
+        assert_eq!(v["actions"], json!([{"name": "T", "run": "t"}]), "the actions stay");
+        assert!(ABOUT[1].contains(r#""run""#), "the notes name the key");
+        assert!(notes_refreshed(r#"{"about": ["ours"], "actions": []}"#).is_none());
+        assert!(notes_refreshed(&fresh("/p")).is_none(), "today's are left alone");
+        let saved: Value = serde_json::from_str(&with_action(Some(&old), "/p", None, &Action { name: "U".into(), run: "u".into(), ..Default::default() }).unwrap()).unwrap();
+        assert_eq!(saved["about"], json!(ABOUT), "a save brings them up to date too");
     }
 }

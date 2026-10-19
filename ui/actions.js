@@ -22,7 +22,7 @@ let actLast = null;             // the last run, for ⌘⇧E: { pl, id }
 let actPromptInit = false;      // Settings → Actions has put the prompt in its box
 const ACT_FRESH = 10000, ACT_FRESH_REMOTE = 60000;
 /** Cue's own prompt, shown when no project has been read yet (the backend keeps the one in use). */
-const ACT_PROMPT = "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the \"about\" notes at the top of the file first and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
+const ACT_PROMPT = "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.";
 
 // ---------- where: a project's actions are in a checkout (a folder, and a machine) ----------
 const actKey = (pl) => `${pl.machine || ""}|${pl.folder}`;
@@ -385,8 +385,10 @@ function actPage(sid) {
   const fp = (d.pending || []).length;
   const pend = fp ? `<div class="ac-note"><span>${fp === 1 ? "One action" : `${fp} actions`} written by an agent ${fp === 1 ? "needs" : "need"} your OK before ${fp === 1 ? "it runs" : "they run"}.</span><button class="btn small" data-ac="trust" ${acAttrs(pl)}>Review…</button></div>` : "";
   const bad = d.error ? `<div class="ac-note"><span>Couldn't read your actions file: ${esc(d.error)}</span></div>` : "";
+  const lo = d.left_out || [];
+  const skipped = lo.length ? `<div class="ac-note"><span>${lo.length === 1 ? "One entry in your actions file isn't" : `${lo.length} entries in your actions file aren't`} an action: ${esc(lo.join("; "))}. Each needs a "name" and a "run".</span></div>` : "";
   const any = d.actions.length;
-  return `<div class="ac-page">${pend}${bad}
+  return `<div class="ac-page">${pend}${bad}${skipped}
     ${running.length ? `<div class="ac-head">RUNNING<span>${running.length}</span></div>${running.map((a) => actRow(pl, a)).join("")}` : ""}
     ${rest.length ? `<div class="ac-head">MINE<span>only you, kept in Cue</span></div>${rest.map((a) => actRow(pl, a)).join("")}` : ""}
     ${any ? "" : `<div class="ac-empty">No actions yet for ${esc(projLabel(pl.project))}. Add the two or three you run most, or ask the agent to set them up from what the project uses.</div>`}
