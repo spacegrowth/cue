@@ -372,11 +372,11 @@ function cacheLine(sid, ask = false, open = false, compact = false) {
     const why = note && away ? " Away longer? A hand-off note now gives you a cheap way back; Compact now leaves a short summary in place."
       : note ? " Away longer? A hand-off note now gives you a cheap way back, and this session stays as it is."
       : away ? " Away longer? Compacting now leaves a short summary to come back to." : "";
-    const acts = `${note ? `<button class="linkish" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${away ? `<button class="linkish" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}`;
+    const acts = `${note ? `<button class="btn small" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${away ? `<button class="btn small" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}`;
     return `<div class="ins-line"><svg class="ins-ring ${left <= HOT_CACHE_MS ? "soon" : ""}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" class="track"></circle><circle cx="12" cy="12" r="10.5" class="left" stroke-dasharray="${arc} 66" transform="rotate(-90 12 12)"></circle>${RING_BULB}</svg><span>${cacheText(cw, ask)}${why}</span>${acts}</div>`;
   }
   // Gone: the open session's line offers what its sentence says (a new session from its last reply, this one kept).
-  const fresh = open && !ask ? `<button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh</button>` : "";
+  const fresh = open && !ask ? `<button class="btn small" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh</button>` : "";
   return `<div class="ins-line cold">${BULB}<span>${cacheText(cw, ask)}</span>${fresh}</div>`;
 }
 /** Whether to offer Compact now on a cache in its last minutes: it waits for a reply (not a decision), it's
@@ -461,7 +461,7 @@ function resumeCost(sid) {
   if (left > 0) return `<div class="ins-line" data-key="cost">${BULB}<span><b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> Resuming now re-reads its ${esc(insTok(c.tokens))} of context from the cache.</span></div>`;
   insShown(sid, "cache");
   const fresh = c.start ? ` A new session from its last reply starts near ${esc(insTok(c.start))}.` : "";
-  return `<div class="ins-line cold" data-key="cost">${BULB}<span>Its cache is gone: ${coldCost(c, "its first reply after resuming")}.${fresh}</span><button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh from its last reply</button></div>`;
+  return `<div class="ins-line cold" data-key="cost">${BULB}<span>Its cache is gone: ${coldCost(c, "its first reply after resuming")}.${fresh}</span><button class="btn small" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh</button></div>`;
 }
 setInterval(insPoll, 30000);
 setTimeout(insPoll, 3000);   // and soon after the window opens, not 30 s in
@@ -488,7 +488,7 @@ function autoLine(sid, act = false) {
   const au = autoDue(sid, act);
   if (!au) return "";
   insShown(sid, "autocompact");
-  return `<div class="ins-line">${BULB}<span>${autoText(au)}</span>${act && canCompact(sid) ? `<button class="linkish" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact now</button>` : ""}</div>`;
+  return `<div class="ins-line">${BULB}<span>${autoText(au)}</span>${act && canCompact(sid) ? `<button class="btn small" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact now</button>` : ""}</div>`;
 }
 
 // ---------- could have delegated: looking around itself, or many areas in one long session ----------
@@ -550,7 +550,7 @@ function delegateText(sid) {
 function queueNote(sid, s) {
   if (!insOn("queue") || s?.state !== "working" || !draft(`s:${sid}`).text.trim()) return "";
   insShown(sid, "queue");
-  return `<div class="ins-line ins-queue">${BULB}<span>Now stops its current step and what it was doing. Queue keeps the work and sends this when it's free.</span><button class="linkish" data-act="ins-queue-off">Got it</button></div>`;
+  return `<div class="ins-line ins-queue">${BULB}<span>Now stops its current step and what it was doing. Queue keeps the work and sends this when it's free.</span><button class="btn small" data-act="ins-queue-off">Got it</button></div>`;
 }
 
 // ---------- what you did with them ----------
