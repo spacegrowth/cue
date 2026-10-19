@@ -7,10 +7,11 @@ let itabDays = (() => { try { return +localStorage.getItem("cue.itabDays") || 30
 const itabCache = new Map();
 let itabAsking = 0;
 
-/** The summary for the range shown: asked for when there's none or it's over a minute old. */
+/** The summary for the range shown: asked for when there's none or it's over a minute old (15 s while the
+ *  history is still being read, so the numbers and the bar keep up). */
 function itabData() {
   const c = itabCache.get(itabDays);
-  if ((!c || Date.now() - c.at > 60000) && itabAsking !== itabDays) {
+  if ((!c || Date.now() - c.at > (c.data?.reading ? 15000 : 60000)) && itabAsking !== itabDays) {
     const days = itabDays;
     itabAsking = days;
     invoke("insights_summary", { days }).then((data) => { itabCache.set(days, { at: Date.now(), data }); }).catch((e) => { itabCache.set(days, { at: Date.now(), data: c?.data || { days, totals: {}, error: String(e) } }); }).finally(() => { if (itabAsking === days) itabAsking = 0; renderMain(); });
@@ -264,9 +265,15 @@ function itabClimb(r) {
 /** The Insights view: where the range's dollars went, then three findings (waiting past the cache, long
  *  sessions, corrections), each with the pictures that point at it, the sessions behind it, and what to do;
  *  then the plain trends. */
+/** While Cue is still reading the sessions' history (a new Mac, years of logs): how far, as a bar. */
+function itabReading(r) {
+  if (!r?.total) return "";
+  const pct = Math.min(99, Math.floor((r.done / r.total) * 100));
+  return `<div class="itab-reading"><div class="itab-reading-t"><span>Reading your session history: what's here so far is part of it.</span><b>${pct}%</b></div><div class="itab-reading-bar"><i style="width:${pct}%"></i></div></div>`;
+}
 function insightsTabView() {
   const d = itabData();
-  const ranges = `<div class="hfilter">${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}</div>`;
+  const ranges = `<div class="hfilter">${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}</div>${itabReading(d?.reading)}`;
   if (!d) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Reading…</div></div>`;
   const t = d.totals || {}, w = d.waiting || {}, l = d.long || {}, c = d.corrections || {};
   const tile = (value, label) => `<div class="hs-tile"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;

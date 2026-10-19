@@ -1991,6 +1991,13 @@ button.ins-n { cursor: pointer; }
 .itab-rval { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
 .itab-rval b { color: var(--ink); font-weight: 600; margin-right: 4px; }
 
+/* Insights while Cue still reads the history: a thin bar and how far. */
+.itab-reading { margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
+.itab-reading-t { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; color: var(--on-bg-muted); }
+.itab-reading-t span { flex: 1; min-width: 0; }
+.itab-reading-t b { color: var(--on-bg); font-variant-numeric: tabular-nums; }
+.itab-reading-bar { height: 4px; margin-top: 8px; border-radius: 2px; background: color-mix(in srgb, var(--on-bg) 15%, transparent); overflow: hidden; }
+.itab-reading-bar i { display: block; height: 100%; background: var(--sel); border-radius: 2px; transition: width 0.6s ease; }
 /* When the wait began: a week of hours, amber as deep as what it cost. */
 .itab-week { display: grid; grid-template-columns: 30px repeat(24, minmax(0, 1fr)); gap: 2px; }
 .itab-week i { aspect-ratio: 1; min-height: 9px; border-radius: 2px; background: var(--panel-2); }

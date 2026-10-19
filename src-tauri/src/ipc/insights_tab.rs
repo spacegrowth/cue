@@ -11,7 +11,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[tauri::command]
 pub(crate) async fn insights_summary(days: Option<u32>) -> Result<Value, String> {
     let days = days.unwrap_or(30).clamp(1, 365);
-    tauri::async_runtime::spawn_blocking(move || summary(days)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut v = summary(days);
+        // Still reading the logs' history (a new Mac, or years of logs): how far, for the tab's bar.
+        if let Some((done, total)) = crate::logs::turns::catching_up() {
+            v["reading"] = serde_json::json!({ "done": done, "total": total });
+        }
+        v
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 fn median(v: &mut [u64]) -> u64 {

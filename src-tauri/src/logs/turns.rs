@@ -17,6 +17,28 @@ const PER_PASS: u64 = 64 * 1024 * 1024;
 /// A single turn bigger than this is skipped rather than read whole.
 const LONGEST_TURN: u64 = 64 * 1024 * 1024;
 
+/// While catching up: how much of every log has been read, and how much there is (bytes). None once it
+/// has caught up. For the Insights tab's "Reading your session history" bar.
+static CATCHING_UP: std::sync::Mutex<Option<(u64, u64)>> = std::sync::Mutex::new(None);
+
+pub fn catching_up() -> Option<(u64, u64)> {
+    let c = crate::locking::lock(&CATCHING_UP, "turns CATCHING_UP");
+    *c
+}
+
+/// How much of these logs has been read so far, and their sizes, in bytes.
+fn read_so_far(logs: &[(String, PathBuf)]) -> (u64, u64) {
+    let (mut done, mut total) = (0u64, 0u64);
+    for (_, path) in logs {
+        let (Some(p), Ok(meta)) = (path.to_str(), std::fs::metadata(path)) else { continue };
+        let size = meta.len();
+        let (from, seen, _) = db::turns_read(p).unwrap_or((0, 0, 0));
+        total += size;
+        done += if seen == size { size } else { from.min(size) };
+    }
+    (done, total)
+}
+
 /// Keep the turns current: now, then every 10 minutes (every 20 seconds while catching up).
 pub fn start() {
     std::thread::Builder::new()
@@ -24,7 +46,13 @@ pub fn start() {
         .spawn(|| {
             low_priority();
             loop {
-                let behind = pass(&logs());
+                let all = logs();
+                let behind = pass(&all);
+                let now = if behind { Some(read_so_far(&all)) } else { None };
+                {
+                    let mut c = crate::locking::lock(&CATCHING_UP, "turns CATCHING_UP");
+                    *c = now;
+                }
                 std::thread::sleep(std::time::Duration::from_secs(if behind { 20 } else { 600 }));
             }
         })
