@@ -1264,6 +1264,7 @@ function kokoroLine(v) {
 function pickVoice(id) {
   kokoro.broke = false;
   invoke("set_setting", { key: "voice.pick", value: id }).catch((e) => toast(`Couldn't pick it: ${e}`));
+  renderMain();   // the list closes now, not on the next redraw (none comes when it's the voice already in use)
 }
 /** Get a voice (and the engine, the first time). */
 function getVoice(id) {
@@ -1278,6 +1279,8 @@ const KOKORO_VOICES = [["af_heart", "Heart", "woman"], ["af_bella", "Bella", "wo
   ["af_nova", "Nova", "woman"], ["af_river", "River", "woman"], ["am_adam", "Adam", "man"], ["am_michael", "Michael", "man"], ["am_echo", "Echo", "man"],
   ["am_eric", "Eric", "man"], ["am_fenrir", "Fenrir", "man"], ["am_liam", "Liam", "man"], ["am_onyx", "Onyx", "man"], ["am_puck", "Puck", "man"]];
 let voiceListOpen = false;
+// The voice list closes on a click anywhere but the list and its button (before that click does its own thing).
+document.addEventListener("click", (e) => { if (voiceListOpen && !e.target.closest?.(".vp-list, .vp-btn")) { voiceListOpen = false; renderMain(); } }, true);
 /** Settings → Voice: one Voice row, a picker showing the voice in use (▶ plays it); open, a short list: your Mac's
  *  voice, then Kokoro's women and men, one line each with ▶ and In use, ✓ (here: a click uses it) or ↓ 0.5 MB.
  *  Before the first one it says once that it brings the voice engine (125 MB); a download shows its bar. */
