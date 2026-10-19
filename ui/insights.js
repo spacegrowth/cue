@@ -45,10 +45,11 @@ const insOn = (rule) => state.settings?.insights?.[rule] !== false;
 const aheadOf = (sid) => { const ho = state.skill_handoffs?.[sid]; return ho?.ahead > 0 && !ho.next ? ho : null; };
 const aheadWatched = (sid) => (state.ahead_watch || []).includes(sid);
 /** Whether "Hand off if I don't come back" can work for a session: Claude Code on this Mac (the Mac's timer
- *  only reads its own cards' logs), an hour's cache, enough context to matter, and no note already written. */
+ *  only reads its own cards' logs), an hour's cache still alive (once it's gone there's nothing to get ahead of
+ *  until its next reply), enough context to matter, and no note already written. */
 function aheadCan(sid) {
   const s = sessionOf(sid), c = cacheOf(sid);
-  return !!s && insOn("handoff") && s.harness === "claude" && !s.machine && (c?.ttl || 0) >= AHEAD_TTL_MS && c.tokens >= CACHE_MIN_TOKENS && !aheadOf(sid);
+  return !!s && insOn("handoff") && s.harness === "claude" && !s.machine && (c?.ttl || 0) >= AHEAD_TTL_MS && c.until_ms > now() && c.tokens >= CACHE_MIN_TOKENS && !aheadOf(sid);
 }
 const watchText = (sid) => aheadWatched(sid)
   ? "<b>Hands off if you don't come back:</b> a minute before its cache runs out, it writes a hand-off note, and you choose when you're back."
@@ -510,7 +511,9 @@ function delegateLine(sid) {
 function insCardLine(sid, ask = false) {
   // A note written ahead says where its cache stands itself.
   const cw = cacheWarn(sid), cache = aheadOf(sid) ? "" : cacheLine(sid, ask);
-  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), autoLine(sid), delegateLine(sid)] : [handoffLine(sid), autoLine(sid), delegateLine(sid), cache];
+  // Ticked "Hand off if I don't come back": its card says so too (last: it's what you chose, not news).
+  const watching = !ask && aheadWatched(sid) && aheadCan(sid) ? `<div class="ins-line">${BULB}<span><b>Hands off if you don't come back</b> before its cache runs out.</span></div>` : "";
+  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), autoLine(sid), delegateLine(sid), watching] : [handoffLine(sid), autoLine(sid), delegateLine(sid), cache, watching];
   const [top, ...rest] = lines.filter(Boolean);
   return top && rest.length ? top.replace(/<\/div>$/, `<span class="ins-n">+${rest.length}</span></div>`) : top || "";
 }

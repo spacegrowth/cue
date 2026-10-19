@@ -408,7 +408,8 @@ impl Hub {
             if until == 0 {
                 continue;
             }
-            if it.kind == "waiting" && it.origin.harness == "claude" && !later && ahead_due(until, last, tokens, now) {
+            // Put off for later too: leaving it for a while is when a note pays.
+            if it.kind == "waiting" && it.origin.harness == "claude" && ahead_due(until, last, tokens, now) {
                 let (ticked, all) = watched.get_or_insert_with(|| (crate::db::ahead_watched(), crate::config::flag("/insights/ahead")));
                 let by = ahead_by(ticked.contains(sid), *all, tokens);
                 // Not when a hand-off is already on its way or written (ahead, or one you sent this stretch).
@@ -943,7 +944,12 @@ mod tests {
         waiting("g1", hour - 60_000, 300_000, 3600);
         crate::db::ahead_watch("g1", true);
         crate::db::set_draft("s:g1", "half a thought", &serde_json::json!([]));
+        // Ticked, and put off for later (Need to decide): leaving it is when a note pays, so it's still due.
+        waiting("l1", hour - 60_000, 300_000, 3600);
+        crate::db::ahead_watch("l1", true);
+        hub.set_later("l1", true);
         hub.cache_tick();
+        assert_eq!(events("l1"), ["held:unseen"], "put off for later, still due");
         assert_eq!(events("a1"), ["held:unseen"], "Cue can't see its box: nothing typed");
         for sid in ["b1", "c1", "d1", "e1"] {
             assert!(events(sid).is_empty(), "{sid}: {:?}", events(sid));
