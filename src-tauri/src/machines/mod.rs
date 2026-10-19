@@ -605,17 +605,18 @@ mod tests {
 
     #[test]
     fn the_machines_environment_becomes_exports_sh_takes_and_keeps_the_shells_own_out() {
-        let raw = b"PATH=/home/u/.nvm/v20/bin:/usr/bin\0HOME=/home/u\0CLAUDE_CONFIG_DIR=/home/u/.claude\0SHLVL=2\0PWD=/home/u\0SSH_CONNECTION=1.2.3.4 5 6.7.8.9 22\0BASH_FUNC_x%%=() {  echo\n}\0PS1=\\u$ \0IT'S=a 'quoted' one\0";
+        let raw = b"PATH=/home/u/.nvm/v20/bin:/usr/bin\0HOME=/home/u\0CLAUDE_CONFIG_DIR=/home/u/.claude\0SHLVL=7\0PWD=/home/u\0SSH_CONNECTION=1.2.3.4 5 6.7.8.9 22\0BASH_FUNC_x%%=() {  echo\n}\0PS1=\\u$ \0IT'S=a 'quoted' one\0";
         let pre = env_exports(raw).unwrap();
         assert_eq!(pre, "export PATH='/home/u/.nvm/v20/bin:/usr/bin'\nexport HOME='/home/u'\nexport CLAUDE_CONFIG_DIR='/home/u/.claude'\n");
         // Written to a file and sourced, as on the machine: the script sees that environment, from
-        // /bin/sh and from bash alike.
+        // /bin/sh and from bash alike. The shell counts its own SHLVL from ours (started at 0 here, so
+        // the terminal running the tests doesn't matter); the file's 7 never reaches it.
         let file = std::env::temp_dir().join(format!("cue-env-{}.sh", std::process::id()));
         std::fs::write(&file, &pre).unwrap();
         for sh in ["/bin/sh", "/bin/bash"] {
-            let out = std::process::Command::new(sh).args(["-c", &format!(". {}\necho \"$PATH|$CLAUDE_CONFIG_DIR|${{SHLVL:-unset}}\"", shq(&file.to_string_lossy()))]).output().unwrap();
+            let out = std::process::Command::new(sh).env("SHLVL", "0").args(["-c", &format!(". {}\necho \"$PATH|$CLAUDE_CONFIG_DIR|${{SHLVL:-unset}}\"", shq(&file.to_string_lossy()))]).output().unwrap();
             let seen = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            assert!(seen.starts_with("/home/u/.nvm/v20/bin:/usr/bin|/home/u/.claude|") && !seen.ends_with("|2"), "{sh}: {seen}");
+            assert!(seen.starts_with("/home/u/.nvm/v20/bin:/usr/bin|/home/u/.claude|") && !seen.ends_with("|7"), "{sh}: {seen}");
         }
         let _ = std::fs::remove_file(&file);
         assert!(env_exports(b"HOME=/home/u\0").is_none(), "no PATH: env -0 didn't work there");
