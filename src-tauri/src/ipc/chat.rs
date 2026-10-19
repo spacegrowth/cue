@@ -230,12 +230,6 @@ pub(crate) async fn mcp_for(hub: State<'_, Arc<Hub>>, session_id: String) -> Res
     tauri::async_runtime::spawn_blocking(move || mcp_for_session(&h, &session_id)).await.map_err(|e| e.to_string())?
 }
 
-/// Every configured MCP server, for Settings.
-#[tauri::command]
-pub(crate) async fn mcp_all() -> Vec<serde_json::Value> {
-    tauri::async_runtime::spawn_blocking(crate::logs::mcp::all).await.unwrap_or_default()
-}
-
 /// Turn a server on or off for the session's folder; the fresh list comes back. The session has to
 /// be restarted (mcp_restart) for Claude Code to notice.
 #[tauri::command]

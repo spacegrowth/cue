@@ -445,19 +445,8 @@ function machinePanel(name) {
   const report = lines.length ? `<ul class="mc-report">${lines.map((l) => `<li>${l}</li>`).join("")}</ul>` : "";
   return `<div class="nf-row nf-note"><span></span><div class="nf-mpanel"><div class="nf-mhead"><span class="dim mono">${esc(m.host)}</span>${status}<span class="grow"></span>${!checking && st.needs_login ? `<button class="btn small primary" data-mach="login" data-name="${esc(name)}">Log in</button>` : ""}<button class="btn small" data-mach="rename" data-name="${esc(name)}">Rename</button><button class="btn small" data-mach="check" data-name="${esc(name)}">Check</button><button class="btn small" data-mach="remove" data-name="${esc(name)}">Remove</button></div>${machRenaming === name ? `<div class="mc-add"><input class="nf-in" data-text="mc-label" placeholder="${esc(m.name)}" spellcheck="false" autocomplete="off" value="${esc(draft("mc-label").text)}"/><button class="btn small primary" data-mach="rename-save" data-name="${esc(name)}">Save</button><button class="btn small" data-mach="rename" data-name="${esc(name)}">Cancel</button></div><span class="nf-hint wrap">What Cue shows for it everywhere. Empty: back to its own name.</span>` : ""}${tools}${report}</div></div>`;
 }
-/** Settings → MCP: every server Claude Code knows (mcp_all), by folder. Read-only; a session picks its own from its ⋯ menu. */
-let mcpAllList = null;
-function mcpSettings() {
-  if (!mcpAllList) { mcpAllList = []; invoke("mcp_all").then((v) => { mcpAllList = v || []; renderMain(); }, () => {}); }
-  const groups = new Map();
-  for (const m of mcpAllList) { const g = m.scope === "user" ? "Every folder" : m.project || "Elsewhere"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(m); }
-  const order = [...groups.keys()].sort((a, b) => (a === "Every folder" ? -1 : b === "Every folder" ? 1 : a.localeCompare(b)));
-  const list = order.map((g) => `<div class="set-group">${esc(g)}</div>${groups.get(g).map((m) =>
-    `<div class="set-row mcp-srow"><div class="set-text"><div class="set-title">${esc(m.name)}<span class="mcp-tr">${esc(m.transport || "")}</span></div><div class="set-sub mono">${esc(m.target || "")}</div></div></div>`).join("")}`).join("");
-  return `<div class="set-note">Pick the servers a session runs with from its ⋯ menu → MCP servers. Claude Code loads them when the session starts.</div>${list || (mcpAllList ? `<div class="set-sub">No MCP servers are set up in Claude Code.</div>` : "")}`;
-}
 /** Settings, in tabs so no one page runs long. The last tab you looked at opens next time. */
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["mcp", "MCP"], ["actions", "Actions"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
@@ -505,7 +494,6 @@ function settingsSheet() {
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
     voice: voiceSettings() + extRows("Voice"),
     insights: insSettings(st),
-    mcp: mcpSettings(),
     actions: actSettings(),
     usage: `
     <div class="set-group">Usage</div>

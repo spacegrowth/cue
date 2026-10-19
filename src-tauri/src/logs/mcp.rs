@@ -404,37 +404,6 @@ fn escape(s: &str) -> String {
     s.replace('~', "~0").replace('/', "~1")
 }
 
-/// Every configured server, for a Settings list: `{ name, scope, transport, target, project, from }`,
-/// `project` "" for user scope.
-pub fn all() -> Vec<Value> {
-    all_in(&claude_json_path())
-}
-
-pub fn all_in(cfg_path: &Path) -> Vec<Value> {
-    let cfg = read_json(cfg_path);
-    let cfg_s = cfg_path.to_string_lossy().to_string();
-    let entry = |name: &str, scope: &str, def: &Value, project: &str, from: &str| {
-        let (transport, target) = describe(def);
-        json!({ "name": name, "scope": scope, "transport": transport, "target": target, "project": project, "from": from })
-    };
-    let mut out = vec![];
-    for (name, def) in servers_in(cfg.get("mcpServers")) {
-        out.push(entry(&name, "user", &def, "", &cfg_s));
-    }
-    for (folder, p) in cfg.get("projects").and_then(Value::as_object).into_iter().flatten() {
-        for (name, def) in servers_in(p.get("mcpServers")) {
-            out.push(entry(&name, "local", &def, folder, &cfg_s));
-        }
-        if Path::new(folder).is_dir() {
-            let f = mcp_json(folder);
-            for (name, def) in servers_in(read_json(&f).get("mcpServers")) {
-                out.push(entry(&name, "project", &def, folder, &f.to_string_lossy()));
-            }
-        }
-    }
-    out
-}
-
 /// Turn a server on or off for `cwd` (see the module doc for where each scope lives). The session
 /// has to be restarted for Claude Code to notice.
 pub fn set_enabled(cwd: &str, name: &str, on: bool) -> Result<(), String> {
@@ -649,18 +618,6 @@ mod tests {
         let before = std::fs::read_to_string(&cfg).unwrap();
         assert_eq!(set_enabled_in(&cfg, &cwd, "linear", false), Err("that server is on for every folder (user scope)".to_string()));
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), before);
-    }
-
-    #[test]
-    fn all_lists_every_configured_server_with_its_folder() {
-        let (cfg, _, cwd, other) = setup();
-        let v = all_in(&cfg);
-        let get = |n: &str| v.iter().find(|s| s["name"] == n).unwrap().clone();
-        assert_eq!(get("linear")["project"], "");
-        assert_eq!(get("local-one")["project"], cwd);
-        assert_eq!(get("chrome-devtools")["project"], other);
-        assert_eq!(get("proj-on")["scope"], "project");
-        assert_eq!(get("proj-on")["project"], cwd);
     }
 
     #[test]

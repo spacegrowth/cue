@@ -438,20 +438,13 @@
               { at_ms: now - 17 * M, more: 0, hooked_ms: now - 10.8 * M, items: [say("Adding the footer total and the list output.", 16.9), st("b1", "edit", "Edited", "board.ts", "+12 −1", 16.5), st("b2", "edit", "Edited", "list.ts", "+9 −0", 16), st("b3", "run", "Ran", "npm test", "exit 1", 15, { bad: true }), say("One test expected the old column order. Updating it.", 14.8), st("b4", "read", "Read", "board.test.ts", "140 lines", 14.6), st("b5", "edit", "Edited", "board.test.ts", "+2 −2", 14), st("b6", "run", "Ran", "npm test", "Tests: 41 passed", 12.5), say(relayMsg, 11), st("c1", "read", "Read", "rules-check.md", "64 lines", 10.6), say("1 — Shape: stated before editing.\n2 — Assumptions: the spend column exists (checked).\n3 — Verified: tests pass.", 10.2)] },
             ] };
           }
-          // MCP servers for a session (chat.js ⋯ → MCP servers…), a folder (+ New session) and all of them (Settings → MCP).
+          // MCP servers for a session (chat.js ⋯ → MCP servers…), a folder (+ New session).
           if (cmd === "mcp_for") return { ...mcpFixture, servers: mcpFixture.servers.map((m) => ({ ...m })) };
           if (cmd === "mcp_for_folder") return { calls: 0, pinned: false, servers: mcpFixture.servers.filter((m) => m.scope !== "session").map((m) => ({ ...m, selected: m.enabled, used: 0, failed: 0, tools: [] })) };
           if (cmd === "mcp_apply") { await new Promise((r) => setTimeout(r, 300)); for (const m of mcpFixture.servers) if (m.toggle) m.selected = args.names.includes(m.name); mcpFixture.pinned = true; return `Restarted with ${args.names.length} MCP server${args.names.length === 1 ? "" : "s"}`; }
           if (cmd === "mcp_apply_clear") { await new Promise((r) => setTimeout(r, 300)); for (const m of mcpFixture.servers) m.selected = m.enabled; mcpFixture.pinned = false; return "Restarted with its folder's MCP servers"; }
           if (cmd === "mcp_set") { const m = mcpFixture.servers.find((x) => x.name === args.name); if (m) m.enabled = args.on; return { ...mcpFixture, servers: mcpFixture.servers.map((m) => ({ ...m })) }; }
           if (cmd === "mcp_restart") { await new Promise((r) => setTimeout(r, 300)); return "Restarted"; }
-          if (cmd === "mcp_all") return [
-            { name: "linear", scope: "user", project: "", transport: "http", target: "https://mcp.linear.app/mcp" },
-            { name: "chrome-devtools", scope: "local", project: "/Users/me/code/cue", transport: "stdio", target: "npx chrome-devtools-mcp@latest" },
-            { name: "data-tools", scope: "project", project: "/Users/me/code/cue", transport: "stdio", target: "uv run data-mcp" },
-            { name: "sentry", scope: "local", project: "/Users/me/code/billing", transport: "http", target: "https://mcp.sentry.dev/mcp" },
-            { name: "postgres", scope: "local", project: "/Users/me/code/billing", transport: "stdio", target: "npx @modelcontextprotocol/server-postgres postgres://localhost/billing" },
-          ];
           if (cmd === "step_detail") return Object.fromEntries(args.ids.map((id) => [id, id === "b3"
             ? { full: "npm test", output: ["> relay@1.4.0 test", "> vitest run", "", " FAIL  test/board.test.ts > columns > spend sorts high to low", "   expected [ 'name', 'status', 'spend' ] to equal [ 'name', 'spend', 'status' ]", "", " Tests  1 failed | 40 passed (41)"], skipped: 0, gap_at: 40 }
             : id.startsWith("b") && ["b1", "b2", "b5"].includes(id) ? { full: "/Users/me/code/agent-relay/src/board.ts", diff: [[" ", "  const cols = ['name', 'status'];"], ["-", "  const total = 0;"], ["+", "  const total = rows.reduce((s, r) => s + r.spend, 0);"], ["+", "  footer.push(fmt(total));"]], skipped: 0 }

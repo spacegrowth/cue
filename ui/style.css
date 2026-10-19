@@ -1804,7 +1804,6 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .more-menu button.mcp-back { white-space: nowrap; padding: 4px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
 .more-menu button.mcp-back:hover:not(:disabled) { background: none; color: var(--ink); }
 .set-note { font-size: 12.5px; color: var(--muted); margin: 14px 0 4px; }
-.mcp-tr { font: 500 10.5px var(--mono); color: var(--muted); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; margin-left: 8px; vertical-align: middle; }
 /* The same checklist in the + New session form, for the folder typed: compact, wrapping. */
 .nf-mcp { min-width: 0; flex: 1; }
 .mcp-list.compact { flex-direction: row; flex-wrap: wrap; gap: 2px 4px; max-height: 120px; padding: 0; }
