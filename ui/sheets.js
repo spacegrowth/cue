@@ -446,6 +446,38 @@ function machinePanel(name) {
   return `<div class="nf-row nf-note"><span></span><div class="nf-mpanel"><div class="nf-mhead"><span class="dim mono">${esc(m.host)}</span>${status}<span class="grow"></span>${!checking && st.needs_login ? `<button class="btn small primary" data-mach="login" data-name="${esc(name)}">Log in</button>` : ""}<button class="btn small" data-mach="rename" data-name="${esc(name)}">Rename</button><button class="btn small" data-mach="check" data-name="${esc(name)}">Check</button><button class="btn small" data-mach="remove" data-name="${esc(name)}">Remove</button></div>${machRenaming === name ? `<div class="mc-add"><input class="nf-in" data-text="mc-label" placeholder="${esc(m.name)}" spellcheck="false" autocomplete="off" value="${esc(draft("mc-label").text)}"/><button class="btn small primary" data-mach="rename-save" data-name="${esc(name)}">Save</button><button class="btn small" data-mach="rename" data-name="${esc(name)}">Cancel</button></div><span class="nf-hint wrap">What Cue shows for it everywhere. Empty: back to its own name.</span>` : ""}${tools}${report}</div></div>`;
 }
 /** Settings, in tabs so no one page runs long. The last tab you looked at opens next time. */
+/** Settings → General → Reset projects: what's been changed about which project a session is in, undone
+ *  after a confirm in place (`projResetAsk`) that says what goes and what stays. */
+let projResetAsk = false;
+function projResetRows() {
+  const p = state.settings?.project || {};
+  const n = (o) => Object.keys(o || {}).length, s = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const f = n(p.folders), m = n(p.moves), r = n(p.names);
+  const what = [f && s(f, "folder put in a project", "folders put in projects"), m && s(m, "session moved to another project", "sessions moved to other projects"), r && s(r, "project renamed", "projects renamed")].filter(Boolean);
+  const row = setRow("Reset projects", "Every session back in its own folder's project: its git repository's name, or its folder's.", `<button class="btn" data-proj-reset="ask">Reset projects…</button>`);
+  if (!projResetAsk) return row;
+  const ask = what.length
+    ? `<div class="set-confirm"><div class="end-text">This undoes ${esc(what.join(", "))}. Project colors and pins, sessions, history and actions stay as they are.</div><div class="row-btns"><span class="grow"></span><button class="btn" data-proj-reset="no">Cancel</button><button class="btn deny" data-proj-reset="yes">Reset projects</button></div></div>`
+    : `<div class="set-confirm"><div class="end-text">Nothing to reset: every session is already in its own folder's project.</div><div class="row-btns"><span class="grow"></span><button class="btn" data-proj-reset="no">OK</button></div></div>`;
+  return row + ask;
+}
+function projReset() {
+  const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
+  for (const k of ["folders", "moves", "names"]) { p[k] = {}; setSetting(`project.${k}`, {}); }
+  for (const x of [...state.sessions, ...state.items, ...state.history, ...(state.parked || [])]) if (x.folder_project) x.project = x.folder_project;
+  projResetAsk = false;
+  toast("Projects reset: every session is in its own folder's project");
+  renderMain();
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-proj-reset]");
+  if (!b) return;
+  e.stopPropagation();
+  const v = b.dataset.projReset;
+  if (v === "yes") return projReset();
+  projResetAsk = v === "ask";
+  renderMain();
+}, true);
 const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
@@ -471,7 +503,9 @@ function settingsSheet() {
     ${setRow("Sound", "What every notification plays. Click one to hear it.", seg("notify.sound", st.notify?.sound ?? "pluck", SOUNDS))}
     <div class="set-group">Mac</div>
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
-    ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}`,
+    ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}
+    <div class="set-group">Projects</div>
+    ${projResetRows()}`,
     agents: `
     <div class="set-group">Connected agents</div>
     ${agentRows()}

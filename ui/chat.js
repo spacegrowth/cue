@@ -1718,13 +1718,12 @@ function projMoveList(sid) {
   const own = folderProject(sid), now = sessionOf(sid)?.project ?? findItem(active?.id)?.project ?? own;
   const names = [...new Set([own, ...projectsKnown().map(([p]) => p)])].filter((p) => p && p !== now);
   const rows = names.map((p) => `<button data-move-proj="${esc(p)}" data-sid="${esc(sid)}">${projDot(p)}${esc(projLabel(p))}${p === own ? "<span>Its folder's own</span>" : ""}</button>`).join("");
-  const r = sessionOf(sid) || findItem(active?.id), where = r?.cwd ? baseName(putKey(r).replace(/^[^/~]*:/, "")) : "";
   const add = newProjFor === sid
     ? `<div class="pm-new"><input class="pm-new-in" data-text="newproj:${esc(sid)}" maxlength="40" placeholder="Name the new project" spellcheck="false" value="${esc(draft(`newproj:${sid}`).text)}"/>${newProjNote ? `<div class="pm-note">${esc(newProjNote)}</div>` : ""}</div>`
     : `<button class="pm-add" data-new-proj="${esc(sid)}">+ New project…</button>`;
-  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div>${where ? `<div class="pm-note">Every session in ${esc(where)}, now and later</div>` : ""}${rows}${add}</div>`;
+  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div><div class="pm-note">This session only</div>${rows}${add}</div>`;
 }
-/** Enter in + New project…'s box: the folder goes to a project of that name. One that's already there (its
+/** Enter in + New project…'s box: this session goes to a project of that name. One that's already there (its
  *  name or the name you gave it) is said instead, so two never quietly become one. */
 function submitNewProj(sid) {
   const name = draft(`newproj:${sid}`).text.trim();

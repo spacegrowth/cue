@@ -732,6 +732,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .move-err { font-size: 13px; color: var(--deny); line-height: 1.45; }
 .move-secs { font: 12px var(--mono); color: var(--muted); }
 .end-text { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.set-confirm { display: flex; flex-direction: column; gap: 10px; margin: 2px 0 12px; padding: 12px 14px; border-radius: 10px; background: var(--panel-2); }
 .end-text .mono { font: 12px var(--mono); color: var(--ink); }
 .end-dialog kbd { margin-left: 4px; opacity: .7; }
 .move-screen { font: 11.5px var(--mono); color: var(--on-slab); background: var(--slab); border-radius: 8px; padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
