@@ -206,12 +206,13 @@ function handoffDue(sid, s) {
   const read = (f.turns || []).map((t) => t.context).filter((c) => c > 0);
   const early = m.start_context || median(read.slice(0, 3)), grew = early ? m.context / early : 0;
   if (grew < bar.growth) return null;
-  // What this session's machine has: the hand-off skill you chose for this machine and agent, else any
-  // command named for it; else Cue's own hand-off. And compact.
+  // What this session's machine has: the hand-off skill you chose for this machine and agent, else one
+  // named exactly /handoff (never another with "handoff" in its name: that may be something else); else
+  // Cue's own hand-off. And compact.
   const cmds = cmdList(sid), chosen = insSkills()[insSkillKey(s)];
   // Relay's skills work only in a relay lead (its ⋯ menu's Relay handoff… asks the same), so never offer them elsewhere.
   const fits = (c) => !c.name.startsWith("relay:") || (crewOf(sid)?.role === "lead" && crewOf(sid)?.plugin === "relay");
-  const handoffs = chosen === CUE_HANDOFF ? [] : (chosen ? cmds.filter((c) => c.name === chosen) : cmds.filter((c) => /hand-?off/i.test(c.name))).filter(fits);
+  const handoffs = chosen === CUE_HANDOFF ? [] : (chosen ? cmds.filter((c) => c.name === chosen) : cmds.filter((c) => c.name === "handoff")).filter(fits);
   const opts = [
     ...handoffs.map((c) => ({ cmd: `/${c.name}` })),
     ...cmds.filter((c) => c.name === "compact").map(() => ({ cmd: "/compact" })),
@@ -570,9 +571,15 @@ function insSent(sid, text, now_) {
 }
 function insAct(act, d) {
   const sid = d.sid;
-  if (act === "ins-choose") { insQuery = ""; insChoosing = insChoosing === d.key ? "" : d.key; renderMain(); return document.getElementById("ins-search")?.focus(); }
+  if (act === "ins-choose") {
+    insQuery = "";
+    insChoosing = insChoosing === d.key ? "" : d.key;
+    // Opened: its host's commands read again, so a skill added a moment ago is in the list.
+    if (insChoosing) { cmdLists.clear(); cmdMissed.clear(); insFindSkills(true); }
+    renderMain();
+    return document.getElementById("ins-search")?.focus();
+  }
   if (act === "ins-skill") { insChoosing = ""; insQuery = ""; return setSetting("insights.skills", { ...insSkills(), [d.key]: d.name }); }
-  if (act === "ins-find") { cmdLists.clear(); cmdMissed.clear(); insFindSkills(true); return renderMain(); }
   if (act === "ins-skill-forget") { const { [d.key]: _, ...rest } = insSkills(); return setSetting("insights.skills", rest); }
   // Opening keeps its colored moment (the bar stays as it was); acting on it, or Remind me, ends it.
   if (act === "ins-open") { insOpen.has(sid) ? insOpen.delete(sid) : insOpen.add(sid); return renderMain(); }
@@ -692,7 +699,7 @@ function insPicker(k, h, a, chosen) {
   return `<div class="ins-pop down" role="dialog" aria-label="Choose the hand-off skill">
       <input id="ins-search" class="ins-search" data-ins-search="${esc(k)}" value="${esc(insQuery)}" placeholder="Search ${esc(h.name)}'s ${esc(agentName(a))} commands…" autocomplete="off" spellcheck="false">
       <div class="ins-pop-list">${cueRow}${shown.length ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${esc(insShort(c.desc || ""))}</span></button>`).join("") : empty}</div>
-      <div class="ins-pop-foot">${a === "claude" ? `<button class="linkish" data-act="ins-find">Added one just now? Look again</button>` : ""}<span class="grow"></span><span class="dim">Esc to close</span></div>
+      <div class="ins-pop-foot"><span class="grow"></span><span class="dim">Esc to close</span></div>
     </div>`;
 }
 function insSettings(st) {
@@ -706,12 +713,11 @@ function insSettings(st) {
       const k = `${h.key}|${a}`, name = skills[k];
       // Claude Code: what the host has (Cue reads its commands there); the others' logs don't list theirs.
       const found = a === "claude" ? insFound?.[h.key] : undefined;
-      const usable = (found || []).filter((n) => !n.startsWith("relay:"));
+      // What it uses now: the one you chose, else its /handoff (that exact name), else Cue's own.
       const what = name ? `${name === CUE_HANDOFF ? "<span>Cue's hand-off</span>" : `<span class="mono">/${esc(name)}</span>`}<span class="dim">chosen</span>`
-        : found === null ? `<span class="dim">Looking…</span>`
-        : usable.length ? `<span class="mono">${usable.map((n) => `/${esc(n)}`).join(", ")}</span><span class="dim">found</span>`
-        : a === "claude" && found ? `<span class="dim">None found: Cue's hand-off</span>`
-        : `<span class="dim">Any skill with “handoff” in its name, else Cue's hand-off</span>`;
+        : (found || []).includes("handoff") ? `<span class="mono">/handoff</span><span class="dim">its own</span>`
+        : a === "claude" && found ? `<span>Cue's hand-off</span>`
+        : `<span class="dim">/handoff if it has one, else Cue's hand-off</span>`;
       const acts = `<span class="grow"></span>${name ? `<button class="btn small" data-act="ins-skill-forget" data-key="${esc(k)}">Forget</button>` : ""}<button class="btn small" data-act="ins-choose" data-key="${esc(k)}">${name ? "Change" : "Choose"}</button>`;
       return `<div class="ins-skill-row">${insPicker(k, h, a, name)}<span class="ins-skill-agent">${esc(agentName(a))}</span>${what}${acts}</div>`;
     }).join("");
@@ -727,7 +733,7 @@ function insSettings(st) {
     ${setRow("Could have delegated", "On a waiting card, when a session did a lot of reading and searching itself (a background agent would have sent back a summary), or ran long across several areas of its project (relay, when it's on, or an agent per area).", toggle("insights.delegate", st.insights?.delegate ?? true))}
     ${setRow("Queue instead of interrupting", "While a session works and you've typed something: Now stops what it's doing, Queue keeps it.", toggle("insights.queue", st.insights?.queue ?? true))}
     <div class="set-group">Hand-off skill, by host</div>
-    ${setRow("How it's set", "Each host's agents have their own skills. Cue offers what a host has (any with “handoff” in its name, else its own hand-off), or the one you choose here: kept for that host and agent.", `<button class="btn small" data-act="ins-find">Look again</button>`)}
+    ${setRow("How it's set", "Each host's agents have their own skills. Cue offers the one you choose here, kept for that host and agent; else a host's /handoff (only that exact name); else its own hand-off.", "")}
     ${hostRows}`;
 }
 let insCounts = null;

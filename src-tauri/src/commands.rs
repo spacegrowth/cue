@@ -174,14 +174,14 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
     Some(from_setup(r.pointer("/response/response").unwrap_or(&Value::Null)))
 }
 
-/// The hand-off skills Claude Code has for you on a host (`machine` empty: this Mac): its commands with
-/// "handoff" in their name, from its list for your home folder (skills you install for yourself apply in
+/// The hand-off skill Claude Code has for you on a host (`machine` empty: this Mac): its command named
+/// exactly "handoff" (one with "handoff" elsewhere in its name may be something else), from its list for your home folder (skills you install for yourself apply in
 /// every folder). None while it's read for the first time. To read them again after adding a skill on
 /// another machine, `reread_all` first: every folder's list is read again, so each session's "/" menu
 /// and insights see it too.
 pub fn handoff_skills(machine: &str) -> Option<Vec<String>> {
     let list = for_folder(&home_folder(machine), machine)?;
-    Some(list.into_iter().filter(|c| { let n = c.name.to_lowercase(); n.contains("handoff") || n.contains("hand-off") }).map(|c| c.name).collect())
+    Some(list.into_iter().filter(|c| c.name == "handoff").map(|c| c.name).collect())
 }
 
 /// Your home folder on a host: this Mac's, or where a machine's connection starts.
