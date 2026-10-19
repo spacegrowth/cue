@@ -15,3 +15,6 @@ dist/
 
 # Swift builds of the voices helper (src-tauri/speak)
 src-tauri/speak/.build/
+
+# Your own Cue actions (Cue's shared ones, .cue/actions.json, are committed)
+.cue/actions.local.json
