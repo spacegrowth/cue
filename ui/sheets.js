@@ -457,7 +457,7 @@ function mcpSettings() {
   return `<div class="set-note">Pick the servers a session runs with from its ⋯ menu → MCP servers. Claude Code loads them when the session starts.</div>${list || (mcpAllList ? `<div class="set-sub">No MCP servers are set up in Claude Code.</div>` : "")}`;
 }
 /** Settings, in tabs so no one page runs long. The last tab you looked at opens next time. */
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["insights", "Insights"], ["mcp", "MCP"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["insights", "Insights"], ["mcp", "MCP"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
@@ -505,6 +505,7 @@ function settingsSheet() {
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
     insights: insSettings(st),
     mcp: mcpSettings(),
+    actions: actSettings(),
     usage: `
     <div class="set-group">Usage</div>
     ${setRow("Show Claude Code's limits", "The 5-hour and weekly meters from your Claude plan. Off: only your usage file's meters show.", toggle("usage.claude", st.usage?.claude ?? true))}

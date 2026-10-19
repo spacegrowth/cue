@@ -1452,7 +1452,7 @@ function chatHtml(it, s, harness, paged = false) {
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
-      <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button></div>${follow}</div>`;
+      <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to another session…</button>${n === lastAgent ? actSuggestHtml(s, e.at_ms) : ""}</div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
@@ -1540,7 +1540,8 @@ function projMoveList(sid) {
   const own = folderProject(sid), now = sessionOf(sid)?.project ?? findItem(active?.id)?.project ?? own;
   const names = [...new Set([own, ...projectsKnown().map(([p]) => p)])].filter((p) => p && p !== now);
   const rows = names.map((p) => `<button data-move-proj="${esc(p)}" data-sid="${esc(sid)}">${projDot(p)}${esc(projLabel(p))}${p === own ? "<span>Its folder's own</span>" : ""}</button>`).join("");
-  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div>${rows || `<div class="pm-none">No other projects yet</div>`}</div>`;
+  const r = sessionOf(sid) || findItem(active?.id), where = r?.cwd ? baseName(putKey(r).replace(/^[^/~]*:/, "")) : "";
+  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div>${where ? `<div class="pm-note">Every session in ${esc(where)}, now and later</div>` : ""}${rows || `<div class="pm-none">No other projects yet</div>`}</div>`;
 }
 function moreMenu(sid, s, closable = false) {
   const open = moreFor === sid;
@@ -1553,7 +1554,7 @@ function moreMenu(sid, s, closable = false) {
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
-      <button data-move-ask="${esc(sid)}">Move to project…<span>Show it under another project in Cue; the agent stays in its folder</span></button>
+      <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
       ${restartItem(sid, s)}
       ${later}${parkMenuItem(sid, s, closable)}
@@ -1834,7 +1835,7 @@ function activePane() {
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
-    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}
+    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${actSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
     ${sid && s && !full ? handoffInsight(sid, s) : ""}${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
 }

@@ -191,21 +191,36 @@ function saveProjName(project) {
   setSetting("project.names", p.names);
   renderMain();
 }
-/** A session moved to another project in Cue (the chat's ⋯ → Move to project): Cue's state says the new
- *  project, `folder_project` its folder's. Moved back to its folder's, it's dropped. The agent stays where it is. */
-const folderProject = (sid) => { const r = sessionOf(sid) || state.items.find((i) => i.session_id === sid) || parkedOf(sid); return r ? r.folder_project ?? r.project : ""; };
-function moveToProject(sid, project) {
-  const own = folderProject(sid);
+/** A session's folder's project, before you put it anywhere (its repository's or folder's): Cue's state
+ *  says the project shown, `folder_project` the one it had. */
+const folderProject = (sid) => { const r = sessionOf(sid) || state.items.find((i) => i.session_id === sid) || parkedOf(sid); return r ? state.projects?.[r.cwd]?.own ?? r.folder_project ?? r.project : ""; };
+/** Where putting a session's folder in a project keeps it (model.rs put_key): a repository's main checkout
+ *  (every worktree of it too), else the folder; "<machine>:<folder>" on another machine. */
+const putKey = (r) => r.machine ? `${r.machine}:${r.cwd.replace(/\/+$/, "")}` : state.projects?.[r.cwd]?.key || r.cwd.replace(/\/+$/, "");
+/** Put a folder in a project (⋯ → Move to project, + New's Project): every session there, now and later,
+ *  shows under it. Its own project again takes it out. The agent stays where it is. */
+function putFolder(key, project, own) {
   const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
-  const { [sid]: _, ...rest } = p.moves || {};
-  p.moves = project && project !== own ? { ...rest, [sid]: project } : rest;
-  for (const r of [...state.sessions, ...state.items, ...state.history, ...(state.parked || [])]) {
-    if (r.session_id !== sid) continue;
-    r.folder_project ??= r.project;
-    r.project = project || own;
+  const { [key]: _, ...rest } = p.folders || {};
+  p.folders = project && project !== own ? { ...rest, [key]: project } : rest;
+  setSetting("project.folders", p.folders);
+}
+function moveToProject(sid, project) {
+  const r = sessionOf(sid) || state.items.find((i) => i.session_id === sid) || parkedOf(sid);
+  if (!r?.cwd) return;
+  const own = folderProject(sid), key = putKey(r), to = project || own;
+  putFolder(key, to, own);
+  // A move of this session alone from before is taken back: its folder says it now.
+  const p = state.settings.project;
+  if (p.moves?.[sid]) { const { [sid]: _, ...rest } = p.moves; p.moves = rest; setSetting("project.moves", rest); }
+  const under = (x) => x.cwd && (x.machine || "") === (r.machine || "") && (x.cwd === r.cwd || putKey(x) === key);
+  for (const x of [...state.sessions, ...state.items, ...state.history, ...(state.parked || [])]) {
+    if (!under(x)) continue;
+    x.folder_project ??= x.project;
+    x.project = to;
   }
-  setSetting("project.moves", p.moves);
-  toast(`Moved to ${projLabel(project || own)}`);
+  if (!r.machine && state.projects?.[r.cwd]) state.projects[r.cwd].name = to;
+  toast(to === own ? `${baseName(key)} is back in ${projLabel(own)}` : `Every session in ${baseName(key)} is in ${projLabel(to)} now`);
 }
 /** The projects pinned beside All projects in the header (config.rs PINS_MAX), in the order pinned. */
 const PINS_MAX = 3;

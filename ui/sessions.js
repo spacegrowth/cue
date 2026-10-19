@@ -125,6 +125,27 @@ const rememberFolder = (m, dir) => { try { localStorage.setItem(`cue.folders.${m
 /** + New's Folder field: Cue's own list of recent folders (a native one can't be picked with ↑ ↓ Enter,
  *  since Enter starts the session, and a redraw closes it). Open: ▾, ↓, or typing (which narrows it). */
 let nfFolderOpen = false, nfFolderQ = "", nfFolderSel = -1;
+/** + New's Project line: the typed folder's project as Cue works it out (project_for_folder: {name, own, how,
+ *  key}), read again when the folder or machine changes; the one you picked instead (null: as it is), kept
+ *  for its folder when the session starts; and whether the pick list is open. */
+let nfProj = { at: "", info: null, pick: null, open: false };
+const NF_HOW = { repo: "its git repository", "repo-says": "its repository says so", put: "you put this folder in it", folder: "this folder" };
+function projLine() {
+  const cwd = draft("new-cwd").text.trim(), at = `${newMachine}|${cwd}`;
+  // (On a machine "~" is that machine's home, which Cue only knows once a session's there.)
+  if (!(newMachine ? /^\//.test(cwd) : /^[/~]/.test(cwd))) return "";
+  if (nfProj.at !== at) {
+    nfProj = { at, info: null, pick: null, open: false };
+    invoke("project_for_folder", { folder: cwd, machine: newMachine }).then((v) => { if (nfProj.at === at) { nfProj.info = v; renderMain(); } }, () => {});
+  }
+  const i = nfProj.info;
+  if (!i) return "";
+  const name = nfProj.pick ?? i.name, how = nfProj.pick != null && nfProj.pick !== i.name ? (nfProj.pick === i.own ? "its own again, from now on" : "every session in this folder, from now on") : NF_HOW[i.how] || "";
+  const names = [...new Set([i.own, ...projPins(), ...projectsKnown().map(([p]) => p), ...(state.history || []).map((h) => h.project)])].filter((p) => p && p !== name).slice(0, 12);
+  const drop = nfProj.open ? `<div class="nf-drop nf-pdrop">${names.map((p) => `<button class="nf-dopt" data-lv="proj-pick" data-project="${esc(p)}">${projDot(p)}${esc(projLabel(p))}${p === i.own ? `<span class="nf-hint">its own</span>` : ""}</button>`).join("") || `<div class="nf-hint">No other projects yet</div>`}</div>` : "";
+  const change = i.how === "folder" && nfProj.pick == null ? "Put in a project…" : "Change…";
+  return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(name)}<b>${esc(projLabel(name))}</b><span class="nf-hint">${esc(how)}</span><button class="btn small" data-lv="proj-open" aria-expanded="${nfProj.open}">${change}</button>${drop}</div></div>`;
+}
 const folderMatches = (folders) => { const q = nfFolderQ.toLowerCase(); return q ? folders.filter((f) => f.toLowerCase().includes(q) && f !== nfFolderQ) : folders; };
 const nfFolders = () => newMachine ? machineFolders(newMachine) : recentFolders().map(homeless);
 function folderDrop(folders) {
@@ -164,6 +185,7 @@ function newForm() {
     ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there; it sets up its hooks for the agents it finds.</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Agent</span><div class="seg">${agents.map((a) => `<button class="${newAgent === a ? "on" : ""}" data-lv="agent" data-agent="${a}">${esc(agentName(a))}</button>`).join("")}</div></div>
     <div class="nf-row"><span class="nf-k">Folder</span><div class="nf-fwrap"><input class="nf-in mono" data-text="new-cwd" placeholder="${newMachine ? `~/code/… on ${esc(machShort(newMachine))}` : "~/development/…"}" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>${folders.length ? `<button class="nf-fbtn" data-lv="folders" aria-label="Recent folders">▾</button>` : ""}${folderDrop(folders)}</div></div>
+    ${projLine()}
     ${newAgent === "claude" && !newMachine && draft("new-cwd").text.trim() ? `<div class="nf-row"><span class="nf-k">MCP</span><div class="nf-mcp">${mcpList(`f:${draft("new-cwd").text.trim()}`, true)}</div></div>` : ""}
     ${newAgent === "claude" ? modelRow() : ""}
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
@@ -223,6 +245,8 @@ async function lvAct(act, d) {
   if (act === "models-reload") { readModels(true); return renderMain(); }
   if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
   if (act === "folder") return pickFolder(d.cwd);
+  if (act === "proj-open") { nfProj.open = !nfProj.open; return renderMain(); }
+  if (act === "proj-pick") { nfProj.pick = d.project; nfProj.open = false; return renderMain(); }
   if (act === "cancel") { endDictation("new-msg"); liveOpen = newOpen = false; closeFolders(); return renderMain(); }
   if (act === "start") {
     const cwd = draft("new-cwd").text.trim();
@@ -238,6 +262,10 @@ async function lvAct(act, d) {
       const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images });
       mcpPick.delete(mk);
       rememberFolder(newMachine, cwd);
+      // A project picked on its Project line: its folder's from now on (every session there).
+      const i = nfProj.info;
+      if (i && nfProj.pick != null && nfProj.pick !== i.name) putFolder(i.key, nfProj.pick, i.own);
+      nfProj = { at: "", info: null, pick: null, open: false };
       toast(r.detail);
       draft("new-msg").text = draft("new-name").text = "";   // the rest stays as you set it, for the next one
       draft("new-msg").images = [];

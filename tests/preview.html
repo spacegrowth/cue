@@ -225,6 +225,72 @@
       ] };
       const listeners = (window.__listeners = {});
       const emit = () => (listeners.state || []).forEach((f) => f({ payload: structuredClone(state) }));
+      // Actions (ui/actions.js): agent-relay has its repo's, yours and found ones, its API server running
+      // (&running=1: its Web one too); order-engine (working) has an Install that asks first.
+      const actFx = {}, actPrompt = { text: "" };
+      const actEmit = (folder) => (listeners.actions || []).forEach((f) => f({ payload: { folder, machine: "" } }));
+      const A = (id, name, run, source, o = {}) => ({ id, name, run, source, keep: false, ask: false, suggest: [], pinned: false, hidden: false, allowed: true, state: {}, ...o });
+      const actSuggestQ = /suggest=1/.test(location.search), actRunQ = /running=1/.test(location.search);
+      const actOf = (folder) => actFx[folder] ||= folder.endsWith("/agent-relay") ? { files: { shared: true, local: true, localIgnored: false }, actions: [
+        A("shared:Install", "Install", "npm ci", "shared", { ask: true, suggest: ["package.json", "package-lock.json"], state: { exit: 0, secs: 14, at: now - 26 * 60 * M } }),
+        A("shared:Migrate db", "Migrate db", "npm run db:migrate", "shared", { suggest: ["migrations/**"], state: actSuggestQ ? { exit: 1, secs: 3, at: now - 0.5 * M } : { exit: 0, secs: 4, at: now - 3 * 60 * M } }),
+        A("shared:Test", "Test", "npm test", "shared", { suggest: ["src/**"], state: actSuggestQ ? { running: true, since: now - 8000 } : { exit: 1, secs: 41, at: now - 2 * 60 * M } }),
+        A("shared:API", "API", "npm run dev:api", "shared", { keep: true, suggest: ["server/**"], state: { running: true, since: now - 42 * M, port: 4000 } }),
+        A("local:Web", "Web", "npm run dev -- --port 5173", "local", { keep: true, state: actRunQ ? { running: true, since: now - 9 * M, port: 5173 } : { exit: 0, secs: 3100, at: now - 20 * 60 * M } }),
+        A("local:Clean cache", "Clean cache", "rm -rf node_modules/.cache .next", "local", { ask: true }),
+        A("package.json:lint", "lint", "npm run lint", "package.json", { pinned: true }),
+        A("package.json:build", "build", "npm run build", "package.json"),
+        A("package.json:typecheck", "typecheck", "npm run typecheck", "package.json", { allowed: false }),
+        A("Makefile:release", "release", "make release", "Makefile", { hidden: true }),
+      ] } : folder.endsWith("/order-engine") ? { files: { shared: true, local: false, localIgnored: null }, actions: [
+        A("shared:Install", "Install", "uv sync", "shared", { ask: true, suggest: ["pyproject.toml", "uv.lock"] }),
+        A("shared:Test", "Test", "uv run pytest -q", "shared", { suggest: ["router/**", "tests/**"], state: { exit: 0, secs: 22, at: now - 50 * M } }),
+      ] } : { files: { shared: false, local: false, localIgnored: null }, actions: [] };
+      const actList = (folder) => { const f = actOf(folder); return structuredClone({ actions: f.actions, files: f.files, pending: f.actions.filter((a) => !a.allowed).map((a) => ({ id: a.id, name: a.name, run: a.run, source: a.source, why: a.was ? "changed" : "new", ...(a.was ? { was: a.was } : {}) })), prompt: actPrompt.text || "Look at this project and set up its Cue actions in .cue/actions.json (shared with the repo) and .cue/actions.local.json (only for me). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why." }); };
+      const actGlob = (g) => new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\u0000").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*")}$`);
+      const actLogText = (a) => a.name === "Test" ? "> agent-relay@1.4.0 test\n> vitest run\n\n ✓ src/board.test.ts (12)\n ✓ src/list.test.ts (8)\n ✗ src/spend.test.ts (3)\n   × sums each executor's usage\n     expected 1.32 to equal 1.31\n\n Test Files  1 failed | 2 passed (3)\n      Tests  1 failed | 22 passed (23)" : a.name === "Migrate db" ? "> npm run db:migrate\nApplying 0042_add_spend.sql…\nerror: column \"spend\" already exists\nMigration failed: nothing was applied." : a.keep ? `> ${a.run}\n\n  VITE v5.4.2  ready in 412 ms\n\n  ➜  Local:   http://localhost:${a.state.port || 5173}/\n  ➜  Network: use --host to expose\n${Array.from({ length: 30 }, (_, n) => `[${n}:0${n % 10}] GET /api/board 200 ${12 + n}ms`).join("\n")}` : `> ${a.run}\n\nadded 812 packages in 14s`;
+      function fakeActions(cmd, args) {
+        if (cmd === "actions_running") {
+          ["/Users/me/code/agent-relay", "/Users/me/code/order-engine"].forEach(actOf);
+          const rs = Object.entries(actFx).flatMap(([folder, f]) => f.actions.filter((a) => a.state.running && a.keep).map((a) => ({ folder, machine: "", project: folder.split("/").pop(), branch: "main", checkout: folder.split("/").pop(), id: a.id, name: a.name, port: a.state.port || null, since: a.state.since })));
+          // ?worktrees=1: a worktree of agent-relay runs its own dev server too.
+          if (q.has("worktrees")) rs.push({ folder: "/Users/me/code/agent-relay-fix", machine: "", project: "agent-relay", branch: "fix-spend", checkout: "agent-relay-fix", id: "package.json:dev", name: "dev", port: 5174, since: Date.now() - 6 * 60000 });
+          return rs;
+        }
+        if (cmd === "project_for_folder") {
+          const f = args.folder.replace(/\/+$/, ""), name = f.split("/").pop(), put = state.settings.project?.folders?.[f];
+          if (put) return { name: put, own: name, how: "put", key: f };
+          return /scratch|Downloads/.test(f) ? { name, own: name, how: "folder", key: f } : { name, own: name, how: "repo", key: f };
+        }
+        if (cmd === "actions_prompt_set") { actPrompt.text = args.text; return null; }
+        const f = actOf(args.folder), a = f.actions.find((x) => x.id === args.id);
+        switch (cmd) {
+          case "actions_list": return actList(args.folder);
+          case "actions_suggest": return f.actions.filter((x) => !x.hidden).flatMap((x) => { const hit = args.paths.find((p) => x.suggest.some((g) => actGlob(g).test(p))); return hit ? [{ id: x.id, name: x.name, why: hit }] : []; });
+          case "actions_allow": for (const x of f.actions) if (args.ids.includes(x.id)) { x.allowed = true; delete x.was; } return actList(args.folder);
+          case "actions_run": case "actions_restart": {
+            if (!a.allowed) throw "Allow it first";
+            if (a.keep) { a.state = { running: true, since: Date.now(), port: a.name === "API" ? 4000 : 5173 }; setTimeout(() => actEmit(args.folder), 50); return a.state; }
+            a.state = { running: true, since: Date.now() };
+            setTimeout(() => { a.state = { exit: a.name === "Test" ? 1 : 0, secs: 3, at: Date.now() }; actEmit(args.folder); }, 3000);
+            return a.state;
+          }
+          case "actions_stop": a.state = { exit: 130, secs: Math.round((Date.now() - (a.state.since || Date.now())) / 1000), at: Date.now() }; setTimeout(() => actEmit(args.folder), 50); return a.state;
+          case "actions_log": return actLogText(a).split("\n").slice(-args.lines).join("\n");
+          case "actions_attach_id": throw "no tmux in the preview";
+          case "actions_save": {
+            const id = `${args.keep}:${args.action.name}`, old = f.actions.findIndex((x) => x.id === (args.oldId || id));
+            const x = A(id, args.action.name, args.action.run, args.keep, { keep: args.action.keep, ask: args.action.ask, suggest: args.action.suggest });
+            if (old >= 0) f.actions.splice(old, 1, x); else f.actions.push(x);
+            return actList(args.folder);
+          }
+          case "actions_delete": f.actions = f.actions.filter((x) => x.id !== args.id); return actList(args.folder);
+          case "actions_pin": a.pinned = args.pinned; return actList(args.folder);
+          case "actions_hide": a.hidden = args.hidden; return actList(args.folder);
+        }
+      }
+      // ?trust=1: once agent-relay's actions are read, its agent adds one and changes another (an "actions" event).
+      window.__actChange = () => { const f = actOf("/Users/me/code/agent-relay"); f.actions.push(A("shared:Seed db", "Seed db", "npm run db:seed -- --fresh", "shared", { allowed: false })); const t = f.actions.find((x) => x.id === "shared:Test"); t.was = t.run; t.run = "npm test -- --runInBand"; t.allowed = false; actEmit("/Users/me/code/agent-relay"); };
       window.__TAURI__ = {
         app: { getVersion: async () => "0.1.5" },
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
@@ -470,9 +536,10 @@
           if (cmd === "agents_installed") return ["claude", "pi"];
           if (cmd === "new_session") return { session_id: "", detail: `Started ${args.agent} in a new iTerm tab` };
           if (cmd === "unqueue_review") { for (const l of Object.keys(state.review_queue || {})) state.review_queue[l] = state.review_queue[l].filter((r) => r.exec !== args.exec); return null; }
+          if (cmd.startsWith("actions_") || cmd === "project_for_folder") return fakeActions(cmd, args);
           if (cmd === "crew_action") return args.action === "review" ? `Sent /relay:review ${args.sessionId}` : args.action === "close" ? "Closed" : args.action.startsWith("auto-") ? `Auto mode ${args.action.slice(5)}` : "Opened in your browser";
         } },
-        event: { listen: async (name, f) => { (listeners[name] ||= []).push(f); } },
+        event: { listen: async (name, f) => { (listeners[name] ||= []).push(f); }, emit: async () => {} },
       };
     })();
   </script>
@@ -489,6 +556,7 @@
   <script src="../ui/insights_tab.js"></script>
   <script src="../ui/extensions.js"></script>
   <script src="../ui/sheets.js"></script>
+  <script src="../ui/actions.js"></script>
   <script src="../ui/app.js"></script>
   <script>
     setTimeout(() => {
@@ -608,6 +676,34 @@
       if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
       // ?bg=1: the "2 bg" on the names card is clicked, opening that session onto its newest running agent.
       if (/bg=1/.test(q)) setTimeout(() => document.querySelector('[data-bg-open="names"]')?.click(), 600);
+      // Actions (ui/actions.js), on agent-relay: ?actions=1 its Actions tab; ?palette=1 ⌘E; ?trust=1 the tab, then its
+      // agent changes the file (the trust sheet opens on its own); ?editAction=1 ✎ on Install; ?actlog=1 Test's output;
+      // ?suggest=1 a finished turn that changed package.json, a migration and src (suggestions under the reply: one to
+      // run, one failed, one running); ?running=1 agent-relay pinned with two servers, its dots' popover open;
+      // ?ask=1 order-engine (working): ⌘E, ↵ on Install, which asks Run now / After this turn.
+      if (/suggest=1/.test(q)) { const r = state.sessions.find((x) => x.session_id === "relay"); r.changes = { files: [{ path: "package.json", add: 2, del: 1 }, { path: "migrations/0042_add_spend.sql", add: 14, del: 0 }, { path: "src/board.ts", add: 48, del: 3 }], add: 64, del: 4 }; }
+      if (/running=1/.test(q)) state.settings.project = { ...(state.settings.project || {}), pins: ["agent-relay"] };
+      if (/[?&](actions|palette|trust|editAction|actlog|suggest)=1/.test(q)) setTimeout(() => {
+        setActive(null, "relay");
+        if (/palette=1/.test(q)) return setTimeout(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })), 200);
+        if (/suggest=1/.test(q)) return;
+        setTimeout(() => {
+          document.querySelector('[data-ac="tab"]')?.click();
+          if (/trust=1/.test(q)) setTimeout(() => window.__actChange(), 700);
+          if (/editAction=1/.test(q)) setTimeout(() => document.querySelector('[data-ac="edit"][data-id="shared:Install"]')?.click(), 400);
+          if (/actlog=1/.test(q)) setTimeout(() => document.querySelector('.ac-row [data-ac="log"][data-id="shared:Test"]')?.click(), 400);
+        }, 200);
+      }, 120);
+      // ?newproj=1 + New in a plain folder: its Project line, its list open (Put in a project…).
+      if (/newproj=1/.test(q)) setTimeout(() => {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true }));
+        setTimeout(() => { draft("new-cwd").text = "~/scratch/notes"; renderMain(); setTimeout(() => { document.querySelector('[data-lv="proj-open"]')?.click(); }, 200); }, 200);
+      }, 120);
+      if (/running=1/.test(q)) setTimeout(() => { setActive(null, "relay"); setTimeout(() => document.querySelector('.ac-dots[data-where="pin"]')?.click(), 500); }, 120);
+      if (/ask=1/.test(q)) setTimeout(() => {
+        setActive(null, "eng");
+        setTimeout(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })); setTimeout(() => document.querySelector('[data-text="ac-find"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 500); }, 200);
+      }, 120);
       // With ?ins=1: &inss=open opens agent-relay's insights (More ▾), =busy is Hand off just tapped, =seen its
       // strip after its colored moment (insights.js handoffInsight).
       const inss = new URLSearchParams(q).get("inss");

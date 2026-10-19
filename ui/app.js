@@ -55,11 +55,12 @@ function renderMain() {
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
     ${view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : settingsSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}`;
+  </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
   placeExt();   // the open session's extension tab, over the slot left for it
+  placeActs();  // a chip's actions popover under its dots
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
@@ -722,6 +723,8 @@ function bindMain() {
     if (e.metaKey && e.key.toLowerCase() === "l") { e.preventDefault(); return lvAct("toggle", {}); }
     // ⌘N: + New session, in the middle of the window like ⌘K (even while typing in a box).
     if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); sheet = lightbox = null; liveSpot = true; return lvAct("new", {}); }
+    // ⌘E: the open project's actions, to run one (actions.js); ⌘⇧E runs the last one again.
+    if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === "e") { e.preventDefault(); return e.shiftKey ? actAgain() : actPalToggle(); }
     if (lightbox) {
       if (e.key === "ArrowRight") lightbox.i = (lightbox.i + 1) % lightbox.srcs.length;
       else if (e.key === "ArrowLeft") lightbox.i = (lightbox.i - 1 + lightbox.srcs.length) % lightbox.srcs.length;
@@ -823,6 +826,7 @@ function setState(s) {
   }
   for (const [id, g] of ghosts) if (Date.now() - g.at > LINGER_MS || ids.has(id)) ghosts.delete(id);
   for (const g of ghosts.values()) setTimeout(leaveGhosts, Math.max(0, g.at + LINGER_MS - Date.now()) + 50);
+  actTurnEnds(s);   // actions put off until a turn ends: that session's ended, they run
   state = s;
   for (const [sid, c] of Object.entries(s.insight || {})) insCache.set(sid, c);   // the board's numbers, as of this change
   // A rename Cue's update doesn't have yet keeps showing (no flash of the old name).

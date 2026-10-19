@@ -286,16 +286,110 @@ pub fn folder_of(cwd: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The project a folder on this Mac belongs to: its git repository, by its main checkout's name, so
-/// every worktree of `cue` is `cue`. Outside a repository, the folder's own name.
-pub fn project_of(cwd: &str) -> String {
-    crate::logs::live::repo_root(cwd).map(|r| crate::logs::live::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
+/// A folder's own project, before anything you said: on this Mac its git repository, by its main
+/// checkout's name, so every worktree of `cue` is `cue`; outside a repository, and on another machine
+/// (its repository isn't read from here), the folder's own name.
+pub fn own_project(cwd: &str, machine: &str) -> String {
+    let repo = if machine.is_empty() { crate::logs::live::repo_root(cwd) } else { None };
+    repo.map(|r| crate::logs::live::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
 }
 
-/// A session's project: as `project_of` on this Mac; on another machine, its folder's name (its
-/// repository isn't read from here).
+/// The project a folder belongs to, by three rules, the first that says one:
+/// 1. you put the folder, or one it's in, in a project (+ New's Project, or Move to project; Settings'
+///    project.folders). On this Mac a repository is put in as a whole, by its main checkout, so its
+///    worktrees follow; a folder above a repository doesn't reach into it.
+/// 2. its repository says so: `"project": "<name>"` in its .cue/actions.json (a docs or plugin repo that
+///    goes with another).
+/// 3. its own (`own_project`): the git repository, else the folder.
+pub fn project_at(cwd: &str, machine: &str) -> String {
+    project_said(cwd, machine, &crate::config::folders_put()).unwrap_or_else(|| own_project(cwd, machine))
+}
+
+/// Rules 1 and 2 of `project_at`, with your folders already read: None when neither says one.
+pub fn project_said(cwd: &str, machine: &str, put: &std::collections::HashMap<String, String>) -> Option<String> {
+    said_how(cwd, machine, put).map(|(p, _)| p)
+}
+
+/// A folder's project and which rule said it: "put" (you), "repo-says" (its .cue/actions.json), "repo"
+/// (its git repository) or "folder" (its own name). For + New's Project line.
+pub fn project_how(cwd: &str, machine: &str) -> (String, &'static str) {
+    if let Some(said) = said_how(cwd, machine, &crate::config::folders_put()) {
+        return said;
+    }
+    let repo = machine.is_empty() && crate::logs::live::repo_root(cwd).is_some();
+    (own_project(cwd, machine), if repo { "repo" } else { "folder" })
+}
+
+fn said_how(cwd: &str, machine: &str, put: &std::collections::HashMap<String, String>) -> Option<(String, &'static str)> {
+    let cwd = cwd.trim_end_matches('/');
+    if cwd.is_empty() {
+        return None;
+    }
+    if !machine.is_empty() {
+        // Never a look at that path on this Mac: by the folders you put in alone.
+        return std::path::Path::new(cwd).ancestors().find_map(|d| put.get(&format!("{machine}:{}", d.display())).map(|p| (p.clone(), "put")));
+    }
+    let top = crate::logs::live::checkout_top(cwd);
+    let mut ancestors = std::path::Path::new(cwd).ancestors();
+    let mut said = None;
+    for d in ancestors.by_ref() {
+        if let Some(p) = put.get(&d.to_string_lossy().to_string()) {
+            said = Some(p.clone());
+            break;
+        }
+        if top.as_deref() == Some(d) {
+            break;
+        }
+    }
+    let repo = top.as_ref().and_then(|_| crate::logs::live::repo_root(cwd));
+    said.or_else(|| repo.as_ref().and_then(|r| put.get(&r.to_string_lossy().to_string()).cloned()))
+        .map(|p| (p, "put"))
+        .or_else(|| top.as_deref().and_then(declared).map(|p| (p, "repo-says")))
+        .or_else(|| repo.as_deref().filter(|r| Some(*r) != top.as_deref()).and_then(declared).map(|p| (p, "repo-says")))
+}
+
+/// Where Move to project puts a folder: a repository's main checkout (all of it, worktrees too), else the
+/// folder; "<machine>:<folder>" on another machine.
+pub fn put_key(cwd: &str, machine: &str) -> String {
+    let cwd = cwd.trim_end_matches('/');
+    if !machine.is_empty() {
+        return format!("{machine}:{cwd}");
+    }
+    crate::logs::live::repo_root(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string())
+}
+
+static DECLARED: std::sync::Mutex<Option<std::collections::HashMap<std::path::PathBuf, (Option<std::time::SystemTime>, Option<String>)>>> = std::sync::Mutex::new(None);
+
+/// The project a checkout's .cue/actions.json says it belongs to (`"project"`), read again when the file changes.
+fn declared(top: &std::path::Path) -> Option<String> {
+    let file = top.join(".cue").join("actions.json");
+    let mtime = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+    {
+        let cache = crate::locking::lock(&DECLARED, "DECLARED");
+        if let Some((at, p)) = cache.as_ref().and_then(|m| m.get(top)) {
+            if *at == mtime {
+                return p.clone();
+            }
+        }
+    }
+    let p = mtime.and_then(|_| std::fs::read_to_string(&file).ok())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v.get("project").and_then(serde_json::Value::as_str).map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty() && s.len() <= 80);
+    let mut cache = crate::locking::lock(&DECLARED, "DECLARED");
+    cache.get_or_insert_with(std::collections::HashMap::new).insert(top.to_path_buf(), (mtime, p.clone()));
+    p
+}
+
+/// The project a folder on this Mac belongs to (`project_at`).
+pub fn project_of(cwd: &str) -> String {
+    project_at(cwd, "")
+}
+
+/// The project a session's records keep: its folder's own (`own_project`). The window's state shows the
+/// one you said in its place, where you said one (hub snapshot), so taking that back needs no rewrite.
 pub fn project_of_origin(o: &Origin) -> String {
-    if o.machine.is_empty() { project_of(&o.cwd) } else { folder_of(&o.cwd) }
+    own_project(&o.cwd, &o.machine)
 }
 
 #[cfg(test)]

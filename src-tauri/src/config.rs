@@ -43,9 +43,11 @@ pub fn effective() -> Value {
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
+        // Settings → Actions: what "Ask the agent to set up actions" puts in the session's box.
+        "actions": { "prompt": crate::actions::prompt(), "default": crate::actions::PROMPT },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -141,6 +143,34 @@ fn moves(value: &Value) -> Result<Value, String> {
     }
     Ok(Value::Object(out))
 }
+/// Folders put in a project in Cue (+ New's Project, or Move to project): "<folder>" on this Mac,
+/// "<machine>:<folder>" on another, to the project. Every session in that folder or under it, now and
+/// later, shows under it (model.rs project_at). The agent stays in its folder.
+const FOLDERS_MAX: usize = 500;
+fn folders(value: &Value) -> Result<Value, String> {
+    let mut out = serde_json::Map::new();
+    for (dir, p) in value.as_object().ok_or("folders must be folder: project")? {
+        let p = p.as_str().ok_or("a project must be text")?.trim();
+        let dir = dir.trim_end_matches('/');
+        let path = dir.split_once(':').map_or(dir, |(_, f)| f);
+        if !path.starts_with('/') && !path.starts_with('~') {
+            return Err(format!("“{dir}” isn't a folder"));
+        }
+        if !p.is_empty() {
+            out.insert(dir.to_string(), json!(p));
+        }
+    }
+    if out.len() > FOLDERS_MAX {
+        return Err(format!("at most {FOLDERS_MAX} folders"));
+    }
+    Ok(Value::Object(out))
+}
+/// The folders put in a project: folder (or "<machine>:<folder>") → the project.
+pub fn folders_put() -> std::collections::HashMap<String, String> {
+    load().pointer("/project/folders").and_then(Value::as_object)
+        .map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|p| (k.clone(), p.to_string()))).collect())
+        .unwrap_or_default()
+}
 /// The moved sessions: session id → the project it shows under.
 pub fn moved() -> std::collections::HashMap<String, String> {
     load().pointer("/project/moves").and_then(Value::as_object)
@@ -154,7 +184,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "insights.handoff", "insights.cache", "insights.queue", "insights.skills"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.skills", "actions.prompt"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -206,10 +236,13 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             }
             value
         }
+        // Your actions prompt ("" is Cue's own again).
+        "actions.prompt" => return crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
         "project.pins" => pins(&value)?,
         "project.names" => names(&value)?,
         "project.moves" => moves(&value)?,
+        "project.folders" => folders(&value)?,
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
             let phrases: Vec<String> = list.iter().filter_map(Value::as_str).map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|p| !p.is_empty()).collect();

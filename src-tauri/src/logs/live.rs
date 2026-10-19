@@ -219,6 +219,29 @@ pub fn repo_root(cwd: &str) -> Option<PathBuf> {
     Some(root)
 }
 
+static TOPS: Mutex<Option<HashMap<String, (Option<PathBuf>, std::time::Instant)>>> = Mutex::new(None);
+
+/// The top of the checkout `cwd` is in: the folder with its `.git` (a worktree's own folder, not the
+/// checkout it was made from), or None outside one. Kept once found; "none" is looked at again after a
+/// minute, so a folder made a repository later is seen.
+pub fn checkout_top(cwd: &str) -> Option<PathBuf> {
+    if cwd.is_empty() {
+        return None;
+    }
+    {
+        let cache = crate::locking::lock(&TOPS, "TOPS");
+        if let Some((top, at)) = cache.as_ref().and_then(|m| m.get(cwd)) {
+            if top.is_some() || at.elapsed().as_secs() < 60 {
+                return top.clone();
+            }
+        }
+    }
+    let top = Path::new(cwd).ancestors().find(|d| d.join(".git").exists()).map(Path::to_path_buf);
+    let mut cache = crate::locking::lock(&TOPS, "TOPS");
+    cache.get_or_insert_with(HashMap::new).insert(cwd.to_string(), (top.clone(), std::time::Instant::now()));
+    top
+}
+
 fn find_root(dir: &Path) -> Option<PathBuf> {
     let mut d = Some(dir);
     while let Some(here) = d {
@@ -302,6 +325,55 @@ mod tests {
         std::fs::create_dir_all(&plain).unwrap();
         assert_eq!(crate::model::project_of(plain.to_str().unwrap()), "plain");
         assert_eq!(repo_name(Path::new("/x/app.git")), "app");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_folders_project_by_the_three_rules() {
+        use std::collections::HashMap;
+        let run = |dir: &Path, args: &[&str]| assert!(std::process::Command::new("git").current_dir(dir).args(args).output().unwrap().status.success(), "git {args:?}");
+        let base = std::env::temp_dir().canonicalize().unwrap().join(format!("cue-rules-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let web = base.join("web-app");
+        std::fs::create_dir_all(web.join("ui")).unwrap();
+        run(&web, &["init", "-q"]);
+        run(&web, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"]);
+        run(&web, &["worktree", "add", "-q", "../web-app-fix"]);
+        let docs = base.join("web-app-docs");
+        std::fs::create_dir_all(docs.join(".cue")).unwrap();
+        run(&docs, &["init", "-q"]);
+        std::fs::write(docs.join(".cue/actions.json"), r#"{ "project": "web-app", "actions": [] }"#).unwrap();
+        let scratch = base.join("scratch");
+        std::fs::create_dir_all(scratch.join("deep/inner-repo")).unwrap();
+        run(&scratch.join("deep/inner-repo"), &["init", "-q"]);
+        let s = |p: &Path| p.to_str().unwrap().to_string();
+        let said = |p: &Path, put: &HashMap<String, String>| crate::model::project_said(&s(p), "", put);
+        let none = HashMap::new();
+        // 3. its own: the repository, from a subfolder and a worktree too; else the folder.
+        assert_eq!(crate::model::own_project(&s(&web.join("ui")), ""), "web-app");
+        assert_eq!(crate::model::own_project(&s(&base.join("web-app-fix")), ""), "web-app");
+        assert_eq!(said(&web.join("ui"), &none), None);
+        assert_eq!(crate::model::own_project(&s(&scratch), ""), "scratch");
+        // 2. a repository saying its project.
+        assert_eq!(said(&docs, &none).as_deref(), Some("web-app"));
+        // 1. a folder you put in a project: it and everything under it, but not a repository inside it.
+        let put = HashMap::from([(s(&scratch), "web-app".to_string())]);
+        assert_eq!(said(&scratch, &put).as_deref(), Some("web-app"));
+        assert_eq!(said(&scratch.join("deep"), &put).as_deref(), Some("web-app"));
+        assert_eq!(said(&scratch.join("deep/inner-repo"), &put), None);
+        // A repository put in as a whole, by its main checkout: its worktrees follow.
+        let put = HashMap::from([(s(&web), "shop".to_string())]);
+        assert_eq!(crate::model::put_key(&s(&base.join("web-app-fix")), ""), s(&web));
+        assert_eq!(said(&base.join("web-app-fix"), &put).as_deref(), Some("shop"));
+        assert_eq!(said(&web.join("ui"), &put).as_deref(), Some("shop"));
+        // Yours beats the repository's.
+        let put = HashMap::from([(s(&docs), "docs".to_string())]);
+        assert_eq!(said(&docs, &put).as_deref(), Some("docs"));
+        // Another machine's: by the folders you put in alone, never a look at the path here.
+        let put = HashMap::from([("box:/srv/app".to_string(), "web-app".to_string())]);
+        assert_eq!(crate::model::project_said("/srv/app/api", "box", &put).as_deref(), Some("web-app"));
+        assert_eq!(crate::model::project_said("/srv/other", "box", &put), None);
+        assert_eq!(crate::model::put_key("/srv/app/", "box"), "box:/srv/app");
         let _ = std::fs::remove_dir_all(&base);
     }
 

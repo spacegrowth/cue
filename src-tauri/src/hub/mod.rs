@@ -233,9 +233,18 @@ impl Hub {
         let about: HashMap<String, Value> = transcripts.into_iter()
             .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
             .collect();
-        // Each folder's repository, where it's in one: its name (the project) and main checkout (where + New starts).
+        // Each folder's project (model.rs project_at): its name, its own (the repository's or the folder's,
+        // for Move to project's "its folder's own"), its repository's main checkout (where + New starts), the
+        // top of its checkout (where its actions are) and where Move to project would put it.
+        let put = crate::config::folders_put();
         let projects: HashMap<String, Value> = cwds.iter()
-            .filter_map(|c| crate::live::repo_root(c).map(|r| (c.clone(), json!({ "name": crate::live::repo_name(&r), "root": r.to_string_lossy() }))))
+            .map(|c| {
+                let own = crate::model::own_project(c, "");
+                let name = crate::model::project_said(c, "", &put).unwrap_or_else(|| own.clone());
+                let root = crate::live::repo_root(c).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| c.clone());
+                let top = crate::live::checkout_top(c).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| c.clone());
+                (c.clone(), json!({ "name": name, "own": own, "root": root, "top": top, "key": crate::model::put_key(c, "") }))
+            })
             .collect();
         let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
         let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
@@ -286,6 +295,7 @@ impl Hub {
             "usage_file": crate::usage_file::read(),
         });
         drop(st);
+        put_projects(&mut snap, &put);
         let moved = crate::config::moved();
         let taken = move_projects(&mut snap, &moved);
         // Moves a new session took over (after /clear): saved, so they stay once the old session's gone.
@@ -405,6 +415,26 @@ impl Hub {
     }
 }
 
+/// Every card, row, answer, parked and live entry in a folder you put in a project, or whose repository
+/// says its project (model.rs project_said), says that project, and `folder_project` keeps the one it
+/// was recorded with (its folder's own), so taking it back needs nothing rewritten.
+fn put_projects(snap: &mut Value, put: &HashMap<String, String>) {
+    let mut seen: HashMap<(String, String), Option<String>> = HashMap::new();
+    for list in ["items", "history", "answers", "sessions", "parked", "live"] {
+        let Some(rows) = snap.get_mut(list).and_then(Value::as_array_mut) else { continue };
+        for row in rows {
+            let Some(o) = row.as_object_mut() else { continue };
+            let Some(cwd) = o.get("cwd").and_then(Value::as_str).filter(|c| !c.is_empty()).map(str::to_string) else { continue };
+            let machine = o.get("machine").and_then(Value::as_str).unwrap_or("").to_string();
+            let said = seen.entry((machine.clone(), cwd.clone())).or_insert_with(|| crate::model::project_said(&cwd, &machine, put)).clone();
+            let Some(to) = said else { continue };
+            let own = o.get("project").cloned().unwrap_or_else(|| json!(crate::model::own_project(&cwd, &machine)));
+            o.insert("folder_project".into(), own);
+            o.insert("project".into(), json!(to));
+        }
+    }
+}
+
 /// A session moved to another project in Cue (Settings' project.moves): its cards, row, answers, parked entry
 /// and live entry say that project, and `folder_project` keeps its folder's, so it can be moved back.
 /// A session new in the process of a moved one (`/clear` starts a new one there) takes its move too: those
@@ -438,7 +468,7 @@ fn move_projects(snap: &mut Value, moved: &HashMap<String, String>) -> HashMap<S
         for row in rows {
             let Some(to) = sid_of(row).and_then(|sid| moved.get(&sid).or_else(|| taken.get(&sid)).cloned()) else { continue };
             if let Some(o) = row.as_object_mut() {
-                let own = o.get("project").cloned().unwrap_or(Value::Null);
+                let own = o.get("folder_project").or_else(|| o.get("project")).cloned().unwrap_or(Value::Null);
                 o.insert("folder_project".into(), own);
                 o.insert("project".into(), json!(to));
             }
@@ -450,6 +480,19 @@ fn move_projects(snap: &mut Value, moved: &HashMap<String, String>) -> HashMap<S
 #[cfg(test)]
 mod move_tests {
     use super::*;
+
+    #[test]
+    fn a_folder_put_in_a_project_shows_under_it() {
+        let mut snap = json!({ "items": [{ "session_id": "a", "cwd": "/srv/scratch/x", "machine": "box", "project": "x" }, { "session_id": "b", "cwd": "/srv/other", "machine": "box", "project": "other" }], "live": [] });
+        put_projects(&mut snap, &HashMap::from([("box:/srv/scratch".to_string(), "api".to_string())]));
+        assert_eq!(snap["items"][0]["project"], "api");
+        assert_eq!(snap["items"][0]["folder_project"], "x");
+        assert_eq!(snap["items"][1], json!({ "session_id": "b", "cwd": "/srv/other", "machine": "box", "project": "other" }));
+        // A session moved on its own after that keeps its folder's own to go back to.
+        move_projects(&mut snap, &HashMap::from([("a".to_string(), "web".to_string())]));
+        assert_eq!(snap["items"][0]["project"], "web");
+        assert_eq!(snap["items"][0]["folder_project"], "x");
+    }
 
     #[test]
     fn a_moved_session_shows_under_its_new_project_and_keeps_its_folders() {

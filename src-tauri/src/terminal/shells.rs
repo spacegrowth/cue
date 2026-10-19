@@ -20,7 +20,7 @@ pub const PREFIX: &str = "shell:";
 
 /// Marks of the terminal Cue may have been started from: a shell of Cue's own isn't in it (an agent
 /// started there would report the wrong terminal to Cue).
-const NOT_HERE: &[&str] = &["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "TMUX", "TMUX_PANE", "ITERM_SESSION_ID", "ITERM_PROFILE", "KITTY_WINDOW_ID", "WEZTERM_PANE", "VSCODE_PID"];
+pub(crate) const NOT_HERE: &[&str] = &["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "TMUX", "TMUX_PANE", "ITERM_SESSION_ID", "ITERM_PROFILE", "KITTY_WINDOW_ID", "WEZTERM_PANE", "VSCODE_PID"];
 
 /// A shell's id: the prefix, then a short name of letters, digits, `-` and `_`.
 fn id_ok(id: &str) -> bool {
