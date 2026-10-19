@@ -180,13 +180,33 @@ function itabRank(rows, mark = null) {
 
 /** When sessions were left waiting: a week of hours, each cell as amber as the dollars late answers to waits
  *  that began then cost. Monday first, midnight at the left. */
-function itabWeek(grid) {
-  const top = Math.max(0.01, ...grid);
+function itabWeek(grid, turns = []) {
+  const top = Math.max(0.01, ...grid), sum = grid.reduce((a, x) => a + x, 0) || 1;
   const names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const cells = names.map((n, d) => `<span class="itab-wday">${n}</span>${grid.slice(d * 24, d * 24 + 24).map((v) => `<i${v ? ` style="background:color-mix(in srgb, var(--amber) ${Math.round(18 + Math.sqrt(v / top) * 82)}%, var(--panel-2))"` : ""}></i>`).join("")}`).join("");
+  const hr = (h) => `${(h + 11) % 12 + 1}${h % 24 < 12 ? "am" : "pm"}`;
+  // Hovered, a box says itself in place of the figure's note (itabWeekHover): "Sun 6pm–7pm · 4 waits, $4.20 re-written (9%)".
+  const say = (n, h, v, k) => `${n} ${hr(h)}–${hr(h + 1)} · ${v ? `${k ? `${k} wait${k === 1 ? "" : "s"}, ` : ""}${itabUsd(v)} re-written (${Math.round((v / sum) * 100)}%)` : "no waits began then"}`;
+  const cells = names.map((n, d) => `<span class="itab-wday">${n}</span>${grid.slice(d * 24, d * 24 + 24).map((v, h) => `<i data-itab-cell="${esc(say(n, h, v, turns[d * 24 + h] || 0))}"${v ? ` style="background:color-mix(in srgb, var(--amber) ${Math.round(18 + Math.sqrt(v / top) * 82)}%, var(--panel-2))"` : ""}></i>`).join("")}`).join("");
   const hours = ["12am", "6am", "12pm", "6pm"].map((h) => `<span>${h}</span>`).join("");
   return `<div class="itab-week">${cells}</div><div class="itab-hours">${hours}</div>`;
 }
+
+/** When the wait began: the box under the pointer, said in place of the figure's note, which comes back on leaving. */
+function itabWeekHover(e) {
+  const cell = e.target.closest?.("[data-itab-cell]");
+  const note = e.target.closest?.(".itab-fig")?.querySelector(".itab-fignote");
+  if (!note || !e.target.closest(".itab-week")) return;
+  if (note.dataset.was == null) note.dataset.was = note.textContent;
+  note.textContent = cell ? cell.dataset.itabCell : note.dataset.was;
+  note.classList.toggle("on", !!cell);
+}
+document.addEventListener("mouseover", itabWeekHover);
+document.addEventListener("mouseout", (e) => {
+  const week = e.target.closest?.(".itab-week");
+  if (!week || week.contains(e.relatedTarget)) return;
+  const note = week.closest(".itab-fig")?.querySelector(".itab-fignote");
+  if (note?.dataset.was != null) { note.textContent = note.dataset.was; note.classList.remove("on"); }
+});
 
 /** Every late answer as a dot: across, how long it waited (a log scale, 5 minutes to days); up, how much it
  *  re-wrote; its size, what that cost. Three bands: what an hour's cache would have kept, what a hand-off
@@ -287,7 +307,7 @@ function insightsTabView() {
   const peak = grid.indexOf(Math.max(...grid));
   const when = gSum ? `${pct(night)} began in the evening or overnight${weekend >= 0.15 ? `, ${pct(weekend)} on weekends` : ""}. Most: ${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][Math.floor(peak / 24)]} around ${((peak % 24) + 11) % 12 + 1}${peak % 24 < 12 ? "am" : "pm"}.` : "";
   const ans = w.answers || [];
-  const wPics = gSum || ans.length ? `<div class="itab-evidence itab-pics">${gSum ? itabFig("When the wait began", when, itabWeek(grid)) : ""}${ans.length ? itabFig("Each late answer", "across: how long it waited · up: what it re-wrote · size: what it cost", itabDots(ans)) : ""}</div>` : "";
+  const wPics = gSum || ans.length ? `<div class="itab-evidence itab-pics">${gSum ? itabFig("When the wait began", when, itabWeek(grid, w.grid_turns)) : ""}${ans.length ? itabFig("Each late answer", "across: how long it waited · up: what it re-wrote · size: what it cost", itabDots(ans)) : ""}</div>` : "";
   const waiting = w.turns
     ? itabFind("Waiting past the cache", itabUsd(w.usd),
       `Answering after a session's cache ran out re-wrote ${itabNum(w.tokens)} tokens: ${w.turns} late answer${w.turns === 1 ? "" : "s"}, ${pct(w.share_of_writes)} of all cache writes.`,

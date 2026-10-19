@@ -550,7 +550,6 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* A real button (a tinted pill), not a text link, so it doesn't read as part of the message. */
 .cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
 /* Last in the row, at its right end: the reply's own buttons and its project's actions come first. */
-.cv-acts .cv-fwd { margin-left: auto; }
 .cv-fwd:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
 /* A message from another session: who it's from, the message, and (for a forward) the original, quoted. */
@@ -1995,6 +1994,8 @@ button.ins-n { cursor: pointer; }
 /* When the wait began: a week of hours, amber as deep as what it cost. */
 .itab-week { display: grid; grid-template-columns: 30px repeat(24, minmax(0, 1fr)); gap: 2px; }
 .itab-week i { aspect-ratio: 1; min-height: 9px; border-radius: 2px; background: var(--panel-2); }
+.itab-week i:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
+.itab-fignote.on { color: var(--ink); font-variant-numeric: tabular-nums; }
 .itab-wday { font: 10.5px var(--mono); color: var(--muted); align-self: center; }
 .itab-hours { display: grid; grid-template-columns: 30px repeat(4, minmax(0, 1fr)); font: 10.5px var(--mono); color: var(--muted); margin-top: -4px; }
 .itab-hours::before { content: ""; }
@@ -2093,8 +2094,14 @@ button.ins-n { cursor: pointer; }
 .ac-pname { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 /* Under a reply: after a thin divider, in the row with Listen and Read. */
 .ac-div { flex: none; width: 1px; height: 18px; background: var(--line); margin: 0 2px; }
-.cv-acts:has(.ac-sugs) { flex-wrap: wrap; row-gap: 6px; }
-.ac-sugs { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; }
+/* A reply's actions stay on its row: the ones that don't fit go into "N more" (actFit), a menu under or over it. */
+.ac-sugs { display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; overflow: hidden; padding: 2px 0; }
+.ac-sugs > [hidden] { display: none; }
+.ac-more { flex: none; white-space: nowrap; color: var(--muted); }
+.ac-pop.ac-menu { width: auto; min-width: 200px; max-width: 360px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+.ac-menu .ac-sug { justify-content: flex-start; }
+/* Send to… keeps the row's right end; the actions between fold into "N more" first. */
+.cv-acts .cv-fwd { flex: none; margin-left: auto; }
 .ac-sug { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ac-sug.on .ac-live { background: currentColor; }
 .ac-sug.bad { color: var(--deny); }
@@ -2150,7 +2157,6 @@ button.ins-n { cursor: pointer; }
 .ac-note { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
 .ac-note .btn { margin-left: auto; }
 .ac-note code, .ac-ask code { font: 11.5px var(--mono); }
-.ac-more { margin-top: 8px; font-size: 12px; font-weight: 650; color: var(--accent); }
 .ac-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 /* The sheets. */
 .ac-sheet { width: min(600px, calc(100vw - 40px)); }

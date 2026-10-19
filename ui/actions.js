@@ -13,6 +13,7 @@ const actQueued = new Map();    // session id → [{ pl, id, log }]: "After this
 const actTabOn = new Set();     // sessions showing the Actions tab
 let actPal = null;              // ⌘E: { pl, sel, shown } while open
 let actPop = null;              // a chip's dots clicked: { project, where }
+let actMore = null;             // a reply's "N more" clicked: { pl, at, n } (its last n actions, in a menu)
 let actEdit = null;             // the edit sheet: { pl, oldId, keep, ask }
 let actTrust = null;            // the trust sheet: { pl, then: { id, log } | null, changed }
 let actAsk = null;              // "Run now / After this turn": { pl, id, log, sid }
@@ -295,7 +296,31 @@ function actReplyHtml(s, at) {
   if (!s?.cwd) return "";
   const pl = actPlace(s), d = actData(pl);
   if (!d?.actions?.length) return "";
-  return `<span class="ac-sugs"><span class="ac-div" aria-hidden="true"></span>${d.actions.map((a) => actSugBtn(pl, a, at)).join("")}</span>`;
+  return `<span class="ac-sugs"><span class="ac-div" aria-hidden="true"></span>${d.actions.map((a) => actSugBtn(pl, a, at)).join("")}<button class="cv-pill ac-more" data-ac="more" ${acAttrs(pl)} data-at="${at}" hidden></button></span>`;
+}
+/** Each reply's actions on one row: the last ones that don't fit are hidden, and "N more" shows them in a menu. */
+function actFit() {
+  document.querySelectorAll(".ac-sugs").forEach((row) => {
+    const items = [...row.children].filter((c) => !c.matches(".ac-div, .ac-more")), more = row.querySelector(".ac-more");
+    items.forEach((c) => (c.hidden = false));
+    more.hidden = true;
+    let n = 0;
+    while (row.scrollWidth > row.clientWidth + 1 && n < items.length) {
+      items[items.length - 1 - n].hidden = true;
+      n++;
+      more.hidden = false;
+      more.textContent = `${n} more ▾`;
+      more.dataset.n = n;
+    }
+  });
+}
+addEventListener("resize", () => actFit());
+/** The menu of a reply's actions that didn't fit, as buttons. */
+function actMoreHtml() {
+  const d = actData(actMore.pl);
+  const rest = (d?.actions || []).slice(-actMore.n);
+  if (!rest.length) return "";
+  return `<div class="ac-pop ac-menu" role="menu">${rest.map((a) => actSugBtn(actMore.pl, a, actMore.at)).join("")}</div>`;
 }
 function actSugBtn(pl, a, at) {
   const st = a.state || {}, name = esc(a.name), ids = acAttrs(pl, a.id);
@@ -481,10 +506,22 @@ function actSheet() {
   return settingsSheet();
 }
 /** Over the window: ⌘E's palette and a chip's popover (the sheets go where every sheet goes). */
-const actOverlay = () => (actPal ? actPalette() : "") + (actPop ? actPopHtml() : "");
+const actOverlay = () => (actPal ? actPalette() : "") + (actPop ? actPopHtml() : "") + (actMore ? actMoreHtml() : "");
 /** After each draw: the popover under its dots (gone with them), and the output where you were in it. */
 function placeActs() {
-  const pop = document.querySelector(".ac-pop");
+  actFit();
+  const menu = document.querySelector(".ac-menu");
+  if (menu) {
+    // Under its "N more", or over it when there isn't room below.
+    const at = document.querySelector(`.ac-more[data-at="${actMore.at}"]:not([hidden])`);
+    if (!at) { actMore = null; menu.remove(); }
+    else {
+      const r = at.getBoundingClientRect(), w = menu.offsetWidth, h = menu.offsetHeight;
+      menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+      menu.style.top = `${r.bottom + 6 + h > innerHeight - 8 ? Math.max(8, r.top - 6 - h) : r.bottom + 6}px`;
+    }
+  }
+  const pop = document.querySelector(".ac-pop:not(.ac-menu)");
   if (pop) {
     const at = document.querySelector(`.ac-dots[data-project="${CSS.escape(actPop.project)}"][data-where="${CSS.escape(actPop.where)}"]`);
     if (!at) { actPop = null; pop.remove(); }
@@ -526,6 +563,8 @@ document.addEventListener("click", (e) => {
   const t = e.target.closest?.("[data-ac]");
   // A click anywhere else closes a chip's popover.
   if (actPop && !e.target.closest?.(".ac-pop") && t?.dataset.ac !== "pop") { actPop = null; renderMain(); }
+  // Any click closes a reply's "N more" menu (one of its actions runs as it closes).
+  if (actMore && t?.dataset.ac !== "more") { actMore = null; renderMain(); }
   if (actPal && e.target.matches?.(".ac-scrim")) { e.stopPropagation(); actPal = null; renderMain(); return focusComposer(); }
   if (!t) return;
   e.stopPropagation();
@@ -554,6 +593,11 @@ document.addEventListener("click", (e) => {
     const sid = t.dataset.sid;
     extTabOf.delete(sid);
     actTabOn.add(sid);
+    return renderMain();
+  }
+  if (ac === "more") {
+    const at = +t.dataset.at;
+    actMore = actMore?.at === at ? null : { pl, at, n: +t.dataset.n || 0 };
     return renderMain();
   }
   if (ac === "pop") {
@@ -591,6 +635,7 @@ document.addEventListener("keydown", (e) => {
     return renderMain();
   }
   if (actPop && e.key === "Escape") { e.stopPropagation(); actPop = null; return renderMain(); }
+  if (actMore && e.key === "Escape") { e.stopPropagation(); actMore = null; return renderMain(); }
   const k = e.target.dataset?.text;
   if (!k?.startsWith("ac-") || e.key !== "Enter" || e.isComposing) return;
   // The prompt's box takes Enter as a new line; the edit sheet's fields save.
