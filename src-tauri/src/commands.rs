@@ -175,13 +175,31 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
 }
 
 /// The hand-off skill Claude Code has for you on a host (`machine` empty: this Mac): its command named
-/// exactly "handoff" (one with "handoff" elsewhere in its name may be something else), from its list for your home folder (skills you install for yourself apply in
-/// every folder). None while it's read for the first time. To read them again after adding a skill on
+/// exactly "handoff" (one with "handoff" elsewhere in its name may be something else), from its lists (`on_host`: your home folder's, where skills you install for yourself apply in
+/// every folder, and each of its folders' own). None while it's read for the first time. To read them again after adding a skill on
 /// another machine, `reread_all` first: every folder's list is read again, so each session's "/" menu
 /// and insights see it too.
 pub fn handoff_skills(machine: &str) -> Option<Vec<String>> {
-    let list = for_folder(&home_folder(machine), machine)?;
+    let list = on_host(machine)?;
     Some(list.into_iter().filter(|c| c.name == "handoff").map(|c| c.name).collect())
+}
+
+/// Every command Claude Code has on a host (`machine` empty: this Mac): your home folder's (yours, in every
+/// folder), then each of its folders' Cue has read (a project's own skills, as its sessions' "/" menus
+/// have them), each name once. None while the home folder's is read for the first time.
+pub fn on_host(machine: &str) -> Option<Vec<Cmd>> {
+    let mut list = for_folder(&home_folder(machine), machine)?;
+    let prefix = format!("{machine}:");
+    let mine = |k: &str| if machine.is_empty() { k.starts_with('/') } else { k.starts_with(&prefix) };
+    let mut seen: HashSet<String> = list.iter().map(|c| c.name.clone()).collect();
+    for (_, l) in crate::db::all_commands().into_iter().filter(|(k, _)| mine(k)) {
+        for c in l {
+            if seen.insert(c.name.clone()) {
+                list.push(c);
+            }
+        }
+    }
+    Some(list)
 }
 
 /// Your home folder on a host: this Mac's, or where a machine's connection starts.

@@ -686,7 +686,7 @@ function insFindSkills(fresh) {
   }).catch(() => {});
 }
 /** Settings → Insights: the list a host and agent's hand-off skill is chosen from, while it's open:
- *  searchable, skills first. Claude Code's are the host's own (read for your home folder there); the
+ *  searchable, skills first. Claude Code's are the host's own (your home folder's there, and each of its folders' Cue has read); the
  *  other agents' logs don't list theirs, so only Cue's hand-off is offered for them. */
 function insPicker(k, h, a, chosen) {
   if (insChoosing !== k) return "";

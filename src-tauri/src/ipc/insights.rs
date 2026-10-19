@@ -107,7 +107,7 @@ pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_jso
         for host in std::iter::once(String::new()).chain(crate::machines::list().into_iter().map(|m| m.name)) {
             out.insert(host.clone(), serde_json::json!(crate::commands::handoff_skills(&host)));
             // Everything it has, for choosing one in Settings (null while it's read).
-            let cmds = crate::commands::for_folder(&crate::commands::home_folder(&host), &host)
+            let cmds = crate::commands::on_host(&host)
                 .map(|l| l.into_iter().map(|c| serde_json::json!({ "name": c.name, "kind": c.kind, "desc": c.desc })).collect::<Vec<_>>());
             all.insert(host.clone(), serde_json::json!(cmds));
             reading |= crate::commands::reading(&crate::commands::home_folder(&host), &host);
