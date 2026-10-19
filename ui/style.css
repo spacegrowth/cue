@@ -1572,6 +1572,11 @@ button.tm-chip:hover { background: var(--panel-2); }
 .pm-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 4px; }
 .pm-note { font-size: 12px; color: var(--muted); padding: 0 10px 6px; }
 .pm-none { font-size: 12px; color: var(--muted); padding: 6px 10px 8px; }
+.more-menu button.pm-add { color: var(--muted); font-weight: 600; }
+.pm-new { padding: 4px 6px 2px; }
+.pm-new .pm-note { padding: 6px 4px 2px; }
+.pm-new-in { width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; outline: none; }
+.pm-new-in:focus { border-color: var(--muted); }
 
 /* "3 more ↓" over the bottom edge of a list that's cut off: small, quiet, out of the way until wanted. */
 .sec { position: relative; }

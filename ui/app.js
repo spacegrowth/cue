@@ -138,6 +138,8 @@ function renderMain() {
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
   else if (chat && !kept && oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
   activeKey = key;
+  // A reply being read out: what it's reading stays in view, over the chat's jump to its end (chat.js listenFollow).
+  if (listening) listenFollow(listening);
   // Which chat is open, told to an add-on (once each time it changes).
   const openNow = chat ? active?.sid || null : null;
   if (openNow !== chatOpenTold) { chatOpenTold = openNow; T.event.emit("chat-open", { sid: openNow }).catch(() => {}); }
@@ -220,6 +222,10 @@ function bindMain() {
     const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
     if (sid) loadOlder(sid);
   }, true);   // the send-to menu follows its button
+  // You scrolling the chat (the wheel or trackpad, or a press on its scroll bar, which lands on the chat itself):
+  // a reply being read out stops scrolling it along (chat.js listenScrolled).
+  document.addEventListener("wheel", (e) => { const c = e.target.closest?.("[data-chat]"); if (c) listenScrolled(c); }, { passive: true, capture: true });
+  document.addEventListener("pointerdown", (e) => { if (e.target.matches?.("[data-chat]")) listenScrolled(e.target); }, true);
   const app = document.getElementById("app");
   // Where a click began: the live drop-down redraws every few seconds, so a click that began inside it can
   // end on a fresh copy and reach the page as a click "outside". Only a press that began outside closes it.
@@ -296,8 +302,10 @@ function bindMain() {
     }
     // The ⋯ menu: toggle it, run an item, or close it on a click anywhere else.
     const mb = t.closest("[data-more]");
-    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = null; movingProj = mcpPicking = false; return renderMain(); }
+    if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = newProjFor = null; movingProj = mcpPicking = false; return renderMain(); }
     if (t.closest("[data-move-ask]")) { movingProj = true; return renderMain(); }
+    const np = t.closest("[data-new-proj]");
+    if (np) { newProjFor = np.dataset.newProj; newProjNote = ""; draft(`newproj:${newProjFor}`).text = ""; renderMain(); return document.querySelector(".pm-new-in")?.focus(); }
     const mvp = t.closest("[data-move-proj]");
     if (mvp) { moreFor = handoffArm = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); return renderMain(); }
     const rsb = t.closest("[data-restart]");
@@ -317,7 +325,7 @@ function bindMain() {
       invoke("session_command", { sessionId: sid, action: cmd }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
       return;
     }
-    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = null; movingProj = mcpPicking = false; renderMain(); }
+    if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = newProjFor = null; movingProj = mcpPicking = false; renderMain(); }
     if (t.closest(".more-menu [data-park]")) moreFor = handoffArm = null;   // Decide later: done with the menu too
     const cb = t.closest("[data-connect]");
     if (cb) { cb.disabled = true; invoke("connect_agent", { harness: cb.dataset.connect }).then((m) => toast(m), (e) => { toast(`Couldn't connect: ${e}`); cb.disabled = false; }); return; }
@@ -717,6 +725,7 @@ function bindMain() {
     }
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
     if (pjRenaming && e.key === "Escape") { pjRenaming = null; return renderMain(); }
+    if (newProjFor && e.key === "Escape") { newProjFor = null; newProjNote = ""; return renderMain(); }
     if ((pjOpen || colorFor) && e.key === "Escape") { pjOpen = false; colorFor = null; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
       liveOpen = newOpen = false;
@@ -775,6 +784,7 @@ function bindMain() {
         if (key === "search") return pickResult(searchSel);
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
         if (key.startsWith("pjname:")) return saveProjName(key.slice(7));
+        if (key.startsWith("newproj:")) return submitNewProj(key.slice(8));
         // A parked session's box: Enter resumes it with the message (Resume & send).
         if (key.startsWith("s:") && !sessionOf(key.slice(2)) && (parkedOf(key.slice(2)) || closedOf(key.slice(2)))) return wakeParked(key.slice(2), draft(key).text.trim());
         if (key.startsWith("s:")) {

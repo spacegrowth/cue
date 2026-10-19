@@ -1112,7 +1112,7 @@ function readerPane(sid, it, s, harness, rv) {
 // above the box says it's listening (Pause, Stop); in the reader the foot is its player, and it goes on to the next
 // reply when "Then the next reply" is on. Opening another session keeps it reading (from the reply as last shown);
 // that session's line says whose reply it is, a click goes back, and there the marks are where it got to.
-let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies) }
+let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies), follow (the chat scrolls along) }
 let listenRun = 0;       // bumped on every start, pause and stop: an old sentence's end is ignored
 const LISTEN_SPEEDS = [1, 1.1, 1.25, 1.4, 1.6];
 let listenSpeed = 0, listenThen = true;
@@ -1133,13 +1133,13 @@ function listenSource(l) {
   return el;
 }
 /** A reply's sentences as shown, in reading order: each its text (what's said), and a Range over it when it's
- *  marked (not a table row or a code block). */
+ *  marked (not a table row or a code block: those keep their element, for following them). */
 function listenSents(root) {
   const out = [];
   const els = [...root.querySelectorAll(LISTEN_BLOCKS)].filter((el) => !(el.matches("blockquote") && el.querySelector(LISTEN_BLOCKS)));
   for (const el of els.length ? els : [root]) {
-    if (el.matches("pre")) { if (!el.parentElement.closest("pre")) out.push({ say: "Code block." }); continue; }
-    if (el.matches("tr")) { const say = [...el.cells].map((c) => c.textContent.trim()).filter(Boolean).join(", "); if (/\w/.test(say)) out.push({ say }); continue; }
+    if (el.matches("pre")) { if (!el.parentElement.closest("pre")) out.push({ say: "Code block.", el }); continue; }
+    if (el.matches("tr")) { const say = [...el.cells].map((c) => c.textContent.trim()).filter(Boolean).join(", "); if (/\w/.test(say)) out.push({ say, el }); continue; }
     // This block's own text (not a nested list's or a code block's), as one string over its text nodes.
     const nodes = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest(LISTEN_BLOCKS) === el ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
     let text = "";
@@ -1162,13 +1162,38 @@ function listenMark(sents, i, w) {
   CSS.highlights.set("cue-said", new Highlight(...done));
   CSS.highlights.set("cue-say", new Highlight(...(on?.range ? [on.range] : [])));
   CSS.highlights.delete("cue-word");
-  if (on?.range && w) {
-    const r = document.createRange();
-    r.setStart(...on.pos(on.a + w[0])); r.setEnd(...on.pos(on.a + w[0] + w[1]));
-    CSS.highlights.set("cue-word", new Highlight(r));
-  }
+  const r = listenWord(on, w);
+  if (r) CSS.highlights.set("cue-word", new Highlight(r));
+}
+/** A Range over the word at `w` ([char, length]) in sentence `x`, when it's marked. */
+function listenWord(x, w) {
+  if (!x?.range || !w) return null;
+  const r = document.createRange();
+  r.setStart(...x.pos(x.a + w[0])); r.setEnd(...x.pos(x.a + w[0] + w[1]));
+  return r;
 }
 function listenUnmark() { if (CSS.highlights) ["cue-said", "cue-say", "cue-word"].forEach((h) => CSS.highlights.delete(h)); }
+/** The chat scrolls along with what's read: the line being heard (the word, else the sentence's first line, a code
+ *  block or table row as a whole) is kept in view, a third down when it has to move. A step is smooth, a jump
+ *  (more than a screen) instant. Scroll the chat yourself and it stops following (`l.follow`) until what it reads
+ *  is in view again, or you skip, or click a sentence. */
+function listenFollow(l) {
+  const v = l && listenView(l), x = v?.sents[l.i], chat = v?.root.closest("[data-chat]");
+  if (!x || !chat) return;
+  const r = (listenWord(x, l.w) || x.range)?.getClientRects()[0] || x.el?.getBoundingClientRect();
+  if (!r) return;
+  const box = chat.getBoundingClientRect(), shown = r.top >= box.top + 24 && r.bottom <= box.bottom - 40;
+  if (shown) { l.follow = true; return; }
+  if (l.follow === false) return;
+  const by = r.top - (box.top + box.height / 3);
+  chat.scrollBy({ top: by, behavior: Math.abs(by) < box.height ? "smooth" : "auto" });
+}
+/** You scrolled the chat being read yourself (app.js: the wheel or trackpad, or its scroll bar): it stops
+ *  following, so it doesn't pull you back while you look elsewhere. */
+function listenScrolled(chat) {
+  const root = listening && listenRoot(listening.key);
+  if (root && root.closest("[data-chat]") === chat) listening.follow = false;
+}
 /** The reply being read as shown, with its sentences, worked out again only when asked (`fresh`: after a redraw)
  *  or when the reply on screen is another element: the word marks move many times a second. */
 function listenView(l, fresh = false) {
@@ -1180,7 +1205,7 @@ function listenView(l, fresh = false) {
 /** The marks where it is: the sentence `l.i` and the word in it (`l.w`, [at, length] in its words), if shown. */
 function listenMarkNow(l, fresh = false) {
   const v = listenView(l, fresh);
-  if (v) listenMark(v.sents, l.i, l.w);
+  if (v) { listenMark(v.sents, l.i, l.w); listenFollow(l); }
 }
 /** Say the sentence it's on, then the next, to the end (and then the reader's next reply, when that's on). */
 function listenSay() {
@@ -1191,10 +1216,7 @@ function listenSay() {
   if (l.i >= sents.length) return listenNext();
   const x = sents[l.i], run = ++listenRun;
   l.w = null;
-  if (shown) { l.view = { root, sents }; listenMark(sents, l.i, null); } else listenUnmark();
-  const r = shown && x.range?.getBoundingClientRect(), box = root.closest(".chat-scroll, .chat") || document.documentElement;
-  const vb = box.getBoundingClientRect();
-  if (r && (r.top < vb.top + 40 || r.bottom > vb.bottom - 60)) (x.range.startContainer.parentElement.closest(LISTEN_BLOCKS) || root).scrollIntoView({ block: "center", behavior: "smooth" });
+  if (shown) { l.view = { root, sents }; listenMark(sents, l.i, null); listenFollow(l); } else listenUnmark();
   if (kokoroOn()) return kokoroSay(x, sents[l.i + 1], run);
   const u = new SpeechSynthesisUtterance(x.say);
   u.rate = LISTEN_SPEEDS[listenSpeed];
@@ -1346,7 +1368,7 @@ function listenNext() {
   const next = all[all.findIndex((r) => r.key === l.key) + 1];
   if (!next) return listenStop();
   if (readerView?.key === l.key) readerView = { sid, key: next.key };
-  listening = { ...l, key: next.key, i: 0, n: 0, html: md(next.text) };
+  listening = { ...l, key: next.key, i: 0, n: 0, html: md(next.text), follow: true };
   renderMain();
   listenSay();
 }
@@ -1354,7 +1376,7 @@ function listenPlay(sid, key, reader = false) {
   if (!window.speechSynthesis && !kokoroOn()) return toast("This Mac can't read it out");
   openMsgs.add(key);   // a folded reply opens to be read
   const cur = current();
-  listening = { sid, key, i: 0, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [] };
+  listening = { sid, key, i: 0, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [], follow: true };
   renderMain();
   listenSay();
 }
@@ -1379,6 +1401,7 @@ function listenSkip(dir) {
   if (!listening) return;
   listening.i = Math.max(0, Math.min(listening.n - 1, listening.i + dir));
   listening.w = null;
+  listening.follow = true;
   if (listening.playing) return listenSay();
   kokoroHush();   // paused: Resume starts the sentence skipped to
   listenMarkNow(listening);
@@ -1413,6 +1436,7 @@ function listenFrom(ev) {
   const i = at ? listenSents(root).findIndex((x) => x.range?.isPointInRange(at.startContainer, at.startOffset)) : -1;
   if (i < 0) return false;
   l.i = i;
+  l.follow = true;
   if (!l.playing) { l.playing = true; renderMain(); }
   listenSay();
   return true;
@@ -1685,13 +1709,32 @@ function nextBar() {
 /** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), a relay lead's Relay
  *  handoff (asks once more first: the lead steps down), and Decide later / Back to Waiting. */
 let moreFor = null, handoffArm = null, movingProj = false;
-/** ⋯ → Move to project: the projects it can show under instead, its folder's first. */
+/** + New project… at the foot of Move to project: the session whose list has the name box open (draft
+ *  `newproj:<sid>`), and what the box last said back (a name already taken). */
+let newProjFor = null, newProjNote = "";
+/** ⋯ → Move to project: the projects it can show under instead, its folder's first, then + New project…. */
 function projMoveList(sid) {
   const own = folderProject(sid), now = sessionOf(sid)?.project ?? findItem(active?.id)?.project ?? own;
   const names = [...new Set([own, ...projectsKnown().map(([p]) => p)])].filter((p) => p && p !== now);
   const rows = names.map((p) => `<button data-move-proj="${esc(p)}" data-sid="${esc(sid)}">${projDot(p)}${esc(projLabel(p))}${p === own ? "<span>Its folder's own</span>" : ""}</button>`).join("");
   const r = sessionOf(sid) || findItem(active?.id), where = r?.cwd ? baseName(putKey(r).replace(/^[^/~]*:/, "")) : "";
-  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div>${where ? `<div class="pm-note">Every session in ${esc(where)}, now and later</div>` : ""}${rows || `<div class="pm-none">No other projects yet</div>`}</div>`;
+  const add = newProjFor === sid
+    ? `<div class="pm-new"><input class="pm-new-in" data-text="newproj:${esc(sid)}" maxlength="40" placeholder="Name the new project" spellcheck="false" value="${esc(draft(`newproj:${sid}`).text)}"/>${newProjNote ? `<div class="pm-note">${esc(newProjNote)}</div>` : ""}</div>`
+    : `<button class="pm-add" data-new-proj="${esc(sid)}">+ New project…</button>`;
+  return `<div class="more-menu proj-move"><div class="pm-title">Move to project</div>${where ? `<div class="pm-note">Every session in ${esc(where)}, now and later</div>` : ""}${rows}${add}</div>`;
+}
+/** Enter in + New project…'s box: the folder goes to a project of that name. One that's already there (its
+ *  name or the name you gave it) is said instead, so two never quietly become one. */
+function submitNewProj(sid) {
+  const name = draft(`newproj:${sid}`).text.trim();
+  if (!name) return;
+  const taken = [folderProject(sid), ...projectsKnown().map(([p]) => p), ...Object.values(state.settings?.project?.folders || {})]
+    .find((p) => p && (p.toLowerCase() === name.toLowerCase() || projLabel(p).toLowerCase() === name.toLowerCase()));
+  if (taken) { newProjNote = `${projLabel(taken)} is already a project: pick it above`; return renderMain(); }
+  draft(`newproj:${sid}`).text = "";
+  newProjFor = null; newProjNote = ""; moreFor = handoffArm = null; movingProj = false;
+  moveToProject(sid, name);
+  renderMain();
 }
 function moreMenu(sid, s, closable = false) {
   const open = moreFor === sid;
