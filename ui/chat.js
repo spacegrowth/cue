@@ -1105,8 +1105,8 @@ function readerPane(sid, it, s, harness, rv) {
   return { bar, body, foot: listenPlayer(r.key) + foot };
 }
 // ---------- Listen: a reply read out loud ----------
-// Listen under any reply (and in the reader) reads it out a sentence at a time in the Mac's voice, at 1× to 2× in
-// quarter steps (remembered). The sentence it's on goes lime with the word it's saying underlined, what it read goes gray
+// Listen under any reply (and in the reader) reads it out a sentence at a time in the Mac's voice, at 1× to 1.6× in
+// small steps (remembered). The sentence it's on goes lime with the word it's saying underlined, what it read goes gray
 // (CSS highlights over the reply as shown, so the chat's own HTML is untouched), and it scrolls along. A click on a
 // sentence starts there. Code blocks are said as "Code block." once, a table a row at a time. In the chat one line
 // above the box says it's listening (Pause, Stop); in the reader the foot is its player, and it goes on to the next
@@ -1114,7 +1114,7 @@ function readerPane(sid, it, s, harness, rv) {
 // that session's line says whose reply it is, a click goes back, and there the marks are where it got to.
 let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies) }
 let listenRun = 0;       // bumped on every start, pause and stop: an old sentence's end is ignored
-const LISTEN_SPEEDS = [1, 1.25, 1.5, 1.75, 2];
+const LISTEN_SPEEDS = [1, 1.1, 1.25, 1.4, 1.6];
 let listenSpeed = 0, listenThen = true;
 try { listenSpeed = Math.max(0, LISTEN_SPEEDS.indexOf(Number(localStorage.getItem("cue.listenRate")))); listenThen = localStorage.getItem("cue.listenThen") !== "0"; } catch {}
 const LISTEN_BLOCKS = "p, li, h1, h2, h3, h4, h5, h6, pre, tr, blockquote";
@@ -1145,7 +1145,7 @@ function listenSents(root) {
     let text = "";
     for (let n; (n = walk.nextNode());) { nodes.push({ n, at: text.length }); text += n.data; }
     const pos = (i) => { let k = nodes.length - 1; while (k > 0 && nodes[k].at > i) k--; return [nodes[k].n, Math.min(i - nodes[k].at, nodes[k].n.data.length)]; };
-    for (const m of text.matchAll(/[^.!?\n]+(?:[.!?]+["')\]]*|\n|$)/g)) {
+    for (const m of text.matchAll(/(?:[^.!?\n]|[.!?]+(?=[^\s.!?"')\]]))+(?:[.!?]+["')\]]*(?=\s|$)|\n|$)/g)) {
       const a = m.index + (m[0].length - m[0].trimStart().length), b = m.index + m[0].trimEnd().length;
       if (b <= a || !/\w/.test(m[0])) continue;
       const range = document.createRange();
@@ -1300,7 +1300,7 @@ function listenPlayer(key) {
     <span class="rd-seg"><button data-listen-skip="-1" aria-label="Back a sentence">«</button><button class="ls-pp" data-listen-toggle="1" aria-label="${l.playing ? "Pause" : "Go on"}">${l.playing ? PAUSE_ICON : PLAY_ICON}</button><button data-listen-skip="1" aria-label="Next sentence">»</button></span>
     <span class="dim ls-of" data-listen-of="1">${of} of ${l.n}</span>
     <span class="ls-track"><span class="ls-fill" style="width: ${Math.round((of / Math.max(1, l.n)) * 100)}%"></span></span>
-    <span class="rd-seg">${LISTEN_SPEEDS.map((x, n) => `<button class="${n === listenSpeed ? "on" : ""}" data-listen-speed="${n}">${x}×</button>`).join("")}</span>
+    <span class="rd-seg ls-speeds">${LISTEN_SPEEDS.map((x, n) => `<button class="${n === listenSpeed ? "on" : ""}" data-listen-speed="${n}">${x}×</button>`).join("")}</span>
     <label class="ls-then"><input type="checkbox" data-listen-then="1" ${listenThen ? "checked" : ""}/>Then the next reply</label>
     <button class="btn" data-listen-stop="1">Stop</button></div>`;
 }

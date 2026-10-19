@@ -72,7 +72,14 @@ function usualAgent() {
 const oddAgent = (h) => h && h !== usualAgent() ? `<span class="badge h-${esc(h)}" role="img" aria-label="${esc(agentName(h))}">${agentLetter(h)}</span>` : "";
 const draft = (id) => (drafts[id] ||= { text: "", choices: {}, images: [] });
 /** A session's name. */
-const nameSpan = (sid, project, cls = "proj") => `<span class="${cls}">${esc(nameOf(sid, project))}</span>`;
+const nameSpan = (sid, project, cls = "proj") => `<span class="${cls}">${esc(nameOf(sid, project))}</span>${hearing(sid)}`;
+/** Beside a session's name on any card while one of its replies is read out (Listen): a speaker, its waves
+ *  moving while it reads, still while paused. */
+const hearing = (sid) => {
+  const l = typeof listening === "undefined" ? null : listening;
+  if (!l || !sid || l.sid !== sid) return "";
+  return `<span class="hearing ${l.playing ? "on" : ""}" role="img" aria-label="${l.playing ? "Reading it out" : "Paused reading it out"}"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="hw1" d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path class="hw2" d="M18.5 7a7 7 0 0 1 0 10"/></svg></span>`;
+};
 /** A machine's name: what you renamed it to, else its first part (no user@, no domain). (Notifications
  *  do the same: machines::display_name.) */
 const machName = (m) => {

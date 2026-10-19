@@ -501,6 +501,14 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-player { align-items: center; gap: 10px; font-size: 12.5px; }
 .ls-player .ls-pp { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
 .ls-player .rd-seg button.on { background: var(--sel); color: var(--on-sel); }
+.ls-player .ls-speeds button { min-width: 0; padding: 0 7px; font-size: 11px; font-weight: 650; }
+/* core.js hearing: the speaker beside a session's name on its cards while Listen reads one of its replies. */
+.hearing { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%; margin-left: 6px; background: var(--sel); color: var(--on-sel); vertical-align: -5px; }
+.hearing .hw1, .hearing .hw2 { opacity: .45; }
+.hearing.on .hw1 { animation: hearing 1.2s ease-in-out infinite; }
+.hearing.on .hw2 { animation: hearing 1.2s ease-in-out .3s infinite; }
+@keyframes hearing { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hearing.on .hw1, .hearing.on .hw2 { animation: none; opacity: 1; } }
 .ls-of { min-width: 60px; }
 .ls-track { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .ls-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
