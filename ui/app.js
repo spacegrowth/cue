@@ -37,7 +37,7 @@ function renderMain() {
   const focusId = !focusKey && focused?.matches?.("input[id], select[id]") ? focused.id : null;   // e.g. a quick phrase field, the Model pick
   const caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
-  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab";
+  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   // A background agent's steps (chat.js helperBlock), by agent: where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
@@ -61,6 +61,7 @@ function renderMain() {
   placePip();   // Cue's own terminal, back over the columns as they are now
   placeExt();   // the open session's extension tab, over the slot left for it
   placeActs();  // a chip's actions popover under its dots
+  placeVoiceList();   // Settings → Voice: the open list under its picker
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
@@ -354,7 +355,14 @@ function bindMain() {
     const lsp = t.closest("[data-listen-speed]");
     if (lsp) return listenFaster(+lsp.dataset.listenSpeed);
     if (t.closest("[data-listen-then]")) return listenThenNext();
-    if (t.closest("[data-voice-list]")) { voiceListOpen = !voiceListOpen; return renderMain(); }
+    if (t.closest("[data-voice-list]")) {
+      voiceListOpen = !voiceListOpen;
+      renderMain();
+      // Opened: the voice in use in view, a line or two from the top.
+      const list = document.querySelector(".vp-list"), on = list?.querySelector(".vp-line.on");
+      if (on) list.scrollTop = on.offsetTop - 44;
+      return;
+    }
     const vs = t.closest("[data-voice-sample]");
     if (vs) return playSample(vs.dataset.voiceSample);
     const vg = t.closest("[data-voice-get]");

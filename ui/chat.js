@@ -1303,6 +1303,19 @@ const KOKORO_VOICES = [["af_heart", "Heart", "woman"], ["af_bella", "Bella", "wo
 let voiceListOpen = false;
 // The voice list closes on a click anywhere but the list and its button (before that click does its own thing).
 document.addEventListener("click", (e) => { if (voiceListOpen && !e.target.closest?.(".vp-list, .vp-btn")) { voiceListOpen = false; renderMain(); } }, true);
+/** The open voice list over the window, the sheet's edge included (a short sheet would cut it off): under its picker,
+ *  as wide, as tall as fits down to the window's foot; over the picker when less than 160 px is left below. After
+ *  each draw, and as the sheet scrolls under it. */
+function placeVoiceList() {
+  const list = document.querySelector(".vp-list"), btn = list && document.querySelector(".vp-btn");
+  if (!btn) return;
+  const r = btn.getBoundingClientRect(), below = innerHeight - r.bottom - 18, above = r.top - 18;
+  const up = below < 160 && above > below, room = Math.min(324, up ? above : below);
+  Object.assign(list.style, { left: `${r.left}px`, width: `${r.width}px`, maxHeight: `${room}px` });
+  list.style.top = up ? `${r.top - 6 - Math.min(list.scrollHeight + 2, room)}px` : `${r.bottom + 6}px`;
+}
+document.addEventListener("scroll", (e) => { if (voiceListOpen && !e.target.matches?.(".vp-list")) placeVoiceList(); }, true);
+addEventListener("resize", () => { if (voiceListOpen) placeVoiceList(); });
 /** Settings → Voice: one Voice row, a picker showing the voice in use (▶ plays it); open, a short list: your Mac's
  *  voice, then Kokoro's women and men, one line each with ▶ and In use, ✓ (here: a click uses it) or ↓ 0.5 MB.
  *  Before the first one it says once that it brings the voice engine (125 MB); a download shows its bar. */
@@ -1728,12 +1741,16 @@ function projMoveList(sid) {
 function submitNewProj(sid) {
   const name = draft(`newproj:${sid}`).text.trim();
   if (!name) return;
-  const taken = [folderProject(sid), ...projectsKnown().map(([p]) => p), ...Object.values(state.settings?.project?.folders || {})]
+  const pr = state.settings?.project || {};
+  const taken = [folderProject(sid), ...projectsKnown().map(([p]) => p), ...Object.values(pr.folders || {}), ...Object.values(pr.moves || {})]
     .find((p) => p && (p.toLowerCase() === name.toLowerCase() || projLabel(p).toLowerCase() === name.toLowerCase()));
   if (taken) { newProjNote = `${projLabel(taken)} is already a project: pick it above`; return renderMain(); }
   draft(`newproj:${sid}`).text = "";
   newProjFor = null; newProjNote = ""; moreFor = handoffArm = null; movingProj = false;
   moveToProject(sid, name);
+  // The window goes to the new project, the moved session still open in it.
+  projFilter = name;
+  try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
   renderMain();
 }
 function moreMenu(sid, s, closable = false) {
