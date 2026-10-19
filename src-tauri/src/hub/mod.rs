@@ -64,6 +64,9 @@ struct Store {
     /// the card's countdown and the header's "going cold" use too): session → the expiry it was told
     /// about, once per expiry. (Answering in time is counted by the insights themselves: insight_events.)
     cold_warned: HashMap<String, u64>,
+    /// Sessions a hand-off note was asked for (or held) ahead of their cache running out, by the expiry it
+    /// was for: once per idle stretch.
+    ahead_tried: HashMap<String, u64>,
     /// The board's cards on this Mac: their cache's expiry and their context, as of the last cache_tick
     /// (insights.js counts down from these; ipc::insight_states has the same shape).
     insight: HashMap<String, Value>,
@@ -254,6 +257,8 @@ impl Hub {
         // Hand-offs through a hand-off skill (insights.js): pending ones offer "Continue in a new session".
         // Read before the hub's lock, not under it.
         let skill_handoffs = crate::db::handoffs();
+        // Sessions with "Hand off if I don't come back" on (insights.js ahead).
+        let ahead_watch = crate::db::ahead_watched();
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
@@ -283,6 +288,7 @@ impl Hub {
             // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
             "insight": st.insight,
             "skill_handoffs": skill_handoffs,
+            "ahead_watch": ahead_watch,
             "live": live,
             "branches": branches,
             "projects": projects,

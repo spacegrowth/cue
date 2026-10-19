@@ -36,7 +36,7 @@ pub fn effective() -> Value {
         // The voice Cue reads out in: "" the Mac's own, else a natural one ("af_heart"), downloaded in Settings → Voice.
         "voice": { "pick": c.pointer("/voice/pick").and_then(Value::as_str).unwrap_or("") },
         // Insights (ui/insights.js): each one on its own; they only ever fill the reply box.
-        "insights": { "handoff": b("/insights/handoff", true), "cache": b("/insights/cache", true), "queue": b("/insights/queue", true), "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
+        "insights": { "handoff": b("/insights/handoff", true), "cache": b("/insights/cache", true), "queue": b("/insights/queue", true), "autocompact": b("/insights/autocompact", true), "delegate": b("/insights/delegate", true), "ahead": b("/insights/ahead", false), "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
@@ -186,7 +186,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.skills", "actions.prompt", "voice.pick"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.autocompact", "insights.delegate", "insights.ahead", "insights.skills", "actions.prompt", "voice.pick"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }

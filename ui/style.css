@@ -1843,6 +1843,7 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 /* Nothing more to open: no arrow, not clickable, and its whole sentence (wrapping) in place of the cut one. */
 .ins-strip.whole { cursor: default; }
 .ins-strip.whole .ins-strip-text { white-space: normal; }
+.ins-strip.wrap .ins-strip-text { white-space: normal; }
 .ins-strip-text b { color: var(--ink); }
 .ins-strip .btn { height: 26px; }
 /* Open (▾) and fold (▴): the arrow alone. */
@@ -1883,6 +1884,12 @@ button.ins-n { cursor: pointer; }
 .ins-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .linkish { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .linkish:hover { color: var(--ink); }
+/* Hand off if I don't come back: a checkbox drawn as a button (insights.js watchToggle). */
+.ins-check { display: inline-flex; align-items: center; gap: 6px; flex: none; background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.ins-check:hover { color: var(--ink); }
+.ins-check i { width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px; display: inline-grid; place-items: center; }
+.ins-check[aria-checked="true"] { color: var(--ink); }
+.ins-check[aria-checked="true"] i::after { content: ""; width: 6px; height: 6px; border-radius: 1px; background: currentColor; }
 /* One-line insights: a waiting card's cache countdown, the note by Now. */
 .ins-line { display: flex; align-items: center; gap: 9px; font-size: 12.5px; line-height: 1.4; color: var(--muted); margin-top: 8px; }
 .ins-line b { color: var(--ink); }

@@ -213,6 +213,9 @@ pub struct Meta {
     /// How many warm replies its next one costs once its cache is gone (prices::cold_x; 0: not known).
     #[serde(skip_serializing_if = "is_zero")]
     cold_x: u64,
+    /// What that cold reply's re-write costs at list prices, in cents (prices::cold_cents; 0: not known).
+    #[serde(skip_serializing_if = "is_zero")]
+    cold_cents: u64,
     /// The least context Claude Code has lately compacted sessions on its model at on its own
     /// (auto_compact_at; 0: not seen enough to say).
     #[serde(skip_serializing_if = "is_zero")]
@@ -252,7 +255,12 @@ struct Feed {
     note_calls: HashMap<String, String>,
     /// The newest hand-off note it wrote since your last prompt, and when (its result's time, by the log).
     note: Option<(String, u64)>,
+    /// Your latest prompt: when (by the log), and whether it was Cue's hand-off ask (HANDOFF_ASK_START).
+    prompted: (u64, bool),
 }
+
+/// How Cue's own hand-off ask starts (ipc/insights.rs HANDOFF_ASK): a turn it began is the note's turn.
+pub const HANDOFF_ASK_START: &str = "Hand off: write a short note";
 
 /// A background agent a Claude Code session started: it runs inside the session's process, with no
 /// terminal of its own, and writes its log to `<session folder>/subagents/agent-<id>.jsonl`. Nothing
@@ -299,6 +307,9 @@ pub struct Helper {
     /// Script: its end has been seen to (its copy stopped, a long failure noted).
     #[serde(skip)]
     closed: bool,
+    /// When its session last sent it a message that put it back to work (SendMessage); 0 if never.
+    #[serde(skip)]
+    resumed_ms: u64,
 }
 
 /// A background task that failed after running this long: worth a word (a quick failure is one the
@@ -326,9 +337,10 @@ const MAX_SCRIPT_LINES: usize = 200;
 const SCRIPT_TAIL_BYTES: u64 = 256 * 1024;
 
 impl Helper {
-    /// Running: not reported finished, and its log doesn't end on an answer.
+    /// Running: not reported finished, and its log doesn't end on an answer (one from before its session
+    /// sent it a message doesn't count).
     pub fn running(&self) -> bool {
-        self.finished_ms == 0 && self.feed.as_ref().is_none_or(|f| f.ended_ms == 0)
+        self.finished_ms == 0 && self.feed.as_ref().is_none_or(|f| f.ended_ms == 0 || f.ended_ms < self.resumed_ms)
     }
 
     /// Running, with nothing done for STUCK_MS as of `now`.
@@ -354,13 +366,17 @@ impl Helper {
         let skip = all.len().saturating_sub(MAX_HELPER_ITEMS);
         self.more = skip + f.turns.iter().map(|t| t.more).sum::<usize>();
         self.items = all.into_iter().skip(skip).cloned().collect();
-        self.last_ms = self.items.last().map(|i| match i { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms }).filter(|&at| at > 0).unwrap_or(self.started_ms);
+        self.last_ms = self.items.last().map(|i| match i { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms }).filter(|&at| at > 0).unwrap_or(self.started_ms).max(self.resumed_ms);
         if self.model.is_empty() {
             self.model = f.meta.model.clone();
         }
         // Its meta file can come after it started (copied from another machine).
         if self.kind.is_empty() {
             self.kind = helper_kind(std::path::Path::new(&f.path));
+        }
+        // Taken up on a message to it, its launch not seen: named by its meta file.
+        if self.desc.is_empty() {
+            self.desc = helper_meta(std::path::Path::new(&f.path)).get("description").and_then(Value::as_str).unwrap_or("").to_string();
         }
         true
     }
@@ -426,6 +442,12 @@ fn helper_kind(log: &std::path::Path) -> String {
     helper_meta(log).get("agentType").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
+/// The background agent a SendMessage result says it put back to work (`resumedAgentId`, or `revivedAgentId`).
+fn resumed_agent(extra: Option<&Value>) -> Option<String> {
+    let x = extra?;
+    ["resumedAgentId", "revivedAgentId"].iter().find_map(|k| x.get(*k).and_then(Value::as_str).filter(|id| !id.is_empty())).map(str::to_string)
+}
+
 /// Every `<task-notification>…</task-notification>` in a text, wherever it sits (Claude Code wraps them
 /// in a system notice, and can put two in one message).
 fn notifications(text: &str) -> Vec<&str> {
@@ -443,6 +465,13 @@ fn helper_path(session_log: &str, agent_id: &str) -> Option<std::path::PathBuf> 
 }
 
 static FEEDS: Mutex<Option<HashMap<String, Feed>>> = Mutex::new(None);
+
+/// A session's background agent is still finished (not put back to work since); also when its feed is gone.
+fn helper_done(path: &str, id: &str) -> bool {
+    let guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let h = guard.as_ref().and_then(|feeds| feeds.get(path)).and_then(|f| f.helpers.iter().find(|h| h.id == id));
+    h.is_none_or(|h| h.finished_ms != 0)
+}
 
 /// The session's turns and steps, newest last. `known`: the version the caller already has; when
 /// nothing changed, only the version comes back.
@@ -535,6 +564,17 @@ pub fn is_handoff_note(path: &str) -> bool {
 /// The hand-off note the session wrote itself, if its last work did: its newest Write of a hand-off note
 /// (`is_handoff_note`) that went through, with no prompt of yours after it. Its path as the log names it
 /// (on the session's machine: a string to pass on, never looked up here), and when, by the log's clock.
+/// Your latest prompt in a session's log: when, by its clock (0: none read), and whether it was Cue's hand-off ask.
+pub fn last_prompt(path: &str) -> (u64, bool) {
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    feeds.retain(|_, f| f.used.elapsed() < FORGET);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    feed.prompted
+}
+
 pub fn handoff_note(path: &str) -> Option<(String, u64)> {
     let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
     let feeds = guard.get_or_insert_with(HashMap::new);
@@ -621,6 +661,8 @@ pub struct InsightState {
     pub last_ms: u64,
     /// How many warm replies a cold one costs (prices::cold_x).
     pub cold_x: u64,
+    /// What that cold reply's re-write costs at list prices, in cents (prices::cold_cents).
+    pub cold_cents: u64,
     /// Where Claude Code has lately compacted sessions on its model on its own (auto_compact_at).
     pub auto_at: u64,
 }
@@ -657,7 +699,7 @@ pub fn insight_state(path: &str) -> Option<InsightState> {
     feed.catch_up();
     let m = &feed.meta;
     let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
-    (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, last_ms: m.last_call_ms, cold_x: m.cold_x, auto_at: m.auto_at })
+    (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at })
 }
 
 pub fn context_pct(path: &str) -> Option<u8> {
@@ -856,18 +898,21 @@ impl Feed {
     }
 
     fn start(path: &str, version: u64, offset: u64) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) }
     }
 
     /// A background agent's log, read from its start (it's small: one task).
     fn open_helper(path: &str) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) }
     }
 
     /// A background agent just started (its launch result came in): remember it and open its log.
     fn add_helper(&mut self, step: &str, extra: &Value, at_ms: u64) {
         let s = |k: &str| extra.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        let id = s("agentId");
+        self.add_agent(step, s("agentId"), s("description"), s("resolvedModel"), at_ms);
+    }
+
+    fn add_agent(&mut self, step: &str, id: String, desc: String, model: String, at_ms: u64) {
         if id.is_empty() || self.helpers.iter().any(|h| h.id == id) {
             return;
         }
@@ -876,8 +921,39 @@ impl Feed {
         let path = helper_path(&self.path, &id);
         let kind = path.as_ref().map(|p| helper_kind(p)).unwrap_or_default();
         let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
-        self.helpers.push(Helper { id, step: step.to_string(), desc: s("description"), kind, model: s("resolvedModel"), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, out_path: None, out_len: 0, closed: false });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind, model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0 });
         self.trim_helpers();
+    }
+
+    /// The session sent one of its background agents a message (Claude Code's SendMessage), which put it back
+    /// to work: it writes on to the same log, and its task notifies again when it's done. At work again, now
+    /// under the step that sent it; one not known here (read from mid-file, or dropped) is taken up from here.
+    fn resume_helper(&mut self, step: &str, id: &str, at_ms: u64) {
+        if id.is_empty() {
+            return;
+        }
+        let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) else {
+            // Not one of its agents Cue knows: taken only with its log there (a message to anything else, or an
+            // agent whose log can't be read, would read as at work for good).
+            if !helper_path(&self.path, id).is_some_and(|p| p.exists()) {
+                return;
+            }
+            let desc = helper_path(&self.path, id).map(|p| helper_meta(&p)).and_then(|m| m.get("description").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
+            self.add_agent(step, id.to_string(), desc, String::new(), at_ms);
+            if let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) {
+                h.resumed_ms = at_ms;
+            }
+            return;
+        };
+        if h.script {
+            return;
+        }
+        h.finished_ms = 0;
+        h.last_ms = at_ms;
+        h.resumed_ms = at_ms;
+        h.step = step.to_string();
+        // Its copy from another machine was stopped when it reported: on again, from where it was.
+        crate::machines::logs::copy_helper(&self.path, id);
     }
 
     /// A shell command went to the background (Claude Code's Bash tool, run in the background or moved
@@ -896,7 +972,7 @@ impl Feed {
             None => Some(remote),
         });
         let desc = if desc.trim().is_empty() { subject.to_string() } else { desc.trim().to_string() };
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, out_path, out_len: 0, closed: false });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, out_path, out_len: 0, closed: false, resumed_ms: 0 });
         self.trim_helpers();
     }
 
@@ -931,11 +1007,14 @@ impl Feed {
             h.read_output();   // its last lines, written before the notice
             return true;
         }
-        // Copied from another machine: its log is complete once it reports (a moment for its last lines).
+        // Copied from another machine: its log is complete once it reports (a moment for its last lines),
+        // unless its session sent it a message meanwhile.
         let (copy, id) = (self.path.clone(), h.id.clone());
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(5));
-            crate::machines::logs::stop_helper(&copy, &id);
+            if helper_done(&copy, &id) {
+                crate::machines::logs::stop_helper(&copy, &id);
+            }
         });
         true
     }
@@ -966,6 +1045,7 @@ impl Feed {
         self.close_scripts();
         if changed {
             self.meta.cold_x = super::prices::cold_x(&self.meta.model, self.meta.cache_ttl_s);
+            self.meta.cold_cents = super::prices::cold_cents(&self.meta.model, self.meta.cache_ttl_s, self.meta.context);
             self.meta.auto_at = if self.kind == Kind::Claude { auto_compact_at(&self.meta.model) } else { 0 };
             if self.turns.len() > MAX_TURNS {
                 self.turns.drain(..self.turns.len() - MAX_TURNS);
@@ -1220,6 +1300,7 @@ impl Feed {
                 if !prompt.is_empty() {
                     self.note = None;
                     self.note_calls.clear();
+                    self.prompted = (at, prompt.starts_with(HANDOFF_ASK_START));
                 }
                 self.turns.push(Turn { at_ms: at, prompt, items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
                 ended // an empty turn isn't shown until something happens in it; a task that ended is
@@ -1237,7 +1318,10 @@ impl Feed {
                         }
                         Some("tool_use") => {
                             let file = b.pointer("/input/file_path").and_then(Value::as_str).unwrap_or("");
-                            if !self.helper && b.get("name").and_then(Value::as_str) == Some("Write") && is_handoff_note(file) {
+                            // Written, or (in the turn Cue's hand-off ask began) its older note edited into the new one.
+                            let tool = b.get("name").and_then(Value::as_str).unwrap_or("");
+                            let asked = self.turns.last().is_some_and(|t| t.prompt.starts_with(HANDOFF_ASK_START));
+                            if !self.helper && (tool == "Write" || (asked && matches!(tool, "Edit" | "MultiEdit"))) && is_handoff_note(file) {
                                 self.note_calls.insert(b.get("id").and_then(Value::as_str).unwrap_or("").to_string(), file.to_string());
                             }
                             self.push(step_of(&b, at));
@@ -1288,10 +1372,13 @@ impl Feed {
                         *bad = b;
                         *done = true;
                         let launched = extra.filter(|x| x.get("status").and_then(Value::as_str) == Some("async_launched")).cloned();
+                        let resumed = resumed_agent(extra);
                         let backgrounded = extra.filter(|x| x.get("backgroundTaskId").and_then(Value::as_str).is_some_and(|t| !t.is_empty())).cloned();
                         let (step, subject, command, desc) = (sid.clone(), subject.clone(), command.clone(), desc.clone());
                         if let Some(x) = launched {
                             self.add_helper(&step, &x, at);
+                        } else if let Some(agent) = resumed {
+                            self.resume_helper(&step, &agent, at);
                         } else if let Some(x) = backgrounded {
                             *result = "in the background".into();
                             *bad = false;
@@ -1694,6 +1781,8 @@ fn describe(tool: &str, input: &Value) -> (&'static str, &'static str, &'static 
         "WebSearch" => ("web", "Searching the web", "Searched the web", cut(&arg("query"), 70), false),
         "WebFetch" => ("web", "Reading", "Read", cut(arg("url").trim_start_matches("https://"), 70), true),
         "Agent" | "Task" => ("agent", "Delegating", "Delegated", cut(&arg("description"), 70), false),
+        // A message to one of its agents (one that finished is put back to work on it): what it's about.
+        "SendMessage" => ("agent", "Messaging its agent", "Messaged its agent", cut(&first(if arg("summary").is_empty() { arg("message") } else { arg("summary") }), 70), false),
         "CodexScript" => ("run", "Running a script", "Ran a script", cut(&first(arg("script")), 70), true),
         "TodoWrite" => ("todo", "Updating its to-do list", "Updated its to-do list", String::new(), false),
         "AskUserQuestion" => {
@@ -1800,6 +1889,7 @@ fn outcome(tool: &str, block: &Value, extra: Option<&Value>) -> (String, bool) {
             }
         }
         "Agent" | "Task" if x("status").and_then(Value::as_str) == Some("async_launched") => "in the background".into(),
+        "SendMessage" if resumed_agent(extra).is_some() => "back at work".into(),
         _ => "done".into(),
     };
     (r, false)
@@ -2017,7 +2107,7 @@ mod tests {
     }
 
     fn feed_of(jsonl: &str) -> Feed {
-        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None };
+        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) };
         for e in lines(jsonl) {
             f.take(&e);
         }
@@ -2313,6 +2403,91 @@ mod tests {
         assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
         assert_eq!(running_background(p), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_message_to_an_agent_cue_has_no_log_of_doesnt_leave_the_session_at_work() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-ghost-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"ask it again"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t2","name":"SendMessage","input":{"to":"zz9","message":"and the rest"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]},"toolUseResult":{"success":true,"resumedAgentId":"zz9"}}"#,
+        ].join("\n") + "\n").unwrap();
+        assert_eq!(running_background(path.to_str().unwrap()), 0, "no log of it here: not counted as at work");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-resume-{}", std::process::id()));
+        let sub = dir.join("s1").join("subagents");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("agent-a1.meta.json"), r#"{"agentType":"general-purpose","description":"Review the plan","toolUseId":"t1","requestShape":"background"}"#).unwrap();
+        let agent_log = sub.join("agent-a1.jsonl");
+        std::fs::write(&agent_log, [
+            r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"review the plan"}}"#,
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:08.000Z","message":{"model":"claude-opus-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"Don't build it as is."}]}}"#,
+        ].join("\n") + "\n").unwrap();
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"get the plan reviewed"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Review the plan","prompt":"review the plan"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Review the plan","resolvedModel":"claude-opus-5-5"}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:01:00.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>t1</tool-use-id>\n<status>completed</status>\n</task-notification>"}}"#,
+        ].join("\n") + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        f.catch_up();
+        assert_eq!(f.helpers.len(), 1);
+        assert!(!f.helpers[0].running(), "finished: its session heard so");
+        // The session sends it a message: it's put back to work, on the same log.
+        let mut log = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut log, concat!(
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:02:00.000Z","message":{"content":[{"type":"tool_use","id":"t2","name":"SendMessage","input":{"to":"a1","summary":"Review the revised plan","message":"Please look again."}}]}}"#, "\n",
+            r#"{"type":"user","timestamp":"2026-10-04T10:02:01.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"{\"success\":true}"}]},"toolUseResult":{"success":true,"message":"Resuming agent a1","resumedAgentId":"a1","revivedAgentId":"a1"}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        assert_eq!(f.helpers.len(), 1, "the same agent, not a second one");
+        let h = &f.helpers[0];
+        assert!(h.running(), "at work again, before its log shows the message");
+        assert_eq!((h.finished_ms, h.last_ms, h.step.as_str()), (0, crate::logs::transcript::iso_ms("2026-10-04T10:02:01.000Z").unwrap(), "t2"));
+        assert_eq!(step(f.turns.iter().flat_map(|t| t.items.iter()).last().unwrap()), ("Messaged its agent", "Review the revised plan", "back at work", false, true));
+        assert_eq!(running_helpers(p), vec!["Review the plan".to_string()]);
+        assert_eq!(running_background(p), 1);
+        // Its log goes on: its new steps are read on from where they were.
+        let mut log = std::fs::OpenOptions::new().append(true).open(&agent_log).unwrap();
+        std::io::Write::write_all(&mut log, concat!(
+            r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:01.000Z","message":{"role":"user","content":"Please look again."}}"#, "\n",
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:05.000Z","message":{"model":"claude-opus-5-5","content":[{"type":"tool_use","id":"h1","name":"Read","input":{"file_path":"/a/plan.md"}}]}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        let h = &f.helpers[0];
+        assert!(h.running());
+        assert_eq!(step(h.items.last().unwrap()).0, "Reading");
+        // Its second report: finished again.
+        let mut log = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","timestamp":"2026-10-04T10:05:00.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>t2</tool-use-id>\n<status>completed</status>\n</task-notification>"}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:05:00.000Z").unwrap());
+        assert!(!f.helpers[0].running());
+        assert!(running_helpers(p).is_empty());
+        // Read from where the launch isn't seen: the message takes it up, named by its meta file.
+        let only = dir.join("s1-tail.jsonl");
+        std::fs::create_dir_all(dir.join("s1-tail").join("subagents")).unwrap();
+        std::fs::copy(sub.join("agent-a1.meta.json"), dir.join("s1-tail").join("subagents").join("agent-a1.meta.json")).unwrap();
+        std::fs::copy(&agent_log, dir.join("s1-tail").join("subagents").join("agent-a1.jsonl")).unwrap();
+        std::fs::write(&only, [
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:02:00.000Z","message":{"content":[{"type":"tool_use","id":"t2","name":"SendMessage","input":{"to":"a1","summary":"Review the revised plan","message":"Please look again."}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:02:01.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"{\"success\":true}"}]},"toolUseResult":{"success":true,"message":"Resuming agent a1","revivedAgentId":"a1"}}"#,
+        ].join("\n") + "\n").unwrap();
+        let mut g = Feed::open(only.to_str().unwrap(), 1);
+        g.catch_up();
+        assert_eq!(g.helpers.len(), 1);
+        let h = &g.helpers[0];
+        assert_eq!((h.id.as_str(), h.step.as_str(), h.desc.as_str(), h.kind.as_str()), ("a1", "t2", "Review the plan", "general-purpose"));
+        assert!(h.running());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

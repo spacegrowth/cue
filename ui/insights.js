@@ -26,6 +26,12 @@ const COMPACT_WARM_MIN = 100000;
 // The auto-compact heads-up shows from this share of where Claude Code has lately compacted sessions on the
 // model on its own (logs/steps.rs auto_compact_at): a turn or two before it does.
 const AUTO_NEAR = 0.85;
+// A hand-off note before the cache runs out (hub/activity.rs hand_off_ahead): a session's "Hand off if I don't
+// come back" is offered on an hour's cache (a 5-minute one runs out while you read: Write hand-off now is yours
+// to press), and from this much context it shows on the strip even before you tick it. Settings' every-session
+// timer goes from the same (AHEAD_MIN_TOKENS there).
+const AHEAD_MIN = 150000;
+const AHEAD_TTL_MS = 30 * 60000;
 
 /** The hand-off bar a session has to clear now: the lower one once its cache has run out. A session whose
  *  log doesn't say how long it caches (Codex, Pi) is taken as warm. */
@@ -34,13 +40,29 @@ function handoffBar(sid) {
   return { ...(cold ? HANDOFF_COLD : HANDOFF_WARM), cold };
 }
 const insOn = (rule) => state.settings?.insights?.[rule] !== false;
+/** A hand-off note written before its cache ran out (by you, its "Hand off if I don't come back", or Settings),
+ *  not continued from or replied past yet: its hand-off as the Mac keeps it, else null. */
+const aheadOf = (sid) => { const ho = state.skill_handoffs?.[sid]; return ho?.ahead > 0 && !ho.next ? ho : null; };
+const aheadWatched = (sid) => (state.ahead_watch || []).includes(sid);
+/** Whether "Hand off if I don't come back" can work for a session: Claude Code on this Mac (the Mac's timer
+ *  only reads its own cards' logs), an hour's cache, enough context to matter, and no note already written. */
+function aheadCan(sid) {
+  const s = sessionOf(sid), c = cacheOf(sid);
+  return !!s && insOn("handoff") && s.harness === "claude" && !s.machine && (c?.ttl || 0) >= AHEAD_TTL_MS && c.tokens >= CACHE_MIN_TOKENS && !aheadOf(sid);
+}
+const watchText = (sid) => aheadWatched(sid)
+  ? "<b>Hands off if you don't come back:</b> a minute before its cache runs out, it writes a hand-off note, and you choose when you're back."
+  : "Away for a while? A minute before its cache runs out, it can write a hand-off note, and you choose when you're back.";
+// A checkbox drawn as a button: a real one inside the bar would click twice (its label, then itself) and open the bar too.
+const watchToggle = (sid) => `<button class="ins-check" role="checkbox" aria-checked="${aheadWatched(sid)}" data-act="ins-watch" data-sid="${esc(sid)}"><i></i>Hand off if I don't come back</button>`;
+const watchLine = (sid) => `<div class="ins-line">${BULB}<span>${watchText(sid)}</span>${watchToggle(sid)}</div>`;
 // sid → the context size its hand-off insight waits for after "Remind me at …" (until Cue restarts). Nothing
 // else hides an insight: it shows whenever its numbers say so.
 const insLater = new Map();
 try { localStorage.removeItem("cue.insLater"); } catch {}   // what an earlier build kept
 const insLaterOf = (sid) => insLater.get(sid) || 0;
 const insShownOnce = new Set(); // "rule:sid": logged as shown in this window
-const insCache = new Map();     // sid → { until_ms, tokens, start, last_ms, cold_x, auto_at }, for sessions whose log isn't open here
+const insCache = new Map();     // sid → { until_ms, tokens, start, last_ms, cold_x, cold_cents, auto_at }, for sessions whose log isn't open here
 /** Compacting, or compacted since its latest reply: its log's context count is from before, so its
  *  insights wait for the next reply (the open session's hand-off asks the same). */
 function insStale(s, sid) {
@@ -108,18 +130,35 @@ function continueCover(sid) {
   if (!c) return "";
   const starts = c.starts ? `with <span class="mono">${esc(c.starts)}</span>` : "from its hand-off note";
   return `<div class="rs-cover"><div class="rs-card" role="status"><div class="rs-title">Continuing ${esc(c.name)} in a new session</div><div class="rs-bar"><i></i></div>
-    <div class="rs-note">It starts ${starts} and opens here. This one closes (Closed keeps it).</div></div></div>`;
+    <div class="rs-note">It starts ${starts} and opens here. ${c.ahead ? "This one stays as it is." : "This one closes (Closed keeps it)."}</div></div></div>`;
 }
 
 /** A hand-off sent and not continued yet (kept on the Mac, so it's here after a restart too): while it writes
  *  its note, say so; once it has, the one next step, a new session with "/<skill> resume" in its box. */
 function handoffNext(sid, s, ho) {
+  if (ho.ahead) return aheadCard(sid, s, ho);
   const starts = ho.resume ? `with <span class="mono">${esc(`/${ho.skill} resume`)}</span>` : "from its note";
   const body = s.state === "working"
     ? `<div class="ins-why">It's writing its hand-off note. Once it's done, continue in a new session from here.</div>`
     : `<div class="ins-why">Its hand-off note is written. Continue in a new session: it starts ${starts}, and this one closes (Closed keeps it).</div>
        <div class="ins-acts"><button class="btn primary" data-act="ins-continue" data-sid="${esc(sid)}">Continue in a new session</button></div>`;
   return `<div class="ins"><div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">hand-off · ${esc(ago(ho.sent_ms))} ago</span></div>${body}</div>`;
+}
+
+/** A note written before its cache ran out: while it's written, say so; then both ways on, with what each costs.
+ *  Continue here keeps all of its context (once the cache is gone, its next reply re-writes it); a new session
+ *  from the note starts small, and this one stays as it is. Replying here is continuing here too. */
+function aheadCard(sid, s, ho) {
+  const c = cacheOf(sid), left = c ? c.until_ms - now() : 0;
+  // Written once Cue has seen the note (its time, from its log): asking leave to write it isn't done yet.
+  const head = `<div class="ins-head">${BULB}<span class="ins-tag">INSIGHT</span><span class="ins-note">hand-off · ${ho.note_ms ? "written" : "writing"} before its cache ran out · ${esc(ago(ho.sent_ms))} ago</span></div>`;
+  if (!ho.note_ms) return `<div class="ins">${head}<div class="ins-why">It's writing a hand-off note before its cache runs out. Nothing else changes: this session stays as it is.</div></div>`;
+  const fresh = `<button class="btn ${left > 0 ? "" : "primary"}" data-act="ins-continue" data-sid="${esc(sid)}">New session from the note</button>`;
+  const here = `<button class="btn ${left > 0 ? "primary" : ""}" data-act="ins-keep" data-sid="${esc(sid)}">Continue here</button>`;
+  const why = left > 0
+    ? `<b>Hand-off note ready.</b> Its cache lasts ${Math.max(1, Math.ceil(left / 60000))} more min, so continuing here is still cheap.`
+    : `<b>Cache expired · hand-off note ready.</b> Continuing here, ${c ? coldCost(c, "its next reply") : "its next reply re-writes all of its context"}. A new session from the note starts small, and this one stays as it is.`;
+  return `<div class="ins">${head}<div class="ins-why">${why}</div><div class="ins-acts">${left > 0 ? here + fresh : fresh + here}</div></div>`;
 }
 
 /** A hand-off that already continued: where it carries on now, and Close for this one. Hand-off isn't offered here
@@ -243,10 +282,14 @@ function handoffInsight(sid, s) {
   // It stays while the session works too (like the background-agents tray), until you act on it.
   const d = handoffDue(sid, s);
   const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
-  const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask, !d?.opts.some((o) => o.cmd === "/compact")) : "", del = delegateLine(sid);
+  const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask, true, !d?.opts.some((o) => o.cmd === "/compact")) : "", del = delegateLine(sid);
   // Near where it auto-compacts: its own line, unless the hand-off card offers /compact already.
   const au = autoDue(sid, true), auto = au ? autoLine(sid, !d?.opts.some((o) => o.cmd === "/compact")) : "";
-  if (!d && !cache && !del && !auto) return "";
+  // Hand off if I don't come back: in the opened panel whenever it can (ticking it while it works is fine), on the
+  // bar itself once it's on, or when a big session waits on your reply (the only kind the Mac's timer acts on): not
+  // while it works on what you just sent, asks you something, or is out of usage.
+  const can = aheadCan(sid), watch = can ? watchLine(sid) : "", watchBar = can && (aheadWatched(sid) || (s.state === "waiting" && !ask && (cacheOf(sid)?.tokens || 0) >= AHEAD_MIN));
+  if (!d && !cache && !del && !auto && !watchBar) return "";
   if (d) insShown(sid, "handoff");
   const busy = insBusy.has(sid), isOpen = insOpen.has(sid);
   const open = `data-act="ins-open" data-sid="${esc(sid)}"`;
@@ -257,15 +300,18 @@ function handoffInsight(sid, s) {
   const handoffText = d && (insHotSeen.has(sid)
     ? `<b>Each reply re-reads ${esc(insTok(d.m.context))},</b> ${Math.round(d.grew)}× its start.`
     : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
-  const shown = [hotCache && cacheText(cw, ask), handoffText, au && autoText(au), cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
+  const shown = [hotCache && cacheText(cw, ask), handoffText, au && autoText(au), cw && !hotCache && cacheText(cw, ask), delegateText(sid), watchBar && watchText(sid)].filter(Boolean);
   const text = shown[0], rest = shown.length - 1;
   // Opened, the panel never repeats the bar's own line; with nothing else to show, the bar doesn't open at all.
-  const lead = hotCache ? "cache" : d ? "handoff" : au ? "auto" : cw ? "cache" : "del";
-  const lines = [lead !== "auto" && auto, lead !== "cache" && cache, lead !== "del" && del].filter(Boolean).join("");
+  const lead = hotCache ? "cache" : d ? "handoff" : au ? "auto" : cw ? "cache" : delegateText(sid) ? "del" : "watch";
+  const lines = [lead !== "auto" && auto, lead !== "cache" && cache, lead !== "del" && del, lead !== "watch" && watch].filter(Boolean).join("");
   const opens = !!d || !!lines;
-  const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : au && canCompact(sid) ? `<button class="btn" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact</button>` : "";
+  // A cache in its last minutes leading the bar carries its own ways out (its line isn't repeated when opened).
+  const warmActs = lead === "cache" && cw.left > 0 && !ask && !d ? `${insOn("handoff") && !s.machine ? `<button class="btn" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${compactWarm(sid, cw, ask) ? `<button class="btn" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}` : "";
+  const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : au && canCompact(sid) ? `<button class="btn" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact</button>` : warmActs || (lead === "watch" ? watchToggle(sid) : "");
   const arrow = opens ? `<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its insights" : "Show all of its insights"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button>` : "";
-  const bar = `<div class="ins-strip ${hot ? "hot" : ""} ${opens ? "" : "whole"}" ${opens ? open : ""}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}${arrow}</div>`;
+  // With its own ways out on it, the cache's sentence wraps instead of losing what the next reply costs.
+  const bar = `<div class="ins-strip ${hot ? "hot" : ""} ${opens ? "" : "whole"} ${warmActs && !busy ? "wrap" : ""}" ${opens ? open : ""}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}${arrow}</div>`;
   if (!isOpen || !opens) return bar;
   // Opened: the bar rises like a title and the rest unfolds under it, on the panel: the other insights the bar's
   // +N counts first (one line each), then the chart and every action.
@@ -283,7 +329,7 @@ function handoffInsight(sid, s) {
  *  log when it's open here, else from the last insight_state poll. */
 function cacheOf(sid) {
   const m = stepFeeds.get(sid)?.meta;
-  if (m?.cache_ttl_s && m.last_call_ms && m.context) return { until_ms: m.last_call_ms + m.cache_ttl_s * 1000, ttl: m.cache_ttl_s * 1000, tokens: m.context };
+  if (m?.cache_ttl_s && m.last_call_ms && m.context) return { until_ms: m.last_call_ms + m.cache_ttl_s * 1000, ttl: m.cache_ttl_s * 1000, tokens: m.context, cold_x: m.cold_x, cold_cents: m.cold_cents };
   const c = insCache.get(sid);
   return c?.until_ms ? { ...c, ttl: c.last_ms ? c.until_ms - c.last_ms : 0 } : null;
 }
@@ -299,16 +345,22 @@ function cacheWarn(sid) {
 }
 /** One line for a session that's waiting on you: the bulb in a ring counting down the cache's last minutes
  *  (amber in its last 5, when replying now is what saves it), the bulb alone once it's gone. `ask`: it waits on a decision (your answer is what its next reply follows), not a
- *  reply. `compact`: the open session's line also offers Compact now (compactWarm). "" when it isn't worth saying. */
-function cacheLine(sid, ask = false, compact = false) {
+ *  reply. `open`: the open session's line, which also offers Write hand-off now (a note to come back to, its
+ *  session kept as it is), and with `compact` Compact now (compactWarm). "" when it isn't worth saying. */
+function cacheLine(sid, ask = false, open = false, compact = false) {
   const cw = cacheWarn(sid);
   if (!cw) return "";
   const { left, warn } = cw;
   if (left > 0) {
     insShown(sid, "cache");
     const arc = Math.round((left / warn) * 66 * 10) / 10;
-    const away = compact && compactWarm(sid, cw, ask);
-    return `<div class="ins-line"><svg class="ins-ring ${left <= HOT_CACHE_MS ? "soon" : ""}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" class="track"></circle><circle cx="12" cy="12" r="10.5" class="left" stroke-dasharray="${arc} 66" transform="rotate(-90 12 12)"></circle>${RING_BULB}</svg><span>${cacheText(cw, ask)}${away ? " Away longer? Compacting now leaves a short summary to come back to." : ""}</span>${away ? `<button class="linkish" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}</div>`;
+    // Write hand-off now: a session on this Mac (another machine's note is seen by its log copy's clock, which can drift).
+    const away = open && compact && compactWarm(sid, cw, ask), note = open && !ask && insOn("handoff") && !sessionOf(sid)?.machine;
+    const why = note && away ? " Away longer? A hand-off note now gives you a cheap way back; Compact now leaves a short summary in place."
+      : note ? " Away longer? A hand-off note now gives you a cheap way back, and this session stays as it is."
+      : away ? " Away longer? Compacting now leaves a short summary to come back to." : "";
+    const acts = `${note ? `<button class="linkish" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${away ? `<button class="linkish" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}`;
+    return `<div class="ins-line"><svg class="ins-ring ${left <= HOT_CACHE_MS ? "soon" : ""}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" class="track"></circle><circle cx="12" cy="12" r="10.5" class="left" stroke-dasharray="${arc} 66" transform="rotate(-90 12 12)"></circle>${RING_BULB}</svg><span>${cacheText(cw, ask)}${why}</span>${acts}</div>`;
   }
   return `<div class="ins-line cold">${BULB}<span>${cacheText(cw, ask)}</span></div>`;
 }
@@ -318,16 +370,31 @@ function compactWarm(sid, cw, ask) {
   return !ask && cw.left > 0 && cw.c.tokens >= COMPACT_WARM_MIN && canCompact(sid);
 }
 const canCompact = (sid) => cmdList(sid).some((c) => c.name === "compact");
+/** What a reply after the cache runs out costs, `what` doing it ("its next reply", "answering"): as many warm
+ *  replies as it's worth when the model is priced (prices::cold_x), with the tokens it re-writes, and dollars
+ *  only on the API: Claude Code's 5-hour and weekly limits mean a subscription, where nothing is billed. */
+function coldCost(c, what) {
+  const u = state.usage, api = !(u && (u.five_hour || u.seven_day));
+  const usd = api && c.cold_cents >= 1 ? `, about $${(c.cold_cents / 100).toFixed(2)}` : "";
+  return c.cold_x > 1 ? `${what} costs as much as <b>${c.cold_x} warm replies</b> (it re-writes ${esc(insTok(c.tokens))} tokens${usd})`
+    : `${what} re-writes ${esc(insTok(c.tokens))} tokens${usd}`;
+}
 /** cacheWarn's sentence, for its line and the open session's strip. */
 function cacheText({ c, left }, ask) {
-  if (left > 0) return `<b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> After that, ${ask ? "answering" : "its next reply"} re-writes ${esc(insTok(c.tokens))} tokens.`;
-  return `Cache expired · ${ask ? `answering re-writes ${esc(insTok(c.tokens))} tokens.` : `its next reply re-writes ${esc(insTok(c.tokens))} tokens. Starting something new? Hand off instead.`}`;
+  const what = ask ? "answering" : "its next reply";
+  if (left > 0) return `<b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> After that, ${coldCost(c, what)}.`;
+  return `Cache expired · ${coldCost(c, what)}.${ask ? "" : " Starting something new? Hand off instead."}`;
 }
 /** On a waiting card: the session has grown several times past where it started. Open it to hand off. */
 function handoffLine(sid) {
   if (!insOn("handoff") || !sid) return "";
   const s = sessionOf(sid), m = stepFeeds.get(sid)?.meta, c = insCache.get(sid);
   const pending = state.skill_handoffs?.[sid];
+  if (s && pending?.ahead && !pending.next) {
+    if (!pending.note_ms) return `<div class="ins-line">${BULB}<span><b>Writing a hand-off note</b> before its cache runs out.</span></div>`;
+    const c = cacheOf(sid), left = c ? c.until_ms - now() : 0;
+    return `<div class="ins-line">${BULB}<span>${left > 0 ? `<b>Hand-off note ready.</b> Still cached ${Math.max(1, Math.ceil(left / 60000))} more min.` : "<b>Cache expired · hand-off note ready.</b> Open it to continue here or start fresh from the note."}</span></div>`;
+  }
   if (s && pending && !pending.next) return `<div class="ins-line">${BULB}<span><b>Hand-off note written.</b> Open it to continue in a new session.</span></div>`;
   if (s && pending?.next) return `<div class="ins-line">${BULB}<span><b>Continued in ${esc(nameOf(pending.next, sessionOf(pending.next)?.project) || "a new session")}.</b> Close this one when you're done with it.</span></div>`;
   const ctx = m?.context || c?.tokens || 0, start = m?.start_context || c?.start || 0;
@@ -379,7 +446,7 @@ function resumeCost(sid) {
   if (left > 0) return `<div class="ins-line" data-key="cost">${BULB}<span><b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> Resuming now re-reads its ${esc(insTok(c.tokens))} of context from the cache.</span></div>`;
   insShown(sid, "cache");
   const fresh = c.start ? ` A new session from its last reply starts near ${esc(insTok(c.start))}.` : "";
-  return `<div class="ins-line cold" data-key="cost">${BULB}<span>Its cache is gone: resuming re-writes <b>${esc(insTok(c.tokens))}</b> tokens on its first reply.${fresh}</span><button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh from its last reply</button></div>`;
+  return `<div class="ins-line cold" data-key="cost">${BULB}<span>Its cache is gone: ${coldCost(c, "its first reply after resuming")}.${fresh}</span><button class="linkish" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh from its last reply</button></div>`;
 }
 setInterval(insPoll, 30000);
 setTimeout(insPoll, 3000);   // and soon after the window opens, not 30 s in
@@ -441,7 +508,8 @@ function delegateLine(sid) {
  *  what it could have delegated, the cache), with "+N" for the rest: they're all in its open strip.
  *  `ask`: it waits on a decision, so only its cache counts. */
 function insCardLine(sid, ask = false) {
-  const cw = cacheWarn(sid), cache = cacheLine(sid, ask);
+  // A note written ahead says where its cache stands itself.
+  const cw = cacheWarn(sid), cache = aheadOf(sid) ? "" : cacheLine(sid, ask);
   const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), autoLine(sid), delegateLine(sid)] : [handoffLine(sid), autoLine(sid), delegateLine(sid), cache];
   const [top, ...rest] = lines.filter(Boolean);
   return top && rest.length ? top.replace(/<\/div>$/, `<span class="ins-n">+${rest.length}</span></div>`) : top || "";
@@ -496,7 +564,7 @@ function insAct(act, d) {
   if (act === "ins-continue") {
     if (insContinuing.has(sid)) return;
     const s = sessionOf(sid), ho = state.skill_handoffs?.[sid];
-    insContinuing.set(sid, { name: nameOf(sid, s?.project), starts: ho?.resume ? `/${ho.skill} resume` : "" });
+    insContinuing.set(sid, { name: nameOf(sid, s?.project), starts: ho?.resume ? `/${ho.skill} resume` : "", ahead: ho?.ahead > 0 });
     renderMain();
     return invoke("handoff_continue", { sessionId: sid }).then((r) => {
       insContinuing.delete(sid);
@@ -507,6 +575,19 @@ function insAct(act, d) {
   }
   // The session a hand-off continued in.
   if (act === "ins-goto") return sessionOf(sid) ? openSession(sid) : setActive(null, sid);
+  // Write hand-off now: Cue's hand-off before its cache runs out; its session stays as it is.
+  if (act === "ins-ahead") {
+    return insRun(sid, "Writing its hand-off note…", () => invoke("handoff_cue", { sessionId: sid, ahead: true })
+      .then(() => toast("Hand-off note asked for: when you're back, continue here or start fresh from it"), (e) => toast(`Couldn't send: ${e}`)));
+  }
+  // Continue here, on a note written ahead: it's set aside, and the box is yours.
+  if (act === "ins-keep") {
+    return invoke("handoff_keep", { sessionId: sid }).then(() => document.querySelector(`textarea[data-text="${CSS.escape(`s:${sid}`)}"]`)?.focus(), (e) => toast(`Couldn't: ${e}`));
+  }
+  if (act === "ins-watch") {
+    const on = !aheadWatched(sid);
+    return invoke("ahead_watch", { sessionId: sid, on }).then(() => toast(on ? "If you're not back a minute before its cache runs out, it writes a hand-off note" : "It won't hand off on its own"), (e) => toast(`Couldn't: ${e}`));
+  }
   if (act === "ins-cue") {
     return insRun(sid, "Handing off…", () => invoke("handoff_cue", { sessionId: sid })
       .then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
@@ -621,9 +702,10 @@ function insSettings(st) {
   }).join("");
   return `
     <div class="set-group">Insights</div>
-    ${setRow("What they are", "Small notes from a session's own log, with the evidence. Each one offers what that session's machine already has, and sends it only when you click. Last 30 days: " + esc(insCountsLine()), "")}
-    ${setRow("Hand off", "When a session's turns cost several times what its early ones did, offers its hand-off skill (else Cue's own: a note in HANDOFF.md, then Continue in a new session) or /compact.", toggle("insights.handoff", st.insights?.handoff ?? true))}
+    ${setRow("What they are", "Small notes from a session's own log, with the evidence. Each one offers what that session's machine already has, and sends it only when you click, or where you turn on a hand-off before the cache runs out. Last 30 days: " + esc(insCountsLine()), "")}
+    ${setRow("Hand off", "When a session's turns cost several times what its early ones did, offers its hand-off skill (else Cue's own: a note of its own, HANDOFF-<its id>.md, then Continue in a new session) or /compact.", toggle("insights.handoff", st.insights?.handoff ?? true))}
     ${setRow("Cache about to expire", "On a waiting card, the last minutes before its cached context runs out, and once it has. Claude Code says when; other agents' logs don't.", toggle("insights.cache", st.insights?.cache ?? true))}
+    ${setRow("Hand off before the cache runs out", "Off by default: Cue would type into your sessions unasked. On, every Claude Code session on this Mac waiting on you with 150k or more of context and an hour's cache gets Cue's hand-off a minute before its cache runs out, unless something is typed in its box, it has background agents at work, or Cue can't see its box (it reads tmux panes, which Cue's own terminal uses). When you're back you choose: continue here, or a new session from the note. A session's own “Hand off if I don't come back” does this for that one alone.", toggle("insights.ahead", st.insights?.ahead ?? false))}
     ${setRow("Near auto-compact", "When a session nears where Claude Code has lately compacted sessions on its model on its own, so you can compact or hand off first. The point moves between versions: Cue goes by the least of your last few.", toggle("insights.autocompact", st.insights?.autocompact ?? true))}
     ${setRow("Could have delegated", "On a waiting card, when a session did a lot of reading and searching itself (a background agent would have sent back a summary), or ran long across several areas of its project (relay, when it's on, or an agent per area).", toggle("insights.delegate", st.insights?.delegate ?? true))}
     ${setRow("Queue instead of interrupting", "While a session works and you've typed something: Now stops what it's doing, Queue keeps it.", toggle("insights.queue", st.insights?.queue ?? true))}
@@ -637,5 +719,7 @@ function insCountsLine() {
   const by = Object.fromEntries(insCounts.map((r) => [r.rule, r]));
   const part = (rule, label) => (by[rule] ? `${label}: shown ${by[rule].shown}, acted ${by[rule].acted}` : "");
   const saved = by.cache?.tokens ? ` · ${insTok(by.cache.tokens)} tokens not re-written` : "";
-  return [part("handoff", "Hand off"), part("cache", "Cache") + saved, part("autocompact", "Auto-compact"), part("queue", "Queue"), part("delegate", "Delegate")].filter(Boolean).join(" · ") || "Nothing shown yet.";
+  // Notes before the cache ran out: written, then what you did when you came back (here or from the note).
+  const ahead = by.ahead ? `Before cold: ${by.ahead.shown} notes, ${by.ahead.acted} came back to` : "";
+  return [part("handoff", "Hand off"), part("cache", "Cache") + saved, ahead, part("autocompact", "Auto-compact"), part("queue", "Queue"), part("delegate", "Delegate")].filter(Boolean).join(" · ") || "Nothing shown yet.";
 }

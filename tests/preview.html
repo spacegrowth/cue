@@ -34,11 +34,14 @@
         settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] }, insights: { handoff: true, cache: true, queue: true, skills: /ins=1/.test(location.search) ? { "|claude": "relay:handoff", "build-box|codex": "handoff" } : {} } },
         // ?ins=sent: agent-relay sent /handoff and hasn't continued (insights.js handoffNext); ?ins=sentcue: Cue's own;
         // ?ins=continued: it continued in order-engine and is still open (handoffContinued).
-        skill_handoffs: /ins=continued/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 300000, next: "eng", continued_ms: Date.now() - 240000, resume: true } } : /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
+        // ?ahead=warm|cold|writing: agent-relay wrote a hand-off note before its cache ran out (insights.js aheadCard);
+        // ?ahead=watch|ticked|soon: its "Hand off if I don't come back" (untouched, ticked) and, with 4 minutes left, Write hand-off now.
+        ahead_watch: q.get("ahead") === "ticked" ? ["relay"] : [],
+        skill_handoffs: ["warm", "cold", "writing"].includes(q.get("ahead")) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - (q.get("ahead") === "writing" ? 20000 : 70 * 60000), next: "", continued_ms: 0, resume: false, ahead: 2, note_ms: q.get("ahead") === "writing" ? 0 : Date.now() - 69 * 60000 } } : /ins=continued/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 300000, next: "eng", continued_ms: Date.now() - 240000, resume: true } } : /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
         connections: { claude: { ok: true, events: ["PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"] }, pi: { ok: true } },
         // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
         sessions: [
-          sess("relay", "agent-relay", "claude", "waiting", 11, [seg("working", 30, 11), seg("waiting", 11)]),
+          sess("relay", "agent-relay", "claude", q.get("ahead") === "writing" ? "working" : "waiting", 11, [seg("working", 30, 11), seg("waiting", 11)]),
           { ...sess("det", "backtester", "claude", "waiting", 4, [seg("working", 30, 4), seg("waiting", 4)]), background: 1 },
           sess("sec", "filings-bot", "pi", "waiting", 1, [seg("working", 16, 1), seg("waiting", 1)]),
           sess("pipe", "data-pipeline", "claude", "deciding", 3, [seg("working", 24, 3), seg("waiting", 3)]),
@@ -419,6 +422,12 @@
             if (args.sessionId === "relay" && /ins=/.test(location.search)) {
               const turns = Array.from({ length: 24 }, (_, i) => ({ at_ms: now - (90 - i * 3.5) * M, prompt: i ? "" : "add the tax column", more: 0, items: [{ t: "say", text: "Done.", at_ms: now - (89 - i * 3.5) * M }], tokens: Math.round(40000 + 18000 * Math.pow(i, 1.35)), context: Math.round(470000 + 130000 * Math.pow(i / 23, 1.3)) }));
               return { version: 1, meta: { model: "claude-opus-5-5", context: 600000, window: 1000000, last_call_ms: now - 52 * M, cache_ttl_s: 3600, start_context: 45000, start_ms: now - 6 * 60 * M }, turns };
+            }
+            // ?ahead=…: a 320k session on an hour's cache, its last reply as each case needs.
+            if (args.sessionId === "relay" && q.get("ahead")) {
+              const ago = { watch: 10, ticked: 10, soon: 56, warm: 2, writing: 1, cold: 65 }[q.get("ahead")] || 10;
+              const turns = [{ at_ms: now - (ago + 1) * M, prompt: "carry on", more: 0, items: [{ t: "say", text: "Done: the spend column sorts high to low, tests pass.", at_ms: now - ago * M }], tokens: 320000, context: 320000 }];
+              return { version: 1, meta: { model: "claude-opus-5-5", context: 320000, window: 1000000, last_call_ms: now - ago * M, cache_ttl_s: 3600, start_context: 240000, start_ms: now - 3 * 60 * M, cold_x: 40, cold_cents: 256 }, turns };
             }
             if (args.sessionId !== "relay") return { version: 0, turns: [] };
             const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });

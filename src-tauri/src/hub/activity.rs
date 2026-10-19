@@ -32,6 +32,25 @@ const COLD_WARN_MS: u64 = 10 * 60_000;
 const COLD_WARN_SHORT_MS: u64 = 2 * 60_000;
 const COLD_MIN_TOKENS: u64 = 50_000;
 
+/// A hand-off note asked for before a cache runs out (a session's "Hand off if I don't come back", or Settings
+/// for every big one): this long before it does, an hour's cache only (a 5-minute one runs out while you're
+/// still reading; its Write hand-off now is yours to press), and from this much context for Settings' every
+/// session (one you ticked goes from COLD_MIN_TOKENS). insights.js says the same (AHEAD_MIN).
+const AHEAD_LEAD_MS: u64 = 90_000;
+const AHEAD_TTL_MS: u64 = 30 * 60_000;
+const AHEAD_MIN_TOKENS: u64 = 150_000;
+
+/// Whether a waiting session's cache (running out at `until`, its last reply at `last`, `tokens` of context)
+/// is in the minute and a half a hand-off note goes ahead of: an hour's cache, big enough to matter.
+fn ahead_due(until: u64, last: u64, tokens: u64, now: u64) -> bool {
+    until > now && until - now <= AHEAD_LEAD_MS && until.saturating_sub(last) >= AHEAD_TTL_MS && tokens >= COLD_MIN_TOKENS
+}
+
+/// Who a due note is asked for by (ipc AHEAD_*): its session's own tick, else Settings' every big session; 0: neither.
+fn ahead_by(ticked: bool, all: bool, tokens: u64) -> u8 {
+    if ticked { crate::ipc::AHEAD_SESSION } else if all && tokens >= AHEAD_MIN_TOKENS { crate::ipc::AHEAD_ALL } else { 0 }
+}
+
 impl Hub {
     /// Your message queued during the turn that just ended, unless the turn read it (absorbed between
     /// steps) or it's this turn's own prompt (taken from the queue a while ago).
@@ -193,7 +212,9 @@ impl Hub {
                 let later = self.st().sessions.is_later(&sid);
                 // A message you kept for it goes now: nothing to tell you, it's working again in a moment.
                 let held = self.st().sessions.held(&sid).is_some();
-                if crate::config::flag("/notify/finished") && !later && !held {
+                // The note Cue asked for while you're away (its tick, or Settings): no need to call you back for it.
+                let noted = !origin_path.is_empty() && crate::steps::last_prompt(&origin_path).1 && crate::db::handoff(&sid).is_some_and(|k| k.ahead > crate::ipc::AHEAD_YOU);
+                if crate::config::flag("/notify/finished") && !later && !held && !noted {
                     match full {
                         Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
                         None => self.notify(&id, &title.0, &title.1, "turn"),
@@ -374,7 +395,10 @@ impl Hub {
                 .collect()
         };
         let mut heads_up = vec![];
+        let mut ahead = vec![];
         let mut insight = HashMap::new();
+        // Asked only once one is due, so most ticks don't read the database.
+        let mut watched: Option<(Vec<String>, bool)> = None;
         for (it, later) in waiting {
             let sid = &it.origin.session_id;
             let Some(st) = crate::steps::insight_state(&it.origin.transcript_path) else { continue };
@@ -384,16 +408,31 @@ impl Hub {
             if until == 0 {
                 continue;
             }
+            if it.kind == "waiting" && it.origin.harness == "claude" && !later && ahead_due(until, last, tokens, now) {
+                let (ticked, all) = watched.get_or_insert_with(|| (crate::db::ahead_watched(), crate::config::flag("/insights/ahead")));
+                let by = ahead_by(ticked.contains(sid), *all, tokens);
+                // Not when a hand-off is already on its way or written (ahead, or one you sent this stretch).
+                let handing = crate::db::handoff(sid).is_some_and(|k| k.next.is_empty() && (k.ahead > 0 || k.sent_ms >= last));
+                if by > 0 && !handing {
+                    ahead.push((it.origin.clone(), until, tokens, by));
+                }
+            }
             // A 5-minute cache is always inside 10 minutes: told in its last 2, not as its turn ends.
             let warn = if until.saturating_sub(last) > COLD_WARN_MS { COLD_WARN_MS } else { COLD_WARN_SHORT_MS };
             if until <= now || until - now > warn || tokens < COLD_MIN_TOKENS || later {
                 continue;
             }
+            // A note written ahead is waiting for you: its card says so, and its renewed cache needs no heads-up.
+            if crate::db::handoff(sid).is_some_and(|k| k.ahead > 0 && k.next.is_empty()) {
+                continue;
+            }
             heads_up.push((it, until, tokens));
         }
-        let heads_up = {
+        let (heads_up, ahead) = {
             let mut st = self.st();
             st.insight = insight;
+            st.ahead_tried.retain(|_, until| *until > now);
+            let ahead: Vec<_> = ahead.into_iter().filter(|(o, until, ..)| st.ahead_tried.insert(o.session_id.clone(), *until) != Some(*until)).collect();
             st.cold_warned.retain(|_, until| *until > now);
             let mut told = vec![];
             for (it, until, _) in heads_up {
@@ -401,8 +440,24 @@ impl Hub {
                     told.push((it, until));
                 }
             }
-            told
+            (told, ahead)
         };
+        // Off this tick's thread (typing waits for the session to take it); a hub without the app (tests) does it here.
+        match self.shared() {
+            Some(h) if !ahead.is_empty() => {
+                std::thread::spawn(move || {
+                    for (o, _, tokens, by) in ahead {
+                        h.hand_off_ahead(&o, tokens, by);
+                    }
+                });
+            }
+            Some(_) => {}
+            None => {
+                for (o, _, tokens, by) in ahead {
+                    self.hand_off_ahead(&o, tokens, by);
+                }
+            }
+        }
         if crate::config::flag("/notify/cold") {
             for (it, until) in heads_up {
                 // The card's own notification, replaced: Reply on it still goes to the session.
@@ -411,6 +466,40 @@ impl Hub {
                 let (_, what) = notify_title(&it);
                 self.notify(&it.id, &format!("{project} · cache runs out in {mins}m"), &what, if it.kind == "waiting" { "turn" } else { "" });
             }
+        }
+    }
+
+    /// Ask a waiting session for its hand-off note before its cache runs out (cache_tick found it due), unless
+    /// typing now could land on something of yours: a draft in Cue's box, anything typed in its terminal's
+    /// box (or a box Cue can't see: only a tmux pane's screen can be read), or a turn under way. Nor while its
+    /// background agents work: the note would be stale in minutes. What held it is counted (insight_events).
+    fn hand_off_ahead(&self, o: &Origin, tokens: u64, by: u8) {
+        let sid = &o.session_id;
+        let held = |why: &str| crate::ipc::record_insight(sid, "ahead", "held", why, tokens);
+        // A message of yours kept in Cue for it counts too: the ask would go in its place.
+        let busy = {
+            let st = self.st();
+            st.sessions.state(sid).as_deref() != Some("waiting") || st.sessions.compacting_since(sid) > 0 || st.sessions.held(sid).is_some()
+        };
+        if busy {
+            return held("busy");
+        }
+        if crate::steps::running_background(&o.transcript_path) > 0 {
+            return held("agents");
+        }
+        if !crate::db::draft_text(&format!("s:{sid}")).trim().is_empty() {
+            return held("draft");
+        }
+        if o.tmux_pane.is_empty() {
+            return held("unseen");
+        }
+        match crate::focus::session_screen(o).ok().as_deref().and_then(crate::focus::box_empty) {
+            Some(true) => {}
+            Some(false) => return held("typed"),
+            None => return held("unseen"),
+        }
+        if let Err(e) = crate::ipc::handoff_cue_ahead(self, sid, by) {
+            held(&e);
         }
     }
 
@@ -784,6 +873,135 @@ mod tests {
         hub.active_from_you(o.clone(), "and the ids".into(), vec![], "");
         let s = hub.saved_sessions().into_iter().find(|s| s.origin.session_id == "s1").unwrap();
         assert_eq!((s.state.as_str(), s.driven_by.as_str(), s.helpers), ("working", "", 0), "at work, not waiting on its agents");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_note_goes_ahead_only_in_an_hour_caches_last_minute_and_a_half() {
+        let (now, hour, min) = (10_000_000_000u64, 3_600_000u64, 60_000u64);
+        // Its last reply an hour before its cache runs out (an hour's cache), 80 s left: due.
+        assert!(super::ahead_due(now + 80_000, now + 80_000 - hour, 300_000, now));
+        assert!(!super::ahead_due(now + 3 * min, now + 3 * min - hour, 300_000, now), "not yet: 3 minutes left");
+        assert!(!super::ahead_due(now - 1, now - 1 - hour, 300_000, now), "already gone");
+        assert!(!super::ahead_due(now + 80_000, now + 80_000 - 5 * min, 300_000, now), "a 5-minute cache: the button only");
+        assert!(!super::ahead_due(now + 80_000, now + 80_000 - hour, 40_000, now), "too small to matter");
+        // Its own tick goes from any size worth a note; Settings' every-session from 150k.
+        assert_eq!(super::ahead_by(true, false, 60_000), crate::ipc::AHEAD_SESSION);
+        assert_eq!(super::ahead_by(false, true, 160_000), crate::ipc::AHEAD_ALL);
+        assert_eq!(super::ahead_by(false, true, 100_000), 0);
+        assert_eq!(super::ahead_by(false, false, 900_000), 0, "off unless you turned it on");
+    }
+
+    /// A Claude Code log whose last reply came `ago_ms` ago with `context` tokens, cached for `ttl_s`.
+    fn cached_log(path: &std::path::Path, ago_ms: u64, context: u64, ttl_s: u64) {
+        let at = now_ms() - ago_ms;
+        let (h1, m5) = if ttl_s >= 3600 { (1000, 0) } else { (0, 1000) };
+        let reply = serde_json::json!({"type":"assistant","timestamp":iso(at),"message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}],
+            "usage":{"input_tokens":10,"cache_read_input_tokens":context - 1010,"cache_creation_input_tokens":1000,"cache_creation":{"ephemeral_1h_input_tokens":h1,"ephemeral_5m_input_tokens":m5},"output_tokens":50}}});
+        std::fs::write(path, format!("{}\n{reply}\n", serde_json::json!({"type":"user","timestamp":iso(at - 5000),"message":{"content":"go on"}}))).unwrap();
+    }
+
+    #[test]
+    fn a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt() {
+        let dir = std::env::temp_dir().join(format!("cue-ahead-tick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let hour = 3_600_000;
+        // A session waiting on you, its log as given: its card is up.
+        let waiting = |sid: &str, ago_ms: u64, context: u64, ttl_s: u64| -> Origin {
+            let path = dir.join(format!("{sid}.jsonl"));
+            cached_log(&path, ago_ms, context, ttl_s);
+            let o = Origin { session_id: sid.into(), harness: "claude".into(), cwd: "/x/proj".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+            hub.event(o.clone(), "stopped", "Done.".into(), vec![], "");
+            o
+        };
+        let events = |sid: &str| crate::db::insight_events_of(sid).into_iter().filter(|(r, ..)| r == "ahead").map(|(_, a, d)| format!("{a}:{d}")).collect::<Vec<_>>();
+        // 60 s left of an hour's cache, 300k: due. Ticked, but Cue can't see its box (no tmux pane): held, once.
+        let a = waiting("a1", hour - 60_000, 300_000, 3600);
+        crate::db::ahead_watch("a1", true);
+        // Not ticked, Settings off (its default): nothing.
+        waiting("b1", hour - 60_000, 300_000, 3600);
+        // Ticked, but a 5-minute cache: the button only.
+        let c = waiting("c1", 4 * 60_000, 300_000, 300);
+        crate::db::ahead_watch("c1", true);
+        // Ticked, but 20 minutes left: not yet.
+        waiting("d1", 40 * 60_000, 300_000, 3600);
+        crate::db::ahead_watch("d1", true);
+        // Ticked, a note already written ahead: not again.
+        waiting("e1", hour - 60_000, 300_000, 3600);
+        crate::db::ahead_watch("e1", true);
+        crate::db::handoff_sent("e1", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_SESSION);
+        // Ticked, but it's asking you something now: held as busy.
+        let f = waiting("f1", hour - 60_000, 300_000, 3600);
+        crate::db::ahead_watch("f1", true);
+        hub.st().sessions.mark(&f, "deciding", None);
+        // Ticked, and you've a draft in Cue's box for it: held.
+        waiting("g1", hour - 60_000, 300_000, 3600);
+        crate::db::ahead_watch("g1", true);
+        crate::db::set_draft("s:g1", "half a thought", &serde_json::json!([]));
+        hub.cache_tick();
+        assert_eq!(events("a1"), ["held:unseen"], "Cue can't see its box: nothing typed");
+        for sid in ["b1", "c1", "d1", "e1"] {
+            assert!(events(sid).is_empty(), "{sid}: {:?}", events(sid));
+        }
+        assert_eq!(events("f1"), ["held:busy"]);
+        assert_eq!(events("g1"), ["held:draft"]);
+        hub.cache_tick();
+        assert_eq!(events("a1"), ["held:unseen"], "once per idle stretch, not every tick");
+        assert!(crate::db::handoff("a1").is_none() && crate::db::handoff("c1").is_none(), "nothing was asked for");
+        let _ = (a, c);
+        // It began working just as the ask went: Cue would keep it for when that turn ends, with you there.
+        // Taken back instead: nothing kept, nothing recorded as asked.
+        let w = waiting("w1", hour - 60_000, 300_000, 3600);
+        hub.mark_state(&w, "working");
+        assert_eq!(crate::ipc::handoff_cue_ahead(&hub, "w1", crate::ipc::AHEAD_SESSION), Err("busy".to_string()));
+        assert!(hub.st().sessions.held("w1").is_none() && crate::db::handoff("w1").is_none());
+        // You pressing Write hand-off now while it works: kept for when it's free, as anything you send.
+        assert!(crate::ipc::handoff_cue_ahead(&hub, "w1", crate::ipc::AHEAD_YOU).unwrap().starts_with("kept in Cue"));
+        assert_eq!(crate::db::handoff("w1").map(|k| k.ahead), Some(crate::ipc::AHEAD_YOU));
+
+        // In a tmux pane showing Claude Code's box: empty, it's asked for its note (ahead, by its tick); with
+        // something typed in it, held and nothing typed.
+        if crate::focus::tmux_installed() {
+            let pane = |sid: &str, box_line: &str| -> (String, String) {
+                let name = format!("cue-ahead-{sid}-{}", std::process::id());
+                let script = format!("printf '%s\\n' '────────' '{box_line}' '────────'; exec cat");
+                let out = std::process::Command::new("tmux").args(["new-session", "-d", "-s", &name, "-x", "120", "-y", "20", "-P", "-F", "#{pane_id}", "sh", "-c", &script]).output().unwrap();
+                let pane = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                (name, pane)
+            };
+            let in_pane = |sid: &str, pane: &str| {
+                let path = dir.join(format!("{sid}.jsonl"));
+                cached_log(&path, hour - 60_000, 300_000, 3600);
+                let o = Origin { session_id: sid.into(), harness: "claude".into(), cwd: "/x/proj".into(), transcript_path: path.to_string_lossy().into(), tmux_pane: pane.into(), ..Default::default() };
+                hub.event(o, "stopped", "Done.".into(), vec![], "");
+                crate::db::ahead_watch(sid, true);
+            };
+            let (n1, empty) = pane("t1", "❯ ");
+            let (n2, typed) = pane("t2", "❯ yes go ahead");
+            in_pane("t1", &empty);
+            in_pane("t2", &typed);
+            hub.cache_tick();
+            let screen = |p: &str| crate::focus::tmux_screen(p).unwrap_or_default();
+            assert_eq!(events("t2"), ["held:typed"]);
+            assert!(!screen(&typed).contains("Hand off:"), "nothing typed over yours");
+            assert_eq!(events("t1"), ["shown:session"]);
+            assert!(screen(&empty).contains("Hand off: write a short note") && screen(&empty).contains("HANDOFF-t1.md"), "{}", screen(&empty));
+            let h = crate::db::handoff("t1").unwrap();
+            assert_eq!((h.skill.as_str(), h.ahead), (crate::ipc::CUE_HANDOFF, crate::ipc::AHEAD_SESSION));
+            hub.cache_tick();
+            assert_eq!(events("t1"), ["shown:session"], "asked once");
+            for n in [n1, n2] {
+                let _ = std::process::Command::new("tmux").args(["kill-session", "-t", &n]).output();
+            }
+        }
+        std::env::remove_var("CUE_HOME");
+        crate::db::reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

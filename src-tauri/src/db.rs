@@ -104,7 +104,17 @@ CREATE TABLE IF NOT EXISTS handoffs (
   continued_ms INTEGER NOT NULL DEFAULT 0,
   resume       INTEGER NOT NULL DEFAULT 1, -- 1: the skill takes 'resume'; 0: Cue's own message starts the new one
   note         TEXT NOT NULL DEFAULT '',  -- its hand-off note's path, as its log names it ('' when Cue didn't see it written)
-  note_ms      INTEGER NOT NULL DEFAULT 0 -- when that note was written, by its log's clock
+  note_ms      INTEGER NOT NULL DEFAULT 0, -- when that note was written, by its log's clock
+  ahead        INTEGER NOT NULL DEFAULT 0  -- written before its cache ran out (1: you, Write hand-off now; 2: its
+                                           -- "Hand off if I don't come back"; 3: Settings, every big session): its
+                                           -- session stays open when it continues, and a reply there drops it
+);
+
+-- Sessions to hand off if you don't come back (insights' "Hand off if I don't come back", per session):
+-- Cue asks for the note a minute before their cache runs out.
+CREATE TABLE IF NOT EXISTS ahead_watch (
+  session_id TEXT PRIMARY KEY,
+  set_ms     INTEGER NOT NULL
 );
 
 -- The Insights tab (logs/turns.rs reads each session's own log into it, a few MB at a time in the
@@ -234,6 +244,11 @@ fn open() -> rusqlite::Result<Connection> {
         let _ = c.execute("ALTER TABLE turns ADD COLUMN auto_compact INTEGER NOT NULL DEFAULT 0", []);
         c.execute_batch("DELETE FROM turns_read;")?;
         c.pragma_update(None, "user_version", 5)?;
+    }
+    // A hand-off note written before its session's cache ran out: the column. A new database has it already.
+    if version < 6 {
+        let _ = c.execute("ALTER TABLE handoffs ADD COLUMN ahead INTEGER NOT NULL DEFAULT 0", []);
+        c.pragma_update(None, "user_version", 6)?;
     }
     Ok(c)
 }
@@ -590,6 +605,12 @@ fn snippet(text: &str, q: &str) -> String {
 
 // ---------- drafts: what you've typed but not sent, per session ----------
 
+/// The text of one unsent draft ("" when there's none).
+pub fn draft_text(key: &str) -> String {
+    use rusqlite::OptionalExtension;
+    with(|c| c.query_row("SELECT text FROM drafts WHERE key = ?1", params![key], |r| r.get::<_, String>(0)).optional()).flatten().unwrap_or_default()
+}
+
 pub fn drafts() -> Value {
     with(|c| {
         let mut q = c.prepare("SELECT key, text, images FROM drafts")?;
@@ -690,12 +711,47 @@ pub fn insight_event(session_id: &str, rule: &str, action: &str, detail: &str, t
         params![now_ms() as i64, session_id, rule, action, detail, tokens as i64]));
 }
 
+/// A session's insight events, oldest first: (rule, action, detail). For tests.
+#[cfg(test)]
+pub fn insight_events_of(session_id: &str) -> Vec<(String, String, String)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT rule, action, detail FROM insight_events WHERE session_id = ?1 ORDER BY at_ms, rowid")?;
+        let rows = q.query_map(params![session_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+    }).unwrap_or_default()
+}
+
 /// A session sent its hand-off skill (or Cue's own): it's offered "Continue in a new session" until it does.
 /// `resume`: the skill takes "resume" for the new session; otherwise Cue's own message starts it. A note
-/// seen before is forgotten (this hand-off writes its own); when it was written is kept, so it isn't taken again.
-pub fn handoff_sent(session_id: &str, skill: &str, resume: bool) {
-    with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = ?4, next_session = '', continued_ms = 0, note = ''",
-        params![session_id, skill, now_ms() as i64, resume]));
+/// seen before is forgotten (this hand-off writes its own; an older one, written before `sent_ms`, isn't taken again).
+/// `ahead`: asked before its cache ran out (see the handoffs table), else 0.
+pub fn handoff_sent(session_id: &str, skill: &str, resume: bool, ahead: u8) {
+    with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume, ahead) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = ?4, next_session = '', continued_ms = 0, note = '', note_ms = 0, ahead = ?5",
+        params![session_id, skill, now_ms() as i64, resume, ahead]));
+}
+
+/// A hand-off written ahead that you didn't continue from (you replied in its session): gone, so its
+/// session is offered hand-offs as before.
+pub fn handoff_drop(session_id: &str) {
+    with(|c| c.execute("DELETE FROM handoffs WHERE session_id = ?1", params![session_id]));
+}
+
+/// "Hand off if I don't come back" on (or off) for a session.
+pub fn ahead_watch(session_id: &str, on: bool) {
+    if on {
+        with(|c| c.execute("INSERT OR REPLACE INTO ahead_watch (session_id, set_ms) VALUES (?1, ?2)", params![session_id, now_ms() as i64]));
+    } else {
+        with(|c| c.execute("DELETE FROM ahead_watch WHERE session_id = ?1", params![session_id]));
+    }
+}
+
+/// The sessions with "Hand off if I don't come back" on.
+pub fn ahead_watched() -> Vec<String> {
+    with(|c| {
+        let mut q = c.prepare("SELECT session_id FROM ahead_watch")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+    }).unwrap_or_default()
 }
 
 /// A session wrote its hand-off note (`note`: its path as its log names it; `at_ms`: when, by the log).
@@ -705,6 +761,8 @@ pub fn handoff_noted(session_id: &str, skill: &str, note: &str, at_ms: u64, fres
     if fresh {
         with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume, note, note_ms) VALUES (?1, ?2, ?3, 0, ?4, ?5) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = 0, next_session = '', continued_ms = 0, note = ?4, note_ms = ?5",
             params![session_id, skill, now_ms() as i64, note, at_ms as i64]));
+        // A note of its own isn't one written ahead.
+        with(|c| c.execute("UPDATE handoffs SET ahead = 0 WHERE session_id = ?1", params![session_id]));
     } else {
         with(|c| c.execute("UPDATE handoffs SET note = ?2, note_ms = ?3 WHERE session_id = ?1", params![session_id, note, at_ms as i64]));
     }
@@ -728,22 +786,24 @@ pub struct Handoff {
     /// Its note's path as its log names it ("" when Cue didn't see it written), and when it was written.
     pub note: String,
     pub note_ms: u64,
+    /// Written before its cache ran out, and who asked (see the handoffs table); 0: not.
+    pub ahead: u8,
 }
 
 /// One session's hand-off, if it has one.
 pub fn handoff(session_id: &str) -> Option<Handoff> {
     use rusqlite::OptionalExtension;
-    with(|c| c.query_row("SELECT skill, sent_ms, next_session, continued_ms, resume, note, note_ms FROM handoffs WHERE session_id = ?1", params![session_id], |r| Ok(Handoff {
-        skill: r.get(0)?, sent_ms: r.get::<_, i64>(1)? as u64, next: r.get(2)?, continued_ms: r.get::<_, i64>(3)? as u64, resume: r.get(4)?, note: r.get(5)?, note_ms: r.get::<_, i64>(6)? as u64,
+    with(|c| c.query_row("SELECT skill, sent_ms, next_session, continued_ms, resume, note, note_ms, ahead FROM handoffs WHERE session_id = ?1", params![session_id], |r| Ok(Handoff {
+        skill: r.get(0)?, sent_ms: r.get::<_, i64>(1)? as u64, next: r.get(2)?, continued_ms: r.get::<_, i64>(3)? as u64, resume: r.get(4)?, note: r.get(5)?, note_ms: r.get::<_, i64>(6)? as u64, ahead: r.get(7)?,
     })).optional()).flatten()
 }
 
-/// Hand-offs of the last 30 days: session → { skill, sent_ms, next, continued_ms }.
+/// Hand-offs of the last 30 days: session → { skill, sent_ms, next, continued_ms, resume, note_ms, ahead }.
 pub fn handoffs() -> Value {
     let since = now_ms().saturating_sub(30 * 24 * 3600 * 1000) as i64;
     let rows = with(|c| {
-        let mut q = c.prepare("SELECT session_id, skill, sent_ms, next_session, continued_ms, resume FROM handoffs WHERE sent_ms >= ?1")?;
-        let rows = q.query_map(params![since], |r| Ok((r.get::<_, String>(0)?, json!({ "skill": r.get::<_, String>(1)?, "sent_ms": r.get::<_, i64>(2)?, "next": r.get::<_, String>(3)?, "continued_ms": r.get::<_, i64>(4)?, "resume": r.get::<_, bool>(5)? }))))?;
+        let mut q = c.prepare("SELECT session_id, skill, sent_ms, next_session, continued_ms, resume, note_ms, ahead FROM handoffs WHERE sent_ms >= ?1")?;
+        let rows = q.query_map(params![since], |r| Ok((r.get::<_, String>(0)?, json!({ "skill": r.get::<_, String>(1)?, "sent_ms": r.get::<_, i64>(2)?, "next": r.get::<_, String>(3)?, "continued_ms": r.get::<_, i64>(4)?, "resume": r.get::<_, bool>(5)?, "note_ms": r.get::<_, i64>(6)?, "ahead": r.get::<_, i64>(7)? }))))?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
     }).unwrap_or_default();
     Value::Object(rows.into_iter().collect())
@@ -975,6 +1035,35 @@ pub fn exchange_count(session_id: &str) -> i64 {
 mod tests {
     use super::*;
     use crate::model::Origin;
+
+    #[test]
+    fn a_database_from_before_notes_ahead_keeps_its_hand_offs() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-db-v6-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        // Version 5's hand-offs table (no `ahead`), with one waiting to continue.
+        {
+            let c = Connection::open(path()).unwrap();
+            c.execute_batch("CREATE TABLE handoffs (session_id TEXT PRIMARY KEY, skill TEXT NOT NULL, sent_ms INTEGER NOT NULL, next_session TEXT NOT NULL DEFAULT '', continued_ms INTEGER NOT NULL DEFAULT 0, resume INTEGER NOT NULL DEFAULT 1, note TEXT NOT NULL DEFAULT '', note_ms INTEGER NOT NULL DEFAULT 0);
+                INSERT INTO handoffs (session_id, skill, sent_ms, resume, note, note_ms) VALUES ('s1', 'handoff', 100, 1, '/r/HANDOFF.md', 120);
+                PRAGMA user_version = 5;").unwrap();
+        }
+        reset();
+        let k = handoff("s1").unwrap();
+        assert_eq!((k.skill.as_str(), k.note.as_str(), k.note_ms, k.ahead), ("handoff", "/r/HANDOFF.md", 120, 0), "kept, and not ahead");
+        handoff_sent("s2", "cue:handoff", false, 2);
+        assert_eq!(handoff("s2").map(|k| k.ahead), Some(2));
+        ahead_watch("s2", true);
+        assert_eq!(ahead_watched(), ["s2"]);
+        // Opened again (a version 6 database): nothing to do, nothing lost.
+        reset();
+        assert_eq!(handoff("s2").map(|k| k.ahead), Some(2));
+        std::env::remove_var("CUE_HOME");
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn session(id: &str, driven_by: &str) -> Session {
         let mut s: Session = serde_json::from_value(json!({

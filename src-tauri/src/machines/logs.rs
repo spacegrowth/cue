@@ -51,7 +51,8 @@ pub fn local_copy(m: &Machine, remote: &str) -> String {
 /// A background agent's log (Claude Code writes it to `<session log, minus .jsonl>/subagents/agent-<id>.jsonl`,
 /// beside its meta file): for a session whose log is a copy (`copy`), copied the same way to the same place
 /// beside the copy, where the chat reads it. Its meta file (the agent's type) comes over once. Nothing to do
-/// for a log on this Mac, or one already being copied. Starts the copy and returns; never waits on the machine.
+/// for a log on this Mac, or one already being copied; one stopped earlier goes on from where it was. Starts the
+/// copy and returns; never waits on the machine.
 pub fn copy_helper(copy: &str, agent_id: &str) {
     let Some((m, remote, local)) = helper_paths(copy, agent_id) else { return };
     let key = local.to_string_lossy().to_string();
@@ -59,7 +60,7 @@ pub fn copy_helper(copy: &str, agent_id: &str) {
     if c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None))) {
         return;
     }
-    if let Ok(ch) = start(&m, &remote, &local) {
+    if let Ok(ch) = start_after(&m, &remote, &local) {
         c.insert(key, ch);
     }
     drop(c);
@@ -187,6 +188,19 @@ fn start(m: &Machine, remote: &str, path: &PathBuf) -> Result<Child, String> {
     let out = std::fs::File::create(path).map_err(|e| e.to_string())?;
     std::fs::write(from_file(path), remote).map_err(|e| e.to_string())?;
     let script = format!("{MARK}\nexec tail -c +1 -F {}", machines::shq(remote));
+    machines::stream_command(&m.host, &script).stdout(out).spawn().map_err(|e| e.to_string())
+}
+
+/// Like `start`, but keeps what an earlier copy of `remote` got and copies on from there: a background agent its
+/// session sends a message to writes on to the same log, and the chat is partway through the copy.
+fn start_after(m: &Machine, remote: &str, path: &PathBuf) -> Result<Child, String> {
+    let have = std::fs::metadata(path).map(|md| md.len()).unwrap_or(0);
+    if have == 0 {
+        return start(m, remote, path);
+    }
+    let out = std::fs::OpenOptions::new().append(true).open(path).map_err(|e| e.to_string())?;
+    std::fs::write(from_file(path), remote).map_err(|e| e.to_string())?;
+    let script = format!("{MARK}\nexec tail -c +{} -F {}", have + 1, machines::shq(remote));
     machines::stream_command(&m.host, &script).stdout(out).spawn().map_err(|e| e.to_string())
 }
 

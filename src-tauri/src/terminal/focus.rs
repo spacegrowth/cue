@@ -310,6 +310,18 @@ pub fn session_screen(o: &Origin) -> Result<String, String> {
     crate::machines::tmux(&m.host, &["capture-pane", "-p", "-J", "-t", &o.tmux_pane]).map(|s| s.trim_end().to_string())
 }
 
+/// Whether Claude Code's input box is empty on `screen` (session_screen): its prompt line, "❯ " (or "> "
+/// inside the older │ box), in the last lines. None when no prompt line shows (a question or a permission
+/// prompt has the screen, or another agent's): unknown, so nothing should be typed into it unasked.
+pub fn box_empty(screen: &str) -> Option<bool> {
+    let lines: Vec<&str> = screen.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines.iter().rev().take(12).find_map(|l| {
+        let l = l.trim().trim_start_matches('│').trim_end_matches('│').trim();
+        let rest = l.strip_prefix('❯').or_else(|| l.strip_prefix('>'))?;
+        Some(rest.trim().is_empty())
+    })
+}
+
 /// Start `line` in a tmux session of its own, named after the session (`name`, made safe for tmux and
 /// unique: "cue-bug-fixes", then "cue-bug-fixes-2"), in `dir`; typed into its shell, so the window stays
 /// when the agent exits, as a tab would. One tmux session each, so `tmux ls` reads like the session list
@@ -1092,6 +1104,22 @@ mod start_tests {
         let id = new_session_id();
         assert_eq!((id.len(), &id[14..15]), (36, "4"), "a UUID v4: {id}");
         assert_ne!(id, new_session_id());
+    }
+}
+
+#[cfg(test)]
+mod box_tests {
+    use super::box_empty;
+
+    #[test]
+    fn an_empty_box_is_told_from_one_with_something_typed_in_it() {
+        let rule = "─".repeat(40);
+        let screen = |prompt: &str| format!("✻ Baked for 1m 50s\n{rule}\n{prompt}\n{rule}\n  Opus 5.5  .../cue  git:main*\n  ⏵⏵ bypass permissions on (shift+tab to cycle)");
+        assert_eq!(box_empty(&screen("❯ ")), Some(true));
+        assert_eq!(box_empty(&screen("❯ yes go ahead, mac first")), Some(false));
+        assert_eq!(box_empty("╭──────╮\n│ >    │\n╰──────╯"), Some(true), "the older box");
+        assert_eq!(box_empty("╭──────╮\n│ > hi │\n╰──────╯"), Some(false));
+        assert_eq!(box_empty("Do you want to proceed?\n  1. Yes\n  2. No"), None, "no box: a question has the screen");
     }
 }
 

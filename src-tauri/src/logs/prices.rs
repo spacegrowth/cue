@@ -67,6 +67,15 @@ pub fn cold_x(model: &str, ttl_s: u64) -> u64 {
     }
 }
 
+/// What re-writing `tokens` of context into a cache kept `ttl_s` costs on `model` at list prices, in cents
+/// (0 when not priced or nothing is cached). Insights show it only to API users; on a subscription it's no bill.
+pub fn cold_cents(model: &str, ttl_s: u64, tokens: u64) -> u64 {
+    match rates(model) {
+        Some(r) if ttl_s > 0 => (tokens as f64 * (if ttl_s >= 3600 { r.write_1h } else { r.write_5m }) / 1e4).round() as u64,
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,6 +85,9 @@ mod tests {
         assert_eq!(cold_x("claude-opus-5-5", 3600), 40, "$8 an hour's write against $0.20 a read");
         assert_eq!(cold_x("claude-opus-5-5", 300), 25);
         assert_eq!(cold_x("claude-sonnet-4-5", 300), 13, "a tenth of input: 1.25 / 0.1");
+        assert_eq!(cold_cents("claude-opus-5-5", 3600, 300_000), 240, "300k at $8 a million");
+        assert_eq!(cold_cents("claude-opus-5-5", 300, 300_000), 150, "300k at $5 a million");
+        assert_eq!(cold_cents("gpt-5", 300, 300_000), 0);
         assert_eq!(cold_x("claude-opus-5-5", 0), 0, "nothing cached");
         assert_eq!(cold_x("gpt-5", 3600), 0, "unpriced");
     }
