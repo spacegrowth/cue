@@ -1910,6 +1910,7 @@ button.ins-n { cursor: pointer; }
 /* One-line insights: a waiting card's cache countdown, the note by Now. */
 .ins-line { display: flex; align-items: center; gap: 9px; font-size: 12.5px; line-height: 1.4; color: var(--muted); margin-top: 8px; }
 .ins-line b { color: var(--ink); }
+.ins-line.ins-own { margin: 8px 18px 0; }
 .ins-ring { width: 20px; height: 20px; margin-right: -5px; flex: none; fill: none; }   /* takes the bulb's 15px, so its text lines up */
 .ins-ring .track { stroke: var(--line); stroke-width: 1.8; }
 .ins-ring .left { stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; }

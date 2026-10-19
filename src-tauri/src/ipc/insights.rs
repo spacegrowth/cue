@@ -324,13 +324,13 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
 #[tauri::command]
 pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let new_id = start_after(&h, &session_id, |last| resume_ask(last, false, "", ""))?;
-        h.redraw();
-        Ok(serde_json::json!({ "session_id": new_id, "detail": "Started fresh from its last reply" }))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || handoff_fresh_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+}
+
+pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
+    let new_id = start_after(h, session_id, |last| resume_ask(last, false, "", ""))?;
+    h.redraw();
+    Ok(serde_json::json!({ "session_id": new_id, "detail": "Started fresh from its last reply" }))
 }
 
 /// One thing an insight did, or you did with it: shown, acted (with what you picked), later, dismissed.

@@ -36,7 +36,8 @@
         // ?ins=continued: it continued in order-engine and is still open (handoffContinued).
         // ?ahead=warm|cold|writing: agent-relay wrote a hand-off note before its cache ran out (insights.js aheadCard);
         // ?ahead=watch|ticked|soon: its "Hand off if I don't come back" (untouched, ticked) and, with 4 minutes left, Write hand-off now.
-        ahead_watch: q.get("ahead") === "ticked" ? ["relay"] : [],
+        // ?ahead=gone|goneticked: its cache ran out 12 hours ago (Start fresh), unticked or ticked.
+        ahead_watch: ["ticked", "goneticked"].includes(q.get("ahead")) ? ["relay"] : [],
         skill_handoffs: ["warm", "cold", "writing"].includes(q.get("ahead")) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - (q.get("ahead") === "writing" ? 20000 : 70 * 60000), next: "", continued_ms: 0, resume: false, ahead: 2, note_ms: q.get("ahead") === "writing" ? 0 : Date.now() - 69 * 60000 } } : /ins=continued/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 300000, next: "eng", continued_ms: Date.now() - 240000, resume: true } } : /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
         connections: { claude: { ok: true, events: ["PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"] }, pi: { ok: true } },
         // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
@@ -426,7 +427,7 @@
             }
             // ?ahead=…: a 320k session on an hour's cache, its last reply as each case needs.
             if (args.sessionId === "relay" && q.get("ahead")) {
-              const ago = { watch: 10, ticked: 10, soon: 56, warm: 2, writing: 1, cold: 65 }[q.get("ahead")] || 10;
+              const ago = { watch: 10, ticked: 10, soon: 56, warm: 2, writing: 1, cold: 65, gone: 720, goneticked: 720 }[q.get("ahead")] || 10;
               const turns = [{ at_ms: now - (ago + 1) * M, prompt: "carry on", more: 0, items: [{ t: "say", text: "Done: the spend column sorts high to low, tests pass.", at_ms: now - ago * M }], tokens: 320000, context: 320000 }];
               return { version: 1, meta: { model: "claude-opus-5-5", context: 320000, window: 1000000, last_call_ms: now - ago * M, cache_ttl_s: 3600, start_context: 240000, start_ms: now - 3 * 60 * M, cold_x: 40, cold_cents: 256 }, turns };
             }
