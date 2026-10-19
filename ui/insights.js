@@ -674,14 +674,15 @@ let insFound = null;      // host → its hand-off skills for Claude Code (null 
 let insHostCmds = {};     // host → every Claude Code command it has, to choose from (null while being read)
 let insFoundAsks = 0;
 /** Ask each host which hand-off skills it has; while any is still being read (or a newer list is on its
- *  way, the one it had shown till then), ask again shortly. */
+ *  way, the one it had shown till then), ask again shortly: for as long as a host's list is open (another
+ *  machine's can take a while over SSH), else a minute at most. */
 function insFindSkills(fresh) {
   if (fresh) insFoundAsks = 0;
   invoke("insight_host_skills", { fresh: !!fresh }).then((r) => {
     insFound = r?.hosts || {};
     insHostCmds = r?.commands || {};
     renderMain();
-    if ((r?.reading || Object.values(insFound).some((v) => v === null)) && ++insFoundAsks < 40) setTimeout(() => insFindSkills(false), 1500);
+    if ((r?.reading || Object.values(insFound).some((v) => v === null)) && (++insFoundAsks < 40 || insChoosing)) setTimeout(() => insFindSkills(false), 1500);
   }).catch(() => {});
 }
 /** Settings → Insights: the list a host and agent's hand-off skill is chosen from, while it's open:
@@ -690,15 +691,16 @@ function insFindSkills(fresh) {
 function insPicker(k, h, a, chosen) {
   if (insChoosing !== k) return "";
   const all = a === "claude" ? insHostCmds[h.key] : [];
-  const choices = (all || []).filter((c) => !c.name.startsWith("relay:") && c.kind !== "cue" && c.name !== "compact")
+  // Every command it has (the list scrolls), as its "/" menu has them; relay's say they work only in a relay lead.
+  const choices = (all || []).filter((c) => c.kind !== "cue" && c.name !== "compact")
     .sort((x, y) => (x.kind === "skill" ? 0 : 1) - (y.kind === "skill" ? 0 : 1) || x.name.localeCompare(y.name));
   const q = insQuery.trim().toLowerCase().replace(/^\//, "");
-  const shown = choices.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.desc || "").toLowerCase().includes(q)).slice(0, 60);
+  const shown = choices.filter((c) => !q || c.name.toLowerCase().includes(q) || (c.desc || "").toLowerCase().includes(q));
   const cueRow = q && !"cue's hand-off handoff".includes(q) ? "" : `<button class="ins-pop-row ${chosen === CUE_HANDOFF ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${CUE_HANDOFF}"><span>Cue's hand-off</span><span class="dim">Writes HANDOFF.md; Continue starts the next session from it. Any agent</span></button>`;
   const empty = a !== "claude" ? "" : `<div class="ins-pop-empty dim">${all === null ? "Reading its commands…" : choices.length ? "Nothing matches." : "No commands found."}</div>`;
   return `<div class="ins-pop down" role="dialog" aria-label="Choose the hand-off skill">
       <input id="ins-search" class="ins-search" data-ins-search="${esc(k)}" value="${esc(insQuery)}" placeholder="Search ${esc(h.name)}'s ${esc(agentName(a))} commands…" autocomplete="off" spellcheck="false">
-      <div class="ins-pop-list">${cueRow}${shown.length ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${esc(insShort(c.desc || ""))}</span></button>`).join("") : empty}</div>
+      <div class="ins-pop-list">${cueRow}${shown.length ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${c.name.startsWith("relay:") ? "In a relay lead only. " : ""}${esc(insShort(c.desc || ""))}</span></button>`).join("") : empty}</div>
       <div class="ins-pop-foot"><span class="grow"></span><span class="dim">Esc to close</span></div>
     </div>`;
 }
