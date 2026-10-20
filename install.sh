@@ -60,7 +60,11 @@ quit_cue() {
 # down, so the open is retried until the process is seen.
 launch_cue() {
   for _ in 1 2 3 4 5 6; do
-    open "$HOME/Applications/Cue.app" 2>/dev/null || true
+    # A clean environment, as the Dock or Finder starts it: `open` passes on this shell's own, and one
+    # inside tmux (an agent's terminal, an action's) would leave Cue thinking it's in tmux too, so every
+    # terminal it opens would quit at once ("sessions should be nested with care").
+    env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="${SHELL:-/bin/zsh}" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-en_US.UTF-8}" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+      open "$HOME/Applications/Cue.app" 2>/dev/null || true
     for _ in $(seq 1 20); do
       pgrep -q -f "Cue.app/Contents/MacOS/cue$" && { say "Cue is running"; return 0; }
       sleep 0.25

@@ -236,6 +236,11 @@ fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, 
             for a in &chain {
                 c.arg(a);
             }
+            // Not nested in the terminal that started Cue: tmux quits a client that is ("sessions should be
+            // nested with care"), and the terminal would close as it opened.
+            for k in crate::terminal::shells::NOT_HERE {
+                c.env_remove(k);
+            }
             c
         }
         // On a machine: the same client, through ssh (with a terminal of its own).

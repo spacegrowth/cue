@@ -8,6 +8,10 @@ use std::process::Command;
 /// Find a CLI tool. An app opened from Finder gets a bare PATH (/usr/bin:/bin:…), so Homebrew's
 /// tmux and friends must be looked up explicitly.
 fn bin(name: &str) -> String {
+    #[cfg(test)]
+    if name == "tmux" {
+        private_tmux();
+    }
     let candidates = [
         format!("/opt/homebrew/bin/{name}"),
         format!("/usr/local/bin/{name}"),
@@ -15,6 +19,31 @@ fn bin(name: &str) -> String {
         format!("/Applications/kitty.app/Contents/MacOS/{name}"),
     ];
     candidates.into_iter().find(|p| std::path::Path::new(p).exists()).unwrap_or_else(|| name.to_string())
+}
+
+/// Tests: tmux on a server of their own (under /tmp, short enough for a socket's path), never yours. A
+/// session a failing test leaves can't show up in Cue as one of your terminal tabs, and tests started inside
+/// tmux (an agent's terminal) aren't nested in it. Servers left by earlier runs go first.
+#[cfg(test)]
+fn private_tmux() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mine = format!("cue-test-tmux-{}", std::process::id());
+        for e in std::fs::read_dir("/tmp").into_iter().flatten().flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with("cue-test-tmux-") && name != mine {
+                for s in std::fs::read_dir(e.path()).into_iter().flatten().flatten() {
+                    let _ = Command::new("tmux").args(["-S", &s.path().join("default").to_string_lossy(), "kill-server"]).env_remove("TMUX").output();
+                }
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+        let dir = std::path::Path::new("/tmp").join(mine);
+        let _ = std::fs::create_dir_all(&dir);
+        std::env::set_var("TMUX_TMPDIR", &dir);
+        std::env::remove_var("TMUX");
+        std::env::remove_var("TMUX_PANE");
+    });
 }
 
 fn run(cmd: &str, args: &[&str]) -> bool {

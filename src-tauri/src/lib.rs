@@ -170,7 +170,8 @@ fn utf8_locale(get: impl Fn(&str) -> Option<String>) -> bool {
 /// and, when that shell pointed Claude Code at another provider (`ANTHROPIC_BASE_URL` set), all of that
 /// setup (`ANTHROPIC_*`: its key must not go to Anthropic either). Your own `ANTHROPIC_API_KEY` alone stays.
 fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
-    (other_provider && k.starts_with("ANTHROPIC_")) || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE"
+    (other_provider && k.starts_with("ANTHROPIC_")) || k.starts_with("CLAUDE_CODE_") || k == "CLAUDECODE" || k == "CLAUDE_PID"
+        || terminal::shells::NOT_HERE.contains(&k)
 }
 
 pub fn run() {
@@ -182,6 +183,8 @@ pub fn run() {
     }
     // Opened from a shell set up for another provider, or from inside a Claude Code session, Cue would hand
     // that setup to tmux, and tmux to every session it opens. Cue starts them clean, as a new terminal would.
+    // Nor is the terminal it was opened from Cue's: started inside tmux (`open` passes the shell's TMUX on),
+    // tmux would refuse every terminal Cue opens as nested ("sessions should be nested with care").
     let other_provider = std::env::var_os("ANTHROPIC_BASE_URL").is_some_and(|v| !v.is_empty());
     for (k, _) in std::env::vars_os() {
         if k.to_str().is_some_and(|k| inherited_agent_var(k, other_provider)) {
@@ -445,6 +448,11 @@ mod tests {
         // No other provider: your own key and settings stay; a parent session's marks still go.
         assert!(!inherited_agent_var("ANTHROPIC_API_KEY", false) && !inherited_agent_var("ANTHROPIC_MODEL", false));
         assert!(inherited_agent_var("CLAUDECODE", false) && inherited_agent_var("CLAUDE_CODE_SESSION_ID", false));
+        // The terminal it was opened from: tmux's above all (every terminal Cue opened would quit as nested).
+        for k in ["TMUX", "TMUX_PANE", "TERM_PROGRAM", "ITERM_SESSION_ID", "CLAUDE_PID"] {
+            assert!(inherited_agent_var(k, false), "{k}");
+        }
+        assert!(!inherited_agent_var("TMUX_TMPDIR", false) && !inherited_agent_var("TERM", false), "where tmux keeps its servers, and the terminal type, stay");
     }
 
     #[test]

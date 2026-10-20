@@ -338,9 +338,10 @@ const SCRIPT_TAIL_BYTES: u64 = 256 * 1024;
 
 impl Helper {
     /// Running: not reported finished, and its log doesn't end on an answer (one from before its session
-    /// sent it a message doesn't count).
+    /// sent it a message doesn't count, nor one that waits on its own background work: a command or agent
+    /// it started, which brings it back when it's done).
     pub fn running(&self) -> bool {
-        self.finished_ms == 0 && self.feed.as_ref().is_none_or(|f| f.ended_ms == 0 || f.ended_ms < self.resumed_ms)
+        self.finished_ms == 0 && self.feed.as_ref().is_none_or(|f| f.ended_ms == 0 || f.ended_ms < self.resumed_ms || f.helpers.iter().any(Helper::running))
     }
 
     /// Running, with nothing done for STUCK_MS as of `now`.
@@ -999,6 +1000,11 @@ impl Feed {
         let (id, status) = (tag("task-id"), tag("status"));
         let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) else { return false };
         if status == "running" || h.finished_ms != 0 {
+            return false;
+        }
+        // An agent that stopped to wait on background work of its own: "completed", but not done. Its
+        // task notifies again when it is.
+        if tag("summary").contains("waiting on its own background work") || tag("note").contains("background work of its own still running") {
             return false;
         }
         h.finished_ms = at_ms.max(1);
@@ -2402,6 +2408,48 @@ mod tests {
         f.catch_up();
         assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
+        assert_eq!(running_background(p), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_background_agent_waiting_on_its_own_background_work_is_still_at_work() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-waits-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let sub = dir.join("s1").join("subagents");
+        std::fs::create_dir_all(&sub).unwrap();
+        // The agent starts a long command in the background and ends its turn to wait for it.
+        std::fs::write(sub.join("agent-a1.jsonl"), [
+            r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"rebase it"}}"#,
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"h1","name":"Bash","input":{"command":"git rebase main","run_in_background":true}}]}}"#,
+            r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"h1","content":"Command running in background with ID: b9."}]},"toolUseResult":{"backgroundTaskId":"b9"}}"#,
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:06.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Waiting for the rebase."}]}}"#,
+        ].join("\n") + "\n").unwrap();
+        let path = dir.join("s1.jsonl");
+        // Its session is told "completed", but that it's waiting on its own background work.
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"rebase the branch"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Rebase","prompt":"rebase it","run_in_background":true}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Rebase"}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:07.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent \"Rebase\" is waiting on its own background work</summary>\n<note>This agent stopped with background work of its own still running.</note>\n</task-notification>"}}"#,
+        ].join("\n") + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        f.catch_up();
+        assert_eq!(f.helpers[0].finished_ms, 0, "not finished on a notice that says it waits");
+        assert!(f.helpers[0].running(), "its log ended its turn, but its own command still runs");
+        assert_eq!(running_background(p), 1);
+        // Its command ends, it writes its report: done, before its session hears so.
+        let mut log = std::fs::OpenOptions::new().append(true).open(sub.join("agent-a1.jsonl")).unwrap();
+        std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:00.000Z","message":{"content":"<task-notification>\n<task-id>b9</task-id>\n<status>completed</status>\n</task-notification>"}}"#, "\n",
+            r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:02:01.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Rebased."}]}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        assert!(!f.helpers[0].running());
+        // Its session's second notice: finished for good.
+        let mut log = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut log, concat!(r#"{"type":"user","timestamp":"2026-10-04T10:02:02.000Z","message":{"content":"<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent \"Rebase\" finished</summary>\n</task-notification>"}}"#, "\n").as_bytes()).unwrap();
+        f.catch_up();
+        assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:02:02.000Z").unwrap());
         assert_eq!(running_background(p), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
