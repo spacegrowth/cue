@@ -2039,7 +2039,7 @@ function activePane() {
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
-      ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}</div>
+      ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>
     ${btwPanel(sid)}
     ${subHead(s?.cwd || it?.cwd, "", sid)}
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}

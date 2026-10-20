@@ -103,6 +103,20 @@ pub(crate) fn hide_window(app: tauri::AppHandle) {
     }
 }
 
+/// Esc in full screen: the window leaves it (the board follows, as it does for ⌃⌘F).
+#[tauri::command]
+pub(crate) fn set_fullscreen(app: tauri::AppHandle, on: bool) -> Result<(), String> {
+    use tauri::Manager;
+    app.get_webview_window("main").ok_or("no window")?.set_fullscreen(on).map_err(|e| e.to_string())
+}
+
+/// Whether the window is full screen, which the board follows (⌃⌘F, the green button, View → Enter Full Screen).
+#[tauri::command]
+pub(crate) fn is_fullscreen(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::Manager;
+    app.get_webview_window("main").ok_or("no window")?.is_fullscreen().map_err(|e| e.to_string())
+}
+
 /// What you type in the built-in terminal.
 #[tauri::command]
 pub(crate) fn term_write(session_id: String, data: String) -> Result<(), String> {

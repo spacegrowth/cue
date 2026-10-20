@@ -37,7 +37,9 @@ function livePop(rows) {
     .map(([p, rs]) => [p, rs.sort((a, b) => svRank(a) - svRank(b) || b.since - a.since)])
     .sort((a, b) => svRank(a[1][0]) - svRank(b[1][0]));
   liveShown = ordered.flatMap(([, rs]) => rs.map((r) => ({ sid: r.sid, act: r.quiet ? "quiet" : "open" })));
-  liveSel = Math.min(Math.max(liveSel, 0), Math.max(liveShown.length - 1, 0));
+  // ↑ ↓ go on past the live sessions into what search found (as many as it showed last time).
+  liveSel = Math.min(Math.max(liveSel, 0), Math.max(liveShown.length + (q ? searchVisible.length : 0) - 1, 0));
+  const found = q ? searchSections(q, liveSel - liveShown.length) : "";
   const list = ordered
     .map(([p, rs]) => {
       const many = spread(rs), cwd = many ? projRoot(rs[0].cwd) : rs[0].cwd;
@@ -45,8 +47,8 @@ function livePop(rows) {
       return `<div class="lv-group"><div class="lv-ghead">${projDot(p, rs.some((r) => r.st === "working"))}<span>${esc(p || "(no folder)")}</span><span class="sx-branch">${esc(many ? "" : state.branches?.[cwd] || "")}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>${rs.map(row).join("")}</div>`;
     }).join("");
   return `<div class="lv-pop">
-    <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
-    <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}</div>
+    <div class="lv-top"><label class="sv-search">${SEARCH_ICON}<input data-text="find-live" placeholder="Find a session, or anything said…  ↑ ↓ Enter" spellcheck="false" autocomplete="off" value="${esc(draft("find-live").text)}"/></label><button class="btn primary" data-lv="new" title="New session (⌘N)">+ New</button></div>
+    <div class="lv-list">${list || `<div class="quiet-line">${q ? `No live session matches “${esc(q)}”.` : "No live sessions."}</div>`}${found}</div>
     <div class="lv-foot"><button data-lv="all">All sessions, as tiles →</button><span class="lv-keys"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>${liveSpot ? "⌘K" : "⌘L"}</kbd> open / close</span></div></div>`;
 }
 /** + New session: agent, folder (recent ones offered), an optional first message (images pasted, dropped or
@@ -197,17 +199,24 @@ function newForm() {
 }
 /** ↓ / ↑ in the drop-down: move the highlight, keeping it in view. */
 function stepLive(by) {
-  if (!liveShown.length) return;
-  liveSel = (liveSel + by + liveShown.length) % liveShown.length;
+  const n = liveShown.length + (draft("find-live").text.trim() ? searchVisible.length : 0);
+  if (!n) return;
+  liveSel = (liveSel + by + n) % n;
   renderMain();
-  document.querySelector(".lv-row.sel")?.scrollIntoView({ block: "nearest" });
+  document.querySelector(".lv-row.sel, .lv-pop .sr.sel")?.scrollIntoView({ block: "nearest" });
 }
-/** Enter: open the highlighted session's chat (a quiet one: its tab). */
+/** Enter: open the highlighted session's chat (a quiet one: its tab), or what search found. */
 function pickLive() {
+  if (liveSel >= liveShown.length) return pickResult(searchVisible[liveSel - liveShown.length]);
   const r = liveShown[liveSel];
   if (!r) return;
   liveOpen = newOpen = false;
   return svAct(r.act, r.sid);
+}
+/** ⌘K, ⌘F, / and the magnifier: the one place to find a session, live or not, or anything said in one. */
+function openFind() {
+  sheet = lightbox = null;
+  lvAct("toggle", { spot: true });
 }
 async function lvAct(act, d) {
   if (act === "toggle") {
@@ -217,6 +226,8 @@ async function lvAct(act, d) {
     liveSpot = spot;
     liveSel = 0;
     newOpen = false;   // the live chip shows the sessions, never the New form
+    // Text left from last time: search it again, so what's found is as it is now.
+    if (liveOpen && draft("find-live").text.trim()) return runSearch(draft("find-live").text), document.querySelector('[data-text="find-live"]')?.focus();
     renderMain();
     // Open: ready to type a name straight away.
     if (liveOpen) document.querySelector('[data-text="find-live"]')?.focus();

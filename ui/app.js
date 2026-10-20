@@ -48,14 +48,16 @@ function renderMain() {
 
   const counts = headerChips();
   const lifted = liftChat();
-  document.getElementById("app").innerHTML = `<div class="dragbar" data-tauri-drag-region></div><div class="app">
-    <div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
-      <button class="top-btn icon" data-act="open-search" title="Search (⌘F or /)" aria-label="Search">${SEARCH_ICON}</button>
+  const focusMode = focus && view === "board";
+  const topBar = focusMode ? "" : `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
+      <button class="top-btn icon" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
       ${usageChip()}${shellsBtn()}${extPanelBtn()}
       <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
-      <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>
+      <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>`;
+  document.getElementById("app").innerHTML = `${focusMode ? "" : `<div class="dragbar" data-tauri-drag-region></div>`}<div class="app ${focusMode ? "focus" : ""}">
+    ${topBar}
     ${view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : boardView()}
-  </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "search" ? searchSheet() : sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}`;
+  </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
   placePip();   // Cue's own terminal, back over the columns as they are now
@@ -415,11 +417,11 @@ function bindMain() {
     // An ended Claude Code session, opened from search: back to work, as an older one resumes.
     if (t.closest("[data-act=convo-resume]")) return resumeOlder({ session_id: convo.sid, name: convo.name });
     if (t.closest("[data-act=convo-close]")) { sheet = null; return renderMain(); }
-    if (t.closest("[data-act=convo-back]")) { sheet = "search"; renderMain(); return document.querySelector(".search-in")?.focus(); }
+    if (t.closest("[data-act=convo-back]")) return openFind();
     const co = t.closest("[data-act=convo-open]");
     if (co) { sheet = null; return setActive(null, co.dataset.sid); }
     const sm = t.closest("[data-srmore]");
-    if (sm) { searchMore.add(sm.dataset.srmore); renderMain(); return document.querySelector(".search-in")?.focus(); }
+    if (sm) { searchMore.add(sm.dataset.srmore); renderMain(); return document.querySelector('[data-text="find-live"]')?.focus(); }
     // Resume on a closed session's row: back to work at once (the row itself opens its conversation).
     const rsm = t.closest("[data-resume]");
     if (rsm) return resumeOlder({ session_id: rsm.dataset.resume, name: rsm.dataset.name });
@@ -580,6 +582,10 @@ function bindMain() {
     if (pk) { const [qi, oi] = pk.dataset.pick.split(":").map(Number); const it = findItem(pk.dataset.id); return it && pick(it, qi, oi); }
     const al = t.closest("[data-always]");
     if (al) { const it = findItem(al.dataset.id); return it && respond(it, { behavior: "allow_always", permission: it.suggestions[+al.dataset.always] }); }
+    const cbtn = t.closest("[data-collapse]");
+    if (cbtn) return collapseSection(cbtn.dataset.collapse);
+    const obtn = t.closest("[data-open-section]");
+    if (obtn) return openSection(obtn.dataset.openSection);
     const actEl = t.closest("[data-act]");
     const act = actEl?.dataset.act;
     if (act?.startsWith("ins-")) return insAct(act, actEl.dataset);
@@ -587,7 +593,7 @@ function bindMain() {
     if (act === "set-tab") { setTab = actEl.dataset.tab; try { localStorage.setItem("cue.setTab", setTab); } catch {} const b = document.querySelector(".sheet-body"); if (b) b.scrollTop = 0; return renderMain(); }
     if (act === "test-notify") return invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`));
     if (act === "open-history") { view = "history"; sheet = null; return renderMain(); }
-    if (act === "open-search") return openSearch();
+    if (act === "open-search") return openFind();
     if (act === "shells") return toggleShells();
     if (act === "load-older") return loadOlder(actEl.dataset.sid);
     if (act === "load-transcript") return loadOlder(actEl.dataset.sid, true);
@@ -626,9 +632,8 @@ function bindMain() {
     const id = e.target.dataset?.text;
     if (!id) return;
     draft(id).text = e.target.value;
-    if (id === "search") return runSearch(e.target.value);
-    if (id === "find-live") liveSel = 0;
-    if (id === "find-sessions" || id === "find-live") return renderMain();
+    if (id === "find-live") { liveSel = 0; return runSearch(e.target.value); }
+    if (id === "find-sessions") return renderMain();
     if (id === "new-cwd") { nfFolderOpen = true; nfFolderQ = e.target.value; nfFolderSel = -1; saveDrafts(); return renderMain(); }
     if (id === "new-model-id") { newModel = e.target.value.replace(/\s+/g, ""); remember("newModel", newModel); remember("newModelOther", newModel); return; }
     saveDrafts();
@@ -740,10 +745,10 @@ function bindMain() {
       return renderMain();
     }
     // ⌘, opens Settings, the Mac way (even while typing in a box).
-    if (e.metaKey && e.key.toLowerCase() === "f") { e.preventDefault(); return sheet === "search" ? (sheet = null, renderMain()) : openSearch(); }
+    if (e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "f") { e.preventDefault(); return openFind(); }
     if (e.metaKey && e.key === ",") { e.preventDefault(); sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
     // ⌘K: every live session in the middle of the window, like Spotlight. ⌘L: the same, under its chip.
-    if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); sheet = lightbox = null; return lvAct("toggle", { spot: true }); }
+    if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); return openFind(); }
     // ⌘L: every live session (the drop-down by "N live"), even while typing in a box.
     if (e.metaKey && e.key.toLowerCase() === "l") { e.preventDefault(); return lvAct("toggle", {}); }
     // ⌘N: + New session, in the middle of the window like ⌘K (even while typing in a box).
@@ -776,11 +781,12 @@ function bindMain() {
         renderMain();
         return focusComposer();
       }
+      // Full screen: an Esc nothing else wanted leaves it (a working session's Esc arms Stop above instead).
+      if (focus && !sheet && !menuFor && !redirectFor) { leaveFocus(); return renderMain(); }
       sheet = null; menuFor = redirectFor = null; document.activeElement?.blur(); return renderMain();
     }
     const typing = e.target.matches?.("input, textarea, select");
     if (typing) {
-      if (e.target.dataset.text === "search" && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); return stepSearch(e.key === "ArrowDown" ? 1 : -1); }
       if (e.target.dataset.text === "find-live" && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); return stepLive(e.key === "ArrowDown" ? 1 : -1); }
       if (e.target.dataset.text === "find-live" && e.key === "Enter") { e.preventDefault(); return pickLive(); }
       if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && e.target.dataset.text) {
@@ -789,7 +795,6 @@ function bindMain() {
         if (key.startsWith("btw:")) return askBtw(key.slice(4), draft(key).text);
         if (key === "fwd") return sendForward();
         if (key === "new-name" || key === "new-msg") return lvAct("start", {});
-        if (key === "search") return pickResult(searchSel);
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
         if (key.startsWith("pjname:")) return saveProjName(key.slice(7));
         if (key.startsWith("newproj:")) return submitNewProj(key.slice(8));
@@ -814,7 +819,7 @@ function bindMain() {
       if (sid && sendWaitingNow(sid)) return e.preventDefault();
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === "/") { e.preventDefault(); return openSearch(); }   // like GitHub and Gmail (only when not typing)
+    if (e.key === "/") { e.preventDefault(); return openFind(); }   // like GitHub and Gmail (only when not typing)
     if (e.key === "h") { view = view === "history" ? "board" : "history"; return renderMain(); }
     if (e.key === "l") return lvAct("toggle", {});
     if (e.key === ",") { sheet = sheet === "settings" ? null : "settings"; return renderMain(); }

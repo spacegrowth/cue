@@ -537,6 +537,43 @@ const idleNote = (s) => cutOff(s) ? `can't reach ${machShort(s.machine)}` : s.st
 
 // The right column: Sessions takes what it needs (up to half), Recently answered scrolls in the rest.
 const RECENT = 10;
+// Sections collapsed to the rail ("waiting" | "sessions") and the chat full-screen ("focus").
+// Collapse is per-window (like the drawers). Focus is the window being full screen (⌃⌘F, the green
+// button, View → Enter Full Screen); Esc leaves it. It starts with both sections on the rail; one opened
+// there (focusShown) stays open only until you leave.
+let collapsed = new Set();
+try { collapsed = new Set(JSON.parse(localStorage.getItem("cue.collapsed") || "[]")); } catch {}
+let focus = false;
+let focusShown = new Set();
+const railBubble = {};   // section -> until ms (its label pops while this is in the future)
+const railLast = {};     // section -> last count drawn
+function collapseSection(name) {
+  if (focus) focusShown.delete(name);
+  else { collapsed.add(name); saveCollapsed(); }
+  renderMain();
+}
+function leaveFocus() { focus = false; invoke("set_fullscreen", { on: false }).catch(() => {}); }
+function openSection(name) {
+  if (focus) focusShown.add(name);
+  else { collapsed.delete(name); saveCollapsed(); }
+  delete railLast[name];
+  renderMain();
+}
+/** Follow the window: full screen in, full-screen chat; out, the board as you left it. Asked once the
+ *  resizing settles (macOS animates the change), and once at the start (Cue can open full screen). */
+function followFullscreen() {
+  invoke("is_fullscreen").then((v) => {
+    const on = !!v;
+    if (on === focus) return;
+    focus = on;
+    if (on) { focusShown = new Set(); delete railLast.waiting; delete railLast.sessions; }
+    renderMain();
+  }, () => {});
+}
+let focusCheck = 0;
+addEventListener("resize", () => { clearTimeout(focusCheck); focusCheck = setTimeout(followFullscreen, 300); });
+followFullscreen();
+function saveCollapsed() { try { localStorage.setItem("cue.collapsed", JSON.stringify([...collapsed])); } catch {} }
 function boardView() {
   if (!quietOpen) current();   // settles what Active shows before the lists mark it
   const { working, later } = groups();
@@ -612,18 +649,32 @@ function boardView() {
   const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
   const drawer = (name, title, count, body) => { const open = drawerOpen(name); return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`; };
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
-  return `<div class="board" style="grid-template-columns:minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)">
-    <div class="col main"><div class="col-head">ACTIVE</div>${activePane()}</div>
-    <div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 && !talks.length && !talkWork.length ? " · oldest first" : ""}</span></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
+  const coll = (name) => (focus ? !focusShown.has(name) : collapsed.has(name));
+  const wColl = coll("waiting"), sColl = coll("sessions");
+  const railLabel = (name, count) => {
+    const prev = railLast[name];
+    if (prev !== undefined && count > prev) railBubble[name] = Date.now() + 900;
+    railLast[name] = count;
+    return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name.toUpperCase()} · ${count}</span></button>`;
+  };
+  const waitingCol = `<div class="col split col-waiting">
+      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${needs.length}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}${needs.length > 1 && !talks.length && !talkWork.length ? " · oldest first" : ""}</span><span class="grow"></span><button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
       ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
-    </div>
-    <div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
-      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${shown.length + treed}</span></div><div class="sec-body">${workCol}</div></div>
+    </div>`;
+  const sessionsCol = `<div class="col split ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
+      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${shown.length + treed}</span><span class="grow"></span><button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
       ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
       ${drawer("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList)}
       ${shelfDrawer(isOpen)}
-    </div>
+    </div>`;
+  const railCol = (wColl || sColl) ? `<div class="col rail-col"><div class="rail">${wColl ? railLabel("waiting", needs.length) : ""}${sColl ? railLabel("sessions", shown.length + treed) : ""}</div></div>` : "";
+  // main's columns (1.9 : 1 : 0.85 of the board after its two 14px gaps); a section that stays open keeps
+  // that width when the other folds, and Active takes the room.
+  const share = (fr) => `calc((100% - 28px) * ${fr} / 3.75)`;
+  const tpl = !wColl && !sColl ? "minmax(0,1.9fr) minmax(0,1fr) minmax(0,0.85fr)" : ["minmax(0,1fr)", ...(!wColl ? [share(1)] : []), ...(!sColl ? [share(0.85)] : []), "34px"].join(" ");
+  return `<div class="board" style="grid-template-columns:${tpl}">
+    <div class="col main">${focus ? "" : `<div class="col-head">ACTIVE</div>`}${activePane()}</div>
+    ${wColl ? "" : waitingCol}${sColl ? "" : sessionsCol}${railCol}
   </div>`;
 }
 
@@ -671,7 +722,7 @@ let renameErrPrimed = false;
  *  replies). Running sessions match at once, from what the window already has, by the names you see
  *  (as ⌘K does); the best name match comes first. Then closed and older sessions by name, then what was
  *  said. A live session opens in Active; an ended one's message opens in place. */
-let searchResults = [], searchSeq = 0, searchTimer = 0, searchSel = 0;
+let searchResults = [], searchSeq = 0, searchTimer = 0;
 function liveChip() {
   const rows = liveRows().filter((r) => inProj(r.project)), asks = rows.filter((r) => r.st === "asks").length, fresh = rows.filter((r) => isNewSession(r.sid)).length;
   return `<span class="lv-wrap"><button class="hchip lv-chip ${liveOpen ? "on" : ""}" data-lv="toggle" title="Every live session (⌘K, ⌘L), and + New (⌘N)"><span class="hdot"></span>${rows.length}<span class="hlbl"> live</span>${asks ? ` <span class="hsub">· ${asks} asks</span>` : ""}${fresh ? ` <span class="hsub">· ${fresh} new</span>` : ""}</button>${liveOpen && !liveSpot ? livePop(rows) : ""}</span>`;
@@ -685,9 +736,12 @@ const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${
  *  Keyed by what they show: an ask or turn by its id, a session card by its session. */
 const FLIP_SEL = ".board .col:not(.main) .nrow[data-big], .board .col:not(.main) .nrow[data-session]:not(.talk-work), .board .col:not(.main) .working[data-session]";
 const flipKey = (el) => (el.dataset.big ? `i:${el.dataset.big}` : `s:${el.dataset.session}`);
+const COL_SEL = ".board > .col";
+const colKey = (el) => "col:" + (el.classList.contains("main") ? "main" : el.classList.contains("rail-col") ? "rail" : el.classList.contains("col-waiting") ? "waiting" : "sessions");
 function flipRects() {
   const m = new Map();
   for (const el of document.querySelectorAll(FLIP_SEL)) m.set(flipKey(el), el.getBoundingClientRect());
+  for (const el of document.querySelectorAll(COL_SEL)) m.set(colKey(el), el.getBoundingClientRect());
   return m;
 }
 function flipPlay(from) {
@@ -695,6 +749,15 @@ function flipPlay(from) {
   for (const el of document.querySelectorAll(FLIP_SEL)) {
     const was = from.get(flipKey(el));
     if (!was) continue;
+    const now = el.getBoundingClientRect(), dx = was.left - now.left, dy = was.top - now.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
+  // Columns glide when the board reflows (a section folds to the rail, or opens back out); a column
+  // that just appeared (the rail, or a section re-opened) slides in from the right.
+  for (const el of document.querySelectorAll(COL_SEL)) {
+    const was = from.get(colKey(el));
+    if (!was) { el.animate([{ opacity: 0, transform: "translateX(24px)" }, { opacity: 1, transform: "none" }], { duration: 240, easing: "ease-out" }); continue; }
     const now = el.getBoundingClientRect(), dx = was.left - now.left, dy = was.top - now.top;
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
     el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });

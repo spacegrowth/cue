@@ -87,7 +87,6 @@ function runSearch(q) {
   if (!q.trim()) searchFound = [];
   combineSearch(q);
   searchMore.clear();
-  searchSel = 0;
   renderMain();
   // Everything else Cue has logged: once you pause.
   clearTimeout(searchTimer);
@@ -96,40 +95,29 @@ function runSearch(q) {
     const r = q.trim() ? await invoke("search", { q }).catch(() => []) : [];
     if (n !== searchSeq) return;   // a newer search already started
     searchFound = Array.isArray(r) ? r : [];
-    const sel = searchResults[searchSel];
     combineSearch(q);
-    // What you'd picked stays picked when the rest arrives.
-    searchSel = Math.max(0, searchResults.findIndex((x) => x === sel));
     renderMain();
   }, 140);
 }
-function openSearch() {
-  sheet = "search";
-  // Text left from last time: search it again, so running sessions are as they are now.
-  if (draft("search").text.trim()) return runSearch(draft("search").text), focusSearch();
-  renderMain();
-  focusSearch();
-}
-function focusSearch() {
-  const el = document.querySelector(".search-in");
-  el?.focus(); el?.select();
-}
-function searchSheet() {
-  const q = draft("search").text.trim();
+/** What ⌘K finds below the running sessions it lists, once you type: closed sessions, older ones, and what
+ *  was said, in sections. `sel`: which of these rows is highlighted (its place on screen), -1 for none.
+ *  Fills searchVisible, the rows' result indexes in screen order (↑ ↓ and Enter walk these). */
+function searchSections(q, sel) {
   const mark = (html) => q ? html.replace(new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), (m) => `<mark>${m}</mark>`) : html;
   searchVisible = [];
   const row = (r, i, inGroup = false) => {
     searchVisible.push(i);
-    const top = inGroup ? `<span class="dim">${r.role === "you" ? "you said" : "agent"}</span><span class="grow"></span><span class="age">${ago(r.at_ms)}</span>` : `${badge(r.harness)}<span class="proj">${mark(esc(r.name || r.project || "session"))}</span>${r.name && r.project && r.name !== r.project ? `<span class="dim">${esc(r.project)}</span>` : ""}
+    const on = searchVisible.length - 1 === sel ? "sel" : "";
+    const top = `${badge(r.harness)}<span class="proj">${mark(esc(r.name || r.project || "session"))}</span>${r.name && r.project && r.name !== r.project ? `<span class="dim">${esc(r.project)}</span>` : ""}
       <span class="dim">${r.kind === "older" ? "" : r.kind === "session" ? sessionState(r) : r.role === "you" ? "you said" : "agent"}</span>${r.kind === "older" ? `<span class="sr-resume">Resume</span>` : r.kind === "session" && !r.live && r.harness === "claude" ? `<span class="sr-resume act" role="button" data-resume="${esc(r.session_id)}" data-name="${esc(r.name || r.project || "")}">Resume</span>` : ""}${r.ended && r.kind === "message" ? `<span class="sr-ended">ended</span>` : ""}<span class="grow"></span><span class="age">${ago(r.at_ms)}</span>`;
     const body = r.kind === "message" ? `<div class="sr-snip">${mark(esc(r.snippet))}</div>`
       : r.last ? `<div class="sr-snip sr-last">${r.last_role === "you" ? "<b>You:</b> " : ""}${mark(esc(r.last))}</div>` : "";
     // Under its session's name, one line is enough: who, what, when.
-    if (inGroup) return `<button class="sr in-group ${searchSel === i ? "sel" : ""}" data-sr="${i}"><span class="sr-who">${r.role === "you" ? "you" : "agent"}</span><span class="sr-line">${mark(esc(r.snippet))}</span><span class="age">${ago(r.at_ms)}</span></button>`;
-    return `<button class="sr ${searchSel === i ? "sel" : ""}" data-sr="${i}"><div class="sr-top">${top}</div>${body}</button>`;
+    if (inGroup) return `<button class="sr in-group ${on}" data-sr="${i}"><span class="sr-who">${r.role === "you" ? "you" : "agent"}</span><span class="sr-line">${mark(esc(r.snippet))}</span><span class="age">${ago(r.at_ms)}</span></button>`;
+    return `<button class="sr ${on}" data-sr="${i}"><div class="sr-top">${top}</div>${body}</button>`;
   };
-  // Sections, so it's clear what each result is: running now, ended (Cue saw it), older (from Claude
-  // Code's own archive, before Cue: Resume opens it again), and what was said.
+  // Sections, so it's clear what each result is: ended (Cue saw it), older (from Claude Code's own
+  // archive, before Cue: Resume opens it again), and what was said.
   const section = (title, note, keep) => {
     const rows = searchResults.map((r, i) => [r, i]).filter(([r]) => keep(r));
     return rows.length ? `<div class="sr-sec">${title.toUpperCase()} <span>${rows.length}</span><em>${note}</em></div>${rows.map(([r, i]) => row(r, i)).join("")}` : "";
@@ -153,23 +141,9 @@ function searchSheet() {
         + (all ? "" : `<button class="sr-more" data-srmore="${esc(g.sid)}">+ ${g.rows.length - SHOWN} more in ${name}</button>`);
     }).join("");
   };
-  const list = !q ? `<div class="dim sr-hint">Live and closed sessions, older Claude Code sessions by name (Resume them), and everything said in sessions Cue has seen.</div>`
-    : searchResults.length
-      ? section("Live", "running now", (r) => r.kind === "session" && r.live)
-        + section("Closed", "ended; Cue has the conversation", (r) => r.kind === "session" && !r.live)
-        + section("Older", "from Claude Code, before Cue; matched by name", (r) => r.kind === "older")
-        + history()
-      : `<div class="dim sr-hint">Nothing found for “${esc(q)}”.</div>`;
-  return `<div class="sheet search-sheet"><div class="search-bar">${SEARCH_ICON}<input class="search-in" data-text="search" placeholder="Search sessions (live, closed, older) and messages…" spellcheck="false" autocomplete="off" value="${esc(draft("search").text)}"/><kbd>Esc</kbd></div>
-    <div class="sheet-body">${list}</div></div>`;
-}
-/** ↓ / ↑ in the search box: move the highlight (Enter opens it), keeping it in view. */
-function stepSearch(by) {
-  if (!searchVisible.length) return;
-  const at = Math.max(0, searchVisible.indexOf(searchSel));
-  searchSel = searchVisible[(at + by + searchVisible.length) % searchVisible.length];
-  renderMain();
-  document.querySelector(`[data-sr="${searchSel}"]`)?.scrollIntoView({ block: "nearest" });
+  return section("Closed", "ended; Cue has the conversation", (r) => r.kind === "session" && !r.live)
+    + section("Older", "from Claude Code, before Cue; matched by name", (r) => r.kind === "older")
+    + history();
 }
 /** What a session result is up to: live state, or ended. */
 function sessionState(r) {
@@ -183,6 +157,7 @@ function sessionState(r) {
 function pickResult(i) {
   const r = searchResults[i];
   if (!r) return;
+  liveOpen = newOpen = false;
   if (r.kind === "session" && r.live && r.quiet) { sheet = null; return svAct("quiet", r.session_id); }
   if (r.kind === "session" && sessionOf(r.session_id)) { sheet = null; return openSession(r.session_id); }
   if (r.kind === "older") return resumeOlder(r);
