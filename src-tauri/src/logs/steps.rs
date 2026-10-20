@@ -310,6 +310,13 @@ pub struct Helper {
     /// When its session last sent it a message that put it back to work (SendMessage); 0 if never.
     #[serde(skip)]
     resumed_ms: u64,
+    /// A teammate (an agent started with a name): it stays after its task, idle, until its session gives it
+    /// more; `name` is what its session calls it by. From its launch, else its meta file once that's there.
+    teammate: bool,
+    name: String,
+    /// Its meta file has been read for what its launch didn't say (once it was there).
+    #[serde(skip)]
+    meta_read: bool,
 }
 
 /// A background task that failed after running this long: worth a word (a quick failure is one the
@@ -375,9 +382,18 @@ impl Helper {
         if self.kind.is_empty() {
             self.kind = helper_kind(std::path::Path::new(&f.path));
         }
-        // Taken up on a message to it, its launch not seen: named by its meta file.
-        if self.desc.is_empty() {
-            self.desc = helper_meta(std::path::Path::new(&f.path)).get("description").and_then(Value::as_str).unwrap_or("").to_string();
+        // Taken up on a message to it, its launch not seen: named by its meta file, which also says a teammate.
+        if self.desc.is_empty() || !self.meta_read {
+            let meta = helper_meta(std::path::Path::new(&f.path));
+            self.meta_read = !meta.is_null();
+            let m = |k: &str| meta.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            if self.desc.is_empty() {
+                self.desc = m("description");
+            }
+            if m("taskKind") == "in_process_teammate" {
+                self.teammate = true;
+                self.name = m("name");
+            }
         }
         true
     }
@@ -922,6 +938,12 @@ impl Feed {
         let meta = || helper_path(&self.path, &s("agentId")).map(|p| helper_meta(&p)).and_then(|m| m.get("description").and_then(Value::as_str).map(str::to_string));
         let desc = Some(s("description")).filter(|d| !d.is_empty()).or_else(meta).filter(|d| !d.is_empty()).unwrap_or_else(|| s("name"));
         self.add_agent(step, s("agentId"), desc, s("resolvedModel"), at_ms);
+        if s("status") == "teammate_spawned" {
+            if let Some(h) = self.helpers.iter_mut().find(|h| h.id == s("agentId")) {
+                h.teammate = true;
+                h.name = s("name");
+            }
+        }
     }
 
     fn add_agent(&mut self, step: &str, id: String, desc: String, model: String, at_ms: u64) {
@@ -933,7 +955,7 @@ impl Feed {
         let path = helper_path(&self.path, &id);
         let kind = path.as_ref().map(|p| helper_kind(p)).unwrap_or_default();
         let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind, model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0 });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind, model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
         self.trim_helpers();
     }
 
@@ -984,7 +1006,7 @@ impl Feed {
             None => Some(remote),
         });
         let desc = if desc.trim().is_empty() { subject.to_string() } else { desc.trim().to_string() };
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, out_path, out_len: 0, closed: false, resumed_ms: 0 });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, out_path, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
         self.trim_helpers();
     }
 
@@ -2391,6 +2413,7 @@ mod tests {
         assert_eq!(f.helpers.len(), 1);
         let h = &f.helpers[0];
         assert_eq!((h.id.as_str(), h.step.as_str(), h.desc.as_str(), h.kind.as_str(), h.model.as_str()), ("a1", "t1", "Backend: names", "Explore", "claude-opus-5-5"));
+        assert!(!h.teammate && h.name.is_empty(), "a background agent isn't a teammate");
         assert!(h.running());
         assert_eq!(h.items.len(), 2, "its own steps, from its own log");
         assert_eq!(step(&h.items[0]), ("Searched", "“ai-title”", "3 files", false, true));
@@ -2444,6 +2467,8 @@ mod tests {
         f.catch_up();
         assert_eq!(f.helpers.len(), 1, "a teammate is one of its background agents");
         assert_eq!((f.helpers[0].id.as_str(), f.helpers[0].desc.as_str(), f.helpers[0].kind.as_str()), ("aprobe-30f8", "Probe teammate reply", "probe"));
+        assert!(f.helpers[0].teammate && f.helpers[0].name == "probe", "known as a teammate, by its name");
+        assert_eq!(steps(p, 0)["helpers"][0]["teammate"], true, "and sent to the window as one");
         assert_eq!(step(&f.turns[0].items[0]).2, "in the background");
         assert_eq!(running_helpers(p), vec!["Probe teammate reply".to_string()]);
         // It answers: done (its idle notice to the session says the same, and changes nothing).

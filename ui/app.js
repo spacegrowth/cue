@@ -512,6 +512,8 @@ function bindMain() {
     if (fo) { const id = fo.dataset.follow; openFollow.has(id) ? openFollow.delete(id) : openFollow.add(id); return renderMain(); }
     const stop = t.closest("[data-act=interrupt]");
     if (stop) return interrupt(stop.dataset.sid);
+    const ttm = t.closest("[data-tell-teammate]");
+    if (ttm) { const [sid, id] = ttm.dataset.tellTeammate.split("|"); return tellTeammate(sid, id); }
     const st_ = t.closest("[data-act=send-to]");
     if (st_) return sendTo(st_.dataset.sid, !!st_.dataset.now);
     if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); }
