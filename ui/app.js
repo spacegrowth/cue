@@ -915,6 +915,9 @@ async function boot() {
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
   await T.event.listen("speak", (e) => kokoroLine(e.payload));
+  // A natural voice picked: which ones are here, now, so Listen reads in it from the start (asked only by
+  // Settings → Voice before, so after a restart Listen used the Mac's voice until Settings was opened).
+  if (voicePick()) kokoroStatus();
   await T.event.listen("fill", (e) => onFill(e.payload));
   await T.event.listen("upload", (e) => onUpload(e.payload));
   await T.event.listen("select", (e) => {
