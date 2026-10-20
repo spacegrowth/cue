@@ -289,6 +289,13 @@ function bindMain() {
     }
     const bw = t.closest("[data-act=btw], [data-act=btw-close]");
     if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) return openBtw(bw.dataset.sid); btwFor = null; return renderMain(); }
+    const wt = t.closest("[data-act=watch]");
+    if (wt) {
+      const on = wt.dataset.on === "1", s = sessionOf(wt.dataset.sid);
+      if (s) s.watch_ms = on ? Date.now() : 0;   // shown now; Cue's next update says the same
+      renderMain();
+      return invoke("set_watch", { sessionId: wt.dataset.sid, on }).catch((e) => toast(`Couldn't: ${e}`));
+    }
     const sn = t.closest("[data-act=send-now]");
     if (sn) return sendQueuedNow(sn.dataset.sid);
     const uq = t.closest("[data-act=unqueue-review]");

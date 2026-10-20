@@ -403,16 +403,26 @@ impl Hub {
 
     /// `category`: "turn" puts Reply and the quick phrases on it; "turn-full" adds Compact.
     fn notify(&self, id: &str, title: &str, body: &str, category: &str) {
+        self.notify_with(id, title, body, category, false);
+    }
+
+    /// A turn you asked to be told about ("Tell me"): shown even with Cue in front, with its own sound.
+    fn notify_watched(&self, id: &str, title: &str, body: &str, category: &str) {
+        self.notify_with(id, title, body, category, true);
+    }
+
+    fn notify_with(&self, id: &str, title: &str, body: &str, category: &str, watched: bool) {
         let Some(app) = &self.app else { return };
         // Test instances run with CUE_QUIET=1 so they never ping you.
         if std::env::var_os("CUE_QUIET").is_some() {
             return;
         }
         // Cue is the window in front of you: the new item is already on screen in Waiting.
-        if app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
+        if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
             return;
         }
-        if crate::notify::post(id, title, body, category) {
+        let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
+        if crate::notify::post_sound(id, title, body, category, &sound) {
             self.st().notified.insert(id.to_string());
         } else {
             // Unbundled dev binary: a plain notification Cue can't take back.

@@ -1,11 +1,14 @@
 //! The sound Cue's notifications play, picked under Settings → General.
 //!
-//! Cue's own three (Pluck, Chime, Rise) are drawn here, as a few decaying tones, and written once to
+//! Cue's own three (Pluck, Chime, Rise), and Tada for a turn you asked to be told about, are drawn here, as a few decaying tones, and written once to
 //! ~/Library/Sounds, where macOS looks for a notification's sound. Glass and Ping are macOS's own.
 //! The sound goes out with the notification, so Focus and Do Not Disturb silence it as before.
 
 /// Every choice, as stored in config.json.
 pub const CHOICES: [&str; 6] = ["pluck", "chime", "rise", "glass", "ping", "none"];
+
+/// What a turn you asked to be told about ("Tell me") plays: not one to pick, so it stands apart.
+pub const TADA: &str = "tada";
 
 /// The sound you picked; Pluck until you pick one.
 pub fn choice() -> String {
@@ -24,7 +27,7 @@ pub fn notification_name(choice: &str) -> Option<String> {
 }
 
 fn ours(choice: &str) -> bool {
-    matches!(choice, "pluck" | "chime" | "rise")
+    matches!(choice, "pluck" | "chime" | "rise" | "tada")
 }
 
 fn file_name(choice: &str) -> String {
@@ -43,7 +46,7 @@ pub fn install() {
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
-    for c in CHOICES.into_iter().filter(|c| ours(c)) {
+    for c in CHOICES.into_iter().chain([TADA]).filter(|c| ours(c)) {
         let wav = wav(&render(c));
         let path = dir.join(file_name(c));
         if std::fs::read(&path).ok().as_deref() != Some(&wav[..]) {
@@ -97,6 +100,13 @@ fn tones(choice: &str) -> Vec<Tone> {
         "pluck" => vec![t(c5, 0.0, 0.6, 0.32, true), t(c5 * 2.0, 0.0, 0.25, 0.08, false)],
         "chime" => vec![t(c5 * 2.0, 0.0, 1.4, 0.16, false), t(c5 * 3.0, 0.0, 0.9, 0.06, false), t(c5 * 5.4, 0.0, 0.4, 0.02, false)],
         "rise" => vec![t(c5, 0.0, 0.28, 0.28, true), t(c5 * 1.5, 0.13, 0.5, 0.3, true)],
+        // A short pickup, then a major chord that rings.
+        "tada" => vec![
+            t(c5 * 1.5, 0.0, 0.16, 0.24, true),
+            t(c5 * 2.0, 0.14, 1.1, 0.26, true),
+            t(c5 * 2.52, 0.14, 1.0, 0.18, true),
+            t(c5 * 3.0, 0.14, 0.9, 0.12, false),
+        ],
         _ => vec![],
     }
 }
@@ -151,7 +161,7 @@ mod tests {
 
     #[test]
     fn each_of_cues_sounds_is_a_short_wav_that_starts_and_ends_quietly() {
-        for c in ["pluck", "chime", "rise"] {
+        for c in ["pluck", "chime", "rise", "tada"] {
             let s = render(c);
             let secs = s.len() as f64 / RATE as f64;
             assert!(secs > 0.3 && secs < 1.6, "{c}: {secs}s");

@@ -158,6 +158,11 @@ mod mac {
 
     /// `category`: "turn" for a finished turn (Reply and quick phrases on it), "turn-full" (and Compact), else "".
     pub fn post(id: &str, title: &str, body: &str, category: &str) -> bool {
+        post_sound(id, title, body, category, &crate::sounds::choice())
+    }
+
+    /// `post` with a given sound (a choice in sounds.rs) instead of the one you picked.
+    pub fn post_sound(id: &str, title: &str, body: &str, category: &str, sound: &str) -> bool {
         if !bundled() {
             return false;
         }
@@ -166,7 +171,7 @@ mod mac {
         content.setTitle(&NSString::from_str(title));
         content.setBody(&NSString::from_str(body));
         // The sound you picked (Settings → General), or none.
-        if let Some(name) = crate::sounds::notification_name(&crate::sounds::choice()) {
+        if let Some(name) = crate::sounds::notification_name(sound) {
             content.setSound(Some(&UNNotificationSound::soundNamed(&NSString::from_str(&name))));
         }
         if !category.is_empty() {
@@ -202,12 +207,16 @@ mod mac {
 }
 
 #[cfg(target_os = "macos")]
-pub use mac::{init, post, remove, set_phrases};
+pub use mac::{init, post, post_sound, remove, set_phrases};
 
 #[cfg(not(target_os = "macos"))]
 pub fn init(_app: &tauri::AppHandle) {}
 #[cfg(not(target_os = "macos"))]
 pub fn post(_id: &str, _title: &str, _body: &str, _category: &str) -> bool {
+    false
+}
+#[cfg(not(target_os = "macos"))]
+pub fn post_sound(_id: &str, _title: &str, _body: &str, _category: &str, _sound: &str) -> bool {
     false
 }
 #[cfg(not(target_os = "macos"))]

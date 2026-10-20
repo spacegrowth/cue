@@ -170,15 +170,21 @@ impl Hub {
                 } else {
                     vec![]
                 };
-                let (id, title) = {
+                let (id, title, watched, took) = {
                     let mut st = self.st();
+                    // A message you kept for it goes now and the turn carries on: a "Tell me" waits for that to end too.
+                    let watched = st.sessions.held(&sid).is_none() && st.sessions.take_watch(&sid);
                     // A session with an open decision is already in the queue — don't double-list it.
                     if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
                         return;
                     }
+                    let took = st.sessions.working_since(&sid).map(|at| now_ms().saturating_sub(at));
                     st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
                     st.sessions.mark(&origin, "waiting", None);
                     st.sessions.set_queued(&sid, None);
+                    if watched {
+                        st.sessions.set_told(&sid, took.unwrap_or(0));
+                    }
                     let thread = st.sessions.thread(&sid);
                     st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
                     if let Some(q) = &unread {
@@ -192,7 +198,7 @@ impl Hub {
                     let t = notify_title(&it);
                     let id = it.id.clone();
                     st.items.push(it);
-                            (id, t)
+                    (id, t, watched, took)
                 };
                 // Its card lands with its cache and context numbers, not at the next tick.
                 self.cache_tick();
@@ -213,7 +219,11 @@ impl Hub {
                 let held = self.st().sessions.held(&sid).is_some();
                 // The note Cue asked for while you're away (its tick, or Settings): no need to call you back for it.
                 let noted = !origin_path.is_empty() && crate::steps::last_prompt(&origin_path).1 && crate::db::handoff(&sid).is_some_and(|k| k.ahead > crate::ipc::AHEAD_YOU);
-                if crate::config::flag("/notify/finished") && !later && !held && !noted {
+                // You asked to be told ("Tell me"): it tells you whatever else would keep it quiet, Cue in front too.
+                if watched {
+                    let took = took.map(|ms| format!("Took {} · ", took_words(ms))).unwrap_or_default();
+                    self.notify_watched(&id, &title.0, &format!("{took}you asked to be told\n{}", title.1), if full.is_some() { "turn-full" } else { "turn" });
+                } else if crate::config::flag("/notify/finished") && !later && !held && !noted {
                     match full {
                         Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
                         None => self.notify(&id, &title.0, &title.1, "turn"),
@@ -795,6 +805,16 @@ impl Hub {
         if changed {
             self.changed();
         }
+    }
+}
+
+/// How long a turn ran, as a notification says it: "45s", "38m", "1h 52m".
+fn took_words(ms: u64) -> String {
+    let s = ms / 1000;
+    match s {
+        0..60 => format!("{s}s"),
+        60..3600 => format!("{}m", s / 60),
+        _ => format!("{}h {}m", s / 3600, s % 3600 / 60),
     }
 }
 

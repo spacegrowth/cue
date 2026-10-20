@@ -63,6 +63,12 @@ pub(crate) fn set_later(hub: State<Arc<Hub>>, session_id: String, on: bool) {
     hub.set_later(&session_id, on);
 }
 
+/// "Tell me" on a working session's turn: told when it's done, even with Cue in front. Or off.
+#[tauri::command]
+pub(crate) fn set_watch(hub: State<Arc<Hub>>, session_id: String, on: bool) {
+    hub.set_watch(&session_id, on);
+}
+
 /// Star a session (you're following it), or unstar it.
 #[tauri::command]
 pub(crate) fn set_starred(hub: State<Arc<Hub>>, session_id: String, on: bool) {

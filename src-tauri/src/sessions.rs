@@ -116,6 +116,14 @@ pub struct Session {
     /// wait under Need to decide without a notification, until you reply or put it back.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub later_ms: u64,
+    /// You asked to be told when this turn is done ("Tell me"): since when; 0 = you didn't. Its finish
+    /// always notifies, even with Cue in front, with a sound of its own; cleared once the turn ends.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub watch_ms: u64,
+    /// The turn you asked to be told about ended: how long it ran (at least 1); 0 = none. Its chat says
+    /// so until the next turn starts.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub told_ms: u64,
     /// You starred it (you're following it): since when; 0 = it isn't. Starred sessions come first
     /// wherever Cue lists them.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -161,6 +169,8 @@ impl Parked {
         s.enter_ms = 0;
         s.stuck_ms = 0;
         s.later_ms = 0;
+        s.watch_ms = 0;
+        s.told_ms = 0;
         s.changes = None;
         s.turn_base = None;
         s.rename_pending = false;
@@ -222,6 +232,8 @@ impl Sessions {
             compacting_ms: 0,
             compacted_ms: 0,
             later_ms: 0,
+            watch_ms: 0,
+            told_ms: 0,
             starred_ms: 0,
             trust_ms: 0,
             enter_ms: 0,
@@ -257,6 +269,7 @@ impl Sessions {
         if state == "working" {
             s.compacting_ms = 0;
             s.compacted_ms = 0;
+            s.told_ms = 0;
             s.changes = None;
             // Back at work: no longer waiting on its background agents (their own list, from its log, says
             // which still run). Counted again if its turn ends with some still at work.
@@ -378,6 +391,11 @@ impl Sessions {
 
     pub fn thread(&self, session_id: &str) -> Vec<Exchange> {
         self.0.get(session_id).map(|s| s.thread.clone()).unwrap_or_default()
+    }
+
+    /// When its turn started, while it's working.
+    pub fn working_since(&self, session_id: &str) -> Option<u64> {
+        self.0.get(session_id).filter(|s| s.state == "working").map(|s| s.since_ms)
     }
 
     pub fn state(&self, session_id: &str) -> Option<String> {
@@ -713,6 +731,28 @@ impl Sessions {
         }
         s.starred_ms = if on { crate::model::now_ms() } else { 0 };
         true
+    }
+
+    /// "Tell me" on this turn, or off (`on` false). True if that changed anything.
+    pub fn set_watch(&mut self, session_id: &str, on: bool) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        if (s.watch_ms > 0) == on {
+            return false;
+        }
+        s.watch_ms = if on { crate::model::now_ms() } else { 0 };
+        true
+    }
+
+    /// Its turn ended: whether you asked to be told (and the ask is spent).
+    pub fn take_watch(&mut self, session_id: &str) -> bool {
+        self.0.get_mut(session_id).is_some_and(|s| std::mem::take(&mut s.watch_ms) > 0)
+    }
+
+    /// The turn you asked about ended, after `took` ms: its chat says so until the next one starts.
+    pub fn set_told(&mut self, session_id: &str, took: u64) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.told_ms = took.max(1);
+        }
     }
 
     pub fn is_later(&self, session_id: &str) -> bool {

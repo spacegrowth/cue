@@ -459,7 +459,7 @@ async function interrupt(sid) {
   try { toast(`Stopped ${sessionOf(sid)?.project || "it"}: ${(await invoke("interrupt_session", { sessionId: sid })).replace(/^stopped via /, "via ")}`); }
   catch (e) { toast(`Couldn't stop it: ${e}`); }
 }
-const box_ = (key, placeholder, label, attrs, alt = "") => box(key, placeholder, label, attrs, true, alt);
+const box_ = (key, placeholder, label, attrs, alt = "", extra = "") => box(key, placeholder, label, attrs, true, alt, extra);
 
 /** A waiting message's tracing outline: the window redraws every few seconds, so each copy starts where
  *  the clock says the trace is, and it goes round smoothly instead of jumping back to the start. */
@@ -684,8 +684,9 @@ function draftChips(key) {
   return d.images.length ? `<div class="chips">${d.images.map((im, n) => `<span class="chip"><button class="chip-img" data-draft-lightbox="${esc(key)}:${n}" aria-label="Open ${esc(im.name)}"><img src="${im.data}" alt="${esc(im.name)}"/></button><button class="chip-x" data-unattach="${esc(key)}:${n}" aria-label="Remove image">×</button></span>`).join("")}${d.images.length > 1 ? `<span class="chip-count">${d.images.length} images</span>` : ""}</div>` : "";
 }
 /** A text box that grows as you type (Shift+Enter = new line, Enter = send), optionally with images.
- *  The boxes that message a session (the ones with images) also get the quick phrases. */
-function box(key, placeholder, label, sendAttrs, images, alt = "") {
+ *  The boxes that message a session (the ones with images) also get the quick phrases.
+ *  `alt` shows beside Send once something's typed; `extra` always does. */
+function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   const d = draft(key);
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
@@ -695,7 +696,7 @@ function box(key, placeholder, label, sendAttrs, images, alt = "") {
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
     <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
-    ${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
+    ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
 }
 
 // ---------- earlier messages: a page at a time from Cue's log as you scroll up ----------
@@ -1674,8 +1675,16 @@ function statusLine(it, s) {
   const tray = s?.session_id ? helperTray(s.session_id) : "";
   // Waiting on them: the tray says it all.
   if (tray && s.state === "agent" && s.helpers) return tray;
-  return whereNow(it, s) + tray;
+  return tellLine(s) + whereNow(it, s) + tray;
 }
+/** "Tell me" on this turn: a line says Cue is watching it, then that it's done and how long it took. */
+function tellLine(s) {
+  if (s?.state === "working" && s.watch_ms) return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span>Telling you when this is done</span></div>`;
+  if (s?.told_ms && s.state !== "working") return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span><b>Done</b>${s.told_ms >= 1000 ? ` · took ${tookText(s.told_ms)}` : ""} · you asked to be told</span></div>`;
+  return "";
+}
+/** How long a turn ran: "45s", "38m", "1h 52m" (as its notification says it). */
+const tookText = (ms) => { const sec = Math.floor(ms / 1000); return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h ${Math.floor(sec % 3600 / 60)}m`; };
 /** One line under the chat: where the session is now. */
 function whereNow(it, s) {
   // Started in a folder Claude Code doesn't trust yet: it's asking in its terminal before it does anything.
@@ -1975,6 +1984,17 @@ function restartCover(rs, name) {
     <div class="rs-note">Usually a few seconds. The conversation carries on where it was.</div></div></div>`;
 }
 
+/** "Tell me", beside Send: told when this turn is done, even with Cue in front. It shows once the turn
+ *  has run 30 seconds (most are done by then), and stays pressed until the turn ends. */
+const TELL_AFTER_MS = 30000;
+function tellBtn(s) {
+  if (s?.state !== "working" || !(s.watch_ms || Date.now() - s.since_ms > TELL_AFTER_MS)) return "";
+  const on = !!s.watch_ms;
+  return `<button class="btn tell-btn ${on ? "on" : ""}" data-act="watch" data-sid="${esc(s.session_id)}" data-on="${on ? 0 : 1}" aria-pressed="${on}">${tadaIcon(14, on)}${on ? "Telling you" : "Tell me"}</button>`;
+}
+/** Where the project's dot is, while you're waiting to be told: the tada, in the project's color. */
+const watchMark = (project) => `<span class="watch-mark" style="${projStyle(project)}" role="img" aria-label="Telling you when this turn is done">${tadaIcon(14, true)}</span>`;
+
 function activePane() {
   if (quietOpen) return quietPane();
   const pk = parkedActive();
@@ -2013,7 +2033,7 @@ function activePane() {
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
     const now = busy ? `<button class="btn send-now" data-act="send-to" data-now="1" data-sid="${esc(sid)}">Now <kbd>⌘↵</kbd></button>` : "";
-    foot = `${queueNote(sid, s)}<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now)}</div>`;
+    foot = `${queueNote(sid, s)}<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now, tellBtn(s))}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   // A background agent opened in full (helperPane): it takes the chat area and the box, under the same head.
@@ -2035,7 +2055,7 @@ function activePane() {
     ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
-    <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+    <div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}

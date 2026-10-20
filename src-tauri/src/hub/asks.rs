@@ -167,6 +167,17 @@ impl Hub {
         }
     }
 
+    /// "Tell me": be told when this turn is done, or not (`on` false). Only while it's working.
+    pub fn set_watch(&self, session_id: &str, on: bool) {
+        let changed = {
+            let mut st = self.st();
+            (!on || st.sessions.state(session_id).as_deref() == Some("working")) && st.sessions.set_watch(session_id, on)
+        };
+        if changed {
+            self.changed();
+        }
+    }
+
     /// Star a session (you're following it), or unstar it. Kept with the session, like Later; a parked
     /// one keeps it in its saved record, so it stays under Starred while parked and after it's resumed.
     pub fn set_starred(&self, session_id: &str, on: bool) {
@@ -474,6 +485,37 @@ mod tests {
         let id = hub.pending().into_iter().find(|i| i.kind == "terminal").unwrap().id;
         hub.finish(&id, "answered", "allowed");
         assert_eq!(hub.st().sessions.state("s1").as_deref(), Some("working"));
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tell_me_is_for_a_working_turn_and_ends_with_it() {
+        let dir = std::env::temp_dir().join(format!("cue-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let origin = Origin { session_id: "w1".into(), harness: "claude".into(), ..Default::default() };
+        let hub = Hub::new(None);
+        let watch_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.watch_ms).unwrap();
+        hub.event(origin.clone(), "stopped", "Done.".into(), vec![], "");
+        hub.set_watch("w1", true);
+        assert_eq!(watch_ms(&hub), 0, "nothing to wait for: it isn't working");
+        hub.event(origin.clone(), "active", "run the backfill".into(), vec![], "");
+        hub.set_watch("w1", true);
+        assert!(watch_ms(&hub) > 0);
+        hub.set_watch("w1", false);
+        assert_eq!(watch_ms(&hub), 0, "Telling you, pressed again: off");
+        hub.set_watch("w1", true);
+        hub.event(origin.clone(), "stopped", "Backfill done.".into(), vec![], "");
+        assert_eq!(watch_ms(&hub), 0, "the turn ended: the ask is spent");
+        let told_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.told_ms).unwrap();
+        assert!(told_ms(&hub) > 0, "its chat says you were told");
+        assert_eq!(hub.pending().iter().filter(|i| i.kind == "waiting").count(), 1, "its card waits as any other");
+        hub.event(origin, "active", "next".into(), vec![], "");
+        assert_eq!(watch_ms(&hub), 0, "the next turn isn't watched");
+        assert_eq!(told_ms(&hub), 0, "and the line about the last one goes");
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
