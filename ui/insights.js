@@ -15,8 +15,8 @@
 const HANDOFF_WARM = { context: 300000, growth: 4 };
 const HANDOFF_COLD = { context: 150000, growth: 3 };
 const HANDOFF_CONTEXT = HANDOFF_COLD.context;   // the least any hand-off insight shows at
-const CACHE_WARN_MS = 10 * 60000;   // the countdown shows in an hour's cache's last 10 minutes,
-const CACHE_WARN_SHORT_MS = 2 * 60000;   // a 5-minute one's last 2 (the Mac's heads-up goes by the same: hub cache_tick)
+const CACHE_WARN_MS = 10 * 60000;   // the countdown shows in an hour's cache's last 10 minutes; a 5-minute one has
+                                    // none (it runs out while you read; the Mac's heads-up goes by the same: hub cache_tick)
 const CACHE_MIN_TOKENS = 50000;     // smaller contexts are cheap to rebuild: not worth a note
 const CACHE_COLD_FOR_MS = 12 * 3600000;
 // Compacting while it's still cached reads the context back at the cache's price and leaves a short summary,
@@ -354,7 +354,8 @@ function cacheWarn(sid) {
   if (!insOn("cache") || !sid) return null;
   const s = sessionOf(sid), c = cacheOf(sid);
   if (!s || s.state === "working" || insStale(s, sid) || !c || c.tokens < CACHE_MIN_TOKENS) return null;
-  const left = c.until_ms - now(), warn = !c.ttl || c.ttl > CACHE_WARN_MS ? CACHE_WARN_MS : CACHE_WARN_SHORT_MS;
+  if (c.ttl && c.ttl <= CACHE_WARN_MS) return null;
+  const left = c.until_ms - now(), warn = CACHE_WARN_MS;
   return left > warn || -left > CACHE_COLD_FOR_MS ? null : { c, left, warn };
 }
 /** One line for a session that's waiting on you: the bulb in a ring counting down the cache's last minutes
@@ -561,7 +562,6 @@ function insSent(sid, text, now_) {
   const c = cacheOf(sid), s = sessionOf(sid);
   if (c && c.tokens >= CACHE_MIN_TOKENS && c.until_ms > now() && insShownOnce.has(`cache:${sid}`)) {
     insLog(sid, "cache", "acted", "", c.tokens);
-    toast(`Caught ${nameOf(sid, s?.project)} in time: ${insTok(c.tokens)} tokens not written again`, 5000);
   }
   // A hand-off skill sent bare (not "… resume", not relay's, which opens the next lead itself): remembered
   // on the Mac until it continues in a new session.

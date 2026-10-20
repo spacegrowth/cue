@@ -26,10 +26,9 @@ const LOG_LAG_MS: u64 = 10_000;
 const TAKEN_SETTLE_MS: u64 = 3000;
 
 /// How long before a waiting session's cache runs out Cue gives you a heads-up: an hour's cache in its last
-/// 10 minutes, a 5-minute one in its last 2; and the least context worth one. insights.js cacheWarn counts
-/// the card down by the same rule (CACHE_WARN_MS, CACHE_WARN_SHORT_MS, CACHE_MIN_TOKENS).
+/// 10 minutes (a 5-minute one gets none: it runs out while you read); and the least context worth one.
+/// insights.js cacheWarn counts the card down by the same rule (CACHE_WARN_MS, CACHE_MIN_TOKENS).
 const COLD_WARN_MS: u64 = 10 * 60_000;
-const COLD_WARN_SHORT_MS: u64 = 2 * 60_000;
 const COLD_MIN_TOKENS: u64 = 50_000;
 
 /// A hand-off note asked for before a cache runs out (a session's "Hand off if I don't come back", or Settings
@@ -418,9 +417,8 @@ impl Hub {
                     ahead.push((it.origin.clone(), until, tokens, by));
                 }
             }
-            // A 5-minute cache is always inside 10 minutes: told in its last 2, not as its turn ends.
-            let warn = if until.saturating_sub(last) > COLD_WARN_MS { COLD_WARN_MS } else { COLD_WARN_SHORT_MS };
-            if until <= now || until - now > warn || tokens < COLD_MIN_TOKENS || later {
+            // A 5-minute cache: no heads-up.
+            if until.saturating_sub(last) <= COLD_WARN_MS || until <= now || until - now > COLD_WARN_MS || tokens < COLD_MIN_TOKENS || later {
                 continue;
             }
             // A note written ahead is waiting for you: its card says so, and its renewed cache needs no heads-up.
