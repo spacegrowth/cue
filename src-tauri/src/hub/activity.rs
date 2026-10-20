@@ -178,7 +178,7 @@ impl Hub {
                     if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
                         return;
                     }
-                    let took = st.sessions.working_since(&sid).map(|at| now_ms().saturating_sub(at));
+                    let took = st.sessions.turn_started(&sid).map(|at| now_ms().saturating_sub(at));
                     st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
                     st.sessions.mark(&origin, "waiting", None);
                     st.sessions.set_queued(&sid, None);

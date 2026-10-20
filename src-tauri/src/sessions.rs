@@ -393,9 +393,12 @@ impl Sessions {
         self.0.get(session_id).map(|s| s.thread.clone()).unwrap_or_default()
     }
 
-    /// When its turn started, while it's working.
-    pub fn working_since(&self, session_id: &str) -> Option<u64> {
-        self.0.get(session_id).filter(|s| s.state == "working").map(|s| s.since_ms)
+    /// When its turn started, while it's at it: working, or waiting on its background agents (it works
+    /// again when they report, the same turn to you). The first bar segment since it last waited on you.
+    pub fn turn_started(&self, session_id: &str) -> Option<u64> {
+        let s = self.0.get(session_id).filter(|s| matches!(s.state.as_str(), "working" | "agent"))?;
+        let after = s.segments.iter().rposition(|g| g.kind == "waiting").map_or(0, |i| i + 1);
+        Some(s.segments.get(after).map_or(s.since_ms, |g| g.start_ms))
     }
 
     pub fn state(&self, session_id: &str) -> Option<String> {

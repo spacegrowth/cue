@@ -443,6 +443,14 @@ fn helper_kind(log: &std::path::Path) -> String {
     helper_meta(log).get("agentType").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
+/// An Agent call's launch status that leaves it working on its own: a background agent ("async_launched"),
+/// or a teammate, one given a name ("teammate_spawned"). A teammate writes its log where the others do and
+/// ends its turn the same way; it reports by a message (an idle notice), not a task notice, so it reads as
+/// done once its log ends on its answer, and at work again when its session messages it.
+fn in_background(status: &str) -> bool {
+    matches!(status, "async_launched" | "teammate_spawned")
+}
+
 /// The background agent a SendMessage result says it put back to work (`resumedAgentId`, or `revivedAgentId`).
 fn resumed_agent(extra: Option<&Value>) -> Option<String> {
     let x = extra?;
@@ -910,7 +918,10 @@ impl Feed {
     /// A background agent just started (its launch result came in): remember it and open its log.
     fn add_helper(&mut self, step: &str, extra: &Value, at_ms: u64) {
         let s = |k: &str| extra.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        self.add_agent(step, s("agentId"), s("description"), s("resolvedModel"), at_ms);
+        // A teammate's launch has no description: its meta file's, else its name.
+        let meta = || helper_path(&self.path, &s("agentId")).map(|p| helper_meta(&p)).and_then(|m| m.get("description").and_then(Value::as_str).map(str::to_string));
+        let desc = Some(s("description")).filter(|d| !d.is_empty()).or_else(meta).filter(|d| !d.is_empty()).unwrap_or_else(|| s("name"));
+        self.add_agent(step, s("agentId"), desc, s("resolvedModel"), at_ms);
     }
 
     fn add_agent(&mut self, step: &str, id: String, desc: String, model: String, at_ms: u64) {
@@ -1377,7 +1388,7 @@ impl Feed {
                         *result = r;
                         *bad = b;
                         *done = true;
-                        let launched = extra.filter(|x| x.get("status").and_then(Value::as_str) == Some("async_launched")).cloned();
+                        let launched = extra.filter(|x| x.get("status").and_then(Value::as_str).is_some_and(in_background)).cloned();
                         let resumed = resumed_agent(extra);
                         let backgrounded = extra.filter(|x| x.get("backgroundTaskId").and_then(Value::as_str).is_some_and(|t| !t.is_empty())).cloned();
                         let (step, subject, command, desc) = (sid.clone(), subject.clone(), command.clone(), desc.clone());
@@ -1894,7 +1905,7 @@ fn outcome(tool: &str, block: &Value, extra: Option<&Value>) -> (String, bool) {
                 format!("{} results", text.lines().filter(|l| !l.trim().is_empty()).count())
             }
         }
-        "Agent" | "Task" if x("status").and_then(Value::as_str) == Some("async_launched") => "in the background".into(),
+        "Agent" | "Task" if x("status").and_then(Value::as_str).is_some_and(in_background) => "in the background".into(),
         "SendMessage" if resumed_agent(extra).is_some() => "back at work".into(),
         _ => "done".into(),
     };
@@ -2409,6 +2420,46 @@ mod tests {
         assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
         assert_eq!(running_background(p), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_teammate_shows_at_work_until_it_answers_and_again_when_its_session_messages_it() {
+        // As Claude Code writes them: an Agent call given a name starts a teammate.
+        let dir = std::env::temp_dir().join(format!("cue-steps-teammate-{}", std::process::id()));
+        let sub = dir.join("s1").join("subagents");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("agent-aprobe-30f8.meta.json"), r#"{"agentType":"probe","description":"Probe teammate reply","name":"probe","requestShape":"background","taskKind":"in_process_teammate","teamName":"session-804699a9"}"#).unwrap();
+        let agent_log = sub.join("agent-aprobe-30f8.jsonl");
+        std::fs::write(&agent_log, concat!(r#"{"type":"user","isSidechain":true,"timestamp":"2026-10-20T20:34:45.000Z","message":{"role":"user","content":"<teammate-message teammate_id=\"team-lead\" summary=\"Probe teammate reply\">\nReply with exactly the text: probe ok\n</teammate-message>"}}"#, "\n")).unwrap();
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"user","timestamp":"2026-10-20T20:34:42.000Z","message":{"content":"start a teammate"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-20T20:34:44.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Probe teammate reply","name":"probe","prompt":"Reply with exactly the text: probe ok"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-20T20:34:45.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"Spawned successfully.\nagent_id: aprobe-30f8\nname: probe\nThe agent is now running and will receive instructions via mailbox."}]}]},"toolUseResult":{"status":"teammate_spawned","agentId":"aprobe-30f8","resolvedModel":"claude-haiku-5-5","teammate_id":"probe@session-804699a9","name":"probe","team_name":"session-804699a9"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-20T20:34:46.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"It's running."}]}}"#,
+        ].join("\n") + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        f.catch_up();
+        assert_eq!(f.helpers.len(), 1, "a teammate is one of its background agents");
+        assert_eq!((f.helpers[0].id.as_str(), f.helpers[0].desc.as_str(), f.helpers[0].kind.as_str()), ("aprobe-30f8", "Probe teammate reply", "probe"));
+        assert_eq!(step(&f.turns[0].items[0]).2, "in the background");
+        assert_eq!(running_helpers(p), vec!["Probe teammate reply".to_string()]);
+        // It answers: done (its idle notice to the session says the same, and changes nothing).
+        let append = |file: &std::path::Path, line: &str| std::io::Write::write_all(&mut std::fs::OpenOptions::new().append(true).open(file).unwrap(), format!("{line}\n").as_bytes()).unwrap();
+        append(&agent_log, r#"{"type":"assistant","isSidechain":true,"timestamp":"2026-10-20T20:34:48.000Z","message":{"model":"claude-haiku-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"probe ok"}]}}"#);
+        append(&path, r#"{"type":"user","timestamp":"2026-10-20T20:34:49.000Z","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"probe\" color=\"blue\">\n{\"type\":\"idle_notification\",\"from\":\"probe\",\"idleReason\":\"available\",\"result\":\"probe ok\"}\n</teammate-message>"}}"#);
+        f.catch_up();
+        assert!(!f.helpers[0].running());
+        assert!(running_helpers(p).is_empty());
+        // Its session messages it: at work again until it answers again.
+        append(&agent_log, r#"{"type":"user","isSidechain":true,"timestamp":"2026-10-20T20:35:10.000Z","message":{"role":"user","content":"<teammate-message teammate_id=\"team-lead\">\nnow say it twice\n</teammate-message>"}}"#);
+        f.catch_up();
+        assert!(f.helpers[0].running(), "a message to it puts it back to work");
+        append(&agent_log, r#"{"type":"assistant","isSidechain":true,"timestamp":"2026-10-20T20:35:12.000Z","message":{"model":"claude-haiku-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"probe ok probe ok"}]}}"#);
+        f.catch_up();
+        assert!(!f.helpers[0].running());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

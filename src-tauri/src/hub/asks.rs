@@ -167,11 +167,12 @@ impl Hub {
         }
     }
 
-    /// "Tell me": be told when this turn is done, or not (`on` false). Only while it's working.
+    /// "Tell me": be told when this turn is done, or not (`on` false). Only while it's at it (working, or
+    /// waiting on its background agents).
     pub fn set_watch(&self, session_id: &str, on: bool) {
         let changed = {
             let mut st = self.st();
-            (!on || st.sessions.state(session_id).as_deref() == Some("working")) && st.sessions.set_watch(session_id, on)
+            (!on || st.sessions.turn_started(session_id).is_some()) && st.sessions.set_watch(session_id, on)
         };
         if changed {
             self.changed();
@@ -508,6 +509,13 @@ mod tests {
         hub.set_watch("w1", false);
         assert_eq!(watch_ms(&hub), 0, "Telling you, pressed again: off");
         hub.set_watch("w1", true);
+        // Waiting on its background agents (it's driven by them, as their report wakes it): still this turn.
+        hub.st().sessions.mark(&origin, "agent", None);
+        assert!(watch_ms(&hub) > 0, "waiting on its agents: not done yet");
+        hub.set_watch("w1", false);
+        hub.set_watch("w1", true);
+        assert!(watch_ms(&hub) > 0, "and it can be asked for then too");
+        hub.event(origin.clone(), "active", "<task-notification>agents reported</task-notification>".into(), vec![], "");
         hub.event(origin.clone(), "stopped", "Backfill done.".into(), vec![], "");
         assert_eq!(watch_ms(&hub), 0, "the turn ended: the ask is spent");
         let told_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.told_ms).unwrap();

@@ -1679,8 +1679,8 @@ function statusLine(it, s) {
 }
 /** "Tell me" on this turn: a line says Cue is watching it, then that it's done and how long it took. */
 function tellLine(s) {
-  if (s?.state === "working" && s.watch_ms) return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span>Telling you when this is done</span></div>`;
-  if (s?.told_ms && s.state !== "working") return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span><b>Done</b>${s.told_ms >= 1000 ? ` · took ${tookText(s.told_ms)}` : ""} · you asked to be told</span></div>`;
+  if (atWork(s) && s.watch_ms) return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span>Telling you when this is done</span></div>`;
+  if (s?.told_ms && !atWork(s)) return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span><b>Done</b>${s.told_ms >= 1000 ? ` · took ${tookText(s.told_ms)}` : ""} · you asked to be told</span></div>`;
   return "";
 }
 /** How long a turn ran: "45s", "38m", "1h 52m" (as its notification says it). */
@@ -1985,10 +1985,12 @@ function restartCover(rs, name) {
 }
 
 /** "Tell me", beside Send: told when this turn is done, even with Cue in front. It shows once the turn
- *  has run 30 seconds (most are done by then), and stays pressed until the turn ends. */
+ *  has run 30 seconds (most are done by then), or while it waits on its background agents (its turn goes
+ *  on when they report), and stays pressed until the turn ends. */
 const TELL_AFTER_MS = 30000;
+const atWork = (s) => s?.state === "working" || s?.state === "agent";
 function tellBtn(s) {
-  if (s?.state !== "working" || !(s.watch_ms || Date.now() - s.since_ms > TELL_AFTER_MS)) return "";
+  if (!atWork(s) || !(s.watch_ms || s.state === "agent" || Date.now() - s.since_ms > TELL_AFTER_MS)) return "";
   const on = !!s.watch_ms;
   return `<button class="btn tell-btn ${on ? "on" : ""}" data-act="watch" data-sid="${esc(s.session_id)}" data-on="${on ? 0 : 1}" aria-pressed="${on}">${tadaIcon(14, on)}${on ? "Telling you" : "Tell me"}</button>`;
 }
