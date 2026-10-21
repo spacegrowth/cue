@@ -1145,7 +1145,7 @@ function readerPane(sid, it, s, harness, rv) {
 // above the box says it's listening (Pause, Stop); in the reader the foot is its player, and it goes on to the next
 // reply when "Then the next reply" is on. Opening another session keeps it reading (from the reply as last shown);
 // that session's line says whose reply it is, a click goes back, and there the marks are where it got to.
-let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies), follow (the chat scrolls along) }
+let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies), follow (the chat scrolls along), ahead (scrolled away, the reading above the mark) }
 let listenRun = 0;       // bumped on every start, pause and stop: an old sentence's end is ignored
 const LISTEN_SPEEDS = [1, 1.1, 1.25, 1.4, 1.6];
 let listenSpeed = 0, listenThen = true;
@@ -1207,25 +1207,37 @@ function listenWord(x, w) {
 }
 function listenUnmark() { if (CSS.highlights) ["cue-said", "cue-say", "cue-word"].forEach((h) => CSS.highlights.delete(h)); }
 /** The chat scrolls along with what's read: the line being heard (the word, else the sentence's first line, a code
- *  block or table row as a whole) is kept in view, a third down when it has to move. A step is smooth, a jump
- *  (more than a screen) instant. Scroll the chat yourself and it stops following (`l.follow`) until what it reads
- *  is in view again, or you skip, or click a sentence. */
+ *  block or table row as a whole) is held a third down, the chat moving up a line as the reading goes down one.
+ *  Above that mark it's left where it is (the start of a reply near the top), unless it's out of view. A step is
+ *  smooth, a jump (more than a screen) instant. Scroll the chat yourself and it stops following (`l.follow`) until
+ *  the reading comes down to the mark from above, or you skip, or click a sentence. */
 function listenFollow(l) {
   const v = l && listenView(l), x = v?.sents[l.i], chat = v?.root.closest("[data-chat]");
   if (!x || !chat) return;
   const r = (listenWord(x, l.w) || x.range)?.getClientRects()[0] || x.el?.getBoundingClientRect();
   if (!r) return;
-  const box = chat.getBoundingClientRect(), shown = r.top >= box.top + 24 && r.bottom <= box.bottom - 40;
-  if (shown) { l.follow = true; return; }
-  if (l.follow === false) return;
-  const by = r.top - (box.top + box.height / 3);
-  chat.scrollBy({ top: by, behavior: Math.abs(by) < box.height ? "smooth" : "auto" });
+  const box = chat.getBoundingClientRect(), mark = box.top + box.height / 3;
+  const over = r.top < box.top + 24 || r.bottom > box.bottom - 40, below = r.top > mark + 4;
+  // Scrolled away: on again once the reading, above the mark (you went on ahead), comes down to it. Below the
+  // mark (you went back) it's left there.
+  if (l.follow === false) {
+    if (!over && r.top < mark) l.ahead = true;
+    if (over || r.top < mark || !l.ahead) return;
+    l.follow = true;
+  }
+  if (!over && !below) return;
+  // A glide of Cue's own (core.js glideTo), not the browser's smooth scroll: this runs in every redraw, and in
+  // WebKit a smooth scroll started then ran from the chat's top.
+  const by = r.top - mark;
+  if (Math.abs(by) < box.height) return glideTo(() => listenRoot(l.key)?.closest("[data-chat]"), chat.scrollTop + by);
+  glide = null;
+  chat.scrollTop += by;
 }
 /** You scrolled the chat being read yourself (app.js: the wheel or trackpad, or its scroll bar): it stops
  *  following, so it doesn't pull you back while you look elsewhere. */
 function listenScrolled(chat) {
   const root = listening && listenRoot(listening.key);
-  if (root && root.closest("[data-chat]") === chat) listening.follow = false;
+  if (root && root.closest("[data-chat]") === chat) { listening.follow = false; listening.ahead = false; }
 }
 /** The reply being read as shown, with its sentences, worked out again only when asked (`fresh`: after a redraw)
  *  or when the reply on screen is another element: the word marks move many times a second. */

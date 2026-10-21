@@ -632,9 +632,7 @@ function scrollerOf(el) {
   while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
   return sc && sc !== document.body ? sc : null;
 }
-/** Glide a list just enough to show a card in full (with a little room past it). Driven frame by frame
- *  and found again each frame: a redraw (every few seconds while sessions work) replaces the list, which
- *  would stop the browser's own smooth scroll part-way. Your own scrolling stops it. */
+/** Glide a list just enough to show a card in full (with a little room past it). Your own scrolling stops it. */
 let glide = null;
 function glideIntoView(el) {
   const sc = scrollerOf(el);
@@ -643,17 +641,27 @@ function glideIntoView(el) {
   // Cut off below: up, but never past its top. Cut off above: down to its top.
   const delta = a.bottom + M > b.bottom ? Math.min(a.bottom + M - b.bottom, a.top - M - b.top) : a.top - M < b.top ? a.top - M - b.top : 0;
   if (Math.abs(delta) < 1) return;
-  const from = sc.scrollTop, to = Math.max(0, Math.min(sc.scrollHeight - sc.clientHeight, from + delta));
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { sc.scrollTop = to; return; }
   // Found again by its list and what it is (a redraw makes new elements).
   const list = el.closest(".sec, .col"), attr = ["data-session", "data-detail", "data-big"].find((n) => el.hasAttribute(n));
   const key = list && attr ? `.${[...list.classList].join(".")} [${attr}="${CSS.escape(el.getAttribute(attr))}"]` : null;
-  const g = (glide = { t0: performance.now() });
+  glideTo(key ? () => scrollerOf(document.querySelector(key)) : () => sc, sc.scrollTop + delta);
+}
+/** Scroll what `find()` gives (found again each frame) to `to`, easing out over 280 ms; instant with reduced
+ *  motion. Driven frame by frame, not the browser's smooth scroll: a redraw (every few seconds while sessions
+ *  work) replaces or moves the element, which stops that part-way, and in WebKit one started just after a
+ *  redraw moved the element runs from its top. A glide to where one is already going goes on. */
+function glideTo(find, to) {
+  const sc = find();
+  if (!sc) return;
+  to = Math.round(Math.max(0, Math.min(sc.scrollHeight - sc.clientHeight, to)));
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { glide = null; sc.scrollTop = to; return; }
+  if (glide?.to === to) return;
+  const from = sc.scrollTop, g = (glide = { t0: performance.now(), to });
   const step = (t) => {
     if (glide !== g) return;
-    const s = key ? scrollerOf(document.querySelector(key)) : sc;
+    const s = find();
     if (!s) { glide = null; return; }
-    const k = Math.min(1, (t - g.t0) / 280);
+    const k = Math.max(0, Math.min(1, (t - g.t0) / 280));
     s.scrollTop = from + (to - from) * (1 - Math.pow(1 - k, 3));   // eases out
     if (k < 1) requestAnimationFrame(step); else glide = null;
   };
