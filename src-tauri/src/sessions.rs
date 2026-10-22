@@ -256,15 +256,7 @@ impl Sessions {
         }
         if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
             s.prompt = p.trim().to_string();
-            // It went through after all (it waited behind a command, or the agent's word came late, as it can
-            // from a machine): its bubble stops saying it didn't. Compared as the agent got it (spacing
-            // changed, image paths after it), not character for character.
-            // A joined one holds only what you typed: the agent got the message above glued before it.
-            let got = |e: &Exchange| crate::logs::transcript::is_message(&s.prompt, &e.text) || (e.joined && glued_after(&s.prompt, &e.text, &[]));
-            if let Some(e) = s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && got(e)) {
-                e.unsent = false;
-                e.pending = false;
-            }
+            taken(s, p, "its prompt hook");
         }
         if state == "working" {
             s.compacting_ms = 0;
@@ -354,7 +346,7 @@ impl Sessions {
         }
         let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
         let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
-        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false });
+        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -411,17 +403,32 @@ impl Sessions {
         }
     }
 
-    /// Your last message to it never went through as a message: flag it, so its bubble says so.
-    pub fn mark_unsent(&mut self, session_id: &str) {
-        if let Some(e) = self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you")) {
+    /// The agent got `received` (its prompt hook said so, its log has it, it answered it): if that's a
+    /// message of yours Cue was still unsure about, it's settled now. The bubble stops saying it didn't
+    /// go or that Cue is waiting, whichever path said so and however late this comes. True when one was.
+    /// `witness` names who said so, for the message's delivery record.
+    pub fn got_message(&mut self, session_id: &str, received: &str, witness: &str) -> bool {
+        let Some(s) = self.0.get_mut(session_id) else { return false };
+        let received = unwrap_pasted(received);
+        taken(s, &received, witness)
+    }
+
+    /// Your message `text` to it never went through: Cue saw it still sitting in the agent's box (or the
+    /// agent gone) after waiting. Its bubble says so, with Send again. `why`: what Cue saw, for the record.
+    /// Only that message: a second one sent meanwhile has its own verdict coming.
+    pub fn mark_unsent(&mut self, session_id: &str, text: &str, why: &str) {
+        if let Some(e) = self.0.get_mut(session_id).and_then(|s| yours_mut(s, text)) {
             e.unsent = true;
             e.pending = false;
+            record(e, format!("not taken: {why}"));
         }
     }
 
-    /// Your last message to it: Cue hasn't seen the agent take it yet (`on`), or has (`!on`, the ring goes).
-    pub fn set_pending(&mut self, session_id: &str, on: bool) -> bool {
-        match self.0.get_mut(session_id).and_then(|s| s.thread.iter_mut().rev().find(|e| e.role == "you")) {
+    /// Your message `text` to it: Cue hasn't seen the agent take it yet (`on`: a ring on the bubble while
+    /// it keeps looking), or has stopped looking without a verdict (`!on`, the ring goes). True when the
+    /// bubble changed.
+    pub fn set_pending(&mut self, session_id: &str, text: &str, on: bool) -> bool {
+        match self.0.get_mut(session_id).and_then(|s| yours_mut(s, text)) {
             Some(e) if e.pending != on => {
                 e.pending = on;
                 true
@@ -430,9 +437,22 @@ impl Sessions {
         }
     }
 
-    /// Your last message to it, while Cue is still waiting to see it taken.
-    pub fn pending_text(&self, session_id: &str) -> Option<String> {
-        self.0.get(session_id).and_then(|s| s.thread.iter().rev().find(|e| e.role == "you")).filter(|e| e.pending).map(|e| e.text.clone())
+    /// Whether Cue is still waiting to see your message `text` taken (nothing has settled it yet).
+    pub fn is_pending(&self, session_id: &str, text: &str) -> bool {
+        self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().filter(|e| e.role == "you").take(3).find(|e| is_yours(e, text)).is_some_and(|e| e.pending))
+    }
+
+    /// One more step in your message's way to the agent ("Enter again: it was still in its box").
+    pub fn note_delivery(&mut self, session_id: &str, text: &str, what: &str) {
+        if let Some(e) = self.0.get_mut(session_id).and_then(|s| yours_mut(s, text)) {
+            record(e, what.to_string());
+        }
+    }
+
+    /// Every message of yours Cue was still unsure about when it last ran (waiting to see it taken, or
+    /// flagged as not taken): with the session it went to, so the question can be asked again on launch.
+    pub fn unsettled(&self) -> Vec<(Origin, Exchange)> {
+        self.0.values().flat_map(|s| s.thread.iter().rev().filter(|e| e.role == "you" && (e.pending || e.unsent)).take(3).map(move |e| (s.origin.clone(), e.clone()))).collect()
     }
 
     /// Working sessions whose log Cue reads for their latest step: (id, harness, log). Claude Code's
@@ -661,7 +681,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] }),
         }
     }
 
@@ -938,6 +958,50 @@ fn glued_after(long: &str, short: &str, paths: &[&str]) -> bool {
     let squash = |t: &str| t.split_whitespace().filter(|w| !w.starts_with('/') && !paths.contains(w)).collect::<Vec<_>>().join(" ");
     let (long, short) = (squash(long), squash(short));
     short.len() >= 8 && long.len() > short.len() && long.ends_with(&short)
+}
+
+/// The agent got `received`: the message of yours that is, among the last few, if Cue was still unsure
+/// about it, is settled as taken. Compared as the agent got it (spacing changed, image paths after it,
+/// a long paste's wrapper taken off by the caller), not character for character. A joined one holds
+/// only what you typed: the agent got the message above glued before it. True when one was settled.
+///
+/// This is the one place a message becomes "taken". Whoever saw it (the prompt hook, the log, a dialog,
+/// an agent's own word) comes here, however late: a verdict that it didn't go is overturned by it.
+fn taken(s: &mut Session, received: &str, witness: &str) -> bool {
+    let received = received.trim();
+    if received.is_empty() {
+        return false;
+    }
+    let got = |e: &Exchange| crate::logs::transcript::is_message(received, &e.text) || (e.joined && glued_after(received, &e.text, &[]));
+    match s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && got(e)) {
+        Some(e) => {
+            e.unsent = false;
+            e.pending = false;
+            record(e, format!("taken: {witness}"));
+            true
+        }
+        None => false,
+    }
+}
+
+/// Is `e` your message `text`, as Cue sent it? The same words; a long one may have been cut short in
+/// the thread (YOURS_CHARS) or had its spacing changed, so for those the same start is enough.
+fn is_yours(e: &Exchange, text: &str) -> bool {
+    e.text.trim() == text.trim() || (is_long(text) && (crate::logs::transcript::is_message(&e.text, text) || crate::logs::transcript::is_message(text, &e.text)))
+}
+
+/// Your message `text` in the thread, among the last few of yours (a newer one may have gone since).
+fn yours_mut<'a>(s: &'a mut Session, text: &str) -> Option<&'a mut Exchange> {
+    s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| is_yours(e, text))
+}
+
+/// Keep the last few steps of a message's delivery record (enough for one send with its retries).
+const DELIVERY_STEPS: usize = 8;
+
+fn record(e: &mut Exchange, what: String) {
+    e.delivery.push(crate::model::Delivery { at_ms: now_ms(), what });
+    let excess = e.delivery.len().saturating_sub(DELIVERY_STEPS);
+    e.delivery.drain(..excess);
 }
 
 #[cfg(test)]
@@ -1250,7 +1314,7 @@ mod tests {
         s.note("j", "you", "how do I keep the focus in the box", 9);
         s.note("j", "you", "and not when I click elsewhere", 9);
         s.note("j", "you", "how do I keep the focus in the box\n\nand not when I click elsewhere", 9);
-        assert!(s.set_pending("j", true));
+        assert!(s.set_pending("j", "and not when I click elsewhere", true));
         // The agent's prompt is both, glued: the bubble holding only what you typed is that one.
         s.mark(&origin("j"), "working", Some("how do I keep the focus in the box\n\nand not when I click elsewhere"));
         assert!(!s.thread("j").last().unwrap().pending, "taken: the ring goes");
@@ -1354,7 +1418,7 @@ mod tests {
         let mut s = Sessions::default();
         s.mark(&origin("a"), "waiting", None);
         s.note("a", "you", "run the tests", 10);
-        s.mark_unsent("a");
+        s.mark_unsent("a", "run the tests", "still in its box");
         s.mark(&origin("a"), "working", Some("something else"));
         assert!(s.0["a"].thread.last().unwrap().unsent, "a different prompt leaves it flagged");
         s.mark(&origin("a"), "working", Some("run the tests"));
@@ -1366,9 +1430,73 @@ mod tests {
         let mut s = Sessions::default();
         s.mark(&origin("a"), "waiting", None);
         s.note("a", "you", "look at this\nscreenshot", 10);
-        s.mark_unsent("a");
+        s.mark_unsent("a", "look at this\nscreenshot", "still in its box");
         // Its line break joined up, an image's path after it: still the same message.
         s.mark(&origin("a"), "working", Some("look at this screenshot /Users/me/cue/uploads/1.png"));
         assert!(!s.0["a"].thread.last().unwrap().unsent);
+    }
+
+    /// The case that showed the flaw: a long paste sat in the agent's box past Cue's wait, the bubble
+    /// said it didn't go, and the prompt hook that then reported it (the text wrapped as a paste, with
+    /// the session marked working with no prompt) left the bubble as it was.
+    #[test]
+    fn the_prompt_hook_settles_a_message_said_not_to_have_gone_however_late() {
+        let mut s = Sessions::default();
+        s.mark(&origin("a"), "waiting", None);
+        let long = format!("you can make the change, but after that\n\ncheck why {}\n\nWant me to do that now?", "the message did not show ".repeat(20));
+        s.note("a", "you", &long, 10);
+        s.set_pending("a", &long, true);
+        s.mark_unsent("a", &long, "still in its box after 30s");
+        let e = s.thread("a").pop().unwrap();
+        assert!(e.unsent && !e.pending);
+        assert_eq!(e.delivery.last().map(|d| d.what.as_str()), Some("not taken: still in its box after 30s"));
+        // The hook path: working with no prompt, then the prompt as Claude Code hands it over.
+        s.mark(&origin("a"), "working", None);
+        let wrapped = format!("\n\n<pasted_content id=\"673a\">\n{}\n</pasted_content id=\"673a\">\n", long.replace("\n\n", "\r\n\r\n"));
+        assert!(s.got_message("a", &wrapped, "its prompt hook"));
+        let e = s.thread("a").pop().unwrap();
+        assert!(!e.unsent && !e.pending, "taken, whoever said so and however late");
+        assert_eq!(e.delivery.last().map(|d| d.what.as_str()), Some("taken: its prompt hook"));
+        assert!(!s.got_message("a", &wrapped, "its prompt hook"), "nothing left to settle");
+        assert!(!s.got_message("a", "a different message altogether", "its prompt hook"));
+    }
+
+    #[test]
+    fn a_verdict_lands_on_the_message_it_is_about_not_the_newest() {
+        let mut s = Sessions::default();
+        s.mark(&origin("a"), "waiting", None);
+        s.note("a", "you", "first: run the tests", 10);
+        s.set_pending("a", "first: run the tests", true);
+        s.note("a", "you", "second: and commit", 10);
+        s.set_pending("a", "second: and commit", true);
+        s.mark_unsent("a", "first: run the tests", "still in its box");
+        let t = s.thread("a");
+        assert!(t[0].unsent && !t[0].pending, "the first has its verdict");
+        assert!(!t[1].unsent && t[1].pending, "the second is still being watched");
+        assert!(s.is_pending("a", "second: and commit") && !s.is_pending("a", "first: run the tests"));
+        assert!(s.got_message("a", "second: and commit", "its prompt hook"));
+        assert!(t[0].unsent, "the second's witness says nothing about the first");
+        // A long message cut short in the thread, or with its spacing changed, is still found.
+        let long = "word ".repeat(200);
+        s.note("a", "you", &long, 10);
+        assert!(s.set_pending("a", &long.replace(' ', "\n"), true));
+        let open = s.unsettled();
+        assert_eq!(open.len(), 2, "the first (not taken) and the long one (pending): {open:?}");
+        assert!(open.iter().all(|(o, _)| o.session_id == "a"));
+    }
+
+    #[test]
+    fn a_delivery_record_keeps_only_its_last_steps() {
+        let mut s = Sessions::default();
+        s.mark(&origin("a"), "waiting", None);
+        s.note("a", "you", "go", 10);
+        for n in 0..12 {
+            s.note_delivery("a", "go", &format!("step {n}"));
+        }
+        let d = s.thread("a").pop().unwrap().delivery;
+        assert_eq!(d.len(), DELIVERY_STEPS);
+        assert_eq!(d.last().unwrap().what, "step 11");
+        s.note_delivery("a", "nothing like it", "lost");
+        assert_eq!(s.thread("a").pop().unwrap().delivery.len(), DELIVERY_STEPS, "a step for a message that isn't there goes nowhere");
     }
 }

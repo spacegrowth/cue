@@ -238,8 +238,16 @@ impl Hub {
                     // Claude Code reports a message you queue while it's busy the moment it lands in its
                     // queue, not when it reads it (that's at its next step). So that's no new turn, and the
                     // message stays queued, with Send now, until the turn ends.
+                    // The prompt as you sent it (a long paste comes wrapped in `<pasted_content>` tags).
+                    let m = crate::sessions::unwrap_pasted(&message);
                     let echo = st.sessions.state(&sid).as_deref() == Some("working")
-                        && st.sessions.queued_text(&sid).is_some_and(|q| transcript::is_message(&message, &q));
+                        && st.sessions.queued_text(&sid).is_some_and(|q| transcript::is_message(&m, &q));
+                    // Whoever's prompt this turns out to be, the agent has this text: a message of yours
+                    // Cue was still unsure about is settled by it, however late (a hook from a machine, a
+                    // paste that sat in its box past Cue's wait).
+                    if !m.trim().is_empty() {
+                        st.sessions.got_message(&sid, &m, "its prompt hook");
+                    }
                     if !echo {
                         started = st.sessions.state(&sid).as_deref() != Some("working");
                         st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
@@ -248,8 +256,7 @@ impl Hub {
                         st.sessions.mark(&origin, "working", None);
                         st.sessions.set_queued(&sid, None);
                     }
-                    if from_you && !message.trim().is_empty() {
-                        let m = crate::sessions::unwrap_pasted(&message);
+                    if from_you && !m.trim().is_empty() {
                         st.sessions.set_prompt(&sid, &m);
                         st.sessions.note(&sid, "you", &m, crate::config::context_keep());
                     }
@@ -828,6 +835,64 @@ mod tests {
         let mut tm: libc::tm = unsafe { std::mem::zeroed() };
         unsafe { libc::gmtime_r(&secs, &mut tm) };
         format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms % 1000)
+    }
+
+    /// The prompt hook's "active" is a witness whatever else it does: it settles a message Cue had said
+    /// didn't go (the session marked working with no prompt, the text wrapped as a paste), it tells a
+    /// queued message's echo from a new turn through that wrapper too, and on launch Cue asks the log
+    /// about whatever it was still unsure of.
+    #[test]
+    fn the_active_event_settles_what_cue_was_unsure_of_and_launch_asks_the_log() {
+        let dir = std::env::temp_dir().join(format!("cue-unsure-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let long = format!("you can make the change, but after that\n\ncheck why {}\n\nWant me to do that now?", "the message did not show ".repeat(20));
+        let wrapped = format!("\n\n<pasted_content id=\"673a\">\n{long}\n</pasted_content id=\"673a\">\n");
+        let path = dir.join("u1.jsonl");
+        let o = Origin { session_id: "u1".into(), harness: "claude".into(), cwd: "/x/proj".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+        hub.event(o.clone(), "stopped", "Done.".into(), vec![], "");
+        {
+            let mut st = hub.st();
+            st.sessions.note("u1", "you", &long, 10);
+            st.sessions.set_pending("u1", &long, true);
+            st.sessions.mark_unsent("u1", &long, "still in its box after 30s");
+        }
+        let yours = |hub: &Hub| hub.st().sessions.thread("u1").into_iter().rev().find(|e| e.role == "you").unwrap();
+        assert!(yours(&hub).unsent);
+        hub.event(o.clone(), "active", wrapped.clone(), vec![], "");
+        let e = yours(&hub);
+        assert!(!e.unsent && !e.pending, "its prompt hook overturns the verdict: {e:?}");
+        assert_eq!(hub.st().sessions.state("u1").as_deref(), Some("working"));
+
+        // Queued while it worked: Claude Code reports the queued text the moment it lands, wrapped the
+        // same way. That's its echo, not a new turn: the message stays queued, with Send now.
+        let q = crate::model::Exchange { role: "you".into(), text: long.clone(), at_ms: now_ms(), images: vec![], from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] };
+        hub.st().sessions.set_queued("u1", Some(q));
+        hub.event(o.clone(), "active", wrapped.clone(), vec![], "");
+        assert!(hub.st().sessions.queued_text("u1").is_some(), "still queued: the wrapped report was its echo");
+
+        // Cue restarted while unsure: the log has the message by now, so it's taken; a message the log
+        // doesn't have stays as it was (a watch starts for a pending one only with the app around).
+        {
+            let mut st = hub.st();
+            st.sessions.note("u1", "you", "and then commit", 10);
+            st.sessions.set_pending("u1", "and then commit", true);
+            st.sessions.mark_unsent("u1", &long, "still in its box after 30s");
+        }
+        let at = now_ms();
+        std::fs::write(&path, format!("{{\"type\":\"user\",\"timestamp\":\"{}\",\"message\":{{\"content\":{}}}}}\n", iso(at), serde_json::to_string(&wrapped).unwrap())).unwrap();
+        hub.recheck_unsettled();
+        let t = hub.st().sessions.thread("u1");
+        let first = t.iter().find(|e| e.text == long).unwrap();
+        assert!(!first.unsent && !first.pending, "{first:?}");
+        assert_eq!(first.delivery.last().map(|d| d.what.as_str()), Some("taken: its log, read when Cue started"));
+        let second = t.iter().find(|e| e.text == "and then commit").unwrap();
+        assert!(second.pending && !second.unsent, "nothing says it went, nothing says it didn't");
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

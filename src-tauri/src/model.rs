@@ -34,6 +34,18 @@ pub struct Exchange {
     /// The text is what you typed; the bubble says it went with the one above (sessions.rs note_with).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub joined: bool,
+    /// How this message of yours got to the agent, step by step: typed where, Enter pressed again, who
+    /// said it was taken (its prompt hook, its log, a dialog it opened), or why Cue said it didn't go.
+    /// The last few steps only; a line each, so the question "which path flagged it" has an answer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delivery: Vec<Delivery>,
+}
+
+/// One step of a message's way to the agent (see `Exchange::delivery`).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Delivery {
+    pub at_ms: u64,
+    pub what: String,
 }
 
 /// An image attached in Cue (base64, optionally as a data: URL).

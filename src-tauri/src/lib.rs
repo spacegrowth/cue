@@ -233,6 +233,9 @@ pub fn run() {
             // Waiting sessions always come back with their card (a rebuilt one gets it above; the
             // rest, whose card vanished another way, get it here).
             bring_back_cards(&hub);
+            // A message Cue was still unsure about when it last ran: its log may say by now, and what's
+            // still open is watched again (a restart used to leave its ring on for good).
+            hub.recheck_unsettled();
             // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
             // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
             if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {

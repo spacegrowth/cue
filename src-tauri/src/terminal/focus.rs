@@ -793,38 +793,134 @@ fn wait_for_paste(o: &Origin, text: &str, before: &str) {
     }
 }
 
-/// The line the cursor is on in the session's pane (this Mac's or a machine's): the end of its input box,
-/// where a message it hasn't taken still shows. One trip: the screen, then the cursor's row.
-pub fn cursor_line(o: &Origin) -> Option<String> {
-    let pane = o.tmux_pane.as_str();
-    let args = ["capture-pane", "-p", "-t", pane, ";", "display-message", "-p", "-t", pane, "#{cursor_y}"];
-    let out = if o.machine.is_empty() {
-        tmux_out(&args)?
-    } else {
-        crate::machines::tmux(&crate::machines::get(&o.machine)?.host, &args).ok()?
+/// What the session's terminal shows right now, wherever it is: its tmux pane (this Mac's or a
+/// machine's), its iTerm session (`contents of session`) or its Terminal.app tab (`contents of tab`).
+/// Read only: nothing is raised or focused. None when Cue has no way to see it (WezTerm, kitty, an
+/// editor's terminal), or the terminal is gone.
+pub fn screen_of(o: &Origin) -> Option<String> {
+    if !o.tmux_pane.is_empty() {
+        return session_screen(o).ok();
+    }
+    if let Some(pred) = iterm_predicate(o) {
+        return iterm_contents(o, &pred);
+    }
+    if o.term_program == "Apple_Terminal" && !o.tty.is_empty() {
+        return terminal_app_contents(&o.tty);
+    }
+    None
+}
+
+/// The visible text of the agent's iTerm session: the one Cue remembers, else the tab its process is in
+/// now (as `iterm_session_do` finds it). The script answers "found" plus the text, so an empty screen
+/// isn't mistaken for no session.
+fn iterm_contents(o: &Origin, predicate: &str) -> Option<String> {
+    let read = |predicate: &str| -> Option<String> {
+        let script = format!(
+            "tell application \"iTerm\"\n\
+               repeat with w in windows\n\
+                 repeat with t in tabs of w\n\
+                   repeat with s in sessions of t\n\
+                     if {predicate} then\n\
+                       return \"found\" & linefeed & (contents of s)\n\
+                     end if\n\
+                   end repeat\n\
+                 end repeat\n\
+               end repeat\n\
+             end tell\n\
+             return \"\""
+        );
+        let out = run_osascript(&script).ok()?;
+        out.strip_prefix("found").map(|t| t.trim_start_matches(['\n', '\r']).trim_end().to_string())
     };
-    let (screen, y) = out.trim_end().rsplit_once('\n')?;
-    let y: usize = y.trim().parse().ok()?;
-    screen.lines().nth(y).map(String::from)
+    if let Some(text) = read(predicate) {
+        return Some(text);
+    }
+    match current_tty(o) {
+        Some(tty) if tty != o.tty => read(&format!("(tty of s) is \"{}\"", osa(&tty))),
+        _ => None,
+    }
 }
 
-/// Is `text` still sitting in the session's input box (the end of it on the cursor's line)? None when
-/// Cue can't see the pane.
+/// The visible text of the Terminal.app tab on `tty` (its `contents`: the screen, not the scrollback).
+fn terminal_app_contents(tty: &str) -> Option<String> {
+    let script = format!(
+        "tell application \"Terminal\"\n\
+           repeat with w in windows\n\
+             repeat with t in tabs of w\n\
+               if (tty of t) is \"{}\" then\n\
+                 return \"found\" & linefeed & (contents of t)\n\
+               end if\n\
+             end repeat\n\
+           end repeat\n\
+         end tell\n\
+         return \"\"",
+        osa(tty)
+    );
+    let out = run_osascript(&script).ok()?;
+    out.strip_prefix("found").map(|t| t.trim_start_matches(['\n', '\r']).trim_end().to_string())
+}
+
+/// Claude Code's input box on `screen`, as one line: its prompt line ("❯ …", or "│ > … │" in the older
+/// box) and the lines under it up to the rule that closes the box, where a long message wraps. The last
+/// prompt line in the bottom of the screen is the box; the agent's echo of a message it took (also
+/// "> …", in older versions) stands above the box's top rule and is never it. None when no box shows
+/// (a question or a permission prompt has the screen, or it's another agent's).
+pub fn box_text(screen: &str) -> Option<String> {
+    let lines: Vec<&str> = screen.lines().collect();
+    let mut end = lines.len();
+    while end > 0 && lines[end - 1].trim().is_empty() {
+        end -= 1;
+    }
+    let inner = |l: &str| l.trim().trim_start_matches('│').trim_end_matches('│').trim().to_string();
+    let prompt = |l: &str| {
+        let l = inner(l);
+        l.starts_with('❯') || l.starts_with('>')
+    };
+    let at = (end.saturating_sub(20)..end).rev().find(|i| prompt(lines[*i]))?;
+    let body: Vec<String> = lines[at..end].iter().take_while(|l| !crate::terminal::dialog::is_rule(l) || inner(l).starts_with(['❯', '>'])).map(|l| inner(l)).collect();
+    Some(body.join(" "))
+}
+
+/// Is `text` still sitting in the session's input box? None when Cue can't see its terminal, or no
+/// box shows on it. What one look can and can't say: see `still_in_box`.
 pub fn text_in_box(o: &Origin, text: &str) -> Option<bool> {
-    if o.tmux_pane.is_empty() {
-        return None;
-    }
-    let line = cursor_line(o)?;
-    let tail = paste_tail(text);
-    Some(!tail.is_empty() && squash(&line).contains(&tail))
+    let screen = screen_of(o)?;
+    Some(still_in_box(&box_text(&screen)?, text))
 }
 
-/// A dialog open on the session's screen (its choices numbered), if Cue can see the pane.
-pub fn dialog_on(o: &Origin) -> Option<crate::terminal::dialog::Dialog> {
-    if o.tmux_pane.is_empty() {
-        return None;
+/// Does the input box (`box_text`) show `text` waiting: the end of the text, or the
+/// "[Pasted text #1 +12 lines]" placeholder Claude Code folds a paste of several lines into (the text
+/// itself is then nowhere on screen, and that used to read as "gone", so no Enter was pressed again).
+/// One look is a sign, not proof: the agent may be mid-redraw. A verdict that a message wasn't taken
+/// needs the text seen there again later, with nothing else saying it was taken (hub::send).
+pub fn still_in_box(box_text: &str, text: &str) -> bool {
+    let line = squash(box_text);
+    let tail = paste_tail(text);
+    (!tail.is_empty() && line.contains(&tail)) || (text.contains('\n') && line.contains("[Pastedtext#"))
+}
+
+/// The agent is gone from its terminal, so nothing typed there reaches one: a shell at its prompt has the
+/// screen, and (as `type_into` wants both signs) the process there is a shell (tmux says), or the agent's
+/// own process is nowhere to be found (iTerm, Terminal.app). None when Cue can't see the terminal.
+pub fn agent_gone(o: &Origin) -> Option<bool> {
+    if !o.tmux_pane.is_empty() {
+        let pane = o.tmux_pane.as_str();
+        let args = ["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane];
+        let out = if o.machine.is_empty() {
+            tmux_out(&args)?
+        } else {
+            crate::machines::tmux(&crate::machines::get(&o.machine)?.host, &args).ok()?
+        };
+        let (running, screen) = out.split_once('\n').unwrap_or((out.as_str(), ""));
+        return Some(is_shell(running.trim()) && at_shell_prompt(screen));
     }
-    crate::terminal::dialog::parse(&session_screen(o).ok()?)
+    let screen = screen_of(o)?;
+    Some(at_shell_prompt(&screen) && current_tty(o).is_none())
+}
+
+/// A dialog open on the session's screen (its choices numbered), if Cue can see its terminal.
+pub fn dialog_on(o: &Origin) -> Option<crate::terminal::dialog::Dialog> {
+    crate::terminal::dialog::parse(&screen_of(o)?)
 }
 
 /// A screen without spaces or the input box's side borders: how a wrapped line reads joined up again.
@@ -1058,6 +1154,41 @@ mod start_tests {
         let tail = paste_tail("fix the login");
         assert!(!paste_shows(before, "> earlier: fix the login\n────\n> ", &tail));
         assert!(paste_shows(before, "> earlier: fix the login\n────\n> fix the login", &tail));
+    }
+
+    #[test]
+    fn the_box_shows_a_message_by_its_end_or_by_the_placeholder_a_paste_folds_into() {
+        assert!(still_in_box("│ > now fix the login page please │", "now fix the login page please"));
+        assert!(still_in_box("  and then run the login page tests please", "now fix the\nand then run the login page tests please"), "wrapped: the end is on the cursor's line");
+        // The last 24 characters are what's looked for: a wrapped line whose last row holds fewer than
+        // that isn't seen (then there's no verdict, which is the safe side).
+        assert!(!still_in_box("  login page please", "now fix the\nlogin page please"));
+        assert!(!still_in_box("│ > ", "now fix the login page please"), "an empty box");
+        assert!(!still_in_box("⠋ Thinking…", "now fix the login page please"));
+        // Several lines pasted: Claude Code shows "[Pasted text #1 +12 lines]" and none of the text.
+        let long = "you can make the change\n\nbut after that, check why I did not see\n\nWant me to do that now?";
+        assert!(still_in_box("│ > [Pasted text #1 +4 lines] │", long));
+        assert!(!still_in_box("│ > [Pasted text #1 +4 lines] │", "a one-line message"), "a one-liner is never folded: that placeholder is someone else's");
+        assert!(!still_in_box("│ > ", long));
+    }
+
+    /// Screens as tmux, iTerm and Terminal.app give them: the box is the last prompt line near the
+    /// bottom with what wraps under it, up to the rule that closes it; the echo above it never counts.
+    #[test]
+    fn the_input_box_is_found_on_a_screen_whole_and_the_echo_above_it_is_not_it() {
+        let rule = "─".repeat(40);
+        let status = format!("{rule}\n  Opus 5.5  .../cue  git:main*\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n\n");
+        let text = "now fix the login page, then run the whole suite and tell me what broke";
+        let new_box = format!("> {text}\n\n⏺ On it.\n\n{rule}\n❯ {}\n  {}\n{status}", &text[..40], &text[40..]);
+        assert_eq!(box_text(&new_box).as_deref(), Some(format!("❯ {} {}", &text[..40], &text[40..]).as_str()));
+        assert!(still_in_box(&box_text(&new_box).unwrap(), text), "wrapped across the box's rows, found whole");
+        let taken = format!("> {text}\n\n⏺ On it.\n\n{rule}\n❯ \n{status}");
+        assert!(!still_in_box(&box_text(&taken).unwrap(), text), "its echo above the box is not the box");
+        let old_box = format!("> {text}\n\n╭{rule}╮\n│ > [Pasted text #1 +4 lines] │\n╰{rule}╯\n  ? for shortcuts");
+        assert_eq!(box_text(&old_box).as_deref(), Some("> [Pasted text #1 +4 lines]"));
+        assert!(still_in_box(&box_text(&old_box).unwrap(), "several\nlines\nof\ntext"));
+        assert_eq!(box_text("Do you want to proceed?\n  1. Yes\n  2. No\n\n"), None, "a question has the screen: no box");
+        assert_eq!(box_text(""), None);
     }
 
     #[test]

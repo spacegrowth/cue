@@ -429,7 +429,7 @@ pub fn queued_state(path: &str, text: &str) -> Option<Queued> {
     }
     let len = std::fs::metadata(path).ok()?.len();
     let log = read_from(path, len.saturating_sub(256 * 1024))?;
-    let mine = |c: &str| is_message(c, text);
+    let mine = |c: &str| is_message(&crate::sessions::unwrap_pasted(c), text);
     let (mut pending, mut last): (Vec<String>, Option<Queued>) = (vec![], None);
     for e in lines(&log) {
         if e.get("type").and_then(Value::as_str) != Some("queue-operation") {
@@ -567,8 +567,9 @@ pub fn prompt_since(path: &str, text: &str, since_ms: u64) -> bool {
             && e.get("isSidechain").and_then(Value::as_bool) != Some(true)
             && stamp(&e) + 2_000 >= since_ms
             && {
+                // A long paste is logged wrapped in `<pasted_content>` tags: compared as you sent it.
                 let said: String = content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect();
-                is_message(&said, text)
+                is_message(&crate::sessions::unwrap_pasted(&said), text)
             }
     });
     found
@@ -737,6 +738,28 @@ mod tests {
         let long = format!("first line\n\n{}\tend", "word ".repeat(1200));
         let p = write_transcript(&[op("enqueue", Some(&long.replace('\n', "\r\n").replace('\t', "    "))), json!({"type":"queue-operation","operation":"remove","content":long.replace('\n', "\r\n").replace('\t', "    "),"reason":"absorbed_mid_turn"})]);
         assert_eq!(queued_state(&p.0, &long), Some(Queued::Absorbed));
+        // Or wrapped as a paste, as Claude Code logs a message of several lines.
+        let wrapped = format!("\n\n<pasted_content id=\"1\">\n{long}\n</pasted_content id=\"1\">\n");
+        let p = write_transcript(&[op("enqueue", Some(&wrapped)), op("dequeue", None)]);
+        assert_eq!(queued_state(&p.0, &long), Some(Queued::Taken(None)));
+    }
+
+    #[test]
+    fn a_prompt_is_found_in_the_log_as_sent_even_wrapped_as_a_paste() {
+        let at = |s: u32| format!("2026-10-22T18:08:{s:02}.000Z");
+        let t0 = iso_ms(&at(50)).unwrap();
+        let long = format!("you can make the change, but after that\n\ncheck why {}\n\nWant me to do that now?", "the message did not show ".repeat(20));
+        let wrapped = format!("\n\n<pasted_content id=\"673a\">\n{long}\n</pasted_content id=\"673a\">\n");
+        let p = write_transcript(&[
+            json!({"type":"user","timestamp":at(10),"message":{"content":long}}),
+            json!({"type":"user","timestamp":at(57),"isSidechain":false,"message":{"content":wrapped}}),
+        ]);
+        assert!(prompt_since(&p.0, &long, t0), "the paste wrapper is taken off before comparing");
+        assert!(!prompt_since(&p.0, "something else", t0));
+        let p = write_transcript(&[json!({"type":"user","timestamp":at(10),"message":{"content":long}})]);
+        assert!(!prompt_since(&p.0, &long, t0), "an older copy of the same words isn't this send");
+        let p = write_transcript(&[json!({"type":"user","timestamp":at(57),"isSidechain":true,"message":{"content":wrapped}})]);
+        assert!(!prompt_since(&p.0, &long, t0), "a background agent's turn isn't the session's");
     }
 
     #[test]

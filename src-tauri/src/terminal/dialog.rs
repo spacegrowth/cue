@@ -28,7 +28,7 @@ fn choice(line: &str) -> Option<(usize, String, bool)> {
 }
 
 /// Does a line draw a frame: a rule or a box edge, possibly with a label in it ("──── cue-remote ─")?
-fn is_rule(line: &str) -> bool {
+pub(crate) fn is_rule(line: &str) -> bool {
     const RULE: &str = "─━═╭╮╰╯│┃┌┐└┘├┤-=";
     let t = line.trim();
     let run = |it: &mut dyn Iterator<Item = char>| it.take_while(|c| RULE.contains(*c)).count() >= 3;

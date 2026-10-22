@@ -1674,7 +1674,8 @@ function chatHtml(it, s, harness, paged = false) {
       // Typed into its terminal, but it never became a message: say so where you'll see it.
       const unsent = e.unsent ? `<div class="cv-unsent">⚠ This didn't go through as a message. It may have run as a command, or still be in its box.${sid ? ` <button data-act="resend" data-sid="${esc(sid)}" data-resend="${esc(e.text)}">Send again</button>` : ""}</div>` : "";
       // Typed, and Cue hasn't yet seen it take it: a ring until it does (or until Cue can say it didn't).
-      const wait = e.pending ? " · waiting for it to take this" : "";
+      // Past half a minute it's no longer "any moment now": say what Cue knows, which is nothing yet.
+      const wait = !e.pending ? "" : Date.now() - e.at_ms > 30_000 ? " · Cue hasn't seen it take this yet" : " · waiting for it to take this";
       // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
       const joined = e.joined ? " · went to the agent with your message above, as one" : "";
       return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;

@@ -5,31 +5,32 @@ use super::*;
 use super::history::{first_line, push_history};
 
 impl Hub {
-    /// Typed into its terminal, and the agent hasn't said it took it. Looked at once more before deciding:
-    /// a command may have opened a dialog (it ran: a card with its choices), or the text may still sit in
-    /// its box (it didn't: the bubble says so). Otherwise it's pending: a ring on the bubble while Cue
-    /// keeps looking (`confirm_later`), with no verdict until there's something to go on.
+    /// Typed into its terminal, and the agent hasn't said it took it. A command may have opened a dialog
+    /// (it ran: a card with its choices). The text may still sit in its box (the Enter didn't take: the
+    /// agent was busy drawing): Enter once more. Then it's pending: a ring on the bubble while Cue keeps
+    /// looking (`confirm`), with no verdict until there's something to go on. One look at the box is never
+    /// a verdict here: it took one false "still there" to say a message didn't go when it had.
     /// Returns true when it's known to have gone through after all.
     fn settle_typed(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> bool {
         if text.starts_with('/') {
             if let Some(d) = crate::focus::dialog_on(origin) {
+                self.st().sessions.got_message(sid, text, "it opened a dialog");
                 self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
                 return true;
             }
         }
-        // Still in its box: the Enter didn't take (the agent was busy drawing). One more, then a look.
         if crate::focus::text_in_box(origin, text) == Some(true) {
             let _ = crate::focus::press_enter(origin);
-            std::thread::sleep(std::time::Duration::from_millis(700));
-            if crate::focus::text_in_box(origin, text) == Some(true) {
-                self.st().sessions.mark_unsent(sid);
-                return false;
-            }
+            self.st().sessions.note_delivery(sid, text, "Enter again: it was still in its box");
             if self.wait_active(sid, t0, 3000) {
                 return true;
             }
         }
-        self.st().sessions.set_pending(sid, true);
+        {
+            let mut st = self.st();
+            st.sessions.set_pending(sid, text, true);
+            st.sessions.note_delivery(sid, text, "no word from it yet: Cue keeps looking");
+        }
         self.confirm_later(sid.to_string(), origin.clone(), text.to_string(), cmd_before, t0);
         false
     }
@@ -58,59 +59,134 @@ impl Hub {
         r
     }
 
-    /// Keep looking, off this thread, for the pending message to be taken: its hook (clears the ring
-    /// itself), its command in the transcript, a dialog it opened, or the text still in its box (then it
-    /// didn't go). After `PENDING_MS` with nothing to go on, the bubble says it may not have gone.
+    /// Keep looking, off this thread, for the pending message to be taken (`confirm`).
     pub(super) fn confirm_later(&self, sid: String, origin: Origin, text: String, cmd_before: Option<usize>, t0: u64) {
         let Some(me) = self.shared() else { return };
-        std::thread::spawn(move || {
-            let end = now_ms() + PENDING_MS;
-            let name = text.strip_prefix('/').and_then(|t| t.split_whitespace().next()).unwrap_or("").to_string();
-            while now_ms() < end {
-                std::thread::sleep(std::time::Duration::from_millis(2000));
-                {
-                    let st = me.st();
-                    if st.sessions.pending_text(&sid).as_deref() != Some(text.as_str()) {
-                        return; // its hook came (or it was sent again)
-                    }
-                }
-                let taken = me.st().active_at.get(&sid).is_some_and(|t| *t >= t0)
-                    || cmd_before.is_some_and(|before| crate::transcript::command_count(&origin.transcript_path, &name) > before);
-                // In its log as your turn, though no hook said so (its hooks report to another Cue, or one
-                // got lost on the way from a machine): taken. Cue starts the turn as its prompt hook would,
-                // so the session works, and its reply comes in from the log when the turn ends.
-                if !taken && origin.harness == "claude" && crate::transcript::prompt_since(&origin.transcript_path, &text, t0) {
-                    let driver = crate::leads::resolve_driver(&origin.session_id, "");
-                    me.event(origin.clone(), "active", text.clone(), vec![], &driver);
-                    me.st().sessions.set_pending(&sid, false);
-                    // A quick turn may be over already (it ended before Cue looked): finish it now, as the
-                    // Stop hook would have. A longer one is caught when it ends (usage_tick).
-                    if let Some((at, reply, parts)) = crate::transcript::turn_ended_parts(&origin.transcript_path).filter(|(at, _, _)| *at + 2_000 >= t0) {
-                        let _ = at;
-                        me.event(origin.clone(), "stopped", reply, parts, &driver);
-                    }
-                    me.changed();
-                    return;
-                }
-                if taken {
-                    me.st().sessions.set_pending(&sid, false);
-                    me.changed();
-                    return;
-                }
-                if !name.is_empty() {
-                    if let Some(d) = crate::focus::dialog_on(&origin) {
-                        me.st().sessions.set_pending(&sid, false);
-                        me.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
+        std::thread::spawn(move || me.confirm(&sid, &origin, &text, cmd_before, t0));
+    }
+
+    /// Watch a typed message until something says what became of it. "Taken" is a fact: any witness
+    /// proves it, whenever it speaks (`witness`): its prompt hook, its log, a dialog it opened. "Not taken"
+    /// is a verdict, and needs something seen: the text still in its box after the wait, twice in a row,
+    /// or the agent gone from its pane. Meanwhile the text seen in its box gets Enter once more (the
+    /// first one landed while the agent was busy), a couple of times at most.
+    /// The screen is read in tmux, iTerm and Terminal.app (focus::screen_of). With nothing seen either
+    /// way (another terminal, or no box on the screen), there is no verdict: after `PENDING_MS` the
+    /// bubble says Cue hasn't seen it taken, and after `LATE_MS` Cue stops looking.
+    /// Its log is read only where it is on this Mac (a machine's is mirrored here, or not read at all).
+    fn confirm(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) {
+        let start = now_ms();
+        let (mut enters, mut last_enter, mut seen_in_box) = (0u32, 0u64, 0u32);
+        loop {
+            let late = now_ms().saturating_sub(start) >= PENDING_MS;
+            std::thread::sleep(std::time::Duration::from_millis(if late { LATE_EVERY_MS } else { 2000 }));
+            let pending = self.st().sessions.is_pending(sid, text);
+            if !pending {
+                return; // a witness settled it (its hook came), or it was sent again
+            }
+            if let Some(w) = self.witness(sid, origin, text, cmd_before, t0) {
+                let w = w.to_string();
+                self.st().sessions.got_message(sid, text, &w);
+                self.changed();
+                return;
+            }
+            match crate::focus::text_in_box(origin, text) {
+                Some(true) => {
+                    seen_in_box += 1;
+                    if late && seen_in_box >= 2 {
+                        let why = format!("still in its box after {}s", now_ms().saturating_sub(start) / 1000);
+                        self.st().sessions.mark_unsent(sid, text, &why);
+                        self.changed();
                         return;
                     }
+                    // Not into a dialog: a bare Enter there picks whatever is highlighted.
+                    if enters < ENTER_AGAIN && now_ms().saturating_sub(last_enter) >= 3000 && crate::focus::dialog_on(origin).is_none() {
+                        let _ = crate::focus::press_enter(origin);
+                        self.st().sessions.note_delivery(sid, text, "Enter again: it was still in its box");
+                        enters += 1;
+                        last_enter = now_ms();
+                    }
                 }
-                if crate::focus::text_in_box(&origin, &text) == Some(true) {
-                    break;
-                }
+                Some(false) => seen_in_box = 0,
+                None => {}
             }
-            me.st().sessions.mark_unsent(&sid);
-            me.changed();
-        });
+            let gone = late && crate::focus::agent_gone(origin) == Some(true);
+            if gone {
+                self.st().sessions.mark_unsent(sid, text, "its pane shows a shell prompt, not the agent");
+                self.changed();
+                return;
+            }
+            if now_ms().saturating_sub(start) >= LATE_MS {
+                let mut st = self.st();
+                st.sessions.set_pending(sid, text, false);
+                st.sessions.note_delivery(sid, text, "no word from it: Cue stopped looking");
+                drop(st);
+                self.changed();
+                return;
+            }
+        }
+    }
+
+    /// Who, if anyone, says the agent took `text` since `t0`: its prompt hook (`active_at`), its command
+    /// logged as run, its log with the text as your turn, its queue log with the text taken in, or a
+    /// dialog the command opened. One look; None when nobody has said so yet.
+    fn witness(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> Option<&'static str> {
+        let hooked = self.st().active_at.get(sid).is_some_and(|t| *t >= t0);
+        if hooked {
+            return Some("its prompt hook");
+        }
+        let name = text.strip_prefix('/').and_then(|t| t.split_whitespace().next()).unwrap_or("");
+        let log = log_here(origin);
+        if let (Some(before), Some(log)) = (cmd_before, log) {
+            if crate::transcript::command_count(log, name) > before {
+                return Some("its log has the command run");
+            }
+        }
+        if let Some(log) = log {
+            // In its log as your turn, though no hook said so (its hooks report to another Cue, or one
+            // got lost on the way from a machine): taken. Cue starts the turn as its prompt hook would,
+            // so the session works, and its reply comes in from the log when the turn ends.
+            if crate::transcript::prompt_since(log, text, t0) {
+                let driver = crate::leads::resolve_driver(&origin.session_id, "");
+                self.event(origin.clone(), "active", text.to_string(), vec![], &driver);
+                // A quick turn may be over already (it ended before Cue looked): finish it now, as the
+                // Stop hook would have. A longer one is caught when it ends (usage_tick).
+                if let Some((_, reply, parts)) = crate::transcript::turn_ended_parts(log).filter(|(at, _, _)| *at + 2_000 >= t0) {
+                    self.event(origin.clone(), "stopped", reply, parts, &driver);
+                }
+                return Some("its log has it as your turn");
+            }
+            // Sent while it worked and taken into the turn, by its queue log. (A message handed over
+            // mid-turn also leaves a `queued_command` attachment in the log: the place for that witness,
+            // once the transcript reader knows it.)
+            if matches!(crate::transcript::queued_state(log, text), Some(crate::transcript::Queued::Absorbed | crate::transcript::Queued::Taken(_))) {
+                return Some("its queue log has it taken");
+            }
+        }
+        if !name.is_empty() {
+            if let Some(d) = crate::focus::dialog_on(origin) {
+                self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
+                return Some("it opened a dialog");
+            }
+        }
+        None
+    }
+
+    /// Launch: whatever Cue was still unsure about when it last ran is asked again. Its log may have the
+    /// message by now (then it's taken, verdict or no verdict), and what's still open is watched again.
+    pub fn recheck_unsettled(&self) {
+        let open = self.st().sessions.unsettled();
+        for (origin, e) in open {
+            let sid = origin.session_id.clone();
+            let logged = log_here(&origin).is_some_and(|log| crate::transcript::prompt_since(log, &e.text, e.at_ms));
+            if logged {
+                self.st().sessions.got_message(&sid, &e.text, "its log, read when Cue started");
+            } else if e.pending {
+                self.st().sessions.note_delivery(&sid, &e.text, "Cue started: looking again");
+                self.confirm_later(sid, origin, e.text, None, e.at_ms);
+            }
+        }
+        self.changed();
     }
 
     /// Type your reply into a finished session's terminal and confirm it submitted.
@@ -158,6 +234,7 @@ impl Hub {
             let mut st = self.st();
             st.items.retain(|i| i.id != id);
             st.sessions.note_sent(&sid, text, &paths, t0, crate::config::context_keep());
+            st.sessions.note_delivery(&sid, text, &delivery_step(&via, submitted));
         }
         if !submitted && !direct {
             submitted = self.settle_typed(&sid, &it.origin, text, cmd_before, t0);
@@ -193,7 +270,7 @@ impl Hub {
             // now would interrupt the turn that's working on it ("Interrupted · What should Claude
             // do instead?") and leave it idle. Esc only while it's still waiting in the queue.
             let queued = self.st().sessions.queued_text(session_id).unwrap_or_default();
-            let state = if origin.harness == "claude" { transcript::queued_state(&origin.transcript_path, &queued) } else { None };
+            let state = log_here(&origin).and_then(|log| transcript::queued_state(log, &queued));
             if matches!(state, Some(transcript::Queued::Absorbed | transcript::Queued::Taken(_))) {
                 self.st().sessions.set_queued(session_id, None);
                 self.changed();
@@ -290,11 +367,12 @@ impl Hub {
         {
             let mut st = self.st();
             st.sessions.note_sent(session_id, text, &paths, t0, crate::config::context_keep());
+            st.sessions.note_delivery(session_id, text, &delivery_step(&via, submitted));
             if busy {
                 // It's mid-turn: the agent reads this when it finishes its current step.
                 // The same message as the thread's copy (same time), so the chat shows it once, as queued.
                 let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false };
+                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] };
                 st.sessions.set_queued(session_id, Some(q));
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
@@ -391,9 +469,9 @@ impl Hub {
             // it as a second message.
             return self.wait_active(session_id, t0, (5000 + text.len() as u64 / 2).min(15_000));
         }
-        let Some(before) = cmd_before else { return true };
+        let (Some(before), Some(log)) = (cmd_before, log_here(origin)) else { return true };
         let name = text[1..].split_whitespace().next().unwrap_or("");
-        (0..16).any(|_| self.wait_active(session_id, t0, 250) || crate::transcript::command_count(&origin.transcript_path, name) > before)
+        (0..16).any(|_| self.wait_active(session_id, t0, 250) || crate::transcript::command_count(log, name) > before)
     }
 
     fn wait_active(&self, session_id: &str, since: u64, timeout_ms: u64) -> bool {
@@ -463,6 +541,8 @@ impl Hub {
             let message = crate::sessions::unwrap_pasted(message);
             st.sessions.set_prompt(session_id, &message);
             st.sessions.note(session_id, "you", &message, crate::config::context_keep());
+            // The agent has this text: a message of yours Cue was still unsure about is settled by it.
+            st.sessions.got_message(session_id, &message, "its prompt hook");
         }
         self.changed();
     }
@@ -482,27 +562,70 @@ impl Hub {
     }
 }
 
-/// How long Cue keeps looking for a typed message to be taken before its bubble says it may not have gone.
-/// SHORTCUT: outside tmux (iTerm, Terminal) Cue can't see the input box, so this timer is the only
-/// verdict there; the upgrade is a per-terminal screen read (iTerm's "contents of session") so the
-/// box check works everywhere and the timer goes.
+/// How long Cue looks for a typed message to be taken before the bubble says it hasn't seen it taken
+/// (a verdict that it wasn't needs the text seen still in its box from here on).
 const PENDING_MS: u64 = 30_000;
+/// How often it looks after that, and for how long in all before it stops looking with no verdict.
+/// SHORTCUT: in WezTerm, kitty and an editor's terminal Cue has no screen read (focus::screen_of), so
+/// there a message nobody vouches for ends with no verdict at all; the upgrade is a screen read for
+/// each (`wezterm cli get-text`, kitten's `get-text`) so the box check works there too.
+const LATE_EVERY_MS: u64 = 10_000;
+const LATE_MS: u64 = 10 * 60 * 1000;
+/// How many times at most Enter is pressed again for a message seen still in its box.
+const ENTER_AGAIN: u32 = 2;
 
 /// Is `text` the command `/name` (with or without arguments)?
 fn is_command(text: &str, name: &str) -> bool {
     text.strip_prefix('/').and_then(|t| t.split_whitespace().next()) == Some(name)
 }
 
+/// The first line of a message's delivery record: where it was typed, and whether the agent said it
+/// took it before the send returned.
+fn delivery_step(via: &str, submitted: bool) -> String {
+    if submitted { format!("typed via {via}; taken: it started a turn") } else { format!("typed via {via}") }
+}
+
+/// The session's Claude Code log, where Cue can read it: on this Mac, or a machine's copied here
+/// (machines::logs). A machine's own path is never read from here (a stat on it can stall).
+fn log_here(origin: &Origin) -> Option<&str> {
+    let path = origin.transcript_path.as_str();
+    if origin.harness != "claude" || path.is_empty() {
+        return None;
+    }
+    let mirrored = origin.machine.is_empty() || std::path::Path::new(path).starts_with(crate::server::cue_dir().join("machines"));
+    mirrored.then_some(path)
+}
+
 /// For "/name …" typed into Claude Code: how many times it had already logged running that command,
 /// so a new entry afterwards proves it ran. None for a plain message, or an agent Cue can't check.
 fn command_before(origin: &Origin, text: &str) -> Option<usize> {
     let name = text.strip_prefix('/')?.split_whitespace().next()?;
-    (origin.harness == "claude" && !origin.transcript_path.is_empty()).then(|| crate::transcript::command_count(&origin.transcript_path, name))
+    log_here(origin).map(|log| crate::transcript::command_count(log, name))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_log_is_read_only_where_it_is_on_this_mac() {
+        let here = Origin { harness: "claude".into(), transcript_path: "/Users/me/.claude/projects/x/a.jsonl".into(), ..Default::default() };
+        assert_eq!(log_here(&here), Some("/Users/me/.claude/projects/x/a.jsonl"));
+        let mirrored = crate::server::cue_dir().join("machines").join("box").join("a.jsonl").to_string_lossy().into_owned();
+        let on_machine = Origin { machine: "box".into(), transcript_path: mirrored.clone(), ..here.clone() };
+        assert_eq!(log_here(&on_machine), Some(mirrored.as_str()), "a machine's log, copied here");
+        let remote = Origin { machine: "box".into(), transcript_path: "/home/me/.claude/projects/x/a.jsonl".into(), ..here.clone() };
+        assert_eq!(log_here(&remote), None, "the machine's own path: never touched from here");
+        assert_eq!(log_here(&Origin { harness: "pi".into(), ..here.clone() }), None);
+        assert_eq!(log_here(&Origin { transcript_path: String::new(), ..here }), None);
+        assert_eq!(command_before(&remote, "/compact"), None);
+    }
+
+    #[test]
+    fn the_delivery_record_starts_with_where_it_was_typed() {
+        assert_eq!(delivery_step("tmux pane %3", true), "typed via tmux pane %3; taken: it started a turn");
+        assert_eq!(delivery_step("iTerm session", false), "typed via iTerm session");
+    }
 
     #[test]
     fn a_message_sent_while_it_works_is_kept_in_cue_until_taken_back() {
