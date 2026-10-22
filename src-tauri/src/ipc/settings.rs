@@ -95,7 +95,12 @@ pub(crate) async fn update_from_menu(app: tauri::AppHandle) {
     }
 }
 
+/// A Cue built with the add-on never offers a release: releases are built without it, so installing
+/// one would drop the add-on. That Cue is updated by building it again.
 pub(crate) async fn find_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
+    if cfg!(feature = "ext") {
+        return Ok(None);
+    }
     use tauri_plugin_updater::UpdaterExt;
     app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| format!("Couldn't check for updates: {e}"))
 }

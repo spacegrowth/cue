@@ -564,7 +564,17 @@ pub fn model_of(path: &str) -> Option<String> {
     let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
     feed.used = Instant::now();
     feed.catch_up();
-    Some(feed.meta.model.clone()).filter(|m| !m.is_empty())
+    Some(model_for_window(&feed.meta.model, feed.meta.window)).filter(|m| !m.is_empty())
+}
+
+/// A model to start Claude Code on with the same window: the transcript names a 1M session's model without
+/// "[1m]", and `--model` without it starts one on the standard window.
+fn model_for_window(model: &str, window: u64) -> String {
+    if model.is_empty() || window < 1_000_000 || model.ends_with("[1m]") {
+        model.to_string()
+    } else {
+        format!("{model}[1m]")
+    }
 }
 
 /// What the session last said (its latest turn's last words), for the session that continues its hand-off.
@@ -1333,6 +1343,8 @@ impl Feed {
                     return ended;
                 }
                 let text: String = blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
+                // A message Cue pasted in comes back wrapped (and cut into chunks): Cue's hand-off ask too.
+                let text = crate::sessions::unwrap_pasted(&text);
                 let text = text.trim_start();
                 if text.starts_with("[Request interrupted") {
                     return self.close_open("stopped");
@@ -2153,6 +2165,15 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn a_1m_session_continues_on_1m() {
+        assert_eq!(model_for_window("claude-opus-5-5", 1_000_000), "claude-opus-5-5[1m]");
+        assert_eq!(model_for_window("claude-opus-5-5[1m]", 1_000_000), "claude-opus-5-5[1m]");
+        assert_eq!(model_for_window("claude-opus-5-5", 200_000), "claude-opus-5-5");
+        assert_eq!(model_for_window("claude-opus-5-5", 0), "claude-opus-5-5");
+        assert_eq!(model_for_window("", 1_000_000), "");
+    }
+
     fn feed_of(jsonl: &str) -> Feed {
         let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) };
         for e in lines(jsonl) {
@@ -2198,6 +2219,11 @@ mod tests {
         assert_eq!(two.map(|(p, _)| p).as_deref(), Some("/r/b-handoff.md"));
         // You gave it more to do after it: that note isn't where it stopped.
         assert_eq!(note(vec![call("w7", "Write", "/r/HANDOFF.md"), result("w7", "2026-10-04T10:00:06.000Z", false), prompt("now fix the test")]), None);
+        // Cue's hand-off ask, pasted in and come back wrapped: its older note edited into the new one counts.
+        let ask = format!(r#"<pasted_content id=\"a1\">\n{HANDOFF_ASK_START} so a fresh session can carry on.\n</pasted_content id=\"a1\">"#);
+        let f = feed_of(&[prompt(&ask), call("e3", "Edit", "/r/HANDOFF-ab12cd34.md"), result("e3", "2026-10-04T10:00:06.000Z", false)].join("\n"));
+        assert_eq!(f.note.map(|(p, _)| p).as_deref(), Some("/r/HANDOFF-ab12cd34.md"));
+        assert!(f.prompted.1, "the wrapped ask is still known as Cue's");
     }
 
     const T: &str = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"fix the token expiry"}}
