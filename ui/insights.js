@@ -23,14 +23,8 @@ const CACHE_COLD_FOR_MS = 12 * 3600000;
 // so a reply after you're back writes that, not all of it. Below this, the summary and its own reply cost
 // about what writing the context again would.
 const COMPACT_WARM_MIN = 100000;
-// The auto-compact heads-up shows from this share of where Claude Code has lately compacted sessions on the
-// model on its own (logs/steps.rs auto_compact_at): a turn or two before it does.
-const AUTO_NEAR = 0.85;
 // A hand-off note before the cache runs out (hub/activity.rs hand_off_ahead): a session's "Hand off if I don't
-// come back" is offered on an hour's cache (a 5-minute one runs out while you read: Write hand-off now is yours
-// to press), and from this much context it shows on the strip even before you tick it. Settings' every-session
-// timer goes from the same (AHEAD_MIN_TOKENS there).
-const AHEAD_MIN = 150000;
+// come back" works on an hour's cache (a 5-minute one runs out while you read: Write hand-off now is yours to press).
 const AHEAD_TTL_MS = 30 * 60000;
 
 /** The hand-off bar a session has to clear now: the lower one once its cache has run out. A session whose
@@ -44,10 +38,9 @@ const insOn = (rule) => state.settings?.insights?.[rule] !== false;
  *  not continued from or replied past yet: its hand-off as the Mac keeps it, else null. */
 const aheadOf = (sid) => { const ho = state.skill_handoffs?.[sid]; return ho?.ahead > 0 && !ho.next ? ho : null; };
 const aheadWatched = (sid) => (state.ahead_watch || []).includes(sid);
-/** Whether "Hand off if I don't come back" shows for a session: Claude Code on this Mac (the Mac's timer only
- *  reads its own cards' logs), an hour's cache, enough context to matter, and no note already written. Offered
- *  only while that cache is alive (once it's gone there's nothing to get ahead of until its next reply); once
- *  ticked it always shows, so you can see it's on and untick it. */
+/** Whether a ticked "Hand off if I don't come back" still applies to a session: Claude Code on this Mac (the
+ *  Mac's timer only reads its own cards' logs), an hour's cache, enough context to matter, and no note already
+ *  written. It's no longer offered; one ticked before shows, so you can see it's on and untick it. */
 function aheadCan(sid) {
   const s = sessionOf(sid), c = cacheOf(sid);
   return !!s && insOn("handoff") && s.harness === "claude" && !s.machine && (c?.ttl || 0) >= AHEAD_TTL_MS && c.tokens >= CACHE_MIN_TOKENS && !aheadOf(sid) && (c.until_ms > now() || aheadWatched(sid));
@@ -56,27 +49,16 @@ function aheadCan(sid) {
 const aheadLater = (sid) => aheadWatched(sid) && !((cacheOf(sid)?.until_ms || 0) > now());
 const watchText = (sid) => aheadLater(sid)
   ? "<b>Hands off if you don't come back,</b> from your next reply: its cache has run out, so there's nothing to get ahead of until then."
-  : aheadWatched(sid)
-  ? "<b>Hands off if you don't come back:</b> a minute before its cache runs out, it writes a hand-off note, and you choose when you're back."
-  : "Away for a while? A minute before its cache runs out, it can write a hand-off note, and you choose when you're back.";
+  : "<b>Hands off if you don't come back:</b> a minute before its cache runs out, it writes a hand-off note, and you choose when you're back.";
 // A checkbox drawn as a button: a real one inside the bar would click twice (its label, then itself) and open the bar too.
 const watchToggle = (sid) => `<button class="ins-check" role="checkbox" aria-checked="${aheadWatched(sid)}" data-act="ins-watch" data-sid="${esc(sid)}"><i></i>Hand off if I don't come back</button>`;
-// `own`: on its own under the bar (ticked), lined up with the bar rather than inside its panel.
-const watchLine = (sid, own = false) => `<div class="ins-line ${own ? "ins-own" : ""}">${BULB}<span>${watchText(sid)}</span>${watchToggle(sid)}</div>`;
+// On its own under the bar, lined up with the bar rather than inside a panel.
+const watchLine = (sid) => `<div class="ins-line ins-own">${BULB}<span>${watchText(sid)}</span>${watchToggle(sid)}</div>`;
 // sid → the context size its hand-off insight waits for after "Remind me at …" (until Cue restarts). Nothing
-// else hides an insight but aheadQuiet below: it shows whenever its numbers say so.
+// else hides an insight: it shows whenever its numbers say so.
 const insLater = new Map();
 try { localStorage.removeItem("cue.insLater"); } catch {}   // what an earlier build kept
 const insLaterOf = (sid) => insLater.get(sid) || 0;
-// sid → its context when you pressed Continue here on a note written ahead: "Hand off if I don't come back"
-// waits off the bar till it has grown AHEAD_MIN past that (until Cue restarts, as insLater). A compact since
-// (its context now below that) starts it over: from the compact, it's AHEAD_MIN as for any session.
-const aheadQuiet = new Map();
-function aheadQuietOf(sid, tokens) {
-  const q = aheadQuiet.get(sid) || 0;
-  if (tokens < q) aheadQuiet.delete(sid);
-  return tokens < q ? 0 : q;
-}
 const insShownOnce = new Set(); // "rule:sid": logged as shown in this window
 const insCache = new Map();     // sid → { until_ms, tokens, start, last_ms, cold_x, cold_cents, auto_at }, for sessions whose log isn't open here
 /** Compacting, or compacted since its latest reply: its log's context count is from before, so its
@@ -300,18 +282,9 @@ function handoffInsight(sid, s) {
   const d = handoffDue(sid, s);
   const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
   const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask, true, !d?.opts.some((o) => o.cmd === "/compact")) : "", del = delegateLine(sid);
-  // Near where it auto-compacts: its own line, unless the hand-off card offers /compact already.
-  const au = autoDue(sid, true), auto = au ? autoLine(sid, !d?.opts.some((o) => o.cmd === "/compact")) : "";
-  // Hand off if I don't come back: in the opened panel whenever it can (ticking it while it works is fine), on the
-  // bar itself once it's on, or when a big session waits on your reply (the only kind the Mac's timer acts on): not
-  // while it works on what you just sent, asks you something, or is out of usage; nor, after Continue here, till
-  // it has grown AHEAD_MIN past that (aheadQuiet).
-  // Ticked, it's its own line under the bar, always in sight (never one of the bar's "+N").
-  const can = aheadCan(sid), ticked = can && aheadWatched(sid), watch = can && !ticked ? watchLine(sid) : "";
-  const tokens = cacheOf(sid)?.tokens || 0;
-  const watchBar = can && !ticked && s.state === "waiting" && !ask && !insStale(s, sid) && tokens >= aheadQuietOf(sid, tokens) + AHEAD_MIN;
-  if (!d && !cache && !del && !auto && !watchBar && !ticked) return "";
-  if (!d && !cache && !del && !auto && !watchBar) return watchLine(sid, true);
+  // Hand off if I don't come back, ticked: its own line under the bar, always in sight (never one of the bar's "+N").
+  const ticked = aheadCan(sid) && aheadWatched(sid);
+  if (!d && !cache && !del) return ticked ? watchLine(sid) : "";
   if (d) insShown(sid, "handoff");
   const busy = insBusy.has(sid), isOpen = insOpen.has(sid);
   const open = `data-act="ins-open" data-sid="${esc(sid)}"`;
@@ -322,21 +295,21 @@ function handoffInsight(sid, s) {
   const handoffText = d && (insHotSeen.has(sid)
     ? `<b>Each reply re-reads ${esc(insTok(d.m.context))},</b> ${Math.round(d.grew)}× its start.`
     : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
-  const shown = [hotCache && cacheText(cw, ask), handoffText, au && autoText(au), cw && !hotCache && cacheText(cw, ask), delegateText(sid), watchBar && watchText(sid)].filter(Boolean);
+  const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
   const text = shown[0], rest = shown.length - 1;
   // Opened, the panel never repeats the bar's own line; with nothing else to show, the bar doesn't open at all.
-  const lead = hotCache ? "cache" : d ? "handoff" : au ? "auto" : cw ? "cache" : delegateText(sid) ? "del" : "watch";
-  const lines = [lead !== "auto" && auto, lead !== "cache" && cache, lead !== "del" && del, lead !== "watch" && watch].filter(Boolean).join("");
+  const lead = hotCache ? "cache" : d ? "handoff" : cw ? "cache" : "del";
+  const lines = [lead !== "cache" && cache, lead !== "del" && del].filter(Boolean).join("");
   const opens = !!d || !!lines;
   // A cache in its last minutes leading the bar carries its own ways out (its line isn't repeated when opened).
   const warmActs = lead === "cache" && cw.left > 0 && !ask && !d ? `${insOn("handoff") && !s.machine ? `<button class="btn" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${compactWarm(sid, cw, ask) ? `<button class="btn" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}` : "";
   // Gone, leading the bar: Start fresh, as its sentence says.
   const coldActs = lead === "cache" && cw.left <= 0 && !ask && !d ? `<button class="btn" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh</button>` : "";
-  const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : au && canCompact(sid) ? `<button class="btn" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact</button>` : warmActs || coldActs || (lead === "watch" ? watchToggle(sid) : "");
+  const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : warmActs || coldActs;
   const arrow = opens ? `<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its insights" : "Show all of its insights"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button>` : "";
   // With its own ways out on it, the cache's sentence wraps instead of losing what the next reply costs.
   const bar = `<div class="ins-strip ${hot ? "hot" : ""} ${opens ? "" : "whole"} ${(warmActs || coldActs) && !busy ? "wrap" : ""}" ${opens ? open : ""}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}${arrow}</div>`;
-  const below = ticked ? watchLine(sid, true) : "";
+  const below = ticked ? watchLine(sid) : "";
   if (!isOpen || !opens) return bar + below;
   // Opened: the bar rises like a title and the rest unfolds under it, on the panel: the other insights the bar's
   // +N counts first (one line each), then the chart and every action.
@@ -434,7 +407,7 @@ function handoffLine(sid) {
  *  open in Active: ask the Mac for their insights' numbers (every 30 s). The board's cards on this Mac also
  *  get theirs with every state change (setState); this catches parked ones and other machines'. */
 async function insPoll() {
-  if (document.hidden || (!insOn("cache") && !insOn("handoff") && !insOn("autocompact"))) return;
+  if (document.hidden || (!insOn("cache") && !insOn("handoff"))) return;
   const shelved = active?.sid && !sessionOf(active.sid) && (parkedOf(active.sid) || closedOf(active.sid)) ? [active.sid] : [];
   const sids = [...new Set([...state.items.map((i) => i.session_id), ...parkedIds(), ...shelved])].filter((sid) => sid && !stepFeeds.get(sid)?.meta);
   if (!sids.length) return;
@@ -479,31 +452,6 @@ function resumeCost(sid) {
 setInterval(insPoll, 30000);
 setTimeout(insPoll, 3000);   // and soon after the window opens, not 30 s in
 
-// ---------- near where Claude Code compacts on its own ----------
-
-/** A session within reach of where Claude Code has lately compacted sessions on its model on its own (the
- *  least of its last few, logs/steps.rs auto_compact_at: the point moves between versions, so it's a range,
- *  not a promise): its context and that point, else null. `open`: its strip, shown while it works too;
- *  a card's waits for its turn to end. */
-function autoDue(sid, open = false) {
-  if (!insOn("autocompact") || !sid) return null;
-  const s = sessionOf(sid), m = stepFeeds.get(sid)?.meta, c = insCache.get(sid);
-  const ctx = m?.context || c?.tokens || 0, at = m?.auto_at || c?.auto_at || 0;
-  if (!s || (!open && s.state === "working") || insStale(s, sid) || !at || ctx < at * AUTO_NEAR) return null;
-  return { ctx, at };
-}
-/** autoDue's sentence, for its line and the open session's strip. */
-function autoText({ ctx, at }) {
-  return `<b>Near where it compacts on its own.</b> Claude Code has lately auto-compacted sessions on this model from ${esc(insTok(at))}; it's at ${esc(insTok(ctx))}. Compact or hand off now, on your terms.`;
-}
-/** On a waiting card, and in the open session's lines (`act`: with Compact now). */
-function autoLine(sid, act = false) {
-  const au = autoDue(sid, act);
-  if (!au) return "";
-  insShown(sid, "autocompact");
-  return `<div class="ins-line">${BULB}<span>${autoText(au)}</span>${act && canCompact(sid) ? `<button class="btn small" data-act="ins-compact-auto" data-sid="${esc(sid)}">Compact now</button>` : ""}</div>`;
-}
-
 // ---------- could have delegated: looking around itself, or many areas in one long session ----------
 
 // sid → what it could have delegated (ipc insights_tab delegate_of), for the board's cards; whether relay is on.
@@ -538,7 +486,7 @@ function delegateLine(sid) {
 function insCardLine(sid, ask = false) {
   // A note written ahead says where its cache stands itself.
   const cw = cacheWarn(sid), cache = aheadOf(sid) ? "" : cacheLine(sid, ask);
-  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), autoLine(sid), delegateLine(sid)] : [handoffLine(sid), autoLine(sid), delegateLine(sid), cache];
+  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), delegateLine(sid)] : [handoffLine(sid), delegateLine(sid), cache];
   const [top, ...rest] = lines.filter(Boolean);
   // Ticked "Hand off if I don't come back": said in words on its own line, under the rest, never folded into "+N".
   const watching = !ask && aheadWatched(sid) && aheadCan(sid) ? `<div class="ins-line">${BULB}<span><b>Hands off if you don't come back</b> ${aheadLater(sid) ? "from your next reply" : "before its cache runs out"}.</span></div>` : "";
@@ -617,12 +565,11 @@ function insAct(act, d) {
   }
   // Continue here, on a note written ahead: it's set aside, and the box is yours.
   if (act === "ins-keep") {
-    aheadQuiet.set(sid, cacheOf(sid)?.tokens || 0);
     return invoke("handoff_keep", { sessionId: sid }).then(() => document.querySelector(`textarea[data-text="${CSS.escape(`s:${sid}`)}"]`)?.focus(), (e) => toast(`Couldn't: ${e}`));
   }
   if (act === "ins-watch") {
-    const on = !aheadWatched(sid);
-    return invoke("ahead_watch", { sessionId: sid, on }).then(() => toast(on ? "If you're not back a minute before its cache runs out, it writes a hand-off note" : "It won't hand off on its own"), (e) => toast(`Couldn't: ${e}`));
+    // Only a ticked one shows now, so a click unticks it.
+    return invoke("ahead_watch", { sessionId: sid, on: false }).then(() => toast("It won't hand off on its own"), (e) => toast(`Couldn't: ${e}`));
   }
   if (act === "ins-cue") {
     return insRun(sid, "Handing off…", () => invoke("handoff_cue", { sessionId: sid })
@@ -635,11 +582,10 @@ function insAct(act, d) {
       toast(r.detail);
     }, (e) => toast(`Couldn't start it: ${e}`));
   }
-  // Compact, from the hand-off card, the cache's Compact now (counted as what saved it) or the auto-compact heads-up.
-  if (act === "ins-compact" || act === "ins-compact-warm" || act === "ins-compact-auto") {
+  // Compact, from the hand-off card or the cache's Compact now (counted as what saved it).
+  if (act === "ins-compact" || act === "ins-compact-warm") {
     if (act === "ins-compact") insLog(sid, "handoff", "acted", "/compact");
-    else if (act === "ins-compact-warm") insLog(sid, "cache", "acted", "compact", cacheOf(sid)?.tokens || 0);
-    else insLog(sid, "autocompact", "acted", "compact");
+    else insLog(sid, "cache", "acted", "compact", cacheOf(sid)?.tokens || 0);
     // Mid-step, Cue's Compact is refused ("do this when its turn ends"): /compact goes as a queued message instead.
     const go = sessionOf(sid)?.state === "working"
       ? () => invoke("send_to_session", { sessionId: sid, text: "/compact", images: [], now: false }).then(() => toast("/compact queued: it compacts when this step ends"), (e) => toast(`Couldn't: ${e}`))
@@ -742,8 +688,7 @@ function insSettings(st) {
     ${setRow("What they are", "Small notes from a session's own log, with the evidence. Each one offers what that session's machine already has, and sends it only when you click, or where you turn on a hand-off before the cache runs out. Last 30 days: " + esc(insCountsLine()), "")}
     ${setRow("Hand off", "When a session's turns cost several times what its early ones did, offers its hand-off skill (else Cue's own: a note of its own, HANDOFF-<its id>.md, then Continue in a new session) or /compact.", toggle("insights.handoff", st.insights?.handoff ?? true))}
     ${setRow("Cache about to expire", "On a waiting card, the last minutes before its cached context runs out, and once it has. Claude Code says when; other agents' logs don't.", toggle("insights.cache", st.insights?.cache ?? true))}
-    ${setRow("Hand off before the cache runs out", "Off by default: Cue would type into your sessions unasked. On, every Claude Code session on this Mac waiting on you with 150k or more of context and an hour's cache gets Cue's hand-off a minute before its cache runs out, unless something is typed in its box, it has background agents at work, or Cue can't see its box (it reads tmux panes, which Cue's own terminal uses). When you're back you choose: continue here, or a new session from the note. A session's own “Hand off if I don't come back” does this for that one alone.", toggle("insights.ahead", st.insights?.ahead ?? false))}
-    ${setRow("Near auto-compact", "When a session nears where Claude Code has lately compacted sessions on its model on its own, so you can compact or hand off first. The point moves between versions: Cue goes by the least of your last few.", toggle("insights.autocompact", st.insights?.autocompact ?? true))}
+    ${setRow("Hand off before the cache runs out", "Off by default: Cue would type into your sessions unasked. On, every Claude Code session on this Mac waiting on you with 150k or more of context and an hour's cache gets Cue's hand-off a minute before its cache runs out, unless something is typed in its box, it has background agents at work, or Cue can't see its box (it reads tmux panes, which Cue's own terminal uses). When you're back you choose: continue here, or a new session from the note.", toggle("insights.ahead", st.insights?.ahead ?? false))}
     ${setRow("Could have delegated", "On a waiting card, when a session did a lot of reading and searching itself (a background agent would have sent back a summary), or ran long across several areas of its project (relay, when it's on, or an agent per area).", toggle("insights.delegate", st.insights?.delegate ?? true))}
     ${setRow("Queue instead of interrupting", "While a session works and you've typed something: Now stops what it's doing, Queue keeps it.", toggle("insights.queue", st.insights?.queue ?? true))}
     <div class="set-group">Hand-off skill, by host</div>
