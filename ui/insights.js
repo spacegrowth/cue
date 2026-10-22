@@ -64,10 +64,19 @@ const watchToggle = (sid) => `<button class="ins-check" role="checkbox" aria-che
 // `own`: on its own under the bar (ticked), lined up with the bar rather than inside its panel.
 const watchLine = (sid, own = false) => `<div class="ins-line ${own ? "ins-own" : ""}">${BULB}<span>${watchText(sid)}</span>${watchToggle(sid)}</div>`;
 // sid → the context size its hand-off insight waits for after "Remind me at …" (until Cue restarts). Nothing
-// else hides an insight: it shows whenever its numbers say so.
+// else hides an insight but aheadQuiet below: it shows whenever its numbers say so.
 const insLater = new Map();
 try { localStorage.removeItem("cue.insLater"); } catch {}   // what an earlier build kept
 const insLaterOf = (sid) => insLater.get(sid) || 0;
+// sid → its context when you pressed Continue here on a note written ahead: "Hand off if I don't come back"
+// waits off the bar till it has grown AHEAD_MIN past that (until Cue restarts, as insLater). A compact since
+// (its context now below that) starts it over: from the compact, it's AHEAD_MIN as for any session.
+const aheadQuiet = new Map();
+function aheadQuietOf(sid, tokens) {
+  const q = aheadQuiet.get(sid) || 0;
+  if (tokens < q) aheadQuiet.delete(sid);
+  return tokens < q ? 0 : q;
+}
 const insShownOnce = new Set(); // "rule:sid": logged as shown in this window
 const insCache = new Map();     // sid → { until_ms, tokens, start, last_ms, cold_x, cold_cents, auto_at }, for sessions whose log isn't open here
 /** Compacting, or compacted since its latest reply: its log's context count is from before, so its
@@ -295,10 +304,12 @@ function handoffInsight(sid, s) {
   const au = autoDue(sid, true), auto = au ? autoLine(sid, !d?.opts.some((o) => o.cmd === "/compact")) : "";
   // Hand off if I don't come back: in the opened panel whenever it can (ticking it while it works is fine), on the
   // bar itself once it's on, or when a big session waits on your reply (the only kind the Mac's timer acts on): not
-  // while it works on what you just sent, asks you something, or is out of usage.
+  // while it works on what you just sent, asks you something, or is out of usage; nor, after Continue here, till
+  // it has grown AHEAD_MIN past that (aheadQuiet).
   // Ticked, it's its own line under the bar, always in sight (never one of the bar's "+N").
   const can = aheadCan(sid), ticked = can && aheadWatched(sid), watch = can && !ticked ? watchLine(sid) : "";
-  const watchBar = can && !ticked && s.state === "waiting" && !ask && (cacheOf(sid)?.tokens || 0) >= AHEAD_MIN;
+  const tokens = cacheOf(sid)?.tokens || 0;
+  const watchBar = can && !ticked && s.state === "waiting" && !ask && !insStale(s, sid) && tokens >= aheadQuietOf(sid, tokens) + AHEAD_MIN;
   if (!d && !cache && !del && !auto && !watchBar && !ticked) return "";
   if (!d && !cache && !del && !auto && !watchBar) return watchLine(sid, true);
   if (d) insShown(sid, "handoff");
@@ -606,6 +617,7 @@ function insAct(act, d) {
   }
   // Continue here, on a note written ahead: it's set aside, and the box is yours.
   if (act === "ins-keep") {
+    aheadQuiet.set(sid, cacheOf(sid)?.tokens || 0);
     return invoke("handoff_keep", { sessionId: sid }).then(() => document.querySelector(`textarea[data-text="${CSS.escape(`s:${sid}`)}"]`)?.focus(), (e) => toast(`Couldn't: ${e}`));
   }
   if (act === "ins-watch") {

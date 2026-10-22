@@ -1191,6 +1191,14 @@ impl Feed {
                         };
                     }
                 }
+                // Compacted (by you or on its own): its context is what the compact left, now, not at its next
+                // reply. Till then the insights went on as if it were still as big (a hand-off offered at once).
+                if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) {
+                    let post = n(e.pointer("/compactMetadata/postTokens"));
+                    if post > 0 {
+                        m.context = post;
+                    }
+                }
             }
             Kind::Codex => {
                 let p = e.get("payload").cloned().unwrap_or(Value::Null);
@@ -2221,6 +2229,33 @@ mod tests {
         assert_eq!(f.meta.cache_ttl_s, 3600, "a reply that only read the cache keeps the lifetime it was written with");
         assert_eq!(f.meta.start_context, 1210, "the session's start is its first reply's context");
         assert_eq!(f.meta.last_call_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:09.000Z").unwrap());
+    }
+
+    #[test]
+    fn a_compact_leaves_its_context_at_once_not_at_the_next_reply() {
+        let path = std::env::temp_dir().join(format!("cue-compact-context-{}.jsonl", std::process::id()));
+        let reply = |at: &str, id: &str, read: u64| format!(r#"{{"type":"assistant","timestamp":"2026-10-04T10:{at}.000Z","message":{{"id":"{id}","model":"claude-opus-5-5","content":[{{"type":"text","text":"Done."}}],"usage":{{"input_tokens":5,"cache_read_input_tokens":{read},"cache_creation_input_tokens":0,"output_tokens":20}}}}}}"#);
+        let mut log = [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"add the tax column"}}"#.to_string(),
+            reply("00:05", "m1", 600_000),
+            // A background agent compacting its own context isn't this session's.
+            r#"{"type":"system","subtype":"compact_boundary","isSidechain":true,"timestamp":"2026-10-04T10:00:30.000Z","compactMetadata":{"trigger":"auto","preTokens":90000,"postTokens":4000}}"#.to_string(),
+        ]
+        .join("\n") + "\n";
+        std::fs::write(&path, &log).unwrap();
+        let mut f = Feed::open(path.to_str().unwrap(), 1);
+        f.catch_up();
+        assert_eq!(f.meta.context, 600_005);
+        log += r#"{"type":"system","subtype":"compact_boundary","timestamp":"2026-10-04T10:01:00.000Z","compactMetadata":{"trigger":"manual","preTokens":600005,"postTokens":15959}}"#;
+        log += "\n";
+        std::fs::write(&path, &log).unwrap();
+        f.catch_up();
+        assert_eq!(f.meta.context, 15_959, "what the compact left, before any reply");
+        log += &(reply("02:00", "m2", 18_000) + "\n");
+        std::fs::write(&path, &log).unwrap();
+        f.catch_up();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(f.meta.context, 18_005, "then its replies again");
     }
 
     #[test]
