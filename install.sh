@@ -88,6 +88,22 @@ install_app() {
   rm -rf "$HOME/Applications/Cue.app"
   cp -R "$APP_SRC" "$HOME/Applications/Cue.app"
   say "app       → ~/Applications/Cue.app"
+  sign_app "$HOME/Applications/Cue.app"
+}
+
+# A build of your own is signed with your Developer ID when this Mac has one (as releases are, without
+# notarizing): macOS then knows it's the same app across installs, so the microphone, Accessibility and
+# the rest are asked for once, not after every install. Without one it stays as built.
+sign_app() {
+  local id
+  id="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+  [ -n "$id" ] || return 0
+  local err
+  if err="$(codesign --force --deep --options runtime --entitlements "$ROOT/src-tauri/entitlements.plist" --sign "$id" "$1" 2>&1)"; then
+    say "signed    → with your Developer ID (permissions are kept across installs)"
+  else
+    say "not signed: codesign failed, so macOS may ask for permissions again: $err"
+  fi
 }
 
 install_hooks() {

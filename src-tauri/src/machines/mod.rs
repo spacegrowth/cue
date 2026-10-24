@@ -86,9 +86,11 @@ pub fn remove(name: &str) -> Result<(), String> {
 }
 
 /// The shared connection: one per machine, kept 15 minutes after its last use. Its socket lives in
-/// ~/.ssh (a short path: macOS caps socket paths near 104 characters).
-pub fn shared() -> [&'static str; 6] {
-    ["-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/cue-%C", "-o", "ControlPersist=15m"]
+/// ~/.ssh (a short path: macOS caps socket paths near 104 characters). It checks the line every 15 s and drops
+/// it after 3 missed answers (45 s): keepalives belong to whichever ssh opened the connection, so they go on
+/// every call, else a line that died in sleep or a Wi-Fi change hangs every call through it.
+pub fn shared() -> [&'static str; 10] {
+    ["-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/cue-%C", "-o", "ControlPersist=15m", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"]
 }
 
 /// Single-quoted for a POSIX shell (the one helper Cue has for it).
@@ -108,15 +110,35 @@ pub fn short_name(name: &str) -> String {
 pub fn stream_command(host: &str, script: &str) -> Command {
     let mut c = Command::new("/usr/bin/ssh");
     c.args(shared())
-        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=15", "-T", host, &remote_command(script)])
+        .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command(script)])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     c
 }
 
-/// End streams an earlier Cue left running: the ssh processes whose script carries `mark`, nothing else.
+/// End the streams an earlier Cue left running whose script carries `mark`: ssh processes with that mark whose
+/// Cue has gone (they're left to launchd, parent 1), each by its exact pid. Never by a pattern kill, and never
+/// a running Cue's: two Cues side by side (a build beside the installed one) keep their own.
 pub fn end_streams(mark: &str) {
-    let _ = Command::new("/usr/bin/pkill").args(["-f", &format!("^/usr/bin/ssh .*{mark}")]).status();
+    let Ok(out) = Command::new("/bin/ps").args(["-axo", "pid=,ppid=,command="]).output() else { return };
+    for (pid, ppid, cmd) in String::from_utf8_lossy(&out.stdout).lines().filter_map(ps_line) {
+        if ppid == 1 && left_stream(&cmd, mark) {
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+        }
+    }
+}
+
+/// A line of `ps -o pid=,ppid=,command=`: pid, parent, command.
+fn ps_line(line: &str) -> Option<(i32, i32, String)> {
+    let mut f = line.split_whitespace();
+    let pid = f.next()?.parse().ok()?;
+    let ppid = f.next()?.parse().ok()?;
+    Some((pid, ppid, f.collect::<Vec<_>>().join(" ")))
+}
+
+/// One of Cue's streams: ssh itself (not something that merely mentions the mark) running a script with it.
+fn left_stream(cmd: &str, mark: &str) -> bool {
+    cmd.starts_with("/usr/bin/ssh ") && cmd.contains(mark)
 }
 
 /// Run `script` (POSIX sh) on `host`, never asking for anything: your login shell there sets things up
@@ -148,7 +170,7 @@ pub fn run_with_input(host: &str, script: &str, input: &str) -> Result<String, S
         .spawn()
         .map_err(|e| e.to_string())?;
     child.stdin.take().ok_or("no input")?.write_all(input.as_bytes()).map_err(|e| e.to_string())?;
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = wait_capped(child)?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).to_string())
     } else {
@@ -195,12 +217,40 @@ pub fn run_with_bytes(host: &str, script: &str, bytes: &[u8], sent: &dyn Fn(u64)
 /// and a refusal or a connect timeout: nothing ran there, so running it again can't do anything twice).
 /// The shared connection takes 10 trips at once (sshd's MaxSessions), and a burst of them can find it full.
 fn output_retrying(mk: impl Fn() -> Command) -> Result<std::process::Output, String> {
-    let out = mk().output().map_err(|e| e.to_string())?;
+    let out = capped_output(mk())?;
     if out.status.code() == Some(255) && not_taken(&String::from_utf8_lossy(&out.stderr)) {
         std::thread::sleep(std::time::Duration::from_millis(400));
-        return mk().output().map_err(|e| e.to_string());
+        return capped_output(mk());
     }
     Ok(out)
+}
+
+/// The longest a call to a machine may take before Cue gives up on it: the connection's keepalives notice a dead
+/// line within 45 s; this is the backstop for one that's alive but stuck (a setup that installs things has room).
+const CALL_CAP: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// `cmd`'s output, as `Command::output` gives it, but never waiting past CALL_CAP: it's ended then.
+fn capped_output(mut cmd: Command) -> Result<std::process::Output, String> {
+    use std::process::Stdio;
+    let child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+    wait_capped(child)
+}
+
+/// Wait for `child`'s output, ending it (by its pid) once CALL_CAP has passed.
+fn wait_capped(child: std::process::Child) -> Result<std::process::Output, String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let pid = child.id() as i32;
+    let done = std::sync::Arc::new(AtomicBool::new(false));
+    let watch = done.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(CALL_CAP);
+        if !watch.load(Ordering::SeqCst) {
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+        }
+    });
+    let out = child.wait_with_output().map_err(|e| e.to_string());
+    done.store(true, Ordering::SeqCst);
+    out
 }
 
 /// ssh's words for a trip that never started on the machine.
@@ -497,6 +547,18 @@ pub fn login(m: &Machine) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_ssh_stream_left_by_a_cue_that_quit_is_ended() {
+        let l = |s: &str| ps_line(s).unwrap();
+        let (pid, ppid, cmd) = l("  4242     1 /usr/bin/ssh -o ControlMaster=auto -T box sh -c '# cue-watch exec x'");
+        assert_eq!((pid, ppid), (4242, 1));
+        assert!(left_stream(&cmd, "# cue-watch"));
+        assert!(left_stream("/usr/bin/ssh -T box # cue-watch", "# cue-watch"));
+        assert!(!left_stream("/bin/zsh -c grep '# cue-watch'", "# cue-watch"), "something that only mentions the mark");
+        assert!(!left_stream("/usr/bin/ssh -T box tail -F x", "# cue-watch"), "another ssh");
+        assert!(ps_line("garbage").is_none());
+    }
 
     #[test]
     fn a_machine_that_cant_be_reached_says_so_not_that_its_pane_is_gone() {

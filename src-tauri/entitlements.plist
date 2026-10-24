@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- What a signed, notarized Cue (hardened runtime) may do. Only release builds use it (scripts/release.sh). -->
+<!-- What a signed Cue (hardened runtime) may do: releases (scripts/release.sh, notarized) and your own installs when this Mac has a Developer ID (install.sh). -->
 <plist version="1.0">
 <dict>
   <!-- Reply, focus and open tabs in iTerm / Terminal (macOS asks you once). -->

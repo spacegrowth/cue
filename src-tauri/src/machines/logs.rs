@@ -27,6 +27,12 @@ fn local_path(m: &Machine, remote: &str) -> Option<PathBuf> {
     Some(crate::server::cue_dir().join("machines").join(dir_name(m)).join(name))
 }
 
+/// The copy of `remote` on this Mac, when there is one ("" when not): what Cue reads for a session there, never the
+/// machine's own path.
+pub fn copy_of(m: &Machine, remote: &str) -> String {
+    local_path(m, remote).filter(|p| p.exists()).map(|p| p.to_string_lossy().to_string()).unwrap_or_default()
+}
+
 /// The folder a machine's copies go in: its name, with anything odd in it as `_`.
 fn dir_name(m: &Machine) -> String {
     m.name.chars().map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' }).collect()
@@ -42,7 +48,9 @@ pub fn local_copy(m: &Machine, remote: &str) -> String {
     let key = path.to_string_lossy().to_string();
     let mut c = crate::locking::lock(copies(), "copies");
     let running = c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None)));
-    if !running && start(m, remote, &path).map(|ch| c.insert(key.clone(), ch)).is_err() {
+    // On from what the copy already has (all of it the first time): starting over would empty it first, and with
+    // the machine offline (Cue launched away from it) every chat from there would be blank until it next spoke.
+    if !running && start_after(m, remote, &path).map(|ch| c.insert(key.clone(), ch)).is_err() {
         return String::new();
     }
     key

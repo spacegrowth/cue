@@ -188,12 +188,14 @@ impl Hub {
                 };
                 let (id, title, watched, took) = {
                     let mut st = self.st();
-                    // A message you kept for it goes now and the turn carries on: a "Tell me" waits for that to end too.
-                    let watched = st.sessions.held(&sid).is_none() && st.sessions.take_watch(&sid);
-                    // A session with an open decision is already in the queue — don't double-list it.
+                    // A session with an open decision is already in the queue — don't double-list it. (Its turn can
+                    // end with one still open: a background agent of it asking, after its own turn is over.) A "Tell
+                    // me" stays for the turn end that does count.
                     if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
                         return;
                     }
+                    // A message you kept for it goes now and the turn carries on: a "Tell me" waits for that to end too.
+                    let watched = st.sessions.held(&sid).is_none() && st.sessions.take_watch(&sid);
                     let took = st.sessions.turn_started(&sid).map(|at| now_ms().saturating_sub(at));
                     st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
                     st.sessions.mark(&origin, "waiting", None);
@@ -251,7 +253,12 @@ impl Hub {
                 let mut started = false;
                 {
                     let mut st = self.st();
-                    st.active_at.insert(sid.clone(), now_ms());
+                    // A task's notice or a teammate's message starts a turn too, but it's no sign that a message
+                    // of yours went in: `active_at` (what vouches for one) is only for prompts that could be yours.
+                    let notice = transcript::harness_text(&message) || transcript::peer_text(&message);
+                    if !notice {
+                        st.active_at.insert(sid.clone(), now_ms());
+                    }
                     // Claude Code reports a message you queue while it's busy the moment it lands in its
                     // queue, not when it reads it (that's at its next step). So that's no new turn, and the
                     // message stays queued, with Send now, until the turn ends.
@@ -497,7 +504,7 @@ impl Hub {
                 let project = crate::config::moved().remove(&it.origin.session_id).unwrap_or_else(|| it.project.clone());
                 let mins = (until - now).div_ceil(60_000);
                 let (_, what) = notify_title(&it);
-                self.notify(&it.id, &format!("{project} · cache runs out in {mins}m"), &what, if it.kind == "waiting" { "turn" } else { "" });
+                self.notify_unmuted(&it.id, &format!("{project} · cache runs out in {mins}m"), &what, if it.kind == "waiting" { "turn" } else { "" });
             }
         }
     }
@@ -755,15 +762,23 @@ impl Hub {
         };
         if !compacted.is_empty() {
             let mut st = self.st();
+            // A compact at its prompt (no turn to end): a message kept for it meanwhile goes now it's done.
+            let mut send_kept = vec![];
             for (sid, done) in &compacted {
                 if *done {
                     st.sessions.set_compacted(sid, now);
+                    if st.sessions.held(sid).is_some() && st.sessions.state(sid).as_deref() != Some("working") {
+                        send_kept.push(sid.clone());
+                    }
                 } else {
                     st.sessions.set_compacting(sid, 0);
                 }
             }
             drop(st);
             self.changed();
+            for sid in send_kept {
+                self.send_held_soon(&sid, 500);
+            }
         }
         // Before Claude Code starts (no hook from it yet), its terminal can sit on a screen of its own: the
         // trust question, or one waiting for Enter. Read off its pane: this Mac's now, a machine's from
@@ -858,6 +873,27 @@ mod tests {
     /// didn't go (the session marked working with no prompt, the text wrapped as a paste), it tells a
     /// queued message's echo from a new turn through that wrapper too, and on launch Cue asks the log
     /// about whatever it was still unsure of.
+    #[test]
+    fn a_tasks_notice_or_a_teammates_message_never_vouches_for_your_message() {
+        let dir = std::env::temp_dir().join(format!("cue-notice-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let origin = Origin { session_id: "n1".into(), harness: "claude".into(), ..Default::default() };
+        hub.event(origin.clone(), "stopped", "Done.".into(), vec![], "");
+        let vouched = |h: &Hub| h.st().active_at.contains_key("n1");
+        hub.event(origin.clone(), "active", "<task-notification><task-id>x</task-id></task-notification>".into(), vec![], "");
+        assert!(!vouched(&hub), "a background task reporting is no sign your message went in");
+        hub.event(origin.clone(), "active", "Another Claude session sent a message:\n<teammate-message teammate_id=\"r\">hi</teammate-message>".into(), vec![], "");
+        assert!(!vouched(&hub), "nor is a teammate's message");
+        hub.event(origin.clone(), "active", "run the tests".into(), vec![], "");
+        assert!(vouched(&hub), "a prompt that could be yours does");
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_active_event_settles_what_cue_was_unsure_of_and_launch_asks_the_log() {
         let dir = std::env::temp_dir().join(format!("cue-unsure-{}", std::process::id()));

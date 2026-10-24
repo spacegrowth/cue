@@ -41,6 +41,9 @@ struct Store {
     /// When Cue last stopped a session's turn itself to send a message now (⌘↵): the interrupt that
     /// leaves in its transcript is Cue's, with your message on its way, not a turn you stopped.
     stopped_to_send: HashMap<String, u64>,
+    /// When Cue last pressed Esc in a session for you (its Stop button): Claude Code hands the stopped prompt
+    /// back to its box, so a message typed in soon after needs a blank line before it, or the two go as one.
+    escaped: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
     /// Sessions you parked (stopped, kept to resume), the latest parked first.
@@ -125,6 +128,9 @@ struct QueuedReview {
 pub struct Hub {
     store: Mutex<Store>,
     app: Option<AppHandle>,
+    /// One gate per session for typing into it: a second message waits until the first has been typed and taken
+    /// (or not), so two sent at once never mix in its box (pasted A, pasted B, Enter, Enter → one prompt "AB").
+    typing: Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>>,
 }
 
 impl Hub {
@@ -139,7 +145,14 @@ impl Hub {
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: Mutex::new(st), app }
+        Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()) }
+    }
+
+    /// The session's typing gate (see `typing`). Held for seconds by design (typing, then waiting for its hook):
+    /// waited on with a plain lock, not `locking::lock`, whose 5 s limit is for locks nothing holds that long.
+    fn typing_gate(&self, session_id: &str) -> std::sync::Arc<Mutex<()>> {
+        let mut gates = crate::locking::lock(&self.typing, "typing gates");
+        gates.entry(session_id.to_string()).or_default().clone()
     }
 
     fn new_item(st: &mut Store, kind: &str, origin: Origin) -> Item {
@@ -434,11 +447,31 @@ impl Hub {
         self.notify_with(id, title, body, category, true);
     }
 
+    /// Never muted by notify::quiet (a cache about to run out isn't something voice tells you).
+    pub(super) fn notify_unmuted(&self, id: &str, title: &str, body: &str, category: &str) {
+        self.notify_full(id, title, body, category, false, false);
+    }
+
     fn notify_with(&self, id: &str, title: &str, body: &str, category: &str, watched: bool) {
+        self.notify_full(id, title, body, category, watched, true);
+    }
+
+    fn notify_full(&self, id: &str, title: &str, body: &str, category: &str, watched: bool, mutable: bool) {
         let Some(app) = &self.app else { return };
         // Test instances run with CUE_QUIET=1 so they never ping you.
         if std::env::var_os("CUE_QUIET").is_some() {
             return;
+        }
+        // A finished turn of a session something else is telling you about already (notify::quiet): not twice.
+        // Anything that needs you (a permission, a question) and a turn you asked to be told about still come.
+        if mutable && !watched && category.starts_with("turn") {
+            let sid = {
+                let st = self.st();
+                st.items.iter().find(|i| i.id == id).map(|i| i.origin.session_id.clone())
+            };
+            if sid.is_some_and(|s| crate::notify::is_quiet(&s)) {
+                return;
+            }
         }
         // Cue is the window in front of you: the new item is already on screen in Waiting.
         if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {

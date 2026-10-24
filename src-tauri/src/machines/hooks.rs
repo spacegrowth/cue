@@ -477,14 +477,15 @@ fn handle(m: &Machine, id: &str, ev: Value) {
     }
     // The session reads its log from a live copy on this Mac (machine_logs); the hooks carry on as well.
     if let Some(remote) = msg["transcript_path"].as_str().filter(|p| !p.is_empty()).map(str::to_string) {
-        if ev["event"] == "end" {
+        // Never the machine's own path: Cue would read it on this Mac (a stat on /home can stall). No copy (it
+        // couldn't start): no log for now, as for a session that has none.
+        let local = if ev["event"] == "end" {
             crate::machines::logs::stop(m, &remote);
+            crate::machines::logs::copy_of(m, &remote)
         } else {
-            let local = crate::machines::logs::local_copy(m, &remote);
-            if !local.is_empty() {
-                msg["transcript_path"] = json!(local);
-            }
-        }
+            crate::machines::logs::local_copy(m, &remote)
+        };
+        msg["transcript_path"] = json!(local);
     }
     if msg["type"] != "ask" {
         if let Some(mut s) = crate::hook::connect(Duration::from_millis(800)) {

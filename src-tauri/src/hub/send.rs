@@ -19,7 +19,8 @@ impl Hub {
                 return true;
             }
         }
-        if crate::focus::text_in_box(origin, text) == Some(true) {
+        // Not into a dialog: a bare Enter there picks whatever is highlighted.
+        if crate::focus::text_in_box(origin, text) == Some(true) && crate::focus::dialog_on(origin).is_none() {
             let _ = crate::focus::press_enter(origin);
             self.st().sessions.note_delivery(sid, text, "Enter again: it was still in its box");
             if self.wait_active(sid, t0, 3000) {
@@ -196,6 +197,9 @@ impl Hub {
     pub fn reply(&self, id: &str, text: &str, images: &[Upload]) -> Result<String, String> {
         let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
         let sid = it.origin.session_id.clone();
+        // One message at a time into a session: another being typed into it goes first (see Hub::typing).
+        let gate = self.typing_gate(&sid);
+        let _typing = gate.lock().unwrap_or_else(|e| e.into_inner());
         self.set_later(&sid, false); // you replied: decided
         let t0 = now_ms();
         let saved = crate::uploads::save(images)?;
@@ -271,8 +275,12 @@ impl Hub {
             // Claude Code may already have taken it into the running turn (between two steps): Esc
             // now would interrupt the turn that's working on it ("Interrupted · What should Claude
             // do instead?") and leave it idle. Esc only while it's still waiting in the queue.
-            let queued = self.st().sessions.queued_text(session_id).unwrap_or_default();
-            let state = log_here(&origin).and_then(|log| transcript::queued_state(log, &queued));
+            // Codex steers a message into its turn the same way: its own log says so.
+            let queued = self.st().sessions.queued(session_id);
+            let (text, at) = queued.map(|q| (q.text, q.at_ms)).unwrap_or_default();
+            // (Codex's on this Mac only: a machine's own path is never read from here.)
+            let log = if origin.harness == "claude" { log_here(&origin).map(str::to_string) } else { (origin.machine.is_empty() && !origin.transcript_path.is_empty()).then(|| origin.transcript_path.clone()) };
+            let state = log.and_then(|log| transcript::read_state(&origin.harness, &log, &text, at));
             if matches!(state, Some(transcript::Queued::Absorbed | transcript::Queued::Taken(_))) {
                 self.st().sessions.set_queued(session_id, None);
                 self.changed();
@@ -296,6 +304,9 @@ impl Hub {
             let mut st = self.st();
             if let Some(o) = origin {
                 st.sessions.mark(&o, "stopped", None);
+            }
+            if !direct {
+                st.escaped.insert(session_id.to_string(), now_ms());
             }
             st.sessions.set_queued(session_id, None);
             st.sessions.note(session_id, "you", "⏹ stopped it", crate::config::context_keep());
@@ -322,6 +333,9 @@ impl Hub {
     fn send_saved(&self, session_id: &str, typed: &str, saved: Vec<crate::uploads::Saved>, now: bool) -> Result<String, String> {
         // " /…" keeps its space in `typed`: a message, not a command (see with_paths).
         let text = typed.trim();
+        // One message at a time into a session: another being typed into it goes first (see Hub::typing).
+        let gate = self.typing_gate(session_id);
+        let _typing = gate.lock().unwrap_or_else(|e| e.into_inner());
         self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy) = {
             let st = self.st();
@@ -355,7 +369,9 @@ impl Hub {
         let origin = origin.ok_or("that session is gone")?;
         // Stopped before it answered, Claude Code hands the message it was on back to its box, and this one
         // is typed after it: the two go as one. A blank line first keeps them apart (an empty box drops it).
-        let apart = if stopped && origin.harness == "claude" { "\n\n" } else { "" };
+        // Its Stop button, a moment ago, does the same: the kept message sent right after goes apart too.
+        let escaped = self.st().escaped.get(session_id).is_some_and(|t| now_ms().saturating_sub(*t) < 30_000);
+        let apart = if (stopped || escaped) && origin.harness == "claude" { "\n\n" } else { "" };
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
         let direct = self.send_direct(session_id, text, &saved, now);
@@ -397,8 +413,11 @@ impl Hub {
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
         let h = self.st().sessions.take_held(session_id).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
-        self.send_saved(session_id, &h.text, saved, now).inspect_err(|_| {
-            self.st().sessions.hold(session_id, &h.text, h.images.clone());
+        self.send_saved(session_id, &h.text, saved, now).inspect_err(|e| {
+            let mut st = self.st();
+            st.sessions.hold_back(session_id, &h.text, h.images.clone());
+            st.sessions.held_failed(session_id, e);
+            drop(st);
             self.changed();
         })
     }
@@ -408,7 +427,9 @@ impl Hub {
     /// not into a dialog: a bare Enter there picks whatever is highlighted, "Yes" on a permission prompt.
     /// True when it was pressed.
     fn retry_enter(origin: &Origin, text: &str) -> bool {
-        if crate::focus::text_in_box(origin, text) == Some(false) || crate::focus::dialog_on(origin).is_some() {
+        // Only when the text is seen still in its box: a blind Enter (a screen Cue can't read) could answer a
+        // prompt that came up meanwhile.
+        if crate::focus::text_in_box(origin, text) != Some(true) || crate::focus::dialog_on(origin).is_some() {
             return false;
         }
         crate::focus::press_enter(origin).is_ok()

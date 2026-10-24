@@ -1109,8 +1109,11 @@ impl Feed {
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
         let mut changed = false;
         if len < self.offset {
-            // The file was replaced: start over (and count a version, so callers redraw).
+            // The file was replaced: start over (and count a version, so callers redraw), still a background
+            // agent's log if it was one (else its sidechain lines would all be skipped from here on).
+            let helper = self.helper;
             *self = Feed::open(&self.path, self.version);
+            self.helper = helper;
             changed = true;
         }
         if len <= self.offset || file.seek(SeekFrom::Start(self.offset)).is_err() {
@@ -1360,7 +1363,8 @@ impl Feed {
                     return ended;
                 }
                 self.close_open("");
-                let prompt = if crate::logs::transcript::harness_text(text) { String::new() } else { cut(text.trim(), 1200) };
+                // A task's notice or a teammate's message: it wakes the session, but it isn't your prompt.
+                let prompt = if crate::logs::transcript::harness_text(text) || crate::logs::transcript::peer_text(text) { String::new() } else { cut(text.trim(), 1200) };
                 // Your prompt: it went on working after its note, so that note isn't where it stopped.
                 if !prompt.is_empty() {
                     self.note = None;
@@ -2178,6 +2182,26 @@ mod tests {
         assert_eq!(model_for_window("claude-opus-5-5", 200_000), "claude-opus-5-5");
         assert_eq!(model_for_window("claude-opus-5-5", 0), "claude-opus-5-5");
         assert_eq!(model_for_window("", 1_000_000), "");
+    }
+
+    /// A teammate's message to its lead wakes it, but it's the teammate talking: the turn it starts has no prompt
+    /// of yours, and Cue's Stop hook keeps the lead's reply before it in that turn's parts.
+    #[test]
+    fn a_teammates_message_is_never_your_prompt() {
+        let log = r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"look at the hook"}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"text","text":"Asked reader to check it."}]}}
+{"type":"user","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"text","text":"Another Claude session sent a message:\n<teammate-message teammate_id=\"reader\">It's fine.</teammate-message>"}]}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:06.000Z","message":{"content":[{"type":"text","text":"Reader says it's fine."}]}}
+"#;
+        let f = feed_of(log);
+        assert_eq!(f.turns[0].prompt, "look at the hook");
+        assert!(f.turns.iter().skip(1).all(|t| t.prompt.is_empty()), "no prompt of yours from the teammate");
+        let path = std::env::temp_dir().join(format!("cue-peer-{}.jsonl", std::process::id()));
+        std::fs::write(&path, log).unwrap();
+        let parts = crate::hook::final_turn(&serde_json::json!({ "transcript_path": path.to_string_lossy(), "last_assistant_message": "Reader says it's fine." }));
+        let _ = std::fs::remove_file(&path);
+        let texts: Vec<&str> = parts.iter().filter_map(|v| v["text"].as_str()).collect();
+        assert_eq!(texts, ["Asked reader to check it.", "Reader says it's fine."], "the lead's reply before the teammate's message stays in the turn");
     }
 
     fn feed_of(jsonl: &str) -> Feed {

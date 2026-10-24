@@ -807,7 +807,7 @@ function bindMain() {
         if (key.startsWith("pjname:")) return saveProjName(key.slice(7));
         if (key.startsWith("newproj:")) return submitNewProj(key.slice(8));
         // A parked session's box: Enter resumes it with the message (Resume & send).
-        if (key.startsWith("s:") && !sessionOf(key.slice(2)) && (parkedOf(key.slice(2)) || closedOf(key.slice(2)))) return wakeParked(key.slice(2), draft(key).text.trim());
+        if (key.startsWith("s:") && !sessionOf(key.slice(2)) && (parkedOf(key.slice(2)) || closedOf(key.slice(2)))) return draft(key).text.trim() ? wakeParked(key.slice(2), draft(key).text.trim()) : undefined;   // as its button: nothing typed, nothing sent
         if (key.startsWith("s:")) {
           const sid = key.slice(2);
           const turn = state.items.find((i) => i.session_id === sid && i.kind === "waiting");
@@ -920,6 +920,8 @@ async function boot() {
   await T.event.listen("fill", (e) => onFill(e.payload));
   await T.event.listen("upload", (e) => onUpload(e.payload));
   await T.event.listen("select", (e) => {
+    // "s:<session>": that session's chat, whether or not a card of it waits.
+    if (e.payload.startsWith("s:")) return setActive(null, e.payload.slice(2));
     if (e.payload !== "usage") return setActive(e.payload);
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);

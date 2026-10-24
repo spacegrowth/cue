@@ -77,7 +77,9 @@ async function deliver(sid, key, call) {
     renderMain();
   } catch (e) {
     outbox.splice(outbox.indexOf(entry), 1);
-    drafts[key] = { ...draft(key), text, images: d.images };
+    // Back in the box, ahead of anything you've typed there since (that's kept, not written over).
+    const now_ = draft(key);
+    drafts[key] = { ...now_, text: now_.text.trim() ? `${text}\n\n${now_.text}` : text, images: [...d.images, ...(now_.images || [])] };
     toast(`Couldn't send: ${e}`);
     renderMain();
   }
@@ -99,7 +101,8 @@ function landed(o) {
     if (s.held && msgStart(s.held.text).includes(want)) o.seenHeld = true;
     if (o.seenHeld || now() - o.at > 30000) return true;
   }
-  const since = (e) => e && e.role === "you" && e.at_ms >= o.at - 5000;
+  // Nothing typed (just an image): no words to tell it by, so only a message from the moment you sent.
+  const since = (e) => e && e.role === "you" && e.at_ms >= o.at - (want ? 5000 : 1000);
   const mine = (e) => since(e) && msgStart(e.text).startsWith(want);
   if ((s.thread || []).some(mine) || mine({ role: "you", ...s.queued })) return true;
   return !!o.via && (s.thread || []).some((e) => e.role === "you" && e.at_ms >= o.at - 1000);
@@ -754,7 +757,9 @@ function conversation(it, s) {
   }
   // What you queued shows once, as queued: not also as the thread's copy of it (recorded at about the
   // same time; Claude Code's own report of it may come first, or carry the same words with more around them).
-  const isQueued = (e) => e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === s.queued.text.trim() || e.text.includes(s.queued.text.trim()));
+  // Only the same words, or a long enough message inside more: a short one ("ok") or none at all (just an image)
+  // would hide every message of yours that minute.
+  const isQueued = (e) => { const q = s.queued.text.trim(); return !!q && e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === q || (q.length >= 20 && e.text.includes(q))); };
   if (s?.queued) ex = ex.filter((e) => !isQueued(e));
   if (it?.kind === "waiting") {
     const msg = finishedText(it);
@@ -834,9 +839,10 @@ async function wantDetails(sid) {
   const want = ids.slice(-60);
   if (!want.length) return;
   want.forEach((id) => stepDetail.set(`${sid}|${id}`, "loading"));
-  let got = {};
+  let got = null;
   try { got = await invoke("step_detail", { sessionId: sid, ids: want }); } catch {}
-  want.forEach((id) => stepDetail.set(`${sid}|${id}`, got[id] || {}));
+  // Couldn't be read now: asked again next time, not kept as "No output".
+  want.forEach((id) => (got ? stepDetail.set(`${sid}|${id}`, got[id] || {}) : stepDetail.delete(`${sid}|${id}`)));
   renderMain();
 }
 /** "read 3 files · 2 edits · 4 commands · 1 failed": a folded turn in a few words. */
@@ -1682,7 +1688,9 @@ function chatHtml(it, s, harness, paged = false) {
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
-  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">Kept in Cue · it goes when this turn ends · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
+  // A kept message that couldn't be sent says so (and why), rather than promising it goes when the turn ends.
+  const heldWhy = s?.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
+  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }

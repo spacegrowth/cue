@@ -326,6 +326,12 @@ impl Sessions {
         if let Some(last) = s.thread.last_mut() {
             let paths: Vec<&str> = images.iter().chain(last.images.iter()).map(String::as_str).collect();
             let age = now_ms().saturating_sub(last.at_ms);
+            // The agent's own report of a message Cue sent and has just seen it take, however late that was
+            // (a paste that sat in its box for minutes): the same message, not a second one.
+            let just_taken = last.delivery.last().is_some_and(|d| d.what.starts_with("taken") && now_ms().saturating_sub(d.at_ms) < 10_000);
+            if last.role == role && role == "you" && just_taken && same_message(text, &last.text, &paths) {
+                return;
+            }
             if last.role == role && (age < 15_000 || (role == "you" && age < LONG_ECHO_MS && is_long(text))) {
                 if same_message(text, &last.text, &paths) {
                     // Keep the first copy; Cue's own copy carries the images, so they move onto it.
@@ -348,6 +354,11 @@ impl Sessions {
                 }
             }
         }
+        Self::push(s, role, text, images, keep);
+    }
+
+    /// Add an entry to the thread as it is (no folding into the one before).
+    fn push(s: &mut Session, role: &str, text: &str, images: &[String], keep: usize) {
         let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
         let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
@@ -370,7 +381,12 @@ impl Sessions {
             }
             return;
         }
-        self.note_with(session_id, "you", text, images, keep);
+        // Cue sent it: a message of its own, even the same words as one a moment ago ("yes", twice): the agent got
+        // two. (The agent's report of it, noted later, folds into this one.)
+        let text = text.trim();
+        if let Some(s) = self.0.get_mut(session_id).filter(|_| !text.is_empty() || !images.is_empty()) {
+            Self::push(s, "you", text, images, keep);
+        }
     }
 
     /// A message another agent session sent this one, labelled with who sent it.
@@ -462,7 +478,8 @@ impl Sessions {
 
     /// Whether Cue is still waiting to see your message `text` taken (nothing has settled it yet).
     pub fn is_pending(&self, session_id: &str, text: &str) -> bool {
-        self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().filter(|e| e.role == "you").take(3).find(|e| is_yours(e, text)).is_some_and(|e| e.pending))
+        // However many messages came since: an unsettled one is never too old to be found.
+        self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().any(|e| e.role == "you" && e.pending && is_yours(e, text)))
     }
 
     /// One more step in your message's way to the agent ("Enter again: it was still in its box").
@@ -475,7 +492,7 @@ impl Sessions {
     /// Every message of yours Cue was still unsure about when it last ran (waiting to see it taken, or
     /// flagged as not taken): with the session it went to, so the question can be asked again on launch.
     pub fn unsettled(&self) -> Vec<(Origin, Exchange)> {
-        self.0.values().flat_map(|s| s.thread.iter().rev().filter(|e| e.role == "you" && (e.pending || e.unsent)).take(3).map(move |e| (s.origin.clone(), e.clone()))).collect()
+        self.0.values().flat_map(|s| s.thread.iter().rev().filter(|e| e.role == "you" && (e.pending || e.unsent)).map(move |e| (s.origin.clone(), e.clone()))).collect()
     }
 
     /// Working sessions whose log Cue reads for their latest step: (id, harness, log). Claude Code's
@@ -705,6 +722,27 @@ impl Sessions {
                 h.images.extend(images);
             }
             None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] }),
+        }
+    }
+
+    /// Put back a kept message that couldn't be sent: before anything kept since, as it was first.
+    pub fn hold_back(&mut self, session_id: &str, text: &str, images: Vec<String>) {
+        let Some(s) = self.0.get_mut(session_id) else { return };
+        match &mut s.held {
+            Some(h) => {
+                h.text = [text, h.text.as_str()].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
+                h.images = images.into_iter().chain(std::mem::take(&mut h.images)).collect();
+            }
+            None => self.hold(session_id, text, images),
+        }
+    }
+
+    /// The kept message couldn't be sent (its terminal gone, it's asking something first): marked so, with why,
+    /// so its bubble says it instead of promising it goes when the turn ends. Sent later, the mark goes with it.
+    pub fn held_failed(&mut self, session_id: &str, why: &str) {
+        if let Some(h) = self.0.get_mut(session_id).and_then(|s| s.held.as_mut()) {
+            h.unsent = true;
+            record(h, format!("couldn't send: {why}"));
         }
     }
 
@@ -1000,8 +1038,11 @@ fn taken(s: &mut Session, received: &str, witness: &str) -> bool {
     if received.is_empty() {
         return false;
     }
-    let got = |e: &Exchange| crate::logs::transcript::is_message(received, &e.text) || (e.joined && glued_after(received, &e.text, &[]));
-    match s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| (e.unsent || e.pending) && got(e)) {
+    // Just an image, no words: the agent got it if the image (its file, which goes in with the message) is in
+    // what it got.
+    let image_got = |e: &Exchange| e.text.trim().is_empty() && e.images.iter().filter_map(|p| p.rsplit('/').next()).any(|n| !n.is_empty() && received.contains(n));
+    let got = |e: &Exchange| crate::logs::transcript::is_message(received, &e.text) || (e.joined && glued_after(received, &e.text, &[])) || image_got(e);
+    match s.thread.iter_mut().rev().filter(|e| e.role == "you").find(|e| (e.unsent || e.pending) && got(e)) {
         Some(e) => {
             e.unsent = false;
             e.pending = false;
@@ -1018,9 +1059,14 @@ fn is_yours(e: &Exchange, text: &str) -> bool {
     e.text.trim() == text.trim() || (is_long(text) && (crate::logs::transcript::is_message(&e.text, text) || crate::logs::transcript::is_message(text, &e.text)))
 }
 
-/// Your message `text` in the thread, among the last few of yours (a newer one may have gone since).
+/// Your message `text` in the thread: one Cue is still unsure about, however many came since; else among the last
+/// few of yours (a short one, "yes", mustn't be taken for the same words long before).
 fn yours_mut<'a>(s: &'a mut Session, text: &str) -> Option<&'a mut Exchange> {
-    s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| is_yours(e, text))
+    let unsettled = s.thread.iter().rposition(|e| e.role == "you" && (e.pending || e.unsent) && is_yours(e, text));
+    match unsettled {
+        Some(i) => s.thread.get_mut(i),
+        None => s.thread.iter_mut().rev().filter(|e| e.role == "you").take(3).find(|e| is_yours(e, text)),
+    }
 }
 
 /// Keep the last few steps of a message's delivery record (enough for one send with its retries).
@@ -1044,6 +1090,90 @@ mod tests {
     }
     fn get<'a>(sessions: &'a Sessions, sid: &str) -> &'a Session {
         sessions.0.get(sid).unwrap()
+    }
+
+    #[test]
+    fn a_kept_message_that_couldnt_be_sent_says_why_until_it_goes() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.hold("a", "run the tests", vec![]);
+        assert!(!s.held("a").unwrap().unsent);
+        s.held_failed("a", "that session is gone");
+        let h = s.held("a").unwrap();
+        assert!(h.unsent);
+        assert_eq!(h.delivery.last().map(|d| d.what.as_str()), Some("couldn't send: that session is gone"));
+        assert!(s.take_held("a").is_some(), "sent (or taken back to edit): the mark goes with it");
+        assert!(s.held("a").is_none());
+    }
+
+    #[test]
+    fn an_image_sent_without_words_is_settled_by_the_image_in_what_it_got() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.note_sent("a", "", &["/Users/x/cue/uploads/1792-0.png".to_string()], 0, 50);
+        s.set_pending("a", "", true);
+        assert!(!s.got_message("a", "fix the login page", "its prompt hook"), "another prompt isn't it");
+        assert!(s.is_pending("a", ""));
+        assert!(s.got_message("a", "[Image: source: /Users/x/cue/uploads/1792-0.png]", "its prompt hook"));
+        assert!(!s.is_pending("a", ""));
+    }
+
+    #[test]
+    fn a_message_cue_is_unsure_about_is_still_settled_after_three_more() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.note_sent("a", "check the hook", &[], 0, 50);
+        s.set_pending("a", "check the hook", true);
+        for m in ["one", "two", "three"] {
+            s.note_sent("a", m, &[], now_ms() + 1, 50);
+        }
+        assert!(s.is_pending("a", "check the hook"), "still found, three messages later");
+        assert!(s.unsettled().iter().any(|(_, e)| e.text == "check the hook"));
+        assert!(s.got_message("a", "check the hook", "its prompt hook"));
+        assert!(!s.is_pending("a", "check the hook"));
+        assert!(s.unsettled().is_empty());
+    }
+
+    #[test]
+    fn the_same_short_message_sent_twice_in_a_row_is_two_bubbles_and_its_echo_folds_into_the_second() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        s.note_sent("a", "yes", &[], now_ms(), 50);
+        s.note_sent("a", "yes", &[], now_ms() + 1, 50);
+        let yours = |s: &Sessions| get(s, "a").thread.iter().filter(|e| e.role == "you").count();
+        assert_eq!(yours(&s), 2, "the agent got two");
+        s.note("a", "you", "yes", 50);   // the agent's report of the second
+        assert_eq!(yours(&s), 2, "its echo is that one, not a third");
+    }
+
+    #[test]
+    fn a_paste_taken_minutes_late_shows_once() {
+        let mut s = Sessions::default();
+        named(&mut s, "a", "claude", "");
+        let long = "please look at the hook and the parser, both of them read the same transcript differently today";
+        s.note_sent("a", long, &[], 0, 50);
+        s.set_pending("a", long, true);
+        // Minutes pass (its Enter was lost); then it's taken, and the agent's report of it comes in.
+        if let Some(e) = s.0.get_mut("a").and_then(|x| x.thread.last_mut()) {
+            e.at_ms = now_ms().saturating_sub(10 * 60_000);
+        }
+        assert!(s.got_message("a", long, "its prompt hook"));
+        s.note("a", "you", long, 50);
+        assert_eq!(get(&s, "a").thread.iter().filter(|e| e.role == "you").count(), 1);
+    }
+
+    #[test]
+    fn a_kept_message_put_back_goes_before_what_was_kept_since() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "s1".into(), ..Default::default() }, "working", None);
+        s.hold("s1", "first", vec![]);
+        let taken = s.take_held("s1").unwrap();
+        s.hold("s1", "second", vec![]);   // kept while the first was being sent
+        s.hold_back("s1", &taken.text, taken.images);   // the send failed
+        assert_eq!(s.held("s1").unwrap().text, "first\n\nsecond");
+        s.take_held("s1");
+        s.hold_back("s1", "alone", vec![]);
+        assert_eq!(s.held("s1").unwrap().text, "alone");
     }
 
     #[test]

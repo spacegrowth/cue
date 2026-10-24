@@ -67,7 +67,8 @@ fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wr
     ])
 }
 
-/// Bring up the full window, optionally on one item (the menu bar, a notification).
+/// Bring up the full window, optionally on one item (the menu bar, a notification) or, as "s:<session>", on a
+/// session's chat.
 pub(crate) fn show_main(app: &tauri::AppHandle, id: Option<String>) {
     use tauri::Emitter;
     if let Some(w) = app.get_webview_window("main") {

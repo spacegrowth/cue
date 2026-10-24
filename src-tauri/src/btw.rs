@@ -45,7 +45,8 @@ fn claude_line(session_id: &str, model: Option<&str>) -> Result<String, String> 
     if !safe(session_id) {
         return Err("not a Claude Code session".into());
     }
-    let model = model.filter(|m| safe(m)).map(|m| format!(" --model {m}")).unwrap_or_default();
+    // Quoted: a 1M model's name ends "[1m]", which zsh would take as a file pattern ("no matches found").
+    let model = model.filter(|m| safe(m)).map(|m| format!(" --model '{m}'")).unwrap_or_default();
     Ok(format!(
         r#"exec claude -p --resume {session_id} --fork-session --no-session-persistence --tools "" --settings '{{"disableAllHooks":true}}' --output-format json{model}"#
     ))
@@ -113,6 +114,22 @@ mod tests {
         assert_eq!(answer("noise\n{\"type\":\"result\",\"result\":\" Because X. \",\"is_error\":false}\n"), Some(Ok("Because X.".into())));
         assert_eq!(answer("{\"result\":\"No conversation found\",\"is_error\":true}"), Some(Err("No conversation found".into())));
         assert_eq!(answer("not json"), None);
+    }
+
+    #[test]
+    fn a_1m_model_s_name_is_quoted_so_the_shell_takes_it_as_it_is() {
+        let line = claude_line("abc-123", Some("claude-opus-5-5[1m]")).unwrap();
+        assert!(line.ends_with(" --model 'claude-opus-5-5[1m]'"), "{line}");
+        let out = std::process::Command::new("/bin/zsh").args(["-c", &format!("print -r -- {}", line.split_once(" --model ").unwrap().1)]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "claude-opus-5-5[1m]", "zsh: {}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    #[test]
+    fn a_model_name_that_could_leave_its_quotes_is_left_off() {
+        for bad in ["x' ; rm -rf ~ '", "a b", "a;b", "a$(b)"] {
+            let line = claude_line("abc-123", Some(bad)).unwrap();
+            assert!(!line.contains("--model"), "{bad}: {line}");
+        }
     }
 
     #[test]

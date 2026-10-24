@@ -84,7 +84,8 @@ pub fn has_result(path: &str, from: u64, tool_use_id: &str) -> bool {
 pub fn waiting_tool_use(path: &str) -> Option<(String, String, Value)> {
     let text = read_from(path, tail_offset(path))?;
     let (mut calls, mut done) = (Vec::new(), std::collections::HashSet::new());
-    for entry in lines(&text) {
+    // The session's own calls: a subagent's (inline, in older logs) aren't what its terminal is asking about.
+    for entry in lines(&text).filter(|e| e.get("isSidechain").and_then(Value::as_bool) != Some(true)) {
         for b in content_blocks(&entry) {
             let id = || b.get("id").and_then(Value::as_str).unwrap_or("").to_string();
             match b.get("type").and_then(Value::as_str) {
@@ -118,13 +119,14 @@ pub fn activity(path: &str) -> Option<(String, u64)> {
     let entries: Vec<Value> = lines(&text).collect();
     for e in entries.iter().rev() {
         let kind = e.get("type").and_then(Value::as_str);
+        // A subagent's own lines (inline, in older logs): not this session's, and its prompt isn't yours.
+        if e.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
         // Only this turn: stop at your prompt (not at a tool's result or a meta note).
         let tool_result = content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"));
         if kind == Some("user") && !tool_result && e.get("isMeta").and_then(Value::as_bool) != Some(true) {
             return None;
-        }
-        if e.get("isSidechain").and_then(Value::as_bool) == Some(true) {
-            continue;
         }
         if kind == Some("user") && tool_result {
             return Some(("Thinking…".into(), stamp(e))); // a step just finished: it's working out the next
@@ -360,6 +362,13 @@ pub fn yours_mid_turn(e: &Value) -> bool {
 
 pub fn harness_text(text: &str) -> bool {
     text.trim_start().starts_with("<task-notification>")
+}
+
+/// A teammate's message to its lead (or its notice), as Claude Code writes it into the lead's log: from it, not
+/// you, so it's never your prompt and never starts a turn of yours.
+pub fn peer_text(text: &str) -> bool {
+    let t = text.trim_start();
+    t.starts_with("Another Claude session sent a message:") || t.starts_with("<teammate-message")
 }
 
 /// What a session's teammates (agents started with a name) said to it, in a user entry's text: each
@@ -691,7 +700,9 @@ pub fn turn_ended_parts(path: &str) -> Option<(u64, String, Vec<TurnPart>)> {
                         continue;
                     }
                     let t: String = blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect();
-                    if harness_text(&t) {
+                    if peer_text(&t) {
+                        // A teammate's message: not a turn of yours, the parts so far stay as they are.
+                    } else if harness_text(&t) {
                         hooked = false;
                     } else if !t.trim().is_empty() && !t.trim_start().starts_with('<') {
                         parts.clear(); // your next prompt: a new turn

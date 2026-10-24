@@ -232,7 +232,7 @@ pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
     for (i, e) in entries.iter().enumerate() {
         if kind(e) == "user" {
             if let Some(t) = user_text(e) {
-                if !flag(e, "isMeta") && !flag(e, "isSidechain") && !t.starts_with('<') {
+                if !flag(e, "isMeta") && !flag(e, "isSidechain") && !t.starts_with('<') && !crate::logs::transcript::peer_text(&t) {
                     start = i + 1;
                 }
             }

@@ -872,12 +872,10 @@ pub fn box_text(screen: &str) -> Option<String> {
         end -= 1;
     }
     let inner = |l: &str| l.trim().trim_start_matches('│').trim_end_matches('│').trim().to_string();
-    let prompt = |l: &str| {
-        let l = inner(l);
-        l.starts_with('❯') || l.starts_with('>')
-    };
+    // Claude Code's ❯ (> in older versions), Codex's ›.
+    let prompt = |l: &str| inner(l).starts_with(['❯', '>', '›']);
     let at = (end.saturating_sub(20)..end).rev().find(|i| prompt(lines[*i]))?;
-    let body: Vec<String> = lines[at..end].iter().take_while(|l| !crate::terminal::dialog::is_rule(l) || inner(l).starts_with(['❯', '>'])).map(|l| inner(l)).collect();
+    let body: Vec<String> = lines[at..end].iter().take_while(|l| !crate::terminal::dialog::is_rule(l) || prompt(l)).map(|l| inner(l)).collect();
     Some(body.join(" "))
 }
 
@@ -1189,6 +1187,10 @@ mod start_tests {
         assert!(still_in_box(&box_text(&old_box).unwrap(), "several\nlines\nof\ntext"));
         assert_eq!(box_text("Do you want to proceed?\n  1. Yes\n  2. No\n\n"), None, "a question has the screen: no box");
         assert_eq!(box_text(""), None);
+        // Codex's composer: its › prompt is the box too.
+        let codex = "• Ran cargo test\n\n› fix the flaky test\n\n";
+        assert_eq!(box_text(codex).as_deref(), Some("› fix the flaky test"));
+        assert!(still_in_box(&box_text(codex).unwrap(), "fix the flaky test"));
     }
 
     #[test]

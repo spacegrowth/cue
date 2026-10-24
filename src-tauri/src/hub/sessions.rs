@@ -142,6 +142,11 @@ impl Hub {
             st.items.push(it);
         }
         self.changed();
+        // A message you kept for it (Cue restarted before its turn ended): its turn is over, so it goes now.
+        let kept = self.st().sessions.held(&sid).is_some();
+        if kept {
+            self.send_held_soon(&sid, 0);
+        }
     }
 
     /// Every few seconds, from Claude Code's list of live sessions:
@@ -399,6 +404,8 @@ impl Hub {
         let removed = {
             let mut st = self.st();
             let gone = st.sessions.take(session_id);
+            // Its "missing since" goes with it: resumed later (same id), an old one would count it gone at once.
+            st.missing.remove(session_id);
             if let Some(s) = gone.as_ref() {
                 let now = now_ms();
                 st.just_ended.retain(|_, at| now.saturating_sub(*at) < JUST_ENDED_MS);
