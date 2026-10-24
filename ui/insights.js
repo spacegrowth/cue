@@ -281,10 +281,10 @@ function handoffInsight(sid, s) {
   // It stays while the session works too (like the background-agents tray), until you act on it.
   const d = handoffDue(sid, s);
   const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
-  const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask, true, !d?.opts.some((o) => o.cmd === "/compact")) : "", del = delegateLine(sid);
+  const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask, true, !d?.opts.some((o) => o.cmd === "/compact")) : "";
   // Hand off if I don't come back, ticked: its own line under the bar, always in sight (never one of the bar's "+N").
   const ticked = aheadCan(sid) && aheadWatched(sid);
-  if (!d && !cache && !del) return ticked ? watchLine(sid) : "";
+  if (!d && !cache) return ticked ? watchLine(sid) : "";
   if (d) insShown(sid, "handoff");
   const busy = insBusy.has(sid), isOpen = insOpen.has(sid);
   const open = `data-act="ins-open" data-sid="${esc(sid)}"`;
@@ -295,11 +295,11 @@ function handoffInsight(sid, s) {
   const handoffText = d && (insHotSeen.has(sid)
     ? `<b>Each reply re-reads ${esc(insTok(d.m.context))},</b> ${Math.round(d.grew)}× its start.`
     : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
-  const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask), delegateText(sid)].filter(Boolean);
+  const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask)].filter(Boolean);
   const text = shown[0], rest = shown.length - 1;
   // Opened, the panel never repeats the bar's own line; with nothing else to show, the bar doesn't open at all.
-  const lead = hotCache ? "cache" : d ? "handoff" : cw ? "cache" : "del";
-  const lines = [lead !== "cache" && cache, lead !== "del" && del].filter(Boolean).join("");
+  const lead = hotCache || !d ? "cache" : "handoff";
+  const lines = lead !== "cache" ? cache : "";
   const opens = !!d || !!lines;
   // A cache in its last minutes leading the bar carries its own ways out (its line isn't repeated when opened).
   const warmActs = lead === "cache" && cw.left > 0 && !ask && !d ? `${insOn("handoff") && !s.machine ? `<button class="btn" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${compactWarm(sid, cw, ask) ? `<button class="btn" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}` : "";
@@ -452,21 +452,21 @@ function resumeCost(sid) {
 setInterval(insPoll, 30000);
 setTimeout(insPoll, 3000);   // and soon after the window opens, not 30 s in
 
-// ---------- could have delegated: looking around itself, or many areas in one long session ----------
+// ---------- the areas a long session worked across ----------
 
-// sid → what it could have delegated (ipc insights_tab delegate_of), for the board's cards; whether relay is on.
-// From the turns history, which is read every 10 minutes: asked every minute is plenty.
-let insDelegate = new Map(), insRelay = false;
+// sid → what it could have delegated (ipc insights_tab delegate_of): no longer shown as an insight of its own, but
+// the areas it worked across say why its hand-off goes to a fresh session. From the turns history, which is read
+// every 10 minutes: asked every minute is plenty.
+let insDelegate = new Map();
 async function delPoll() {
-  if (document.hidden || !insOn("delegate")) return;
+  if (document.hidden || !insOn("handoff")) return;
   const sids = [...new Set(state.items.map((i) => i.session_id))].filter(Boolean);
   if (!sids.length) return;
   try {
     const r = (await invoke("insight_delegate", { sessionIds: sids })) || {};
     const next = new Map(Object.entries(r.sessions || {}));
-    const changed = insRelay !== !!r.relay || JSON.stringify([...next]) !== JSON.stringify([...insDelegate]);
+    const changed = JSON.stringify([...next]) !== JSON.stringify([...insDelegate]);
     insDelegate = next;
-    insRelay = !!r.relay;
     if (changed) renderMain();
   } catch {}
 }
@@ -474,35 +474,17 @@ setInterval(delPoll, 60000);
 setTimeout(delPoll, 4000);
 /** An area of a project as a short name: "." is its top level, a folder outside it its last part. */
 const areaName = (a) => (a === "." ? "top level" : a.split("/").filter(Boolean).at(-1) || a);
-/** On a waiting card: this session looked around itself where an agent could have, or ran long across
- *  several areas where each could have had a session (relay, when it's on) or an agent of its own. */
-function delegateLine(sid) {
-  const text = delegateText(sid);
-  return text ? `<div class="ins-line">${BULB}<span>${text}</span></div>` : "";
-}
 /** A board card's insights as one line, the most pressing (a cache in its last minutes, else the hand-off,
- *  what it could have delegated, the cache), with "+N" for the rest: they're all in its open strip.
+ *  the cache), with "+N" for the rest: they're all in its open strip.
  *  `ask`: it waits on a decision, so only its cache counts. */
 function insCardLine(sid, ask = false) {
   // A note written ahead says where its cache stands itself.
   const cw = cacheWarn(sid), cache = aheadOf(sid) ? "" : cacheLine(sid, ask);
-  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid), delegateLine(sid)] : [handoffLine(sid), delegateLine(sid), cache];
+  const lines = ask ? [cache] : cw && cw.left > 0 && cw.left <= HOT_CACHE_MS ? [cache, handoffLine(sid)] : [handoffLine(sid), cache];
   const [top, ...rest] = lines.filter(Boolean);
   // Ticked "Hand off if I don't come back": said in words on its own line, under the rest, never folded into "+N".
   const watching = !ask && aheadWatched(sid) && aheadCan(sid) ? `<div class="ins-line">${BULB}<span><b>Hands off if you don't come back</b> ${aheadLater(sid) ? "from your next reply" : "before its cache runs out"}.</span></div>` : "";
   return (top && rest.length ? top.replace(/<\/div>$/, `<span class="ins-n">+${rest.length}</span></div>`) : top || "") + watching;
-}
-/** delegateLine's sentence, for its line and the open session's strip: "" when there's nothing to say. */
-function delegateText(sid) {
-  const s = sessionOf(sid), d = insDelegate.get(sid);
-  if (!insOn("delegate") || !s || s.state === "working" || !d) return "";
-  insShown(sid, "delegate");
-  if (d.search) {
-    const later = d.search.later ? `its ${d.search.later} later repl${d.search.later === 1 ? "y" : "ies"} re-read ${esc(insTok(d.search.tokens))} of it` : "every reply after re-reads it";
-    return `<b>Could have sent an agent to look.</b> ${d.search.looks} reads and searches grew it ${esc(insTok(d.search.growth))}; ${later}.`;
-  }
-  const next = insRelay ? "relay, an executor per area" : "a background agent per area, each in its own worktree";
-  return `<b>${d.split.length} areas in one long session</b> (${esc(d.split.slice(0, 3).map(areaName).join(", "))}${d.split.length > 3 ? ", …" : ""}). Next time: ${next}.`;
 }
 
 // ---------- queue, don't interrupt ----------
@@ -689,7 +671,6 @@ function insSettings(st) {
     ${setRow("Hand off", "When a session's turns cost several times what its early ones did, offers its hand-off skill (else Cue's own: a note of its own, HANDOFF-<its id>.md, then Continue in a new session) or /compact.", toggle("insights.handoff", st.insights?.handoff ?? true))}
     ${setRow("Cache about to expire", "On a waiting card, the last minutes before its cached context runs out, and once it has. Claude Code says when; other agents' logs don't.", toggle("insights.cache", st.insights?.cache ?? true))}
     ${setRow("Hand off before the cache runs out", "Off by default: Cue would type into your sessions unasked. On, every Claude Code session on this Mac waiting on you with 150k or more of context and an hour's cache gets Cue's hand-off a minute before its cache runs out, unless something is typed in its box, it has background agents at work, or Cue can't see its box (it reads tmux panes, which Cue's own terminal uses). When you're back you choose: continue here, or a new session from the note.", toggle("insights.ahead", st.insights?.ahead ?? false))}
-    ${setRow("Could have delegated", "On a waiting card, when a session did a lot of reading and searching itself (a background agent would have sent back a summary), or ran long across several areas of its project (relay, when it's on, or an agent per area).", toggle("insights.delegate", st.insights?.delegate ?? true))}
     ${setRow("Queue instead of interrupting", "While a session works and you've typed something: Now stops what it's doing, Queue keeps it.", toggle("insights.queue", st.insights?.queue ?? true))}
     <div class="set-group">Hand-off skill, by host</div>
     ${setRow("How it's set", "Each host's agents have their own skills. Cue offers the one you choose here, kept for that host and agent; else a host's /handoff (only that exact name); else its own hand-off.", "")}
