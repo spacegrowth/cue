@@ -354,7 +354,8 @@ function bindMain() {
     if (bo) { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; helperView = { sid, id: null }; return it ? setActive(it) : openSession(sid); }
     const hb = t.closest("[data-helper]");
     if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
-    if (t.closest("[data-helper-back]")) return closeHelperView();
+    // Back to the chat (Go to chat, ‹ Back to chat, the lead's chip): with the cursor in its box, ready to write.
+    if (t.closest("[data-helper-back]")) { closeHelperView(); return focusComposer(); }
     const ls = t.closest("[data-listen]");
     if (ls) { const k = ls.dataset.listen; return listening?.key === k ? listenToggle() : listenPlay(k.slice(0, k.lastIndexOf(":")), k, !!ls.dataset.listenReader); }
     if (t.closest("[data-listen-toggle]")) return listenToggle();
