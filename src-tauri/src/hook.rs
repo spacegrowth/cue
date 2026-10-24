@@ -253,6 +253,7 @@ pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
                     hooked = false;
                 }
             }
+            "attachment" if crate::logs::transcript::yours_mid_turn(e) => hooked = false,
             "assistant" => {
                 let texts: Vec<String> = match e.pointer("/message/content") {
                     Some(Value::String(t)) => vec![t.clone()],

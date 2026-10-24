@@ -1317,6 +1317,12 @@ impl Feed {
                 if a.get("commandMode").and_then(Value::as_str) == Some("task-notification") || prompt.contains("<task-notification>") {
                     return self.helpers_finished(prompt, at);
                 }
+                // Your message, after a Stop hook sent it back: new work, an answer again, as a task's report starts.
+                if crate::logs::transcript::yours_mid_turn(e) && self.turns.last().is_some_and(|t| t.hooked_ms > 0) {
+                    self.close_open("");
+                    self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
+                    return true;
+                }
                 false
             }
             Some("user") => {
@@ -2420,6 +2426,34 @@ mod tests {
         let f = feed_of(&log);
         assert_eq!(f.turns.len(), 2, "the report starts new work");
         assert!(f.turns[0].hooked_ms > 0 && f.turns[1].hooked_ms == 0, "the hook's part stays with the turn it came in; the new work is an answer again");
+    }
+
+    /// You wrote to it while the hook's follow-up ran: what it does for your message is an answer again, in
+    /// every reader (it was folded under "After a stop hook", and the card kept the reply from before the hook).
+    #[test]
+    fn your_message_after_the_hook_starts_unhooked_work_in_every_reader() {
+        let mut log = HOOKED.replace(r#"{"type":"system","subtype":"turn_duration","timestamp":"2026-10-04T10:00:07.000Z","durationMs":7000}"#, "");
+        log.push_str(r#"{"type":"attachment","timestamp":"2026-10-04T10:00:06.500Z","attachment":{"type":"queued_command","prompt":"also check the hand-off","commandMode":"prompt","origin":{"kind":"human"},"humanTurn":true}}
+{"type":"assistant","timestamp":"2026-10-04T10:00:09.000Z","message":{"content":[{"type":"text","text":"The hand-off note is found now."}]}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-10-04T10:00:10.000Z","durationMs":10000}
+"#);
+        let f = feed_of(&log);
+        assert_eq!(f.turns.len(), 2, "your message starts new work");
+        assert!(f.turns[0].hooked_ms > 0 && f.turns[1].hooked_ms == 0);
+        assert!(matches!(f.turns[1].items.last(), Some(Item::Say { text, .. }) if text == "The hand-off note is found now."));
+        let path = std::env::temp_dir().join(format!("cue-hooked-yours-{}.jsonl", std::process::id()));
+        std::fs::write(&path, &log).unwrap();
+        let p = path.to_string_lossy().to_string();
+        let (_, last, parts) = crate::logs::transcript::turn_ended_parts(&p).expect("the turn ended");
+        let card = crate::hub::split_turn(last, &parts, "answer");
+        let hook = crate::hook::final_turn(&serde_json::json!({ "transcript_path": p, "last_assistant_message": "The hand-off note is found now." }));
+        let parts: Vec<crate::model::TurnPart> = hook.iter().map(|v| crate::model::TurnPart { text: v["text"].as_str().unwrap_or("").to_string(), hooked: v["hooked"].as_bool().unwrap_or(false) }).collect();
+        let stop = crate::hub::split_turn("The hand-off note is found now.".into(), &parts, "answer");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(card.0, "The hand-off note is found now.", "a turn read from the transcript");
+        assert_eq!(stop.0, "The hand-off note is found now.", "Cue's Stop hook");
+        // A task's notice queued the same way isn't yours.
+        assert!(!crate::logs::transcript::yours_mid_turn(&serde_json::json!({"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>x</task-notification>","commandMode":"task-notification"}})));
     }
 
     /// Every reader of a hooked turn agrees on what's the answer and what's the hook's follow-up: the steps

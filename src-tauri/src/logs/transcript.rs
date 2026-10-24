@@ -347,6 +347,17 @@ pub fn is_stop_hook(e: &Value) -> bool {
         && content_blocks(e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).next().is_some_and(|t| t.trim_start().starts_with(STOP_HOOK_MARK))
 }
 
+/// Your message, taken into a running turn: Claude Code hands it over as a `queued_command` attachment, not
+/// a prompt entry. New work, so after a Stop hook's follow-up what the agent writes is an answer again.
+pub fn yours_mid_turn(e: &Value) -> bool {
+    let a = |k: &str| e.pointer(&format!("/attachment/{k}")).and_then(Value::as_str);
+    e.get("type").and_then(Value::as_str) == Some("attachment")
+        && a("type") == Some("queued_command")
+        && a("commandMode") == Some("prompt")
+        && a("origin/kind").is_none_or(|k| k == "human")
+        && a("prompt").is_some_and(|p| !p.trim().is_empty() && !p.contains("<task-notification>"))
+}
+
 pub fn harness_text(text: &str) -> bool {
     text.trim_start().starts_with("<task-notification>")
 }
@@ -599,6 +610,7 @@ pub fn turn_ended_parts(path: &str) -> Option<(u64, String, Vec<TurnPart>)> {
                 ended = None;
                 hooked = true;
             }
+            Some("attachment") if yours_mid_turn(&e) => hooked = false,
             // A command you ran in Claude Code since (/login, /model…) starts no turn: still ended.
             Some("user") if local_command(&e) => {}
             Some("user" | "assistant") if e.get("isSidechain").and_then(Value::as_bool) != Some(true) => {
