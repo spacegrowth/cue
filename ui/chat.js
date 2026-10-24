@@ -1017,24 +1017,13 @@ function helperViewTop(sid, h) {
   const bar = `<div class="bg-view-head" data-key="head"><button class="bg-back" data-helper-back="1"><span class="bg-back-ch">‹</span>Back to chat</button>${others.length ? `<span class="dim bg-hop-n">· ${others.length} other${others.length === 1 ? "" : "s"}</span>` : ""}</div>`;
   return { bar, hop };
 }
-/** A teammate's foot: it has no terminal Cue can type into, so talking to it, or giving it more work, goes
- *  through its lead. The button takes you to the lead's box, started for you. */
+/** A teammate's foot: its messages reach its lead by themselves (and show in the lead's chat), so there's
+ *  nothing to send from here. */
 function teammateFoot(sid, h) {
-  const lead = nameOf(sid, sessionOf(sid)?.project);
-  return `<div class="foot bg-view-foot">${helperRunning(h) ? `<span class="dot-live"></span>` : ""}<span class="dim">Want to talk to ${esc(h.name)} or send it more work? Message ${esc(lead)}.</span><span class="grow"></span><button class="btn primary send" data-tell-teammate="${esc(`${sid}|${h.id}`)}">Message ${esc(lead)}</button></div>`;
-}
-/** "Message <lead>": back to the chat, its box started with the teammate's name (after anything typed). */
-function tellTeammate(sid, id) {
-  const h = helpersOf(sid).find((x) => x.id === id && x.teammate && x.name);
-  if (!h) return;
-  const d = draft(`s:${sid}`), lead = `Tell ${h.name}: `;
-  if (!d.text.includes(lead)) d.text = d.text.trim() ? `${d.text.replace(/\s+$/, "")}\n\n${lead}` : lead;
-  saveDrafts();
-  closeHelperView();
-  focusComposer();
+  return helperViewFoot(helperRunning(h), `Its messages go to ${esc(nameOf(sid, sessionOf(sid)?.project))} by themselves.`);
 }
 /** A session's teammates, at the top of its chat, as relay's lead and executors are: the session (lead),
- *  then a chip per teammate, working (live dot) or idle. A chip opens that teammate in full (with its box);
+ *  then a chip per teammate, working (live dot) or idle. A chip opens that teammate in full;
  *  the lead's takes you back to the chat. */
 function teammateBar(sid) {
   const tms = helpersOf(sid).filter((h) => h.teammate && h.name);
