@@ -362,6 +362,44 @@ pub fn harness_text(text: &str) -> bool {
     text.trim_start().starts_with("<task-notification>")
 }
 
+/// What a session's teammates (agents started with a name) said to it, in a user entry's text: each
+/// teammate's name and its message. Claude Code writes them into the lead's log mid-turn, with no
+/// `origin` and no prompt hook, as "Another Claude session sent a message:" then
+/// `<teammate-message teammate_id="reader" …>…</teammate-message>`. Its own notices come the same way,
+/// as JSON: an idle notice counts only when it carries the teammate's answer (`result`), the rest not at all.
+pub fn teammate_messages(text: &str) -> Vec<(String, String)> {
+    let t = text.trim_start();
+    if !t.starts_with("Another Claude session sent a message:") && !t.starts_with("<teammate-message") {
+        return vec![];
+    }
+    t.split("<teammate-message").skip(1).filter_map(|r| {
+        let (attrs, rest) = r.split_once('>')?;
+        let body = rest.split("</teammate-message>").next()?.trim();
+        let name = attrs.split("teammate_id=\"").nth(1)?.split('"').next()?.to_string();
+        let body = match serde_json::from_str::<Value>(body) {
+            Ok(v) if v.is_object() => match v.get("type").and_then(Value::as_str) {
+                Some("idle_notification") => v.get("result").and_then(Value::as_str)?.trim().to_string(),
+                _ => return None,
+            },
+            _ => body.to_string(),
+        };
+        (!name.is_empty() && !body.is_empty()).then_some((name, body))
+    }).collect()
+}
+
+/// Teammates' messages in the session's log written after `after_ms` (by its clock): when, who, what.
+pub fn teammate_messages_after(path: &str, after_ms: u64) -> Vec<(u64, String, String)> {
+    let Some(text) = read_from(path, tail_offset(path)) else { return vec![] };
+    lines(&text)
+        .filter(|e| e.get("type").and_then(Value::as_str) == Some("user") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) && e.get("origin").is_none_or(Value::is_null))
+        .filter(|e| stamp(e) > after_ms)
+        .flat_map(|e| {
+            let at = stamp(&e);
+            content_blocks(&e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).flat_map(teammate_messages).map(|(who, said)| (at, who, said)).collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 /// A Claude Code session's transcript, wherever its folder is: ~/.claude/projects/<folder>/<id>.jsonl.
 pub fn find_claude(session_id: &str) -> Option<String> {
     if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
@@ -401,6 +439,15 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
             Some("user") => {
                 if let Some((t, r)) = reply.take() {
                     out.push(msg(t, "agent", &r));
+                }
+                // A teammate's message (or its notice, which says nothing to show): not yours.
+                if text.starts_with("Another Claude session sent a message:") && text.contains("<teammate-message") {
+                    for (who, said) in teammate_messages(&text) {
+                        let mut m = msg(at, "peer", &said);
+                        m["from"] = Value::String(who);
+                        out.push(m);
+                    }
+                    continue;
                 }
                 out.push(msg(at, "you", &text));
             }
@@ -732,6 +779,53 @@ mod tests {
         assert_eq!(got(&at(8), 10), ["you: fix the bar", "agent: Fixed: the bar now fills.", "you: thanks, now commit", "agent: Committed."]);
         assert_eq!(got(&at(8), 2), ["you: thanks, now commit", "agent: Committed."], "the last `limit` before that time");
         assert_eq!(got(&at(1), 10), Vec::<String>::new());
+    }
+
+    /// As Claude Code writes them into the lead's log (from a real lead and its teammate "reader").
+    fn from_teammate(body: &str, summary: &str) -> String {
+        let summary = if summary.is_empty() { String::new() } else { format!(" summary=\"{summary}\"") };
+        format!("Another Claude session sent a message:\n<teammate-message teammate_id=\"reader\" color=\"blue\"{summary}>\n{body}\n</teammate-message>\n\nThis came from another Claude session \u{2014} not typed by your user, but very likely working on their behalf.")
+    }
+
+    #[test]
+    fn a_teammates_message_is_read_whole_and_its_notices_only_when_they_carry_an_answer() {
+        let said = |t: &str| teammate_messages(t).into_iter().map(|(w, s)| format!("{w}: {s}")).collect::<Vec<_>>();
+        assert_eq!(said(&from_teammate("PROBE-SHORT: hello from reader", "Short probe reply to team-lead")), ["reader: PROBE-SHORT: hello from reader"]);
+        let long = std::iter::once("PROBE-LONG: a multi-line message from reader.".to_string())
+            .chain((1..=40).map(|n| format!("Line {n}: the quick brown fox jumps over the lazy dog, checking long messages arrive whole.")))
+            .chain(std::iter::once("PROBE-LONG-END".to_string())).collect::<Vec<_>>().join("\n");
+        let got = teammate_messages(&from_teammate(&long, "Long multi-line probe reply"));
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].1, long, "every line of a long one");
+        // Its idle notice: shown only for the answer in it.
+        let idle = |extra: &str| from_teammate(&format!(r#"{{"type":"idle_notification","from":"reader","timestamp":"2026-10-24T01:03:09.000Z","idleReason":"available"{extra}}}"#), "");
+        assert_eq!(said(&idle(r#","result":"I sent \"hello\" to team-lead.""#)), ["reader: I sent \"hello\" to team-lead."]);
+        assert!(said(&idle("")).is_empty(), "just idle: nothing to show");
+        assert!(said(&from_teammate(r#"{"type":"shutdown_request","request_id":"x"}"#, "")).is_empty(), "Claude Code's own notice");
+        // Not a teammate's: yours, or another session's.
+        assert!(said("what does <teammate-message teammate_id=\"x\">hi</teammate-message> mean?").is_empty());
+        assert!(said("Another Claude session sent a message:\n<cross-session-message from=\"uds:/tmp/s.sock\">\nhi\n</cross-session-message>").is_empty());
+    }
+
+    #[test]
+    fn a_leads_log_gives_its_teammates_messages_after_a_time_and_its_history_shows_them_as_theirs() {
+        let at = |s: u32| format!("2026-10-24T01:03:{s:02}.000Z");
+        let p = write_transcript(&[
+            json!({"type":"user","timestamp":at(1),"origin":{"kind":"human"},"message":{"role":"user","content":"Start one teammate named reader"}}),
+            json!({"type":"assistant","timestamp":at(2),"message":{"content":[{"type":"text","text":"The reader teammate is running."}]}}),
+            json!({"type":"user","timestamp":at(3),"message":{"role":"user","content":from_teammate("PROBE-SHORT: hello from reader", "Short")}}),
+            json!({"type":"assistant","timestamp":at(4),"message":{"content":[{"type":"text","text":"The short one arrived."}]}}),
+            json!({"type":"user","timestamp":at(5),"isSidechain":true,"message":{"role":"user","content":from_teammate("not the lead's", "")}}),
+            json!({"type":"user","timestamp":at(6),"message":{"role":"user","content":from_teammate("second message\nwith two lines", "Long")}}),
+            json!({"type":"user","timestamp":at(7),"message":{"role":"user","content":from_teammate(r#"{"type":"idle_notification","from":"reader","idleReason":"available"}"#, "")}}),
+            json!({"type":"assistant","timestamp":at(8),"message":{"content":[{"type":"text","text":"All lines arrived."}]}}),
+        ]);
+        let after = |s: u32| teammate_messages_after(&p.0, iso_ms(&at(s)).unwrap()).into_iter().map(|(t, w, m)| (t, format!("{w}: {m}"))).collect::<Vec<_>>();
+        assert_eq!(after(0), [(iso_ms(&at(3)).unwrap(), "reader: PROBE-SHORT: hello from reader".to_string()), (iso_ms(&at(6)).unwrap(), "reader: second message\nwith two lines".to_string())]);
+        assert_eq!(after(3).len(), 1, "only what came after");
+        assert!(after(6).is_empty());
+        let got = conversation_before(&p.0, iso_ms(&at(9)).unwrap(), 20).iter().map(|e| format!("{} {}: {}", e["role"].as_str().unwrap(), e["from"].as_str().unwrap_or(""), e["text"].as_str().unwrap())).collect::<Vec<_>>();
+        assert_eq!(got, ["you : Start one teammate named reader", "agent : The reader teammate is running.", "peer reader: PROBE-SHORT: hello from reader", "agent : The short one arrived.", "peer reader: second message\nwith two lines", "agent : All lines arrived."]);
     }
 
     #[test]

@@ -589,7 +589,7 @@ fn delivery_step(via: &str, submitted: bool) -> String {
 
 /// The session's Claude Code log, where Cue can read it: on this Mac, or a machine's copied here
 /// (machines::logs). A machine's own path is never read from here (a stat on it can stall).
-fn log_here(origin: &Origin) -> Option<&str> {
+pub(super) fn log_here(origin: &Origin) -> Option<&str> {
     let path = origin.transcript_path.as_str();
     if origin.harness != "claude" || path.is_empty() {
         return None;

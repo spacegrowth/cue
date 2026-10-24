@@ -65,6 +65,18 @@ impl Hub {
         }
     }
 
+    /// Its teammates' messages to it that the chat hasn't shown yet, from its log (where Cue can read it).
+    /// The first time, from the start of the turn that just ended (else the last 10 minutes).
+    fn teammates_heard(&self, origin: &Origin) -> Vec<(u64, String, String)> {
+        let Some(log) = super::send::log_here(origin) else { return vec![] };
+        let since = {
+            let st = self.st();
+            let read = st.sessions.teammates_read(&origin.session_id);
+            if read > 0 { read } else { st.sessions.turn_started(&origin.session_id).unwrap_or_else(|| now_ms().saturating_sub(10 * 60 * 1000)) }
+        };
+        transcript::teammate_messages_after(log, since)
+    }
+
     pub fn event(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str) {
         self.event_in(origin, event, message, turn, driven_by, false)
     }
@@ -131,6 +143,9 @@ impl Hub {
             }
         }
         let (message, followup) = split_turn(message, &turn, &crate::config::turn_mode());
+        // What its teammates said to it since the chat last read them: those come mid-turn with no prompt
+        // hook, so only its log has them. They go in above the reply that answers them.
+        let heard = if event == "stopped" { self.teammates_heard(&origin) } else { vec![] };
         // Its turn ended with background agents still at work (Claude Code's Agent tool): it's at its
         // prompt, but its answer isn't in yet; Claude Code wakes it when they report. So it waits on
         // them, not on you, and the chat shows them at work. (A message you send goes straight in.)
@@ -151,6 +166,7 @@ impl Hub {
                 st.sessions.set_driven_by(&sid, &driven_by);
                 st.sessions.set_helpers(&sid, helpers);
                 st.sessions.set_background(&sid, background);
+                st.sessions.note_teammates(&sid, &heard, crate::config::context_keep());
                 st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
                 if let Some(q) = &unread {
                     st.sessions.below_reply(&sid, q);
@@ -185,6 +201,7 @@ impl Hub {
                     if watched {
                         st.sessions.set_told(&sid, took.unwrap_or(0));
                     }
+                    st.sessions.note_teammates(&sid, &heard, crate::config::context_keep());
                     let thread = st.sessions.thread(&sid);
                     st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
                     if let Some(q) = &unread {

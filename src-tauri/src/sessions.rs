@@ -109,6 +109,9 @@ pub struct Session {
     /// the next turn starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub changes: Option<crate::changes::Changes>,
+    /// Up to when (by its log's clock) its teammates' messages to it have been read into the chat; 0 = none yet.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub teammates_read_ms: u64,
     /// Working, but nothing new in its transcript since then (a command waiting for input, or hung); 0 = fine.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub stuck_ms: u64,
@@ -241,6 +244,7 @@ impl Sessions {
             turn_from: None,
             session_from: None,
             changes: None,
+            teammates_read_ms: 0,
             stuck_ms: 0,
             held: None,
         });
@@ -346,7 +350,10 @@ impl Sessions {
         }
         let cap = if role == "you" { YOURS_CHARS } else { EXCHANGE_CHARS };
         let text = if text.chars().count() > cap { format!("{}…", text.chars().take(cap).collect::<String>()) } else { text.to_string() };
-        s.thread.push(Exchange { role: role.into(), text, at_ms: now_ms(), images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] });
+        // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
+        // reply to them) are saved by moment and speaker, and the second would overwrite the first.
+        let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -374,6 +381,22 @@ impl Sessions {
                 last.from = from.to_string();
             }
         }
+    }
+
+    /// Its teammates' messages read from its log, oldest first (`teammate_messages_after`): each as a
+    /// message from that teammate, and the log read up to the newest.
+    pub fn note_teammates(&mut self, session_id: &str, heard: &[(u64, String, String)], keep: usize) {
+        for (_, who, said) in heard {
+            self.note_peer(session_id, who, said, keep);
+        }
+        if let (Some(s), Some(last)) = (self.0.get_mut(session_id), heard.iter().map(|h| h.0).max()) {
+            s.teammates_read_ms = s.teammates_read_ms.max(last);
+        }
+    }
+
+    /// Up to when (by its log's clock) its teammates' messages have been read; 0 = not yet.
+    pub fn teammates_read(&self, session_id: &str) -> u64 {
+        self.0.get(session_id).map_or(0, |s| s.teammates_read_ms)
     }
 
     /// The project of the live session running as process `pid`.
@@ -1242,6 +1265,20 @@ mod tests {
         assert_eq!(unwrap_pasted(wrapped).trim(), "Is it ready? ✅ **Naming:** claude-relay is public.\n\nNext line.");
         assert_eq!(unwrap_pasted("no tags <here>"), "no tags <here>");
         assert_eq!(unwrap_pasted("cut <pasted_content id=\"x\""), "cut <pasted_content id=\"x\"");
+    }
+
+    #[test]
+    fn a_teammates_messages_go_in_as_from_it_each_its_own_and_the_log_is_read_up_to_the_newest() {
+        let mut s = Sessions::default();
+        s.mark(&Origin { session_id: "lead".into(), ..Default::default() }, "working", None);
+        s.note_teammates("lead", &[(100, "reader".into(), "PROBE-SHORT".into()), (200, "reader".into(), "PROBE-LONG\nline 1".into())], 10);
+        s.note("lead", "agent", "Both arrived.", 10);
+        let t = s.thread("lead");
+        assert_eq!(t.iter().map(|e| format!("{} {}: {}", e.role, e.from, e.text)).collect::<Vec<_>>(), ["peer reader: PROBE-SHORT", "peer reader: PROBE-LONG\nline 1", "agent : Both arrived."]);
+        assert!(t.windows(2).all(|w| w[0].at_ms < w[1].at_ms), "each at its own moment, so none is saved over another");
+        assert_eq!(s.teammates_read("lead"), 200);
+        s.note_teammates("lead", &[], 10);
+        assert_eq!(s.teammates_read("lead"), 200, "nothing new: stays");
     }
 
     fn origin(sid: &str) -> Origin {
