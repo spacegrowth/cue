@@ -22,11 +22,11 @@ pub fn start(app: AppHandle, d: &Dictation) -> Result<(), String> {
     if slot.is_some() {
         return Ok(()); // already listening
     }
-    // An add-on's own dictation, when it has one (the same lines as cue-listen's), else cue-listen.
+    // cue-voice's (NVIDIA's model) once talking is on, else an add-on's own, else cue-listen (all the same lines).
     #[cfg(feature = "ext")]
-    let own = crate::ext::dictation();
+    let own = crate::talk::dictation().or_else(crate::ext::dictation);
     #[cfg(not(feature = "ext"))]
-    let own: Option<Command> = None;
+    let own = crate::talk::dictation();
     let mut cmd = match own { Some(c) => c, None => Command::new(helper()?) };
     let mut child: Child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     *slot = child.stdin.take();

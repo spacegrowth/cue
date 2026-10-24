@@ -9,15 +9,15 @@
 //! UserNotifications only works from a bundled .app. A bare `cargo run` binary returns false here
 //! and the caller falls back to the plain notification plugin (which can't remove anything).
 
-/// A session whose finished turns aren't notified for now: something else is already telling you about it (an
-/// add-on reading its answers out to you). What needs you still is. None: notify as usual.
-static QUIET: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-pub fn quiet(session_id: Option<String>) {
-    *crate::locking::lock(&QUIET, "quiet session") = session_id;
+/// Sessions whose finished turns aren't notified for now: something else is already telling you about them (an
+/// add-on reading their answers out to you). What needs you still is. Empty: notify as usual.
+static QUIET: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+pub fn quiet(session_ids: Vec<String>) {
+    *crate::locking::lock(&QUIET, "quiet sessions") = session_ids;
 }
 pub fn is_quiet(session_id: &str) -> bool {
-    let q = crate::locking::lock(&QUIET, "quiet session");
-    q.as_deref() == Some(session_id)
+    let q = crate::locking::lock(&QUIET, "quiet sessions");
+    q.iter().any(|s| s == session_id)
 }
 
 #[cfg(target_os = "macos")]

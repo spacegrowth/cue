@@ -15,5 +15,6 @@ dist/
 # The next release's notes (scripts/release-next.sh)
 .release-notes
 
-# Swift builds of the voices helper (src-tauri/speak)
+# Swift builds of the voices and voice helpers (src-tauri/speak, src-tauri/voice)
 src-tauri/speak/.build/
+src-tauri/voice/.build/

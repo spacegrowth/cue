@@ -14,6 +14,7 @@ mod logs;
 mod model;
 mod notify;
 mod sounds;
+mod talk;
 // An optional add-on, compiled in only with the `ext` feature: Rust in `src-tauri/ext/` (not part of
 // this repo). Without it there's nothing here.
 #[cfg(feature = "ext")]
@@ -328,6 +329,7 @@ pub fn run() {
                     .await;
                 }
             });
+            talk::start(app, hub.clone());
             #[cfg(feature = "ext")]
             ext::start(app, hub.clone());
             let waiting = hub.clone();

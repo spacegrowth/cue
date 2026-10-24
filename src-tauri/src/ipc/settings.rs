@@ -27,19 +27,27 @@ pub(crate) async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
     .map_err(|e| e.to_string())?
 }
 
-/// Settings rows an add-on adds ([{ group, rows: [{ title, sub, art?, pick? }] }], `pick`: { id, value,
-/// options: [[value, label]] }); none without one.
+/// Settings rows that talking from anywhere (talk.rs) and an add-on add ([{ group, tab?, rows: [{ title, sub, art?,
+/// pick? }] }], `pick`: { id, value, options: [[value, label]] }).
 #[tauri::command]
 pub(crate) fn ext_settings() -> serde_json::Value {
     #[cfg(feature = "ext")]
-    return ext::settings();
+    let mut rows = ext::settings();
     #[cfg(not(feature = "ext"))]
-    serde_json::json!([])
+    let mut rows = serde_json::json!([]);
+    // Talking from anywhere on the Mac (talk.rs) comes first, in the same shape.
+    if let (Some(all), Some(voice)) = (rows.as_array_mut(), crate::talk::settings()) {
+        all.insert(0, voice);
+    }
+    rows
 }
 
-/// One of an add-on's Settings picks changed (a row's `pick`: its `id`, the option picked).
+/// One of those Settings picks changed (a row's `pick`: its `id`, the option picked).
 #[tauri::command]
 pub(crate) fn ext_set(id: String, value: String) -> Result<(), String> {
+    if crate::talk::set(&id, &value).is_ok() {
+        return Ok(());
+    }
     #[cfg(feature = "ext")]
     return ext::set(&id, &value);
     #[cfg(not(feature = "ext"))]

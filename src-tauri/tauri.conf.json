@@ -59,7 +59,8 @@
     },
     "externalBin": [
       "binaries/cue-listen",
-      "binaries/cue-speak"
+      "binaries/cue-speak",
+      "binaries/cue-voice"
     ],
     "resources": {
       "../pi/cue.ts": "pi/cue.ts",

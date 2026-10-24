@@ -171,10 +171,11 @@ const allIdx = () => { const c = state.settings?.project?.all; return swatchOk(c
 const swatchOf = (project) => project === ALL_PROJ ? allIdx() : projIdx(project);
 /** The window in the color of the project picked in the header, or of All projects (style.css
  *  .proj-theme), unless that's turned off (Settings → General, Project colors). Moss: Cue's own theme. */
+/** The swatch the window wears now: the header's project, or All projects', Moss when project colors are off. */
+const themeIdx = () => (state.settings?.appearance?.project ?? true) ? (projFilter ? projIdx(projFilter) : allIdx()) : MOSS;
 function projTheme() {
-  const on = state.settings?.appearance?.project ?? true;
-  const idx = projFilter ? projIdx(projFilter) : allIdx();
-  const sw = on && idx !== MOSS && SWATCHES.find(([i]) => i === idx);
+  const idx = themeIdx();
+  const sw = idx !== MOSS && SWATCHES.find(([i]) => i === idx);
   const root = document.documentElement;
   root.classList.toggle("proj-theme", !!sw);
   if (!sw) return;

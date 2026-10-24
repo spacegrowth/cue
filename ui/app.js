@@ -24,7 +24,7 @@ function applyTheme() {
   else document.documentElement.dataset.theme = mode;
   retheme();
 }
-/** The chat app.js last said was open ("chat-open"), so it's said only when it changes. */
+/** The chat and color app.js last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
 function renderMain() {
   projTheme();
@@ -143,9 +143,9 @@ function renderMain() {
   activeKey = key;
   // A reply being read out: what it's reading stays in view, over the chat's jump to its end (chat.js listenFollow).
   if (listening) listenFollow(listening);
-  // Which chat is open, told to an add-on (once each time it changes).
-  const openNow = chat ? active?.sid || null : null;
-  if (openNow !== chatOpenTold) { chatOpenTold = openNow; T.event.emit("chat-open", { sid: openNow }).catch(() => {}); }
+  // Which chat is open, and the window's color, told to an add-on (once each time either changes).
+  const openNow = chat ? active?.sid || null : null, swatch = themeIdx();
+  if (`${openNow}|${swatch}` !== chatOpenTold) { chatOpenTold = `${openNow}|${swatch}`; T.event.emit("chat-open", { sid: openNow, swatch }).catch(() => {}); }
   // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
