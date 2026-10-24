@@ -14,6 +14,8 @@
 #       xcrun notarytool store-credentials cue-notary --apple-id <you@example.com> --team-id <TEAM>
 #     Without it the build is signed but not notarized (fine to try locally, not to publish).
 #   - for --publish: gh, logged in, with push access to the repo below
+#     Or, in .release.env, NOTARY_APPLE_ID and NOTARY_TEAM_ID, with the app-specific password in Keychain:
+#       security add-generic-password -a <you@example.com> -s cue-notary-password -w
 # Local overrides (e.g. NOTARY_PROFILE=…) can go in .release.env at the repo root (git-ignored).
 #
 # Releases never include an add-on (src-tauri/ext): the build doesn't use the `ext` feature, and the
@@ -36,8 +38,16 @@ IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer 
 [ -n "$IDENTITY" ] || die "no Developer ID Application certificate in your keychain"
 [ -f "$HOME/.tauri/cue.key" ] || die "no update key at ~/.tauri/cue.key"
 KEY_PASSWORD="$(security find-generic-password -s cue-updater-key -w 2>/dev/null)" || die "no 'cue-updater-key' password in Keychain"
+# How notarytool signs in: with NOTARY_APPLE_ID and NOTARY_TEAM_ID set (.release.env), an app-specific password
+# kept in Keychain as "cue-notary-password", read once here like the update key's; else the keychain profile.
+if [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ]; then
+  NOTARY_PASSWORD="$(security find-generic-password -s cue-notary-password -w 2>/dev/null)" || die "no 'cue-notary-password' password in Keychain"
+  NOTARY_AUTH=(--apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD")
+else
+  NOTARY_AUTH=(--keychain-profile "$PROFILE")
+fi
 NOTARIZE=1
-if ! NOTARY_CHECK="$(xcrun notarytool history --keychain-profile "$PROFILE" 2>&1)"; then
+if ! NOTARY_CHECK="$(xcrun notarytool history "${NOTARY_AUTH[@]}" 2>&1)"; then
   printf '%s\n' "$NOTARY_CHECK" | head -5 >&2   # what notarytool said (a missing profile, or Apple unreachable)
   [ "$PUBLISH" = "--publish" ] && die "can't publish without notarizing: no working notarytool profile '$PROFILE' (see the top of this script)"
   NOTARIZE=0
@@ -45,8 +55,8 @@ if ! NOTARY_CHECK="$(xcrun notarytool history --keychain-profile "$PROFILE" 2>&1
 fi
 notarize() {  # $1 = a zip or a dmg; waits for Apple's verdict
   local out
-  out="$(xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait 2>&1)" || true
-  grep -q "status: Accepted" <<<"$out" || { printf '%s\n' "$out" >&2; die "Apple didn't accept $(basename "$1") (xcrun notarytool log <id> --keychain-profile $PROFILE says why)"; }
+  out="$(xcrun notarytool submit "$1" "${NOTARY_AUTH[@]}" --wait 2>&1)" || true
+  grep -q "status: Accepted" <<<"$out" || { printf '%s\n' "$out" >&2; die "Apple didn't accept $(basename "$1") (xcrun notarytool log <id> says why)"; }
 }
 
 # --- the version, everywhere it's written -----------------------------------------------------------
@@ -113,7 +123,12 @@ mkdir -p "$WORK/dmg"
 ditto "$APP" "$WORK/dmg/Cue.app"
 ln -s /Applications "$WORK/dmg/Applications"
 DMG="$DIST/Cue-$VERSION.dmg"
-hdiutil create -volname "Cue" -srcfolder "$WORK/dmg" -ov -format UDZO "$DMG" >/dev/null
+# hdiutil now and then says "Resource busy" (something on the Mac still reading the folder): it's tried again.
+for try in 1 2 3; do
+  hdiutil create -volname "Cue" -srcfolder "$WORK/dmg" -ov -format UDZO "$DMG" >/dev/null && break
+  [ "$try" = 3 ] && die "couldn't make the disk image"
+  sleep 10
+done
 codesign --force --sign "$IDENTITY" --timestamp "$DMG" || die "couldn't sign the disk image"
 if [ "$NOTARIZE" = 1 ]; then
   say "notarizing the disk image…"
