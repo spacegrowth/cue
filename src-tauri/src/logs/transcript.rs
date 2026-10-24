@@ -586,6 +586,24 @@ pub fn prompt_since(path: &str, text: &str, since_ms: u64) -> bool {
     found
 }
 
+/// Whether the log has `text` handed to the agent mid-turn, at `since_ms` or later (the same leeway as
+/// `prompt_since`): a message you sent while it worked, taken in between two steps. Claude Code writes
+/// that as a `queued_command` attachment (`yours_mid_turn`), not as a turn of yours, so `prompt_since`
+/// never sees it; its prompt is compared as you sent it, a long paste's wrapper taken off.
+pub fn taken_mid_turn(path: &str, text: &str, since_ms: u64) -> bool {
+    if path.is_empty() || text.trim().is_empty() {
+        return false;
+    }
+    let Ok(md) = std::fs::metadata(path) else { return false };
+    let Some(log) = read_from(path, md.len().saturating_sub(256 * 1024)) else { return false };
+    let found = lines(&log).any(|e| {
+        yours_mid_turn(&e)
+            && stamp(&e) + 2_000 >= since_ms
+            && e.pointer("/attachment/prompt").and_then(Value::as_str).is_some_and(|p| is_message(&crate::sessions::unwrap_pasted(p), text))
+    });
+    found
+}
+
 pub fn turn_ended(path: &str) -> Option<(u64, String)> {
     turn_ended_parts(path).map(|(at, reply, _)| (at, reply))
 }
@@ -772,6 +790,34 @@ mod tests {
         assert!(!prompt_since(&p.0, &long, t0), "an older copy of the same words isn't this send");
         let p = write_transcript(&[json!({"type":"user","timestamp":at(57),"isSidechain":true,"message":{"content":wrapped}})]);
         assert!(!prompt_since(&p.0, &long, t0), "a background agent's turn isn't the session's");
+    }
+
+    #[test]
+    fn a_message_handed_over_mid_turn_is_found_in_the_log_as_sent() {
+        let at = |s: u32| format!("2026-10-23T09:00:{s:02}.000Z");
+        let t0 = iso_ms(&at(30)).unwrap();
+        let long = format!("also check the tests\n\n{}\n\nthen stop", "and the docs ".repeat(40));
+        let wrapped = format!("\n\n<pasted_content id=\"7\">\n{long}\n</pasted_content id=\"7\">\n");
+        let queued = |ts: String, prompt: &str, origin: Option<Value>| {
+            let mut a = json!({"type":"queued_command","commandMode":"prompt","prompt":prompt});
+            if let Some(o) = origin {
+                a["origin"] = o;
+            }
+            json!({"type":"attachment","timestamp":ts,"attachment":a})
+        };
+        let p = write_transcript(&[json!({"type":"assistant","timestamp":at(31),"message":{"content":[{"type":"text","text":"Working."}]}}), queued(at(40), &wrapped, None)]);
+        assert!(taken_mid_turn(&p.0, &long, t0), "the wrapped prompt, compared as sent");
+        assert!(!taken_mid_turn(&p.0, "something else", t0));
+        let p = write_transcript(&[queued(at(40), &long, Some(json!({"kind":"human"})))]);
+        assert!(taken_mid_turn(&p.0, &long, t0), "yours, said so");
+        let p = write_transcript(&[queued(at(10), &long, None)]);
+        assert!(!taken_mid_turn(&p.0, &long, t0), "from before this send");
+        let p = write_transcript(&[queued(at(40), "<task-notification>agents reported</task-notification>", None)]);
+        assert!(!taken_mid_turn(&p.0, "<task-notification>agents reported</task-notification>", t0), "Claude Code's own notice");
+        let p = write_transcript(&[queued(at(40), &long, Some(json!({"kind":"peer","name":"relay"})))]);
+        assert!(!taken_mid_turn(&p.0, &long, t0), "another agent's message, not yours");
+        let p = write_transcript(&[json!({"type":"attachment","timestamp":at(40),"attachment":{"type":"queued_command","commandMode":"bash","prompt":long}})]);
+        assert!(!taken_mid_turn(&p.0, &long, t0), "a command, not a prompt");
     }
 
     #[test]

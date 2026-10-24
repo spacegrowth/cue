@@ -156,11 +156,13 @@ impl Hub {
                 }
                 return Some("its log has it as your turn");
             }
-            // Sent while it worked and taken into the turn, by its queue log. (A message handed over
-            // mid-turn also leaves a `queued_command` attachment in the log: the place for that witness,
-            // once the transcript reader knows it.)
+            // Sent while it worked and taken into the turn: its queue log says so, or the log has the
+            // message handed over between two steps (a `queued_command` attachment, not a turn of yours).
             if matches!(crate::transcript::queued_state(log, text), Some(crate::transcript::Queued::Absorbed | crate::transcript::Queued::Taken(_))) {
                 return Some("its queue log has it taken");
+            }
+            if crate::transcript::taken_mid_turn(log, text, t0) {
+                return Some("its log has it taken mid-turn");
             }
         }
         if !name.is_empty() {
@@ -178,7 +180,7 @@ impl Hub {
         let open = self.st().sessions.unsettled();
         for (origin, e) in open {
             let sid = origin.session_id.clone();
-            let logged = log_here(&origin).is_some_and(|log| crate::transcript::prompt_since(log, &e.text, e.at_ms));
+            let logged = log_here(&origin).is_some_and(|log| crate::transcript::prompt_since(log, &e.text, e.at_ms) || crate::transcript::taken_mid_turn(log, &e.text, e.at_ms));
             if logged {
                 self.st().sessions.got_message(&sid, &e.text, "its log, read when Cue started");
             } else if e.pending {
