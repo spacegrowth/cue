@@ -84,6 +84,10 @@ struct Store {
     /// Sessions that just ended in Cue, and when: their agent takes a moment to exit after its
     /// SessionEnd, and until it has, it isn't shown again as a session Cue hasn't heard from.
     just_ended: HashMap<String, u64>,
+    /// Sessions that ended while Cue ran, newest first, each its record as it was and when it ended: what
+    /// the window shows for one from the moment its row goes (its name with it), before the saved copy is
+    /// asked for. The saved copy (db) is what a relaunch shows; this is the same list, had sooner.
+    ended: VecDeque<(u64, crate::sessions::Session)>,
     /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
     unreachable: HashSet<String>,
     /// Sessions Cue is restarting (stopped and started again: after an MCP change, or ⋯ → Restart session): see `Restart`.
@@ -278,6 +282,7 @@ impl Hub {
             "answers": st.answers,
             "sessions": sessions,
             "parked": parked,
+            "ended": Self::ended_view(&st),
             "restarting": restarting,
             "restarted": st.restarted,
             "reviews": reviews,
@@ -310,6 +315,24 @@ impl Hub {
             let _ = crate::config::set("project.moves", Value::Object(all));
         }
         snap
+    }
+
+    /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each
+    /// just what the window names a closed session by until it asks for the full record (closed_sessions):
+    /// its id, name, folder (the name's fallback), project, agent and machine (the row's tags and the
+    /// agent counts), and when it ended. Not its thread, bars or delivery records: the snapshot goes out on
+    /// every change, and thirty full records would ride along each time.
+    fn ended_view(st: &Store) -> Vec<Value> {
+        st.ended
+            .iter()
+            .filter(|(_, s)| st.sessions.origin(&s.origin.session_id).is_none() && !st.parked.iter().any(|p| p.session.origin.session_id == s.origin.session_id))
+            .map(|(at, s)| {
+                json!({
+                    "session_id": s.origin.session_id, "name": s.name, "cwd": s.origin.cwd, "project": s.project,
+                    "harness": s.origin.harness, "machine": s.origin.machine, "ended_ms": at,
+                })
+            })
+            .collect()
     }
 
     /// For `snapshot`, under one short lock: the session ids Cue knows, the live sessions it hasn't heard
@@ -436,7 +459,7 @@ impl Hub {
 /// was recorded with (its folder's own), so taking it back needs nothing rewritten.
 fn put_projects(snap: &mut Value, put: &HashMap<String, String>) {
     let mut seen: HashMap<(String, String), Option<String>> = HashMap::new();
-    for list in ["items", "history", "answers", "sessions", "parked", "live"] {
+    for list in ["items", "history", "answers", "sessions", "parked", "ended", "live"] {
         let Some(rows) = snap.get_mut(list).and_then(Value::as_array_mut) else { continue };
         for row in rows {
             let Some(o) = row.as_object_mut() else { continue };
@@ -479,7 +502,7 @@ fn move_projects(snap: &mut Value, moved: &HashMap<String, String>) -> HashMap<S
     if moved.is_empty() && taken.is_empty() {
         return taken;
     }
-    for list in ["items", "history", "answers", "sessions", "parked", "live"] {
+    for list in ["items", "history", "answers", "sessions", "parked", "ended", "live"] {
         let Some(rows) = snap.get_mut(list).and_then(Value::as_array_mut) else { continue };
         for row in rows {
             let Some(to) = sid_of(row).and_then(|sid| moved.get(&sid).or_else(|| taken.get(&sid)).cloned()) else { continue };

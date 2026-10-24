@@ -857,7 +857,12 @@ impl Sessions {
     }
 
     pub fn remove(&mut self, session_id: &str) -> bool {
-        self.0.remove(session_id).is_some()
+        self.take(session_id).is_some()
+    }
+
+    /// Take a session out, keeping its record (what Closed shows for it, its name with it).
+    pub fn take(&mut self, session_id: &str) -> Option<Session> {
+        self.0.remove(session_id)
     }
 
     /// Everything, unclipped: what Cue saves so a restart doesn't forget live sessions.

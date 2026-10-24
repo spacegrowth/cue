@@ -238,14 +238,24 @@ impl Hub {
     /// Sessions that ended within `window_ms` (at most `max`), newest first: not parked, not live again.
     /// Each its record as it was, with when it ended (`ended_ms`).
     pub fn closed(&self, window_ms: u64, max: usize) -> Vec<Value> {
-        let skip: HashSet<String> = {
+        // The ones that ended while Cue ran come first, as Cue holds them (the saved copy may be a
+        // moment behind): then the saved ones, each once.
+        let (skip, mut out): (HashSet<String>, Vec<(u64, crate::sessions::Session)>) = {
             let st = self.st();
-            st.parked.iter().map(|p| p.session.origin.session_id.clone()).chain(st.sessions.all().into_iter().map(|s| s.origin.session_id)).collect()
+            let skip = st.parked.iter().map(|p| p.session.origin.session_id.clone()).chain(st.sessions.all().into_iter().map(|s| s.origin.session_id)).collect();
+            (skip, st.ended.iter().cloned().collect())
         };
+        let since = now_ms().saturating_sub(window_ms);
+        out.retain(|(at, _)| *at > since);
+        for (at, s) in crate::db::closed(since, max + skip.len()) {
+            if !out.iter().any(|(_, e)| e.origin.session_id == s.origin.session_id) {
+                out.push((at, s));
+            }
+        }
+        out.sort_by(|a, b| b.0.cmp(&a.0));
         // Under the project you moved it to, as live rows are (the snapshot's remap).
         let moved = crate::config::moved();
-        crate::db::closed(now_ms().saturating_sub(window_ms), max + skip.len())
-            .into_iter()
+        out.into_iter()
             .filter(|(_, s)| !skip.contains(&s.origin.session_id))
             .take(max)
             .filter_map(|(at, s)| {
@@ -383,16 +393,21 @@ impl Hub {
         st.sessions.all().iter().find(|s| s.origin.session_id == session_id).is_some_and(|s| !s.origin.machine.is_empty() && st.unreachable.contains(&s.origin.machine))
     }
 
+    /// A session is gone: its row goes, and its record (name, folder, thread) stays as it was, under
+    /// Closed, from this moment on. The window never has to fall back to the folder's name for it.
     pub fn drop_session(&self, session_id: &str) {
         let removed = {
             let mut st = self.st();
-            let removed = st.sessions.remove(session_id);
-            if removed {
+            let gone = st.sessions.take(session_id);
+            if let Some(s) = gone.as_ref() {
                 let now = now_ms();
                 st.just_ended.retain(|_, at| now.saturating_sub(*at) < JUST_ENDED_MS);
                 st.just_ended.insert(session_id.to_string(), now);
+                st.ended.retain(|(_, e)| e.origin.session_id != session_id);
+                st.ended.push_front((now, s.clone()));
+                st.ended.truncate(crate::ipc::CLOSED_MAX);
             }
-            removed
+            gone.is_some()
         };
         if removed {
             self.changed();
@@ -756,6 +771,44 @@ mod tests {
         assert!(s.starred_ms > 0 && s.thread.iter().any(|e| e.text.contains("Three resources drifted")));
         crate::db::reset();
         assert!(Hub::new(None).parked("p1").is_none(), "resumed is no longer parked, after a restart too");
+
+        // Closed by name: a session you named keeps that one name the whole way, from the moment its
+        // row goes (the state has its record under `ended` at once, before anything is saved or asked
+        // for), through a late hook from its exiting agent, into Closed, and after a relaunch.
+        let hub = Hub::new(None);
+        let named = Origin { session_id: "n1".into(), harness: "claude".into(), cwd: "/x/cue".into(), agent_pid: Some(424242), ..Default::default() };
+        hub.event(named.clone(), "stopped", "Done.".into(), vec![], "");
+        hub.st().sessions.set_name("n1", "cue-missing-messages");
+        crate::db::sync_live(&hub.saved_sessions(), &[]); // as every change does in the app
+        let name_in = |list: &Value| list.as_array().unwrap().iter().find(|v| v["session_id"] == "n1").map(|v| v["name"].as_str().unwrap_or("").to_string());
+        let snap = hub.snapshot();
+        assert_eq!(name_in(&snap["sessions"]).as_deref(), Some("cue-missing-messages"));
+        assert_eq!(name_in(&snap["ended"]), None, "live: not under ended");
+        hub.drop_session("n1");
+        let snap = hub.snapshot();
+        assert_eq!(name_in(&snap["sessions"]), None, "its row is gone");
+        assert_eq!(name_in(&snap["ended"]).as_deref(), Some("cue-missing-messages"), "its record is there the same instant, name and all");
+        let e = &snap["ended"][0];
+        assert!(e["ended_ms"].as_u64().unwrap_or(0) > 0);
+        assert_eq!((e["cwd"].as_str(), e["project"].as_str(), e["harness"].as_str()), (Some("/x/cue"), Some("cue"), Some("claude")));
+        assert!(e.get("thread").is_none() && e.get("segments").is_none(), "slim: the snapshot carries what names it, not the whole record: {e}");
+        assert!(hub.closed(24 * 3600 * 1000, 30)[0]["thread"].as_array().is_some_and(|t| !t.is_empty()), "Closed itself has the whole record");
+        assert_eq!(name_in(&json!(hub.closed(24 * 3600 * 1000, 30))).as_deref(), Some("cue-missing-messages"), "Closed has it before the saved copy does");
+        // Its agent's SessionEnd comes in after, as it does when Close ends the process: nothing comes back.
+        hub.event(named.clone(), "ended", String::new(), vec![], "");
+        let snap = hub.snapshot();
+        assert_eq!(name_in(&snap["sessions"]), None, "a late end doesn't bring a nameless row back");
+        assert_eq!(name_in(&snap["ended"]).as_deref(), Some("cue-missing-messages"));
+        // Saved, and after a relaunch: the same record, the same name.
+        crate::db::sync_live(&hub.saved_sessions(), &[]);
+        let again = Hub::new(None);
+        assert_eq!(name_in(&json!(again.closed(24 * 3600 * 1000, 30))).as_deref(), Some("cue-missing-messages"));
+        assert!(again.snapshot()["ended"].as_array().unwrap().is_empty(), "the state's list is this run's; the saved one carries it on");
+        // Live again (resumed): off ended, on sessions, as itself.
+        hub.event(named, "stopped", "Back.".into(), vec![], "");
+        let snap = hub.snapshot();
+        assert_eq!(name_in(&snap["ended"]), None);
+        crate::db::reset();
 
         // Ended (not parked): under Closed, with when it ended; parked or live ones aren't.
         let hub = Hub::new(None);

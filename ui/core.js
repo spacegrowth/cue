@@ -64,7 +64,7 @@ const badge = (h) => `<span class="badge h-${esc(h || "other")}" title="${esc(ag
 /** The agent most of your sessions run (live, parked, closed). */
 function usualAgent() {
   const n = {};
-  for (const x of [...state.sessions, ...(state.parked || []), ...(closedList || [])]) if (x.harness) n[x.harness] = (n[x.harness] || 0) + 1;
+  for (const x of [...state.sessions, ...(state.parked || []), ...closedAll()]) if (x.harness) n[x.harness] = (n[x.harness] || 0) + 1;
   return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || "claude";
 }
 /** A card's agent, on the board's cards and the Parked drawer's rows: nothing for your usual one (it
@@ -109,7 +109,11 @@ const parkedOf = (sid) => (state.parked || []).find((p) => p.session_id === sid)
 /** Sessions that ended in the last 30 days (at most 30), the Parked drawer's Closed tab: asked for when
  *  that tab shows (again after a minute), not part of every state update. */
 let closedList = null, closedAt = 0, closedLoading = false, closedAskedFor = null;
-const closedOf = (sid) => (closedList || []).find((c) => c.session_id === sid);
+/** Every closed session Cue knows of, newest first: the saved list (full records) and the ones that ended
+ *  while Cue ran (in each state update, from the moment the row goes, so a name never lapses to the
+ *  folder's on the way: name, folder, project, agent, machine, when), each once, the full record first. */
+const closedAll = () => { const seen = new Set(); return [...(closedList || []), ...(state.ended || [])].filter((c) => !seen.has(c.session_id) && seen.add(c.session_id)).sort((a, b) => b.ended_ms - a.ended_ms); };
+const closedOf = (sid) => closedAll().find((c) => c.session_id === sid);
 async function loadClosed() {
   if (closedLoading) return;
   closedLoading = true;
@@ -124,6 +128,8 @@ function parkedActive() {
   const p = parkedOf(active.sid);
   if (p) return { ...p, kind: "parked", at: p.parked_ms };
   const c = closedOf(active.sid);
+  // Ended since the saved list was read: only its name and folder are here; its chat needs the record.
+  if (c && !c.thread && !closedLoading && closedAt < c.ended_ms) queueMicrotask(loadClosed);
   return c ? { ...c, kind: "closed", at: c.ended_ms } : null;
 }
 

@@ -350,7 +350,7 @@ function talkNote(it) {
 const isPending = (it) => !!it && state.items.some((i) => i.id === it.id);
 function shelfDrawer(isOpen) {
   // With a project picked, its own only (the counts too), as the rest of the Board.
-  const open = drawerOpen("parked"), tab = pkTab(), ps = (state.parked || []).filter((p) => inProj(p.project)), closedHere = closedList?.filter((c) => inProj(c.project));
+  const open = drawerOpen("parked"), tab = pkTab(), ps = (state.parked || []).filter((p) => inProj(p.project)), closedHere = closedAll().filter((c) => inProj(c.project));
   // Closed is asked for once (for its count), and again when you pick it, or after a minute while it shows.
   if (!closedLoading && (!closedList || (open && tab === "closed" && now() - closedAt > 60000))) queueMicrotask(loadClosed);
   const word = (t, label, n) => `<button class="shelf-word ${open && tab === t ? "on" : ""}" data-shelf="${t}">${label}${n ? ` <span>${n}</span>` : ""}</button>`;
@@ -358,7 +358,7 @@ function shelfDrawer(isOpen) {
   if (open) {
     const rows = tab === "parked" ? ps.map((p) => ({ ...p, kind: "parked", at: p.parked_ms })) : (closedHere || []).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }));
     body = rows.length ? rows.map((r) => parkedRow(r, isOpen(r.session_id))).join("")
-      : `<div class="quiet-line">${tab === "parked" ? "Nothing parked. Park (in a session's ⋯ menu) stops it and keeps it here." : closedList ? "Nothing closed in the last 30 days." : "Looking…"}</div>`;
+      : `<div class="quiet-line">${tab === "parked" ? "Nothing parked. Park (in a session's ⋯ menu) stops it and keeps it here." : closedList || state.ended?.length ? "Nothing closed in the last 30 days." : "Looking…"}</div>`;
   }
   return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "PARKED", ps.length)}<span class="shelf-sep">·</span>${word("closed", "CLOSED", closedHere?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
 }

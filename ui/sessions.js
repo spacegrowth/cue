@@ -529,7 +529,7 @@ function sessionsView() {
   }).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);
   const liveSids = new Set(all.map((r) => r.sid));
   const rest = [...(state.parked || []).map((p) => ({ ...p, kind: "parked", at: p.parked_ms })),
-    ...(closedList || []).filter((c) => !(state.parked || []).some((p) => p.session_id === c.session_id)).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }))]
+    ...closedAll().filter((c) => !(state.parked || []).some((p) => p.session_id === c.session_id)).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }))]
     .filter((p) => !liveSids.has(p.session_id) && inProj(p.project) && match({ name: p.name || p.project, cwd: p.cwd, harness: p.harness }));
   if (!closedLoading && (!closedList || now() - closedAt > 60000)) queueMicrotask(loadClosed);   // what ended since, once a minute
   // Sections, each under a heading: This Mac, then each other machine (its live tiles), then Parked
@@ -579,12 +579,8 @@ async function svAct(act, sid) {
   if (act.startsWith("hand:")) return crewAct(sid, act);
   if (act === "close") {
     if (!armClose(sid)) return;
-    const was = sessionOf(sid);
-    try {
-      toast(await invoke("close_session", { sessionId: sid }));
-      // Under Closed at once, as it was (its name with it), not after the list's next minutely read.
-      if (was) closedList = [{ ...was, ended_ms: now() }, ...(closedList || []).filter((c) => c.session_id !== sid)];
-    }
+    // Its record, name and all, comes with Cue's next update (state.ended) the moment its row goes.
+    try { toast(await invoke("close_session", { sessionId: sid })); }
     catch (e) { toast(`Couldn't close it: ${e}`); }
     return;
   }
