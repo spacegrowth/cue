@@ -14,15 +14,74 @@ use std::sync::{Arc, Mutex};
 use tauri::Listener;
 use tokio::sync::{mpsc, watch};
 
-/// The line that goes after what you said. It's part of the message, so it shows in the chat like the rest:
-/// nothing is sent that you can't see.
-const ASK: &str = "(Voice: I'm listening, not reading. Answer in one or two short, plain sentences: no lists, code or file paths unless I ask for them. If there's a link I'll need, put it at the end: I'll see it on screen.)";
+/// The line asking for a short answer. A session whose hook can add it (Claude Code on this Mac) gets it from the
+/// hook, as context only the agent reads, so the chat shows just what you said; any other gets it after your words.
+pub const ASK: &str = "(Voice: I'm listening, not reading. Answer in one or two short, plain sentences: no lists, code or file paths unless I ask for them. If there's a link I'll need, put it at the end: I'll see it on screen.)";
 
-/// What goes to the session for `said`: your words, then the line asking for a short answer. None when you said
-/// nothing.
-pub fn message(said: &str) -> Option<String> {
+/// What goes to the session for `said`: your words, then (unless its hook adds it) the line asking for a short
+/// answer. None when you said nothing.
+pub fn message(said: &str, hooked: bool) -> Option<String> {
     let said = said.trim();
-    (!said.is_empty()).then(|| format!("{said}\n\n{ASK}"))
+    (!said.is_empty()).then(|| if hooked { said.to_string() } else { format!("{said}\n\n{ASK}") })
+}
+
+/// What you said by voice, a file each in Cue's data folder (voice-said/<ms>.txt, `.used` once the hook added the
+/// line): the hook, a process of its own, finds it there without asking Cue, and following a session can tell
+/// your voice from your typing once the line isn't in the message. Kept an hour.
+fn said_dir() -> std::path::PathBuf {
+    crate::server::cue_dir().join("voice-said")
+}
+const SAID_KEEP_MS: u64 = 60 * 60 * 1000;
+/// How long after it was typed in the hook still takes it as yours (it arrives within seconds).
+const SAID_FRESH_MS: u64 = 10 * 60 * 1000;
+
+/// Words compared as the agent's prompt has them: the same words, however the spaces and lines came out.
+fn plain(t: &str) -> String {
+    t.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The voice messages in `dir`: when, what, and whether the hook has added its line yet.
+fn said_in(dir: &std::path::Path) -> Vec<(u64, String, bool)> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    rd.flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let ext = p.extension()?.to_str()?;
+            if ext != "txt" && ext != "used" {
+                return None;
+            }
+            let at = p.file_stem()?.to_str()?.parse::<u64>().ok()?;
+            Some((at, plain(&std::fs::read_to_string(&p).ok()?), ext == "used"))
+        })
+        .collect()
+}
+
+fn remember_in(dir: &std::path::Path, text: &str, now: u64) {
+    let _ = std::fs::create_dir_all(dir);
+    for (at, _, used) in said_in(dir) {
+        if at + SAID_KEEP_MS < now {
+            let _ = std::fs::remove_file(dir.join(format!("{at}.{}", if used { "used" } else { "txt" })));
+        }
+    }
+    let _ = std::fs::write(dir.join(format!("{now}.txt")), text);
+}
+
+/// The hook's part (UserPromptSubmit, Claude Code on this Mac): `prompt` is something you just said by voice, so
+/// the line asking for a short answer goes with it. Each said once: it's marked used.
+pub fn hook_context(prompt: &str) -> Option<&'static str> {
+    hook_context_in(&said_dir(), prompt, crate::model::now_ms())
+}
+fn hook_context_in(dir: &std::path::Path, prompt: &str, now: u64) -> Option<&'static str> {
+    let want = plain(prompt);
+    let (at, _, _) = said_in(dir).into_iter().filter(|(at, t, used)| !used && *t == want && at + SAID_FRESH_MS >= now).max_by_key(|s| s.0)?;
+    std::fs::rename(dir.join(format!("{at}.txt")), dir.join(format!("{at}.used"))).ok()?;
+    Some(ASK)
+}
+
+/// The session's own hook adds the line: Claude Code (Codex's and Pi's don't take added context) on this Mac (a
+/// machine's hook can't read Cue's data folder).
+fn hooked(hub: &Hub, sid: &str) -> bool {
+    hub.session_origin(sid).is_some_and(|o| o.harness == "claude" && o.machine.is_empty())
 }
 
 /// How it is, for Settings: whether ⌥Space could be had, and the listening model.
@@ -273,7 +332,7 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
                 // Right ⇧ and → held together: a side question about the session ("by the way"), asked of a copy of
                 // its conversation; the session itself never sees it and keeps working. Its answer is read out.
                 if let (Some(q), Some(sid)) = (line["btw"].as_str(), line["sid"].as_str()) {
-                    let (h, sid, q, tx, voice, who) = (hub.clone(), sid.to_string(), message(q).unwrap_or_default(), btw_tx.clone(), snap["settings"]["voice"]["pick"].clone(), target(&snap, Some(sid)));
+                    let (h, sid, q, tx, voice, who) = (hub.clone(), sid.to_string(), message(q, false).unwrap_or_default(), btw_tx.clone(), snap["settings"]["voice"]["pick"].clone(), target(&snap, Some(sid)));
                     tokio::spawn(async move {
                         let asked = tokio::task::spawn_blocking(move || {
                             let origin = h.session_origin(&sid).ok_or("that session is gone")?;
@@ -371,7 +430,12 @@ fn tell(to: &mut ChildStdin, v: &Value) -> std::io::Result<()> {
 
 /// What you said goes to `sid`: as the reply to its finished turn when one waits, else as a new message.
 async fn send(hub: &Arc<Hub>, snap: &Value, sid: &str, said: &str) -> Result<String, String> {
-    let msg = message(said).ok_or("nothing was said")?;
+    let hooked = hooked(hub, sid);
+    let msg = message(said, hooked).ok_or("nothing was said")?;
+    // Known as yours before it's typed in, so the hook finds it as soon as the agent takes it.
+    if hooked {
+        remember_in(&said_dir(), &msg, crate::model::now_ms());
+    }
     let waiting = items_of(snap, sid).find(|i| i["kind"] == "waiting").and_then(|i| i["id"].as_str()).map(str::to_string);
     let (h, sid) = (hub.clone(), sid.to_string());
     tokio::task::spawn_blocking(move || match waiting {
@@ -419,10 +483,18 @@ fn followed(snap: &Value, f: &Follow) -> Option<(u64, String)> {
 }
 
 /// You wrote to the followed session yourself since its last reply was told: a message that isn't a voice one
-/// (those end with the line asking for a short spoken answer).
+/// (those end with the line asking for a short spoken answer, or, its hook adding that, are in voice-said).
 fn typed_since(snap: &Value, f: &Follow) -> bool {
+    typed_since_in(snap, f, &said_dir())
+}
+fn typed_since_in(snap: &Value, f: &Follow, dir: &std::path::Path) -> bool {
     let Some(thread) = session(snap, &f.sid).and_then(|s| s["thread"].as_array()) else { return false };
-    thread.iter().any(|e| e["role"] == "you" && e["at_ms"].as_u64().unwrap_or(0) > f.seen && !e["text"].as_str().unwrap_or("").contains("(Voice: I'm listening"))
+    let mut new = thread.iter().filter(|e| e["role"] == "you" && e["at_ms"].as_u64().unwrap_or(0) > f.seen).map(|e| e["text"].as_str().unwrap_or("")).peekable();
+    if new.peek().is_none() {
+        return false;   // nothing since (the folder isn't read for that)
+    }
+    let said = said_in(dir);
+    new.any(|t| !t.contains("(Voice: I'm listening") && !said.iter().any(|(_, s, _)| *s == plain(t)))
 }
 
 /// A session's step now, as its card says it: "Running: cargo test", "Compacting…", else "Thinking".
@@ -555,10 +627,39 @@ mod tests {
 
     #[test]
     fn what_you_said_goes_first_then_the_ask_for_a_short_answer() {
-        let m = message("  make command T open a new tab \n").unwrap();
+        let m = message("  make command T open a new tab \n", false).unwrap();
         assert!(m.starts_with("make command T open a new tab\n\n(Voice:"), "{m}");
         assert!(m.ends_with("I'll see it on screen.)"), "{m}");
-        assert_eq!(message(" \n "), None, "nothing said, nothing sent");
+        assert_eq!(message(" \n ", false), None, "nothing said, nothing sent");
+        assert_eq!(message("  open a new tab \n", true).as_deref(), Some("open a new tab"), "its hook adds the ask: only your words");
+    }
+
+    fn said_dir_for(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("cue-voice-said-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn the_hook_adds_the_ask_to_what_you_just_said_once_and_to_nothing_else() {
+        let d = said_dir_for("hook");
+        remember_in(&d, "open a new tab", 1_000);
+        assert_eq!(hook_context_in(&d, "something typed", 2_000), None, "not something you said");
+        assert_eq!(hook_context_in(&d, "open a new\n tab ", 2_000), Some(ASK), "the same words, however the spaces came out");
+        assert_eq!(hook_context_in(&d, "open a new tab", 3_000), None, "once only: typed again, it's typing");
+        remember_in(&d, "run the tests", 10_000);
+        assert_eq!(hook_context_in(&d, "run the tests", 10_000 + SAID_FRESH_MS + 1), None, "too long ago to be this prompt");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn what_you_said_is_kept_an_hour() {
+        let d = said_dir_for("keep");
+        remember_in(&d, "old", 1_000);
+        remember_in(&d, "new", 1_000 + SAID_KEEP_MS + 1);
+        let kept: Vec<String> = said_in(&d).into_iter().map(|s| s.1).collect();
+        assert_eq!(kept, vec!["new".to_string()]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     fn snap(state: &str, thread: Value, items: Value) -> Value {
@@ -603,6 +704,13 @@ mod tests {
         assert!(typed_since(&snap("working", typed, json!([])), &f));
         let before = json!([{ "role": "you", "text": "old typing", "at_ms": 150 }]);
         assert!(!typed_since(&snap("waiting", before, json!([])), &f), "only since its last told reply");
+        // Its hook added the ask, so the message is your words alone: known as voice from what was said.
+        let d = said_dir_for("follow");
+        remember_in(&d, "open a new tab", 240);
+        let bare = json!([{ "role": "you", "text": "open a new tab", "at_ms": 250 }]);
+        assert!(!typed_since_in(&snap("working", bare.clone(), json!([])), &f, &d));
+        assert!(typed_since_in(&snap("working", bare, json!([])), &f, &said_dir_for("empty")), "not said: typed");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

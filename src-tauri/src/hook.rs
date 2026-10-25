@@ -30,6 +30,13 @@ pub fn main(args: &[String]) {
         return;
     }
     let Ok(p) = serde_json::from_str::<Value>(&input) else { return };
+    // Something you said by voice: the line asking for a short answer goes with it, read by the agent only (the
+    // chat shows just your words). Claude Code takes it as the prompt hook's added context.
+    if event == "prompt" && harness == "claude" {
+        if let Some(ask) = crate::talk::hook_context(&s(&p, "prompt")) {
+            println!("{}", json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": ask } }));
+        }
+    }
     let _ = match event {
         "permission" => ask(&p, harness),
         // A finished turn carries its last exchange and who drives it; the rest are just the event.
