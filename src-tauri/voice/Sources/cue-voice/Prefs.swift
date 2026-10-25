@@ -7,8 +7,9 @@ struct Prefs {
   /// A Mac voice's identifier, picked here before Cue had its own voice setting ("": the best English one).
   var voice = ""
   var read = true
-  /// "parakeet" (NVIDIA's, once it's here) or "apple".
-  var model = "parakeet"
+  /// "parakeet" (NVIDIA's: downloaded only once it's picked) or "apple" (built in). Never picked: NVIDIA's if it's
+  /// already here (it used to come by itself), else Apple's.
+  var model = Parakeet.downloaded ? "parakeet" : "apple"
   /// An answer back is read out at once: "always", "front" (while Cue is the app in front) or "never" (it waits).
   var auto = "never"
   /// Live captions: your words and its answer along the bottom of the screen (off: in the island itself).
@@ -25,7 +26,7 @@ struct Prefs {
     guard let data = try? Data(contentsOf: file), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return p }
     p.voice = o["voice"] as? String ?? ""
     p.read = o["read"] as? Bool ?? true
-    p.model = o["model"] as? String ?? "parakeet"
+    p.model = o["model"] as? String ?? p.model
     p.auto = o["auto"] as? String ?? "never"
     p.captions = o["captions"] as? Bool ?? false
     p.talk = o["talk"] as? Bool ?? false

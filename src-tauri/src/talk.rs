@@ -110,11 +110,15 @@ pub fn set(id: &str, value: &str) -> Result<(), String> {
         _ => return Err(format!("no setting {id}")),
     };
     std::fs::write(prefs_file(), p.to_string()).map_err(|e| e.to_string())?;
-    // Turned on or off: cue-voice takes the keys, or gives them back, now.
-    if id == "talk" {
-        if let Some(tx) = crate::locking::lock(&RETELL, "talk retell").as_ref() {
-            let _ = tx.send(json!({ "talk": value == "on" }));
-        }
+    // Turned on or off: cue-voice takes the keys, or gives them back, now. NVIDIA's listening model picked: it
+    // gets it now (nothing is downloaded before it's picked).
+    let retell = match id {
+        "talk" => Some(json!({ "talk": value == "on" })),
+        "model" => Some(json!({ "model": value })),
+        _ => None,
+    };
+    if let (Some(line), Some(tx)) = (retell, crate::locking::lock(&RETELL, "talk retell").as_ref()) {
+        let _ = tx.send(line);
     }
     Ok(())
 }
@@ -226,18 +230,24 @@ pub fn settings() -> Option<Value> {
     let p = prefs();
     let on = p["talk"] == true;
     let talk = json!({ "title": "Talk to sessions",
-        "sub": if on { "Hold right ⇧ in any app and talk; let go to send it." } else { "Off. On: hold right ⇧ in any app, talk, and let go to send it to the chat open in Cue. The first time, Cue gets NVIDIA's listening model (about 450 MB) and asks for the microphone." },
+        "sub": if on { "Hold right ⇧ in any app and talk; let go to send it." } else { "Off. On: hold right ⇧ in any app, talk, and let go to send it to the chat open in Cue. The first time, Cue asks for the microphone. What you say is written down by Apple's recognizer on this Mac, or by NVIDIA's if you pick it (Listening)." },
         "pick": { "id": "talk", "value": if on { "on" } else { "off" }, "options": [["on", "On"], ["off", "Off"]] } });
     let st = crate::locking::lock(&STATUS, "talk status").clone();
     // Off, or on but cue-voice hasn't said how it is yet: only the switch.
     if !on || st.is_null() {
         return Some(json!({ "group": "Talking to a session", "tab": "Voice", "rows": [talk] }));
     }
-    let model = match st["model"].as_str().unwrap_or("") {
-        "ready" => "NVIDIA's Parakeet, on this Mac: what's sent is its text. Nothing you say leaves the Mac.".to_string(),
-        "downloading" => format!("Getting NVIDIA's listening model ({}%). Until it's here, Apple's on-device recognizer is used.", (st["progress"].as_f64().unwrap_or(0.0) * 100.0) as u32),
-        "loading" => "Loading NVIDIA's listening model…".to_string(),
-        m => format!("NVIDIA's listening model isn't working ({}); Apple's on-device recognizer is used.", m.trim_start_matches("failed: ")),
+    // Picked in Settings, else what cue-voice took (NVIDIA's when it was already here, else Apple's).
+    let pick = p["model"].as_str().or(st["pick"].as_str()).unwrap_or("apple").to_string();
+    let model = if pick != "parakeet" {
+        "Apple's recognizer, on this Mac. NVIDIA's Parakeet writes down what you say more accurately: pick it to download it (about 450 MB, once, from Hugging Face).".to_string()
+    } else {
+        match st["model"].as_str().unwrap_or("") {
+            "ready" => "NVIDIA's Parakeet, on this Mac: what's sent is its text. Nothing you say leaves the Mac.".to_string(),
+            "downloading" | "off" => format!("Getting NVIDIA's listening model ({}% of about 450 MB). Until it's here, Apple's recognizer is used.", (st["progress"].as_f64().unwrap_or(0.0) * 100.0) as u32),
+            "loading" => "Loading NVIDIA's listening model…".to_string(),
+            m => format!("NVIDIA's listening model isn't working ({}); Apple's recognizer is used.", m.trim_start_matches("failed: ")),
+        }
     };
     let key = if st["key"].as_bool() == Some(false) {
         "In any app: hold right ⇧, talk, let go to send it to the chat open in Cue (else the session that moved last). ⌥Space can't be used: another app has it."
@@ -249,7 +259,7 @@ pub fn settings() -> Option<Value> {
         talk,
         { "title": "Hold right ⇧ to talk", "sub": key },
         { "title": "Listening", "sub": model,
-          "pick": { "id": "model", "value": p["model"].as_str().unwrap_or("parakeet"), "options": [["parakeet", "NVIDIA Parakeet"], ["apple", "Apple"]] } },
+          "pick": { "id": "model", "value": pick, "options": [["apple", "Apple"], ["parakeet", "NVIDIA Parakeet"]] } },
         { "title": "Read answers out", "sub": "When you talked and it answers, Listen (or right ⇧, a tap or a hold) reads it out in the voice above. Off: no Listen, it's only shown.",
           "pick": { "id": "read", "value": read, "options": [["on", "On"], ["off", "Off"]] } },
         { "title": "Live captions", "sub": "A bar along the bottom of the screen: the session, your words as you say them, its answer as it's read; while it works, a dot breathes in the bottom right corner. The bar shows no keys (they're below). Off: it's all in the island at the top, the keys too.",

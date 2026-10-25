@@ -32,8 +32,8 @@ the card either way.
   Cue (else the session that moved last). When the answer is back, Cue's island at the top of the screen
   says so, small, and waits for you: Listen reads it out, Read shows it there, Later puts it away. Live
   captions can show both sides along the bottom of the screen instead, the answer waiting as a small tab
-  in its corner. Off until you turn it on (Settings → Voice); NVIDIA's listening model runs on your
-  Mac (Apple silicon), so nothing you say leaves it.
+  in its corner. Off until you turn it on (Settings → Voice). What you say is written down on your Mac,
+  by Apple's recognizer or, if you pick it, NVIDIA's Parakeet (Apple silicon), so nothing you say leaves it.
 - **Listen and Read** — Listen reads a reply out loud, in your Mac's voice or a natural voice that runs
   on your Mac (Settings → Voice); Read opens a long reply full width.
 - **Insights** — what your sessions cost, by day and by model, and the part that was avoidable: caches
@@ -98,8 +98,8 @@ To make one, see [docs/extensions.md](docs/extensions.md).
 Cue collects nothing and sends nothing anywhere. Everything it keeps (what's waiting, history,
 drafts, settings) stays on your Mac, in the folder below. It talks to your agents through a local
 socket that only processes on your Mac can reach, and it reads their transcripts on your disk. The
-one time it goes online is to check GitHub for a newer version of Cue, and, only when you turn them
-on, to download a voice model once (a natural voice for Listen, or NVIDIA's listening model for talking
+one time it goes online is to check GitHub for a newer version of Cue, and, only when you pick them,
+to download a voice model once (a natural voice for Listen, or NVIDIA's listening model for talking
 to it); after that they run on your Mac, and what you say never leaves it.
 
 An extension you switch on can't reach the network. It can have Cue read git, read-only, in the open

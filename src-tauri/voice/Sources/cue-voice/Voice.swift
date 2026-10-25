@@ -117,13 +117,24 @@ final class Voice {
     }
     note("talking on; ⌥Space \(ok ? "taken" : "not free")")
     report(keys: ok)
-    if model == "off" { getModel() }
+    pickModel()
+  }
+
+  /// NVIDIA's listening model, got and loaded only once it's picked (Settings → Voice → Listening): until then, or
+  /// with Apple's picked, Apple's recognizer writes down what you say and nothing is downloaded.
+  private func pickModel() {
+    if Prefs.load().model == "parakeet" {
+      if model == "off" { getModel() }
+    } else if model == "off" {
+      report()   // says Apple's is in use
+    }
   }
 
   // MARK: Cue's lines
 
   func heard(_ o: [String: Any]) {
     if let on = o["talk"] as? Bool { talk(on) }
+    if o["model"] != nil, talking { pickModel() }   // Listening picked in Settings: NVIDIA's comes now
     if o.keys.contains("target") {
       target = (o["target"] as? [String: Any]).map(Voice.target)
       if phase == .idle, let t = target { dress(t) }
@@ -615,6 +626,7 @@ final class Voice {
     // Download progress: at most once a second.
     if model == "downloading", Date().timeIntervalSince(reported) < 1 { return }
     reported = Date()
-    emit(["status": ["key": keysOk, "model": model, "progress": progress]])
+    // "pick": which one writes down what you say, so Settings shows it when you've never picked one.
+    emit(["status": ["key": keysOk, "model": model, "progress": progress, "pick": Prefs.load().model]])
   }
 }
