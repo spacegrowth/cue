@@ -1,6 +1,6 @@
 // What happens when: hold right ⇧ (or ⌥Space) and it listens (the pill shows your words); let go and what you said
 // goes to the session (through Cue); while it works the island is small, round the notch, and words go to a line along the bottom of the screen; its answer comes back and the
-// pill waits (Listen, Read it here, Open the chat, Later; right ⇧, a tap or a hold, is Listen) until you pick, or reads at once (Settings → Voice: Start reading by itself). While holding: esc cancels,
+// pill folds to a small tab that waits (Listen, Read it here, Later as icons; right ⇧, a tap or a hold, is Listen) until you pick, or reads at once (Settings → Voice: Start reading by itself). While holding: esc cancels,
 // left ⇧ pauses (what you said waits; hold again to go on, and it all goes as one), and ↩ (or a click on the pill) goes
 // to typing instead: what you said lands in that chat's box in Cue, unsent. While it reads: ⌥Space talks back. Esc,
 // whenever the pill is up, gets out of it all. A click on the pill opens that session's chat in Cue.
@@ -416,7 +416,9 @@ final class Voice {
     pill.show()
   }
 
-  /// The answer is back: the pill comes up with a sound and waits for you; nothing is read until you say so.
+  /// The answer is back: with a sound, a small tab says so (captions on, in from the right edge; off, the island
+  /// at the notch's height) with Listen, Read it here and Later as icons, each acting at once; nothing is read
+  /// until you pick, unless Settings → Voice reads it straight away. A click on its dot (or ANSWERED) opens the chat.
   private func answered(_ text: String, voice: String, btw: Bool = false) {
     answer = text
     voiceName = voice
@@ -425,19 +427,23 @@ final class Voice {
     if let t = talkingTo { dress(t) }
     if btw { pill.m.look = Voice.btwLook }   // a by the way's answer in its own blue, as it was asked
     let asking = !btw && text.hasPrefix("It's asking:")
-    let took = btw ? "" : sentAt.map { " · TOOK \(Voice.took(Date().timeIntervalSince($0)))" } ?? ""
+    let took = btw ? nil : sentAt.map { Voice.took(Date().timeIntervalSince($0)) }
     let out = Prefs.load().read   // Settings → Voice: answers read out, or only shown
-    var buttons = [PillButton(title: "Read it here", primary: !out) { [weak self] in self?.readHere() },
-                   PillButton(title: "Open the chat") { [weak self] in self?.openChat() },
-                   PillButton(title: "Later") { [weak self] in self?.later() }]
-    if out { buttons.insert(PillButton(title: "Listen", icon: "speaker.wave.2.fill", primary: true) { [weak self] in self?.listenNow() }, at: 0) }
-    show(label: (btw ? "BY THE WAY · ANSWERED" : asking ? "\(agentWord) IS ASKING YOU" : "\(agentWord) ANSWERED\(took)") + VoiceText.more(turns.pending.count), text: "", yours: false,
-         keys: [out ? ("hold right ⇧", "listen") : ("hold right ⇧", "talk back")], buttons: buttons)
     NSSound(named: "Tink")?.play()
-    pill.show()
-    // Settings → Voice: read it out at once, always or while Cue is in front.
+    // Settings → Voice: read it out at once, always or while Cue is in front (no tab first).
     let auto = Prefs.load().auto
-    if out, auto == "always" || (auto == "front" && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "dev.spacegrowth.cue") { listenNow() }
+    if out, auto == "always" || (auto == "front" && NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "dev.spacegrowth.cue") {
+      note("answer back, read at once (\(text.count) characters)")
+      return listenNow()
+    }
+    var buttons = [PillButton(title: "Read it here", icon: "text.alignleft", primary: !out) { [weak self] in self?.readHere() },
+                   PillButton(title: "Later", icon: "clock") { [weak self] in self?.later() }]
+    if out { buttons.insert(PillButton(title: "Listen", icon: "speaker.wave.2.fill", primary: true) { [weak self] in self?.listenNow() }, at: 0) }
+    pill.m.short = btw ? "BY THE WAY" : asking ? "ASKING YOU" : "ANSWERED" + (took.map { " · \($0)" } ?? "")
+    pill.m.more = turns.pending.count
+    show(label: (btw ? "BY THE WAY · ANSWERED" : asking ? "\(agentWord) IS ASKING YOU" : "\(agentWord) ANSWERED\(took.map { " · TOOK \($0)" } ?? "")") + VoiceText.more(turns.pending.count), text: "", yours: false,
+         keys: [out ? ("hold right ⇧", "listen") : ("hold right ⇧", "talk back")], buttons: buttons, folded: true)
+    pill.show()
     note("answer back, waiting (\(text.count) characters)")
   }
 
@@ -558,8 +564,9 @@ final class Voice {
 
   /// What the island shows. Your words (`yours`) go to the line along the bottom instead, as its answer does while
   /// it reads (`line`: the line keeps what `reading` put in it).
-  private func show(label: String, text: String, yours: Bool, keys: [(String, String)], buttons: [PillButton] = [], compact: Bool = false, line: Bool = false) {
+  private func show(label: String, text: String, yours: Bool, keys: [(String, String)], buttons: [PillButton] = [], compact: Bool = false, line: Bool = false, folded: Bool = false) {
     pill.m.compact = compact
+    pill.m.waiting = folded
     pill.m.buttons = buttons
     pill.m.label = label
     // Live captions (Settings → Voice): the bar along the bottom is all there is (who, what's happening, the words,
@@ -569,7 +576,7 @@ final class Voice {
     pill.m.bar = bar
     pill.m.text = (yours && bar) || line ? "" : text
     pill.m.yours = yours
-    pill.m.ticker = bar && !compact
+    pill.m.ticker = bar && !compact && !folded   // folded: the tab at the right edge instead (Pill)
     if yours { pill.m.line = text; pill.m.upTo = text.count } else if !line { pill.m.line = ""; pill.m.upTo = 0 }
     // The bar shows one of the keys, picked at random each time they change, so they're learned over time; half the
     // time none at all (-1), so it's not always there.

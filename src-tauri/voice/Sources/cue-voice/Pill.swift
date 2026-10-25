@@ -34,11 +34,19 @@ final class PillModel: ObservableObject {
   @Published var keys: [(String, String)] = []
   /// Which of `keys` the bar shows (one at a time).
   @Published var hint = 0
-  /// Buttons under the label (an answer waiting: Listen, Read it here…).
+  /// What can be done now (an answer waiting: Listen, Read it here, Later; folded, shown as their icons).
   @Published var buttons: [PillButton] = []
   /// Round the notch while a session works, and what it's doing ("Running: cargo test").
   @Published var compact = false
   @Published var doing = ""
+  /// An answer waiting, folded: only a small tab says so (captions on, in from the right edge; off, the island at
+  /// the notch's height), its buttons as icons, until you pick one.
+  @Published var waiting = false
+  /// Waiting: what the folded island says ("ANSWERED · 4M"), and how many more answers wait behind it.
+  @Published var short = ""
+  @Published var more = 0
+  /// Each time the tab comes up: it bounces in afresh.
+  @Published var arrivals = 0
   /// Live captions on: the bar along the bottom instead of the island, the dot while it works.
   @Published var bar = false
   /// The line along the bottom: shown, its words, and how many of them are said (the word ending there is marked).
@@ -81,6 +89,9 @@ final class Pill {
   private let linePanel: TopPanel
   private let lineHost: NSHostingView<LineView>
   private let dotPanel: TopPanel
+  /// An answer waiting, with live captions on: the tab at the right edge of the screen, near the bottom.
+  private let peekPanel: TopPanel
+  private let peekHost: NSHostingView<Peek>
   private var hideTimer: Timer?
   /// Going (sliding up; shown again meanwhile: it comes back down).
   private var hiding = false
@@ -104,7 +115,12 @@ final class Pill {
     linePanel = Pill.makePanel()
     lineHost = FirstClick(rootView: LineView(m: m))
     dotPanel = Pill.makePanel()
+    peekPanel = Pill.makePanel()
+    peekHost = FirstClick(rootView: Peek(m: m))
     host.rootView = PillView(m: m, click: { [weak self] in self?.onClick() })
+    peekHost.rootView = Peek(m: m, click: { [weak self] in self?.onClick() })
+    peekHost.sizingOptions = []
+    peekPanel.contentView = peekHost
     lineHost.rootView = LineView(m: m, click: { [weak self] in self?.onClick() })
     dotPanel.contentView = FirstClick(rootView: Dot(m: m, click: { [weak self] in self?.onClick() }))
     // Only `place` sizes the panel (centred at the top): left to itself the view resizes its window from the
@@ -162,6 +178,7 @@ final class Pill {
     onShown(false)
     showLine(false)
     dotPanel.orderOut(nil)
+    peekPanel.orderOut(nil)
     slide(to: islandFrame.offsetBy(dx: 0, dy: islandFrame.height)) { if self.hiding { self.hiding = false; self.panel.orderOut(nil) } }
   }
 
@@ -215,8 +232,12 @@ final class Pill {
     panel.alphaValue = m.bar ? 0 : 1
     panel.ignoresMouseEvents = m.bar
     // Text in the bar (an answer read here, a problem): up to six lines above its row.
-    let textHeight = m.text.isEmpty ? 0 : min(6 * 22, NSAttributedString(string: m.text, attributes: [.font: LineView.textFont])
-      .boundingRect(with: CGSize(width: f.width - 56, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).height.rounded(.up)) + 14
+    // Measured as it's drawn (LineView: 3 between lines, 12 above): without the line spacing two lines came out a
+    // few points short, and the text showed only its last line, cut at the front.
+    let spaced = NSMutableParagraphStyle()
+    spaced.lineSpacing = 3
+    let textHeight = m.text.isEmpty ? 0 : min(6 * 22, NSAttributedString(string: m.text, attributes: [.font: LineView.textFont, .paragraphStyle: spaced])
+      .boundingRect(with: CGSize(width: f.width - 56, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin]).height.rounded(.up) + 3) + 18
     if m.textHeight != textHeight { m.textHeight = textHeight }
     let height = Pill.lineHeight + textHeight
     lineFrame = NSRect(x: f.minX, y: f.minY, width: f.width, height: height)
@@ -231,6 +252,17 @@ final class Pill {
     dotPanel.setFrame(NSRect(x: f.maxX - d - 36, y: f.minY + 10, width: d, height: d), display: false)
     let dot = m.bar && m.compact && panel.isVisible && !hiding
     if dot != dotPanel.isVisible { if dot { dotPanel.orderFrontRegardless() } else { dotPanel.orderOut(nil) } }
+    // The tab sits where the bar's right end does, in the bottom right corner; it bounces in by itself (Peek), its
+    // panel stays put.
+    let peek = m.bar && m.waiting && panel.isVisible && !hiding
+    // Measured on a fresh view of it, as it is now: the shown one doesn't size its window, so it has no fitting size
+    // (0 × 0), and a kept measuring copy off screen never took the new buttons (only the dot's width).
+    let ps = peek ? NSHostingView(rootView: Peek(m: m)).fittingSize : peekPanel.frame.size
+    let pf = NSRect(x: f.maxX - ps.width, y: f.minY, width: ps.width, height: ps.height)
+    if peekPanel.frame != pf { peekPanel.setFrame(pf, display: true) }
+    if peek != peekPanel.isVisible {
+      if peek { m.arrivals += 1; peekPanel.orderFrontRegardless() } else { peekPanel.orderOut(nil) }
+    }
   }
 
   /// The line rolls in from the right edge to the left, and goes back the same way (its left end running right).
@@ -273,9 +305,41 @@ struct PillView: View {
   private var ink: Color { onIsland }
 
   var body: some View {
-    Group { if m.compact { small } else { big } }
+    if m.waiting && !m.compact {
+      folded   // takes clicks on its left only: the space kept under it for the nod is no target
+    } else {
+      Group { if m.compact { small } else { big } }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: click)
+    }
+  }
+
+  /// An answer waiting: the island stays the notch's height and widens a little, nodding down as it comes; left of
+  /// the notch whose it is and ANSWERED, right of it its buttons as icons. A click on the left opens the chat.
+  private var folded: some View {
+    let side: CGFloat = 136
+    return HStack(spacing: 0) {
+      HStack(spacing: 7) {
+        Circle().fill(Color(hex: m.look.sel)).frame(width: 8, height: 8)
+        Text(m.short + (m.more > 0 ? " · +\(m.more)" : ""))
+          .font(.system(size: 10, weight: .bold)).tracking(1.1)
+          .foregroundStyle(Color(hex: m.look.sel))
+          .lineLimit(1).minimumScaleFactor(0.75)
+      }
+      .frame(width: side, alignment: .leading)
       .contentShape(Rectangle())
       .onTapGesture(perform: click)
+      Color.clear.frame(width: max(m.notch.width, 12))
+      HStack(spacing: 6) { IconButtons(m: m, size: 24, onDark: true) }
+        .frame(width: side, alignment: .trailing)
+    }
+    .padding(.leading, 14).padding(.trailing, 6)
+    .frame(height: m.notch.height)
+    .background(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14).fill(island))
+    // Black above it too (off the screen at rest), so it stays joined to the top edge while it dips.
+    .background(alignment: .top) { island.frame(height: 30).offset(y: -30) }
+    .modifier(Bounce(axis: .vertical, room: 12))
+    .fixedSize()
   }
 
   /// While it works: round the notch, small: the time so far on its left, and what it's doing crawling right to
@@ -646,6 +710,102 @@ struct Dot: View {
     .frame(width: Pill.dotSize, height: Pill.dotSize)
     .contentShape(Rectangle())
     .onTapGesture(perform: click)
+  }
+}
+
+/// An answer waiting, with live captions on: a small tab on the right edge of the screen, where the captions come
+/// in from, in the session's colors: its dot (a click opens the chat), +N when more wait, and the buttons as icons.
+struct Peek: View {
+  @ObservedObject var m: PillModel
+  var click: () -> Void = {}
+  var body: some View {
+    HStack(spacing: 7) {
+      Circle().fill(Color(hex: m.look.bg)).frame(width: 9, height: 9)
+        .frame(width: 22, height: 30).contentShape(Rectangle())
+        .onTapGesture(perform: click)
+      if m.more > 0 {
+        Text("+\(m.more)")
+          .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+          .foregroundStyle(Color(hex: m.look.sel))
+          .padding(.horizontal, 6).padding(.vertical, 1)
+          .background(Capsule().fill(Color(hex: m.look.bg)))
+      }
+      IconButtons(m: m, size: 30, onDark: false)
+    }
+    .padding(.leading, 12).padding(.trailing, 12)
+    // The bar's own right end: as tall as the bar, in the bottom right corner, its two left corners rounded.
+    .frame(height: Pill.lineHeight)
+    .background(UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 10).fill(Color(hex: m.look.sel)))
+    .shadow(color: .black.opacity(0.35), radius: 10, y: -2)
+    .padding(.top, 12).padding(.leading, 14)   // room for the shadow, and for the bounce past its place
+    .modifier(Bounce(axis: .horizontal, room: 0))
+    .id(m.arrivals)
+  }
+}
+
+/// The waiting answer's buttons (those with an icon: Listen, Read it here, Later) as round icon buttons, the
+/// first in the session's own color.
+struct IconButtons: View {
+  @ObservedObject var m: PillModel
+  let size: CGFloat
+  /// On the black island (else on the session's light color).
+  let onDark: Bool
+  var body: some View {
+    ForEach(Array(m.buttons.enumerated()).filter { $0.element.icon != nil }, id: \.offset) { _, b in
+      Button(action: b.action) {
+        Image(systemName: b.icon!)
+          .font(.system(size: size * 0.46, weight: .semibold))
+          .foregroundStyle(b.primary ? Color(hex: onDark ? m.look.onSel : m.look.onBg) : (onDark ? onIsland : Color(hex: m.look.onSel)))
+          .frame(width: size, height: size)
+          .background(Circle().fill(b.primary ? Color(hex: onDark ? m.look.sel : m.look.bg) : (onDark ? onIsland.opacity(0.14) : Color(hex: m.look.onSel).opacity(0.1))))
+          .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(b.title)
+    }
+  }
+}
+
+/// Comes in with a bounce, then nudges again every 20 seconds while it's still there: down from the top
+/// (`vertical`, the island) or in from the right edge (`horizontal`, the tab). Still under Reduce Motion.
+struct Bounce: ViewModifier {
+  let axis: Axis
+  /// Space kept under the island for the nod to dip into.
+  let room: CGFloat
+  @State private var at: CGFloat
+  private static let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+  init(axis: Axis, room: CGFloat) {
+    self.axis = axis
+    self.room = room
+    // The tab starts past the right edge (drawn there first, so the spring has somewhere to come from).
+    _at = State(initialValue: axis == .horizontal && !Bounce.still ? 220 : 0)
+  }
+
+  func body(content: Content) -> some View {
+    content
+      .offset(x: axis == .horizontal ? at : 0, y: axis == .vertical ? at : 0)
+      .padding(.bottom, room)
+      .task {
+        guard !Bounce.still else { return }
+        // In: the tab from past the right edge, overshooting a little; the island dips and comes back.
+        if axis == .horizontal {
+          withAnimation(.spring(response: 0.45, dampingFraction: 0.55)) { at = 0 }
+        } else {
+          await nudge(by: 9)
+        }
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .seconds(20))
+          if Task.isCancelled { return }
+          await nudge(by: axis == .horizontal ? -9 : 7)
+        }
+      }
+  }
+
+  private func nudge(by d: CGFloat) async {
+    withAnimation(.easeOut(duration: 0.12)) { at = d }
+    try? await Task.sleep(for: .milliseconds(130))
+    withAnimation(.spring(response: 0.35, dampingFraction: 0.45)) { at = 0 }
   }
 }
 

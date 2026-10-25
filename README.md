@@ -30,8 +30,9 @@ the card either way.
   [docs/actions.md](docs/actions.md).
 - **Talk to it** — hold right ⇧ in any app, say what you want, and let go: it goes to the chat open in
   Cue (else the session that moved last). When the answer is back, Cue's island at the top of the screen
-  waits for you: Listen reads it out, or read it there. Live captions can show both sides along the bottom
-  of the screen instead. Off until you turn it on (Settings → Voice); NVIDIA's listening model runs on your
+  says so, small, and waits for you: Listen reads it out, Read shows it there, Later puts it away. Live
+  captions can show both sides along the bottom of the screen instead, the answer waiting as a small tab
+  in its corner. Off until you turn it on (Settings → Voice); NVIDIA's listening model runs on your
   Mac (Apple silicon), so nothing you say leaves it.
 - **Listen and Read** — Listen reads a reply out loud, in your Mac's voice or a natural voice that runs
   on your Mac (Settings → Voice); Read opens a long reply full width.
