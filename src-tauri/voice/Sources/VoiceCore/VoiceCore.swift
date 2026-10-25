@@ -50,18 +50,35 @@ public enum VoiceText {
     return "\(s / 3600)H \(s % 3600 / 60)M"
   }
 
-  /// How far into `plain` it has been read, at `at` (0–1) of it: to the end of the word it's on (all of it at 1).
+  /// How far into `plain` it has been read, at `at` (0–1) of it by length: to the end of the word it's on (all of
+  /// it at 1). For when the word being heard isn't known (`wordEnds`).
   public static func readTo(_ plain: String, at: Double) -> Int {
     if at >= 1 { return plain.count }
     let cut = plain.index(plain.startIndex, offsetBy: min(plain.count, max(0, Int((at * Double(plain.count)).rounded(.up)))))
-    let end = plain[cut...].firstIndex(of: " ") ?? plain.endIndex
+    let end = plain[cut...].firstIndex(where: \.isWhitespace) ?? plain.endIndex
     return plain.distance(from: plain.startIndex, to: end)
   }
+
+  /// Where each of `text`'s words ends (split on whitespace, as cue-speak splits them): the character after it. So
+  /// the word heard is marked whole, by its own place, not by a fraction of the length (a one-letter word's fell
+  /// over on the next).
+  public static func wordEnds(_ text: String) -> [Int] {
+    var out: [Int] = [], i = 0, inWord = false
+    for ch in text {
+      if ch.isWhitespace { if inWord { out.append(i) }; inWord = false } else { inWord = true }
+      i += 1
+    }
+    if inWord { out.append(i) }
+    return out
+  }
+
+  /// `plain` as the captions line shows it: its line breaks as spaces (one each, so a place in it is the same).
+  public static func oneLine(_ plain: String) -> String { String(plain.map { $0.isNewline ? " " : $0 }) }
 
   /// The captions line in three: what's been said, the word being said (yours: the newest), and what's to come.
   public static func captionParts(_ line: String, upTo: Int, yours: Bool) -> (said: String, word: String, ahead: String) {
     let end = yours ? line.endIndex : line.index(line.startIndex, offsetBy: min(max(0, upTo), line.count))
-    let start = line[..<end].lastIndex(of: " ").map { line.index(after: $0) } ?? line.startIndex
+    let start = line[..<end].lastIndex(where: \.isWhitespace).map { line.index(after: $0) } ?? line.startIndex
     return (String(line[..<start]), String(line[start..<end]), String(line[end...]))
   }
 

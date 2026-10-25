@@ -81,7 +81,7 @@ final class Voice {
   init() {
     listen.onWords = { [weak self] w in self?.words(w) }
     listen.onLevel = { [weak self] l in self?.pill.m.level = l }
-    speak.onProgress = { [weak self] at in self?.reading(at) }
+    speak.onProgress = { [weak self] at, upTo in self?.reading(at, upTo: upTo) }
     speak.onDone = { [weak self] _ in self?.doneReading() }
     pill.onShown = { [weak self] on in self?.shown = on; self?.syncEsc() }
     pill.onClick = { [weak self] in
@@ -526,13 +526,14 @@ final class Voice {
   /// How long a turn took, as the pill says it: 40S, 4M, 1H 51M.
   static func took(_ s: TimeInterval) -> String { VoiceText.took(s) }
 
-  /// The answer on the line, read to the end of the word it's on.
-  private func reading(_ at: Double) {
+  /// The answer on the line, read to the end of the word it's on (`upTo`: the word being heard, when known; else
+  /// by how far it is).
+  private func reading(_ at: Double, upTo: Int? = nil) {
     guard phase == .saying else { return }
     let plain = Speak.plain(answer)
-    let upTo = VoiceText.readTo(plain, at: at)
+    let upTo = min(plain.count, upTo ?? VoiceText.readTo(plain, at: at))
     let end = plain.index(plain.startIndex, offsetBy: upTo)
-    pill.m.line = plain
+    pill.m.line = VoiceText.oneLine(plain)
     pill.m.upTo = upTo
     pill.m.left = max(0, speak.total * (1 - at))
     readText = String(plain[..<end])

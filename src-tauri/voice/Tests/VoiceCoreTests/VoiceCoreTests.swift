@@ -29,6 +29,25 @@ final class VoiceCoreTests: XCTestCase {
     XCTAssertEqual(VoiceText.readTo("", at: 0.5), 0)
   }
 
+  func testTheWordHeardIsMarkedByItsOwnPlace() {
+    // Each word's end, as cue-speak's times come one per word split on whitespace: a one-letter word too.
+    XCTAssertEqual(VoiceText.wordEnds("I ran a test"), [1, 5, 7, 12])
+    XCTAssertEqual(VoiceText.wordEnds("Done.\n\nNext, run it."), [5, 12, 16, 20])
+    XCTAssertEqual(VoiceText.wordEnds("  two  spaces "), [5, 13])
+    XCTAssertEqual(VoiceText.wordEnds(""), [])
+    // Marked to its end, the line cut there: "a" alone, not "a test".
+    XCTAssertEqual(VoiceText.captionParts("I ran a test", upTo: 7, yours: false).word, "a")
+  }
+
+  func testALineBreakEndsAWordOnTheCaptionsLine() {
+    let p = "Done.\n\nNext, run it."
+    XCTAssertEqual(VoiceText.readTo(p, at: 0.1), 5, "to the end of the word, not across the break")
+    XCTAssertEqual(VoiceText.captionParts(p, upTo: 12, yours: false).word, "Next,")
+    // The line shows breaks as spaces, one each, so a place in it is the same.
+    XCTAssertEqual(VoiceText.oneLine(p), "Done.  Next, run it.")
+    XCTAssertEqual(VoiceText.oneLine("a\r\nb").count, 3)
+  }
+
   func testTheCaptionsLineMarksTheWordBeingSaid() {
     let line = "Row counts match prod on all 14 tables."
     let p = VoiceText.captionParts(line, upTo: 31, yours: false)

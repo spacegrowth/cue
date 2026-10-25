@@ -10,6 +10,9 @@ let package = Package(
     .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.17.7"),
   ],
   targets: [
-    .executableTarget(name: "cue-speak", dependencies: [.product(name: "FluidAudio", package: "FluidAudio")]),
+    // Its pure parts (when each word is heard), tested with `swift test`.
+    .target(name: "SpeakCore"),
+    .executableTarget(name: "cue-speak", dependencies: ["SpeakCore", .product(name: "FluidAudio", package: "FluidAudio")]),
+    .testTarget(name: "SpeakCoreTests", dependencies: ["SpeakCore"]),
   ]
 )

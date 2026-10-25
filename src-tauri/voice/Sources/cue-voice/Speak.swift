@@ -9,10 +9,10 @@ import VoiceCore
 @MainActor
 final class Speak: NSObject, AVSpeechSynthesizerDelegate {
   private let synth = AVSpeechSynthesizer()
-  /// How far through it is (0–1), and that it's done (`true`: to the end; `false`: stopped).
-  var onProgress: (Double) -> Void = { _ in }
+  /// How far through it is (0–1) and the character the word being heard ends at (nil: not known, go by length);
+  /// and that it's done (`true`: to the end; `false`: stopped).
+  var onProgress: (Double, Int?) -> Void = { _, _ in }
   var onDone: (Bool) -> Void = { _ in }
-  private var length = 1
   /// How long what's being read takes, in seconds: the natural voice's once its sound is made, the Mac's guessed
   /// from its length (about 14 characters a second). With how far it is, how long is left.
   private(set) var total = 0.0
@@ -21,9 +21,9 @@ final class Speak: NSObject, AVSpeechSynthesizerDelegate {
   private var helper: Process?
   private var helperIn: FileHandle?
   private var natural: (id: Int, words: String, ms: Double)?
-  /// Where each of the answer's words (split on spaces) starts, in ms (cue-speak's, from Kokoro's own timings),
-  /// and where it starts in the text: so the word marked is the one heard, not a guess by length.
-  private var starts: [(ms: Double, at: Int)] = []
+  /// Where each of the answer's words (split on whitespace) starts, in ms (cue-speak's, from Kokoro's own
+  /// timings), and where it ends in the text: so the word marked is the one heard, not a guess by length.
+  private var starts: [(ms: Double, end: Int)] = []
   private var sent = 0
   private var buffer = Data()
 
@@ -36,8 +36,7 @@ final class Speak: NSObject, AVSpeechSynthesizerDelegate {
   func say(_ text: String, voice: String) {
     stop()
     let words = Speak.plain(text)
-    length = max(1, words.utf16.count)
-    total = Double(length) / 14
+    total = Double(words.count) / 14
     if !voice.isEmpty, let to = running() {
       sent += 1
       natural = (sent, words, 0)
@@ -79,20 +78,27 @@ final class Speak: NSObject, AVSpeechSynthesizerDelegate {
     if let h = helper, h.isRunning { return helperIn }
     let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent().appendingPathComponent("cue-speak")
     guard FileManager.default.isExecutableFile(atPath: exe.path) else { return nil }
-    let p = Process(), stdin = Pipe(), stdout = Pipe()
+    let p = Process(), stdin = Pipe(), stdout = Pipe(), out = stdout.fileHandleForReading
     p.executableURL = exe
     p.standardInput = stdin
     p.standardOutput = stdout
     p.standardError = FileHandle.nullDevice
-    stdout.fileHandleForReading.readabilityHandler = { h in
+    out.readabilityHandler = { h in
       let d = h.availableData
+      if d.isEmpty { h.readabilityHandler = nil; return }   // its end: left on, this would be called over and over
       DispatchQueue.main.async { MainActor.assumeIsolated { self.output(d) } }
     }
-    // It quit (every 100 sentences) or crashed: an answer it was reading goes on in the Mac's voice.
-    p.terminationHandler = { _ in DispatchQueue.main.async { MainActor.assumeIsolated { self.gone() } } }
+    // It quit (every 100 sentences) or crashed: its last lines first (the "done" of a sentence it finished, so
+    // that one isn't read again), then an answer it was still reading goes on in the Mac's voice.
+    p.terminationHandler = { _ in
+      out.readabilityHandler = nil
+      let rest = out.readDataToEndOfFile()
+      DispatchQueue.main.async { MainActor.assumeIsolated { if self.helper === p { self.output(rest); self.gone() } } }
+    }
     do { try p.run() } catch { return nil }
     helper = p
     helperIn = stdin.fileHandleForWriting
+    buffer = Data()
     return helperIn
   }
 
@@ -106,10 +112,10 @@ final class Speak: NSObject, AVSpeechSynthesizerDelegate {
         natural?.ms = ms
         total = ms / 1000
         starts = Speak.starts(n.words, o["words"] as? [Double] ?? [])
+        if starts.isEmpty { note("natural voice: no word times, marking by length") }
       } else if o["at"] as? Int == n.id, let ms = o["ms"] as? Double, n.ms > 0 {
-        // On the word being heard (just inside it, so it's marked whole); by length when the times don't fit.
-        if let w = starts.last(where: { $0.ms <= ms }) { onProgress(min(1, Double(w.at + 1) / Double(max(1, n.words.count)))) }
-        else { onProgress(min(1, ms / n.ms)) }
+        // The word being heard; by length when the times don't fit.
+        onProgress(min(1, ms / n.ms), starts.last(where: { $0.ms <= ms })?.end)
       }
       else if o["done"] as? Int == n.id { natural = nil; onDone(o["end"] as? Bool ?? false) }
       else if o["error"] != nil, o["id"] as? Int == n.id { natural = nil; note("natural voice: \(o["error"] ?? "")"); apple(n.words) }
@@ -124,8 +130,11 @@ final class Speak: NSObject, AVSpeechSynthesizerDelegate {
   }
 
   nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, willSpeakRangeOfSpeechString r: NSRange, utterance: AVSpeechUtterance) {
-    let at = Double(r.location + r.length)
-    DispatchQueue.main.async { MainActor.assumeIsolated { self.onProgress(min(1, at / Double(self.length))) } }
+    // Its range counts UTF-16 units; the line counts characters.
+    let text = utterance.speechString
+    let end = text.utf16.index(text.utf16.startIndex, offsetBy: min(text.utf16.count, r.location + r.length))
+    let upTo = text.distance(from: text.startIndex, to: end)
+    DispatchQueue.main.async { MainActor.assumeIsolated { self.onProgress(min(1, Double(upTo) / Double(max(1, text.count))), upTo) } }
   }
   nonisolated func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) {
     DispatchQueue.main.async { MainActor.assumeIsolated { self.onDone(true) } }
@@ -146,14 +155,10 @@ final class Speak: NSObject, AVSpeechSynthesizerDelegate {
     return all.min { rank($0) < rank($1) } ?? AVSpeechSynthesisVoice(language: "en-US")
   }()
 
-  /// `times` (ms) paired with where each of `text`'s words starts in it; none when they don't match one to one.
-  static func starts(_ text: String, _ times: [Double]) -> [(ms: Double, at: Int)] {
-    var at: [Int] = [], i = 0, inWord = false
-    for ch in text {
-      if ch.isWhitespace { inWord = false } else if !inWord { inWord = true; at.append(i) }
-      i += 1
-    }
-    return at.count == times.count ? Array(zip(times, at)).map { (ms: $0.0, at: $0.1) } : []
+  /// `times` (ms) paired with where each of `text`'s words ends in it; none when they don't match one to one.
+  static func starts(_ text: String, _ times: [Double]) -> [(ms: Double, end: Int)] {
+    let ends = VoiceText.wordEnds(text)
+    return ends.count == times.count ? zip(times, ends).map { (ms: $0, end: $1) } : []
   }
 
   /// What to say for `text` written in Markdown: its words, not its marks.

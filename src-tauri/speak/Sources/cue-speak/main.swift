@@ -12,7 +12,7 @@
 //                                                     it plays (what you hear: the output's delay counted), then
 //                                                     {"done": id, "end": true}
 //   {"pause": true} / {"resume": true}              → what's playing holds where it is / goes on from there
-//   {"stop": true}                                  → what's playing ends: {"done": id, "end": false}
+//   {"stop": true}                                  → what's playing (or is still being made) ends: {"done": id, "end": false}
 // "next" is the sentence after, made while this one plays so there's no gap between them. Problems come out as
 // {"error": "…", "id"?}.
 //
@@ -69,23 +69,28 @@ final class Speaker {
   /// Sentences made or being made ("voice|speed|text"), the newest few: the next one is made while this one
   /// plays, and its say waits for that rather than making it again.
   private var made: [(key: String, task: Task<Made, Error>)] = []
-  /// The sentence playing, and whether it was stopped.
+  /// The sentence asked for last (being made, or playing), and whether what's playing was stopped.
+  private var asked: Int?
   private var playing: Int?
   private var stopped = false
   private var said = 0
   private var ticking: DispatchSourceTimer?
+  /// The says, one after another: each waits for the one before it to be made and playing.
+  private var says: Task<Void, Never>?
 
   init() {
     engine.attach(player)
     engine.connect(player, to: engine.mainMixerNode, format: format)
   }
 
-  func heard(_ o: [String: Any]) async {
+  /// A line from Cue, at once: a stop, pause or resume acts right away, a say while one is still being made too
+  /// (that one is dropped).
+  func heard(_ o: [String: Any]) {
     if o["status"] != nil {
       let d = onDisk()
       emit(["status": ["ready": engineHere(), "risky": risky, "have": engineHere() ? d.have : [], "mb": d.mb]])
     } else if let voice = o["get"] as? String {
-      await get(voice)
+      Task { await self.get(voice) }
     } else if o["remove"] != nil {
       stop()
       for d in cacheDirs { try? FileManager.default.removeItem(at: d) }
@@ -97,7 +102,11 @@ final class Speaker {
     } else if o["resume"] != nil {
       if playing != nil { player.play() }
     } else if let text = o["say"] as? String {
-      await say(text, voice: o["voice"] as? String ?? "af_heart", speed: Float(o["speed"] as? Double ?? 1), id: o["id"] as? Int ?? 0, next: o["next"] as? String)
+      stop()
+      let id = o["id"] as? Int ?? 0, voice = o["voice"] as? String ?? "af_heart", speed = Float(o["speed"] as? Double ?? 1), next = o["next"] as? String
+      asked = id
+      let before = says
+      says = Task { await before?.value; await self.say(text, voice: voice, speed: speed, id: id, next: next) }
     }
   }
 
@@ -157,17 +166,19 @@ final class Speaker {
   }
 
   private func say(_ text: String, voice: String, speed: Float, id: Int, next: String?) async {
-    stop()
     let m: Made
     do { m = try await made(text, voice: voice, speed: speed).value } catch {
-      emit(["error": "Kokoro couldn't say it: \(error.localizedDescription)", "id": id])
+      if asked == id { asked = nil; emit(["error": "Kokoro couldn't say it: \(error.localizedDescription)", "id": id]) }
       return
     }
+    // Stopped, or another asked for, while it was being made: its done went out then.
+    guard asked == id else { return }
     let s = m.samples
     guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(1, s.count))) else { return }
     buf.frameLength = AVAudioFrameCount(s.count)
     s.withUnsafeBufferPointer { src in buf.floatChannelData![0].update(from: src.baseAddress!, count: s.count) }
     do { if !engine.isRunning { try engine.start() } } catch {
+      asked = nil
       emit(["error": "Couldn't play it: \(error.localizedDescription)", "id": id])
       return
     }
@@ -210,12 +221,15 @@ final class Speaker {
   private func ended(_ id: Int) {
     guard playing == id else { return }
     playing = nil
+    if asked == id { asked = nil }
     ticking?.cancel()
     emit(["done": id, "end": !stopped])
     if said >= 100 && !stopped { emit(["bye": true]); exit(0) }
   }
 
+  /// What's playing ends; one still being made is dropped (its say sees that when its sound comes).
   private func stop() {
+    if let id = asked, playing == nil { asked = nil; emit(["done": id, "end": false]) }
     guard playing != nil else { return }
     stopped = true
     player.stop()
@@ -227,18 +241,12 @@ final class Speaker {
 // voice, so it says its timing matters.
 let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical], reason: "Reading a reply out")
 let speaker = MainActor.assumeIsolated { Speaker() }
-// Cue's lines, in order. Its stdin closing (Cue quit, or Listen stopped) ends this too.
+// Cue's lines, in order, each handled as it comes (a say queues behind the one before; a stop acts at once, on a
+// sentence still being made too). Its stdin closing (Cue quit, or Listen stopped) ends this too.
 Thread.detachNewThread {
   while let line = readLine() {
     guard let data = line.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-    // One at a time, in order (a say until its sound is made and playing, so a stop after it stops it); getting a
-    // voice goes on by itself.
-    let sem = DispatchSemaphore(value: 0)
-    Task { @MainActor in
-      await speaker.heard(o)
-      sem.signal()
-    }
-    if o["get"] == nil { sem.wait() }
+    DispatchQueue.main.async { MainActor.assumeIsolated { speaker.heard(o) } }
   }
   DispatchQueue.main.async { exit(0) }
 }
