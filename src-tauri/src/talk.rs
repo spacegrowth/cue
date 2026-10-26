@@ -87,6 +87,16 @@ fn hooked(hub: &Hub, sid: &str) -> bool {
 /// How it is, for Settings: whether ⌥Space could be had, and the listening model.
 static STATUS: Mutex<Value> = Mutex::new(Value::Null);
 
+/// When you last talked to Cue or had an answer read out to you (ms): you're at this Mac, hands off it or not.
+static HEARD_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn heard() {
+    HEARD_MS.store(crate::model::now_ms(), std::sync::atomic::Ordering::Relaxed);
+}
+#[cfg_attr(not(feature = "ext"), allow(dead_code))]
+pub fn heard_ms() -> u64 {
+    HEARD_MS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Your voice settings, which cue-voice reads as it needs them (its Prefs.swift): voice.json in Cue's data folder.
 fn prefs_file() -> std::path::PathBuf {
     crate::server::cue_dir().join("voice.json")
@@ -322,6 +332,8 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
                 let Some(line) = line else { return };
                 if let Some(st) = line.get("status") {
                     *crate::locking::lock(&STATUS, "talk status") = st.clone();
+                } else {
+                    heard();
                 }
                 // A click on the island: that session's chat (whether or not a card of it waits).
                 if let Some(sid) = line["open"].as_str() {
