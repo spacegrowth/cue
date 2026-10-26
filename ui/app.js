@@ -580,6 +580,8 @@ function bindMain() {
     if (dt) return setActive(dt.dataset.detail, null, true);
     const mo = t.closest("[data-msg]");
     if (mo) { const k = mo.dataset.msg; openMsgs.has(k) ? openMsgs.delete(k) : openMsgs.add(k); return renderMain(); }
+    const va = t.closest("[data-voice-ask]");
+    if (va) { const k = va.dataset.voiceAsk; openAsks.has(k) ? openAsks.delete(k) : openAsks.add(k); return renderMain(); }
     const big = t.closest("[data-big]");
     if (big && !t.closest("button")) return setActive(big.dataset.big);
     const qs_ = t.closest("[data-qstep]");

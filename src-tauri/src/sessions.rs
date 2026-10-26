@@ -313,6 +313,16 @@ impl Sessions {
         self.note_with(session_id, role, text, &[], keep)
     }
 
+    /// How you answered a permission or a question, as yours in the thread, marked as a decision: it's no
+    /// message you wrote (talking by voice goes on through it).
+    pub fn note_decision(&mut self, session_id: &str, outcome: &str, keep: usize) {
+        let before = self.0.get(session_id).map_or(0, |s| s.thread.len());
+        self.note(session_id, "you", outcome, keep);
+        if let Some(e) = self.0.get_mut(session_id).filter(|s| s.thread.len() > before || before >= keep).and_then(|s| s.thread.last_mut()) {
+            e.decision = true;
+        }
+    }
+
     /// Same, with images. A reply sent from Cue comes back moments later as the agent's prompt
     /// (with the image paths typed after it): that echo is folded into the entry already noted.
     pub fn note_with(&mut self, session_id: &str, role: &str, text: &str, images: &[String], keep: usize) {
@@ -364,7 +374,7 @@ impl Sessions {
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
         // reply to them) are saved by moment and speaker, and the second would overwrite the first.
         let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
-        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] });
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -460,6 +470,18 @@ impl Sessions {
             e.unsent = true;
             e.pending = false;
             record(e, format!("not taken: {why}"));
+        }
+    }
+
+    /// Your message `text` to it was said by voice: the bubble says Cue added a line for the agent (or will, when
+    /// it's still kept in Cue or queued in the agent's box).
+    pub fn mark_voice(&mut self, session_id: &str, text: &str) {
+        let Some(s) = self.0.get_mut(session_id) else { return };
+        for q in [&mut s.held, &mut s.queued].into_iter().flatten().filter(|q| is_yours(q, text)) {
+            q.voice = true;
+        }
+        if let Some(e) = yours_mut(s, text) {
+            e.voice = true;
         }
     }
 
@@ -721,7 +743,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false }),
         }
     }
 

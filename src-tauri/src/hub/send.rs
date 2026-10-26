@@ -390,7 +390,7 @@ impl Hub {
                 // It's mid-turn: the agent reads this when it finishes its current step.
                 // The same message as the thread's copy (same time), so the chat shows it once, as queued.
                 let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] };
+                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false };
                 st.sessions.set_queued(session_id, Some(q));
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
@@ -567,6 +567,13 @@ impl Hub {
             // The agent has this text: a message of yours Cue was still unsure about is settled by it.
             st.sessions.got_message(session_id, &message, "its prompt hook");
         }
+        self.changed();
+    }
+
+    /// Your message `message` to it was said by voice (its prompt hook added the line asking for a short spoken
+    /// answer): its bubble says so.
+    pub fn said_by_voice(&self, session_id: &str, message: &str) {
+        self.st().sessions.mark_voice(session_id, &crate::sessions::unwrap_pasted(message));
         self.changed();
     }
 

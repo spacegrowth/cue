@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS exchanges (
   role        TEXT NOT NULL,           -- 'agent' | 'you'
   text        TEXT NOT NULL,
   images      TEXT NOT NULL DEFAULT '[]',
+  voice       INTEGER NOT NULL DEFAULT 0, -- yours, said by voice
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -250,6 +251,11 @@ fn open() -> rusqlite::Result<Connection> {
         let _ = c.execute("ALTER TABLE handoffs ADD COLUMN ahead INTEGER NOT NULL DEFAULT 0", []);
         c.pragma_update(None, "user_version", 6)?;
     }
+    // A message of yours said by voice: the column. A new database has it already.
+    if version < 7 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN voice INTEGER NOT NULL DEFAULT 0", []);
+        c.pragma_update(None, "user_version", 7)?;
+    }
     Ok(c)
 }
 
@@ -401,9 +407,9 @@ pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
 fn put_exchange(c: &Connection, session_id: &str, e: &Exchange) -> rusqlite::Result<()> {
     // Same moment, same speaker: the same exchange (its images may have been filled in since).
     c.execute(
-        "INSERT INTO exchanges (session_id, at_ms, role, text, images) VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images",
-        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into())],
+        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images, voice = excluded.voice",
+        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice],
     )?;
     Ok(())
 }
@@ -565,7 +571,7 @@ pub fn known_session_ids() -> std::collections::HashSet<String> {
 /// Everything Cue logged for one session, oldest first: the whole conversation, ended sessions too.
 pub fn session_log(session_id: &str) -> Vec<Value> {
     with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
         let rows = st.query_map(params![session_id], log_row)?;
         rows.collect()
     })
@@ -576,7 +582,7 @@ pub fn session_log(session_id: &str) -> Vec<Value> {
 /// chat loads earlier messages a page at a time as you scroll up). Fewer than `limit`: that's the start.
 pub fn session_log_page(session_id: &str, before_ms: u64, limit: usize) -> Vec<Value> {
     let mut page = with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
         let rows = st.query_map(params![session_id, before_ms as i64, limit as i64], log_row)?;
         rows.collect::<rusqlite::Result<Vec<Value>>>()
     })
@@ -587,7 +593,11 @@ pub fn session_log_page(session_id: &str, before_ms: u64, limit: usize) -> Vec<V
 
 fn log_row(r: &rusqlite::Row) -> rusqlite::Result<Value> {
     let images: Vec<String> = serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or_default();
-    Ok(json!({ "at_ms": r.get::<_, i64>(0)?, "role": r.get::<_, String>(1)?, "text": r.get::<_, String>(2)?, "images": images }))
+    let mut row = json!({ "at_ms": r.get::<_, i64>(0)?, "role": r.get::<_, String>(1)?, "text": r.get::<_, String>(2)?, "images": images });
+    if r.get::<_, bool>(4)? {
+        row["voice"] = json!(true);
+    }
+    Ok(row)
 }
 
 /// A line of context around the first (case-insensitive) match: ~60 characters before, ~140 after.
@@ -1081,7 +1091,7 @@ mod tests {
             "driven_by": driven_by, "queued": null, "since_ms": now_ms(), "prompt": "", "segments": [], "thread": []
         }))
         .unwrap();
-        s.thread = vec![Exchange { role: "agent".into(), text: "done".into(), at_ms: 1, images: vec![], from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![] }];
+        s.thread = vec![Exchange { role: "agent".into(), text: "done".into(), at_ms: 1, images: vec![], from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false }];
         s
     }
 

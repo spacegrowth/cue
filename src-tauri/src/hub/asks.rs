@@ -226,7 +226,7 @@ impl Hub {
             // answered at its prompt starts no turn (no Stop would ever come): back to its prompt.
             if it.kind != "waiting" && status != "gone" {
                 st.sessions.mark(&it.origin, if it.at_prompt { "waiting" } else { "working" }, None);
-                st.sessions.note(&it.origin.session_id, "you", outcome, crate::config::context_keep());
+                st.sessions.note_decision(&it.origin.session_id, outcome, crate::config::context_keep());
             }
             it.status = status.into();
             it.outcome = outcome.into();

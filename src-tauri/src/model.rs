@@ -39,6 +39,13 @@ pub struct Exchange {
     /// The last few steps only; a line each, so the question "which path flagged it" has an answer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delivery: Vec<Delivery>,
+    /// Yours, said by voice: the agent also got a line from Cue asking for a short spoken answer (from its
+    /// prompt hook, or after your words). The bubble says so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub voice: bool,
+    /// Yours: how you answered a permission or a question (Allow, an option picked), not a message you wrote.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub decision: bool,
 }
 
 /// One step of a message's way to the agent (see `Exchange::delivery`).
@@ -123,6 +130,9 @@ pub enum ClientMsg {
         /// For "failed" (a turn that ended on an API error): Claude Code's error type, e.g. "rate_limit".
         #[serde(default)]
         error_type: String,
+        /// For "active": you said it by voice, and the prompt hook added the line asking for a short spoken answer.
+        #[serde(default)]
+        voice: bool,
     },
     /// From Claude Code's status line: the plan's usage (its `rate_limits` object, plan users only), and
     /// that session's cost so far (`cost.total_cost_usd`, everyone).

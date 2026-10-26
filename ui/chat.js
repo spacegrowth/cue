@@ -774,6 +774,24 @@ function conversation(it, s) {
 }
 /** What you forwarded from another session, as Cue typed it: an optional note, then the header and the message. */
 const FORWARDED = /^(?:([\s\S]*?)\n\n)?\[Forwarded from the (.+?) session\]\n([\s\S]*)$/;
+/** The line Cue adds after what you said by voice for a session whose hook can't add it (talk.rs ASK). */
+const VOICE_ASK = /\n\n\(Voice: I'm listening, not reading\.[^\n]*\)$/;
+/** That line, word for word, as the agent got it (talk.rs ASK): shown when you open it under a voice message. */
+const VOICE_ASK_LINE = "(Voice: I'm listening, not reading. Answer in one or two short, plain sentences: no lists, code or file paths unless I ask for them. If there's a link I'll need, put it at the end: I'll see it on screen.)";
+/** A message of yours as the chat shows it: said by voice (Cue added a line for the agent), and its words. */
+function yourWords(e) {
+  const asked = VOICE_ASK.test(e.text);
+  return { voice: !!e.voice || asked, text: asked ? e.text.replace(VOICE_ASK, "") : e.text };
+}
+/** Your message's bubble. Said by voice: a mic beside it, and inside it the line Cue added for the agent (or will
+ *  add, `later`: kept in Cue or queued, it hasn't gone yet); its + opens the line word for word (`key`). */
+function yourBubble(e, key, style = "", later = false) {
+  const said = yourWords(e);
+  const open = said.voice && openAsks.has(key);
+  const note = !said.voice ? "" : `<div class="cv-voice-note"><button class="cv-voice-ask" data-voice-ask="${esc(key)}" aria-expanded="${open}">${open ? "−" : "+"} Cue ${later ? "will ask" : "asked"} for a short spoken answer</button>${open ? `<div class="cv-voice-line">${esc(VOICE_ASK_LINE)}</div>` : ""}</div>`;
+  const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${linkify(esc(said.text)).replace(/\n/g, "<br>")}${note}</div>`;
+  return said.voice ? `<div class="cv-you-row"><span class="cv-mic" role="img" aria-label="Said by voice">${MIC_ICON}</span>${bubble}</div>` : bubble;
+}
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
 /** A message from another session: an accent stripe, who it's from, then the message (a forward quotes the original). */
 function peerBubble(from, how, at, body, quote) {
@@ -1673,7 +1691,7 @@ function chatHtml(it, s, harness, paged = false) {
       const wait = !e.pending ? "" : Date.now() - e.at_ms > 30_000 ? " · Cue hasn't seen it take this yet" : " · waiting for it to take this";
       // Sent now right after the one above, before it answered: the agent got both as one (sessions.rs note_with).
       const joined = e.joined ? " · went to the agent with your message above, as one" : "";
-      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;
+      return `<div class="cv-you ${e.unsent ? "unsent" : ""} ${e.pending ? "pending" : ""}">${yourBubble(e, `${sid}:${e.at_ms}`)}${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago${via}${wait}${joined}</div>${unsent}</div>`;
     }
     const key = `${s?.session_id || it?.id}:${e.at_ms}`;
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
@@ -1690,9 +1708,9 @@ function chatHtml(it, s, harness, paged = false) {
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
   // A kept message that couldn't be sent says so (and why), rather than promising it goes when the turn ends.
   const heldWhy = s?.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
-  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held"><div class="cv-you-text" style="${qPhase()}">${esc(s.held.text).replace(/\n/g, "<br>")}</div>${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
-  if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued"><div class="cv-you-text" style="${qPhase()}">${esc(s.queued.text).replace(/\n/g, "<br>")}</div>${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
+  if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, qPhase(), true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
+  if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, qPhase(), true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
 }
 /** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
  *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said

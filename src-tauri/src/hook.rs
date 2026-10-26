@@ -32,19 +32,21 @@ pub fn main(args: &[String]) {
     let Ok(p) = serde_json::from_str::<Value>(&input) else { return };
     // Something you said by voice: the line asking for a short answer goes with it, read by the agent only (the
     // chat shows just your words). Claude Code takes it as the prompt hook's added context.
-    if event == "prompt" && harness == "claude" {
-        if let Some(ask) = crate::talk::hook_context(&s(&p, "prompt")) {
+    let voice = event == "prompt" && harness == "claude" && match crate::talk::hook_context(&s(&p, "prompt")) {
+        Some(ask) => {
             println!("{}", json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": ask } }));
+            true
         }
-    }
+        None => false,
+    };
     let _ = match event {
         "permission" => ask(&p, harness),
         // A finished turn carries its last exchange and who drives it; the rest are just the event.
         // ("notice": a permission prompt has sat in its terminal a few seconds, one Cue can't answer, a
         // sandboxed command's network access, or one that never came through Cue's permission hook.)
         "stop" | "prompt" | "end" | "compact" | "notice" => match event_for(event, &p) {
-            Some(("stopped", last)) => send_event(&p, harness, "stopped", &last, Some(final_turn(&p)), &driven_by()),
-            Some((name, message)) => send_event(&p, harness, name, &message, None, ""),
+            Some(("stopped", last)) => send_event(&p, harness, "stopped", &last, Some(final_turn(&p)), &driven_by(), false),
+            Some((name, message)) => send_event(&p, harness, name, &message, None, "", voice),
             None => None,
         },
         // StopFailure: the turn ended on an API error (a usage limit, an outage) instead of finishing.
@@ -164,7 +166,7 @@ pub(crate) fn connect(timeout: Duration) -> Option<UnixStream> {
     Some(s)
 }
 
-fn send_event(p: &Value, harness: &str, event: &str, message: &str, turn: Option<Vec<Value>>, driver: &str) -> Option<()> {
+fn send_event(p: &Value, harness: &str, event: &str, message: &str, turn: Option<Vec<Value>>, driver: &str, voice: bool) -> Option<()> {
     let mut s = connect(Duration::from_millis(500))?;
     let mut msg = origin(p, harness);
     msg.insert("type".into(), json!("event"));
@@ -178,6 +180,9 @@ fn send_event(p: &Value, harness: &str, event: &str, message: &str, turn: Option
     }
     if !driver.is_empty() {
         msg.insert("driven_by".into(), json!(driver));
+    }
+    if voice {
+        msg.insert("voice".into(), json!(true));
     }
     s.write_all(format!("{}\n", Value::Object(msg)).as_bytes()).ok()
 }

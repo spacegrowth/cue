@@ -460,9 +460,16 @@ async fn send(hub: &Arc<Hub>, snap: &Value, sid: &str, said: &str) -> Result<Str
     }
     let waiting = items_of(snap, sid).find(|i| i["kind"] == "waiting").and_then(|i| i["id"].as_str()).map(str::to_string);
     let (h, sid) = (hub.clone(), sid.to_string());
-    tokio::task::spawn_blocking(move || match waiting {
-        Some(id) => h.reply(&id, &msg, &[]),
-        None => h.send_to_session(&sid, &msg, &[], false),
+    tokio::task::spawn_blocking(move || {
+        let sent = match waiting {
+            Some(id) => h.reply(&id, &msg, &[]),
+            None => h.send_to_session(&sid, &msg, &[], false),
+        };
+        // Its bubble shows it was said, wherever it went: the chat, kept in Cue, or queued in the agent's box.
+        if sent.is_ok() {
+            h.said_by_voice(&sid, &msg);
+        }
+        sent
     })
     .await
     .map_err(|e| e.to_string())?
@@ -505,13 +512,14 @@ fn followed(snap: &Value, f: &Follow) -> Option<(u64, String)> {
 }
 
 /// You wrote to the followed session yourself since its last reply was told: a message that isn't a voice one
-/// (those end with the line asking for a short spoken answer, or, its hook adding that, are in voice-said).
+/// (those end with the line asking for a short spoken answer, or, its hook adding that, are in voice-said), and
+/// isn't how you answered a permission or a question (those can't be answered by voice).
 fn typed_since(snap: &Value, f: &Follow) -> bool {
     typed_since_in(snap, f, &said_dir())
 }
 fn typed_since_in(snap: &Value, f: &Follow, dir: &std::path::Path) -> bool {
     let Some(thread) = session(snap, &f.sid).and_then(|s| s["thread"].as_array()) else { return false };
-    let mut new = thread.iter().filter(|e| e["role"] == "you" && e["at_ms"].as_u64().unwrap_or(0) > f.seen).map(|e| e["text"].as_str().unwrap_or("")).peekable();
+    let mut new = thread.iter().filter(|e| e["role"] == "you" && e["decision"] != true && e["at_ms"].as_u64().unwrap_or(0) > f.seen).map(|e| e["text"].as_str().unwrap_or("")).peekable();
     if new.peek().is_none() {
         return false;   // nothing since (the folder isn't read for that)
     }
@@ -733,6 +741,9 @@ mod tests {
         assert!(!typed_since_in(&snap("working", bare.clone(), json!([])), &f, &d));
         assert!(typed_since_in(&snap("working", bare, json!([])), &f, &said_dir_for("empty")), "not said: typed");
         let _ = std::fs::remove_dir_all(&d);
+        // Allowing a permission it asked for (it can't be done by voice) isn't typing to it.
+        let allowed = json!([{ "role": "you", "text": "allowed", "at_ms": 250, "decision": true }]);
+        assert!(!typed_since(&snap("working", allowed, json!([])), &f));
     }
 
     #[test]

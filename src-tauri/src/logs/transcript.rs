@@ -418,6 +418,13 @@ pub fn find_claude(session_id: &str) -> Option<String> {
     std::fs::read_dir(format!("{home}/.claude/projects")).ok()?.flatten().map(|d| d.path().join(format!("{session_id}.jsonl"))).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
 }
 
+/// The prompt hook's added context, with the line Cue adds to what you said by voice.
+fn said_by_voice(e: &Value) -> bool {
+    e.get("type").and_then(Value::as_str) == Some("attachment")
+        && e.pointer("/attachment/type").and_then(Value::as_str) == Some("hook_additional_context")
+        && e.pointer("/attachment/content").and_then(Value::as_array).is_some_and(|c| c.iter().any(|l| l.as_str() == Some(crate::talk::ASK)))
+}
+
 /// The conversation as Cue's chat shows it, from the transcript: your prompts, and the agent's last
 /// text reply of each turn (not its tool calls or what it said between steps). Only what's before
 /// `before_ms`, the last `limit` of it, oldest first. For what's older than Cue's own log (a session
@@ -428,6 +435,7 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
     let Ok(f) = File::open(path) else { return vec![] };
     let mut out: Vec<Value> = vec![];
     let mut reply: Option<(u64, String)> = None;   // the turn's latest text reply so far
+    let mut yours: Option<(String, usize)> = None;   // your latest message: its entry's uuid, where it is in `out`
     let msg = |at: u64, role: &str, text: &str| serde_json::json!({ "at_ms": at, "role": role, "text": cut(text.trim(), 6000), "images": [] });
     for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
         let Ok(e) = serde_json::from_str::<Value>(&line) else { continue };
@@ -436,6 +444,13 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
             break;
         }
         if e.get("isSidechain").and_then(Value::as_bool) == Some(true) || e.get("isMeta").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        // Said by voice: Cue's prompt hook added the line asking for a short spoken answer to that message.
+        if said_by_voice(&e) {
+            if let Some((_, i)) = yours.as_ref().filter(|(uuid, _)| e.get("parentUuid").and_then(Value::as_str) == Some(uuid)) {
+                out[*i]["voice"] = Value::Bool(true);
+            }
             continue;
         }
         let text: String = content_blocks(&e).iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n\n");
@@ -458,6 +473,7 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
                     }
                     continue;
                 }
+                yours = e.get("uuid").and_then(Value::as_str).map(|u| (u.to_string(), out.len()));
                 out.push(msg(at, "you", &text));
             }
             _ => {}
@@ -790,6 +806,23 @@ mod tests {
         assert_eq!(got(&at(8), 10), ["you: fix the bar", "agent: Fixed: the bar now fills.", "you: thanks, now commit", "agent: Committed."]);
         assert_eq!(got(&at(8), 2), ["you: thanks, now commit", "agent: Committed."], "the last `limit` before that time");
         assert_eq!(got(&at(1), 10), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_message_said_by_voice_is_marked_by_the_line_its_hook_added() {
+        let at = |m: u32| format!("2026-10-04T08:{m:02}:00.000Z");
+        let added = |parent: &str, line: &str| json!({"type":"attachment","timestamp":at(2),"parentUuid":parent,"attachment":{"type":"hook_additional_context","content":[line],"hookName":"UserPromptSubmit","hookEvent":"UserPromptSubmit"}});
+        let p = write_transcript(&[
+            json!({"type":"user","uuid":"u1","timestamp":at(1),"message":{"content":"is the fix installed?"}}),
+            added("u1", crate::talk::ASK),
+            json!({"type":"assistant","timestamp":at(3),"message":{"content":[{"type":"text","text":"Yes."}]}}),
+            json!({"type":"user","uuid":"u2","timestamp":at(4),"message":{"content":"now commit it"}}),
+            added("u2", "some other hook's note"),
+            json!({"type":"assistant","timestamp":at(5),"message":{"content":[{"type":"text","text":"Committed."}]}}),
+        ]);
+        let got = conversation_before(&p.0, iso_ms(&at(9)).unwrap(), 10);
+        let voice: Vec<(&str, bool)> = got.iter().filter(|e| e["role"] == "you").map(|e| (e["text"].as_str().unwrap(), e["voice"] == true)).collect();
+        assert_eq!(voice, [("is the fix installed?", true), ("now commit it", false)]);
     }
 
     /// As Claude Code writes them into the lead's log (from a real lead and its teammate "reader").

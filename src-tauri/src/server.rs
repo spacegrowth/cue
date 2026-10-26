@@ -83,7 +83,7 @@ async fn send(w: &mut tokio::net::unix::OwnedWriteHalf, v: Value) -> std::io::Re
 
 /// The hook fires before Claude writes the prompt to its transcript, and only the transcript says
 /// who sent it, so look for up to ~3s. Not found (or Codex, which sends no id): count it as yours.
-async fn settle_prompt(hub: Arc<Hub>, sid: String, path: String, prompt_id: String, text: String) {
+async fn settle_prompt(hub: Arc<Hub>, sid: String, path: String, prompt_id: String, text: String, voice: bool) {
     use crate::logs::transcript::Sender;
     // Claude Code's own notice of a finished background task is never yours, whatever the transcript
     // says yet. (Handed over mid-turn, it carries the turn's promptId: that prompt is yours.)
@@ -105,6 +105,9 @@ async fn settle_prompt(hub: Arc<Hub>, sid: String, path: String, prompt_id: Stri
         }
     }
     hub.prompt_from_you(&sid, &text);
+    if voice {
+        hub.said_by_voice(&sid, &text);
+    }
 }
 
 /// The most one connection may send, in all: a message is a few KB, a reply with images a few MB.
@@ -189,7 +192,7 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 }
             }
         }
-        ClientMsg::Event { origin, event, message, turn, driven_by, prompt_id, error_type } => {
+        ClientMsg::Event { origin, event, message, turn, driven_by, prompt_id, error_type, voice } => {
             if event == "failed" {
                 hub.failed(origin, &error_type, &message);
                 return Ok(());
@@ -208,7 +211,7 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 Some((_, path, _)) if prompt_id.is_empty() || path.is_empty() => hub.event(origin, &event, message, turn, &driven_by),
                 Some((sid, path, text)) => {
                     hub.event(origin, &event, message, turn, &driven_by);
-                    tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text));
+                    tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text, voice));
                 }
                 None => hub.event(origin, &event, message, turn, &driven_by),
             }

@@ -11,6 +11,7 @@
   --ink: #1E2410;
   --muted: #5A6340;
   --accent: #3F4A22;
+  --voice: #2F5F5D;   /* what you said by voice: the mic and the line Cue added (the same in every project) */
   --on-accent: #FFFFFF;
   --sel: #D2DE96; --on-sel: #1E2410;   /* the selected card: lime, never the background's green */
   --slab: #1E2410;
@@ -33,7 +34,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
-    --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
+    --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
     --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --amber: #E0A84A; --star: #E0B84A;
     --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9);
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
@@ -41,7 +42,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
-  --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08;
+  --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
   --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
   --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9);
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
@@ -580,6 +581,13 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
    the chat, where its left edge was cut off. */
 .cv-you-text { overflow-wrap: anywhere; max-width: 100%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13.5px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
 .cv-you .cv-meta { margin: 3px 2px 0; }
+/* Said by voice: a teal mic beside your message, and inside it, under a hairline, the line Cue added for the agent. */
+.cv-you-row { display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
+.cv-mic { flex: none; display: inline-flex; color: var(--voice); margin-bottom: 7px; }
+.cv-mic svg { width: 14px; height: 14px; }
+.cv-voice-note { border-top: 1px solid var(--line); margin-top: 7px; padding-top: 6px; font-size: 12px; color: var(--voice); }
+.cv-voice-ask { font: inherit; font-weight: 650; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
 .cv-you.sending { opacity: 0.6; }
 .cv-you.queued .cv-you-text { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
 /* Not sent yet: its outline dims and a short brighter arc drifts round it until it goes (on the full-strength

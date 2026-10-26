@@ -18,6 +18,7 @@ const ghosts = new Map();   // id -> { it, at, h }: just-answered rows that ling
 let folding = false;        // a ✓ row is folding away: redraws wait, or they'd pop it back mid-fold
 const answering = new Map(); // id -> when you answered it here: it fades at once, and folds LINGER_MS after that
 const openMsgs = new Set(); // older agent messages unfolded in the Active chat
+const openAsks = new Set(); // voice messages whose added line is shown, word for word
 const openFollow = new Set();  // cards whose "After a stop hook" is expanded
 let dictating = null;       // { key, base, stopping } — the text box you're dictating into, and what it held before
 let renaming = null;        // the session whose name is being edited in the Active pane
