@@ -228,6 +228,9 @@ pub fn start(app: &tauri::App, hub: Arc<Hub>) {
     app.listen_any("chat-open", move |e| {
         let v = serde_json::from_str::<Value>(e.payload()).unwrap_or_default();
         if let Some(i) = v["swatch"].as_u64() {
+            if let (Some(h), Some(k)) = (v["hue"]["h"].as_f64(), v["hue"]["k"].as_f64()) {
+                *crate::locking::lock(&colors::OWN, "talk own hue") = (h, k);
+            }
             colors::THEME.store(i as usize, std::sync::atomic::Ordering::Relaxed);
         }
         let _ = open_tx.send(v["sid"].as_str().map(str::to_string));
@@ -332,6 +335,10 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
                 let Some(line) = line else { return };
                 if let Some(st) = line.get("status") {
                     *crate::locking::lock(&STATUS, "talk status") = st.clone();
+                    // Settings, if open, shows it now: turned on, it asked before cue-voice had said how it is (just
+                    // the switch), and a download's progress moves.
+                    use tauri::Emitter;
+                    let _ = app.emit("voice-status", ());
                 } else {
                     heard();
                 }
@@ -588,6 +595,9 @@ mod colors {
 
     /// The swatch the window wears (its header's project, or All projects'), as it last said; MAX until it has.
     pub static THEME: AtomicUsize = AtomicUsize::new(usize::MAX);
+    /// Your own Color's hue and strength (the window's swatch OWN), as the window last said.
+    pub const OWN_SWATCH: usize = 10;
+    pub static OWN: std::sync::Mutex<(f64, f64)> = std::sync::Mutex::new((0.0, 0.0));
 
     /// Hue and strength per swatch (Moss, 0, is Cue's own).
     const HUE: [(f64, f64); 10] = [(0.0, 0.0), (107.0, 0.3), (301.0, 0.57), (87.0, 0.75), (67.0, 0.37), (157.0, 0.33), (194.0, 0.48), (276.0, 0.64), (353.0, 0.44), (271.0, 0.1)];
@@ -598,17 +608,19 @@ mod colors {
             usize::MAX => swatch(snap, project),
             i => i,
         };
-        if i == 0 || i >= HUE.len() {
-            return ("#3F4A22".into(), "#FFFFFF".into(), "#D2DE96".into(), "#1E2410".into());
-        }
-        let (h, k) = HUE[i];
+        let (h, k) = match i {
+            OWN_SWATCH => *crate::locking::lock(&OWN, "talk own hue"),
+            i if i > 0 && i < HUE.len() => HUE[i],
+            _ => return ("#3F4A22".into(), "#FFFFFF".into(), "#D2DE96".into(), "#1E2410".into()),
+        };
         (oklch(0.385, 0.072 * k, h), "#FFFFFF".into(), oklch(0.875, 0.098 * k, h), oklch(0.25, 0.04 * k, h))
     }
 
-    /// The swatch you picked for it in Cue, else one from its name (as the window does).
+    /// The swatch you picked for it in Cue, else one from its name (as the window does). Project colors off (the
+    /// default): every project wears the window's Color (All projects').
     fn swatch(snap: &Value, project: &str) -> usize {
-        if snap["settings"]["appearance"]["project"] == false {
-            return 0;
+        if snap["settings"]["appearance"]["project"] != true {
+            return snap["settings"]["project"]["all"].as_u64().map_or(0, |c| c as usize);
         }
         if let Some(c) = snap["settings"]["project"]["colors"][project].as_u64() {
             return c as usize;
@@ -642,7 +654,7 @@ mod colors {
     mod tests {
         #[test]
         fn moss_is_cues_own_and_a_swatch_gets_its_hue() {
-            let snap = serde_json::json!({ "settings": { "project": { "colors": { "cue": 0, "billing": 6 } } } });
+            let snap = serde_json::json!({ "settings": { "appearance": { "project": true }, "project": { "colors": { "cue": 0, "billing": 6 } } } });
             assert_eq!(super::of(&snap, "cue").2, "#D2DE96");
             let teal = super::of(&snap, "billing");
             assert_ne!(teal.2, "#D2DE96");

@@ -144,8 +144,9 @@ function renderMain() {
   // A reply being read out: what it's reading stays in view, over the chat's jump to its end (chat.js listenFollow).
   if (listening) listenFollow(listening);
   // Which chat is open, and the window's color, told to an add-on (once each time either changes).
-  const openNow = chat ? active?.sid || null : null, swatch = themeIdx();
-  if (`${openNow}|${swatch}` !== chatOpenTold) { chatOpenTold = `${openNow}|${swatch}`; T.event.emit("chat-open", { sid: openNow, swatch }).catch(() => {}); }
+  const openNow = chat ? active?.sid || null : null, swatch = themeIdx(), hue = swatch === OWN ? ownHue() : null;
+  const told = `${openNow}|${swatch}|${hue?.h}|${hue?.k}`;
+  if (told !== chatOpenTold) { chatOpenTold = told; T.event.emit("chat-open", { sid: openNow, swatch, hue }).catch(() => {}); }
   // Something new opened in Active: its text box takes the cursor, so you can just type. Done once it
   // has (at launch the first draw comes before the sessions do: no box yet, so the next draw tries again).
   const target = `${active?.id}|${active?.sid}`;
@@ -249,6 +250,8 @@ function bindMain() {
     // A project's dot: its swatches open under it; a swatch sets the color for that folder everywhere.
     const sw = t.closest("[data-pcpick]");
     if (sw) { setProjColor(sw.dataset.pcpick, +sw.dataset.pcidx); colorFor = null; return renderMain(); }
+    // Your own Color: the Mac's color picker.
+    if (t.closest("[data-pcown]")) return pickOwnColor(t.closest("[data-pcown]"));
     const pc = t.closest("[data-pcolor]");
     if (pc) { const { pcolor: p, pcwhere: w } = pc.dataset; colorFor = colorFor?.p === p && colorFor.w === w ? null : { p, w }; return renderMain(); }
     if (colorFor && !t.closest(".pc-wrap")) { colorFor = null; renderMain(); }
@@ -916,6 +919,7 @@ async function boot() {
   await T.event.listen("state", (e) => setState(e.payload));
   await T.event.listen("dictation", (e) => onDictation(e.payload));
   await T.event.listen("speak", (e) => kokoroLine(e.payload));
+  await T.event.listen("voice-status", () => extReload());
   // A natural voice picked: which ones are here, now, so Listen reads in it from the start (asked only by
   // Settings → Voice before, so after a restart Listen used the Mac's voice until Settings was opened).
   if (voicePick()) kokoroStatus();

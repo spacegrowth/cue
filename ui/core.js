@@ -156,9 +156,13 @@ const projRoot = (cwd) => state.projects?.[cwd]?.root || cwd;
 const MOSS = 0;
 const SWATCHES = [[MOSS], [4, 67, 0.37], [3, 87, 0.75], [1, 107, 0.3], [5, 157, 0.33], [6, 194, 0.48], [7, 276, 0.64], [2, 301, 0.57], [8, 353, 0.44], [9, 271, 0.1]];
 const swatchOk = (c) => Number.isInteger(c) && c >= 0 && c < SWATCHES.length;
+/** Project colors (Settings → General) on: each project has its own swatch. Off, the default: every project wears
+ *  the window's Color (All projects'), so the dots still pulse while a session works, all in one color. */
+const projColors = () => state.settings?.appearance?.project === true;
 /** The swatch (0–9) for a project: the one you picked, else one by a hash of the name, so it's the same
  *  after a restart and on every machine. */
 function projIdx(project) {
+  if (!projColors()) return allIdx();
   const c = state.settings?.project?.colors?.[project];
   if (swatchOk(c)) return c;
   let h = 0;
@@ -167,17 +171,85 @@ function projIdx(project) {
 }
 /** All projects (the header chip with no one project picked), as a project for the colors: a name no project has (no "/" in one). */
 const ALL_PROJ = "/all";
-/** All projects' color: Moss until you pick another. */
-const allIdx = () => { const c = state.settings?.project?.all; return swatchOk(c) ? c : MOSS; };
+/** Your own Color, past the ten (Settings → General, or All projects' swatches): any hue and strength, saved as
+ *  project.hue { h, k }. project.all keeps the nearest of the ten, for anything that knows only those. */
+const OWN = 10;
+const ownHue = () => {
+  const v = state.settings?.project?.hue;
+  if (hueLive && v?.h === hueLive.h && v?.k === hueLive.k) hueLive = null;   // Cue has it now
+  const o = hueLive || v;
+  return o && Number.isFinite(o.h) && Number.isFinite(o.k) ? o : null;
+};
+/** Your own Color just picked, until Cue's update has it: a snapshot meanwhile mustn't put the old one back. */
+let hueLive = null;
+/** Your own Color's chroma at full strength (k = 1): a picked color as vivid or more is k 1, grey is 0. */
+const OWN_FULL = 0.12;
+/** All projects' color: Moss until you pick another (one of the ten, or your own). */
+const allIdx = () => { if (ownHue()) return OWN; const c = state.settings?.project?.all; return swatchOk(c) ? c : MOSS; };
+/** The one of the ten nearest a hue and strength (Moss, which has no hue, never). */
+function nearestSwatch(h, k) {
+  const far = ([, sh, sk]) => Math.min(Math.abs(h - sh), 360 - Math.abs(h - sh)) / 180 + Math.abs(k - sk);
+  return SWATCHES.slice(1).reduce((a, b) => far(b) < far(a) ? b : a)[0];
+}
+/** Your own Color, shown now (picking) or saved too (done): with it, the nearest of the ten. */
+function setOwnHue(h, k, save = true) {
+  const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
+  p.hue = hueLive = { h, k };
+  projTheme();
+  retheme();
+  if (!save) return;
+  p.all = nearestSwatch(h, k);
+  setSetting("project.hue", p.hue);
+  setSetting("project.all", p.all);
+}
+/** Under the ten: your own Color (a rainbow until you pick one); pressed, the Mac's color picker. */
+const ownRow = () => `<div class="pc-own"><button class="pc-sw own ${ownHue() ? "on" : ""}" style="--c:var(--pc${OWN})" data-pcown aria-label="Your own color"></button><button class="pc-own-l" data-pcown>Your own</button></div>`;
+/** sRGB "#rrggbb" ⇄ OKLCH, for the color picker: what you pick gives the hue and strength, Cue keeps its own lightness. */
+function hexToOwn(hex) {
+  const lin = [1, 3, 5].map((i) => { const c = parseInt(hex.slice(i, i + 2), 16) / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  const [l, m, s] = [[0.4122214708, 0.5363325363, 0.0514459929], [0.2119034982, 0.6806995451, 0.1073969566], [0.0883024619, 0.2817188376, 0.6299787005]].map((r) => Math.cbrt(r[0] * lin[0] + r[1] * lin[1] + r[2] * lin[2]));
+  const a = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, b = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  return { h: Math.round(((Math.atan2(b, a) * 180) / Math.PI + 360) % 360), k: Math.round(Math.min(1, Math.hypot(a, b) / OWN_FULL) * 100) / 100 };
+}
+function ownToHex({ h, k }) {
+  const c = OWN_FULL * k, a = c * Math.cos((h * Math.PI) / 180), b = c * Math.sin((h * Math.PI) / 180), L = 0.66;
+  const [l, m, s] = [L + 0.3963377774 * a + 0.2158037573 * b, L - 0.1055613458 * a - 0.0638541728 * b, L - 0.0894841775 * a - 1.291485548 * b].map((v) => v ** 3);
+  const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+  return "#" + rgb.map((v) => { const g = v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055; return Math.round(Math.min(1, Math.max(0, g)) * 255).toString(16).padStart(2, "0"); }).join("");
+}
+/** The Mac's color picker for your own Color: one input kept outside the window's redraws (a redraw would cut the
+ *  picker off from it). The window takes the color as you pick; it's saved once you're done. */
+let ownInput = null;
+function pickOwnColor(at) {
+  if (!ownInput) {
+    ownInput = Object.assign(document.createElement("input"), { type: "color" });
+    ownInput.className = "own-input";
+    ownInput.addEventListener("input", () => setOwnHue(...Object.values(hexToOwn(ownInput.value)), false));
+    ownInput.addEventListener("change", () => { setOwnHue(...Object.values(hexToOwn(ownInput.value)), true); renderMain(); });
+    document.body.append(ownInput);
+  }
+  const sw = SWATCHES.find(([i]) => i === allIdx());
+  ownInput.value = ownToHex(ownHue() || { h: sw?.[1] ?? 122, k: sw?.[2] ?? 1 });
+  // The picker opens at its input: put that just under the Your own pressed.
+  const r = (at.closest(".pc-own") || at).getBoundingClientRect();
+  Object.assign(ownInput.style, { left: `${r.left}px`, top: `${r.bottom}px` });
+  try { ownInput.showPicker(); } catch { ownInput.click(); }
+}
+/** The ten swatches for a project (or All projects, with your own under them). */
+const swatchPicker = (project) => {
+  const cur = swatchOf(project);
+  return `<div class="pc-row">${SWATCHES.map(([i], n) => `<button class="pc-sw ${cur === i ? "on" : ""}" style="--c:var(--pc${i})" data-pcpick="${esc(project)}" data-pcidx="${i}" aria-label="${i === MOSS ? "Moss" : `Swatch ${n + 1}`}"></button>`).join("")}</div>${project === ALL_PROJ ? ownRow() : ""}`;
+};
 const swatchOf = (project) => project === ALL_PROJ ? allIdx() : projIdx(project);
-/** The window in the color of the project picked in the header, or of All projects (style.css
- *  .proj-theme), unless that's turned off (Settings → General, Project colors). Moss: Cue's own theme. */
-/** The swatch the window wears now: the header's project, or All projects', Moss when project colors are off. */
-const themeIdx = () => (state.settings?.appearance?.project ?? true) ? (projFilter ? projIdx(projFilter) : allIdx()) : MOSS;
+/** The window in the color of the project picked in the header (Project colors on), else of All projects: your
+ *  Color (style.css .proj-theme). Moss: Cue's own theme. */
+const themeIdx = () => projFilter ? projIdx(projFilter) : allIdx();
 function projTheme() {
-  const idx = themeIdx();
-  const sw = idx !== MOSS && SWATCHES.find(([i]) => i === idx);
+  const idx = themeIdx(), o = ownHue();
+  const sw = idx === OWN ? [OWN, o.h, o.k] : idx !== MOSS && SWATCHES.find(([i]) => i === idx);
   const root = document.documentElement;
+  // Your own Color's dot (style.css --pc10), wherever it shows.
+  if (o) { root.style.setProperty("--oh", o.h); root.style.setProperty("--ok", o.k); }
   root.classList.toggle("proj-theme", !!sw);
   if (!sw) return;
   root.style.setProperty("--ph", sw[1]);
@@ -190,9 +262,10 @@ let colorFor = null;   // { p, w }: the project (or ALL_PROJ) whose swatches are
 /** The dot as a button: a click opens the swatches under it (just the project's name above them). */
 function projBtn(project, where) {
   if (!project) return "";
+  if (project !== ALL_PROJ && !projColors()) return projDot(project);   // Project colors off: nothing to pick
   const all = project === ALL_PROJ, cur = swatchOf(project), open = colorFor?.p === project && colorFor.w === where;
   const title = `<b>${all ? "All projects" : esc(projLabel(project))}</b>`;
-  const pop = open ? `<div class="pc-pop"><div class="pc-title">${title}</div><div class="pc-row">${SWATCHES.map(([i], n) => `<button class="pc-sw ${cur === i ? "on" : ""}" style="--c:var(--pc${i})" data-pcpick="${esc(project)}" data-pcidx="${i}" aria-label="${i === MOSS ? "Moss" : `Swatch ${n + 1}`}"></button>`).join("")}</div></div>` : "";
+  const pop = open ? `<div class="pc-pop"><div class="pc-title">${title}</div>${swatchPicker(project)}</div>` : "";
   return `<span class="pc-wrap"><button class="pdot-btn ${open ? "on" : ""}" data-pcolor="${esc(project)}" data-pcwhere="${where}" aria-label="Color for ${all ? "all projects" : esc(project)}"><i class="pdot" style="--pc:var(--pc${cur})"></i></button>${pop}</span>`;
 }
 /** A project as Cue shows it: the name you gave it, else its own (its repository's or folder's). */
@@ -247,7 +320,13 @@ function togglePin(project) {
 const PIN_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 4 4v2H6v-2l4-4z"/></svg>`;
 function setProjColor(project, idx) {
   const p = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
-  if (project === ALL_PROJ) { p.all = idx; return setSetting("project.all", idx); }
+  if (project === ALL_PROJ) {
+    // One of the ten: your own Color is put by (picked again from Your own, it starts from this one).
+    hueLive = null;
+    if (p.hue) { p.hue = null; setSetting("project.hue", null); }
+    p.all = idx;
+    return setSetting("project.all", idx);
+  }
   p.colors = { ...(p.colors || {}), [project]: idx };
   setSetting("project.colors", p.colors);
 }

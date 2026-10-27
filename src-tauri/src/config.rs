@@ -7,6 +7,12 @@ pub mod login;
 
 pub const HISTORY_DEFAULT: u64 = 300;
 
+/// Your own Color (project.hue): { h: 0–360, k: 0–1 }, the hue and strength the window's colors are made from.
+fn own_hue(v: &Value) -> bool {
+    let n = |k: &str, max: f64| v[k].as_f64().is_some_and(|x| (0.0..=max).contains(&x));
+    v.is_object() && n("h", 360.0) && n("k", 1.0)
+}
+
 fn path() -> std::path::PathBuf {
     crate::server::cue_dir().join("config.json")
 }
@@ -41,7 +47,7 @@ pub fn effective() -> Value {
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
         "pi": { "gate": c.pointer("/pi/gate").and_then(Value::as_str).unwrap_or("dangerous") },
-        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(true) },
+        "appearance": { "mode": c.pointer("/appearance/mode").and_then(Value::as_str).unwrap_or("system"), "zoom": zoom(), "project": c.pointer("/appearance/project").and_then(Value::as_bool).unwrap_or(false) },
         "context": { "keep": context_keep() },
         "turn": { "mode": turn_mode() },
         "quick": { "phrases": quick_phrases() },
@@ -49,7 +55,7 @@ pub fn effective() -> Value {
         "actions": { "prompt": crate::actions::prompt(), "default": crate::actions::PROMPT },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
     })
 }
 
@@ -186,7 +192,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.autocompact", "insights.delegate", "insights.ahead", "insights.skills", "actions.prompt", "voice.pick"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.autocompact", "insights.delegate", "insights.ahead", "insights.skills", "actions.prompt", "voice.pick"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -245,6 +251,9 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         // Your actions prompt ("" is Cue's own again).
         "actions.prompt" => return crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
+        // Your own Color, past the ten: a hue and a strength (null: one of the ten, project.all).
+        "project.hue" if value.is_null() || own_hue(&value) => value,
+        "project.hue" => return Err("your own color is a hue (0 to 360) and a strength (0 to 1)".into()),
         "project.pins" => pins(&value)?,
         "project.names" => names(&value)?,
         "project.moves" => moves(&value)?,

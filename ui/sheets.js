@@ -240,6 +240,8 @@ const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glas
 const seg = (key, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${JSON.stringify(v) === JSON.stringify(cur) ? "on" : ""}" data-set="${key}" data-val='${esc(JSON.stringify(v))}'>${esc(l)}</button>`).join("")}</div>`;
 const toggle = (key, on) => `<button class="toggle ${on ? "on" : ""}" data-set="${key}" data-val="${!on}" role="switch" aria-checked="${on}" aria-label="${esc(key)}"><span></span></button>`;
 const setRow = (title, sub, control) => `<div class="set-row"><div class="set-text"><div class="set-title">${title}</div>${sub ? `<div class="set-sub">${sub}</div>` : ""}</div>${control}</div>`;
+/** Settings → General's Color: All projects' swatches (core.js projBtn's), so the window's color can be picked here too. */
+const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a
  *  tab of its own; the others show under Agents. */
 let extSections = null;
@@ -251,6 +253,12 @@ function extLoad() {
 function extRows(tab = null) {
   return extLoad().filter((g) => (g.tab || null) === tab).map((g) => `<div class="set-group">${esc(g.group)}</div>${(g.rows || []).map((r) =>
     `<div class="set-row ${r.art ? "with-art" : ""}"><div class="set-text"><div class="set-title">${esc(r.title)}</div>${r.sub ? `<div class="set-sub">${r.sub}</div>` : ""}</div>${r.art ? `<div class="set-art">${r.art}</div>` : ""}${r.pick ? extPick(r.pick) : ""}</div>${r.pick && extPickOpen === r.pick.id ? extMenu(r.pick) : ""}`).join("")}`).join("");
+}
+/** cue-voice said how it is (talk.rs "voice-status"): Settings, if open, takes its rows afresh. The ones shown stay
+ *  until they come, so nothing blinks. */
+function extReload() {
+  if (sheet !== "settings") return;
+  invoke("ext_settings").then((v) => { extSections = v || []; renderMain(); }, () => {});
 }
 /** An add-on row's choice: a few options side by side; more behind a button, listed under its row once
  *  clicked (`extPickOpen`: whose), in the sheet's own flow so nothing clips it. */
@@ -468,7 +476,8 @@ function settingsSheet() {
     ${updateRow()}
     <div class="set-group">Look</div>
     ${setRow("Appearance", "Moss, light or dark. System follows macOS.", seg("appearance.mode", st.appearance?.mode ?? "system", [["system", "System"], ["light", "Light"], ["dark", "Dark"]]))}
-    ${setRow("Project colors", "The window takes the color of the project picked at the top, or of All projects. Off, it's always Moss; the projects' dots keep their colors.", toggle("appearance.project", st.appearance?.project ?? true))}
+    ${setRow("Color", st.appearance?.project === true ? "The window's color, the same as All projects' dot. A project picked at the top wears its own. Moss is Cue's own." : "The window's color, the same as All projects' dot. Moss is Cue's own.", themeSwatches())}
+    ${setRow("Project colors", "Each project gets a color of its own: its dot, and the window while it's picked at the top. Off, every project's dot is in the window's Color.", toggle("appearance.project", st.appearance?.project === true))}
     ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
     ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}

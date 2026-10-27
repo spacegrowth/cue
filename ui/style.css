@@ -26,6 +26,8 @@
   --pcp0: #3F4A22; --pcp1: #7a7a66; --pcp2: #9b8eb4; --pcp3: #a8925e; --pcp4: #b7a38f; --pcp5: #6d8375; --pcp6: #5f8b8a; --pcp7: #6b739c; --pcp8: #a3828f; --pcp9: #6e7076;
   --pcb0: #D2DE96; --pcb1: oklch(0.82 0.033 107); --pcb2: oklch(0.82 0.063 301); --pcb3: oklch(0.82 0.083 87); --pcb4: oklch(0.82 0.041 67); --pcb5: oklch(0.82 0.036 157); --pcb6: oklch(0.82 0.053 194); --pcb7: oklch(0.82 0.07 276); --pcb8: oklch(0.82 0.048 353); --pcb9: oklch(0.82 0.011 271);
   --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9);
+  /* 10: your own Color (core.js OWN), any hue (--oh) and strength (--ok), set on the window by core.js projTheme. */
+  --pcp10: oklch(0.66 calc(0.105 * var(--ok, 0)) var(--oh, 0)); --pcb10: oklch(0.82 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pc10: var(--pcp10);
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
@@ -36,7 +38,7 @@
     --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
     --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
     --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --amber: #E0A84A; --star: #E0B84A;
-    --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9);
+    --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
     --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
   }
 }
@@ -44,7 +46,7 @@
   --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
   --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
   --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
-  --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9);
+  --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
   --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
 }
 
@@ -609,8 +611,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
    cards, the header) the brighter set reads better in light mode; in dark mode the sets are the same. */
 .pdot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); vertical-align: 0; }
 .pdot.live { animation: pulse 1.4s ease-in-out infinite; }
-.working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); --pc8: var(--pcb8); --pc9: var(--pcb9); }
-.working.on, .pj-pop, .pc-pop, .pj-pinned.hot { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9); }
+.working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); --pc8: var(--pcb8); --pc9: var(--pcb9); --pc10: var(--pcb10); }
+.working.on, .pj-pop, .pc-pop, .pj-pinned.hot { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9); --pc10: var(--pcp10); }
 .pc-wrap { position: relative; display: inline-flex; flex: none; }
 .pdot-btn { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; margin: 0 -4px 0 -6px; }
 .pdot-btn:hover, .pdot-btn.on { background: color-mix(in srgb, currentColor 12%, transparent); }
@@ -897,6 +899,13 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .nf-hint.wrap { white-space: normal; overflow: visible; }
 .set-group { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 2px; }
 .set-row { display: flex; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.set-sw { flex: none; display: flex; flex-direction: column; gap: 9px; }
+/* Your own Color, under the ten: a rainbow until it's picked, then its color; pressed, the Mac's color picker. */
+.pc-own { display: flex; align-items: center; gap: 9px; }
+.pc-sw.own:not(.on) { background: conic-gradient(oklch(0.7 0.12 0), oklch(0.7 0.12 90), oklch(0.7 0.12 180), oklch(0.7 0.12 270), oklch(0.7 0.12 360)); }
+.pc-own-l { font-size: 12px; color: var(--muted); }
+/* The color picker's input (core.js pickOwnColor): kept out of sight, it only opens the Mac's picker. */
+.own-input { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .set-text { flex: 1; min-width: 0; }
 .set-title { font-weight: 650; }
 .set-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
