@@ -434,6 +434,14 @@ impl Sessions {
         self.0.get(session_id).map(|s| s.thread.clone()).unwrap_or_default()
     }
 
+    /// Its latest reply in the thread is `text` (a message of yours may sit after it). A turn that ends a
+    /// second time (a Stop hook sent the agent back to work, and it stopped again) reports the same answer,
+    /// noted at its first end already.
+    pub fn last_reply_is(&self, session_id: &str, text: &str) -> bool {
+        let head = |t: &str| t.trim().trim_end_matches('…').chars().take(2000).collect::<String>();
+        self.0.get(session_id).and_then(|s| s.thread.iter().rev().find(|e| e.role == "agent")).is_some_and(|e| !e.text.trim().is_empty() && head(&e.text) == head(text))
+    }
+
     /// When its turn started, while it's at it: working, or waiting on its background agents (it works
     /// again when they report, the same turn to you). The first bar segment since it last waited on you.
     pub fn turn_started(&self, session_id: &str) -> Option<u64> {

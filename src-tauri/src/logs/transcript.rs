@@ -336,7 +336,6 @@ pub fn queued_from_harness(path: &str, text: &str) -> bool {
         })
 }
 
-/// Text only Claude Code itself sends: a background task's `<task-notification>`.
 /// How Claude Code records a Stop hook's "keep going" in the transcript: a user entry starting with this.
 pub const STOP_HOOK_MARK: &str = "Stop hook feedback:";
 
@@ -360,8 +359,12 @@ pub fn yours_mid_turn(e: &Value) -> bool {
         && a("prompt").is_some_and(|p| !p.trim().is_empty() && !p.contains("<task-notification>"))
 }
 
+/// Text only Claude Code itself sends, written as a "user" entry but never yours: a background task's
+/// `<task-notification>`, and a Stop hook's feedback (STOP_HOOK_MARK). The chat never shows either as
+/// your message, whatever flag (`isMeta`) Claude Code puts on the entry.
 pub fn harness_text(text: &str) -> bool {
-    text.trim_start().starts_with("<task-notification>")
+    let t = text.trim_start();
+    t.starts_with("<task-notification>") || t.starts_with(STOP_HOOK_MARK)
 }
 
 /// A teammate's message to its lead (or its notice), as Claude Code writes it into the lead's log: from it, not
@@ -454,8 +457,8 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
             continue;
         }
         let text: String = content_blocks(&e).iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n\n");
-        // Slash-command plumbing, notices and "[Request interrupted…]" aren't conversation.
-        if text.trim().is_empty() || text.starts_with('<') || text.starts_with("[Request interrupted") {
+        // Slash-command plumbing, notices, a Stop hook's feedback and "[Request interrupted…]" aren't conversation.
+        if text.trim().is_empty() || text.starts_with('<') || text.starts_with("[Request interrupted") || harness_text(&text) {
             continue;
         }
         match e.get("type").and_then(Value::as_str) {
@@ -752,8 +755,8 @@ pub fn recent_context(path: &str, n: usize) -> Vec<Ctx> {
                 continue;
             }
             let t = b.get("text").and_then(Value::as_str).unwrap_or("");
-            // Slash-command plumbing and system reminders aren't conversation.
-            if t.trim().is_empty() || t.starts_with('<') {
+            // Slash-command plumbing, system reminders and a Stop hook's feedback aren't conversation.
+            if t.trim().is_empty() || t.starts_with('<') || harness_text(t) {
                 continue;
             }
             out.push(Ctx { role: role.into(), text: clip(t) });
@@ -1228,5 +1231,28 @@ mod tests {
         assert!(harness_text("<task-notification>\n<task-id>ba2xv14y3</task-id>\n<status>failed</status>\n</task-notification>"));
         assert!(harness_text("  \n<task-notification><task-id>x</task-id></task-notification>"));
         assert!(!harness_text("why is <task-notification> showing in Cue?"));
+    }
+
+    #[test]
+    fn a_stop_hook_s_feedback_is_the_harness_s_not_yours_even_without_its_meta_flag() {
+        assert!(harness_text("Stop hook feedback:\nUnaudited edits this turn. Read rules-check.md and answer every line."));
+        assert!(!harness_text("the Stop hook feedback: showed in the chat"));
+        // As Claude Code 2.1.310 writes it (a plain string, `isMeta`), and the same entry with the flag gone.
+        let at = |m: u32| format!("2026-10-26T01:{m:02}:00.000Z");
+        let hook = |meta: bool| json!({"type":"user","isMeta":meta,"promptId":"p1","timestamp":at(2),"message":{"role":"user","content":"Stop hook feedback:\nUnaudited edits this turn. Read rules-check.md and answer every line."}});
+        for meta in [true, false] {
+            let p = write_transcript(&[
+                json!({"type":"user","promptId":"p1","timestamp":at(1),"message":{"content":"make the chart taller"}}),
+                json!({"type":"assistant","timestamp":at(2),"message":{"content":[{"type":"text","text":"Done. The chart is taller."}]}}),
+                hook(meta),
+                json!({"type":"assistant","timestamp":at(3),"message":{"content":[{"type":"text","text":"1. Shape: one file.\n2. N/A."}]}}),
+                json!({"type":"user","timestamp":at(5),"message":{"content":"thanks"}}),
+            ]);
+            let got = conversation_before(&p.0, iso_ms(&at(9)).unwrap(), 10).iter().map(|e| format!("{}: {}", e["role"].as_str().unwrap(), e["text"].as_str().unwrap())).collect::<Vec<_>>();
+            assert_eq!(got, vec!["you: make the chart taller", "agent: 1. Shape: one file.\n2. N/A.", "you: thanks"], "isMeta {meta}: the hook's text is no message of yours");
+            let ctx = recent_context(&p.0, 10).iter().map(|c| format!("{}: {}", c.role, c.text)).collect::<Vec<_>>();
+            assert!(!ctx.iter().any(|c| c.contains("Stop hook feedback")), "isMeta {meta}: {ctx:?}");
+            assert_eq!(ctx.iter().filter(|c| c.starts_with("user: ")).count(), 2, "isMeta {meta}: {ctx:?}");
+        }
     }
 }

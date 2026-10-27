@@ -143,6 +143,10 @@ impl Hub {
             }
         }
         let (message, followup) = split_turn(message, &turn, &crate::config::turn_mode());
+        // A Stop hook sent it back to work and it stopped again: this turn ended once before, and Cue noted
+        // its answer then. The same answer isn't a second reply (note's own folding misses it when a message
+        // of yours, sent as the turn seemed over, sits between).
+        let ended_before = turn.iter().any(|p| p.hooked);
         // What its teammates said to it since the chat last read them: those come mid-turn with no prompt
         // hook, so only its log has them. They go in above the reply that answers them.
         let heard = if event == "stopped" { self.teammates_heard(&origin) } else { vec![] };
@@ -167,7 +171,9 @@ impl Hub {
                 st.sessions.set_helpers(&sid, helpers);
                 st.sessions.set_background(&sid, background);
                 st.sessions.note_teammates(&sid, &heard, crate::config::context_keep());
-                st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
+                if !(ended_before && st.sessions.last_reply_is(&sid, &message)) {
+                    st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
+                }
                 if let Some(q) = &unread {
                     st.sessions.below_reply(&sid, q);
                 }
@@ -186,7 +192,7 @@ impl Hub {
                 } else {
                     vec![]
                 };
-                let (id, title, watched, took) = {
+                let (id, title, watched, took, again) = {
                     let mut st = self.st();
                     // A session with an open decision is already in the queue — don't double-list it. (Its turn can
                     // end with one still open: a background agent of it asking, after its own turn is over.) A "Tell
@@ -205,7 +211,10 @@ impl Hub {
                     }
                     st.sessions.note_teammates(&sid, &heard, crate::config::context_keep());
                     let thread = st.sessions.thread(&sid);
-                    st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
+                    let again = ended_before && st.sessions.last_reply_is(&sid, &message);
+                    if !again {
+                        st.sessions.note(&sid, "agent", &message, crate::config::context_keep());
+                    }
                     if let Some(q) = &unread {
                         st.sessions.below_reply(&sid, q);
                     }
@@ -217,7 +226,7 @@ impl Hub {
                     let t = notify_title(&it);
                     let id = it.id.clone();
                     st.items.push(it);
-                    (id, t, watched, took)
+                    (id, t, watched, took, again)
                 };
                 // Its card lands with its cache and context numbers, not at the next tick.
                 self.cache_tick();
@@ -242,7 +251,8 @@ impl Hub {
                 if watched {
                     let took = took.map(|ms| format!("Took {} · ", took_words(ms))).unwrap_or_default();
                     self.notify_watched(&id, &title.0, &format!("{took}you asked to be told\n{}", title.1), if full.is_some() { "turn-full" } else { "turn" });
-                } else if crate::config::flag("/notify/finished") && !later && !held && !noted {
+                // The same answer at its turn's second end (a Stop hook sent it back): told once already.
+                } else if crate::config::flag("/notify/finished") && !later && !held && !noted && !again {
                     match full {
                         Some(p) => self.notify(&id, &format!("{} · context {p}%", title.0), &title.1, "turn-full"),
                         None => self.notify(&id, &title.0, &title.1, "turn"),
@@ -890,6 +900,31 @@ mod tests {
         assert!(!vouched(&hub), "nor is a teammate's message");
         hub.event(origin.clone(), "active", "run the tests".into(), vec![], "");
         assert!(vouched(&hub), "a prompt that could be yours does");
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A Stop hook that blocks the turn's end makes the agent write once more and stop again: the second
+    /// Stop reports the same answer. Noted at the first end, it isn't noted again, even with a message of
+    /// yours (sent as the turn seemed over) between; a new turn's same words are a reply of their own.
+    #[test]
+    fn a_turns_second_end_after_a_stop_hook_doesnt_note_its_answer_again() {
+        let dir = std::env::temp_dir().join(format!("cue-twice-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let o = Origin { session_id: "t2".into(), harness: "claude".into(), ..Default::default() };
+        let part = |text: &str, hooked: bool| TurnPart { text: text.into(), hooked };
+        let replies = |h: &Hub| h.st().sessions.thread("t2").into_iter().filter(|e| e.role == "agent").map(|e| e.text).collect::<Vec<_>>();
+        hub.event(o.clone(), "stopped", "Done. Charts are taller.".into(), vec![part("Done. Charts are taller.", false)], "");
+        hub.st().sessions.note("t2", "you", "Also call it wrong.", 50);
+        hub.event(o.clone(), "stopped", "1. Shape: …".into(), vec![part("Done. Charts are taller.", false), part("1. Shape: …", true)], "");
+        assert_eq!(replies(&hub), vec!["Done. Charts are taller."], "the second Stop's answer is the first's");
+        hub.event(o.clone(), "active", "Also call it wrong.".into(), vec![], "");
+        hub.event(o.clone(), "stopped", "Done. Charts are taller.".into(), vec![part("Done. Charts are taller.", false)], "");
+        assert_eq!(replies(&hub).len(), 2, "a new turn's reply with the same words is its own");
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
