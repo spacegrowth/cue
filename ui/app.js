@@ -292,6 +292,9 @@ function bindMain() {
     }
     const bw = t.closest("[data-act=btw], [data-act=btw-close]");
     if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) return openBtw(bw.dataset.sid); btwFor = null; return renderMain(); }
+    // Catch me up above the box: asks once; Got it folds it away.
+    const cu = t.closest("[data-act=catch-up], [data-act=catch-up-got]");
+    if (cu) return cu.dataset.act === "catch-up" ? askCatchUp(cu.dataset.sid) : gotCatchUp(cu.dataset.sid);
     const wt = t.closest("[data-act=watch]");
     if (wt) {
       const on = wt.dataset.on === "1", s = sessionOf(wt.dataset.sid);

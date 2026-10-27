@@ -20,6 +20,24 @@ impl Hub {
         self.st().sessions.origin(session_id)
     }
 
+    /// "Catch me up" on a session, for a window or an add-on that last saw its chat at `seen_ms`: from the
+    /// messages after then (Cue's log, with the live thread for what isn't saved yet). Any agent, any machine.
+    pub fn catch_up(&self, session_id: &str, seen_ms: u64) -> Result<crate::btw::CatchUp, String> {
+        let mut log: Vec<Exchange> = crate::db::session_log_page(session_id, i64::MAX as u64, 200).into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect();
+        for e in self.st().sessions.thread(session_id) {
+            if !log.iter().any(|x| x.at_ms == e.at_ms && x.role == e.role) {
+                log.push(e);
+            }
+        }
+        log.sort_by_key(|e| e.at_ms);
+        let (before, since): (Vec<Exchange>, Vec<Exchange>) = log.into_iter().partition(|e| e.at_ms <= seen_ms);
+        if !since.iter().any(|e| e.role == "agent") {
+            return Err("nothing new since you looked".into());
+        }
+        let seen = before.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str());
+        crate::btw::catch_up(seen, &since)
+    }
+
     /// Every live session as it was when Cue last ran (each with its name): what a reboot may
     /// have left without a tmux pane.
     pub fn saved_sessions(&self) -> Vec<crate::sessions::Session> {

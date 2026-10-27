@@ -31,11 +31,79 @@ pub fn ask_about(origin: &crate::model::Origin, question: &str) -> Result<String
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start ssh: {e}"))?;
-    let out = asked(child, question)?;
+    let out = asked(child, &side(question))?;
     if String::from_utf8_lossy(&out.stdout).trim() == "NODIR" {
         return Err(format!("{} isn't a folder on {}", origin.cwd, m.name));
     }
     reply(&out)
+}
+
+/// "Catch me up": what happened since you last looked, from only those messages (`since`, oldest first), read
+/// by a small model with no conversation behind it. A few cents however long the session is: forking the whole
+/// conversation would re-read all of it, at the session's own model's price, its cache long gone by then.
+/// `seen`: the opening of the last reply you read, so it knows where you left off. Asked only when you click (or say) it.
+pub fn catch_up(seen: Option<&str>, since: &[crate::model::Exchange]) -> Result<CatchUp, String> {
+    run(CATCH_UP_LINE, &std::env::temp_dir(), &catch_up_prompt(seen, since)).map(|a| CatchUp::from_answer(&a))
+}
+
+/// The model that catches you up, with no tools, no hooks and nothing saved. Its own system prompt, so it reads
+/// only the messages (Claude Code's would have it act as an agent in whatever folder it's in).
+const CATCH_UP_LINE: &str = r#"exec claude -p --model haiku --no-session-persistence --tools "" --settings '{"disableAllHooks":true}' --system-prompt "You summarize a coding agent's messages for its owner. Use only the messages given." --output-format json"#;
+/// The most of the messages it reads: the newest ones, each cut to MSG_CHARS.
+const SINCE_CHARS: usize = 60_000;
+const MSG_CHARS: usize = 4_000;
+
+fn catch_up_prompt(seen: Option<&str>, since: &[crate::model::Exchange]) -> String {
+    let who = |r: &str| match r { "agent" => "Agent", "you" => "Me", _ => "Another session" };
+    let mut msgs: Vec<String> = vec![];
+    let mut total = 0;
+    for e in since.iter().rev() {
+        let m = format!("{}: {}", who(&e.role), crate::logs::transcript::cut(e.text.trim(), MSG_CHARS));
+        if total + m.len() > SINCE_CHARS && !msgs.is_empty() {
+            msgs.push("(earlier messages left out)".into());
+            break;
+        }
+        total += m.len();
+        msgs.push(m);
+    }
+    msgs.reverse();
+    let from = match seen.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) => format!("The last reply of the agent's I read began: \"{}\".\n\n", s.chars().take(160).collect::<String>()),
+        None => String::new(),
+    };
+    format!(
+        "I've been away from a coding agent's session. {from}Here is what was said since, oldest first:\n\n{}\n\n\
+         Catch me up. Answer with 2 to 4 short lines, each starting \"• \", on what the agent did and where it stands, then one line \
+         starting \"Needs you: \" with what it needs from me, or \"Needs you: nothing\". Plain words for someone listening: no code, no file paths.",
+        msgs.join("\n\n")
+    )
+}
+
+/// A catch-up as it's shown: what it did, a line each, and what it needs from you (none: nothing).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct CatchUp {
+    pub points: Vec<String>,
+    pub needs: Option<String>,
+}
+
+impl CatchUp {
+    /// Its "• " lines and its "Needs you:" line; an answer in another shape is kept whole, as one point.
+    fn from_answer(a: &str) -> CatchUp {
+        let mut points = vec![];
+        let mut needs = None;
+        for l in a.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            if let Some(n) = l.trim_start_matches(['*', '_']).strip_prefix("Needs you:") {
+                let n = n.trim_matches(|c: char| c == '*' || c == '_' || c.is_whitespace());
+                needs = (!n.is_empty() && !n.trim_end_matches('.').eq_ignore_ascii_case("nothing")).then(|| n.to_string());
+            } else if let Some(p) = l.strip_prefix("• ").or_else(|| l.strip_prefix("- ")).or_else(|| l.strip_prefix("* ")) {
+                points.push(p.trim().to_string());
+            }
+        }
+        if points.is_empty() && needs.is_none() && !a.trim().is_empty() {
+            points.push(a.trim().to_string());
+        }
+        CatchUp { points, needs }
+    }
 }
 
 /// The Claude Code line that answers: the session resumed as a throwaway fork, no tools, no hooks.
@@ -55,23 +123,31 @@ fn claude_line(session_id: &str, model: Option<&str>) -> Result<String, String> 
 /// Ask `question` about the Claude Code session `session_id` (started in `cwd`), with its own model when
 /// known. The answer, or why there isn't one.
 pub fn ask(session_id: &str, cwd: &str, model: Option<&str>, question: &str) -> Result<String, String> {
-    let line = claude_line(session_id, model)?;
-    // Through your login shell, so `claude` is found as in your terminal; the question on stdin (no quoting).
+    run(&claude_line(session_id, model)?, std::path::Path::new(cwd), &side(question))
+}
+
+/// Run a Claude Code `line` in `cwd` through your login shell, so `claude` is found as in your terminal, with
+/// `prompt` on its stdin (no quoting). The answer, or why there isn't one.
+fn run(line: &str, cwd: &std::path::Path, prompt: &str) -> Result<String, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     let child = Command::new(shell)
-        .args(["-lic", &line])
+        .args(["-lic", line])
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start Claude Code: {e}"))?;
-    reply(&asked(child, question)?)
+    reply(&asked(child, prompt)?)
 }
 
-/// Hand the running Claude Code the question on its stdin and wait for it, never longer than TIMEOUT_SECS.
-fn asked(mut child: std::process::Child, question: &str) -> Result<std::process::Output, String> {
-    let prompt = format!("(A side question while you work. Answer it briefly from what you know of this conversation; don't start any work.)\n\n{question}");
+/// A side question as the forked session reads it.
+fn side(question: &str) -> String {
+    format!("(A side question while you work. Answer it briefly from what you know of this conversation; don't start any work.)\n\n{question}")
+}
+
+/// Hand the running Claude Code its prompt on its stdin and wait for it, never longer than TIMEOUT_SECS.
+fn asked(mut child: std::process::Child, prompt: &str) -> Result<std::process::Output, String> {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(prompt.as_bytes());
     }
@@ -130,6 +206,35 @@ mod tests {
             let line = claude_line("abc-123", Some(bad)).unwrap();
             assert!(!line.contains("--model"), "{bad}: {line}");
         }
+    }
+
+    #[test]
+    fn a_catch_up_is_its_points_and_what_it_needs() {
+        let c = CatchUp::from_answer("• Built the tabs.\n- Fixed Wrong line.\n\n**Needs you:** say install near the Mac.");
+        assert_eq!(c, CatchUp { points: vec!["Built the tabs.".into(), "Fixed Wrong line.".into()], needs: Some("say install near the Mac.".into()) });
+        assert_eq!(CatchUp::from_answer("• Merged it.\nNeeds you: nothing.").needs, None, "nothing needed");
+        assert_eq!(CatchUp::from_answer("It merged and pushed.").points, vec!["It merged and pushed.".to_string()], "another shape: kept whole");
+    }
+
+    fn ex(role: &str, text: &str) -> crate::model::Exchange {
+        serde_json::from_value(serde_json::json!({ "role": role, "text": text, "at_ms": 1 })).unwrap()
+    }
+
+    #[test]
+    fn the_catch_up_reads_only_what_came_after_the_reply_you_read() {
+        let p = catch_up_prompt(Some("I've turned Calls into tabs"), &[ex("you", "ship it"), ex("agent", "Shipped.")]);
+        assert!(p.contains("began: \"I've turned Calls into tabs\""), "{p}");
+        assert!(p.contains("Me: ship it\n\nAgent: Shipped."), "{p}");
+        assert!(!catch_up_prompt(None, &[ex("agent", "Done.")]).contains("began:"));
+    }
+
+    #[test]
+    fn a_long_stretch_keeps_its_newest_messages() {
+        let big = "x".repeat(MSG_CHARS);
+        let since: Vec<_> = (0..40).map(|_| ex("agent", &big)).chain([ex("agent", "the newest")]).collect();
+        let p = catch_up_prompt(None, &since);
+        assert!(p.contains("(earlier messages left out)") && p.contains("Agent: the newest"), "kept the end");
+        assert!(p.len() < SINCE_CHARS + MSG_CHARS + 1_000, "{}", p.len());
     }
 
     #[test]

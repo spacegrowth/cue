@@ -137,6 +137,74 @@ function btwPanel(sid) {
     <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="Ask without interrupting it…  ↵" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
     <div class="btw-body">${rows || `<div class="dim btw-empty">A copy of this conversation answers, so the session never sees it. Each question costs about one turn.</div>`}</div></div>`;
 }
+// ---------- Catch me up: what it did while you weren't looking, above its box ----------
+// Cue notes when this window last showed each session's chat (kept across restarts). Open one you last looked at
+// 15 minutes or more ago, with replies since, and a bar takes the insights' place above the box: how long, what
+// came in the meantime, and Catch me up. Nothing is asked until you click: then a small model reads only those
+// messages (btw.rs catch_up) and the bar fills with the answer, Listen and Got it. Got it folds it away, and the
+// insights come back, until you've been away again.
+const LOOKED = "cue.looked";
+const CATCH_UP_AFTER = 15 * 60000;
+let looked = {};   // sid -> when this window last showed its chat (while in front)
+try { looked = JSON.parse(localStorage.getItem(LOOKED) || "{}") || {}; } catch {}
+let lookedSid = null;   // the session whose chat the last draw showed
+let catchUp = null;     // this opening's strip: { sid, since, asking, got, err, gone }
+/** The chat for `sid` is on screen: the first draw after opening it sets up its strip from when it was last
+ *  looked at; every draw while the window is in front notes the time. Hidden, the window isn't being looked at. */
+function noteLooked(sid) {
+  if (!sid || document.hidden) return;
+  if (sid !== lookedSid) { lookedSid = sid; catchUp = { sid, since: looked[sid] || 0, openedAt: now() }; }
+  looked[sid] = now();
+  const keys = Object.keys(looked);
+  if (keys.length > 50) for (const k of keys.sort((a, b) => looked[a] - looked[b]).slice(0, keys.length - 50)) delete looked[k];
+  try { localStorage.setItem(LOOKED, JSON.stringify(looked)); } catch {}
+}
+// Back in front: the chat open counts as opened again (looked at last when the window went away).
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { lookedSid = null; renderMain(); } });
+/** The bar for the open chat, or "": only for a session you last looked at 15 minutes or more ago that had
+ *  replied by the time you opened it. What comes in while it's open isn't "while you were away", and once you
+ *  write to it you're caught up: the bar goes. */
+function catchUpBar(sid, it, s) {
+  const c = catchUp;
+  if (!c || c.sid !== sid || c.gone || !c.since) return "";
+  const ex = conversation(it, s);
+  if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return "";
+  const away = (at) => at > c.since && at <= c.openedAt;
+  const replies = ex.filter((e) => e.role === "agent" && away(e.at_ms)).length;
+  if (!replies || c.openedAt - c.since < CATCH_UP_AFTER) return "";
+  // What came in the meantime, from what Cue has already: its replies, and the steps read for the chat.
+  const steps = (stepFeeds.get(sid)?.turns || []).flatMap((t) => t.items).filter((x) => x.t === "step" && away(x.at_ms));
+  const commands = steps.filter((x) => x.kind === "run").length, files = new Set(steps.filter((x) => x.kind === "edit").map((x) => x.subject)).size;
+  const n = (k, one, many) => (k ? `${k} ${k === 1 ? one : many}` : "");
+  const counts = [n(replies, "reply", "replies"), n(commands, "command", "commands"), n(files, "file", "files")].filter(Boolean).join(" · ");
+  const tag = `<span class="cu-tag mono">${esc(ago(c.since).toUpperCase())} SINCE YOU LOOKED</span>`;
+  if (!c.got && !c.err) {
+    const act = c.asking ? `<span class="cu-busy"><span class="dot-live"></span>Catching up…</span>` : `<button class="btn primary" data-act="catch-up" data-sid="${esc(sid)}">Catch me up</button>`;
+    return `<div class="cu-strip" data-key="catchup"><div class="cu-row">${tag}<span class="dim">${esc(counts)}</span><span class="grow"></span>${act}</div></div>`;
+  }
+  const key = `${sid}:catchup`, on = listening?.key === key;
+  const listen = c.got ? `<button class="btn ${on ? "on" : ""}" data-listen="${esc(key)}">${!on ? SPEAKER_ICON + "Listen" : listening.playing ? PAUSE_ICON + "Pause" : PLAY_ICON + "Resume"}</button>` : "";
+  const body = c.err ? `<div class="cu-err">Couldn't catch you up: ${esc(c.err)}</div>`
+    : `<div class="msg cu-msg"><ul>${c.got.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>${c.got.needs ? `<p class="cu-need"><b>Needs you: ${esc(c.got.needs)}</b></p>` : ""}</div>`;
+  return `<div class="cu-strip" data-key="catchup"><div class="cu-row">${tag}<span class="grow"></span><span class="dim">${esc(counts)}</span></div>${body}
+    <div class="cu-row cu-acts"><span class="grow"></span>${listen}<button class="btn" data-act="catch-up-got" data-sid="${esc(sid)}">Got it</button></div></div>`;
+}
+/** The click: asks once (a second click does nothing while it's on its way); the answer, or why there's none, fills the strip. */
+async function askCatchUp(sid) {
+  const c = catchUp;
+  if (!c || c.sid !== sid || c.asking || c.got) return;
+  c.asking = true;
+  renderMain();
+  try { const got = await invoke("catch_up", { sessionId: sid, seenMs: c.since }); if (catchUp === c) c.got = got; }
+  catch (x) { if (catchUp === c) c.err = String(x); }
+  if (catchUp === c) { c.asking = false; renderMain(); }
+}
+/** Got it: the strip goes, for this look at the chat (if it was being read out, that stops). */
+function gotCatchUp(sid) {
+  if (catchUp?.sid === sid) catchUp.gone = true;
+  if (listening?.key === `${sid}:catchup`) listenStop();
+  renderMain();
+}
 // ---------- the built-in terminal: a session's real screen, docked above its reply box (sessions in tmux) ----------
 /** Closed: one strip showing its screen's last line, amber while it waits on something only the terminal
  *  can answer. Open: xterm.js draws the real terminal, streamed from a tmux client of Cue's own (term.rs),
@@ -1167,7 +1235,7 @@ const LISTEN_BLOCKS = "p, li, h1, h2, h3, h4, h5, h6, pre, tr, blockquote";
 /** The reply `key` as shown: in the reader when it's open on it, else its bubble in the chat. */
 function listenRoot(key) {
   return [...document.querySelectorAll(".rd[data-rdkey] .msg")].find((m) => m.closest(".rd").dataset.rdkey === key)
-    || [...document.querySelectorAll("[data-listen]")].find((b) => b.dataset.listen === key)?.closest(".cv-agent")?.querySelector(".msg") || null;
+    || [...document.querySelectorAll("[data-listen]")].find((b) => b.dataset.listen === key)?.closest(".cv-agent, .cu-strip")?.querySelector(".msg") || null;
 }
 /** What it reads from: the reply on screen, else (its session not open) a copy of it as it was last shown. */
 function listenSource(l) {
@@ -1708,9 +1776,9 @@ function chatHtml(it, s, harness, paged = false) {
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
   // A kept message that couldn't be sent says so (and why), rather than promising it goes when the turn ends.
   const heldWhy = s?.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
-  return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
   if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, qPhase(), true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
   if (s?.queued) rows.push(`<div class="cv-you queued" data-key="queued">${yourBubble(s.queued, `${s.session_id}:queued`, qPhase(), true)}${thumbs(s.queued.images)}<div class="cv-meta">Queued · it reads this when it finishes the current step · <button class="q-now" data-act="send-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
+  return rows.length ? (paged && sid ? keyed(olderRow(sid, harness), "older") : "") + rows.join("") : ran.length ? ran.map((r) => r.html).join("") : `<div class="dim cv-empty" data-key="empty">No messages yet in this session.</div>`;
 }
 /** In the chat where a restart (after an MCP change) ended: back, with which servers and how long it took,
  *  or why it didn't finish. The latest one also says how each server did, once Claude Code has said
@@ -2070,6 +2138,7 @@ function activePane() {
   const harness = it?.harness || s?.harness;
   const project = it?.project || s?.project;
   const sid = s?.session_id || it?.session_id;
+  noteLooked(sid);
   // A finished turn that changed files: the pill says what changed ("4 files · +98 −9"; hover for which), and Commit sits beside it.
   const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
   const turnWord = ch ? `${ch.files.length} file${ch.files.length === 1 ? "" : "s"} · +${ch.add} −${ch.del}` : it?.interrupted ? "interrupted" : "your turn";
@@ -2130,7 +2199,7 @@ function activePane() {
     ${sessTabs(sid)}
     ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${actSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
-    ${sid && s && !full ? handoffInsight(sid, s) : ""}${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${sid && s && !full ? catchUpBar(sid, it, s) || handoffInsight(sid, s) : ""}${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 // ---------- MCP servers: ⋯ → MCP servers… ----------
 // Every server Claude Code knows for the session's folder (mcp_for), each with a checkbox: checked =
