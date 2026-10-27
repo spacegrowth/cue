@@ -32,11 +32,12 @@ public enum VoiceText {
   }
 
   /// An answer as it's read out, with whose it is first when that's needed to know: it's from another session
-  /// than the one read last, or more are waiting after it. `name` is the island's ("cue · voice"): its project is said.
+  /// than the one read last, or more are waiting after it. `name` is the island's ("cue · voice"): its session's
+  /// name is said (its project's, when the session has none of its own).
   public static func spoken(_ answer: String, name: String, sid: String, lastSid: String?, more: Int) -> String {
-    let project = name.components(separatedBy: " · ").first ?? name
-    guard !project.isEmpty, more > 0 || (lastSid != nil && lastSid != sid) else { return answer }
-    return "From \(project). \(answer)"
+    let session = name.components(separatedBy: " · ").last ?? name
+    guard !session.isEmpty, more > 0 || (lastSid != nil && lastSid != sid) else { return answer }
+    return "From \(session). \(answer)"
   }
 
   /// How many more answers wait after this one, as the island's label ends: " · 2 MORE", or nothing.

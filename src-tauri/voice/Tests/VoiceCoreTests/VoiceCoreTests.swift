@@ -191,7 +191,7 @@ final class VoiceTurnsTests: XCTestCase {
   func testWhoseAnswerIsSaidWhenItIsNeeded() {
     XCTAssertEqual(VoiceText.spoken("Done.", name: "cue · voice", sid: "a", lastSid: nil, more: 0), "Done.", "the only one")
     XCTAssertEqual(VoiceText.spoken("Done.", name: "cue · voice", sid: "a", lastSid: "a", more: 0), "Done.", "same session again")
-    XCTAssertEqual(VoiceText.spoken("Done.", name: "cue · voice", sid: "b", lastSid: "a", more: 0), "From cue. Done.", "another session")
+    XCTAssertEqual(VoiceText.spoken("Done.", name: "cue · voice", sid: "b", lastSid: "a", more: 0), "From voice. Done.", "another session: its name")
     XCTAssertEqual(VoiceText.spoken("Done.", name: "web", sid: "a", lastSid: nil, more: 1), "From web. Done.", "more waiting")
     XCTAssertEqual(VoiceText.more(0), "")
     XCTAssertEqual(VoiceText.more(2), " · 2 MORE")
