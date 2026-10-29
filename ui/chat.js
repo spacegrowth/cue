@@ -1879,9 +1879,7 @@ function projMoveList(sid) {
 function submitNewProj(sid) {
   const name = draft(`newproj:${sid}`).text.trim();
   if (!name) return;
-  const pr = state.settings?.project || {};
-  const taken = [folderProject(sid), ...projectsKnown().map(([p]) => p), ...Object.values(pr.folders || {}), ...Object.values(pr.moves || {})]
-    .find((p) => p && (p.toLowerCase() === name.toLowerCase() || projLabel(p).toLowerCase() === name.toLowerCase()));
+  const taken = takenProject(name, [folderProject(sid)]);
   if (taken) { newProjNote = `${projLabel(taken)} is already a project: pick it above`; return renderMain(); }
   draft(`newproj:${sid}`).text = "";
   newProjFor = null; newProjNote = ""; moreFor = handoffArm = null; movingProj = false;

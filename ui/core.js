@@ -307,6 +307,36 @@ function moveToProject(sid, project) {
   setSetting("project.moves", p.moves);
   toast(project && project !== own ? `Moved to ${projLabel(project)}` : `Back in ${projLabel(own)}`);
 }
+/** A project in the list already called this (its name or the name you gave it), so a new one never quietly
+ *  joins it. One that's gone from the list is free: naming it again brings it back, its history with it. */
+function takenProject(name, also = []) {
+  const low = name.toLowerCase();
+  return [...also, ...projectsKnown().map(([p]) => p)].find((p) => p && (p.toLowerCase() === low || projLabel(p).toLowerCase() === low));
+}
+/** Projects you made in the projects list (+ New project…), kept while they're still empty. */
+const madeList = () => (Array.isArray(state.settings?.project?.made) ? state.settings.project.made : []);
+/** Projects you made (+ New project…, Move to project, a folder put in one), not a repository's or folder's own:
+ *  only these can be removed, since an own one would come back with its next session. */
+function madeProject(p) {
+  const pr = state.settings?.project || {};
+  if (![...madeList(), ...Object.values(pr.moves || {}), ...Object.values(pr.folders || {})].includes(p)) return false;
+  return ![...state.sessions, ...(state.parked || [])].some((r) => folderProject(r.session_id) === p);
+}
+/** Remove a project you made: its sessions (and folders) go back to their own projects; the window, if it showed
+ *  it, shows all of them again. */
+function removeProject(p) {
+  const pr = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
+  const keep = (m) => Object.fromEntries(Object.entries(m || {}).filter(([, v]) => v !== p));
+  pr.moves = keep(pr.moves); pr.folders = keep(pr.folders); pr.made = madeList().filter((m) => m !== p);
+  for (const r of [...state.sessions, ...state.items, ...state.history, ...(state.parked || [])]) {
+    if (r.project === p) r.project = state.projects?.[r.cwd]?.own ?? r.folder_project ?? r.project;
+  }
+  setSetting("project.moves", pr.moves);
+  setSetting("project.folders", pr.folders);
+  setSetting("project.made", pr.made);
+  if (projFilter === p) { projFilter = ""; try { localStorage.setItem("cue.projFilter", ""); } catch {} }
+  toast(`Removed ${projLabel(p)}`);
+}
 /** The projects pinned beside All projects in the header (config.rs PINS_MAX), in the order pinned. */
 const PINS_MAX = 3;
 const projPins = () => (Array.isArray(state.settings?.project?.pins) ? state.settings.project.pins : []);
@@ -333,6 +363,10 @@ function setProjColor(project, idx) {
 // ---------- one project at a time: the Projects chip in the header hides every other project's cards ----------
 let projFilter = (() => { try { return localStorage.getItem("cue.projFilter") || ""; } catch { return ""; } })();
 let pjOpen = false;
+/** + New project… at the foot of the projects list: its name box is open, and what it last said back. */
+let pjNewOpen = false, pjNewNote = "";
+/** The project whose × was clicked once: it now reads Remove, and a second click removes it. */
+let pjDelArm = null;
 const inProj = (project) => !projFilter || project === projFilter;
 /** A lead no longer: one a new lead took over from, or one relay stepped down (it names it "[ex-Lead] …"). */
 const exLead = (sid) => !crewOf(sid) && (!!handoffOf(sid) || /^\[ex-Lead\]/i.test(recordOf(sid)?.name || (state.live || []).find((q) => q.session_id === sid)?.name || ""));

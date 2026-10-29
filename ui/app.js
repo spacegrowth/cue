@@ -257,7 +257,15 @@ function bindMain() {
     if (colorFor && !t.closest(".pc-wrap")) { colorFor = null; renderMain(); }
     // The Projects chip: its list, and the project it shows alone (empty: all of them).
     // Renaming a project in the list: its box takes clicks (not a pick); ✎ opens it.
-    if (t.closest(".pj-name-in")) return;
+    if (t.closest(".pj-name-in, .pj-new-in")) return;
+    const delB = t.closest("[data-pjdel]");
+    if (delB) {
+      const p = delB.dataset.pjdel;
+      if (pjDelArm === p) { pjDelArm = null; removeProject(p); } else pjDelArm = p;
+      return renderMain();
+    }
+    if (pjDelArm && t.closest(".pj-wrap")) pjDelArm = null;   // any other click in the list disarms it
+    if (t.closest("[data-pj-new]")) { pjNewOpen = true; pjNewNote = ""; draft("pjnew").text = ""; renderMain(); return document.querySelector(".pj-new-in")?.focus(); }
     const renB = t.closest("[data-pjren]");
     if (renB) {
       pjRenaming = renB.dataset.pjren;
@@ -272,7 +280,7 @@ function bindMain() {
     const pj = t.closest("[data-pj]");
     if (pj) {
       pjRenaming = null;
-      if (pj.dataset.pj === "toggle") pjOpen = !pjOpen;
+      if (pj.dataset.pj === "toggle") { pjOpen = !pjOpen; pjNewOpen = false; }
       else {
         const was = projFilter;
         projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
@@ -280,7 +288,7 @@ function bindMain() {
       }
       return renderMain();
     }
-    if (pjOpen && !t.closest(".pj-wrap")) { pjOpen = false; pjRenaming = null; renderMain(); }
+    if (pjOpen && !t.closest(".pj-wrap")) { pjOpen = pjNewOpen = false; pjRenaming = pjDelArm = null; renderMain(); }
     const mach = t.closest("[data-mach]");
     if (mach) return machAct(mach.dataset.mach, mach.dataset.name);
     const tm = t.closest("[data-act=term], [data-act=term-open], [data-act=term-card]");
@@ -757,6 +765,7 @@ function bindMain() {
     if (renaming && e.key === "Escape") { renaming = null; return renderMain(); }
     if (pjRenaming && e.key === "Escape") { pjRenaming = null; return renderMain(); }
     if (newProjFor && e.key === "Escape") { newProjFor = null; newProjNote = ""; return renderMain(); }
+    if (pjNewOpen && e.key === "Escape") { pjNewOpen = false; pjNewNote = ""; return renderMain(); }
     if ((pjOpen || colorFor) && e.key === "Escape") { pjOpen = false; colorFor = null; return renderMain(); }
     if (liveOpen && e.key === "Escape") {
       liveOpen = newOpen = false;
@@ -816,6 +825,7 @@ function bindMain() {
         if (key.startsWith("rename:")) return submitRename(key.slice(7));
         if (key.startsWith("pjname:")) return saveProjName(key.slice(7));
         if (key.startsWith("newproj:")) return submitNewProj(key.slice(8));
+        if (key === "pjnew") return submitPjNew();
         // A parked session's box: Enter resumes it with the message (Resume & send).
         if (key.startsWith("s:") && !sessionOf(key.slice(2)) && (parkedOf(key.slice(2)) || closedOf(key.slice(2)))) return draft(key).text.trim() ? wakeParked(key.slice(2), draft(key).text.trim()) : undefined;   // as its button: nothing typed, nothing sent
         if (key.startsWith("s:")) {

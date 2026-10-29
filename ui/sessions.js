@@ -131,8 +131,11 @@ let nfFolderOpen = false, nfFolderQ = "", nfFolderSel = -1;
  *  key}), read again when the folder or machine changes; the one you picked instead (null: as it is), kept
  *  for its folder when the session starts; and whether the pick list is open. */
 let nfProj = { at: "", info: null, pick: null, open: false };
+/** A project you made, picked on the Project line: the session started from this + New goes in it alone. */
+let nfNewProj = "";
 const NF_HOW = { repo: "its git repository", "repo-says": "its repository says so", put: "you put this folder in it", folder: "this folder" };
 function projLine() {
+  if (nfNewProj) return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(nfNewProj)}<b>${esc(nfNewProj)}</b><span class="nf-hint">this session only</span><button class="btn small" data-lv="proj-new-off">Change…</button></div></div>`;
   const cwd = draft("new-cwd").text.trim(), at = `${newMachine}|${cwd}`;
   // (On a machine "~" is that machine's home, which Cue only knows once a session's there.)
   if (!(newMachine ? /^\//.test(cwd) : /^[/~]/.test(cwd))) return "";
@@ -237,6 +240,7 @@ async function lvAct(act, d) {
   if (act === "new") {
     if (d.spot) { sheet = lightbox = null; liveSpot = true; }   // the header's + New: in the middle, like ⌘N
     liveOpen = newOpen = true;
+    nfNewProj = "";
     draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || machineFolders("")[0] || recentFolders()[0] || "");
     if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
     renderMain();
@@ -257,8 +261,10 @@ async function lvAct(act, d) {
   if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
   if (act === "folder") return pickFolder(d.cwd);
   if (act === "proj-open") { nfProj.open = !nfProj.open; return renderMain(); }
-  if (act === "proj-pick") { nfProj.pick = d.project; nfProj.open = false; return renderMain(); }
-  if (act === "cancel") { endDictation("new-msg"); liveOpen = newOpen = false; closeFolders(); return renderMain(); }
+  // A project you made in the projects list: this session alone goes in it (a repository's: the whole folder).
+  if (act === "proj-pick") { if (madeList().includes(d.project)) nfNewProj = d.project; else nfProj.pick = d.project; nfProj.open = false; return renderMain(); }
+  if (act === "proj-new-off") { nfNewProj = ""; return renderMain(); }
+  if (act === "cancel") { endDictation("new-msg"); liveOpen = newOpen = false; nfNewProj = ""; closeFolders(); return renderMain(); }
   if (act === "start") {
     const cwd = draft("new-cwd").text.trim();
     if (!cwd) return toast("Pick a folder first");
@@ -273,10 +279,16 @@ async function lvAct(act, d) {
       const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images });
       mcpPick.delete(mk);
       rememberFolder(newMachine, cwd);
-      // A project picked on its Project line: its folder's from now on (every session there).
+      // A project you made: this session alone, and the window goes to it. Else a project
+      // picked on its Project line: its folder's from now on (every session there).
       const i = nfProj.info;
-      if (i && nfProj.pick != null && nfProj.pick !== i.name) putFolder(i.key, nfProj.pick, i.own);
+      if (nfNewProj && r.session_id) {
+        moveToProject(r.session_id, nfNewProj);
+        projFilter = nfNewProj;
+        try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
+      } else if (i && nfProj.pick != null && nfProj.pick !== i.name) putFolder(i.key, nfProj.pick, i.own);
       nfProj = { at: "", info: null, pick: null, open: false };
+      nfNewProj = "";
       toast(r.detail);
       draft("new-msg").text = draft("new-name").text = "";   // the rest stays as you set it, for the next one
       draft("new-msg").images = [];

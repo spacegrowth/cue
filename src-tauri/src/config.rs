@@ -55,7 +55,7 @@ pub fn effective() -> Value {
         "actions": { "prompt": crate::actions::prompt(), "default": crate::actions::PROMPT },
         "steps": { "mode": c.pointer("/steps/mode").and_then(Value::as_str).unwrap_or("line") },
         // A project's dot color, by folder name: the swatch you picked (0–7); unlisted folders hash to one.
-        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})) },
+        "project": { "colors": c.pointer("/project/colors").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "all": c.pointer("/project/all").and_then(Value::as_u64).filter(|n| *n < 10), "hue": c.pointer("/project/hue").cloned().filter(own_hue), "pins": c.pointer("/project/pins").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])), "names": c.pointer("/project/names").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "moves": c.pointer("/project/moves").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "folders": c.pointer("/project/folders").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})), "made": c.pointer("/project/made").cloned().filter(Value::is_array).unwrap_or_else(|| json!([])) },
     })
 }
 
@@ -76,6 +76,23 @@ fn pins(value: &Value) -> Result<Value, String> {
         return Err(format!("at most {PINS_MAX} pinned projects"));
     }
     Ok(json!(pins))
+}
+/// Projects you made in the projects list (+ New project…), kept while empty: names, trimmed, each once.
+pub const MADE_MAX: usize = 50;
+fn made(value: &Value) -> Result<Value, String> {
+    let mut made: Vec<&str> = Vec::new();
+    for p in value.as_array().ok_or("made must be a list")?.iter().filter_map(Value::as_str).map(str::trim).filter(|p| !p.is_empty()) {
+        if p.chars().count() > 40 {
+            return Err("a project's name is 40 characters at most".into());
+        }
+        if !made.contains(&p) {
+            made.push(p);
+        }
+    }
+    if made.len() > MADE_MAX {
+        return Err(format!("at most {MADE_MAX} projects made here"));
+    }
+    Ok(json!(made))
 }
 /// The names you gave projects in Cue (project: name), shown in place of the folder's or repository's own.
 /// Each one trimmed, its spaces single, at most `NAME_MAX` characters; an empty one is dropped (the folder's
@@ -192,7 +209,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "insights.handoff", "insights.cache", "insights.queue", "insights.autocompact", "insights.delegate", "insights.ahead", "insights.skills", "actions.prompt", "voice.pick"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.handoff", "insights.cache", "insights.queue", "insights.autocompact", "insights.delegate", "insights.ahead", "insights.skills", "actions.prompt", "voice.pick"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -255,6 +272,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "project.hue" if value.is_null() || own_hue(&value) => value,
         "project.hue" => return Err("your own color is a hue (0 to 360) and a strength (0 to 1)".into()),
         "project.pins" => pins(&value)?,
+        "project.made" => made(&value)?,
         "project.names" => names(&value)?,
         "project.moves" => moves(&value)?,
         "project.folders" => folders(&value)?,
@@ -486,6 +504,14 @@ mod tests {
         for z in [0.0, 0.5, 1.2, 2.0, -1.0, f64::NAN] {
             assert_eq!(zoom_step(z), None, "{z}");
         }
+    }
+
+    #[test]
+    fn projects_made_are_trimmed_names_each_once() {
+        assert_eq!(made(&json!([" checkout ", "", "login", "checkout", 7])), Ok(json!(["checkout", "login"])));
+        assert!(made(&json!(["x".repeat(41)])).is_err());
+        assert!(made(&json!((0..=MADE_MAX).map(|n| n.to_string()).collect::<Vec<_>>())).is_err());
+        assert!(made(&json!("checkout")).is_err());
     }
 
     #[test]

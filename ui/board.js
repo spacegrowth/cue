@@ -11,7 +11,24 @@ function projectsKnown() {
   // narrowed to one. Not on the Board or Sessions: picked there, they'd show nothing.
   if (view === "history") for (const h of state.history || []) if (h.project && !m.has(h.project)) m.set(h.project, { n: 0, need: 0 });
   if (projFilter && !m.has(projFilter)) m.set(projFilter, { n: 0, need: 0 });
+  // Projects you made in the list, listed while they're still empty.
+  for (const p of madeList()) if (!m.has(p)) m.set(p, { n: 0, need: 0, made: true });
   return [...m.entries()].sort((a, b) => b[1].need - a[1].need || b[1].n - a[1].n || a[0].localeCompare(b[0]));
+}
+/** Enter in the projects list's + New project… box: the project is added, empty, and stays in the list until
+ *  you remove it. Sessions go in by ⋯ → Move to project, or by picking it on + New's Project line. */
+function submitPjNew() {
+  const name = draft("pjnew").text.trim().replace(/\s+/g, " ").slice(0, 40);
+  if (!name) return;
+  const taken = takenProject(name);
+  if (taken) { pjNewNote = `${projLabel(taken)} is already a project: pick it above`; return renderMain(); }
+  delete drafts.pjnew;
+  pjNewOpen = false; pjNewNote = "";
+  const pr = ((state.settings ||= {}).project ||= {});   // shown now; Cue's next update says the same
+  pr.made = [...madeList(), name];
+  setSetting("project.made", pr.made);
+  toast(`Added ${name}`);
+  renderMain();
 }
 function projChip() {
   const list = projectsKnown();
@@ -24,8 +41,15 @@ function projChip() {
     ? `<input class="pj-name-in" data-text="pjname:${esc(p)}" maxlength="40" placeholder="${esc(p)}" spellcheck="false" value="${esc(draft(`pjname:${p}`).text)}"/>`
     : `<span class="pj-name">${esc(projLabel(p))}${projLabel(p) !== p ? `<span class="pj-orig">${esc(p)}</span>` : ""}</span>`;
   const ren = (p) => `<button class="pj-ren" data-pjren="${esc(p)}" aria-label="Rename ${esc(projLabel(p))}">✎</button>`;
-  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}${label(p)}${actDots(p, "pj")}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : "history"}</span>${ren(p)}${pin(p)}</div>`;
-  const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project="">${projBtn(ALL_PROJ, "pj")}<span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}</div>` : "";
+  // A project you made: × removes it (it reads Remove first; the second click does it).
+  const del = (p) => !madeProject(p) ? "" : pjDelArm === p
+    ? `<button class="pj-del armed" data-pjdel="${esc(p)}">Remove</button>`
+    : `<button class="pj-del" data-pjdel="${esc(p)}" aria-label="Remove ${esc(projLabel(p))}">×</button>`;
+  const row = ([p, r]) => `<div class="pj-row ${projFilter === p ? "on" : ""}" role="button" data-pj="pick" data-project="${esc(p)}">${projBtn(p, "pj")}${label(p)}${actDots(p, "pj")}<span class="pj-n">${r.n ? `${r.n}${r.need ? ` · ${r.need} need${r.need === 1 ? "s" : ""} you` : ""}` : r.made ? "empty" : "history"}</span>${ren(p)}${del(p)}${pin(p)}</div>`;
+  const add = pjNewOpen
+    ? `<div class="pm-new"><input class="pm-new-in pj-new-in" data-text="pjnew" maxlength="40" placeholder="Name the new project" spellcheck="false" value="${esc(draft("pjnew").text)}"/>${pjNewNote ? `<div class="pm-note">${esc(pjNewNote)}</div>` : ""}</div>`
+    : `<button class="pj-row pj-add" data-pj-new="1">+ New project…</button>`;
+  const pop = pjOpen ? `<div class="pj-pop"><div class="pj-row all ${projFilter ? "" : "on"}" role="button" data-pj="pick" data-project="">${projBtn(ALL_PROJ, "pj")}<span class="pj-name">All projects</span><span class="pj-n">${total}</span></div><div class="pj-sep"></div>${list.map(row).join("")}<div class="pj-sep"></div>${add}</div>` : "";
   // A pinned project picked shows as its own chip, lit; the projects chip then reads All projects.
   const shown = projFilter && !pins.includes(projFilter) ? projFilter : "";
   // Its dot changes the color right here (the project shown, or all of them); its name opens the list.
