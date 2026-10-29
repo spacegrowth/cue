@@ -602,6 +602,8 @@ function bindMain() {
     if (cbtn) return collapseSection(cbtn.dataset.collapse);
     const obtn = t.closest("[data-open-section]");
     if (obtn) return openSection(obtn.dataset.openSection);
+    const crst = t.closest("[data-col-reset]");
+    if (crst) return resetCol(crst.dataset.colReset);
     const actEl = t.closest("[data-act]");
     const act = actEl?.dataset.act;
     if (act?.startsWith("ins-")) return insAct(act, actEl.dataset);
