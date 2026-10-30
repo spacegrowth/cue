@@ -331,6 +331,9 @@ function bindMain() {
     const mb = t.closest("[data-more]");
     if (mb) { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = newProjFor = null; movingProj = mcpPicking = false; return renderMain(); }
     if (t.closest("[data-move-ask]")) { movingProj = true; return renderMain(); }
+    // ⋯ → Fork: this conversation as a new session too, starting with nothing said.
+    const fk = t.closest(".more-menu [data-fork]");
+    if (fk) { moreFor = handoffArm = null; return forkBtw(fk.dataset.fork, null); }
     const np = t.closest("[data-new-proj]");
     if (np) { newProjFor = np.dataset.newProj; newProjNote = ""; draft(`newproj:${newProjFor}`).text = ""; renderMain(); return document.querySelector(".pm-new-in")?.focus(); }
     const mvp = t.closest("[data-move-proj]");

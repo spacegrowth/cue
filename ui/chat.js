@@ -128,25 +128,25 @@ async function askBtw(sid, q) {
   try { e.a = await invoke("btw", { sessionId: sid, question: q }); } catch (x) { e.err = String(x); }
   renderMain();
 }
-// Fork under an answer: the conversation copied into a new session that keeps going ("<name>-fork", then
-// -fork-2…), in Active beside this one, which goes on untouched. The side question and its answer are its first
-// message (the copy that answered was never saved), so it picks up from there.
-let btwForking = false;    // a fork being started
+// Fork: the conversation copied into a new session that keeps going ("<name>-fork", then -fork-2…), in Active
+// beside this one, which goes on untouched. From ⋯ it starts with nothing said; under a btw answer, that side
+// question and its answer are its first message (the copy that answered was never saved), so it picks up there.
+let btwForking = null;     // the fork being started: "menu", or the answer's index
 async function forkBtw(sid, i) {
-  const e = btwLog.get(sid)?.[i];
-  if (btwForking || e?.a == null) return;
-  btwForking = e.forking = true;
+  const e = i == null ? null : btwLog.get(sid)?.[i];
+  if (btwForking != null || (i != null && e?.a == null)) return;
+  btwForking = i ?? "menu";
   renderMain();
-  const message = `On the side I asked: ${e.q}\n\nYou answered:\n\n${e.a.trim()}\n\nLet's take this further from here.`;
+  const message = e ? `On the side I asked: ${e.q}\n\nYou answered:\n\n${e.a.trim()}\n\nLet's take this further from here.` : "";
   try { toast(`Forked as ${(await invoke("fork_session", { sessionId: sid, message })).name}`); } catch (x) { toast(`Couldn't fork it: ${x}`); }
-  btwForking = e.forking = false;
+  btwForking = null;
   renderMain();
 }
+const forkBtn = (sid, i) => `<button class="btw-fork" data-act="btw-fork" data-sid="${esc(sid)}" data-i="${i}" ${btwForking != null ? "disabled" : ""}>${btwForking === i ? "Forking…" : "Fork"}</button>`;
 function btwPanel(sid) {
   if (!sid || btwFor !== sid) return "";
   const log = btwLog.get(sid) || [];
-  const fork = (i) => `<button class="btw-fork" data-act="btw-fork" data-sid="${esc(sid)}" data-i="${i}" ${btwForking ? "disabled" : ""}>${log[i].forking ? "Forking…" : "Fork"}</button>`;
-  const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>${fork(i)}` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
+  const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>${forkBtn(sid, i)}` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
   return `<div class="btw-pop">
     <div class="btw-head">BY THE WAY · NOT PART OF THE CHAT${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
     <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="Ask without interrupting it…  ↵" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>
@@ -1918,6 +1918,7 @@ function moreMenu(sid, s, closable = false) {
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
       ${restartItem(sid, s)}
+      ${forkItem(sid, s)}
       ${later}${parkMenuItem(sid, s, closable)}
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
@@ -1928,6 +1929,11 @@ function restartItem(sid, s) {
   if (!s || !["claude", "codex", "pi"].includes(s.harness) || !s.cwd || crewOf(sid)?.role === "executor") return "";
   const busy = s.state === "working";
   return `<button data-restart="${esc(sid)}" ${busy ? "disabled" : ""}>Restart session<span>${busy ? "When this turn ends" : "Same conversation, fresh start: picks up new skills, MCP servers and settings"}</span></button>`;
+}
+/** ⋯ → Fork, for a Claude Code session: its conversation goes on as a new session too (forkBtw). */
+function forkItem(sid, s) {
+  if (s?.harness !== "claude") return "";
+  return `<button data-fork="${esc(sid)}" ${btwForking != null ? "disabled" : ""}>Fork<span>Its conversation goes on as a new session too, with -fork on its name; this one carries on as it is</span></button>`;
 }
 /** ⋯ → MCP servers…, for a Claude Code session on this Mac: how many it runs with. */
 function mcpItem(sid) {
