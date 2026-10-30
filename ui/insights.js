@@ -538,13 +538,13 @@ function insAct(act, d) {
     const days = +d.days || 1;
     insOpen.delete(sid);
     insLog(sid, "handoff", "dismissed", `snooze ${days}d`);
-    toast(`Nudges hidden for ${days === 1 ? "a day" : `${days} days`}: Settings → Nudges shows them again`);
+    toast(`Nudges hidden for ${days === 1 ? "a day" : `${days} days`}: Settings → Insights shows them again`);
     return setSetting("insights.snooze", Date.now() + days * 86400000);
   }
   if (act === "ins-off") {
     insOpen.delete(sid);
     insLog(sid, "handoff", "dismissed", "off");
-    toast("Nudges off: Settings → Nudges turns them on again");
+    toast("Nudges off: Settings → Insights turns them on again");
     return setSetting("insights.on", false);
   }
   if (act === "ins-unsnooze") return setSetting("insights.snooze", 0);
@@ -667,8 +667,10 @@ function insPicker(k, h, a, chosen) {
       <div class="ins-pop-foot"><span class="grow"></span><span class="dim">Esc to close</span></div>
     </div>`;
 }
+/** The one switch, saying plainly what turning it on does. */
+const insNudgesRow = (on) => setRow("Show nudges", "Tips above a session's reply box when it's costing more than it needs to: hand off to a fresh session once its context has grown large, reply before its cache expires, and queue a message instead of interrupting. Cue also writes a hand-off note on its own just before a waiting session's cache runs out.", toggle("insights.on", on));
 function insSettings(st) {
-  if (!st.insights?.on) return `<div class="set-group">Nudges</div>${setRow("Nudges", "On a session's cost, with what you could do about it.", toggle("insights.on", false))}`;
+  if (!st.insights?.on) return `<div class="set-group">Nudges</div>${insNudgesRow(false)}`;
   if (insMachines === null) { insMachines = []; invoke("machines_list").then((l) => { insMachines = l || []; renderMain(); }).catch(() => {}); }
   if (insFound === null) { insFound = {}; insFindSkills(false); }
   const skills = insSkills();
@@ -691,7 +693,7 @@ function insSettings(st) {
   }).join("");
   return `
     <div class="set-group">Nudges</div>
-    ${setRow("Nudges", "On a session's cost, with what you could do about it.", toggle("insights.on", true))}
+    ${insNudgesRow(true)}
     ${insSnoozed() ? setRow("Hidden", `Until ${esc(new Date(st.insights.snooze).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}.`, `<button class="btn small" data-act="ins-unsnooze">Show again</button>`) : ""}
     <div class="set-group">Hand-off skill, by host</div>
     ${hostRows}`;
