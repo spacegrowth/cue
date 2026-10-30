@@ -1358,7 +1358,7 @@ function listenSay() {
   const x = sents[l.i], run = ++listenRun;
   l.w = null;
   if (shown) { l.view = { root, sents }; listenMark(sents, l.i, null); listenFollow(l); } else listenUnmark();
-  if (kokoroOn()) return kokoroSay(x, sents[l.i + 1], run);
+  if (kokoroOn() && l.mac !== l.i) return kokoroSay(x, sents[l.i + 1], run);
   const u = new SpeechSynthesisUtterance(x.say);
   u.rate = LISTEN_SPEEDS[listenSpeed];
   u.onboundary = (e) => { if (run === listenRun && e.name === "word") { l.w = [e.charIndex, e.charLength || (x.say.slice(e.charIndex).match(/^\S+/)?.[0].length ?? 0)]; listenMarkNow(l); } };
@@ -1378,8 +1378,9 @@ function listenSay() {
 const voicePick = () => state.settings?.voice?.pick || "";
 /** What cue-speak said of itself: the engine is here (`ready`), the voices here (`have`) and the space it all
  *  takes (`mb`), a macOS with the Apple bug (`risky`), none on this Mac (`none`: Intel); the voice being got and
- *  how far (`getting`, `progress`), and that it failed this run (`broke`). */
-let kokoro = { known: false, ready: false, have: [], mb: 0, risky: false, none: false, getting: null, progress: 0, broke: false, bye: false };
+ *  how far (`getting`, `progress`), how many sentences in a row it failed (`fails`) and that it gave up this run
+ *  (`broke`). */
+let kokoro = { known: false, ready: false, have: [], mb: 0, risky: false, none: false, getting: null, progress: 0, fails: 0, broke: false, bye: false };
 const kokoroOn = () => !!voicePick() && kokoro.have.includes(voicePick()) && !kokoro.broke;
 let kokoroAt = null;   // the sentence it's saying: { run, x, ms }
 function kokoroTell(line) { invoke("speak_send", { line }).catch((e) => kokoroLine({ error: String(e), id: kokoroAt?.run, get: kokoro.getting })); }
@@ -1399,7 +1400,7 @@ function kokoroLine(v) {
   if (v.removed) { Object.assign(kokoro, { ready: false, have: [], mb: 0 }); pickVoice(""); return; }
   if (v.error && v.get) { kokoro.getting = null; toast(v.error); return renderMain(); }
   const a = kokoroAt, l = listening;
-  if (v.playing != null && a?.run === v.playing) { a.ms = v.ms; a.words = v.words || []; }
+  if (v.playing != null && a?.run === v.playing) { a.ms = v.ms; a.words = v.words || []; kokoro.fails = 0; }
   else if (v.at != null && a?.run === v.at && a.ms && l) {
     // The word being heard: from when each starts (cue-speak's Words.swift, from Kokoro's own timings; the words
     // are the sentence's, split on spaces as here), else as far through its letters as through its sound.
@@ -1416,16 +1417,19 @@ function kokoroLine(v) {
   else if (v.gone && kokoro.bye) { kokoro.bye = false; if (a) kokoroSay(a.x, null, a.run); }
   else if (v.gone && kokoro.getting) { kokoro.getting = null; toast("The download stopped"); renderMain(); }
   else if (v.error || v.gone) {
-    // Kokoro failing mid-sentence: the Mac's voice goes on from that sentence.
+    // Kokoro failing on a sentence: the Mac's voice says that one, and the natural voice the next. Three in a row:
+    // the Mac's voice goes on from there.
     if (!a || (v.id != null && v.id !== a.run)) return;
-    kokoroAt = null; kokoro.broke = true;
-    toast("The natural voice stopped: going on in your Mac's voice");
+    kokoroAt = null;
+    if (++kokoro.fails >= 3) { kokoro.broke = true; toast("The natural voice stopped: going on in your Mac's voice"); }
+    if (l) l.mac = l.i;
     if (l?.playing) listenSay();
   }
 }
 /** The voice Cue reads out in ("" the Mac's own). */
 function pickVoice(id) {
   kokoro.broke = false;
+  kokoro.fails = 0;
   invoke("set_setting", { key: "voice.pick", value: id }).catch((e) => toast(`Couldn't pick it: ${e}`));
   renderMain();   // the list closes now, not on the next redraw (none comes when it's the voice already in use)
 }

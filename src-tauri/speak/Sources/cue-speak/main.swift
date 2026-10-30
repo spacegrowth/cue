@@ -61,7 +61,7 @@ let risky: Bool = {
 
 @MainActor
 final class Speaker {
-  private let kokoro = KokoroAneManager()
+  private var kokoro = KokoroAneManager()
   private var loaded = false
   private let engine = AVAudioEngine()
   private let player = AVAudioPlayerNode()
@@ -141,7 +141,7 @@ final class Speaker {
     if let hit = made.first(where: { $0.key == key }) { return hit.task }
     let task = Task { () throws -> Made in
       try await self.load()
-      let r = try await self.kokoro.synthesizeDetailed(text: text, voice: voice, speed: speed)
+      let r = try await self.synthesized(text, voice: voice, speed: speed)
       var parts: [Int] = []
       for w in Words.said(text, r) { parts.append(Words.parts((try? await self.kokoro.englishPhonemes(for: w)) ?? w)) }
       let (s, cut) = Speaker.trimmed(r.samples)
@@ -150,6 +150,19 @@ final class Speaker {
     made.append((key, task))
     if made.count > 3 { made.removeFirst() }
     return task
+  }
+
+  /// Kokoro's sound for `text`; if it fails, once more with its models loaded afresh. On macOS 26.4 and 26.5 they
+  /// fail now and then (the same Apple bug), every sentence for a while after, until they're loaded again.
+  private func synthesized(_ text: String, voice: String, speed: Float) async throws -> KokoroAneSynthesisResult {
+    do { return try await kokoro.synthesizeDetailed(text: text, voice: voice, speed: speed) } catch {
+      if Task.isCancelled { throw error }
+      await kokoro.cleanup()
+      kokoro = KokoroAneManager()
+      loaded = false
+      try await load()
+      return try await kokoro.synthesizeDetailed(text: text, voice: voice, speed: speed)
+    }
   }
 
   /// `s` with its silence before and after cut to 50 ms and 120 ms, and how many ms went from its start.
