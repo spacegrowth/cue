@@ -447,6 +447,108 @@ fn paths_of(saved: &[crate::uploads::Saved]) -> Vec<String> {
     saved.iter().map(|s| s.path.clone()).collect()
 }
 
+/// btw's Fork: a Claude Code session copied into a new one that keeps going, in the same folder (on the
+/// same machine), with the model it last used, named "<name>-fork" (then -fork-2, -fork-3…). `message`,
+/// when there is one, is its first. The session itself goes on untouched. Returns the fork's id.
+#[tauri::command]
+pub(crate) async fn fork_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: String) -> Result<serde_json::Value, String> {
+    let h = hub.inner().clone();
+    let res = tauri::async_runtime::spawn_blocking(move || fork(&h, &session_id, &message)).await.map_err(|e| e.to_string())?;
+    // Cue stays in front: the terminal tab opened behind it.
+    if res.is_ok() {
+        show_main(&app, None);
+    }
+    res
+}
+
+pub(crate) fn fork(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<serde_json::Value, String> {
+    let from = h.session_origin(session_id).ok_or("that session is gone")?;
+    if from.harness != "claude" {
+        return Err("Fork works with Claude Code sessions".into());
+    }
+    let own = h.session_name(session_id);
+    let base = if own.trim().is_empty() { model::folder_of(&from.cwd) } else { own };
+    let name = fork_name(&base, &h.session_names());
+    let sid = focus::new_session_id();
+    let (origin, what) = if from.machine.is_empty() {
+        // Its model and its MCP selection, as the session runs now; the fork keeps a copy of the selection.
+        let mut args = vec![];
+        if let Some(m) = (!from.transcript_path.is_empty()).then(|| crate::logs::steps::model_of(&from.transcript_path)).flatten() {
+            args.extend(["--model".to_string(), m]);
+        }
+        let (was, now) = (crate::logs::mcp::selection_path(session_id), crate::logs::mcp::selection_path(&sid));
+        if was.exists() && std::fs::copy(&was, &now).is_ok() {
+            args.extend(crate::logs::mcp::flags_for(&now));
+        }
+        let line = focus::fork_line(&from.cwd, session_id, &sid, &name, &args, message)?;
+        let tab = open_for_resume(&line, &from.cwd, &name)?;
+        let o = model::Origin { session_id: sid.clone(), harness: "claude".into(), cwd: from.cwd.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
+        (o, tab.what)
+    } else {
+        // On a machine: there, in tmux, as + New starts one (its transcript is there, so no model from it).
+        let m = machines::get(&from.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", from.machine))?;
+        let line = focus::fork_line(".", session_id, &sid, &name, &[], message)?;
+        let (pane, tty, dir) = machines::open_in_tmux(&m, &line, &from.cwd, &name)?;
+        let o = model::Origin { session_id: sid.clone(), harness: "claude".into(), cwd: dir, term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
+        (o, m.name)
+    };
+    // Active shows where it forked from, then what you asked it (if anything).
+    let recent = if from.transcript_path.is_empty() || !from.machine.is_empty() { vec![] } else { transcript::recent_context(&from.transcript_path, 6) };
+    h.resumed(origin.clone(), &name, &recent, false);
+    if !message.trim().is_empty() {
+        h.started(origin, message, &[], false);
+    }
+    h.name_new(&sid, &name);
+    Ok(serde_json::json!({ "session_id": sid, "name": name, "detail": format!("Forked as {name} in {what}") }))
+}
+
+/// A fork's name: "<name>-fork", then "-fork-2", "-fork-3"…, the first no session has. A fork of a fork
+/// counts on from the same name ("foo-fork" forks as "foo-fork-2"), so one session's forks stay one series.
+fn fork_name(name: &str, taken: &[String]) -> String {
+    let name = name.trim();
+    let root = match name.rsplit_once("-fork") {
+        Some((r, n)) if !r.is_empty() && (n.is_empty() || n.strip_prefix('-').is_some_and(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()))) => r,
+        _ => name,
+    };
+    let taken = |n: &str| taken.iter().any(|t| t.trim().eq_ignore_ascii_case(n));
+    let first = format!("{root}-fork");
+    if !taken(&first) {
+        return first;
+    }
+    (2..).map(|i| format!("{root}-fork-{i}")).find(|n| !taken(n)).unwrap()
+}
+
+#[cfg(test)]
+mod fork_tests {
+    use super::fork_name;
+
+    fn names(n: &[&str]) -> Vec<String> {
+        n.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn forks_count_up_from_one_name() {
+        assert_eq!(fork_name("api", &names(&["api"])), "api-fork");
+        assert_eq!(fork_name("api", &names(&["api", "api-fork"])), "api-fork-2");
+        assert_eq!(fork_name("api", &names(&["api", "api-fork", "api-fork-2"])), "api-fork-3");
+        // A gone fork's name can be had again.
+        assert_eq!(fork_name("api", &names(&["api", "api-fork-2"])), "api-fork");
+    }
+
+    #[test]
+    fn a_fork_of_a_fork_stays_in_the_series() {
+        assert_eq!(fork_name("api-fork", &names(&["api", "api-fork"])), "api-fork-2");
+        assert_eq!(fork_name("api-fork-2", &names(&["api", "api-fork", "api-fork-2"])), "api-fork-3");
+    }
+
+    #[test]
+    fn only_a_real_fork_suffix_is_taken_off() {
+        assert_eq!(fork_name("my-forklift", &[]), "my-forklift-fork");
+        assert_eq!(fork_name("-fork", &[]), "-fork-fork");
+        assert_eq!(fork_name("x-fork-a", &[]), "x-fork-a-fork");
+    }
+}
+
 /// Trust in Cue for a session Claude Code is asking "do you trust this folder?": its cursor moved onto
 /// "Yes, I trust this folder", then Enter. Only from your click, and only where Cue can see the screen
 /// (its tmux pane, here or on a machine): Claude Code lists "No, exit" first, so a blind Enter would end it.

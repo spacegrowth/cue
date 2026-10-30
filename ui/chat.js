@@ -128,10 +128,25 @@ async function askBtw(sid, q) {
   try { e.a = await invoke("btw", { sessionId: sid, question: q }); } catch (x) { e.err = String(x); }
   renderMain();
 }
+// Fork under an answer: the conversation copied into a new session that keeps going ("<name>-fork", then
+// -fork-2…), in Active beside this one, which goes on untouched. The side question and its answer are its first
+// message (the copy that answered was never saved), so it picks up from there.
+let btwForking = false;    // a fork being started
+async function forkBtw(sid, i) {
+  const e = btwLog.get(sid)?.[i];
+  if (btwForking || e?.a == null) return;
+  btwForking = e.forking = true;
+  renderMain();
+  const message = `On the side I asked: ${e.q}\n\nYou answered:\n\n${e.a.trim()}\n\nLet's take this further from here.`;
+  try { toast(`Forked as ${(await invoke("fork_session", { sessionId: sid, message })).name}`); } catch (x) { toast(`Couldn't fork it: ${x}`); }
+  btwForking = e.forking = false;
+  renderMain();
+}
 function btwPanel(sid) {
   if (!sid || btwFor !== sid) return "";
   const log = btwLog.get(sid) || [];
-  const rows = log.slice().reverse().map((e) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
+  const fork = (i) => `<button class="btw-fork" data-act="btw-fork" data-sid="${esc(sid)}" data-i="${i}" ${btwForking ? "disabled" : ""}>${log[i].forking ? "Forking…" : "Fork"}</button>`;
+  const rows = log.map((e, i) => [e, i]).reverse().map(([e, i]) => `<div class="btw-q">${esc(e.q)}</div>${e.a != null ? `<div class="btw-a msg">${md(e.a)}</div>${fork(i)}` : e.err ? `<div class="btw-a bad">${esc(e.err)}</div>` : `<div class="btw-a dim"><span class="dot-live"></span>Thinking…</div>`}`).join("");
   return `<div class="btw-pop">
     <div class="btw-head">BY THE WAY · NOT PART OF THE CHAT${log.length ? `<button class="btw-clear" data-act="btw-clear" data-sid="${esc(sid)}">Clear</button>` : ""}<button class="btw-x" data-act="btw-close" aria-label="Close">×</button></div>
     <div class="btw-ask"><textarea data-text="btw:${esc(sid)}" rows="1" placeholder="Ask without interrupting it…  ↵" spellcheck="false">${esc(draft(`btw:${sid}`).text)}</textarea></div>

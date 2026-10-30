@@ -65,6 +65,11 @@ impl Hub {
         self.st().sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| s.name).unwrap_or_default()
     }
 
+    /// Every name a session shows under, for picking one no session has (a fork's).
+    pub fn session_names(&self) -> Vec<String> {
+        self.st().sessions.all().into_iter().map(|s| s.name).filter(|n| !n.is_empty()).collect()
+    }
+
     /// A session Cue just started ("+ New session"): known from the start, so it opens in Active and
     /// takes what you type before it has said anything. With a first message it's already working.
     /// The trust question was answered (or is gone): its banner goes, and the next look at its screen

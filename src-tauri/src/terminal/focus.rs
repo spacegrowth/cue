@@ -690,6 +690,21 @@ pub fn resume_line_with(cwd: &str, session_id: &str, args: &[String]) -> Result<
     Ok(line)
 }
 
+/// The command line that forks a Claude Code session into a new one that keeps going (btw's Fork):
+/// `cd <folder> && claude --resume <id> --fork-session --session-id <new id> -n <name> <args…> [message]`.
+/// Cue picks the new id, so it knows the fork at once.
+pub fn fork_line(cwd: &str, session_id: &str, fork_id: &str, name: &str, args: &[String], message: &str) -> Result<String, String> {
+    let mut line = resume_line_with(cwd, session_id, &[])?;
+    line += &format!(" --fork-session --session-id {} -n {}", shq(fork_id), shq(name));
+    for a in args {
+        line += &format!(" {}", shq(a));
+    }
+    if !message.trim().is_empty() {
+        line += &format!(" {}", shq(message.trim()));
+    }
+    Ok(line)
+}
+
 /// A Claude Code session on this Mac resumed as Cue left it: with its MCP selection when it has one
 /// (logs/mcp.rs), so a choice made in Cue sticks across park, close and restart.
 pub fn resume_line_local(cwd: &str, session_id: &str) -> Result<String, String> {

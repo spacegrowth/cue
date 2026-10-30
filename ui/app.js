@@ -244,6 +244,9 @@ function bindMain() {
     if (extPickOpen && !t.closest(".xp-menu, [data-ext-open]")) { extPickOpen = null; renderMain(); }
     if (lightbox) { lightbox = null; return renderMain(); }
     // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
+    // Fork under a side answer: this conversation as a new session, picking up from that question and answer.
+    const bf = t.closest("[data-act=btw-fork]");
+    if (bf) return forkBtw(bf.dataset.sid, +bf.dataset.i);
     // Clear: forget this session's side questions (they were only ever in this window).
     const bc = t.closest("[data-act=btw-clear]");
     if (bc) { btwLog.delete(bc.dataset.sid); renderMain(); return document.querySelector(`[data-text="${CSS.escape(`btw:${bc.dataset.sid}`)}"]`)?.focus(); }
