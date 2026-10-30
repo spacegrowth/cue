@@ -376,7 +376,7 @@ function insightsTabView() {
     ${itabCard("Tokens per day", `${itabNum(t.tokens / d.days)} a day`, itabChart([{ vals: val("tokens") }], days, itabNum))}
     ${itabCard("Median context per turn", midCtx ? `around ${itabNum(midCtx)}` : "", itabChart([{ vals: val("median_context", true) }], days, itabNum))}
     ${itabCard("Turns per day", `${(t.turns / d.days).toFixed(t.turns / d.days < 10 ? 1 : 0)} a day`, itabChart([{ vals: val("turns") }], days, (n) => String(Math.round(n))))}
-  </div>${ins ? `<div class="itab-fine">Cue's insights: ${ins}</div>` : ""}`;
+  </div>${ins ? `<div class="itab-fine">Cue's nudges: ${ins}</div>` : ""}`;
 
   return `${ranges}${tiles}<div class="itab">${note}${where}${trends}${waiting}${long}${deleg}${corr}</div>`;
 }

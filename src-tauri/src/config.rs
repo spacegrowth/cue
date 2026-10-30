@@ -29,6 +29,8 @@ pub fn load() -> Value {
 pub fn effective() -> Value {
     let c = load();
     let b = |p: &str, d: bool| c.pointer(p).and_then(Value::as_bool).unwrap_or(d);
+    let (ins, snooze) = (b("/insights/on", false), c.pointer("/insights/snooze").and_then(Value::as_u64).unwrap_or(0));
+    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
     // (flag() falls back to true, so defaults that are off must be listed here.)
     json!({
         "history": { "keep": history_keep() },
@@ -41,8 +43,10 @@ pub fn effective() -> Value {
         "agents": { "show_driven": b("/agents/show_driven", false) },
         // The voice Cue reads out in: "" the Mac's own, else a natural one ("af_heart"), downloaded in Settings → Voice.
         "voice": { "pick": c.pointer("/voice/pick").and_then(Value::as_str).unwrap_or("") },
-        // Insights (ui/insights.js): each one on its own; they only ever fill the reply box.
-        "insights": { "handoff": b("/insights/handoff", true), "cache": b("/insights/cache", true), "queue": b("/insights/queue", true), "autocompact": b("/insights/autocompact", true), "delegate": b("/insights/delegate", true), "ahead": b("/insights/ahead", false), "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
+        // Insights (ui/insights.js): one switch for all of them, off until you turn it on. `snooze`: hidden until
+        // then (ms), from a note's "Hide for a day / a week", which also holds off the hand-off before the cache
+        // runs out. The queue note's "Got it" turns that one off alone.
+        "insights": { "on": ins, "handoff": ins, "cache": ins, "queue": ins && b("/insights/queue", true), "ahead": ins && snooze <= now_ms, "snooze": snooze, "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
@@ -209,7 +213,7 @@ pub fn history_keep() -> usize {
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.handoff", "insights.cache", "insights.queue", "insights.autocompact", "insights.delegate", "insights.ahead", "insights.skills", "actions.prompt", "voice.pick"];
+    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "actions.prompt", "voice.pick"];
     if !allowed.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
@@ -261,6 +265,8 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             }
             value
         }
+        // Insights hidden until this time (ms since 1970); 0 shows them again.
+        "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
         "voice.pick" => match value.as_str() {
             Some(v) if v.len() <= 24 && v.chars().all(|c| c.is_ascii_lowercase() || c == '_') => json!(v),
             _ => return Err("the voice must be one of Kokoro's names, or empty for the Mac's own".into()),

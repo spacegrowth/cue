@@ -461,7 +461,7 @@ document.addEventListener("click", (e) => {
   projResetAsk = v === "ask";
   renderMain();
 }, true);
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Nudges"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};

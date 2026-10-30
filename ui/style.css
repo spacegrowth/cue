@@ -1966,6 +1966,9 @@ button.ins-n { cursor: pointer; }
 .ins-pop-empty { padding: 8px; font-size: 12.5px; }
 .ins-pop-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 2px 0; }
 .ins-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The opened note's foot: hide them all for a while, or turn them off. */
+.ins-hide { font-size: 12px; }
+.ins-detail > * + .ins-hide { margin-top: 10px; }
 .linkish { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .linkish:hover { color: var(--ink); }
 /* Hand off if I don't come back: a checkbox drawn as a button (insights.js watchToggle). */
