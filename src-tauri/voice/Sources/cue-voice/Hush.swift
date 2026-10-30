@@ -1,7 +1,9 @@
 // Whatever is playing (a video in the browser, music) pauses while you talk and while an answer is read out, and
 // plays again after. It asks the Mac's Now Playing (the MediaRemote framework, as the media keys and Control Centre
-// do) to pause and to play, which needs no permission; only when another app is sending sound out, so it never
-// starts something that wasn't playing.
+// do) to pause and to play, which needs no permission; only when Now Playing says it's playing, so it never
+// starts something you'd paused. A browser keeps sending sound out with its video paused, so that alone isn't
+// enough; and macOS no longer tells an app like this one what's playing, so it asks through osascript, which
+// it still tells (about 80 ms, off the main thread).
 import Foundation
 import CoreAudio
 
@@ -9,19 +11,48 @@ import CoreAudio
 final class Hush {
   /// Paused by us: played again once you're done.
   private var paused = false
+  /// Each on() and off(): an answer from Now Playing that comes after you're done already is dropped.
+  private var turn = 0
 
   func on() {
     guard !paused, Hush.othersPlaying() else { return }
+    turn += 1
+    let mine = turn
+    DispatchQueue.global(qos: .userInitiated).async {
+      let playing = Hush.nowPlaying()
+      DispatchQueue.main.async { MainActor.assumeIsolated { self.pause(mine, playing) } }
+    }
+  }
+
+  private func pause(_ mine: Int, _ playing: Bool?) {
+    guard mine == turn, !paused else { return }
+    guard playing == true else { return note(playing == nil ? "hush: couldn't ask Now Playing" : "hush: nothing playing") }
     guard Hush.command(Hush.pause) else { return note("hush: Now Playing didn't take pause") }
     paused = true
     note("hush: paused what was playing")
   }
 
   func off() {
+    turn += 1
     guard paused else { return }
     paused = false
     _ = Hush.command(Hush.play)
     note("hush: playing again")
+  }
+
+  /// Whether the Mac's Now Playing is playing, asked through osascript (JavaScript for Automation); nil when it
+  /// couldn't be asked.
+  nonisolated private static func nowPlaying() -> Bool? {
+    let js = "ObjC.import('Foundation'); $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/').load; $.NSClassFromString('MRNowPlayingRequest').localIsPlaying ? 'yes' : 'no'"
+    let p = Process(), out = Pipe()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    p.arguments = ["-l", "JavaScript", "-e", js]
+    p.standardOutput = out
+    p.standardError = FileHandle.nullDevice
+    guard (try? p.run()) != nil else { return nil }
+    let said = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    p.waitUntilExit()
+    return said == "yes" ? true : said == "no" ? false : nil
   }
 
   /// MediaRemote's commands: play 0, pause 1.
