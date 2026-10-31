@@ -2,8 +2,8 @@
 //!
 //! Turning it on has a small model read the session's chat (Cue's log of it: any agent, any machine) and list
 //! what's left. After each of its turns the small model reads the list and only what was said since, and answers
-//! with edits: done, dropped, added. Never a new list, so an item you ticked or crossed out stays as you left it.
-//! Refresh reads the chat again with the list and its ids, so items keep who they are. What it all cost is added
+//! with edits: done, dropped, added. Never a new list. The list is only read: to change what's left you tell the
+//! session, and the next read takes it from the chat. Refresh reads the chat again with the list and its ids, so items keep who they are. What it all cost is added
 //! up as it goes. (Asking a copy of the session instead, as btw does, re-reads its whole conversation at its own
 //! model's price: $42 for one list of a 450k-token session whose cache had gone. The chat read by Haiku: a cent.)
 //!
@@ -32,11 +32,8 @@ pub struct Item {
     pub id: String,
     pub group: String,
     pub text: String,
-    /// "open" | "done" | "dropped"
+    /// "open" | "done" | "dropped" (the chat called it off). Done and dropped ones show struck through.
     pub state: String,
-    /// You set its state: Cue's model never changes it again.
-    #[serde(default)]
-    pub by_you: bool,
     pub at_ms: u64,
 }
 
@@ -166,20 +163,6 @@ pub fn stop(session_id: &str) {
     if let Some(p) = file(session_id) {
         let _ = std::fs::remove_file(p);
     }
-}
-
-/// You ticked an item ("done"), crossed it out ("dropped") or put it back ("open"). Cue's model leaves it so.
-pub fn set(session_id: &str, id: &str, state: &str) -> Result<(), String> {
-    if !["open", "done", "dropped"].contains(&state) {
-        return Err(format!("not a state: {state}"));
-    }
-    change(session_id, |t| {
-        let it = t.items.iter_mut().find(|i| i.id == id).ok_or("no such item")?;
-        it.state = state.into();
-        it.by_you = true;
-        Ok(())
-    })
-    .unwrap_or(Err("this session isn't tracked".into()))
 }
 
 /// A tracked session's turn ended: read what was said since the list last looked, in the background. While
@@ -397,18 +380,18 @@ fn add(t: &mut Track, group: &str, text: &str, at_ms: u64) -> bool {
     }
     let id = format!("t{}", t.next.max(1));
     t.next = t.next.max(1) + 1;
-    t.items.push(Item { id, group: group.into(), text: text.into(), state: "open".into(), by_you: false, at_ms });
+    t.items.push(Item { id, group: group.into(), text: text.into(), state: "open".into(), at_ms });
     true
 }
 
 /// A whole list (first, or Refresh) laid over the track: a known open item takes its new words and group, or is
-/// done; one with no id (or one Cue doesn't know) is added unless the list has it. One you set stays as you set
-/// it, and one the answer leaves out stays as it is. (added, done)
+/// done; one with no id (or one Cue doesn't know) is added unless the list has it. One that's over stays over,
+/// and one the answer leaves out stays as it is. (added, done)
 fn reconcile(t: &mut Track, listed: Vec<Listed>, at_ms: u64) -> (usize, usize) {
     let (mut added, mut done) = (0, 0);
     for l in listed {
         match l.id.as_deref().and_then(|id| t.items.iter_mut().find(|i| i.id == id)) {
-            Some(i) if i.by_you || i.state != "open" => {}
+            Some(i) if i.state != "open" => {}
             Some(i) => {
                 i.text = l.text;
                 i.group = l.group;
@@ -424,11 +407,11 @@ fn reconcile(t: &mut Track, listed: Vec<Listed>, at_ms: u64) -> (usize, usize) {
     (added, done)
 }
 
-/// A turn's edits: only open items Cue's model may change (not one you set). (added, done, dropped)
+/// A turn's edits: only open items change. (added, done, dropped)
 fn apply(t: &mut Track, e: &Edits, at_ms: u64) -> (usize, usize, usize) {
     let mut mark = |ids: &[String], state: &str| {
         let mut n = 0;
-        for i in t.items.iter_mut().filter(|i| ids.contains(&i.id) && i.state == "open" && !i.by_you) {
+        for i in t.items.iter_mut().filter(|i| ids.contains(&i.id) && i.state == "open") {
             i.state = state.into();
             n += 1;
         }
@@ -463,28 +446,25 @@ mod tests {
     }
 
     #[test]
-    fn refresh_keeps_ids_marks_done_adds_new_and_never_touches_what_you_set() {
-        let mut t = track(&[("build", "Review count", "open"), ("check", "Try landscape", "open"), ("build", "Reload lines", "open")]);
-        t.items[2].by_you = true;
-        t.items[2].state = "dropped".into();
+    fn refresh_keeps_ids_marks_done_adds_new_and_leaves_what_is_over() {
+        let mut t = track(&[("build", "Review count", "open"), ("check", "Try landscape", "open"), ("build", "Reload lines", "dropped")]);
         let listed = parse_list(r#"{"items":[{"id":"t1","group":"build","text":"Review count on the pill","done":true},{"id":"t3","group":"build","text":"Reload lines","done":false},{"id":null,"group":"decide","text":"When to commit"},{"id":null,"group":"check","text":"try landscape."}]}"#).unwrap();
         let (added, done) = reconcile(&mut t, listed, 2);
         assert_eq!((added, done), (1, 1));
         assert_eq!((t.items[0].state.as_str(), t.items[0].text.as_str()), ("done", "Review count on the pill"));
         assert_eq!(t.items[1].state, "open", "left out of the answer: stays");
-        assert_eq!(t.items[2].state, "dropped", "yours stays as you set it");
+        assert_eq!(t.items[2].state, "dropped", "over stays over");
         assert_eq!(t.items.len(), 4, "the same line again isn't added");
         assert_eq!(t.items[3].id, "t4");
     }
 
     #[test]
-    fn a_turns_edits_change_only_open_items_cue_may_change() {
+    fn a_turns_edits_change_only_open_items() {
         let mut t = track(&[("build", "A", "open"), ("build", "B", "open"), ("check", "C", "done")]);
-        t.items[1].by_you = true;
-        let e = parse_edits(r#"{"done":["t1","t2","t3","t9"],"dropped":[],"add":[{"group":"ok","text":"Back only steps answered calls"},{"group":"build","text":"a"}],"said":"Back confirmed"}"#).unwrap();
+        let e = parse_edits(r#"{"done":["t1","t3","t9"],"dropped":["t3"],"add":[{"group":"ok","text":"Back only steps answered calls"},{"group":"build","text":"a"}],"said":"Back confirmed"}"#).unwrap();
         assert_eq!(apply(&mut t, &e, 5), (1, 1, 0));
         assert_eq!(t.items[0].state, "done");
-        assert_eq!(t.items[1].state, "open", "you set it: the model can't");
+        assert_eq!((t.items[1].state.as_str(), t.items[2].state.as_str()), ("open", "done"), "untouched, and over stays over");
         assert_eq!(t.items[3].group, "ok");
         assert_eq!(e.said, "Back confirmed");
     }

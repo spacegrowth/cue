@@ -543,14 +543,6 @@ pub(crate) fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) {
     hub.redraw();
 }
 
-/// An item ticked ("done"), crossed out ("dropped") or put back ("open") by you.
-#[tauri::command]
-pub(crate) fn tasks_set(hub: State<'_, Arc<Hub>>, session_id: String, id: String, state: String) -> Result<(), String> {
-    crate::tasks::set(&session_id, &id, &state)?;
-    hub.redraw();
-    Ok(())
-}
-
 /// "Go to tab" for a session that has no card (a working one).
 #[tauri::command]
 pub(crate) async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {

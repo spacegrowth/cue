@@ -77,7 +77,7 @@
       // ?tasks=off: none tracked yet. The Tasks tab opens on the session shown.
       state.tasks = {};
       if (["1", "busy"].includes(q.get("tasks"))) {
-        const it = (id, group, text, st = "open") => ({ id, group, text, state: st, by_you: st !== "open", at_ms: now - 30 * M });
+        const it = (id, group, text, st = "open") => ({ id, group, text, state: st, at_ms: now - 30 * M });
         const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {
           items: [
             it("t1", "check", "Lock: with the lock on, swipes spring back without answering"),
@@ -87,6 +87,7 @@
             it("t5", "decide", "When to commit: everything is uncommitted on main"),
             it("t6", "ok", "Back only steps through calls you answered, not stocks from search"),
             it("t7", "check", "Back: the card says Taken or Skipped", "done"),
+            it("t8", "ok", "Add an \"A · opened\" frame", "dropped"),
           ],
           next: 8, said: "1 done (you said back works)", err: "", busy: "", spent: { tokens: 63120, usd: 0.0141 }, updated_ms: now - 2 * M,
         };

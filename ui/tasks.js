@@ -1,11 +1,11 @@
 // ---------- The Tasks tab: what's left in a session ----------
 // Off until you turn it on for a session. Then a small model reads the session's chat and lists what's left, and
 // after each of its turns reads what was said since and edits the list (tasks.rs). The window's state carries
-// every tracked session's list (state.tasks); the tab shows it grouped, the cards say "N left". Your ✓ and ×
-// stay as you set them. The session never sees any of it.
+// every tracked session's list (state.tasks); the tab shows it grouped, what's done or called off struck through,
+// and the cards say "N left". It's only read: to change what's left you tell the session, and the next read takes
+// it from the chat. The session never sees the list.
 const TASK_GROUPS = [["ok", "WAITING ON YOUR OK"], ["decide", "TO DECIDE"], ["check", "TO CHECK"], ["build", "TO BUILD"]];
 const tasksTabOn = new Set();     // sessions showing the Tasks tab
-const tasksDoneOpen = new Set();  // sessions showing their done and dropped items
 
 const tasksOf = (sid) => state.tasks?.[sid];
 const tasksLeft = (t) => (t?.items || []).filter((i) => i.state === "open").length;
@@ -36,29 +36,26 @@ function tasksPage(sid) {
   }
   const items = t.items || [];
   if (!items.length && t.busy) return `<div class="tk-page"><div class="ac-empty">Reading the chat for what's left…</div></div>`;
-  const open = items.filter((i) => i.state === "open");
+  // Each group: what's left, then what's done or called off, struck through.
   const groups = TASK_GROUPS.map(([g, head]) => {
-    const rows = open.filter((i) => i.group === g);
-    return rows.length ? `<div class="tk-head">${head} · ${rows.length}</div>${rows.map((i) => tasksRow(sid, i)).join("")}` : "";
+    const rows = items.filter((i) => i.group === g), left = rows.filter((i) => i.state === "open");
+    if (!rows.length) return "";
+    return `<div class="tk-head">${head} · ${left.length ? `${left.length} left` : "all done"}</div>${[...left, ...rows.filter((i) => i.state !== "open")].map(tasksRow).join("")}`;
   }).join("");
-  const over = items.filter((i) => i.state !== "open");
-  const shown = tasksDoneOpen.has(sid);
-  const done = over.length ? `<button class="tk-fold" data-tasks-do="fold" data-sid="${esc(sid)}">${shown ? "▾" : "▸"} ${over.length} done or dropped</button>${shown ? over.map((i) => tasksRow(sid, i)).join("") : ""}` : "";
   const now = t.busy ? `Reading ${t.busy === "listing" ? "the chat" : "the last turn"}…` : t.err ? `Couldn't update: ${t.err}` : t.said ? `Last turn: ${t.said}` : "";
   return `<div class="tk-page">
-    ${groups || `<div class="ac-empty">Nothing left, as far as the chat says.</div>`}${done}
+    ${groups || `<div class="ac-empty">Nothing left, as far as the chat says.</div>`}
+    <div class="tk-note dim">Read from the chat after each turn. To change what's left, tell the session.</div>
     <div class="tk-foot">${now ? `<span class="${t.err && !t.busy ? "tk-err" : ""}">${esc(now)}</span>` : ""}<span class="grow"></span>
       <span class="dim">so far ${esc(helperTokens(t.spent?.tokens || 0) || "0 tokens")} · ${tasksMoney(t.spent?.usd)}</span>
       <button class="btn" data-tasks-do="refresh" data-sid="${esc(sid)}" ${t.busy ? "disabled" : ""}>Refresh</button>
       <button class="btn" data-tasks-do="stop" data-sid="${esc(sid)}">Stop tracking</button></div></div>`;
 }
 
-function tasksRow(sid, i) {
-  const open = i.state === "open", a = `data-sid="${esc(sid)}" data-id="${esc(i.id)}"`;
-  const acts = open
-    ? `<button class="tk-act" data-tasks-set="done" ${a} aria-label="Done">✓</button><button class="tk-act" data-tasks-set="dropped" ${a} aria-label="Not needed">×</button>`
-    : `<button class="tk-act tk-undo" data-tasks-set="open" ${a}>Undo</button>`;
-  return `<div class="tk-row ${open ? "" : "over"}"><span class="tk-mk ${i.state}">${i.state === "done" ? "✓" : ""}</span><span class="tk-text">${esc(i.text)}</span>${acts}</div>`;
+/** One item: an open ring while it's left; done (✓) or called off struck through. */
+function tasksRow(i) {
+  const over = i.state !== "open";
+  return `<div class="tk-row ${over ? "over" : ""}"><span class="tk-mk ${i.state}">${i.state === "done" ? "✓" : ""}</span><span class="tk-text">${esc(i.text)}</span>${i.state === "dropped" ? `<span class="tk-why">called off</span>` : ""}</div>`;
 }
 
 /** Open a session on its Tasks tab, from anywhere (a card's "N left"). */
@@ -84,19 +81,10 @@ document.addEventListener("click", (e) => {
     tasksOpen(sid);
     return it ? setActive(it) : openSession(sid);
   }
-  const set = e.target.closest?.("[data-tasks-set]");
-  if (set) {
-    e.stopPropagation();
-    return invoke("tasks_set", { sessionId: set.dataset.sid, id: set.dataset.id, state: set.dataset.tasksSet }).catch((x) => toast(String(x)));
-  }
   const d = e.target.closest?.("[data-tasks-do]");
   if (!d) return;
   e.stopPropagation();
   const sid = d.dataset.sid, what = d.dataset.tasksDo;
-  if (what === "fold") {
-    if (!tasksDoneOpen.delete(sid)) tasksDoneOpen.add(sid);
-    return renderMain();
-  }
   const cmd = { start: "tasks_start", refresh: "tasks_refresh", stop: "tasks_stop" }[what];
   if (cmd) invoke(cmd, { sessionId: sid }).catch((x) => toast(String(x)));
 }, true);
