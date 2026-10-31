@@ -30,13 +30,14 @@
       ] };
       window.__TAURI__ = {
         app: { getVersion: async () => "0" },
-        event: { listen: async () => {} },
+        event: { listen: async () => {}, emit: async () => {} },
         core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
           if (cmd === "get_state") return structuredClone(state);
           if (cmd === "get_drafts") return {};
           if (cmd === "session_steps") return args.sessionId === "w1" && args.version !== FEED.version ? structuredClone(FEED) : { version: args.sessionId === "w1" ? FEED.version : 0, turns: args.sessionId === "w1" ? undefined : [] };
           if (cmd === "step_detail") return Object.fromEntries(args.ids.map((id) => [id, { full: "cargo test", output: ["ok"] }]));
           if (cmd === "session_log_page") return Array.from({ length: 30 }, (_, n) => ({ at_ms: args.beforeMs - (30 - n) * M, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] }));
+          if (cmd === "actions_list") return { actions: [], pending: [] };
           if (cmd === "transcript_page" || cmd === "closed_sessions" || cmd === "machines_list") return [];
           return null;
         } },
@@ -48,10 +49,17 @@
   <script src="../ui/vendor/xterm/addon-webgl.js"></script>
   <script src="../ui/core.js"></script>
   <script src="../ui/chat.js"></script>
+  <script src="../ui/insights.js"></script>
+  <script src="../ui/tips.js"></script>
+  <script src="../ui/shells.js"></script>
   <script src="../ui/board.js"></script>
   <script src="../ui/sessions.js"></script>
   <script src="../ui/history.js"></script>
+  <script src="../ui/insights_tab.js"></script>
   <script src="../ui/sheets.js"></script>
+  <script src="../ui/extensions.js"></script>
+  <script src="../ui/actions.js"></script>
+  <script src="../ui/background.js"></script>
   <script src="../ui/app.js"></script>
   <script>
     const check = (name, ok, why = "") => console.log(`CHECK ${name} ${ok ? "pass" : "fail"}${ok || !why ? "" : ` (${why})`}`);

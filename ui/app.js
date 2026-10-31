@@ -36,6 +36,8 @@ function renderMain() {
   const focusKey = focused?.dataset?.text;
   const focusId = !focusKey && focused?.matches?.("input[id], select[id]") ? focused.id : null;   // e.g. a quick phrase field, the Model pick
   const caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
+  // Each text box is built afresh too, scrolled to its top: a long message would jump there on every redraw.
+  const boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
   const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
@@ -152,6 +154,8 @@ function renderMain() {
   saveDrafts();
   if (focusKey) { const el = document.querySelector(`[data-text="${CSS.escape(focusKey)}"]`); if (el) { el.focus(); el.setSelectionRange(...caret); } }
   else if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); if (caret) el.setSelectionRange(...caret); } }
+  // Where each box was scrolled, after the cursor is back (putting it back can scroll the box itself).
+  document.querySelectorAll("textarea[data-text]").forEach((el) => { const top = boxTops.get(el.dataset.text); if (top != null) el.scrollTop = top; });
   // Something over the chat closed (Esc, a click outside, a pick): its text box takes the cursor back,
   // unless you closed it by clicking into another box.
   const over = !!(sheet || lightbox || liveOpen || menuFor || redirectFor || renaming || btwFor || deleteAsk);
