@@ -1942,12 +1942,11 @@ button.ins-n { cursor: pointer; }
 .ins-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* The opened note's foot: hide them all for a while, or turn them off. */
 .ins-hide { font-size: 12px; }
-/* Continue in a fresh session: the chip by the quick phrases (insights.js handoffChip), its plan above it. */
-.ins-chip-wrap { position: relative; display: inline-flex; }
-.qp-ins { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); }
-.qp-ins .ins-bulb { width: 13px; height: 13px; }
-.qp-ins.on, .qp-ins:hover { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
-.ins-plan { width: 460px; padding: 12px 14px; gap: 10px; cursor: default; }
+/* Fresh session: the chip on the chat's title row (insights.js handoffChips), its plan dropping down under it. */
+.ins-chip-wrap { position: relative; display: inline-flex; flex: none; }
+.ap-head .ins-plan .dim { white-space: normal; overflow: visible; }
+.mi-act[aria-expanded="true"] { background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.ins-plan { width: min(460px, calc(100vw - 48px)); padding: 12px 14px; gap: 10px; cursor: default; }
 .ins-plan .ins-why { font-size: 13.5px; }
 .ins-plan-steps { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; color: var(--ink); }
 .ins-plan-steps li::marker { font: 700 11px var(--mono); color: var(--accent); }

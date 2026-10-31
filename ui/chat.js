@@ -760,8 +760,7 @@ const phrases = () => state.settings?.quick?.phrases || [];
 /** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  const fresh = sid ? handoffChip(sid) : "";   // Continue in a fresh session, once the session is past its point (insights.js)
-  return phrases().length || place || fresh ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${fresh}${place}</div>` : "";
+  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
 /** Settings → Quick phrases as you type them (redraws keep them); saved when you leave a field. */
 let qpEdit = null;

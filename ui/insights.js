@@ -155,14 +155,14 @@ function handoffContinued(sid, ho) {
   return `<div class="cv-status ins-status">${BULB}<span>It continued in <b>${esc(next)}</b>. Carry on there, and close this one when you're done with it (Closed keeps it).</span><button class="btn small" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button></div>`;
 }
 
-// The open session's hand-off is a chip by the box's quick phrases, "Continue in a fresh session", once the session
-// is past its point (handoffDue). A click opens the plan above it: what will happen, in three lines, one button
+// The open session's hand-off is a chip on the title row, "Fresh session", once the session
+// is past its point (handoffDue). A click opens the plan under it: what will happen, in three lines, one button
 // that does all of it, Remind me, and the ways to hide nudges. The meta line under the title carries "4× its start"
 // in amber meanwhile, and the cache's countdown (cacheMeta); the one thing to do now is a chip on the title row,
 // beside its state (handoffChips);
 // the same ways out are in ⋯ (handoffMenu). Nothing sits on the box for any of it: what's on its way is a status
 // line under the chat (handoffStatus).
-const insPlan = new Set();      // sid: its fresh-session plan open above the chip
+const insPlan = new Set();      // sid: its fresh-session plan open under the title chip
 const HOT_CACHE_MS = 5 * 60000; // a cache this close to running out colors the bar
 // sid → what you just tapped ("Handing off…"), until it's done: shown in place of the actions, so nothing
 // goes twice and the tap shows at once, before the session's next state arrives.
@@ -225,24 +225,13 @@ function handoffPick(sid, s, f) {
   return { brk, why: "" };
 }
 
-/** By the box's quick phrases: Continue in a fresh session, once the session is past its point. A click opens
- *  the plan above it; nothing is sent until you click the plan's button. "" while a hand-off is on its way. */
-function handoffChip(sid) {
-  const s = sessionOf(sid);
-  if (!s || state.skill_handoffs?.[sid]) return "";
-  const d = handoffDue(sid, s);
-  if (!d) return "";
-  insShown(sid, "handoff");
-  const open = insPlan.has(sid);
-  return `<span class="ins-chip-wrap">${open ? handoffPlan(sid, d) : ""}<button class="qp qp-ins ${open ? "on" : ""}" data-act="ins-plan" data-sid="${esc(sid)}" aria-expanded="${open}">${BULB}Continue in a fresh session</button></span>`;
-}
-/** The plan above the chip: why, the three things that will happen, the one button that does them (the hand-off
+/** The plan under the title row's Fresh session chip: why, the three things that will happen, the one button that does them (the hand-off
  *  skill, your click being the message, or Cue's own ask when it has none), Remind me, and the ways to hide. */
 function handoffPlan(sid, d) {
   const h = d.handoffs[0];
   const go = h ? `data-act="ins-fill" data-ins-cmd="/${esc(h.name)}"` : `data-act="ins-cue"`;
   const note = h ? `as its <span class="mono">/${esc(h.name)}</span> writes it` : `<span class="mono">HANDOFF.md</span>`;
-  return `<div class="ins-pop ins-plan" role="dialog" aria-label="Continue in a fresh session">
+  return `<div class="ins-pop ins-plan down" role="dialog" aria-label="Continue in a fresh session">
     <div class="ins-why"><b>${Math.round(d.share * 100)}% of its window,</b> ${Math.round(d.grew)}× what it started with: a fresh session from a note stays sharp.${d.why ? ` ${esc(d.why)}` : ""}</div>
     <ol class="ins-plan-steps">
       <li>It writes a short note of where things stand, ${note}.</li>
@@ -311,7 +300,12 @@ function handoffChips(sid, s) {
       if (compactWarm(sid, cw, ask) && pct < 80) out += chip("ins-compact-warm", "Compact now");
     }
   }
-  if (!ho && handoffDue(sid, s)) out += chip("ins-plan", "Fresh session", `aria-expanded="${insPlan.has(sid)}"`);
+  const d = !ho && handoffDue(sid, s);
+  if (d) {
+    insShown(sid, "handoff");
+    const open = insPlan.has(sid);
+    out += `<span class="ins-chip-wrap">${chip("ins-plan", "Fresh session", `aria-expanded="${open}"`)}${open ? handoffPlan(sid, d) : ""}</span>`;
+  }
   return out;
 }
 /** Under the open session's chat: a hand-off on its way or continued, a note written ahead, what you just tapped,
