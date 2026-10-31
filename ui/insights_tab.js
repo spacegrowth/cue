@@ -273,7 +273,8 @@ function itabReading(r) {
 }
 function insightsTabView() {
   const d = itabData();
-  const ranges = `<div class="hfilter">${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}</div>${itabReading(d?.reading)}`;
+  // Today at a glance first (history.js histStats), then the range's turns.
+  const ranges = `${histStats()}<div class="hfilter">${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}</div>${itabReading(d?.reading)}`;
   if (!d) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Reading…</div></div>`;
   const t = d.totals || {}, w = d.waiting || {}, l = d.long || {}, c = d.corrections || {};
   const tile = (value, label) => `<div class="hs-tile"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;

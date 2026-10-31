@@ -288,6 +288,20 @@ fn running(shell: Option<u32>, fg: Option<i32>) -> Option<i32> {
     }
 }
 
+/// Programs you sit inside rather than wait for: a connection to another machine, an editor, a pager, a
+/// monitor, a prompt of their own (a database's, an agent's, a language's with no script to run). They're in
+/// front for as long as you use them, so they're named on the tab but aren't a job: no live dot, and no ✓
+/// when you leave them. `line` as `what` says it.
+fn interactive(line: &str) -> bool {
+    const SIT_IN: [&str; 28] = [
+        "ssh", "mosh", "mosh-client", "et", "telnet", "vim", "vi", "nvim", "nano", "emacs", "micro", "hx", "less", "more", "most", "man",
+        "top", "htop", "btop", "tmux", "screen", "psql", "mysql", "sqlite3", "redis-cli", "mongosh", "claude", "codex",
+    ];
+    const REPL: [&str; 9] = ["python", "python3", "node", "bun", "deno", "ipython", "irb", "ghci", "lua"];
+    let (first, rest) = line.split_once(' ').unwrap_or((line, ""));
+    SIT_IN.contains(&first) || (REPL.contains(&first) && rest.trim().is_empty())
+}
+
 /// What process `pid` is running, as `ps` says it (its own title: "npm test", "sleep 5"), the first
 /// word without its folder, cut to a tab's width.
 fn what(pid: i32) -> String {
@@ -342,7 +356,10 @@ fn watch(app: AppHandle) {
             }
             for (id, g) in &now {
                 if seen.get(id) != Some(g) {
-                    let _ = app.emit("shell", serde_json::json!({ "id": id, "busy": g.is_some(), "what": g.map(what).unwrap_or_default() }));
+                    // Named on its tab whatever it is; "busy" (the live dot, ✓ once it ends) only for a job.
+                    let name = g.map(what);
+                    let busy = name.as_deref().is_some_and(|n| !interactive(n));
+                    let _ = app.emit("shell", serde_json::json!({ "id": id, "busy": busy, "what": name.unwrap_or_default() }));
                 }
             }
             seen = now;
@@ -353,6 +370,16 @@ fn watch(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_program_you_sit_inside_is_named_but_not_a_job() {
+        for line in ["ssh build-box", "vim notes.md", "less log.txt", "top", "python3", "node", "psql app", "claude"] {
+            assert!(interactive(line), "{line} is sat in");
+        }
+        for line in ["npm run build", "sleep 3", "python3 train.py", "node build.js", "cargo test", "git push", "make"] {
+            assert!(!interactive(line), "{line} is a job");
+        }
+    }
     use base64::Engine;
     use std::sync::{Arc, Mutex};
 

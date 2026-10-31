@@ -16,7 +16,7 @@ function replyOf(i) {
   const e = (sessionOf(i.session_id)?.thread || []).find((x) => x.role === "you" && Math.abs(x.at_ms - i.resolved_ms) < 5000);
   return e?.text || (outcomeText(i).match(/^replied: “([\s\S]*)”/) || [])[1] || "";
 }
-/** Today at a glance, above History: how many you answered, how long they
+/** Today at a glance, at the top of Insights: how many you answered, how long they
  *  typically waited and the longest wait, what you did, and answers per hour over the last 12 hours. */
 function histStats() {
   const midnight = new Date(now()); midnight.setHours(0, 0, 0, 0);
@@ -95,5 +95,5 @@ function historyView() {
   if (!state.history.length) html += `<div class="quiet-line" style="padding:18px">Nothing answered yet.</div>`;
   else if (!groups.length) html += `<div class="quiet-line" style="padding:18px">Nothing here with these filters.</div>`;
   else html += `<div class="hfoot">${state.history.length} of the last ${keep.toLocaleString()} kept · change in Settings</div>`;
-  return `${histStats()}${filters}<div class="hist">${html}</div>`;
+  return `${filters}<div class="hist">${html}</div>`;
 }

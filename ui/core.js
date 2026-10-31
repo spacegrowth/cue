@@ -5,7 +5,7 @@ const invoke = T.core.invoke;
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
 let clockSkew = 0;          // backend clock − browser clock, so bars line up with the backend's timestamps
 let sheet = null;           // null | "settings"
-let view = "board";         // "board" | "sessions" | "history" | "insights" — the switch in the header
+let view = "board";         // the switch in the header: "board" | "sessions" | "insights" | "terminal"; "history" from All history →
 let histOpen = null;        // the History row that's open (one at a time)
 let histShown = null;       // the open row we've already scrolled to (so a redraw doesn't yank it back)
 let active = null;          // { id, sid }: what the Active pane shows. Sticky: it stays after you act.
@@ -649,23 +649,38 @@ function linkify(h) {
 /** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, quotes, code. Escapes first, so it's safe. */
 /** Copy on a code block or a command: what's in the block beside it, as plain text (a "$ " before a command isn't). */
 const COPY_BTN = `<button class="code-copy" data-copy-code aria-label="Copy">Copy</button>`;
-function copyCode(btn) {
+/** The text of the code block a button sits on, without a "$ " prompt Cue drew before a command. */
+function codeText(btn) {
   const pre = btn.closest(".code-wrap")?.querySelector("pre")?.cloneNode(true);
-  if (!pre) return;
+  if (!pre) return "";
   pre.querySelectorAll(".ps").forEach((el) => el.remove());
-  const text = pre.textContent;
+  return pre.textContent;
+}
+function copyCode(btn) {
+  const text = codeText(btn);
   if (text.trim()) invoke("copy_text", { text }).then(() => toast("Copied"), () => toast("Couldn't copy"));
 }
-function md(text) {
+/** A code block the agent marked as shell commands: Run beside Copy, in a live session's chat (md's `runIn`). */
+const SHELL_LANG = /^(bash|sh|zsh|shell|console|terminal)$/;
+const runBtn = (sid) => `<button class="code-run" data-run-code="${esc(sid)}" aria-label="Run in its folder">Run</button>`;
+/** Run: the block's lines in the session's folder, as "! " would (chat.js runLine); its card shows in the chat.
+ *  A "$ " the agent put before a command is dropped, as in a terminal. */
+function runCode(btn) {
+  const line = codeText(btn).split("\n").map((l) => l.replace(/^\$ /, "")).join("\n").trim();
+  if (line) runLine(btn.dataset.runCode, line);
+}
+function md(text, { runIn = null } = {}) {
   const out = [];
   const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"));
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {
     if (i % 2 === 1) {
       // Long code folds to ~12 lines (scrolls inside); a dump doesn't push the conversation away.
+      const lang = /^([a-z]*)\n/.exec(chunk)?.[1] || "";
       const code = chunk.replace(/^[a-z]*\n/, "").replace(/\n$/, "");
       const n = code.split("\n").length;
-      out.push(`<div class="code-wrap">${n > 12 ? `<pre class="long">${esc(code)}</pre><div class="code-more">${n} lines · scroll inside</div>` : `<pre>${esc(code)}</pre>`}${COPY_BTN}</div>`);
+      const run = runIn && SHELL_LANG.test(lang) && code.trim() ? runBtn(runIn) : "";
+      out.push(`<div class="code-wrap">${n > 12 ? `<pre class="long">${esc(code)}</pre><div class="code-more">${n} lines · scroll inside</div>` : `<pre>${esc(code)}</pre>`}${run}${COPY_BTN}</div>`);
       return;
     }
     const LIST = /^\s*([-*•]|\d+[.)])\s+/;

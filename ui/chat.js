@@ -45,7 +45,7 @@ async function runLine(who, line, cwd = null, machine = null) {
 /** The card: the line, what it printed, and what to do with it. */
 function ranCard(who, e, n) {
   const status = e.running ? `<span class="dot-live"></span>Running…` : e.err ? esc(e.err) : `${e.timed_out ? "stopped after 2 min" : e.code === 0 ? "ok" : `exit ${e.code}`} · ${e.ms < 1000 ? `${e.ms} ms` : `${(e.ms / 1000).toFixed(1)} s`}`;
-  const acts = e.running || e.err ? "" : ` · <button class="q-now" data-act="ran-again" data-who="${esc(who)}" data-n="${n}">Run again</button>${who !== "new" ? ` · <button class="q-now" data-act="ran-send" data-who="${esc(who)}" data-n="${n}">Send to ${esc(agentName(sessionOf(who)?.harness))}</button> · <button class="q-now" data-act="ran-term" data-who="${esc(who)}" data-n="${n}">Run in its terminal</button>` : ""}`;
+  const acts = e.running || e.err ? "" : ` · <button class="q-now" data-act="ran-again" data-who="${esc(who)}" data-n="${n}">Run again</button> · <button class="q-now" data-act="ran-copy" data-who="${esc(who)}" data-n="${n}">Copy</button>${who !== "new" ? ` · <button class="q-now" data-act="ran-send" data-who="${esc(who)}" data-n="${n}">Send to ${esc(agentName(sessionOf(who)?.harness))}</button> · <button class="q-now" data-act="ran-term" data-who="${esc(who)}" data-n="${n}">Run in its terminal</button>` : ""}`;
   return `<div class="cv-you cv-ran"><pre class="ran-out"><span class="ran-cmd">${esc(e.line)}</span>${e.output ? `\n${esc(e.output)}` : e.running || e.err ? "" : `\n<span class="ran-dim">(no output)</span>`}</pre><div class="cv-meta">You ran · in ${esc(homeless(e.cwd))}${e.machine ? ` on ${esc(machShort(e.machine))}` : ""} · ${status}${acts}</div></div>`;
 }
 /** The line and its output, as a message: what you checked becomes context for the agent. */
@@ -1788,7 +1788,7 @@ function chatHtml(it, s, harness, paged = false) {
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
+      <div class="msg cv-text">${md(e.text, { runIn: s?.session_id })}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
@@ -1961,31 +1961,37 @@ function prettyModel(id) {
   return m.split("-").map((w) => /^gpt$/i.test(w) ? "GPT" : /^deepseek$/i.test(w) ? "DeepSeek" : /^v\d/i.test(w) ? w.toUpperCase() : w[0] ? w[0].toUpperCase() + w.slice(1) : w)
     .join(" ").replace(/^GPT (\d)/, "GPT-$1");
 }
-/** The open session's model, how full its context is, and its cost so far
- *  (where the agent logs it), on the chat's title line after Claude's title; context as a small gauge. From its log. */
+/** How full the session's context is, in % (null until Cue knows its window: Claude Code's status line says it). */
+const ctxPct = (m) => (m?.window ? Math.min(100, Math.round((m.context / m.window) * 100)) : null);
+/** Just compacted and not at work again: its log's last count is from before, until a new reply brings a fresh one. */
+const justCompacted = (s) => !!s?.compacted_ms && s.state !== "working";
+/** The open session's model, how full its context is, how far it has grown, its cache and its cost so far (where
+ *  the agent logs it), on the line under the chat's title; context as a small gauge. From its log. */
 function metaInline(sid) {
   const m = sid && stepFeeds.get(sid)?.meta;
   if (!m || (!m.model && !m.context)) return "";
-  const pct = m.window ? Math.min(100, Math.round((m.context / m.window) * 100)) : null;
+  const pct = ctxPct(m);
   const lvl = pct === null ? "" : pct >= 95 ? "full" : pct >= 80 ? "high" : "";
   const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 2 : 0)}M` : `${Math.round(n / 1000)}k`);
   const money = (c) => `$${c >= 100 ? Math.round(c) : c.toFixed(2)}`;
-  const tip = [m.model && `Model: ${m.model}`, m.window && `Context: ${k(m.context)} of ${k(m.window)} tokens (${pct}%)`, m.cost != null && `Cost so far: ${money(m.cost)}`].filter(Boolean).join("\n");
-  // No share until Cue knows the window (Claude Code's status line says it): the tokens alone, not a guess.
-  // Just compacted: its log's last count is from before, so don't show it until a new reply brings a fresh one.
   const s = sessionOf(sid);
-  const freed = s?.compacted_ms && s.state !== "working";
+  const freed = justCompacted(s);
+  // No share until Cue knows the window: the tokens alone, not a guess.
   const ctx = freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : m.context ? `<span class="mi-ctx">${k(m.context)} context</span>` : "";
-  // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
-  const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
   // A fresh session due (insights.js handoffDue): how far it has grown, in amber.
   const grew = !freed && !state.skill_handoffs?.[sid] ? handoffGrew(sid) : 0;
   // Its cache's countdown (insights.js cacheMeta): the ring and the minutes, amber in its last 5; "cache gone" after.
   const cache = freed ? "" : cacheMeta(sid);
-  // The one thing to do now (Compact, then insights.js handoffChips: Start fresh, Hand off now, Fresh session…) comes
-  // first, so a tight line never cuts it off; the numbers after it give way from the right, the cost first.
+  // On a tight line they give way from the right, the cost first.
   const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", ctx, grew ? `<span class="mi-grow">${Math.round(grew)}× its start</span>` : "", cache, m.cost != null ? money(m.cost) : ""].filter(Boolean);
-  return `${chip}${handoffChips(sid, s)}<span class="ap-meta">${parts.join(" · ")}</span>`;
+  return `<span class="ap-meta">${parts.join(" · ")}</span>`;
+}
+/** The one thing to do now, on the chat's title row beside its state: Compact once its context is 80% full (not
+ *  mid-turn; the same as ⋯ → Compact), then insights.js handoffChips (Start fresh, Hand off now, Fresh session…). */
+function titleChips(sid) {
+  const s = sessionOf(sid), pct = ctxPct(stepFeeds.get(sid)?.meta);
+  const compact = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !justCompacted(s) ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
+  return compact + handoffChips(sid, s);
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
@@ -2237,7 +2243,7 @@ function activePane() {
     ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
-    <div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+    <div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${sid ? titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}

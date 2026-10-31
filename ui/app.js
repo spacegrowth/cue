@@ -52,15 +52,15 @@ function renderMain() {
   const topBar = focusMode ? "" : `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
       ${usageChip()}${shellsBtn()}${extPanelBtn()}
-      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="${view === "history" ? "on" : ""}" data-view="history">History</button></div>
+      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="sv-term ${view === "terminal" ? "on" : ""}" data-view="terminal">Terminal<span class="sh-live ${shellsLive()}">${shellsLive() === "done" ? "✓" : ""}</span></button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>`;
   document.getElementById("app").innerHTML = `${focusMode ? "" : `<div class="dragbar" data-tauri-drag-region></div>`}<div class="app ${focusMode ? "focus" : ""}">
     ${topBar}
-    ${view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : boardView()}
+    ${view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "terminal" ? shellView() : boardView()}
   </div>${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}`;
 
   const kept = settleChat(lifted);   // the same chat still open: its element is back in place, patched
-  placePip();   // Cue's own terminal, back over the columns as they are now
+  placePip();   // Cue's own terminal: under its button as the peek, or filling the Terminal view
   placeExt();   // the open session's extension tab, over the slot left for it
   placeActs();  // a chip's actions popover under its dots
   placeVoiceList();   // Settings → Voice: the open list under its picker
@@ -367,6 +367,8 @@ function bindMain() {
     if (ta) { const k = ta.dataset.turnAll; turnAll.has(k) ? turnAll.delete(k) : turnAll.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const cc = t.closest("[data-copy-code]");
     if (cc) return copyCode(cc);
+    const rc = t.closest("[data-run-code]");
+    if (rc) return runCode(rc);
     const td = t.closest("[data-tray-done]");
     if (td) { const k = td.dataset.trayDone; trayDone.has(k) ? trayDone.delete(k) : trayDone.add(k); return renderMain(); }
     // A card's "N bg": open its session (its item, on a waiting card) with the newest still running in full.
@@ -625,6 +627,7 @@ function bindMain() {
     if (act === "set-tab") { setTab = actEl.dataset.tab; try { localStorage.setItem("cue.setTab", setTab); } catch {} const b = document.querySelector(".sheet-body"); if (b) b.scrollTop = 0; return renderMain(); }
     if (act === "test-notify") return invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`));
     if (act === "open-history") { view = "history"; sheet = null; return renderMain(); }
+    if (act === "shell-new") return openShell("");
     if (act === "open-search") return openFind();
     if (act === "shells") return toggleShells();
     if (act === "load-older") return loadOlder(actEl.dataset.sid);
@@ -635,10 +638,12 @@ function bindMain() {
     if (act === "move-dismiss") { moving = null; return renderMain(); }
     if (act === "delete-yes" || act === "delete-no") return deleteAnswer(act === "delete-yes");
     if (act === "resend") return invoke("send_to_session", { sessionId: actEl.dataset.sid, text: actEl.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
-    if (act === "ran-again" || act === "ran-send" || act === "ran-term") {
+    if (act === "ran-again" || act === "ran-copy" || act === "ran-send" || act === "ran-term") {
       const who = actEl.dataset.who, e = (ranLog.get(who) || [])[+actEl.dataset.n];
       if (!e) return;
       if (act === "ran-again") return runLine(who, e.line, e.cwd, e.machine);
+      // The line and what it printed, as the card shows them.
+      if (act === "ran-copy") return invoke("copy_text", { text: e.output ? `${e.line}\n${e.output}` : e.line }).then(() => toast("Copied"), () => toast("Couldn't copy"));
       if (act === "ran-send") return invoke("send_to_session", { sessionId: who, text: ranAsMessage(e), images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`));
       return invoke("send_to_session", { sessionId: who, text: `! ${e.line}`, images: [], now: false }).then(() => toast("Typed into its terminal")).catch((x) => toast(`Couldn't: ${x}`));
     }

@@ -829,6 +829,10 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .code-copy { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: 6px; font: 600 11px var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
 .code-wrap:hover .code-copy, .code-copy:focus-visible { opacity: 1; }
 .code-copy:hover { background: color-mix(in srgb, var(--on-slab) 24%, var(--slab)); }
+/* Run, on a block of shell commands: left of Copy, shown with it. */
+.code-run { position: absolute; top: 6px; right: 58px; padding: 2px 8px; border-radius: 6px; font: 600 11px var(--sans); color: var(--on-slab); background: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); opacity: 0; transition: opacity .12s; }
+.code-wrap:hover .code-run, .code-run:focus-visible { opacity: 1; }
+.code-run:hover { background: color-mix(in srgb, var(--on-slab) 24%, var(--slab)); }
 .msg pre.long { max-height: 18em; overflow-y: auto; margin-bottom: 2px; }
 .nowrap { white-space: nowrap; }
 .code-more { font-size: 11px; color: var(--muted); margin-bottom: 9px; }
@@ -1621,9 +1625,8 @@ button.tm-chip:hover { background: var(--panel-2); }
 .path-in { width: 280px; height: 32px; border-radius: 9px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 12px var(--mono); flex: none; }
 .up-row.money { grid-template-columns: 72px 1fr auto; }
 .tl-name { color: var(--ink); font-weight: 650; }
-/* The open session's numbers, grey, on the line under the chat's title, after the chip for the one thing to do
-   now. The line is tight (the folder path shares it): the numbers shrink with … from their end before any chip
-   is cut off; the path gives way before them. */
+/* The open session's numbers, grey, on the line under the chat's title. The line is tight (the folder path
+   shares it): the path gives way first, then the numbers shrink with … from their end. */
 .ap-meta { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ap-meta b { color: var(--ink); font-weight: 650; }
 .mi-compact, .mi-act { flex: none; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--amber); color: var(--amber); font-size: 11.5px; font-weight: 650; background: transparent; }
@@ -1737,32 +1740,33 @@ button.tm-chip:hover { background: var(--panel-2); }
 .sx-more { margin: 6px 0 0 8px; padding: 4px 10px; border-radius: 7px; font-size: 11.5px; color: var(--on-bg-muted); }
 .sx-more:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 8%, transparent); }
 
-/* Cue's own shells (shells.js): the terminal button by the usage meter, and the floating terminal it
-   brings out. It floats over the board's last two columns, at their foot (or head), and resizes from its
-   free edges; tucked away it's a small tab on the right edge, at its corner. */
+/* Cue's own shells (shells.js): the terminal button by the usage meter, and the peek it drops down under
+   itself; the same terminal fills the Terminal view. */
 .shells-btn { position: relative; }
 .shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
 .sh-live { font: 700 10px var(--sans); line-height: 1; }
 .shells-btn .sh-live { position: absolute; top: 3px; right: 2px; }
+/* The switch's Terminal: its live dot or ✓ after the word, while a shell runs something out of sight. */
+.sv-term { display: inline-flex; align-items: center; gap: 6px; }
+.sv-term .sh-live:empty:not(.run) { display: none; }
+/* The Terminal view: the shells fill it (the terminal over this place); this shows once the last one is closed. */
+.shell-view { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--on-bg); }
+/* In the Terminal view the terminal is the view: nothing to zoom, tuck, drag or resize. */
 .sh-live.run, .sh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); animation: pulse 1.4s ease-in-out infinite; }
 .sh-live.done { color: var(--sel); }
 .pip { position: fixed; z-index: 9; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); border-radius: 14px;
   box-shadow: 0 26px 60px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  transition: left .42s cubic-bezier(.2, .9, .3, 1.12), top .42s cubic-bezier(.2, .9, .3, 1.12), transform .2s, box-shadow .2s; }
+}
+/* The peek: its point under the header's terminal button (--point, from shells.js placePip); a look (glance)
+   is a touch quieter, nothing in it has the keyboard yet. In the Terminal view it's the view: no point. */
+.pip::before { content: ""; position: absolute; top: -6px; left: calc(var(--point, 50%) - 6px); width: 12px; height: 12px; background: var(--slab); transform: rotate(45deg); border-radius: 2px 0 0 0; }
+.pip.in-view::before, .pip.in-view .pip-hide, .pip.in-view .pip-view, .pip.in-view .pip-hint { display: none; }
+.pip.glance { opacity: .96; }
+.pip-hint { margin-left: auto; padding: 0 6px; font: 500 11px var(--sans); opacity: .55; white-space: nowrap; }
+.pip-view svg { display: block; margin: auto; }
 .pip[hidden] { display: none; }
-.pip.sizing { transition: none; }
 /* Its free edges: the left one, the one away from its corner, and the corner between them. */
-.pip-grip { position: absolute; touch-action: none; z-index: 1; }
-.pip-grip.edge-x { left: -4px; top: 14px; bottom: 14px; width: 8px; cursor: ew-resize; }
-.pip-grip.edge-y { left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
-.pip-grip.corner { left: -5px; width: 18px; height: 18px; }
-.pip[data-at="br"] .pip-grip.edge-y { top: -4px; }
-.pip[data-at="tr"] .pip-grip.edge-y { bottom: -4px; }
-.pip[data-at="br"] .pip-grip.corner { top: -5px; cursor: nwse-resize; }
-.pip[data-at="tr"] .pip-grip.corner { bottom: -5px; cursor: nesw-resize; }
-.pip.drag { transition: none; transform: scale(1.015); box-shadow: 0 36px 80px -16px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08); cursor: grabbing; }
-body.pip-moving, body.pip-moving * { user-select: none; }
-.pip-bar { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 6px 0 8px; cursor: grab; touch-action: none; flex: none; }
+.pip-bar { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 6px 0 8px; flex: none; position: relative; }
 .pip-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
 .pip-tabs::-webkit-scrollbar { display: none; }
 .pip-tabs { position: relative; }
@@ -1781,27 +1785,15 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .pip-rename:focus { border-color: var(--sel); }
 .pip-x { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; font-size: 13px; line-height: 1; opacity: .6; margin-right: -4px; }
 .pip-x:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 16%, transparent); }
-.pip-add, .pip-full, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
-.pip-add:hover, .pip-full:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+.pip-add, .pip-view, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
+.pip-add:hover, .pip-view:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
 .pip-slot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
 .pip-host { width: 100%; height: 100%; }
 .pip-host[hidden] { display: none; }
 .pip-host .xterm-viewport { background: var(--slab) !important; }
 /* The cursor blinks at Cue's 1.4s beat (the GPU renderer's is patched to match; chat.js xterm()). */
 .xterm .xterm-rows .xterm-cursor.xterm-cursor-blink { animation-duration: 1.4s !important; }
-/* Full screen: the whole window under the header; it stays put (no grips, no drag). */
-.pip.full .pip-grip { display: none; }
-.pip.full .pip-bar { cursor: default; }
-.pip-full svg { display: block; margin: auto; }
-/* Tucked away: a small tab, all of it the one target that brings it back (its shells hidden under it). */
-.pip.tucked { overflow: hidden; border-radius: 12px 0 0 12px; clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: left .42s cubic-bezier(.2, .9, .3, 1.12), top .42s cubic-bezier(.2, .9, .3, 1.12), clip-path .2s; }
-.pip.tucked .pip-bar, .pip.tucked .pip-slot, .pip.tucked .pip-grip { visibility: hidden; }
-.pip-peek { position: absolute; inset: 0 0 0 6px; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--on-slab); font-size: 18px; }
-.pip.tucked .pip-peek { display: flex; }
-/* Pointed at, it grows 6px out of the edge (what was clipped of it shows): nothing moves off the edge, so no gap opens there. */
-.pip.tucked:hover { clip-path: inset(0 round 12px 0 0 12px); }
-.pip-peek:focus-visible { outline: 2px solid var(--sel); outline-offset: -2px; }
-@media (prefers-reduced-motion: reduce) { .pip, .pip.tucked { transition: none; } .sh-live.run, .sh-dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .sh-live.run, .sh-dot { animation: none; } }
 
 /* Extensions: a session's tabs under its activity bar; an extension tab's page floats over the slot. */
 .stabs { display: flex; align-items: baseline; gap: 18px; margin: 2px 16px 0; border-bottom: 1px solid var(--line); flex: none; min-width: 0; }

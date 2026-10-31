@@ -157,8 +157,9 @@ function handoffContinued(sid, ho) {
 
 // The open session's hand-off is a chip by the box's quick phrases, "Continue in a fresh session", once the session
 // is past its point (handoffDue). A click opens the plan above it: what will happen, in three lines, one button
-// that does all of it, Remind me, and the ways to hide nudges. The header's meta line carries "4× its start" in
-// amber meanwhile, and the cache's countdown (cacheMeta), with the one thing to do now as a chip (handoffChips);
+// that does all of it, Remind me, and the ways to hide nudges. The meta line under the title carries "4× its start"
+// in amber meanwhile, and the cache's countdown (cacheMeta); the one thing to do now is a chip on the title row,
+// beside its state (handoffChips);
 // the same ways out are in ⋯ (handoffMenu). Nothing sits on the box for any of it: what's on its way is a status
 // line under the chat (handoffStatus).
 const insPlan = new Set();      // sid: its fresh-session plan open above the chip
@@ -286,7 +287,7 @@ function handoffMenu(sid, s) {
   if (aheadCan(sid) && aheadWatched(sid)) items += `<button data-act="ins-watch" data-sid="${esc(sid)}">Don't hand off on its own<span>It hands off if you don't come back before its cache runs out</span></button>`;
   return items;
 }
-/** On the open session's title row, beside its meta line: the one thing to do now, as a chip (like Compact at 80%).
+/** On the open session's title row, beside its state ("your turn"): the one thing to do now, as a chip (like Compact at 80%).
  *  Start fresh once its cache is gone; Hand off now and Compact now in its cache's last minutes; Fresh session (opens
  *  the plan) once a fresh session is due; Continue when a hand-off's note is written and Cue didn't continue it by
  *  itself; New session from the note for a note written ahead. "" when there's nothing to do. */
