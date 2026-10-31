@@ -81,9 +81,11 @@ pub fn reset_time(text: &str, now: u64) -> Option<u64> {
         }
     }
     let mut at = to_epoch(&mut tm)? * 1000;
-    // A bare time already past today means tomorrow.
+    // A bare time already past today means that time tomorrow: the next day on the calendar, not 24 hours on
+    // (a clock change overnight makes that day 23 or 25 hours long).
     if date.is_none() && at + 60_000 < now {
-        at += 24 * 3600 * 1000;
+        tm.tm_mday += 1;
+        at = to_epoch(&mut tm)? * 1000;
     }
     Some(at)
 }
@@ -301,6 +303,18 @@ mod tests {
         assert_eq!(c.kind, "credits");
 
         assert!(parse("overloaded", "Overloaded", now).is_none());
+    }
+
+    /// "resets 4:10am" seen in the evening is 4:10am the next day by the clock, also across the night the
+    /// clocks change (America/Los_Angeles went back an hour on the night of 31 Oct 2026, a 25-hour day).
+    #[test]
+    fn a_bare_reset_time_is_that_clock_time_tomorrow_across_a_clock_change() {
+        let mut evening = local_tm(0);
+        (evening.tm_year, evening.tm_mon, evening.tm_mday, evening.tm_hour, evening.tm_min, evening.tm_sec) = (126, 9, 31, 20, 0, 0);
+        let now = to_epoch(&mut evening).unwrap() * 1000;
+        let r = reset_time("resets 4:10am (America/Los_Angeles)", now).unwrap();
+        let tm = local_tm(r / 1000);
+        assert_eq!((tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min), (10, 1, 4, 10));
     }
 
     #[test]
