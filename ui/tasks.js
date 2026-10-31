@@ -52,10 +52,10 @@ function tasksPage(sid) {
       <button class="btn" data-tasks-do="stop" data-sid="${esc(sid)}">Stop tracking</button></div></div>`;
 }
 
-/** One item: an open ring while it's left; done (✓) or called off struck through. */
+/** One item: a dot while it's left; done (✓) or called off (–) struck through. Only marks: nothing to click. */
 function tasksRow(i) {
   const over = i.state !== "open";
-  return `<div class="tk-row ${over ? "over" : ""}"><span class="tk-mk ${i.state}">${i.state === "done" ? "✓" : ""}</span><span class="tk-text">${esc(i.text)}</span>${i.state === "dropped" ? `<span class="tk-why">called off</span>` : ""}</div>`;
+  return `<div class="tk-row ${over ? "over" : ""}"><span class="tk-mk ${i.state}" aria-hidden="true"></span><span class="tk-text">${esc(i.text)}</span>${i.state === "dropped" ? `<span class="tk-why">called off</span>` : ""}</div>`;
 }
 
 /** Open a session on its Tasks tab, from anywhere (a card's "N left"). */

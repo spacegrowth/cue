@@ -2219,9 +2219,11 @@ button.bg-more:hover { background: var(--panel-2); }
 .tk-row.over .tk-text { color: var(--muted); text-decoration: line-through; }
 .tk-why { flex: none; font-size: 11.5px; color: var(--muted); }
 .tk-note { font-size: 12px; margin-top: 12px; }
-.tk-mk { flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; border: 1.5px solid var(--ink); box-sizing: border-box; display: grid; place-items: center; font: 700 9px var(--mono); }
-.tk-mk.done { border: 0; background: var(--panel-2); color: var(--muted); }
-.tk-mk.dropped { border-color: var(--line); }
+/* A mark, not a control: a dot while it's left, ✓ when done, a dash when called off. */
+.tk-mk { flex: none; width: 14px; text-align: center; font: 700 12px var(--mono); line-height: 1.45; color: var(--muted); }
+.tk-mk.open::before { content: "•"; color: var(--ink); }
+.tk-mk.done::before { content: "✓"; }
+.tk-mk.dropped::before { content: "–"; }
 .tk-text { flex: 1; min-width: 0; }
 .tk-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .tk-err { color: var(--deny); }
