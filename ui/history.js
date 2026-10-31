@@ -16,7 +16,7 @@ function replyOf(i) {
   const e = (sessionOf(i.session_id)?.thread || []).find((x) => x.role === "you" && Math.abs(x.at_ms - i.resolved_ms) < 5000);
   return e?.text || (outcomeText(i).match(/^replied: “([\s\S]*)”/) || [])[1] || "";
 }
-/** Today at a glance, at the top of Insights: how many you answered, how long they
+/** Today at a glance, one line at the top of Insights: how many you answered, how long they
  *  typically waited and the longest wait, what you did, and answers per hour over the last 12 hours. */
 function histStats() {
   const midnight = new Date(now()); midnight.setHours(0, 0, 0, 0);
@@ -33,15 +33,16 @@ function histStats() {
     return { label: `${d.getHours() % 12 || 12}${d.getHours() < 12 ? "am" : "pm"}`, n: all.filter((i) => (i.resolved_ms || 0) >= from && (i.resolved_ms || 0) < from + 3600000).length };
   });
   const peak = Math.max(1, ...hours.map((h) => h.n));
-  const tile = (value, label, title = "") => `<div class="hs-tile"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
-  return `<div class="hstats">
-    ${tile(String(today.length), "answered today")}
-    ${tile(waits.length ? fmt(waits[Math.floor(waits.length / 2)].w) : "–", "median wait", "From when it asked to when you answered")}
-    ${tile(longest ? fmt(longest.w) : "–", longest ? `longest · ${nameOf(longest.i.session_id, longest.i.project)}` : "longest wait")}
-    ${tile(`${n(/^replied/)} · ${n(/^(allowed|answered)/)} · ${n(/^denied/)}`, "replied · allowed · denied")}
+  const fig = (value, label) => `<span class="hs-fig"><b>${esc(value)}</b> ${esc(label)}</span>`;
+  return `<div class="hs-today"><span class="hs-head">Today</span>
+    ${fig(String(today.length), "answered")}
+    ${fig(waits.length ? fmt(waits[Math.floor(waits.length / 2)].w) : "–", "median wait")}
+    ${longest ? fig(fmt(longest.w), `longest, ${nameOf(longest.i.session_id, longest.i.project)}`) : ""}
+    ${fig(`${n(/^replied/)} · ${n(/^(allowed|answered)/)} · ${n(/^denied/)}`, "replied · allowed · denied")}
+    <span class="grow"></span>
     <div class="hs-chart" role="img" aria-label="Answers by hour: ${esc(hours.map((h) => `${h.label} ${h.n}`).join(", "))}">
-      <div class="hs-bars">${hours.map((h) => `<i class="${h.n ? "" : "zero"}" style="height:${h.n ? Math.max(4, (h.n / peak) * 100) : 6}%" title="${h.label} · ${h.n} answered"></i>`).join("")}</div>
-      <div class="hs-axis"><span>${hours[0].label}</span><span>answers by hour</span><span>now</span></div>
+      <div class="hs-bars">${hours.map((h) => `<i class="${h.n ? "" : "zero"}" style="height:${h.n ? Math.max(8, (h.n / peak) * 100) : 6}%"></i>`).join("")}</div>
+      <div class="hs-axis"><span>${hours[0].label}</span><span>now</span></div>
     </div></div>`;
 }
 

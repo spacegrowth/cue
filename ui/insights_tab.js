@@ -273,19 +273,14 @@ function itabReading(r) {
 }
 function insightsTabView() {
   const d = itabData();
-  // Today at a glance first (history.js histStats), then the range's turns.
-  const ranges = `${histStats()}<div class="hfilter">${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}</div>${itabReading(d?.reading)}`;
+  // Today at a glance first (history.js histStats), one line. Then the range: LAST and its pills, heading straight into what they change; its totals at the right.
+  const t = d?.totals || {};
+  const sum = t.turns ? `<span class="itab-sum">${esc(itabNum(t.tokens))} tokens · ${esc(itabNum(t.turns))} turns · ${esc(itabNum(t.sessions))} sessions</span>` : "";
+  const ranges = `${histStats()}<div class="itab-range"><span class="hs-head">Last</span>${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}<span class="grow"></span>${sum}</div>${itabReading(d?.reading)}`;
   if (!d) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Reading…</div></div>`;
-  const t = d.totals || {}, w = d.waiting || {}, l = d.long || {}, c = d.corrections || {};
-  const tile = (value, label) => `<div class="hs-tile"><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
-  const tiles = `<div class="hstats">
-    ${tile(itabUsd(t.usd), `${itabNum(t.tokens)} tokens`)}
-    ${tile(itabNum(t.turns), "turns")}
-    ${tile(itabNum(t.sessions), "sessions")}
-    ${tile(itabUsd((w.usd || 0) + (l.usd || 0)), "of it avoidable")}
-  </div>`;
+  const w = d.waiting || {}, l = d.long || {}, c = d.corrections || {};
   if (d.error) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Couldn't read the turns: ${esc(d.error)}</div></div>`;
-  if (!t.turns) return `${ranges}${tiles}<div class="itab"><div class="quiet-line itab-empty">No turns in the last ${d.days} days yet. Cue reads them from each session's log in the background, a little at a time.</div></div>`;
+  if (!t.turns) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">No turns in the last ${d.days} days yet. Cue reads them from each session's log in the background, a little at a time.</div></div>`;
   const days = itabDaysList(d.days);
   const byDay = new Map((d.by_day || []).map((r) => [r.day, r]));
   const val = (k, gap) => days.map((day) => { const r = byDay.get(day); return r ? r[k] || 0 : gap ? null : 0; });
@@ -379,7 +374,7 @@ function insightsTabView() {
     ${itabCard("Turns per day", `${(t.turns / d.days).toFixed(t.turns / d.days < 10 ? 1 : 0)} a day`, itabChart([{ vals: val("turns") }], days, (n) => String(Math.round(n))))}
   </div>${ins ? `<div class="itab-fine">Cue's nudges: ${ins}</div>` : ""}`;
 
-  return `${ranges}${tiles}<div class="itab">${note}${where}${trends}${waiting}${long}${deleg}${corr}</div>`;
+  return `${ranges}<div class="itab">${where}${note}${trends}${waiting}${long}${deleg}${corr}</div>`;
 }
 
 /** A session's row clicked: a live one opens in Active, as search opens it; an ended one opens its whole
