@@ -242,6 +242,8 @@ struct Feed {
     ended_ms: u64,
     /// The background agents this session started (Claude Code's Agent tool), each read from its own log.
     helpers: Vec<Helper>,
+    /// How many helpers it keeps (finished ones go first): MAX_HELPERS, or all for a session's history.
+    max_helpers: usize,
     /// Helper: its tokens so far, summed over its replies (input, output, cache reads and writes).
     tokens: u64,
     /// Background tasks of this session that failed after a while, until the hub takes them.
@@ -294,12 +296,14 @@ pub struct Helper {
     #[serde(skip)]
     feed: Option<Box<Feed>>,
     /// A background shell command, not an agent: `command` ran, `output` is the tail of what it wrote
-    /// (`lines` in all), `failed` once its notice said so.
+    /// (`lines` in all), `failed` once its notice or exit line said so, `stopped` when it was killed
+    /// before it ended (not a failure: it was stopped on purpose).
     script: bool,
     command: String,
     output: Vec<String>,
     lines: usize,
     failed: bool,
+    stopped: bool,
     #[serde(skip)]
     out_path: Option<std::path::PathBuf>,
     #[serde(skip)]
@@ -423,25 +427,51 @@ impl Helper {
         let all: Vec<&str> = text.lines().collect();
         self.lines = all.len() + usize::from(from > 0);
         self.output = all.iter().rev().take(MAX_SCRIPT_LINES).rev().map(|l| cut(&strip_ansi(l), LINE_CHARS)).collect();
-        // Claude Code ends the file on "[exited with code N]": over, even if its notice never shows up.
+        // Claude Code ends the file on "[exited with code N]", or "[killed]" when it was stopped: over,
+        // even though a stopped one never gets a notice and an ended one's may not show up.
         if self.finished_ms == 0 {
-            if let Some(code) = self.output.iter().rev().find(|l| !l.trim().is_empty()).and_then(|l| exit_code_line(l)) {
+            if let Some(end) = self.output.iter().rev().find(|l| !l.trim().is_empty()).and_then(|l| end_line(l)) {
                 self.finished_ms = mtime_ms(path).unwrap_or_else(crate::model::now_ms).max(1);
-                self.failed = code != 0;
+                self.failed = matches!(end, End::Exited(code) if code != 0);
+                self.stopped = end == End::Killed;
             }
         }
         true
     }
 
+    /// The newest thing it did, in a few words: a script's last line, an agent's last step (else the first
+    /// line of what it said last).
+    fn latest(&self) -> String {
+        if self.script {
+            return self.last_line();
+        }
+        match self.items.last() {
+            Some(Item::Step { verb, subject, .. }) => format!("{verb} {subject}").trim().to_string(),
+            Some(Item::Say { text, .. }) => text.lines().next().unwrap_or("").to_string(),
+            None => String::new(),
+        }
+    }
+
     /// A script's output, its last line that says something (not the exit line).
     fn last_line(&self) -> String {
-        self.output.iter().rev().map(|l| l.trim()).find(|l| !l.is_empty() && exit_code_line(l).is_none()).unwrap_or("").to_string()
+        self.output.iter().rev().map(|l| l.trim()).find(|l| !l.is_empty() && end_line(l).is_none()).unwrap_or("").to_string()
     }
 }
 
-/// "[exited with code N]" (Claude Code's last line in a background command's output file): N.
-fn exit_code_line(line: &str) -> Option<i64> {
-    line.trim().strip_prefix("[exited with code ")?.strip_suffix(']')?.trim().parse().ok()
+/// How a background command's output file ends: Claude Code's last line in it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum End {
+    /// "[exited with code N]"
+    Exited(i64),
+    /// "[killed]": stopped before it ended.
+    Killed,
+}
+fn end_line(line: &str) -> Option<End> {
+    let line = line.trim();
+    if line == "[killed]" {
+        return Some(End::Killed);
+    }
+    line.strip_prefix("[exited with code ")?.strip_suffix(']')?.trim().parse().ok().map(End::Exited)
 }
 
 /// When a file was last written, in ms since 1970.
@@ -519,9 +549,55 @@ pub fn steps(path: &str, known: u64) -> Value {
     let meta = (!feed.meta.model.is_empty() || feed.meta.context > 0).then_some(&feed.meta);
     // Each helper with whether it's still at work, and stuck (read from its log and the clock, not fields).
     let now = crate::model::now_ms();
-    let helpers: Vec<Value> = feed.helpers.iter().map(|h| { let mut v = serde_json::to_value(h).unwrap_or(Value::Null); v["running"] = json!(h.running()); v["stuck"] = json!(h.stuck(now)); v }).collect();
+    let helpers: Vec<Value> = feed.helpers.iter().map(|h| helper_json(h, now)).collect();
     json!({ "version": feed.version, "turns": turns, "meta": meta, "helpers": helpers })
 }
+
+/// A helper as the window reads it: with whether it's still at work, and stuck (read from its log and the
+/// clock, not fields).
+fn helper_json(h: &Helper, now: u64) -> Value {
+    let mut v = serde_json::to_value(h).unwrap_or(Value::Null);
+    v["running"] = json!(h.running());
+    v["stuck"] = json!(h.stuck(now));
+    v
+}
+
+/// Every piece of background work a session ran, read from its whole transcript (its feed reads only the
+/// last START_BYTES and keeps MAX_HELPERS): read when asked for (the Background tab's Show earlier), kept
+/// FORGET after the last ask.
+static HISTORY: Mutex<Option<HashMap<String, Feed>>> = Mutex::new(None);
+
+fn with_history<T>(path: &str, f: impl FnOnce(&Feed) -> T) -> T {
+    let mut guard = crate::locking::lock(&HISTORY, "HISTORY");
+    let all = guard.get_or_insert_with(HashMap::new);
+    all.retain(|_, h| h.used.elapsed() < FORGET);
+    let feed = all.entry(path.to_string()).or_insert_with(|| Feed { max_helpers: usize::MAX, ..Feed::start(path, 1, 0) });
+    feed.used = Instant::now();
+    feed.catch_up();
+    f(feed)
+}
+
+/// A session's background work, all of it, oldest first: each one as `steps` gives it, but without its
+/// steps or output (`latest`: the newest thing it did, in a few words). Opening one asks `history_helper`.
+pub fn history(path: &str) -> Value {
+    let now = crate::model::now_ms();
+    with_history(path, |f| {
+        Value::Array(f.helpers.iter().map(|h| {
+            let mut v = helper_json(h, now);
+            v["latest"] = json!(h.latest());
+            v["items"] = json!([]);
+            v["output"] = json!([]);
+            v
+        }).collect())
+    })
+}
+
+/// One piece of a session's background work in full (its full view), from its history.
+pub fn history_helper(path: &str, id: &str) -> Value {
+    let now = crate::model::now_ms();
+    with_history(path, |f| f.helpers.iter().find(|h| h.id == id).map(|h| helper_json(h, now)).unwrap_or(Value::Null))
+}
+
 
 /// The background agents a Claude Code session has running right now: their descriptions.
 /// (The session is at its prompt while they run; Claude Code wakes it when they report.)
@@ -935,12 +1011,12 @@ impl Feed {
     }
 
     fn start(path: &str, version: u64, offset: u64) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: kind_of(path), patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false), max_helpers: MAX_HELPERS }
     }
 
     /// A background agent's log, read from its start (it's small: one task).
     fn open_helper(path: &str) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) }
+        Feed { path: path.to_string(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: true, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false), max_helpers: MAX_HELPERS }
     }
 
     /// A background agent just started (its launch result came in): remember it and open its log.
@@ -967,7 +1043,7 @@ impl Feed {
         let path = helper_path(&self.path, &id);
         let kind = path.as_ref().map(|p| helper_kind(p)).unwrap_or_default();
         let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind, model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind, model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
         self.trim_helpers();
     }
 
@@ -1018,13 +1094,13 @@ impl Feed {
             None => Some(remote),
         });
         let desc = if desc.trim().is_empty() { subject.to_string() } else { desc.trim().to_string() };
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, out_path, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
         self.trim_helpers();
     }
 
     /// The oldest finished ones go first; what's running is never dropped.
     fn trim_helpers(&mut self) {
-        while self.helpers.len() > MAX_HELPERS {
+        while self.helpers.len() > self.max_helpers {
             match self.helpers.iter().position(|h| !h.running()) {
                 Some(i) => { self.helpers.remove(i); }
                 None => break,
@@ -1054,7 +1130,8 @@ impl Feed {
         }
         h.finished_ms = at_ms.max(1);
         if h.script {
-            h.failed = status != "completed";
+            h.stopped = status == "killed";
+            h.failed = !h.stopped && status != "completed";
             h.read_output();   // its last lines, written before the notice
             return true;
         }
@@ -2207,7 +2284,7 @@ mod tests {
     }
 
     fn feed_of(jsonl: &str) -> Feed {
-        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false) };
+        let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false), max_helpers: MAX_HELPERS };
         for e in lines(jsonl) {
             f.take(&e);
         }
@@ -2842,6 +2919,65 @@ mod tests {
         let taken = take_task_failures();
         assert_eq!(taken.iter().filter(|t| t.path == p).count(), 2);
         assert!(take_task_failures().iter().all(|t| t.path != p));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A script stopped before it ended gets no notice: its output file ends on "[killed]" instead.
+    /// Over, stopped, not failed, and nothing noted for the hub.
+    #[test]
+    fn a_background_script_stopped_by_hand_ends_on_its_killed_line() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-killed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("k1.output");
+        std::fs::write(&out, "building\n").unwrap();
+        let launch = format!("Command running in background with ID: k1. Output is being written to: {}. You will be notified when it completes.", out.display());
+        let log = [
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"build it"}}"#.to_string(),
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t-k1","name":"Bash","input":{"command":"make","description":"Build it","run_in_background":true}}]}}"#.to_string(),
+            format!(r#"{{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{{"content":[{{"type":"tool_result","tool_use_id":"t-k1","content":"{launch}"}}]}},"toolUseResult":{{"stdout":"","stderr":"","interrupted":false,"backgroundTaskId":"k1"}}}}"#),
+        ].join("\n") + "\n";
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, &log).unwrap();
+        let p = path.to_str().unwrap();
+        let mut f = Feed::open(p, 1);
+        f.catch_up();
+        assert!(f.helpers[0].running());
+        std::fs::write(&out, "building\nstep 3 of 9\n\n[killed]\n").unwrap();
+        f.catch_up();
+        let h = &f.helpers[0];
+        assert!(!h.running() && h.stopped && !h.failed);
+        assert_eq!(h.last_line(), "step 3 of 9", "the killed line isn't what it last said");
+        assert_eq!(running_background(p), 0);
+        assert!(f.failures.is_empty(), "stopped on purpose: no word");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A session's history reads its whole transcript and keeps every piece of background work, past the
+    /// MAX_HELPERS a live feed trims to.
+    #[test]
+    fn a_sessions_history_keeps_all_its_background_work() {
+        let dir = std::env::temp_dir().join(format!("cue-steps-history-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let n = MAX_HELPERS + 3;
+        let mut log = vec![r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"run them"}}"#.to_string()];
+        for i in 0..n {
+            let out = dir.join(format!("h{i}.output"));
+            std::fs::write(&out, format!("line {i}\n[exited with code 0]\n")).unwrap();
+            let launch = format!("Command running in background with ID: h{i}. Output is being written to: {}. You will be notified when it completes.", out.display());
+            log.push(format!(r#"{{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{{"content":[{{"type":"tool_use","id":"t-h{i}","name":"Bash","input":{{"command":"make {i}","description":"Build {i}","run_in_background":true}}}}]}}}}"#));
+            log.push(format!(r#"{{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{{"content":[{{"type":"tool_result","tool_use_id":"t-h{i}","content":"{launch}"}}]}},"toolUseResult":{{"stdout":"","stderr":"","interrupted":false,"backgroundTaskId":"h{i}"}}}}"#));
+        }
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, log.join("\n") + "\n").unwrap();
+        let p = path.to_str().unwrap();
+        let all = history(p);
+        let all = all.as_array().unwrap();
+        assert_eq!(all.len(), n, "the history has every one");
+        assert_eq!(all[0]["desc"], "Build 0");
+        assert_eq!(all[0]["latest"], "line 0", "its newest line, not the exit line");
+        assert_eq!(all[0]["output"], json!([]), "the list carries no output");
+        assert_eq!(history_helper(p, "h0")["output"], json!(["line 0", "[exited with code 0]"]), "one opened carries it");
+        assert!(history_helper(p, "nope").is_null());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

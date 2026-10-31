@@ -119,6 +119,21 @@ pub(crate) async fn session_steps(hub: State<'_, Arc<Hub>>, session_id: String, 
     tauri::async_runtime::spawn_blocking(move || steps_for(&h, &session_id, version.unwrap_or(0))).await.map_err(|e| e.to_string())
 }
 
+/// A session's background work, all of it (the Background tab's Show earlier): read from its whole
+/// transcript, each without its steps or output.
+#[tauri::command]
+pub(crate) async fn session_bg_history(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || steps_path(&h, &session_id).map(|p| steps::history(&p)).unwrap_or_else(|| serde_json::json!([]))).await.map_err(|e| e.to_string())
+}
+
+/// One piece of a session's earlier background work in full, from its history.
+#[tauri::command]
+pub(crate) async fn session_bg_helper(hub: State<'_, Arc<Hub>>, session_id: String, id: String) -> Result<serde_json::Value, String> {
+    let h = hub.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || steps_path(&h, &session_id).map(|p| steps::history_helper(&p, &id)).unwrap_or(serde_json::Value::Null)).await.map_err(|e| e.to_string())
+}
+
 /// Opened steps: each one's full command or path and its output or diff.
 #[tauri::command]
 pub(crate) async fn step_detail(hub: State<'_, Arc<Hub>>, session_id: String, ids: Vec<String>) -> Result<serde_json::Value, String> {

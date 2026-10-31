@@ -404,30 +404,27 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
 .stx-res .add { color: var(--accent); font-weight: 650; } .stx-res .del { color: var(--deny); font-weight: 650; }
 .stx-chev { width: 10px; flex: none; color: var(--muted); font-size: 11px; text-align: center; }
-/* A background agent's block: dashed, so it reads as not a session (nothing to type into). Under its
-   Delegating step once finished; in the tray above the message box while it runs. */
-.bg-agent { margin: 2px 0 4px 25px; border: 1px dashed var(--line); border-radius: 10px; padding: 6px 10px 8px; background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); display: flex; flex-direction: column; gap: 4px; }
-.bg-agent.folded { padding-bottom: 6px; }
-.bg-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; width: 100%; text-align: left; min-width: 0; }
-.bg-head b { font-weight: 650; flex: none; }
-.bg-head .dim { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bgtag { font: 800 9px var(--sans); letter-spacing: 0.08em; padding: 2px 5px; border-radius: 4px; line-height: 1.3; color: var(--muted); border: 1px dashed var(--muted); flex: none; }
-/* A background script's tag is solid (an agent's is dashed). */
-.bgtag.script { border-style: solid; }
-.bgtag.team { border-style: solid; color: var(--ink); border-color: var(--ink); }
-.bg-head .bad, .bg-view-meta .bad { color: var(--deny); font-weight: 650; }
-/* A script's output: terminal-dark, its lines as they came; in a block, four rows tall (the rest scrolled to). */
+/* Background work (chat.js bgRow): one row like a step line. Its mark says the kind: an agent A on moss, a
+   teammate a person in a ring (a script is $ on dark, as "Ran"). In the list above the box while it runs
+   (teammates always), under the step that started it once it's over. */
+.stx-ic.k-bgagent { background: var(--accent); color: var(--on-accent); }
+.stx-ic.k-team { background: var(--panel); color: var(--accent); border: 1.5px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
+.stx-ic svg { width: 10px; height: 10px; }
+.bg-rows { flex: none; margin: 6px 0 0; padding-top: 4px; border-top: 1px solid var(--line); display: flex; flex-direction: column; max-height: 140px; overflow-y: auto; overscroll-behavior: contain; }
+.bg-rows > * { flex: none; }
+.bg-row:hover { background: var(--panel-2); }
+.bg-row .bg-name { flex: none; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bg-row.idle .bg-name { color: var(--muted); }
+.bg-row .bg-meta { flex: none; font-size: 11.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bg-row .bg-meta .bad, .bg-view-meta .bad { color: var(--deny); font-weight: 650; }
+.bg-row .bg-tail { flex: 1; min-width: 0; text-align: right; font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stx-steps .bg-row { margin-left: 25px; width: calc(100% - 25px); }
+/* A script's output in its full view: terminal-dark, its lines as they came. */
 .bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
 .bg-out div { white-space: pre; }
-.bg-out.bg-scroll { max-height: calc(4 * 17px + 12px); }
 .bg-view-out { flex: 1; min-height: 120px; margin-left: 0; }
 .bg-cmd { background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
-.bg-hop-b .bgtag { font-size: 8px; }
-.bg-agent .stx-steps { margin-left: 2px; }
-/* Its steps: four rows (a step is 23px), the rest scrolled to inside the block. */
-.bg-scroll { max-height: calc(4 * 23px); overflow-y: auto; overscroll-behavior: contain; }
-.bg-scroll > * { flex: none; }
-.bg-agent .stx-say.small, .bg-view-steps .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
+.bg-view-steps .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
 /* A background agent in full (chat.js helperPane): in place of the chat, its steps at full height. */
 /* The Back row sits above the chat area, not in it, so it stays put while a long agent's steps or a
    script's output scroll under it. */
@@ -436,17 +433,10 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-back { height: 28px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
 .bg-back:hover { border-color: var(--muted); }
 .bg-back .bg-back-ch { font-size: 15px; font-weight: 800; line-height: 1; position: relative; top: -1px; }
-.bg-hop-n { font-size: 12.5px; }
-/* The session's other agents, as chips: a click opens that one in this view. */
-.bg-hop { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }   /* 8px under the Back bar (the chat's 14px top padding, less this) */
-.bg-hop-b { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--panel-2); font-size: 12px; max-width: 260px; min-width: 0; }
-.bg-hop-b:hover { box-shadow: inset 0 0 0 1px var(--muted); }
-.bg-hop-b b { font-weight: 650; flex: none; }
-.bg-hop-b .dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bg-hop-b:not(.live) { opacity: .75; }
 .bg-view-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; margin-top: -6px; }
 /* A script's title is what it does, in plain text (an agent's is its kind, in bold). */
 .bg-view-title.script { font-weight: 400; color: var(--ink); }
+.bg-view-kind { font-size: 12.5px; font-weight: 500; color: var(--muted); }
 .bg-view-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: -8px; }
 .bg-view-steps { margin-left: 0; }
 .bg-view-reply { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; user-select: text; -webkit-user-select: text; }
@@ -481,15 +471,6 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .rd .msg th { font-size: .85em; }
 .rd-ask { align-items: center; font-size: 13px; }
 .rd-ask-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--deny); flex: none; align-self: center; }
-.tray { margin: 6px 0 0; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
-.tray-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
-.tray-head b { font-weight: 650; }
-.tray-done { font-size: 12.5px; color: var(--muted); padding: 0 4px; border-radius: 6px; }
-.tray-done:hover { color: var(--ink); background: var(--panel-2); }
-/* The tray's head folds it to that row: its text and the chevron at the end are both the toggle. */
-.tray-fold { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 0 4px; margin-left: -4px; border-radius: 6px; color: inherit; }
-.tray-fold:hover { background: var(--panel-2); }
-.tray-fold .stx-chev { color: var(--muted); }
 /* Quiet: running, nothing for minutes. Amber, like a stalled session's sweep; its dot stops pulsing. */
 .bg-quiet { color: #d99a3a; font-weight: 650; white-space: nowrap; flex: none; }
 .dot-live.stuck { background: #d99a3a; animation: none; }
@@ -497,10 +478,6 @@ a[data-path]:hover { text-decoration: underline dotted; text-underline-offset: 2
 .bg-pill { flex: none; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
 button.bg-pill { border: 0; cursor: pointer; }
 button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
-.tray .bg-agent { margin-left: 0; }
-/* Its agents: one in full and the top of the next, the rest scrolled to, so several never fill the window. */
-.tray-list { max-height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 4px; }
-.tray-list > * { flex: none; }
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
 .stx-full { font-size: 11.5px; white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 7px; padding: 6px 9px; }
 .stx-path { font-size: 11px; color: var(--muted); word-break: break-all; }
@@ -517,7 +494,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .stx-line.reveal { animation: stxIn 0.25s ease-out both; }
 @keyframes stxUnroll { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes stxIn { from { opacity: 0; transform: translateY(3px); } }
-@media (prefers-reduced-motion: reduce) { .stx-say.reveal, .stx-line.reveal { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .stx-say.reveal, .stx-line.reveal, .cv-result.reveal { animation: none; } }
 .cv-agent.folded .cv-text { max-height: 4.8em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
 .cv-meta { font-size: 11px; font-weight: 650; color: var(--muted); margin-bottom: 3px; }
 .cv-more { font-size: 12px; font-weight: 650; color: var(--accent); margin-top: 4px; }
@@ -699,7 +676,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .pj-pn { overflow: hidden; text-overflow: ellipsis; }
 
 @keyframes pulse { 50% { opacity: 0.25; } }
-.cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; animation: sentIn 0.25s ease; }
+.cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; }
+/* Eases in once, when it lands (chat.js patchKids marks it): never again on a redraw. */
+.cv-result.reveal { animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
 /* Next: solid Moss, the one obvious thing to do after you act. */
 .next-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-size: 13px; text-align: left; min-width: 0; }
@@ -1801,6 +1780,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 .stab:hover { color: var(--ink); }
 .stab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .stab-n { font: 11.5px var(--mono); }
+.stab-n .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
 .stab-ran { font-size: 11px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
 .stab-ran code { font-family: var(--mono); }
 .ext-slot { flex: 1; min-height: 0; }
@@ -2220,6 +2200,13 @@ button.ins-n { cursor: pointer; }
 .ac-pal .lv-foot { gap: 14px; }
 /* The Actions tab, in place of the chat. */
 .ac-slot { flex: 1; min-height: 0; overflow-y: auto; }
+/* The Agents and Scripts tabs (background.js): each a list of rows like in the chat. */
+.bg-slot { flex: 1; min-height: 0; overflow-y: auto; }
+.bg-page { padding: 10px 16px 14px; display: flex; flex-direction: column; }
+.bg-more { align-self: flex-start; margin-top: 12px; font-size: 12.5px; font-weight: 650; color: var(--accent); padding: 3px 4px; border-radius: 6px; }
+button.bg-more:hover { background: var(--panel-2); }
+/* In a tab its grey part says when too (started, ended, how long): it gives way on a narrow window. */
+.bg-page .bg-row .bg-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ac-page { padding: 4px 16px 16px; }
 .ac-head { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 16px 0 2px; }
 .ac-head span { font: 500 11px var(--mono); letter-spacing: 0; opacity: 0.85; }

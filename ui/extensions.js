@@ -46,13 +46,14 @@ function extFrame(e) {
   return f;
 }
 
-/** The row under the activity bar: Chat, then a tab per extension that has one, then Actions (actions.js). */
+/** The row under the activity bar: Chat, Actions (actions.js), Agents and Scripts (background.js), then a tab
+ *  per extension that has one. */
 function sessTabs(sid) {
   const tabs = extTabs();
   if (!sid) return "";
   const on = extOn(sid);
   const ran = on && extRan.get(on);
-  return `<div class="stabs"><button class="stab ${on || actTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${actTabBtn(sid)}${tabs.map((e) => {
+  return `<div class="stabs"><button class="stab ${on || actTabOn.has(sid) || bgTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${actTabBtn(sid)}${bgTabBtn(sid)}${tabs.map((e) => {
     const b = extBadges.get(`${e.name}|${sid}`);
     return `<button class="stab ${on === e.name ? "on" : ""}" data-stab="${esc(e.name)}" data-sid="${esc(sid)}">${esc(e.tab)}${b ? `<span class="stab-n">${esc(b)}</span>` : ""}</button>`;
   }).join("")}<span class="grow"></span>${ran ? `<span class="stab-ran">ran <code>${esc(ran)}</code></span>` : ""}</div>`;
@@ -66,7 +67,7 @@ function placeExt() {
   const slot = name && document.querySelector(".active-pane [data-ext-slot]");
   const covered = !!(sheet || lightbox);
   const chat = document.querySelector(".active-pane [data-chat]");
-  if (chat) chat.style.display = slot || document.querySelector(".active-pane [data-act-slot]") ? "none" : "";
+  if (chat) chat.style.display = slot || document.querySelector(".active-pane [data-act-slot], .active-pane [data-bg-slot]") ? "none" : "";
   for (const [n, f] of extFrames) if (n !== name || !slot || covered) f.hidden = true;
   extNotify();
   if (!slot || covered) return;
@@ -82,6 +83,7 @@ document.addEventListener("click", (e) => {
   if (!t) return;
   e.stopPropagation();
   actTabOn.delete(t.dataset.sid);
+  bgTabOn.delete(t.dataset.sid);
   if (t.dataset.stab) extTabOf.set(t.dataset.sid, t.dataset.stab); else extTabOf.delete(t.dataset.sid);
   renderMain();
 }, true);

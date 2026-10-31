@@ -597,6 +597,7 @@ document.addEventListener("click", (e) => {
   if (ac === "tab") {
     const sid = t.dataset.sid;
     extTabOf.delete(sid);
+    bgTabOn.delete(sid);
     actTabOn.add(sid);
     return renderMain();
   }

@@ -39,9 +39,8 @@ function renderMain() {
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
   const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
-  // A background agent's steps (chat.js helperBlock), by agent: where you were, or at its newest.
+  // A background script's output in its full view (chat.js scriptPane): where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
-  const trayScrolls = new Map([...document.querySelectorAll("[data-tray-scroll]")].map((el) => [el.dataset.trayScroll, el.scrollTop]));   // the agents tray, by session
   const onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
@@ -68,7 +67,6 @@ function renderMain() {
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
-  document.querySelectorAll("[data-tray-scroll]").forEach((el) => { el.scrollTop = trayScrolls.get(el.dataset.trayScroll) ?? 0; });
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
   // land. Not the kept chat's dots: those elements live on, and their pulse with them.
@@ -369,8 +367,6 @@ function bindMain() {
     if (cc) return copyCode(cc);
     const rc = t.closest("[data-run-code]");
     if (rc) return runCode(rc);
-    const td = t.closest("[data-tray-done]");
-    if (td) { const k = td.dataset.trayDone; trayDone.has(k) ? trayDone.delete(k) : trayDone.add(k); return renderMain(); }
     // A card's "N bg": open its session (its item, on a waiting card) with the newest still running in full.
     const bo = t.closest("[data-bg-open]");
     if (bo) { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; helperView = { sid, id: null }; return it ? setActive(it) : openSession(sid); }
