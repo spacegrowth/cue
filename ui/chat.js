@@ -1980,7 +1980,8 @@ function metaInline(sid) {
   const grew = !freed && !state.skill_handoffs?.[sid] ? handoffGrew(sid) : 0;
   // Its cache's countdown (insights.js cacheMeta): the ring and the minutes, amber in its last 5; "cache gone" after.
   const cache = freed ? "" : cacheMeta(sid);
-  return `<span class="ap-meta">${parts.join(" · ")}${grew ? ` · <span class="mi-grow">${Math.round(grew)}× its start</span>` : ""}${cache ? ` · ${cache}` : ""}</span>${chip}`;
+  // The one thing to do now, as chips beside it (insights.js handoffChips): Start fresh, Hand off now, Fresh session…
+  return `<span class="ap-meta">${parts.join(" · ")}${grew ? ` · <span class="mi-grow">${Math.round(grew)}× its start</span>` : ""}${cache ? ` · ${cache}` : ""}</span>${chip}${handoffChips(sid, s)}`;
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
