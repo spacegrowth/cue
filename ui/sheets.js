@@ -511,7 +511,7 @@ function settingsSheet() {
     <div class="set-group">History</div>
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
     voice: voiceSettings() + extRows("Voice"),
-    insights: insSettings(st),
+    insights: insSettings(st) + tipsSettings(st),
     actions: actSettings(),
     usage: `
     <div class="set-group">Usage</div>

@@ -30,10 +30,36 @@ fn ours(choice: &str) -> bool {
     matches!(choice, "pluck" | "chime" | "rise" | "tada")
 }
 
+/// The file a sound of Cue's is written to: its name and a fingerprint of how it sounds now, "Cue Tada 3f2a91.wav".
+/// macOS remembers a notification's sound by its file name and keeps what it first found there (a file changed
+/// under the same name then plays as nothing at all), so a sound drawn differently gets a name of its own.
 fn file_name(choice: &str) -> String {
+    named(choice, &wav(&render(choice)))
+}
+
+fn named(choice: &str, wav: &[u8]) -> String {
+    format!("{} {:06x}.wav", stem(choice), fingerprint(wav))
+}
+
+/// "Cue Tada", for "tada".
+fn stem(choice: &str) -> String {
     let mut name = choice.to_string();
     name[..1].make_ascii_uppercase();
-    format!("Cue {name}.wav")
+    format!("Cue {name}")
+}
+
+/// FNV-1a over the file, kept to 24 bits: six hex digits in its name.
+fn fingerprint(bytes: &[u8]) -> u32 {
+    bytes.iter().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(*b)).wrapping_mul(0x0100_0193)) & 0xff_ffff
+}
+
+/// An earlier drawing of this sound of Cue's: its name before fingerprints, or with another fingerprint.
+/// Any other file in ~/Library/Sounds is never one.
+fn stale(file: &str, choice: &str, current: &str) -> bool {
+    let stem = stem(choice);
+    file != current
+        && (file == format!("{stem}.wav")
+            || file.strip_prefix(&format!("{stem} ")).and_then(|r| r.strip_suffix(".wav")).is_some_and(|f| f.len() == 6 && f.chars().all(|c| c.is_ascii_hexdigit())))
 }
 
 fn sounds_dir() -> Option<std::path::PathBuf> {
@@ -42,15 +68,26 @@ fn sounds_dir() -> Option<std::path::PathBuf> {
 
 /// Write Cue's sounds to ~/Library/Sounds, unless they're there already as drawn now.
 pub fn install() {
-    let Some(dir) = sounds_dir() else { return };
-    if std::fs::create_dir_all(&dir).is_err() {
+    if let Some(dir) = sounds_dir() {
+        install_in(&dir);
+    }
+}
+
+/// Each sound of Cue's as drawn now, and its earlier drawings gone, so only the one in use is there.
+fn install_in(dir: &std::path::Path) {
+    if std::fs::create_dir_all(dir).is_err() {
         return;
     }
+    let files: Vec<String> = std::fs::read_dir(dir).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
     for c in CHOICES.into_iter().chain([TADA]).filter(|c| ours(c)) {
         let wav = wav(&render(c));
-        let path = dir.join(file_name(c));
+        let name = named(c, &wav);
+        let path = dir.join(&name);
         if std::fs::read(&path).ok().as_deref() != Some(&wav[..]) {
             let _ = std::fs::write(&path, &wav);
+        }
+        for old in files.iter().filter(|f| stale(f, c, &name)) {
+            let _ = std::fs::remove_file(dir.join(old));
         }
     }
 }
@@ -100,13 +137,12 @@ fn tones(choice: &str) -> Vec<Tone> {
         "pluck" => vec![t(c5, 0.0, 0.6, 0.32, true), t(c5 * 2.0, 0.0, 0.25, 0.08, false)],
         "chime" => vec![t(c5 * 2.0, 0.0, 1.4, 0.16, false), t(c5 * 3.0, 0.0, 0.9, 0.06, false), t(c5 * 5.4, 0.0, 0.4, 0.02, false)],
         "rise" => vec![t(c5, 0.0, 0.28, 0.28, true), t(c5 * 1.5, 0.13, 0.5, 0.3, true)],
-        // A short pickup, then a major chord that rings.
-        "tada" => vec![
-            t(c5 * 1.5, 0.0, 0.16, 0.24, true),
-            t(c5 * 2.0, 0.14, 1.1, 0.26, true),
-            t(c5 * 2.52, 0.14, 1.0, 0.18, true),
-            t(c5 * 3.0, 0.14, 0.9, 0.12, false),
-        ],
+        // A soft marimba run up the major chord (C E G C), ringing on the top note; each note with a faint
+        // high overtone, struck as it starts.
+        "tada" => {
+            let run = [(c5, 0.0, 0.9, 0.22), (659.25, 0.09, 0.9, 0.22), (783.99, 0.18, 0.9, 0.22), (c5 * 2.0, 0.27, 1.25, 0.26)];
+            run.iter().flat_map(|&(hz, at, dur, gain)| [t(hz, at, dur, gain, false), t(hz * 4.0, at, 0.12, 0.03, false)]).collect()
+        }
         _ => vec![],
     }
 }
@@ -176,8 +212,29 @@ mod tests {
 
     #[test]
     fn a_choice_names_the_sound_macos_plays() {
-        assert_eq!(notification_name("pluck").as_deref(), Some("Cue Pluck.wav"));
+        let pluck = notification_name("pluck").unwrap();
+        assert!(pluck.starts_with("Cue Pluck ") && pluck.ends_with(".wav") && pluck.len() == "Cue Pluck 123456.wav".len(), "{pluck}");
+        assert_ne!(file_name("pluck"), file_name("tada"), "each sound has a name of its own");
         assert_eq!(notification_name("glass").as_deref(), Some("Glass"));
         assert_eq!(notification_name("none"), None);
+    }
+
+    #[test]
+    fn installing_leaves_only_the_sound_as_drawn_now_and_never_touches_other_files() {
+        let dir = std::env::temp_dir().join(format!("cue-sounds-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for old in ["Cue Tada.wav", "Cue Tada 000000.wav", "Cue Tada notes.wav", "Tada.wav", "Cue Tadas 123456.wav"] {
+            std::fs::write(dir.join(old), b"old").unwrap();
+        }
+        install_in(&dir);
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        left.sort();
+        let mut want = vec!["Cue Tada notes.wav".to_string(), "Tada.wav".to_string(), "Cue Tadas 123456.wav".to_string()];
+        want.extend(["pluck", "chime", "rise", "tada"].map(file_name));
+        want.sort();
+        assert_eq!(left, want);
+        assert_eq!(std::fs::read(dir.join(file_name("tada"))).unwrap(), wav(&render("tada")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

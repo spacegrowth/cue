@@ -237,9 +237,25 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .btn.send { height: 30px; min-width: 64px; padding: 0 14px; border-radius: 8px; font-size: 13px; margin-left: 2px; }
 /* While it works, by Queue: stop its turn and send now (⌘↵). */
 .btn.send-now { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; margin-left: 2px; display: inline-flex; align-items: center; gap: 6px; }
-.btn.tell-btn { height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; margin-left: 2px; display: inline-flex; align-items: center; gap: 6px; }
-.btn.tell-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.cv-status.watch-line { gap: 7px; color: var(--ink); }
+/* Tips (tips.js), at the end of the line under the chat: in its grey, each with its own icon, never a second row
+   (fitTips drops one that would wrap). Tell me is the control, not a tip: it always fits, and the text before
+   it shortens with … instead. */
+.cv-tip { display: inline-flex; align-items: center; gap: 5px; flex: none; white-space: nowrap; color: var(--muted); }
+.cv-tip[hidden] { display: none; }
+.tip-sep { opacity: 0.6; }
+.tip-ico { width: 13px; height: 13px; flex: none; color: var(--accent); }
+.cv-tip b { color: var(--ink); font-weight: 650; }
+.cv-tip kbd { padding: 1px 5px; }
+.tip-x { padding: 0 2px; font-size: 13px; line-height: 1; opacity: 0.6; }
+.tip-x:hover, .tip-x:focus-visible { opacity: 1; }
+.tip-link { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 650; }
+.tip-link:hover { text-decoration: underline; }
+.tip-tell.on { color: var(--ink); }
+.cv-status:has(.tip-tell) { max-width: 100%; min-width: 0; }
+.cv-status:has(.tip-tell) .cv-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-status:has(.tip-tell) > .dim { flex: none; white-space: nowrap; }
+/* On the last reply's meta line, once a turn you asked to be told about ends: the tada and how long it took. */
+.told-meta { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); vertical-align: -1px; }
 .watch-mark { display: grid; place-items: center; width: 22px; height: 22px; margin: 0 -4px 0 -6px; color: var(--pc); }
 .btn.send-now kbd { padding: 1px 5px; font-size: 11.5px; color: var(--ink); opacity: .7; }
 .field { flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 8px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); padding: 3px 4px 3px 10px; }
@@ -1034,7 +1050,7 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
    the right, under the buttons. */
 .ap-sub { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px 0 44px; min-width: 0; }
 .ap-sub .crew-line { min-width: 0; }
-.ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; min-width: 0; flex: 0 1 auto; display: flex; overflow: hidden; }
+.ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; min-width: 0; flex: 0 1000 auto; display: flex; overflow: hidden; }
 /* Cut in the middle: the start gives way first, the folder's own name only when nothing else is left. */
 .cwd-head { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cwd-tail { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
@@ -1605,10 +1621,12 @@ button.tm-chip:hover { background: var(--panel-2); }
 .path-in { width: 280px; height: 32px; border-radius: 9px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 12px var(--mono); flex: none; }
 .up-row.money { grid-template-columns: 72px 1fr auto; }
 .tl-name { color: var(--ink); font-weight: 650; }
-/* The open session's numbers, grey, on the chat's title line. */
-.ap-meta { font-size: 12px; color: var(--muted); white-space: nowrap; flex: none; }
+/* The open session's numbers, grey, on the line under the chat's title, after the chip for the one thing to do
+   now. The line is tight (the folder path shares it): the numbers shrink with … from their end before any chip
+   is cut off; the path gives way before them. */
+.ap-meta { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ap-meta b { color: var(--ink); font-weight: 650; }
-.mi-compact, .mi-act { margin-left: 8px; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--amber); color: var(--amber); font-size: 11.5px; font-weight: 650; background: transparent; }
+.mi-compact, .mi-act { flex: none; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--amber); color: var(--amber); font-size: 11.5px; font-weight: 650; background: transparent; }
 .mi-compact:hover, .mi-act:hover { background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .commit-btn { margin-left: 2px; }
 /* Context: how full, at a glance (a small gauge and the number), amber from 80%, red from 95%. */

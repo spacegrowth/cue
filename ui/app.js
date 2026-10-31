@@ -160,6 +160,7 @@ function renderMain() {
   if (overWas && !over && !document.activeElement?.matches?.("input, textarea, select")) focusComposer();
   overWas = over;
   fitHead();
+  fitTips();
   // By the way's panel drops from just under the chat's header (whatever height that has now).
   const bp = document.querySelector(".btw-pop"), ah = document.querySelector(".ap-head");
   if (bp && ah) bp.style.top = `${ah.offsetTop + ah.offsetHeight + 2}px`;
@@ -168,7 +169,7 @@ function renderMain() {
   fitTop();
   placeColors();
 }
-addEventListener("resize", () => { fitHead(); fitTop(); markMore(); });
+addEventListener("resize", () => { fitHead(); fitTips(); fitTop(); markMore(); });
 document.addEventListener("scroll", (e) => { if (e.target instanceof Element) moreWoke.add(e.target); if (!moreFrame) moreFrame = requestAnimationFrame(() => { moreFrame = 0; markMore(false); }); }, true);
 document.addEventListener("click", (e) => {
   const pill = e.target.closest?.(".more-below");
@@ -302,17 +303,16 @@ function bindMain() {
       return termSid === tm.dataset.sid ? termObj?.focus() : openTerm(tm.dataset.sid);
     }
     const bw = t.closest("[data-act=btw], [data-act=btw-close]");
-    if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) return openBtw(bw.dataset.sid); btwFor = null; return renderMain(); }
+    if (bw) { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) { tipUsed("btw"); return openBtw(bw.dataset.sid); } btwFor = null; return renderMain(); }
     // Catch me up above the box: asks once; Got it folds it away.
     const cu = t.closest("[data-act=catch-up], [data-act=catch-up-got]");
     if (cu) return cu.dataset.act === "catch-up" ? askCatchUp(cu.dataset.sid) : gotCatchUp(cu.dataset.sid);
+    // Tell me when it's done (the line under the chat, or ⋯: done with the menu too).
     const wt = t.closest("[data-act=watch]");
-    if (wt) {
-      const on = wt.dataset.on === "1", s = sessionOf(wt.dataset.sid);
-      if (s) s.watch_ms = on ? Date.now() : 0;   // shown now; Cue's next update says the same
-      renderMain();
-      return invoke("set_watch", { sessionId: wt.dataset.sid, on }).catch((e) => toast(`Couldn't: ${e}`));
-    }
+    if (wt) { moreFor = handoffArm = null; return setWatch(wt.dataset.sid, wt.dataset.on === "1"); }
+    // A tip's ×: that tip never comes back (tips.js).
+    const tx = t.closest("[data-act=tip-x]");
+    if (tx) { tipUsed(tx.dataset.tipId); return renderMain(); }
     const sn = t.closest("[data-act=send-now]");
     if (sn) return sendQueuedNow(sn.dataset.sid);
     const uq = t.closest("[data-act=unqueue-review]");
@@ -722,7 +722,9 @@ function bindMain() {
     if (e.key === "Enter" && e.target.dataset?.text === "mc-host") { e.preventDefault(); return machAct("add"); }
     if (e.key === "Enter" && e.target.dataset?.text === "mc-label" && machRenaming) { e.preventDefault(); return machAct("rename-save", machRenaming); }
     // ⌘J: Cue's own floating terminal, out or tucked away (from inside it too).
-    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); return toggleShells(true); }
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") { e.preventDefault(); tipUsed("shell"); return toggleShells(true); }
+    // ⌘D: tell me when the open session's turn is done. Works while you type.
+    if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === "d") { e.preventDefault(); tipUsed("tell"); return watchTurn(); }
     // ⌘+ / ⌘− / ⌘0: text size, a step bigger or smaller, or back to Default (from anywhere in Cue).
     if (e.metaKey && !e.altKey && !e.ctrlKey && ["=", "+", "-", "_", "0"].includes(e.key)) { e.preventDefault(); return stepZoom(e.key === "0" ? 0 : e.key === "-" || e.key === "_" ? -1 : 1); }
     // ⌘T: a new shell tab in it (from inside it too).
@@ -734,12 +736,6 @@ function bindMain() {
     }
     // Inside it every key is its shell's; only ⌘ shortcuts stay Cue's.
     if (e.target.closest?.(".pip") && !e.metaKey) return;
-    // ⌃`: the open session's terminal, open or closed (from inside it too).
-    if (e.ctrlKey && e.key === "`") {
-      e.preventDefault();
-      if (termSid) return closeTerm();
-      return active?.sid && inTmux(active.sid) ? openTerm(active.sid) : undefined;
-    }
     // Inside the terminal every key is the terminal's (Esc included); only ⌘ shortcuts stay Cue's.
     if (e.target.closest?.(".term-host") && !e.metaKey) return;
     // The "/" menu under a box: arrows move, Tab fills, Enter runs, Esc closes it.
@@ -778,14 +774,14 @@ function bindMain() {
       return renderMain();
     }
     // ⌘, opens Settings, the Mac way (even while typing in a box).
-    if (e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "f") { e.preventDefault(); return openFind(); }
+    if (e.metaKey && !e.ctrlKey && e.key.toLowerCase() === "f") { e.preventDefault(); tipUsed("find"); return openFind(); }
     if (e.metaKey && e.key === ",") { e.preventDefault(); sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
     // ⌘K: every live session in the middle of the window, like Spotlight. ⌘L: the same, under its chip.
-    if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); return openFind(); }
+    if (e.metaKey && e.key.toLowerCase() === "k") { e.preventDefault(); tipUsed("find"); return openFind(); }
     // ⌘L: every live session (the drop-down by "N live"), even while typing in a box.
     if (e.metaKey && e.key.toLowerCase() === "l") { e.preventDefault(); return lvAct("toggle", {}); }
     // ⌘N: + New session, in the middle of the window like ⌘K (even while typing in a box).
-    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); sheet = lightbox = null; liveSpot = true; return lvAct("new", {}); }
+    if (e.metaKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") { e.preventDefault(); tipUsed("new"); sheet = lightbox = null; liveSpot = true; return lvAct("new", {}); }
     // ⌘E: the open project's actions, to run one (actions.js); ⌘⇧E runs the last one again.
     if (e.metaKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === "e") { e.preventDefault(); return e.shiftKey ? actAgain() : actPalToggle(); }
     if (lightbox) {
@@ -853,7 +849,7 @@ function bindMain() {
       if (sid && sendWaitingNow(sid)) return e.preventDefault();
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === "/") { e.preventDefault(); return openFind(); }   // like GitHub and Gmail (only when not typing)
+    if (e.key === "/") { e.preventDefault(); tipUsed("find"); return openFind(); }   // like GitHub and Gmail (only when not typing)
     if (e.key === "h") { view = view === "history" ? "board" : "history"; return renderMain(); }
     if (e.key === "l") return lvAct("toggle", {});
     if (e.key === ",") { sheet = sheet === "settings" ? null : "settings"; return renderMain(); }

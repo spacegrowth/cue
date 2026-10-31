@@ -631,7 +631,7 @@ pub fn focus(o: &Origin) -> Result<String, String> {
                 return Err(format!("tmux pane {pane} is gone"));
             }
             if tmux_is_cues(&name) {
-                return Err("it runs in Cue: its terminal is here, above the reply box (⌃`)".into());
+                return Err("it runs in Cue: its terminal is here, the Terminal strip above the reply box".into());
             }
             return attach_in_new_window(&name).map(|app| format!("tmux session \"{name}\" (wasn't open in any window; opened it in {app})"));
         }

@@ -294,7 +294,7 @@ async function lvAct(act, d) {
       draft("new-msg").images = [];
       newOpen = liveOpen = false;
       // Cue knows the new session already (it picked the id): open it here. Its terminal stays closed
-      // (the strip, or ⌃`) until you open it — the reply box comes first.
+      // (the strip above the box) until you open it — the reply box comes first.
       if (r.session_id) { setActive(null, r.session_id); return; }
       renderMain();
     } catch (e) { toast(`Couldn't start it: ${e}`); }

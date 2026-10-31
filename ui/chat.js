@@ -271,7 +271,7 @@ function termDock(sid) {
   if (!inTmux(sid)) return "";   // where it runs instead: a tab on its reply box (placeTab)
   const open = termSid === sid, waiting = waitsInTerminal(sid);
   return `<div class="tdock ${open ? "open" : ""} ${waiting ? "waiting" : ""}">
-    <button class="tstrip" data-act="term" data-sid="${esc(sid)}" aria-expanded="${open}" aria-label="${open ? "Close" : "Open"} its terminal (⌃\`)"><span class="tlive"></span><span class="tlbl">${waiting ? "Waiting in its terminal" : "Terminal"}</span><span class="tlast">${esc(termLast.get(sid) || "")}</span><span class="tchev">▴</span></button>
+    <button class="tstrip" data-act="term" data-sid="${esc(sid)}" aria-expanded="${open}" aria-label="${open ? "Close" : "Open"} its terminal"><span class="tlive"></span><span class="tlbl">${waiting ? "Waiting in its terminal" : "Terminal"}</span><span class="tlast">${esc(termLast.get(sid) || "")}</span><span class="tchev">▴</span></button>
     ${open ? `<div class="tslot" data-term-slot></div>` : ""}</div>`;
 }
 async function openTerm(sid) {
@@ -1787,7 +1787,7 @@ function chatHtml(it, s, harness, paged = false) {
     const folded = !recent.has(n) && long && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
-    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago</div>
+    return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
       <div class="msg cv-text">${md(e.text)}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
@@ -1826,13 +1826,14 @@ function statusLine(it, s) {
   // Waiting on them: the tray says it all.
   if (tray && s.state === "agent" && s.helpers) return tray;
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
-  return tellLine(s) + (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
+  return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
 }
-/** "Tell me" on this turn: a line says Cue is watching it, then that it's done and how long it took. */
-function tellLine(s) {
-  if (atWork(s) && s.watch_ms) return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span>Telling you when this is done</span></div>`;
-  if (s?.told_ms && !atWork(s)) return `<div class="cv-status watch-line">${tadaIcon(13, true)}<span><b>Done</b>${s.told_ms >= 1000 ? ` · took ${tookText(s.told_ms)}` : ""} · you asked to be told</span></div>`;
-  return "";
+/** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
+ *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot
+ *  says Cue is watching; nothing else. */
+function toldMeta(s) {
+  if (!s?.told_ms || atWork(s)) return "";
+  return ` · <span class="told-meta">${tadaIcon(11, true)}${s.told_ms >= 1000 ? `took ${tookText(s.told_ms)}` : "done"}</span>`;
 }
 /** How long a turn ran: "45s", "38m", "1h 52m" (as its notification says it). */
 const tookText = (ms) => { const sec = Math.floor(ms / 1000); return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h ${Math.floor(sec % 3600 / 60)}m`; };
@@ -1849,12 +1850,12 @@ function whereNow(it, s) {
   // It finished compacting (until the next turn starts).
   if (s?.compacted_ms && s.state !== "working") return `<div class="cv-status"><span class="ok-dot"></span>Compacted: the conversation was summarized and its context freed<span class="dim"> · <span data-ago="${s.compacted_ms}">${ago(s.compacted_ms)}</span> ago</span></div>`;
   // What it's doing right now (its latest step), else the prompt it's on.
-  if (s?.state === "working" && s.doing) return `<div class="cv-status"><span class="dot-live"></span>${esc(s.doing)}<span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span></div>`;
+  if (s?.state === "working" && s.doing) return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">${esc(s.doing)}</span><span class="dim"> · <span data-ago="${s.doing_ms}">${ago(s.doing_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   // Nothing in its transcript yet (it's thinking; Claude Code writes a message once it's whole): a live
   // count since the turn started, so a long think doesn't look stuck.
-  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span>Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}<span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span></div>`;
-  if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}</div>`;
-  if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span>Waiting on ${esc(s.driven_by)}` : `Idle, waiting on ${esc(s.driven_by || "another agent")}`}</div>`;
+  if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
+  if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}${tipFor(it, s, "waiting")}</div>`;
+  if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(s.driven_by)}</span>` : `<span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>`}${tipFor(it, s, "working")}</div>`;
   if (s?.state === "limited" && s.limit) {
     const l = s.limit, what = s.prompt ? `“${esc(s.prompt.length > 80 ? s.prompt.slice(0, 80) + "…" : s.prompt)}”` : "Your last message";
     if (lifted(l)) return `<div class="cv-status limit"><span class="lim-dot back"></span><span><b>${esc(scopeName(l))} is back.</b> ${what} didn't run.</span><button class="btn small" data-usage="resend-one" data-sid="${esc(s.session_id)}">Resend</button></div>`;
@@ -1921,6 +1922,7 @@ function moreMenu(sid, s, closable = false) {
   const later = isParked(sid) ? `<button data-park="${esc(sid)}:0">Back to Waiting</button>` : `<button data-park="${esc(sid)}:1">Decide later<span>Move it to Need to decide while you think it over</span></button>`;
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
+      ${tellItem(sid, s)}
       ${handoffMenu(sid, s)}
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
@@ -1973,15 +1975,17 @@ function metaInline(sid) {
   // Just compacted: its log's last count is from before, so don't show it until a new reply brings a fresh one.
   const s = sessionOf(sid);
   const freed = s?.compacted_ms && s.state !== "working";
-  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : m.context ? `<span class="mi-ctx">${k(m.context)} context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  const ctx = freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : m.context ? `<span class="mi-ctx">${k(m.context)} context</span>` : "";
   // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
   const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
-  // A fresh session due (insights.js handoffDue): how far it has grown, in amber; the chip by the box is the way.
+  // A fresh session due (insights.js handoffDue): how far it has grown, in amber.
   const grew = !freed && !state.skill_handoffs?.[sid] ? handoffGrew(sid) : 0;
   // Its cache's countdown (insights.js cacheMeta): the ring and the minutes, amber in its last 5; "cache gone" after.
   const cache = freed ? "" : cacheMeta(sid);
-  // The one thing to do now, as chips beside it (insights.js handoffChips): Start fresh, Hand off now, Fresh session…
-  return `<span class="ap-meta">${parts.join(" · ")}${grew ? ` · <span class="mi-grow">${Math.round(grew)}× its start</span>` : ""}${cache ? ` · ${cache}` : ""}</span>${chip}${handoffChips(sid, s)}`;
+  // The one thing to do now (Compact, then insights.js handoffChips: Start fresh, Hand off now, Fresh session…) comes
+  // first, so a tight line never cuts it off; the numbers after it give way from the right, the cost first.
+  const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", ctx, grew ? `<span class="mi-grow">${Math.round(grew)}× its start</span>` : "", cache, m.cost != null ? money(m.cost) : ""].filter(Boolean);
+  return `${chip}${handoffChips(sid, s)}<span class="ap-meta">${parts.join(" · ")}</span>`;
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
@@ -2145,15 +2149,29 @@ function restartCover(rs, name) {
     <div class="rs-note">Usually a few seconds. The conversation carries on where it was.</div></div></div>`;
 }
 
-/** "Tell me", beside Send: told when this turn is done, even with Cue in front. It shows once the turn
- *  has run 30 seconds (most are done by then), or while it waits on its background agents (its turn goes
- *  on when they report), and stays pressed until the turn ends. */
-const TELL_AFTER_MS = 30000;
+/** "Tell me": told when this turn is done, even with Cue in front. ⌘D (watchTurn) or ⋯ → Tell me when this is
+ *  done (tellItem), from the turn's first second; the tada in place of the title's dot and the line under the
+ *  chat (tips.js tellTip) say it's on. */
 const atWork = (s) => s?.state === "working" || s?.state === "agent";
-function tellBtn(s) {
-  if (!atWork(s) || !(s.watch_ms || s.state === "agent" || Date.now() - s.since_ms > TELL_AFTER_MS)) return "";
+function setWatch(sid, on) {
+  const s = sessionOf(sid);
+  if (s) s.watch_ms = on ? Date.now() : 0;   // shown now; Cue's next update says the same
+  renderMain();
+  return invoke("set_watch", { sessionId: sid, on }).catch((e) => toast(`Couldn't: ${e}`));
+}
+/** ⌘D on the open session: tell me when this turn is done. Only ever on (Undo on the line under the chat
+ *  takes it back); pressed again, it says so again. */
+function watchTurn() {
+  const s = sessionOf(quietOpen || active?.sid);
+  if (!atWork(s)) return toast("Nothing running to tell you about");
+  if (!s.watch_ms) setWatch(s.session_id, true);
+  toast("Telling you when this is done");
+}
+/** ⋯ → Tell me when this is done, while a turn runs; Don't tell me once it's on. */
+function tellItem(sid, s) {
+  if (!atWork(s)) return "";
   const on = !!s.watch_ms;
-  return `<button class="btn tell-btn ${on ? "on" : ""}" data-act="watch" data-sid="${esc(s.session_id)}" data-on="${on ? 0 : 1}" aria-pressed="${on}">${tadaIcon(14, on)}${on ? "Telling you" : "Tell me"}</button>`;
+  return `<button data-act="watch" data-sid="${esc(sid)}" data-on="${on ? 0 : 1}">${on ? "Don't tell me" : "Tell me when this is done"}<span>${on ? "No notification when this turn ends" : "A notification and the tada sound when this turn ends, even with Cue in front · ⌘D"}</span></button>`;
 }
 /** Where the project's dot is, while you're waiting to be told: the tada, in the project's color. */
 const watchMark = (project) => `<span class="watch-mark" style="${projStyle(project)}" role="img" aria-label="Telling you when this turn is done">${tadaIcon(14, true)}</span>`;
@@ -2197,7 +2215,7 @@ function activePane() {
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
     const now = busy ? `<button class="btn send-now" data-act="send-to" data-now="1" data-sid="${esc(sid)}">Now <kbd>⌘↵</kbd></button>` : "";
-    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now, tellBtn(s))}</div>`;
+    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   // A background agent opened in full (helperPane): it takes the chat area and the box, under the same head.
