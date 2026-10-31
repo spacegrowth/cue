@@ -523,6 +523,34 @@ pub(crate) async fn catch_up(hub: State<'_, Arc<Hub>>, session_id: String, seen_
     tauri::async_runtime::spawn_blocking(move || h.catch_up(&session_id, seen_ms)).await.map_err(|e| e.to_string())?
 }
 
+/// The Tasks tab: track what's left in a session (tasks.rs). Its first list is asked for in the background; the
+/// window's state carries it as it comes.
+#[tauri::command]
+pub(crate) fn tasks_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    crate::tasks::start(hub.inner().clone(), &session_id)
+}
+
+/// The Tasks tab's Refresh: the whole list asked for again, with the list as it stands.
+#[tauri::command]
+pub(crate) fn tasks_refresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    crate::tasks::refresh(hub.inner().clone(), &session_id)
+}
+
+/// The Tasks tab's Stop tracking: the list goes.
+#[tauri::command]
+pub(crate) fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) {
+    crate::tasks::stop(&session_id);
+    hub.redraw();
+}
+
+/// An item ticked ("done"), crossed out ("dropped") or put back ("open") by you.
+#[tauri::command]
+pub(crate) fn tasks_set(hub: State<'_, Arc<Hub>>, session_id: String, id: String, state: String) -> Result<(), String> {
+    crate::tasks::set(&session_id, &id, &state)?;
+    hub.redraw();
+    Ok(())
+}
+
 /// "Go to tab" for a session that has no card (a working one).
 #[tauri::command]
 pub(crate) async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {

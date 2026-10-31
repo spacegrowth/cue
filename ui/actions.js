@@ -246,6 +246,7 @@ function actEditAll(pl) {
   if (!s) return actEditOpen(pl, null);
   if (openSid() !== s.session_id) setActive(null, s.session_id);
   extTabOf.delete(s.session_id);
+  tasksTabOn.delete(s.session_id);
   actTabOn.add(s.session_id);
   renderMain();
 }
@@ -598,6 +599,7 @@ document.addEventListener("click", (e) => {
     const sid = t.dataset.sid;
     extTabOf.delete(sid);
     bgTabOn.delete(sid);
+    tasksTabOn.delete(sid);
     actTabOn.add(sid);
     return renderMain();
   }

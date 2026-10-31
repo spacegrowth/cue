@@ -23,19 +23,26 @@ impl Hub {
     /// "Catch me up" on a session, for a window or an add-on that last saw its chat at `seen_ms`: from the
     /// messages after then (Cue's log, with the live thread for what isn't saved yet). Any agent, any machine.
     pub fn catch_up(&self, session_id: &str, seen_ms: u64) -> Result<crate::btw::CatchUp, String> {
-        let mut log: Vec<Exchange> = crate::db::session_log_page(session_id, i64::MAX as u64, 200).into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect();
-        for e in self.st().sessions.thread(session_id) {
-            if !log.iter().any(|x| x.at_ms == e.at_ms && x.role == e.role) {
-                log.push(e);
-            }
-        }
-        log.sort_by_key(|e| e.at_ms);
-        let (before, since): (Vec<Exchange>, Vec<Exchange>) = log.into_iter().partition(|e| e.at_ms <= seen_ms);
+        let (before, since): (Vec<Exchange>, Vec<Exchange>) = self.chat_log(session_id).into_iter().partition(|e| e.at_ms <= seen_ms);
         if !since.iter().any(|e| e.role == "agent") {
             return Err("nothing new since you looked".into());
         }
         let seen = before.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str());
         crate::btw::catch_up(seen, &since)
+    }
+
+    /// A session's chat, oldest first, its newest 200 messages: Cue's log, with the live thread for what isn't
+    /// saved yet. Any agent, any machine (Catch me up and the list of what's left read it).
+    pub fn chat_log(&self, session_id: &str) -> Vec<Exchange> {
+        let mut log: Vec<Exchange> = crate::db::session_log_page(session_id, i64::MAX as u64, 200).into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect();
+        let thread = self.st().sessions.thread(session_id);
+        for e in thread {
+            if !log.iter().any(|x| x.at_ms == e.at_ms && x.role == e.role) {
+                log.push(e);
+            }
+        }
+        log.sort_by_key(|e| e.at_ms);
+        log
     }
 
     /// Every live session as it was when Cue last ran (each with its name): what a reboot may

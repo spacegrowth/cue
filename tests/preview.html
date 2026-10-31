@@ -73,6 +73,25 @@
         ],
       };
       // ?usage=meter|out|fable|back&upop=1 — the usage pill and its panel.
+      // ?tasks=1: every session tracked, a list of what's left (tasks.js); ?tasks=busy: its first list being read;
+      // ?tasks=off: none tracked yet. The Tasks tab opens on the session shown.
+      state.tasks = {};
+      if (["1", "busy"].includes(q.get("tasks"))) {
+        const it = (id, group, text, st = "open") => ({ id, group, text, state: st, by_you: st !== "open", at_ms: now - 30 * M });
+        const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {
+          items: [
+            it("t1", "check", "Lock: with the lock on, swipes spring back without answering"),
+            it("t2", "check", "Landscape: the Reviewed screen, line review, stock screen and search"),
+            it("t3", "build", "Tonight's list: an \"N of M\" sheet, tonight's calls grouped D/W/M"),
+            it("t4", "build", "Review count on the pill"),
+            it("t5", "decide", "When to commit: everything is uncommitted on main"),
+            it("t6", "ok", "Back only steps through calls you answered, not stocks from search"),
+            it("t7", "check", "Back: the card says Taken or Skipped", "done"),
+          ],
+          next: 8, said: "1 done (you said back works)", err: "", busy: "", spent: { tokens: 63120, usd: 0.0141 }, updated_ms: now - 2 * M,
+        };
+        for (const s of state.sessions) state.tasks[s.session_id] = JSON.parse(JSON.stringify(list));
+      }
       if (q.has("usage")) {
         const u = q.get("usage"), H = 3600000;
         state.usage = { five_hour: { pct: u === "out" ? 100 : 62, resets_ms: now + 38 * M }, seven_day: { pct: 41, resets_ms: now + 4 * 24 * H }, models: [{ name: "Fable", pct: u === "fable" ? 100 : 88, resets_ms: now + 4 * 24 * H, fetched_ms: now - 3 * H }], at_ms: now - 20000 };
@@ -574,6 +593,8 @@
   <script src="../ui/extensions.js"></script>
   <script src="../ui/sheets.js"></script>
   <script src="../ui/actions.js"></script>
+  <script src="../ui/background.js"></script>
+  <script src="../ui/tasks.js"></script>
   <script src="../ui/app.js"></script>
   <script>
     setTimeout(() => {
@@ -581,6 +602,8 @@
       if (/hist=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
       if (/settings=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
       if (/open=1/.test(q)) document.querySelector("[data-toggle]")?.click();
+      // ?tasks=…: the open session's Tasks tab.
+      if (/tasks=/.test(q)) setTimeout(() => document.querySelector("[data-tasks-tab]")?.click(), 600);
       // ?more=1: open the chat header's ⋯ menu.
       if (/more=1/.test(q)) setTimeout(() => document.querySelector("[data-more]")?.click(), 500);
       // ?live=1&quiet=1: open the quiet session q2 (Sessions view → its tile).

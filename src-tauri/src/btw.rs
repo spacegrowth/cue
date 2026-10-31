@@ -11,14 +11,34 @@ use std::sync::{Arc, Mutex};
 /// The longest a side question may take before Cue gives up on it.
 const TIMEOUT_SECS: u64 = 180;
 
+/// What an answer cost: every token it read and wrote (cache reads too), and what Claude Code says that came to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Spent {
+    pub tokens: u64,
+    pub usd: f64,
+}
+
+/// An answer and what it cost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Answer {
+    pub text: String,
+    pub spent: Spent,
+}
+
 /// Ask `question` about a session Cue knows (its origin): Claude Code only, with the model it last used.
 pub fn ask_about(origin: &crate::model::Origin, question: &str) -> Result<String, String> {
+    ask_copy(origin, &side(question)).map(|a| a.text)
+}
+
+/// `prompt`, as it is, to a throwaway copy of a Claude Code session (its origin), with the model it last used:
+/// the answer and what it cost. The session never sees it and nothing is saved.
+pub fn ask_copy(origin: &crate::model::Origin, prompt: &str) -> Result<Answer, String> {
     if origin.harness != "claude" {
         return Err("By the way works with Claude Code sessions".into());
     }
     let model = (!origin.transcript_path.is_empty()).then(|| crate::logs::steps::model_of(&origin.transcript_path)).flatten();
     if origin.machine.is_empty() {
-        return ask(&origin.session_id, &origin.cwd, model.as_deref(), question);
+        return run_full(&claude_line(&origin.session_id, model.as_deref())?, std::path::Path::new(&origin.cwd), prompt);
     }
     // On a machine: its conversation and its folder are there, so Claude Code runs there, over SSH.
     let m = crate::machines::get(&origin.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", origin.machine))?;
@@ -31,11 +51,20 @@ pub fn ask_about(origin: &crate::model::Origin, question: &str) -> Result<String
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start ssh: {e}"))?;
-    let out = asked(child, &side(question))?;
+    let out = asked(child, prompt)?;
     if String::from_utf8_lossy(&out.stdout).trim() == "NODIR" {
         return Err(format!("{} isn't a folder on {}", origin.cwd, m.name));
     }
-    reply(&out)
+    reply_full(&out)
+}
+
+/// The small model that keeps a session's list of what's left (tasks.rs), with no tools, no hooks and nothing
+/// saved, and its own system prompt, so it reads only what it's given.
+const TASKS_LINE: &str = r#"exec claude -p --model haiku --no-session-persistence --tools "" --settings '{"disableAllHooks":true}' --system-prompt "You keep the list of what is left to do in a coding agent's session, for its owner. Use only what you are given. Answer with only JSON." --output-format json"#;
+
+/// `prompt` to the small model that keeps the lists of what's left: its answer and what it cost.
+pub fn ask_small(prompt: &str) -> Result<Answer, String> {
+    run_full(TASKS_LINE, &std::env::temp_dir(), prompt)
 }
 
 /// "Catch me up": what happened since you last looked, from only those messages (`since`, oldest first), read
@@ -120,15 +149,14 @@ fn claude_line(session_id: &str, model: Option<&str>) -> Result<String, String> 
     ))
 }
 
-/// Ask `question` about the Claude Code session `session_id` (started in `cwd`), with its own model when
-/// known. The answer, or why there isn't one.
-pub fn ask(session_id: &str, cwd: &str, model: Option<&str>, question: &str) -> Result<String, String> {
-    run(&claude_line(session_id, model)?, std::path::Path::new(cwd), &side(question))
-}
-
 /// Run a Claude Code `line` in `cwd` through your login shell, so `claude` is found as in your terminal, with
 /// `prompt` on its stdin (no quoting). The answer, or why there isn't one.
 fn run(line: &str, cwd: &std::path::Path, prompt: &str) -> Result<String, String> {
+    run_full(line, cwd, prompt).map(|a| a.text)
+}
+
+/// `run`, with what the answer cost.
+fn run_full(line: &str, cwd: &std::path::Path, prompt: &str) -> Result<Answer, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     let child = Command::new(shell)
         .args(["-lic", line])
@@ -138,7 +166,7 @@ fn run(line: &str, cwd: &std::path::Path, prompt: &str) -> Result<String, String
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start Claude Code: {e}"))?;
-    reply(&asked(child, prompt)?)
+    reply_full(&asked(child, prompt)?)
 }
 
 /// A side question as the forked session reads it.
@@ -166,19 +194,32 @@ fn asked(mut child: std::process::Child, prompt: &str) -> Result<std::process::O
     out
 }
 
-/// What it said: the answer, or why there isn't one.
-fn reply(out: &std::process::Output) -> Result<String, String> {
-    answer(&String::from_utf8_lossy(&out.stdout)).ok_or_else(|| {
+/// What it said: the answer and its cost, or why there isn't one.
+fn reply_full(out: &std::process::Output) -> Result<Answer, String> {
+    answer_full(&String::from_utf8_lossy(&out.stdout)).ok_or_else(|| {
         let err = String::from_utf8_lossy(&out.stderr).lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
         if err.is_empty() { "no answer (it took too long, or Claude Code stopped)".into() } else { err }
     })?
 }
 
 /// The answer in Claude Code's JSON result (its last line); an error result as Err.
+#[cfg(test)]
 fn answer(stdout: &str) -> Option<Result<String, String>> {
+    answer_full(stdout).map(|r| r.map(|a| a.text))
+}
+
+/// The answer in Claude Code's JSON result (its last line) with what it cost (its usage and total_cost_usd);
+/// an error result as Err.
+fn answer_full(stdout: &str) -> Option<Result<Answer, String>> {
     let v: Value = stdout.lines().rev().find_map(|l| serde_json::from_str(l.trim()).ok())?;
     let text = v.get("result").and_then(Value::as_str).unwrap_or("").trim().to_string();
-    Some(if v.get("is_error").and_then(Value::as_bool).unwrap_or(false) { Err(if text.is_empty() { "Claude Code couldn't answer".into() } else { text }) } else { Ok(text) })
+    if v.get("is_error").and_then(Value::as_bool).unwrap_or(false) {
+        return Some(Err(if text.is_empty() { "Claude Code couldn't answer".into() } else { text }));
+    }
+    let u = |k: &str| v.pointer(&format!("/usage/{k}")).and_then(Value::as_u64).unwrap_or(0);
+    let tokens = u("input_tokens") + u("output_tokens") + u("cache_creation_input_tokens") + u("cache_read_input_tokens");
+    let usd = v.get("total_cost_usd").and_then(Value::as_f64).unwrap_or(0.0);
+    Some(Ok(Answer { text, spent: Spent { tokens, usd } }))
 }
 
 #[cfg(test)]
@@ -190,6 +231,13 @@ mod tests {
         assert_eq!(answer("noise\n{\"type\":\"result\",\"result\":\" Because X. \",\"is_error\":false}\n"), Some(Ok("Because X.".into())));
         assert_eq!(answer("{\"result\":\"No conversation found\",\"is_error\":true}"), Some(Err("No conversation found".into())));
         assert_eq!(answer("not json"), None);
+    }
+
+    #[test]
+    fn an_answer_says_what_it_cost_cache_reads_included() {
+        let a = answer_full(r#"{"result":"ok","is_error":false,"total_cost_usd":0.0123,"usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":100,"cache_read_input_tokens":2000}}"#).unwrap().unwrap();
+        assert_eq!(a.spent, Spent { tokens: 2115, usd: 0.0123 });
+        assert_eq!(answer_full(r#"{"result":"ok"}"#).unwrap().unwrap().spent, Spent::default(), "no usage: nothing counted");
     }
 
     #[test]
@@ -239,6 +287,6 @@ mod tests {
 
     #[test]
     fn an_id_that_isnt_one_never_reaches_the_shell() {
-        assert!(ask("x; rm -rf ~", "/tmp", None, "hi").is_err());
+        assert!(claude_line("x; rm -rf ~", None).is_err());
     }
 }

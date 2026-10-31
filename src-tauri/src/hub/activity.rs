@@ -232,6 +232,10 @@ impl Hub {
                 self.cache_tick();
                 self.changed();
                 self.turn_changes(&sid);
+                // A tracked session: its list of what's left reads this turn (tasks.rs).
+                if let Some(me) = self.shared().filter(|_| crate::tasks::is_tracked(&sid)) {
+                    crate::tasks::turn_ended(me, &sid);
+                }
                 // A lead's turn ended: its next queued review goes (after a moment, for its hooks to settle).
                 if let Some(me) = self.shared().filter(|_| self.st().review_queue.iter().any(|q| q.lead == sid)) {
                     std::thread::spawn(move || {

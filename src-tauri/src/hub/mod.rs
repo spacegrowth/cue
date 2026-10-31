@@ -276,6 +276,8 @@ impl Hub {
         let skill_handoffs = crate::db::handoffs();
         // Sessions with "Hand off if I don't come back" on (insights.js ahead).
         let ahead_watch = crate::db::ahead_watched();
+        // Each tracked session's list of what's left (tasks.rs), its own lock, taken before the hub's.
+        let tasks = crate::tasks::view();
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
@@ -307,6 +309,7 @@ impl Hub {
             "insight": st.insight,
             "skill_handoffs": skill_handoffs,
             "ahead_watch": ahead_watch,
+            "tasks": tasks,
             "live": live,
             "branches": branches,
             "projects": projects,
