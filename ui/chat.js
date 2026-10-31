@@ -179,6 +179,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { lo
 /** The bar for the open chat, or "": only for a session you last looked at 15 minutes or more ago that had
  *  replied by the time you opened it. What comes in while it's open isn't "while you were away", and once you
  *  write to it you're caught up: the bar goes. */
+/** Catch me up, at the end of the chat (under the latest reply, above the status line): never a bar on the box. */
 function catchUpBar(sid, it, s) {
   const c = catchUp;
   if (!c || c.sid !== sid || c.gone || !c.since) return "";
@@ -759,7 +760,8 @@ const phrases = () => state.settings?.quick?.phrases || [];
 /** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
+  const fresh = sid ? handoffChip(sid) : "";   // Continue in a fresh session, once the session is past its point (insights.js)
+  return phrases().length || place || fresh ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${fresh}${place}</div>` : "";
 };
 /** Settings → Quick phrases as you type them (redraws keep them); saved when you leave a field. */
 let qpEdit = null;
@@ -1823,7 +1825,8 @@ function statusLine(it, s) {
   const tray = s?.session_id ? helperTray(s.session_id) : "";
   // Waiting on them: the tray says it all.
   if (tray && s.state === "agent" && s.helpers) return tray;
-  return tellLine(s) + whereNow(it, s) + tray;
+  // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
+  return tellLine(s) + (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
 }
 /** "Tell me" on this turn: a line says Cue is watching it, then that it's done and how long it took. */
 function tellLine(s) {
@@ -1918,6 +1921,7 @@ function moreMenu(sid, s, closable = false) {
   const later = isParked(sid) ? `<button data-park="${esc(sid)}:0">Back to Waiting</button>` : `<button data-park="${esc(sid)}:1">Decide later<span>Move it to Need to decide while you think it over</span></button>`;
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
+      ${handoffMenu(sid, s)}
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
@@ -1972,7 +1976,11 @@ function metaInline(sid) {
   const parts = [m.model ? `<b>${esc(prettyModel(m.model))}</b>` : "", freed ? `<span class="mi-ctx">context freed</span>` : pct !== null ? `<span class="mi-ctx ${lvl}"><span class="ctx-bar"><i style="width:${pct}%"></i></span>${pct}% context</span>` : m.context ? `<span class="mi-ctx">${k(m.context)} context</span>` : "", m.cost != null ? money(m.cost) : ""].filter(Boolean);
   // Context high and it's not mid-turn: Compact right here (the same as ⋯ → Compact).
   const chip = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !freed ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
-  return `<span class="ap-meta">${parts.join(" · ")}</span>${chip}`;
+  // A fresh session due (insights.js handoffDue): how far it has grown, in amber; the chip by the box is the way.
+  const grew = !freed && !state.skill_handoffs?.[sid] ? handoffGrew(sid) : 0;
+  // Its cache's countdown (insights.js cacheMeta): the ring and the minutes, amber in its last 5; "cache gone" after.
+  const cache = freed ? "" : cacheMeta(sid);
+  return `<span class="ap-meta">${parts.join(" · ")}${grew ? ` · <span class="mi-grow">${Math.round(grew)}× its start</span>` : ""}${cache ? ` · ${cache}` : ""}</span>${chip}`;
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
@@ -2188,7 +2196,7 @@ function activePane() {
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
     const now = busy ? `<button class="btn send-now" data-act="send-to" data-now="1" data-sid="${esc(sid)}">Now <kbd>⌘↵</kbd></button>` : "";
-    foot = `${queueNote(sid, s)}<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now, tellBtn(s))}</div>`;
+    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now, tellBtn(s))}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   // A background agent opened in full (helperPane): it takes the chat area and the box, under the same head.
@@ -2220,9 +2228,9 @@ function activePane() {
     ${sid ? teamBar(sid) + teammateBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
-    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${actSlot(sid)}
+    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${actSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
-    ${sid && s && !full ? catchUpBar(sid, it, s) || handoffInsight(sid, s) : ""}${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 // ---------- MCP servers: ⋯ → MCP servers… ----------
 // Every server Claude Code knows for the session's folder (mcp_for), each with a checkbox: checked =

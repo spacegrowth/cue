@@ -129,6 +129,26 @@ pub fn flag(pointer: &str) -> bool {
     effective().pointer(pointer).and_then(Value::as_bool).unwrap_or(true)
 }
 
+/// Whether Claude Code itself compacts a session of `tokens` context left idle, just before its hour's cache
+/// runs out (idle compaction, since 2.1.299: on unless its settings say `"idleCompaction": false`, from
+/// CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS, 200k by default and never under 100k). Such a session needs no hand-off
+/// note from Cue ahead of its cache: its next message sends Claude Code's summary.
+/// SHORTCUT: doesn't check Claude Code's version (2.1.290 and up); an older one gets no note ahead on big
+/// sessions. Upgrade path: read the version its logs name, or `claude --version` once a day.
+pub fn idle_compacts(tokens: u64) -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let settings = std::fs::read_to_string(format!("{home}/.claude/settings.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    idle_compacts_in(settings.as_ref(), std::env::var("CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS").ok().as_deref(), tokens)
+}
+/// idle_compacts, given Claude Code's settings and its CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS.
+fn idle_compacts_in(settings: Option<&Value>, min_env: Option<&str>, tokens: u64) -> bool {
+    if settings.and_then(|v| v.pointer("/idleCompaction")).and_then(Value::as_bool) == Some(false) {
+        return false;
+    }
+    let min = min_env.and_then(|v| v.parse::<u64>().ok()).map_or(200_000, |n| n.max(100_000));
+    tokens >= min
+}
+
 /// New sessions run in Cue (in tmux, shown in Cue's own terminal) unless Settings says a terminal tab;
 /// only when tmux is installed.
 pub fn tmux_sessions() -> bool {
@@ -498,6 +518,19 @@ pub fn tray_shown() -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn idle_compaction_covers_big_idle_sessions_unless_turned_off() {
+        use super::idle_compacts_in;
+        let off = serde_json::json!({ "idleCompaction": false });
+        let on = serde_json::json!({});
+        assert!(idle_compacts_in(Some(&on), None, 200_000), "200k and up by default");
+        assert!(!idle_compacts_in(Some(&on), None, 199_000));
+        assert!(!idle_compacts_in(None, None, 150_000), "no settings file: Claude Code's default");
+        assert!(idle_compacts_in(None, Some("120000"), 120_000), "the variable lowers it");
+        assert!(!idle_compacts_in(None, Some("50000"), 90_000), "never under 100k");
+        assert!(!idle_compacts_in(Some(&off), None, 500_000), "turned off: Cue's note ahead is back");
+    }
+
     use super::*;
 
     #[test]

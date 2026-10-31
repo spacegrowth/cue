@@ -720,13 +720,12 @@
         setActive(null, "eng");
         setTimeout(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })); setTimeout(() => document.querySelector('[data-text="ac-find"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 500); }, 200);
       }, 120);
-      // With ?ins=1: &inss=open opens agent-relay's insights (More ▾), =busy is Hand off just tapped, =seen its
-      // strip after its colored moment (insights.js handoffInsight).
+      // With ?ins=1: &inss=open opens agent-relay's fresh-session plan (its chip by the box), =busy is its button
+      // just tapped (insights.js handoffChip).
       const inss = new URLSearchParams(q).get("inss");
       if (inss) setTimeout(() => {
-        if (inss === "open") insOpen.add("relay");
-        if (inss === "busy") insBusy.set("relay", "Handing off…");
-        if (inss !== "open") insHotSeen.add("relay");
+        if (inss === "open") insPlan.add("relay");
+        if (inss === "busy") { insPlan.add("relay"); insBusy.set("relay", "Handing off…"); }
         renderMain();
       }, 150);
     }, 300);

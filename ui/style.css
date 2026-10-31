@@ -864,7 +864,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
 .cv-older button:hover { color: var(--ink); border-color: var(--muted); }
 /* Catch me up: in the insight bar's place above the box, no border or fill. */
-.cu-strip { margin: 10px 16px 0; padding: 6px 2px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink); }
+.cu-strip { margin: 4px 0 0; padding: 6px 2px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink); }
 .cu-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .cu-row .dim { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cu-tag { flex: none; font-size: 10.5px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); }
@@ -1904,48 +1904,12 @@ body.pip-moving, body.pip-moving * { user-select: none; }
 .ins-bulb path:first-child { fill: var(--accent); }   /* the bulb is lit: filled, its rays stroked */
 .ins-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--ink); }
 .ins-note { font-size: 12.5px; color: var(--muted); }
-.ins-chart { position: relative; height: 64px; }
-.ins-chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
-.ins-chart .line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.ins-chart .gap { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
-.ins-chart .fill { fill: var(--line); opacity: .55; }
-.ins-chart .level { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
-.ins-level-label { position: absolute; left: 0; transform: translateY(-115%); font-size: 10.5px; color: var(--muted); background: var(--panel); padding-right: 4px; }
-.ins-dot { position: absolute; right: -4px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); transform: translateY(-50%); }
 .ins-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .ins-axis b { color: var(--ink); }
 .ins-why { font-size: 14px; line-height: 1.45; color: var(--ink); }
-/* The open session's insights folded to one strip above the box: the most pressing sentence, "+N", its one action. */
-.ins-strip { margin: 10px 16px 0; padding: 6px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-.ins-strip .ins-bulb { width: 16px; height: 16px; }
-.ins-strip { cursor: pointer; }
-.ins-strip:not(.hot):hover { background: color-mix(in srgb, var(--panel-2) 60%, transparent); }
-/* Opened: the bar on top like a title, the rest of its insights under it on the panel. */
-.ins-strip + .ins-detail { margin-top: 0; border-top: 0; padding-top: 10px; }
-.ins-strip.hot + .ins-detail { margin-top: 2px; }
-.ins-strip-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Nothing more to open: no arrow, not clickable, and its whole sentence (wrapping) in place of the cut one. */
-.ins-strip.whole { cursor: default; }
-.ins-strip.whole .ins-strip-text { white-space: normal; }
-.ins-strip.wrap .ins-strip-text { white-space: normal; }
-.ins-strip-text b { color: var(--ink); }
-.ins-strip .btn { height: 26px; }
-/* Open (▾) and fold (▴): the arrow alone. */
-.ins-arrow { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; background: none; border: 0; padding: 0; border-radius: 6px; color: var(--muted); cursor: pointer; }
-.ins-arrow svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.ins-arrow:hover { color: var(--ink); }
 .ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: 999px; padding: 2px 8px; }
 button.ins-n { cursor: pointer; }
 .ins-line .ins-n { margin-left: auto; }
-/* When acting now saves something (past the hand-off point, a cache in its last minutes): the selected card's lime,
-   Cue's color for what needs you, in both themes. */
-.ins-strip.hot { background: var(--sel); border-color: transparent; border-radius: 10px; padding: 6px 8px 6px 12px; color: color-mix(in srgb, var(--on-sel) 78%, transparent); }
-.ins-strip.hot b { color: var(--on-sel); }
-.ins-strip.hot .ins-bulb { stroke: var(--on-sel); }
-.ins-strip.hot .ins-bulb path:first-child { fill: var(--on-sel); }
-.ins-strip.hot .btn.primary { background: var(--on-sel); border-color: var(--on-sel); color: var(--sel); }
-.ins-strip.hot .ins-n { background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: var(--on-sel); }
-.ins-strip.hot .ins-arrow { color: var(--on-sel); }
 /* What you just tapped, on its way: in place of the actions. */
 .ins-busy { flex: none; font-size: 12px; font-weight: 650; color: inherit; }
 .ins-lines { display: flex; flex-direction: column; }
@@ -1968,7 +1932,36 @@ button.ins-n { cursor: pointer; }
 .ins-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* The opened note's foot: hide them all for a while, or turn them off. */
 .ins-hide { font-size: 12px; }
-.ins-detail > * + .ins-hide { margin-top: 10px; }
+/* Continue in a fresh session: the chip by the quick phrases (insights.js handoffChip), its plan above it. */
+.ins-chip-wrap { position: relative; display: inline-flex; }
+.qp-ins { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); }
+.qp-ins .ins-bulb { width: 13px; height: 13px; }
+.qp-ins.on, .qp-ins:hover { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.ins-plan { width: 460px; padding: 12px 14px; gap: 10px; cursor: default; }
+.ins-plan .ins-why { font-size: 13.5px; }
+.ins-plan-steps { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; color: var(--ink); }
+.ins-plan-steps li::marker { font: 700 11px var(--mono); color: var(--accent); }
+.ins-plan .ins-acts .dim { font-size: 12px; }
+/* A hand-off on its way: the three steps, ticking. */
+.ins-steps { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.ins-steps div { display: flex; align-items: center; gap: 9px; }
+.ins-steps .k { font: 700 12px var(--mono); width: 16px; text-align: center; flex: none; }
+.ins-steps .now { color: var(--ink); }
+.ins-steps .now .k { color: var(--accent); }
+.ins-steps b { color: var(--ink); }
+/* The meta line: how far the session has grown, while a fresh session is due; its cache's countdown (the ring and
+   the minutes, amber in its last 5) or "cache gone". */
+.mi-grow { color: var(--amber); font-weight: 650; }
+.mi-cache { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-weight: 650; vertical-align: -1px; }
+.mi-cache .ins-ring { width: 15px; height: 15px; margin: 0; }
+.mi-cache .ins-bulb { width: 12px; height: 12px; }
+.mi-cache.soon { color: var(--amber); }
+.mi-cache.cold { color: var(--muted); }
+/* Under the chat: a hand-off on its way, a note written ahead, a cache gone (insights.js handoffStatus). */
+.cv-status.ins-status { align-self: stretch; color: var(--muted); }
+.cv-status.ins-status .ins-bulb { width: 13px; height: 13px; flex: none; }
+.cv-status.ins-status b { color: var(--ink); }
+.cv-status.ins-status .btn { margin-left: 4px; }
 .linkish { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .linkish:hover { color: var(--ink); }
 /* Hand off if I don't come back: a checkbox drawn as a button (insights.js watchToggle). */

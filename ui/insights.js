@@ -8,13 +8,14 @@
 // SHORTCUT: fixed thresholds below, the same for everyone. Upgrade path: each person's own baseline
 // from their turns history (the turns table), tuned by what they act on and dismiss.
 
-// When to offer a hand-off: its context at least this much, and this many times what it started with.
-// Warm, a hand-off pays off only once a session is big (its turns read the cache at a tenth of the input
-// price); cold, its next reply writes the whole context again anyway, so the bar is lower. Set from 30 days
-// of real sessions: warm at 150k paid off in only about half of them; 300k and 4× kept nearly all the savings.
-const HANDOFF_WARM = { context: 300000, growth: 4 };
-const HANDOFF_COLD = { context: 150000, growth: 3 };
-const HANDOFF_CONTEXT = HANDOFF_COLD.context;   // the least any hand-off insight shows at
+// When to offer a fresh session: its context has used this share of its model's window (the window as its
+// status line said it; a log that doesn't say is taken as 200k) and grown this many times from its start, and
+// it's at a break (handoffPick: its work landed, nothing edited since) or well into the window (`late`).
+// Its cache doesn't lower the bar: a hand-off into a cold session pays the same cold write as any reply, so
+// being away is no reason. The case for a fresh session is quality on a filling window, not what each reply
+// re-reads: all models get less reliable as their input grows.
+const HANDOFF = { share: 0.6, late: 0.8, growth: 3, window: 200000 };
+const HANDOFF_CONTEXT = 150000;   // the least context at which a cold resume is worth a look first (insColdResume)
 const CACHE_WARN_MS = 10 * 60000;   // the countdown shows in an hour's cache's last 10 minutes; a 5-minute one has
                                     // none (it runs out while you read; the Mac's heads-up goes by the same: hub cache_tick)
 const CACHE_MIN_TOKENS = 50000;     // smaller contexts are cheap to rebuild: not worth a note
@@ -27,12 +28,6 @@ const COMPACT_WARM_MIN = 100000;
 // come back" works on an hour's cache (a 5-minute one runs out while you read: Write hand-off now is yours to press).
 const AHEAD_TTL_MS = 30 * 60000;
 
-/** The hand-off bar a session has to clear now: the lower one once its cache has run out. A session whose
- *  log doesn't say how long it caches (Codex, Pi) is taken as warm. */
-function handoffBar(sid) {
-  const c = cacheOf(sid), cold = !!c && c.until_ms < now();
-  return { ...(cold ? HANDOFF_COLD : HANDOFF_WARM), cold };
-}
 // One switch in Settings → Insights turns them all on (off until you do); config.rs fills in each one from it.
 const insOn = (rule) => state.settings?.insights?.[rule] === true;
 /** Hidden for a while by a nudge's "Hide for a day / a week": until then, no strip or card line asks for anything
@@ -55,17 +50,13 @@ const aheadLater = (sid) => aheadWatched(sid) && !((cacheOf(sid)?.until_ms || 0)
 const watchText = (sid) => aheadLater(sid)
   ? "<b>Hands off if you don't come back,</b> from your next reply: its cache has run out, so there's nothing to get ahead of until then."
   : "<b>Hands off if you don't come back:</b> a minute before its cache runs out, it writes a hand-off note, and you choose when you're back.";
-// A checkbox drawn as a button: a real one inside the bar would click twice (its label, then itself) and open the bar too.
-const watchToggle = (sid) => `<button class="ins-check" role="checkbox" aria-checked="${aheadWatched(sid)}" data-act="ins-watch" data-sid="${esc(sid)}"><i></i>Hand off if I don't come back</button>`;
-// On its own under the bar, lined up with the bar rather than inside a panel.
-const watchLine = (sid) => `<div class="ins-line ins-own">${BULB}<span>${watchText(sid)}</span>${watchToggle(sid)}</div>`;
 // sid → the context size its hand-off insight waits for after "Remind me at …" (until Cue restarts). Nothing
 // else hides an insight: it shows whenever its numbers say so.
 const insLater = new Map();
 try { localStorage.removeItem("cue.insLater"); } catch {}   // what an earlier build kept
 const insLaterOf = (sid) => insLater.get(sid) || 0;
 const insShownOnce = new Set(); // "rule:sid": logged as shown in this window
-const insCache = new Map();     // sid → { until_ms, tokens, start, last_ms, cold_x, cold_cents, auto_at }, for sessions whose log isn't open here
+const insCache = new Map();     // sid → { until_ms, tokens, start, window, last_ms, cold_x, cold_cents, auto_at }, for sessions whose log isn't open here
 /** Compacting, or compacted since its latest reply: its log's context count is from before, so its
  *  insights wait for the next reply (the open session's hand-off asks the same). */
 function insStale(s, sid) {
@@ -101,30 +92,6 @@ const median = (xs) => { const v = [...xs].sort((a, b) => a - b); return v.lengt
 
 // ---------- hand off: each turn now costs many times what it did ----------
 
-/** A line of the session's context over time, from its first reply to now, with the hand-off point as
- *  a dashed level. A long session's log is read from near its end, so the stretch between its start and
- *  the first turn read here is drawn dashed: Cue knows both ends, not the path between. */
-function insChart(pts, mark) {
-  const W = 600, H = 64, t0 = pts[0].t, t1 = Math.max(pts.at(-1).t, t0 + 1), top = Math.max(mark, ...pts.map((p) => p.c)) * 1.12;
-  const X = (t) => ((t - t0) / (t1 - t0)) * W, Y = (c) => H - (c / top) * H;
-  const xy = (p) => `${X(p.t).toFixed(1)},${Y(p.c).toFixed(1)}`;
-  const gap = pts.length > 2 && pts[1].t - pts[0].t > (t1 - t0) * 0.05;
-  const solid = gap ? pts.slice(1) : pts;
-  const line = `M${solid.map(xy).join(" L")}`;
-  const fill = `${line} L${X(solid.at(-1).t).toFixed(1)},${H} L${X(solid[0].t).toFixed(1)},${H} Z`;
-  const markY = Y(mark), endY = Y(pts.at(-1).c);
-  return `<div class="ins-chart">
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-      <path class="fill" d="${fill}"></path>
-      ${gap ? `<path class="gap" d="M${xy(pts[0])} L${xy(pts[1])}"></path>` : ""}
-      <path class="line" d="${line}"></path>
-      <line class="level" x1="0" x2="${W}" y1="${markY.toFixed(1)}" y2="${markY.toFixed(1)}"></line>
-    </svg>
-    <span class="ins-level-label mono" style="top:${((markY / H) * 100).toFixed(1)}%">hand-off point · ${esc(insTok(mark))}</span>
-    <i class="ins-dot" style="top:${((endY / H) * 100).toFixed(1)}%"></i>
-  </div>`;
-}
-
 // sid → { name, starts }: "Continue in a new session" pressed, the new session not started yet.
 const insContinuing = new Map();
 /** Over the old session's chat while its next one starts: what's happening, and what comes of it. */
@@ -136,102 +103,103 @@ function continueCover(sid) {
     <div class="rs-note">It starts ${starts} and opens here. ${c.ahead ? "This one stays as it is." : "This one closes (Closed keeps it)."}</div></div></div>`;
 }
 
-/** A hand-off sent and not continued yet (kept on the Mac, so it's here after a restart too): while it writes
- *  its note, say so; once it has, the one next step, a new session with "/<skill> resume" in its box. */
+// sid: its hand-off's note is written and Cue has started continuing it by itself (once; a failure leaves the ⋯ item).
+const insAutoTried = new Set();
+const AUTO_CONTINUE_MS = 30 * 60000;   // a hand-off sent longer ago than this (before a restart, say) waits for your click
+/** A hand-off sent and not continued yet (kept on the Mac, so it's here after a restart too): one status line under
+ *  the chat with where it is: writing its note, then opening the fresh session here, then this one closes. Once the
+ *  note is written (its turn ended), Cue continues by itself: nothing to press. A failed or old one offers it in ⋯. */
 function handoffNext(sid, s, ho) {
-  if (ho.ahead) return aheadCard(sid, s, ho);
-  const starts = ho.resume ? `with <span class="mono">${esc(`/${ho.skill} resume`)}</span>` : "from its note";
-  const body = s.state === "working"
-    ? `<div class="ins-why">It's writing its hand-off note. Once it's done, continue in a new session from here.</div>`
-    : `<div class="ins-why">Its hand-off note is written. Continue in a new session: it starts ${starts}, and this one closes (Closed keeps it).</div>
-       <div class="ins-acts"><button class="btn primary" data-act="ins-continue" data-sid="${esc(sid)}">Continue in a new session</button></div>`;
-  return `<div class="ins"><div class="ins-head">${BULB}<span class="ins-tag">NUDGE</span><span class="ins-note">hand-off · ${esc(ago(ho.sent_ms))} ago</span></div>${body}</div>`;
+  if (ho.ahead) return aheadLine(sid, s, ho);
+  const writing = s.state === "working" || !!s.compacting_ms;
+  const going = insContinuing.has(sid);
+  const fresh = now() - ho.sent_ms < AUTO_CONTINUE_MS;
+  if (!writing && !going && fresh && !insAutoTried.has(sid)) {
+    insAutoTried.add(sid);
+    queueMicrotask(() => insAct("ins-continue", { sid }));
+  }
+  const stuck = !writing && !going && (!fresh || insAutoTried.has(sid));
+  const where = writing ? "writing its note…" : stuck ? "note written · <b>⋯ → Continue in a fresh session</b>" : "note written · opening the fresh session here…";
+  return `<div class="cv-status ins-status">${BULB}<span><b>Continuing in a fresh session:</b> ${where}</span></div>`;
+}
+/** ⋯ → Continue in a fresh session, when a hand-off's note is written and Cue didn't continue it by itself. */
+function handoffNextItem(sid, s, ho) {
+  if (ho.ahead || !ho.note_ms && s.state === "working") return "";
+  const stuck = s.state !== "working" && !s.compacting_ms && !insContinuing.has(sid) && (now() - ho.sent_ms >= AUTO_CONTINUE_MS || insAutoTried.has(sid));
+  return stuck ? `<button data-act="ins-continue" data-sid="${esc(sid)}">Continue in a fresh session<span>From its hand-off note; this one closes (Closed keeps it)</span></button>` : "";
 }
 
-/** A note written before its cache ran out: while it's written, say so; then both ways on, with what each costs.
- *  Continue here keeps all of its context (once the cache is gone, its next reply re-writes it); a new session
- *  from the note starts small, and this one stays as it is. Replying here is continuing here too. */
-function aheadCard(sid, s, ho) {
+/** A note written before its cache ran out: one status line under the chat. While it's written, say so; then
+ *  replying here carries on with all of its context (cheap while the cache lasts), or ⋯ → New session from the note
+ *  starts small and leaves this one as it is. */
+function aheadLine(sid, s, ho) {
   const c = cacheOf(sid), left = c ? c.until_ms - now() : 0;
   // Written once Cue has seen the note (its time, from its log): asking leave to write it isn't done yet.
-  const head = `<div class="ins-head">${BULB}<span class="ins-tag">NUDGE</span><span class="ins-note">hand-off · ${ho.note_ms ? "written" : "writing"} before its cache ran out · ${esc(ago(ho.sent_ms))} ago</span></div>`;
-  if (!ho.note_ms) return `<div class="ins">${head}<div class="ins-why">It's writing a hand-off note before its cache runs out. Nothing else changes: this session stays as it is.</div></div>`;
-  const fresh = `<button class="btn ${left > 0 ? "" : "primary"}" data-act="ins-continue" data-sid="${esc(sid)}">New session from the note</button>`;
-  const here = `<button class="btn ${left > 0 ? "primary" : ""}" data-act="ins-keep" data-sid="${esc(sid)}">Continue here</button>`;
+  if (!ho.note_ms) return `<div class="cv-status ins-status">${BULB}<span><b>Writing a hand-off note</b> before its cache runs out. Nothing else changes.</span></div>`;
   const why = left > 0
-    ? `<b>Hand-off note ready.</b> Its cache lasts ${Math.max(1, Math.ceil(left / 60000))} more min, so continuing here is still cheap.`
-    : `<b>Cache expired · hand-off note ready.</b> Continuing here, ${c ? coldCost(c, "its next reply") : "its next reply re-writes all of its context"}. A new session from the note starts small, and this one stays as it is.`;
-  return `<div class="ins">${head}<div class="ins-why">${why}</div><div class="ins-acts">${left > 0 ? here + fresh : fresh + here}</div></div>`;
+    ? `Its cache lasts ${Math.max(1, Math.ceil(left / 60000))} more min, so replying here is still cheap.`
+    : `Cache expired: replying here ${c ? coldCost(c, "").replace(/^ /, "") : "re-writes all of its context"}.`;
+  return `<div class="cv-status ins-status">${BULB}<span><b>Hand-off note ready.</b> ${why} <b>⋯ → New session from the note</b> starts small and leaves this one as it is.</span></div>`;
+}
+/** ⋯ items for a note written ahead: New session from the note, and Continue here (sets the note aside). */
+function aheadItems(sid, ho) {
+  if (!ho.note_ms) return "";
+  const c = cacheOf(sid), warm = !!c && c.until_ms > now();
+  return `<button data-act="ins-continue" data-sid="${esc(sid)}">New session from the note<span>Starts small; this one stays as it is</span></button>
+    <button data-act="ins-keep" data-sid="${esc(sid)}">Continue here<span>${warm ? "Still cached: its whole context, cheaply" : "Its next reply re-writes its whole context"}; the note is set aside</span></button>`;
 }
 
-/** A hand-off that already continued: where it carries on now, and Close for this one. Hand-off isn't offered here
- *  again: sending a hand-off skill again writes a new note, and Continue comes back. */
+/** A hand-off that already continued: a status line saying where it carries on now (Close is in the head). */
 function handoffContinued(sid, ho) {
   const next = nameOf(ho.next, sessionOf(ho.next)?.project) || "its new session";
-  const close = svCloseArm === sid
-    ? `<button class="btn deny on" data-sv="close" data-sid="${esc(sid)}">Close?</button>`
-    : `<button class="btn" data-sv="close" data-sid="${esc(sid)}">Close this one</button>`;
-  return `<div class="ins"><div class="ins-head">${BULB}<span class="ins-tag">NUDGE</span><span class="ins-note">hand-off · continued ${esc(ago(ho.continued_ms || ho.sent_ms))} ago</span></div>
-    <div class="ins-why">It continued in <b>${esc(next)}</b>. Carry on there, and close this one when you're done with it (Closed keeps it).</div>
-    <div class="ins-acts"><button class="btn primary" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button>${close}</div></div>`;
+  return `<div class="cv-status ins-status">${BULB}<span>It continued in <b>${esc(next)}</b>. Carry on there, and close this one when you're done with it (Closed keeps it).</span><button class="btn small" data-act="ins-goto" data-sid="${esc(ho.next)}">Go to ${esc(next)}</button></div>`;
 }
 
-// The open session's insights sit above its box as one bar: the most pressing one's sentence and its one
-// action, "+N" for the rest. A click anywhere on it opens it: the bar rises like a title and the rest unfolds
-// under it (chart, every action, the other insights as lines), the bar itself as it was. It takes the selected
-// card's lime (Cue's color for what needs you) only when acting now saves something: past the hand-off point (until you act on it or put it off),
-// or your turn with its cache in its last minutes.
-const insOpen = new Set();      // sid: its insights opened, while Cue runs
-const insHotSeen = new Set();   // sid: its hand-off has had its colored moment (acted on, put off)
-// SHORTCUT: kept while Cue runs, so after a restart a session past its hand-off point colors once more. Upgrade
-// path: keep it on the Mac with the hand-off state (db, like skill_handoffs), so both apps share it.
-const HOT_CACHE_MS = 5 * 60000; // a cache this close to running out colors the strip
+// The open session's hand-off is a chip by the box's quick phrases, "Continue in a fresh session", once the session
+// is past its point (handoffDue). A click opens the plan above it: what will happen, in three lines, one button
+// that does all of it, Remind me, and the ways to hide nudges. The header's meta line carries "4× its start" in
+// amber meanwhile, and the cache's countdown (cacheMeta); the ways out are in ⋯ (handoffMenu). Nothing sits on
+// the box for any of it: what's on its way is a status line under the chat (handoffStatus).
+const insPlan = new Set();      // sid: its fresh-session plan open above the chip
+const HOT_CACHE_MS = 5 * 60000; // a cache this close to running out colors the bar
 // sid → what you just tapped ("Handing off…"), until it's done: shown in place of the actions, so nothing
 // goes twice and the tap shows at once, before the session's next state arrives.
 const insBusy = new Map();
 
-/** The open session's hand-off numbers, when its context has grown several times over: else null. */
+/** The open session's fresh-session numbers, when its context has used most of its window and grown several
+ *  times over, at a break or late in the window: else null. */
 function handoffDue(sid, s) {
   if (!insNudge("handoff")) return null;
   const f = stepFeeds.get(sid), m = f?.meta;
   if (!m || insStale(s, sid)) return null;
-  const bar = handoffBar(sid);
-  if ((m.context || 0) < bar.context || insLaterOf(sid) > m.context) return null;
+  const window = m.window || HANDOFF.window, share = (m.context || 0) / window;
+  if (share < HANDOFF.share || insLaterOf(sid) > m.context) return null;
   // Grown from what the session started at (its first reply, read from the top of its log), not from the
   // first turns read here: a long session's log is only read from near its end, often just a few turns.
   const read = (f.turns || []).map((t) => t.context).filter((c) => c > 0);
   const early = m.start_context || median(read.slice(0, 3)), grew = early ? m.context / early : 0;
-  if (grew < bar.growth) return null;
+  if (grew < HANDOFF.growth) return null;
+  const pick = handoffPick(sid, s, f);
+  if (!pick.brk && share < HANDOFF.late) return null;
   // What this session's machine has: the hand-off skill you chose for this machine and agent, else one
   // named exactly /handoff (never another with "handoff" in its name: that may be something else); else
-  // Cue's own hand-off. And compact.
+  // Cue's own hand-off.
   const cmds = cmdList(sid), chosen = insSkills()[insSkillKey(s)];
   // Relay's skills work only in a relay lead (its ⋯ menu's Relay handoff… asks the same), so never offer them elsewhere.
   const fits = (c) => !c.name.startsWith("relay:") || (crewOf(sid)?.role === "lead" && crewOf(sid)?.plugin === "relay");
   const handoffs = chosen === CUE_HANDOFF ? [] : (chosen ? cmds.filter((c) => c.name === chosen) : cmds.filter((c) => c.name === "handoff")).filter(fits);
-  const opts = [
-    ...handoffs.map((c) => ({ cmd: `/${c.name}` })),
-    ...cmds.filter((c) => c.name === "compact").map(() => ({ cmd: "/compact" })),
-  ];
-  // The chart: its first reply, then each turn read here, then its latest reply; time across.
-  const mark = Math.max(early * bar.growth, bar.context);   // where both halves of the bar are cleared
-  const turnPts = (f.turns || []).filter((t) => t.context > 0 && t.at_ms).map((t) => ({ t: t.at_ms, c: t.context }));
-  const startT = m.start_ms || (turnPts[0]?.t ?? now()) - 1;
-  const pts = [{ t: startT, c: early }, ...turnPts.filter((p) => p.t > startT).slice(-40), { t: Math.max(m.last_call_ms || 0, turnPts.at(-1)?.t || 0, startT + 1), c: m.context }];
-  // When it passed the hand-off point, if that happened within the turns read here.
-  const crossed = pts.findIndex((p, i) => i > 0 && p.c >= mark && pts[i - 1].c < mark && !(i === 1 && pts.length > 2 && pts[1].t - pts[0].t > (pts.at(-1).t - pts[0].t) * 0.05));
-  const since = (crossed > 0 ? ` It passed the hand-off point ${ago(pts[crossed].t)} ago.` : "") + (bar.cold ? " Its cache has run out, so its next reply writes all of it again: the cheapest moment to hand off." : "");
   const remind = Math.ceil((m.context * 1.25) / 50000) * 50000;
-  const pick = opts.some((o) => o.cmd === "/compact") ? handoffPick(sid, s, f) : { compact: false, why: "" };
-  return { m, early, grew, pts, mark, startT, since, handoffs, opts, remind, ...pick };
+  return { m, early, grew, share, window, handoffs, remind, why: pick.why };
 }
+/** How many times the open session has grown from its start, when a fresh session is due (handoffDue): for the
+ *  header's meta line. 0 otherwise. */
+const handoffGrew = (sid) => handoffDue(sid, sessionOf(sid))?.grew || 0;
 
 const COMMIT_RE = /\bgit\s+(commit|push)\b/;
 const TEST_RE = /\b(test|tests|pytest|jest|vitest|cargo\s+(test|nextest)|go\s+test|run\.sh)\b/;
-/** Hand off or compact first, from the session's own steps: a piece of work that just landed (committed,
- *  or its tests passed, with nothing edited since), a session that has compacted before, or one spread over
- *  several areas starts fresh better; one in the middle of a change keeps going better with /compact. Hand
- *  off when nothing says. `why`: the reason, for the opened card.
+/** Whether the session is at a break, from its own steps: a piece of work just landed (committed, or its tests
+ *  passed, with nothing edited since). `why`: what to say about it on the plan (a session that has compacted
+ *  before, or spread over several areas, starts fresh better; one mid-change keeps going better with /compact).
  *  SHORTCUT: only the turns read here (a long log is read from near its end) and the step's first line.
  *  Upgrade path: keep the last commit and compaction with the turns history (logs/turns.rs). */
 function handoffPick(sid, s, f) {
@@ -247,87 +215,94 @@ function handoffPick(sid, s, f) {
   const ctx = (f.turns || []).map((t) => t.context).filter((c) => c > 0);
   const compacted = !!s?.compacted_ms || ctx.some((c, i) => i > 0 && c < ctx[i - 1] * 0.5);
   const areas = insDelegate.get(sid)?.split?.length || 0;
-  if (landed && !editedSince) return { compact: false, why: landed === "committed" ? "Its work is committed, so a fresh session starts clean from here." : "Its tests passed with nothing edited since, so this piece looks done." };
-  if (compacted) return { compact: false, why: "It has compacted before: another summary of a summary loses more, so a written note is safer." };
-  if (areas >= 3) return { compact: false, why: `It has worked across ${areas} areas: a fresh session for what's next keeps them apart.` };
-  if (failing || editedSince) return { compact: true, why: failing ? "It's in the middle of a fix (its tests are failing), so /compact keeps it going in place." : "It's in the middle of a change, so /compact keeps it going in place." };
-  return { compact: false, why: "" };
+  const brk = !!landed && !editedSince;
+  if (brk) return { brk, why: landed === "committed" ? "Its work is committed, so a fresh session starts clean from here." : "Its tests passed with nothing edited since, so this piece looks done." };
+  if (compacted) return { brk, why: "It has compacted before: another summary of a summary loses more, so a written note is safer." };
+  if (areas >= 3) return { brk, why: `It has worked across ${areas} areas: a fresh session for what's next keeps them apart.` };
+  if (failing || editedSince) return { brk, why: failing ? "It's in the middle of a fix (its tests are failing): ⋯ → Compact keeps it going in place instead." : "It's in the middle of a change: ⋯ → Compact keeps it going in place instead." };
+  return { brk, why: "" };
 }
 
-/** What a tap does, by its button: the hand-off skill (your click is the message), Cue's own hand-off when it
- *  has none it can use (or you chose Cue's), and /compact as Cue's own Compact (⋯ → Compact). */
-function handoffButtons(sid, d) {
-  // The pick (handoffPick) first and filled, the other after it.
-  const first = d.compact ? "/compact" : d.handoffs.length ? d.opts[0].cmd : "";
-  const btn = (o) => `<button class="btn ${o.cmd === first ? "primary" : ""}" data-act="${o.cmd === "/compact" ? "ins-compact" : "ins-fill"}" data-sid="${esc(sid)}" data-ins-cmd="${esc(o.cmd)}"><span class="mono">${esc(o.cmd)}</span></button>`;
-  const cue = d.handoffs.length ? "" : `<button class="btn ${d.compact ? "" : "primary"}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
-  const opts = [...d.opts].sort((a, b) => (b.cmd === first) - (a.cmd === first));
-  return d.compact ? opts.map(btn).join("") + cue : cue + opts.map(btn).join("");
+/** By the box's quick phrases: Continue in a fresh session, once the session is past its point. A click opens
+ *  the plan above it; nothing is sent until you click the plan's button. "" while a hand-off is on its way. */
+function handoffChip(sid) {
+  const s = sessionOf(sid);
+  if (!s || state.skill_handoffs?.[sid]) return "";
+  const d = handoffDue(sid, s);
+  if (!d) return "";
+  insShown(sid, "handoff");
+  const open = insPlan.has(sid);
+  return `<span class="ins-chip-wrap">${open ? handoffPlan(sid, d) : ""}<button class="qp qp-ins ${open ? "on" : ""}" data-act="ins-plan" data-sid="${esc(sid)}" aria-expanded="${open}">${BULB}Continue in a fresh session</button></span>`;
 }
-/** The strip's one action: the pick (handoffPick), by the same route as the card's first button. Filled only
- *  when the strip is colored; on the quiet one it stays plain, so it doesn't pull the eye from the box's Send. */
-function handoffMain(sid, d, hot) {
-  const h = d.handoffs[0], cls = `btn ${hot ? "primary" : ""}`;
-  if (d.compact) return `<button class="${cls}" data-act="ins-compact" data-sid="${esc(sid)}" data-ins-cmd="/compact">Compact</button>`;
-  return h ? `<button class="${cls}" data-act="ins-fill" data-sid="${esc(sid)}" data-ins-cmd="/${esc(h.name)}">Hand off</button>`
-    : `<button class="${cls}" data-act="ins-cue" data-sid="${esc(sid)}">Hand off</button>`;
+/** The plan above the chip: why, the three things that will happen, the one button that does them (the hand-off
+ *  skill, your click being the message, or Cue's own ask when it has none), Remind me, and the ways to hide. */
+function handoffPlan(sid, d) {
+  const h = d.handoffs[0];
+  const go = h ? `data-act="ins-fill" data-ins-cmd="/${esc(h.name)}"` : `data-act="ins-cue"`;
+  const note = h ? `as its <span class="mono">/${esc(h.name)}</span> writes it` : `<span class="mono">HANDOFF.md</span>`;
+  return `<div class="ins-pop ins-plan" role="dialog" aria-label="Continue in a fresh session">
+    <div class="ins-why"><b>${Math.round(d.share * 100)}% of its window,</b> ${Math.round(d.grew)}× what it started with: a fresh session from a note stays sharp.${d.why ? ` ${esc(d.why)}` : ""}</div>
+    <ol class="ins-plan-steps">
+      <li>It writes a short note of where things stand, ${note}.</li>
+      <li>A fresh session opens here from that note, back near ${esc(insTok(d.early))}.</li>
+      <li>This one closes. Closed keeps it, chat and all.</li>
+    </ol>
+    ${insBusy.has(sid) ? `<div class="ins-acts">${insBusyNote(sid)}</div>` : `<div class="ins-acts"><button class="btn primary" ${go} data-sid="${esc(sid)}">Continue in a fresh session</button><button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button><span class="dim">Nothing goes until you click.</span></div>`}
+    ${insHideRow(sid)}
+  </div>`;
 }
-// The bar's arrow: up to open (the bar rises, the rest unfolds under it), down to fold.
-const CHEVRON_DOWN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
-const CHEVRON_UP = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg>`;
 const insBusyNote = (sid) => `<span class="ins-busy" role="status">${esc(insBusy.get(sid))}</span>`;
 
-/** The open session's insights above its box: handed off (what's next), else the strip, or the card opened. */
-function handoffInsight(sid, s) {
+/** On the open session's meta line: its cache's countdown, the bulb in a ring with the minutes left (amber in its
+ *  last 5), or "cache gone" once it has run out (until replied to). "" when there's nothing to say (cacheWarn). */
+function cacheMeta(sid) {
+  const cw = cacheWarn(sid);
+  if (!cw) return "";
+  const s = sessionOf(sid);
+  if (state.skill_handoffs?.[sid]?.ahead && !state.skill_handoffs[sid].next) return "";   // its note ahead says where the cache stands
+  insShown(sid, "cache");
+  const { left, warn } = cw;
+  if (left <= 0) return `<span class="mi-cache cold">${BULB}cache gone</span>`;
+  const arc = Math.round((left / warn) * 66 * 10) / 10;
+  const soon = left <= HOT_CACHE_MS && s?.state !== "working";
+  return `<span class="mi-cache ${soon ? "soon" : ""}"><svg class="ins-ring ${soon ? "soon" : ""}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" class="track"></circle><circle cx="12" cy="12" r="10.5" class="left" stroke-dasharray="${arc} 66" transform="rotate(-90 12 12)"></circle>${RING_BULB}</svg>cached ${Math.max(1, Math.ceil(left / 60000))} min</span>`;
+}
+/** ⋯ → the ways out of a cache in its last minutes (Write hand-off now, Compact now), Start fresh once it's gone,
+ *  a note written ahead's two ways on, a stuck hand-off's Continue, and the untick of "Hand off if I don't come back". */
+function handoffMenu(sid, s) {
+  if (!sid || !s) return "";
+  const ho = insOn("handoff") && state.skill_handoffs?.[sid];
+  if (ho && !ho.next) return ho.ahead ? aheadItems(sid, ho) : handoffNextItem(sid, s, ho);
+  const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
+  const cw = cacheWarn(sid), busy = insBusy.has(sid);
+  let items = "";
+  if (cw && !ask && !busy) {
+    const mins = Math.max(1, Math.ceil(cw.left / 60000));
+    if (cw.left > 0 && insOn("handoff") && !s.machine) items += `<button data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now<span>Cached ${mins} more min: a note to come back to, this session kept as it is</span></button>`;
+    if (compactWarm(sid, cw, ask)) items += `<button data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now<span>Cached ${mins} more min: leaves a short summary in place, read at the cache's price</span></button>`;
+    if (cw.left <= 0) items += `<button data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh<span>Its cache is gone: a new session from its last reply, no re-write; this one stays</span></button>`;
+  }
+  if (aheadCan(sid) && aheadWatched(sid)) items += `<button data-act="ins-watch" data-sid="${esc(sid)}">Don't hand off on its own<span>It hands off if you don't come back before its cache runs out</span></button>`;
+  return items;
+}
+/** Under the open session's chat: a hand-off on its way or continued, a note written ahead, what you just tapped,
+ *  the cache's cost once it's gone, and a ticked "Hand off if I don't come back". Nothing sits above the box. */
+function handoffStatus(sid, s) {
   if (!sid || !s) return "";
   const pending = insOn("handoff") && state.skill_handoffs?.[sid];
   if (pending && !pending.next) return handoffNext(sid, s, pending);
   if (pending?.next) return handoffContinued(sid, pending);
-  // It stays while the session works too (like the background-agents tray), until you act on it.
-  const d = handoffDue(sid, s);
+  if (insBusy.has(sid)) return `<div class="cv-status ins-status">${BULB}<span role="status">${esc(insBusy.get(sid))}</span></div>`;
   const it = state.items.find((i) => i.session_id === sid), ask = !!it && it.kind !== "waiting";
-  const cw = cacheWarn(sid), cache = cw ? cacheLine(sid, ask, true, !d?.opts.some((o) => o.cmd === "/compact")) : "";
-  // Hand off if I don't come back, ticked: its own line under the bar, always in sight (never one of the bar's "+N").
-  const ticked = aheadCan(sid) && aheadWatched(sid);
-  if (!d && !cache) return ticked ? watchLine(sid) : "";
-  if (d) insShown(sid, "handoff");
-  const busy = insBusy.has(sid), isOpen = insOpen.has(sid);
-  const open = `data-act="ins-open" data-sid="${esc(sid)}"`;
-  // The bar: the most pressing one. A cache about to run out comes first (replying now is what saves it). It
-  // looks the same folded or opened (only its arrow turns), and a click anywhere on it opens or folds it.
-  const hotCache = !!cw && cw.left > 0 && cw.left <= HOT_CACHE_MS && !ask;
-  const hot = hotCache || (!!d && !insHotSeen.has(sid));
-  const handoffText = d && (insHotSeen.has(sid)
-    ? `<b>Each reply re-reads ${esc(insTok(d.m.context))},</b> ${Math.round(d.grew)}× its start.`
-    : `<b>Past its hand-off point.</b> Each reply re-reads ${esc(insTok(d.m.context))}, ${Math.round(d.grew)}× its start.`);
-  const shown = [hotCache && cacheText(cw, ask), handoffText, cw && !hotCache && cacheText(cw, ask)].filter(Boolean);
-  const text = shown[0], rest = shown.length - 1;
-  // Opened, the panel never repeats the bar's own line; it always ends with the ways to hide them (insHideRow).
-  const lead = hotCache || !d ? "cache" : "handoff";
-  const lines = lead !== "cache" ? cache : "";
-  const opens = true;
-  // A cache in its last minutes leading the bar carries its own ways out (its line isn't repeated when opened).
-  const warmActs = lead === "cache" && cw.left > 0 && !ask && !d ? `${insOn("handoff") && !s.machine ? `<button class="btn" data-act="ins-ahead" data-sid="${esc(sid)}">Write hand-off now</button>` : ""}${compactWarm(sid, cw, ask) ? `<button class="btn" data-act="ins-compact-warm" data-sid="${esc(sid)}">Compact now</button>` : ""}` : "";
-  // Gone, leading the bar: Start fresh, as its sentence says.
-  const coldActs = lead === "cache" && cw.left <= 0 && !ask && !d ? `<button class="btn" data-act="ins-fresh" data-sid="${esc(sid)}">Start fresh</button>` : "";
-  const act = busy ? insBusyNote(sid) : d ? handoffMain(sid, d, hot) : warmActs || coldActs;
-  const arrow = opens ? `<button class="ins-arrow" ${open} aria-expanded="${isOpen}" aria-label="${isOpen ? "Fold its nudges" : "Show all of its nudges"}">${isOpen ? CHEVRON_DOWN : CHEVRON_UP}</button>` : "";
-  // With its own ways out on it, the cache's sentence wraps instead of losing what the next reply costs.
-  const bar = `<div class="ins-strip ${hot ? "hot" : ""} ${opens ? "" : "whole"} ${(warmActs || coldActs) && !busy ? "wrap" : ""}" ${opens ? open : ""}>${BULB}<span class="ins-strip-text">${text}</span>${rest && !isOpen ? `<span class="ins-n">+${rest}</span>` : ""}${act}${arrow}</div>`;
-  const below = ticked ? watchLine(sid) : "";
-  if (!isOpen || !opens) return bar + below;
-  // Opened: the bar rises like a title and the rest unfolds under it, on the panel: the other insights the bar's
-  // +N counts first (one line each), then the chart and every action.
-  const acts = d && !busy ? `<div class="ins-acts">${handoffButtons(sid, d)}<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button></div>` : "";
-  const body = d ? `${insChart(d.pts, d.mark)}
-    <div class="ins-axis mono"><span>start · ${esc(insTok(d.early))} · ${esc(ago(d.startT))} ago</span><b>now · ${esc(insTok(d.m.context))}</b></div>
-    <div class="ins-why">Each reply now re-reads <b>${esc(insTok(d.m.context))}</b> of context, ${Math.round(d.grew)}× what it started with. ${d.since} A fresh session with a short summary starts back near ${esc(insTok(d.early))}.${d.why ? ` ${esc(d.why)}` : ""}</div>
-    ${acts}` : "";
-  return `${bar}${below}<div class="ins ins-detail">${lines ? `<div class="ins-lines">${lines}</div>` : ""}${body}${insHideRow(sid)}</div>`;
+  const cw = cacheWarn(sid);
+  let out = "";
+  // Gone: what the next reply costs, once (the meta line says "cache gone"; Start fresh is in ⋯).
+  if (cw && cw.left <= 0) out += `<div class="cv-status ins-status">${BULB}<span>Cache expired: ${coldCost(cw.c, ask ? "answering" : "its next reply")}.${ask ? "" : " Starting something new? <b>⋯ → Start fresh</b> from its last reply instead."}</span></div>`;
+  if (aheadCan(sid) && aheadWatched(sid)) out += `<div class="cv-status ins-status">${BULB}<span>${watchText(sid)}</span></div>`;
+  return out;
 }
 
-/** At the foot of the opened strip: hide every insight for a day or a week, or turn them off (Settings turns them
- *  back on). */
+/** At the foot of the plan: hide every nudge for a day or a week, or turn them off (Settings turns them back on). */
 const insHideRow = (sid) => `<div class="ins-acts ins-hide"><span class="dim">Hide nudges</span><button class="btn small" data-act="ins-snooze" data-sid="${esc(sid)}" data-days="1">For a day</button><button class="btn small" data-act="ins-snooze" data-sid="${esc(sid)}" data-days="7">For a week</button><button class="btn small" data-act="ins-off" data-sid="${esc(sid)}">Turn off</button></div>`;
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------
@@ -351,10 +326,10 @@ function cacheWarn(sid) {
   const left = c.until_ms - now(), warn = CACHE_WARN_MS;
   return left > warn || -left > CACHE_COLD_FOR_MS ? null : { c, left, warn };
 }
-/** One line for a session that's waiting on you: the bulb in a ring counting down the cache's last minutes
- *  (amber in its last 5, when replying now is what saves it), the bulb alone once it's gone. `ask`: it waits on a decision (your answer is what its next reply follows), not a
- *  reply. `open`: the open session's line, which also offers Write hand-off now (a note to come back to, its
- *  session kept as it is), and with `compact` Compact now (compactWarm). "" when it isn't worth saying. */
+/** One line for a waiting card: the bulb in a ring counting down the cache's last minutes (amber in its last 5,
+ *  when replying now is what saves it), the bulb alone once it's gone. `ask`: it waits on a decision (your answer is
+ *  what its next reply follows), not a reply. `open` and `compact` are unused now (the open session's ways out are
+ *  in ⋯: handoffMenu). "" when it isn't worth saying. */
 function cacheLine(sid, ask = false, open = false, compact = false) {
   const cw = cacheWarn(sid);
   if (!cw) return "";
@@ -395,7 +370,7 @@ function cacheText({ c, left }, ask) {
   if (left > 0) return `<b>Cached ${Math.max(1, Math.ceil(left / 60000))} more min.</b> After that, ${coldCost(c, what)}.`;
   return `Cache expired · ${coldCost(c, what)}.${ask ? "" : " Starting something new? Start fresh from its last reply instead: no re-write."}`;
 }
-/** On a waiting card: the session has grown several times past where it started. Open it to hand off. */
+/** On a waiting card: a hand-off on its way, or the session late in its window and grown several times over. */
 function handoffLine(sid) {
   if (!insOn("handoff") || !sid) return "";
   const s = sessionOf(sid), m = stepFeeds.get(sid)?.meta, c = insCache.get(sid);
@@ -405,12 +380,12 @@ function handoffLine(sid) {
     const c = cacheOf(sid), left = c ? c.until_ms - now() : 0;
     return `<div class="ins-line">${BULB}<span>${left > 0 ? `<b>Hand-off note ready.</b> Still cached ${Math.max(1, Math.ceil(left / 60000))} more min.` : "<b>Cache expired · hand-off note ready.</b> Open it to continue here or start fresh from the note."}</span></div>`;
   }
-  if (s && pending && !pending.next) return `<div class="ins-line">${BULB}<span><b>Hand-off note written.</b> Open it to continue in a new session.</span></div>`;
+  if (s && pending && !pending.next) return `<div class="ins-line">${BULB}<span><b>Continuing in a fresh session</b>${s.state === "working" ? ": writing its note." : "."}</span></div>`;
   if (s && pending?.next) return `<div class="ins-line">${BULB}<span><b>Continued in ${esc(nameOf(pending.next, sessionOf(pending.next)?.project) || "a new session")}.</b> Close this one when you're done with it.</span></div>`;
-  const ctx = m?.context || c?.tokens || 0, start = m?.start_context || c?.start || 0;
-  const bar = handoffBar(sid);
-  if (!s || insSnoozed() || s.state === "working" || insStale(s, sid) || ctx < bar.context || !start || ctx / start < bar.growth || insLaterOf(sid) > ctx) return "";
-  return `<div class="ins-line">${BULB}<span><b>${Math.round(ctx / start)}× its starting context</b> (${esc(insTok(ctx))}). ${bar.cold ? "Its cache is gone: the cheapest moment to hand off." : "Open it to hand off."}</span></div>`;
+  // A card can't see whether it's at a break: it says so only late in the window.
+  const ctx = m?.context || c?.tokens || 0, start = m?.start_context || c?.start || 0, win = m?.window || c?.window || HANDOFF.window;
+  if (!s || insSnoozed() || s.state === "working" || insStale(s, sid) || ctx / win < HANDOFF.late || !start || ctx / start < HANDOFF.growth || insLaterOf(sid) > ctx) return "";
+  return `<div class="ins-line">${BULB}<span><b>${Math.round((ctx / win) * 100)}% of its window,</b> ${Math.round(ctx / start)}× its start. Open it for a fresh session.</span></div>`;
 }
 /** Sessions waiting on you (a reply or a decision, or put aside in Need to decide) whose log isn't open here, and a parked or closed one
  *  open in Active: ask the Mac for their insights' numbers (every 30 s). The board's cards on this Mac also
@@ -496,15 +471,6 @@ function insCardLine(sid, ask = false) {
   return (top && rest.length ? top.replace(/<\/div>$/, `<span class="ins-n">+${rest.length}</span></div>`) : top || "") + watching;
 }
 
-// ---------- queue, don't interrupt ----------
-
-/** By the box while a session works and you've typed something: Now stops it, Queue keeps the work. */
-function queueNote(sid, s) {
-  if (!insNudge("queue") || s?.state !== "working" || !draft(`s:${sid}`).text.trim()) return "";
-  insShown(sid, "queue");
-  return `<div class="ins-line ins-queue">${BULB}<span>Now stops its current step and what it was doing. Queue keeps the work and sends this when it's free.</span><button class="btn small" data-act="ins-queue-off">Got it</button></div>`;
-}
-
 // ---------- what you did with them ----------
 
 /** You sent `text` to a session (Queue when `now` is false): count what an insight led to. */
@@ -517,10 +483,10 @@ function insSent(sid, text, now_) {
   // the next lead itself): remembered on the Mac until it continues in a new session.
   const ho = /^\/(\S*hand-?off)(?:\s+(?!resume\b)[\s\S]*)?$/i.exec(text.trim());
   if (ho && !ho[1].startsWith("relay:")) invoke("handoff_sent", { sessionId: sid, skill: ho[1], resume: takesResume(sid, ho[1]) }).catch(() => {});
-  if (s?.state === "working" && !now_ && insShownOnce.has(`queue:${sid}`)) insLog(sid, "queue", "acted");
 }
 function insAct(act, d) {
   const sid = d.sid;
+  if (typeof moreFor !== "undefined" && moreFor) moreFor = null;   // an item picked in ⋯ closes it
   if (act === "ins-choose") {
     insQuery = "";
     insChoosing = insChoosing === d.key ? "" : d.key;
@@ -532,23 +498,22 @@ function insAct(act, d) {
   if (act === "ins-skill") { insChoosing = ""; insQuery = ""; return setSetting("insights.skills", { ...insSkills(), [d.key]: d.name }); }
   if (act === "ins-skill-forget") { const { [d.key]: _, ...rest } = insSkills(); return setSetting("insights.skills", rest); }
   // Opening keeps its colored moment (the bar stays as it was); acting on it, or Remind me, ends it.
-  if (act === "ins-open") { insOpen.has(sid) ? insOpen.delete(sid) : insOpen.add(sid); return renderMain(); }
-  if (act === "ins-later") { insHotSeen.add(sid); insOpen.delete(sid); insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
+  if (act === "ins-plan") { insPlan.has(sid) ? insPlan.delete(sid) : insPlan.add(sid); return renderMain(); }
+  if (act === "ins-later") { insPlan.delete(sid); insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
   if (act === "ins-snooze") {
     const days = +d.days || 1;
-    insOpen.delete(sid);
+    insPlan.delete(sid);
     insLog(sid, "handoff", "dismissed", `snooze ${days}d`);
     toast(`Nudges hidden for ${days === 1 ? "a day" : `${days} days`}: Settings → Insights shows them again`);
     return setSetting("insights.snooze", Date.now() + days * 86400000);
   }
   if (act === "ins-off") {
-    insOpen.delete(sid);
+    insPlan.delete(sid);
     insLog(sid, "handoff", "dismissed", "off");
     toast("Nudges off: Settings → Insights turns them on again");
     return setSetting("insights.on", false);
   }
   if (act === "ins-unsnooze") return setSetting("insights.snooze", 0);
-  if (act === "ins-queue-off") { insLog(active?.sid || "", "queue", "dismissed"); return setSetting("insights.queue", false); }
   if (act === "ins-continue") {
     if (insContinuing.has(sid)) return;
     const s = sessionOf(sid), ho = state.skill_handoffs?.[sid];
@@ -577,6 +542,7 @@ function insAct(act, d) {
     return invoke("ahead_watch", { sessionId: sid, on: false }).then(() => toast("It won't hand off on its own"), (e) => toast(`Couldn't: ${e}`));
   }
   if (act === "ins-cue") {
+    insAutoTried.delete(sid);
     return insRun(sid, "Handing off…", () => invoke("handoff_cue", { sessionId: sid })
       .then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
   }
@@ -601,6 +567,7 @@ function insAct(act, d) {
     // Your click on the command is the message: it goes as you'd send it, like Compact or a quick phrase.
     insSent(sid, d.insCmd, false);
     insLog(sid, "handoff", "acted", d.insCmd);
+    insAutoTried.delete(sid);
     return insRun(sid, `Sending ${d.insCmd}…`, () => invoke("send_to_session", { sessionId: sid, text: d.insCmd, images: [], now: false })
       .then((r) => toast(`${d.insCmd} sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
   }
@@ -610,10 +577,9 @@ function insAct(act, d) {
  *  note, compacting). A second tap while it's on its way does nothing. */
 function insRun(sid, note, go) {
   if (insBusy.has(sid)) return;
-  insHotSeen.add(sid);
   insBusy.set(sid, sessionOf(sid)?.state === "working" ? `${note.replace(/…$/, "")}: queued for when this step ends…` : note);
   renderMain();
-  return go().finally(() => { insBusy.delete(sid); insOpen.delete(sid); renderMain(); });
+  return go().finally(() => { insBusy.delete(sid); insPlan.delete(sid); renderMain(); });
 }
 
 document.addEventListener("input", (e) => {
@@ -668,7 +634,7 @@ function insPicker(k, h, a, chosen) {
     </div>`;
 }
 /** The one switch, saying plainly what turning it on does. */
-const insNudgesRow = (on) => setRow("Show nudges", "Tips above a session's reply box when it's costing more than it needs to: hand off to a fresh session once its context has grown large, reply before its cache expires, and queue a message instead of interrupting. Cue also writes a hand-off note on its own just before a waiting session's cache runs out.", toggle("insights.on", on));
+const insNudgesRow = (on) => setRow("Show nudges", "A chip by a session's quick phrases to continue in a fresh session once it has used most of its window, its cache's countdown on its meta line, and the ways out in ⋯. Nothing sits on the reply box. Cue also writes a hand-off note on its own just before a waiting session's cache runs out.", toggle("insights.on", on));
 function insSettings(st) {
   if (!st.insights?.on) return `<div class="set-group">Nudges</div>${insNudgesRow(false)}`;
   if (insMachines === null) { insMachines = []; invoke("machines_list").then((l) => { insMachines = l || []; renderMain(); }).catch(() => {}); }

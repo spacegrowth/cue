@@ -46,7 +46,7 @@ function itabDaysList(days) {
   return out;
 }
 
-/** A small line chart over the range, as insights.js's insChart draws one: `series` is [{ vals, dashed }],
+/** A small line chart over the range, as the chat's context chart once did: `series` is [{ vals, dashed }],
  *  one value per day (null: no turns that day, the line skips it). The first series gets the fill and the dot. */
 function itabChart(series, days, fmt) {
   const W = 600, H = 96, n = days.length;

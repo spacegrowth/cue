@@ -462,9 +462,10 @@ impl Hub {
             if it.kind == "waiting" && it.origin.harness == "claude" && ahead_due(until, last, tokens, now) {
                 let (ticked, all) = watched.get_or_insert_with(|| (crate::db::ahead_watched(), crate::config::flag("/insights/ahead")));
                 let by = ahead_by(ticked.contains(sid), *all, tokens);
-                // Not when a hand-off is already on its way or written (ahead, or one you sent this stretch).
+                // Not when a hand-off is already on its way or written (ahead, or one you sent this stretch), nor
+                // when Claude Code compacts it itself before the cache runs out (config::idle_compacts).
                 let handing = crate::db::handoff(sid).is_some_and(|k| k.next.is_empty() && (k.ahead > 0 || k.sent_ms >= last));
-                if by > 0 && !handing {
+                if by > 0 && !handing && !crate::config::idle_compacts(tokens) {
                     ahead.push((it.origin.clone(), until, tokens, by));
                 }
             }
@@ -1092,31 +1093,31 @@ mod tests {
             o
         };
         let events = |sid: &str| crate::db::insight_events_of(sid).into_iter().filter(|(r, ..)| r == "ahead").map(|(_, a, d)| format!("{a}:{d}")).collect::<Vec<_>>();
-        // 60 s left of an hour's cache, 300k: due. Ticked, but Cue can't see its box (no tmux pane): held, once.
-        let a = waiting("a1", hour - 60_000, 300_000, 3600);
+        // 60 s left of an hour's cache, 150k (under what Claude Code idle-compacts itself: config::idle_compacts): due. Ticked, but Cue can't see its box (no tmux pane): held, once.
+        let a = waiting("a1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("a1", true);
         // Not ticked, Settings off (its default): nothing.
-        waiting("b1", hour - 60_000, 300_000, 3600);
+        waiting("b1", hour - 60_000, 150_000, 3600);
         // Ticked, but a 5-minute cache: the button only.
-        let c = waiting("c1", 4 * 60_000, 300_000, 300);
+        let c = waiting("c1", 4 * 60_000, 150_000, 300);
         crate::db::ahead_watch("c1", true);
         // Ticked, but 20 minutes left: not yet.
-        waiting("d1", 40 * 60_000, 300_000, 3600);
+        waiting("d1", 40 * 60_000, 150_000, 3600);
         crate::db::ahead_watch("d1", true);
         // Ticked, a note already written ahead: not again.
-        waiting("e1", hour - 60_000, 300_000, 3600);
+        waiting("e1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("e1", true);
         crate::db::handoff_sent("e1", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_SESSION);
         // Ticked, but it's asking you something now: held as busy.
-        let f = waiting("f1", hour - 60_000, 300_000, 3600);
+        let f = waiting("f1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("f1", true);
         hub.st().sessions.mark(&f, "deciding", None);
         // Ticked, and you've a draft in Cue's box for it: held.
-        waiting("g1", hour - 60_000, 300_000, 3600);
+        waiting("g1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("g1", true);
         crate::db::set_draft("s:g1", "half a thought", &serde_json::json!([]));
         // Ticked, and put off for later (Need to decide): leaving it is when a note pays, so it's still due.
-        waiting("l1", hour - 60_000, 300_000, 3600);
+        waiting("l1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("l1", true);
         hub.set_later("l1", true);
         hub.cache_tick();
@@ -1154,7 +1155,7 @@ mod tests {
             };
             let in_pane = |sid: &str, pane: &str| {
                 let path = dir.join(format!("{sid}.jsonl"));
-                cached_log(&path, hour - 60_000, 300_000, 3600);
+                cached_log(&path, hour - 60_000, 150_000, 3600);
                 let o = Origin { session_id: sid.into(), harness: "claude".into(), cwd: "/x/proj".into(), transcript_path: path.to_string_lossy().into(), tmux_pane: pane.into(), ..Default::default() };
                 hub.event(o, "stopped", "Done.".into(), vec![], "");
                 crate::db::ahead_watch(sid, true);

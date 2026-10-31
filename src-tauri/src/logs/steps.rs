@@ -689,9 +689,11 @@ pub fn set_window(session_id: &str, window: u64, for_model: bool) {
 pub struct InsightState {
     /// When its cached context runs out (0 when its log doesn't say it caches).
     pub until_ms: u64,
-    /// Its context now, and the context it started with.
+    /// Its context now, the context it started with, and its model's window (0 when its status line
+    /// hasn't said; insights.js takes 200k then).
     pub tokens: u64,
     pub start: u64,
+    pub window: u64,
     /// When its latest reply came (a compaction since then makes the context count stale until its next reply).
     pub last_ms: u64,
     /// How many warm replies a cold one costs (prices::cold_x).
@@ -734,7 +736,7 @@ pub fn insight_state(path: &str) -> Option<InsightState> {
     feed.catch_up();
     let m = &feed.meta;
     let until = if m.cache_ttl_s > 0 && m.last_call_ms > 0 { m.last_call_ms + m.cache_ttl_s * 1000 } else { 0 };
-    (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at })
+    (m.context > 0).then_some(InsightState { until_ms: until, tokens: m.context, start: m.start_context, window: m.window, last_ms: m.last_call_ms, cold_x: m.cold_x, cold_cents: m.cold_cents, auto_at: m.auto_at })
 }
 
 pub fn context_pct(path: &str) -> Option<u8> {
