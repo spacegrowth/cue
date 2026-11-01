@@ -299,28 +299,39 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
         }
     }
     let new_id = started?;
-    // A note written ahead of its cache running out: you chose the new session over this one when you came
-    // back, and this one stays as it was (its card offers Close).
     if ahead > 0 {
         record_insight(session_id, "ahead", "acted", "fresh", 0);
+    }
+    // Every way to a fresh session closes the old one, a note written ahead's too: left open, its cache renewed by
+    // the note, it would be handed off again an hour later.
+    let (closed, detail) = close_replaced(h, session_id, "Continued in a new session");
+    Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
+}
+
+/// The session a fresh one now carries on from is closed (Closed keeps it), unless its background agents are
+/// still at work or it can't be closed now; then its card says where it continued and offers Close. Only an
+/// open one: a parked or closed session stays where it is. Returns whether it closed, and what to say (`done`
+/// first).
+fn close_replaced(h: &Arc<Hub>, session_id: &str, done: &str) -> (bool, String) {
+    // Open in Cue (a parked or closed one isn't among its sessions).
+    let open = h.session_origin(session_id).is_some();
+    if !open {
         h.redraw();
-        return Ok(serde_json::json!({ "session_id": new_id, "closed": false, "detail": "Continued in a new session; this one stays open" }));
+        return (false, done.to_string());
     }
     let log = local_log(h, session_id);
     let busy = log.as_deref().is_some_and(|p| steps::running_background(p) > 0);
-    // Not closed (it's working, say): its hand-off card then says where it continued and offers Close.
     let close = if busy { Err("its background agents are still at work".to_string()) } else { super::end_session(h, session_id) };
     h.redraw();
-    let detail = match &close {
-        Ok(_) => "Continued in a new session; the old one is closed (Closed keeps it)".to_string(),
-        Err(e) => format!("Continued in a new session. The old one is still open ({e}): close it from its hand-off card"),
-    };
-    Ok(serde_json::json!({ "session_id": new_id, "closed": close.is_ok(), "detail": detail }))
+    match close {
+        Ok(_) => (true, format!("{done}; the old one is closed (Closed keeps it)")),
+        Err(e) => (false, format!("{done}. The old one is still open ({e}): close it from its card")),
+    }
 }
 
-/// A parked or closed session whose cache is gone: a new session of the same agent, folder and machine
-/// (Claude Code: the same model), started from its last reply instead of resuming the whole context.
-/// The old one stays where it is (Parked or Closed).
+/// A session whose cache is gone: a new session of the same agent, folder and machine (Claude Code: the same
+/// model), started from its last reply instead of resuming the whole context. An open one closes (Closed keeps
+/// it), as every way to a fresh session does; a parked or closed one stays where it is.
 #[tauri::command]
 pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
@@ -329,8 +340,8 @@ pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) 
 
 pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let new_id = start_after(h, session_id, |last| resume_ask(last, false, "", ""))?;
-    h.redraw();
-    Ok(serde_json::json!({ "session_id": new_id, "detail": "Started fresh from its last reply" }))
+    let (closed, detail) = close_replaced(h, session_id, "Started fresh from its last reply");
+    Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
 }
 
 /// One thing an insight did, or you did with it: shown, acted (with what you picked), later, dismissed.

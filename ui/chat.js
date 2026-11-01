@@ -1984,7 +1984,7 @@ function metaInline(sid) {
   return `<span class="ap-meta">${parts.join(" · ")}</span>`;
 }
 /** The one thing to do now, on the chat's title row beside its state: Compact once its context is 80% full (not
- *  mid-turn; the same as ⋯ → Compact), then insights.js handoffChips (Start fresh, Hand off now, Fresh session…). */
+ *  mid-turn; the same as ⋯ → Compact), then insights.js handoffChips (one chip, Fresh session ▾, whatever the state). */
 function titleChips(sid) {
   const s = sessionOf(sid), pct = ctxPct(stepFeeds.get(sid)?.meta);
   const compact = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !justCompacted(s) ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";

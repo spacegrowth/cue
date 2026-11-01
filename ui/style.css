@@ -1934,6 +1934,8 @@ button.ins-n { cursor: pointer; }
 .ins-chip-wrap { position: relative; display: inline-flex; flex: none; }
 .ap-head .ins-plan .dim { white-space: normal; overflow: visible; }
 .mi-act[aria-expanded="true"] { background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.mi-act .mi-caret { width: 9px; height: 9px; margin-left: 4px; vertical-align: -0.5px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.mi-act[aria-expanded="true"] .mi-caret { transform: rotate(180deg); }
 .ins-plan { width: min(460px, calc(100vw - 48px)); padding: 12px 14px; gap: 10px; cursor: default; }
 .ins-plan .ins-why { font-size: 13.5px; }
 .ins-plan-steps { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; color: var(--ink); }

@@ -31,13 +31,17 @@ const TAKEN_SETTLE_MS: u64 = 3000;
 const COLD_WARN_MS: u64 = 10 * 60_000;
 const COLD_MIN_TOKENS: u64 = 50_000;
 
-/// A hand-off note asked for before a cache runs out (a session's "Hand off if I don't come back", or Settings
-/// for every big one): this long before it does, an hour's cache only (a 5-minute one runs out while you're
-/// still reading; its Write hand-off now is yours to press), and from this much context for Settings' every
-/// session (one you ticked goes from COLD_MIN_TOKENS). insights.js says the same (AHEAD_MIN).
+/// A hand-off note asked for before a cache runs out (a session's "Hand off if I don't come back", or Insights for
+/// every session that's due one): this long before it does, an hour's cache only (a 5-minute one runs out while
+/// you're still reading; its Write hand-off now is yours to press). Insights' every-session note goes only where a
+/// fresh session is due anyway, as insights.js handoffDue offers one (its HANDOFF): most of its window used and
+/// grown several times from its start; a session that started small from a note an hour ago isn't (one you ticked
+/// goes from COLD_MIN_TOKENS).
 const AHEAD_LEAD_MS: u64 = 90_000;
 const AHEAD_TTL_MS: u64 = 30 * 60_000;
-const AHEAD_MIN_TOKENS: u64 = 150_000;
+const AHEAD_SHARE: f64 = 0.6;
+const AHEAD_GROWTH: f64 = 3.0;
+const AHEAD_WINDOW: u64 = 200_000;
 
 /// Whether a waiting session's cache (running out at `until`, its last reply at `last`, `tokens` of context)
 /// is in the minute and a half a hand-off note goes ahead of: an hour's cache, big enough to matter.
@@ -45,9 +49,13 @@ fn ahead_due(until: u64, last: u64, tokens: u64, now: u64) -> bool {
     until > now && until - now <= AHEAD_LEAD_MS && until.saturating_sub(last) >= AHEAD_TTL_MS && tokens >= COLD_MIN_TOKENS
 }
 
-/// Who a due note is asked for by (ipc AHEAD_*): its session's own tick, else Settings' every big session; 0: neither.
-fn ahead_by(ticked: bool, all: bool, tokens: u64) -> u8 {
-    if ticked { crate::ipc::AHEAD_SESSION } else if all && tokens >= AHEAD_MIN_TOKENS { crate::ipc::AHEAD_ALL } else { 0 }
+/// Who a due note is asked for by (ipc AHEAD_*): its session's own tick, else Insights for a session a fresh
+/// session is due for (`tokens` of a `window`, 0: 200k; `start`: its context at its first reply, 0: not known,
+/// so not due); 0: neither.
+fn ahead_by(ticked: bool, all: bool, tokens: u64, start: u64, window: u64) -> u8 {
+    let window = if window > 0 { window } else { AHEAD_WINDOW };
+    let due = start > 0 && tokens as f64 >= window as f64 * AHEAD_SHARE && tokens as f64 >= start as f64 * AHEAD_GROWTH;
+    if ticked { crate::ipc::AHEAD_SESSION } else if all && due { crate::ipc::AHEAD_ALL } else { 0 }
 }
 
 impl Hub {
@@ -461,7 +469,7 @@ impl Hub {
         for (it, later) in waiting {
             let sid = &it.origin.session_id;
             let Some(st) = crate::steps::insight_state(&it.origin.transcript_path) else { continue };
-            let (until, last, tokens) = (st.until_ms, st.last_ms, st.tokens);
+            let (until, last, tokens, start, window) = (st.until_ms, st.last_ms, st.tokens, st.start, st.window);
             insight.insert(sid.clone(), serde_json::json!(st));
             // Codex logs don't say how long they cache: no heads-up.
             if until == 0 {
@@ -470,10 +478,11 @@ impl Hub {
             // Put off for later too: leaving it for a while is when a note pays.
             if it.kind == "waiting" && it.origin.harness == "claude" && ahead_due(until, last, tokens, now) {
                 let (ticked, all) = watched.get_or_insert_with(|| (crate::db::ahead_watched(), crate::config::flag("/insights/ahead")));
-                let by = ahead_by(ticked.contains(sid), *all, tokens);
+                let by = ahead_by(ticked.contains(sid), *all, tokens, start, window);
                 // Not when a hand-off is already on its way or written (ahead, or one you sent this stretch), nor
-                // when Claude Code compacts it itself before the cache runs out (config::idle_compacts).
-                let handing = crate::db::handoff(sid).is_some_and(|k| k.next.is_empty() && (k.ahead > 0 || k.sent_ms >= last));
+                // once it has continued in a fresh session (a second note would write over that link), nor when
+                // Claude Code compacts it itself before the cache runs out (config::idle_compacts).
+                let handing = crate::db::handoff(sid).is_some_and(|k| !k.next.is_empty() || k.ahead > 0 || k.sent_ms >= last);
                 if by > 0 && !handing && !crate::config::idle_compacts(tokens) {
                     ahead.push((it.origin.clone(), until, tokens, by));
                 }
@@ -1067,11 +1076,14 @@ mod tests {
         assert!(!super::ahead_due(now - 1, now - 1 - hour, 300_000, now), "already gone");
         assert!(!super::ahead_due(now + 80_000, now + 80_000 - 5 * min, 300_000, now), "a 5-minute cache: the button only");
         assert!(!super::ahead_due(now + 80_000, now + 80_000 - hour, 40_000, now), "too small to matter");
-        // Its own tick goes from any size worth a note; Settings' every-session from 150k.
-        assert_eq!(super::ahead_by(true, false, 60_000), crate::ipc::AHEAD_SESSION);
-        assert_eq!(super::ahead_by(false, true, 160_000), crate::ipc::AHEAD_ALL);
-        assert_eq!(super::ahead_by(false, true, 100_000), 0);
-        assert_eq!(super::ahead_by(false, false, 900_000), 0, "off unless you turned it on");
+        // Its own tick goes from any size worth a note; Insights' every-session only where a fresh session is due.
+        assert_eq!(super::ahead_by(true, false, 60_000, 50_000, 1_000_000), crate::ipc::AHEAD_SESSION);
+        assert_eq!(super::ahead_by(false, true, 650_000, 45_000, 1_000_000), crate::ipc::AHEAD_ALL);
+        assert_eq!(super::ahead_by(false, true, 130_000, 40_000, 0), crate::ipc::AHEAD_ALL, "a 200k window when it doesn't say");
+        assert_eq!(super::ahead_by(false, true, 173_000, 48_000, 1_000_000), 0, "17% of its window: started from a note an hour ago");
+        assert_eq!(super::ahead_by(false, true, 700_000, 400_000, 1_000_000), 0, "hasn't grown 3× from its start");
+        assert_eq!(super::ahead_by(false, true, 700_000, 0, 1_000_000), 0, "its start not known");
+        assert_eq!(super::ahead_by(false, false, 900_000, 45_000, 1_000_000), 0, "off unless you turned it on");
     }
 
     /// A Claude Code log whose last reply came `ago_ms` ago with `context` tokens, cached for `ttl_s`.
@@ -1117,6 +1129,12 @@ mod tests {
         waiting("e1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("e1", true);
         crate::db::handoff_sent("e1", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_SESSION);
+        // Ticked, but it already continued in a fresh session (still open, its cache renewed by the note): never
+        // again, a second note would write over where it continued.
+        waiting("k1", hour - 60_000, 150_000, 3600);
+        crate::db::ahead_watch("k1", true);
+        crate::db::handoff_sent("k1", crate::ipc::CUE_HANDOFF, false, crate::ipc::AHEAD_SESSION);
+        crate::db::handoff_continued("k1", "k2");
         // Ticked, but it's asking you something now: held as busy.
         let f = waiting("f1", hour - 60_000, 150_000, 3600);
         crate::db::ahead_watch("f1", true);
@@ -1132,7 +1150,7 @@ mod tests {
         hub.cache_tick();
         assert_eq!(events("l1"), ["held:unseen"], "put off for later, still due");
         assert_eq!(events("a1"), ["held:unseen"], "Cue can't see its box: nothing typed");
-        for sid in ["b1", "c1", "d1", "e1"] {
+        for sid in ["b1", "c1", "d1", "e1", "k1"] {
             assert!(events(sid).is_empty(), "{sid}: {:?}", events(sid));
         }
         assert_eq!(events("f1"), ["held:busy"]);
@@ -1140,6 +1158,7 @@ mod tests {
         hub.cache_tick();
         assert_eq!(events("a1"), ["held:unseen"], "once per idle stretch, not every tick");
         assert!(crate::db::handoff("a1").is_none() && crate::db::handoff("c1").is_none(), "nothing was asked for");
+        assert_eq!(crate::db::handoff("k1").map(|k| k.next), Some("k2".to_string()), "where it continued is kept");
         let _ = (a, c);
         // It began working just as the ask went: Cue would keep it for when that turn ends, with you there.
         // Taken back instead: nothing kept, nothing recorded as asked.
