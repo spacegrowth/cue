@@ -49,6 +49,9 @@ pub fn effective() -> Value {
         "insights": { "on": ins, "handoff": ins, "cache": ins, "queue": ins && b("/insights/queue", true), "ahead": ins && snooze <= now_ms, "snooze": snooze, "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // Tips (ui/tips.js): a key or command now and then on the line under the chat; on until turned off.
         "tips": { "on": b("/tips/on", true) },
+        // Tasks (tasks.rs): every session tracked from its next turn's end, without turning it on in its tab. Off
+        // until you turn it on: each tracked session costs about a cent a turn.
+        "tasks": { "auto": b("/tasks/auto", false) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },

@@ -62,17 +62,31 @@ pub fn ask_copy(origin: &crate::model::Origin, prompt: &str) -> Result<Answer, S
 /// saved, and its own system prompt, so it reads only what it's given.
 const TASKS_LINE: &str = r#"exec claude -p --model haiku --no-session-persistence --tools "" --settings '{"disableAllHooks":true}' --system-prompt "You keep the list of what is left to do in a coding agent's session, for its owner. Use only what you are given. Answer with only JSON." --output-format json"#;
 
-/// `prompt` to the small model that keeps the lists of what's left: its answer and what it cost.
-pub fn ask_small(prompt: &str) -> Result<Answer, String> {
-    run_full(TASKS_LINE, &std::env::temp_dir(), prompt)
+/// `prompt` to the small model that keeps the lists of what's left, about the session `session_id`: its answer
+/// and what it cost. Every call about one session goes under one fixed id (side_id), nothing saved.
+pub fn ask_small(prompt: &str, session_id: &str) -> Result<Answer, String> {
+    run_full(&format!("{TASKS_LINE} --session-id {}", side_id(&format!("tasks:{session_id}"))), &std::env::temp_dir(), prompt)
+}
+
+/// The session id Cue's small-model calls about one session go under, the same every time: a UUID worked out from
+/// `key` (what they're for and the session's id). Claude Code sends a session's id with every request, so with a
+/// new one each call anything counting sessions (a proxy, a usage report) would see thousands; this way it sees one
+/// per session. It's only a label: nothing is saved under it (--no-session-persistence), so each call still reads
+/// only what it's given, and costs the same.
+pub fn side_id(key: &str) -> String {
+    // FNV-1a, twice with different seeds: the same on every Mac and every build (std's hasher isn't promised to be).
+    let fnv = |seed: u64| key.bytes().fold(seed, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3));
+    let x = format!("{:016x}{:016x}", fnv(0xcbf2_9ce4_8422_2325), fnv(0x9e37_79b9_7f4a_7c15));
+    format!("{}-{}-4{}-a{}-{}", &x[0..8], &x[8..12], &x[13..16], &x[17..20], &x[20..32])
 }
 
 /// "Catch me up": what happened since you last looked, from only those messages (`since`, oldest first), read
 /// by a small model with no conversation behind it. A few cents however long the session is: forking the whole
 /// conversation would re-read all of it, at the session's own model's price, its cache long gone by then.
 /// `seen`: the opening of the last reply you read, so it knows where you left off. Asked only when you click (or say) it.
-pub fn catch_up(seen: Option<&str>, since: &[crate::model::Exchange]) -> Result<CatchUp, String> {
-    run(CATCH_UP_LINE, &std::env::temp_dir(), &catch_up_prompt(seen, since)).map(|a| CatchUp::from_answer(&a))
+pub fn catch_up(seen: Option<&str>, since: &[crate::model::Exchange], session_id: &str) -> Result<CatchUp, String> {
+    let line = format!("{CATCH_UP_LINE} --session-id {}", side_id(&format!("catch-up:{session_id}")));
+    run(&line, &std::env::temp_dir(), &catch_up_prompt(seen, since)).map(|a| CatchUp::from_answer(&a))
 }
 
 /// The model that catches you up, with no tools, no hooks and nothing saved. Its own system prompt, so it reads
@@ -231,6 +245,17 @@ mod tests {
         assert_eq!(answer("noise\n{\"type\":\"result\",\"result\":\" Because X. \",\"is_error\":false}\n"), Some(Ok("Because X.".into())));
         assert_eq!(answer("{\"result\":\"No conversation found\",\"is_error\":true}"), Some(Err("No conversation found".into())));
         assert_eq!(answer("not json"), None);
+    }
+
+    #[test]
+    fn calls_about_one_session_go_under_one_fixed_uuid() {
+        let a = side_id("tasks:11cd1602-0504-4ad0-ad40-7c25f40885aa");
+        assert_eq!(a, side_id("tasks:11cd1602-0504-4ad0-ad40-7c25f40885aa"), "the same every time");
+        assert_ne!(a, side_id("tasks:other"));
+        assert_ne!(a, side_id("catch-up:11cd1602-0504-4ad0-ad40-7c25f40885aa"));
+        let parts: Vec<&str> = a.split('-').collect();
+        assert_eq!(parts.iter().map(|p| p.len()).collect::<Vec<_>>(), vec![8, 4, 4, 4, 12], "{a}");
+        assert!(a.chars().all(|c| c == '-' || c.is_ascii_hexdigit()) && parts[2].starts_with('4'), "{a}");
     }
 
     #[test]

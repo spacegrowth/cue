@@ -76,6 +76,7 @@
       // ?tasks=1: every session tracked, a list of what's left (tasks.js); ?tasks=busy: its first list being read;
       // ?tasks=off: none tracked yet. The Tasks tab opens on the session shown.
       state.tasks = {};
+      state.tasks_spent = q.get("tasks") === "1" ? { tokens: 412300, usd: 0.087, calls: 23, tracked: 2 } : {};
       if (["1", "busy"].includes(q.get("tasks"))) {
         const it = (id, group, text, st = "open") => ({ id, group, text, state: st, at_ms: now - 30 * M });
         const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {

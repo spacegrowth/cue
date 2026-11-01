@@ -58,6 +58,40 @@ pub struct Track {
 
 static TRACKS: Mutex<Option<HashMap<String, Track>>> = Mutex::new(None);
 
+/// Every call the lists have made, in every session, kept when a session stops being tracked (Settings shows it).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct Total {
+    pub tokens: u64,
+    pub usd: f64,
+    pub calls: u64,
+}
+
+static TOTAL: Mutex<Option<Total>> = Mutex::new(None);
+
+fn total_file() -> std::path::PathBuf {
+    crate::server::cue_dir().join("tasks-spent.json")
+}
+
+/// One more call's cost on the running total, kept in Cue's folder.
+fn spend(s: Spent) {
+    let mut g = crate::locking::lock(&TOTAL, "what the lists have cost");
+    let t = g.get_or_insert_with(|| std::fs::read_to_string(total_file()).ok().and_then(|x| serde_json::from_str(&x).ok()).unwrap_or_default());
+    t.tokens += s.tokens;
+    t.usd += s.usd;
+    t.calls += 1;
+    if let Ok(text) = serde_json::to_string(&*t) {
+        let _ = std::fs::write(total_file(), text);
+    }
+}
+
+/// What every list has cost so far, and how many sessions are tracked now, for Settings.
+pub fn spent() -> Value {
+    let t = *crate::locking::lock(&TOTAL, "what the lists have cost")
+        .get_or_insert_with(|| std::fs::read_to_string(total_file()).ok().and_then(|x| serde_json::from_str(&x).ok()).unwrap_or_default());
+    let tracked = with(|all| all.len());
+    serde_json::json!({ "tokens": t.tokens, "usd": t.usd, "calls": t.calls, "tracked": tracked })
+}
+
 fn dir() -> std::path::PathBuf {
     crate::server::cue_dir().join("tasks")
 }
@@ -202,7 +236,8 @@ fn list(hub: &Hub, session_id: &str) -> Result<(), String> {
     }
     let now = with(|all| all.get(session_id).map(|t| t.items.clone())).ok_or("this session isn't tracked")?;
     let open: Vec<Item> = now.into_iter().filter(|i| i.state == "open").collect();
-    let a = crate::btw::ask_small(&chat_prompt(&open, &log))?;
+    let a = crate::btw::ask_small(&chat_prompt(&open, &log), session_id)?;
+    spend(a.spent);
     let listed = parse_list(&a.text).ok_or_else(|| format!("its answer wasn't a list: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let seen = log.last().map(|e| e.at_ms).unwrap_or(0);
     change(session_id, |t| {
@@ -223,7 +258,8 @@ fn update(hub: &Hub, session_id: &str) -> Result<(), String> {
         return Ok(());
     }
     let open: Vec<Item> = items.into_iter().filter(|i| i.state == "open").collect();
-    let a = crate::btw::ask_small(&update_prompt(&open, &since))?;
+    let a = crate::btw::ask_small(&update_prompt(&open, &since), session_id)?;
+    spend(a.spent);
     let edits = parse_edits(&a.text).ok_or_else(|| format!("its answer wasn't a change to the list: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let newest = since.last().map(|e| e.at_ms).unwrap_or(seen);
     change(session_id, |t| {

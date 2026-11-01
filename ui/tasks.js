@@ -31,7 +31,7 @@ function tasksPage(sid) {
   if (!t) {
     return `<div class="tk-page"><div class="tk-intro">
       <p>Keep a list of what's left in this session: what you still have to check, what's still to build, what you have to decide, and what waits on your OK.</p>
-      <p class="dim">A small model reads this session's chat and lists it, then reads each new turn and updates the list. About a cent to start and about a cent a turn. The session never sees it.</p>
+      <p class="dim">A small model reads this session's chat and lists it, then reads each new turn and updates the list. The session never sees it. What it costs shows here.</p>
       <button class="btn primary" data-tasks-do="start" data-sid="${esc(sid)}">Track what's left</button></div></div>`;
   }
   const items = t.items || [];
@@ -47,7 +47,7 @@ function tasksPage(sid) {
     ${groups || `<div class="ac-empty">Nothing left, as far as the chat says.</div>`}
     <div class="tk-note dim">Read from the chat after each turn. To change what's left, tell the session.</div>
     <div class="tk-foot">${now ? `<span class="${t.err && !t.busy ? "tk-err" : ""}">${esc(now)}</span>` : ""}<span class="grow"></span>
-      <span class="dim">so far ${esc(helperTokens(t.spent?.tokens || 0) || "0 tokens")} · ${tasksMoney(t.spent?.usd)}</span>
+      <span class="dim">This session so far: ${tasksMoney(t.spent?.usd)} · ${esc(helperTokens(t.spent?.tokens || 0) || "0 tokens")}</span>
       <button class="btn" data-tasks-do="refresh" data-sid="${esc(sid)}" ${t.busy ? "disabled" : ""}>Refresh</button>
       <button class="btn" data-tasks-do="stop" data-sid="${esc(sid)}">Stop tracking</button></div></div>`;
 }

@@ -278,6 +278,7 @@ impl Hub {
         let ahead_watch = crate::db::ahead_watched();
         // Each tracked session's list of what's left (tasks.rs), its own lock, taken before the hub's.
         let tasks = crate::tasks::view();
+        let tasks_spent = crate::tasks::spent();
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
@@ -310,6 +311,7 @@ impl Hub {
             "skill_handoffs": skill_handoffs,
             "ahead_watch": ahead_watch,
             "tasks": tasks,
+            "tasks_spent": tasks_spent,
             "live": live,
             "branches": branches,
             "projects": projects,

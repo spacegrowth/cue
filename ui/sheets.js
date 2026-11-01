@@ -461,6 +461,13 @@ document.addEventListener("click", (e) => {
   projResetAsk = v === "ask";
   renderMain();
 }, true);
+/** Under Tasks' switch: what every session's list has cost together, kept after a session stops being tracked
+ *  (tasks.rs spent). */
+function tasksSpentRow() {
+  const t = state.tasks_spent || {};
+  const text = t.calls ? `All sessions so far: ${tasksMoney(t.usd)} · ${helperTokens(t.tokens || 0) || "0 tokens"}${t.tracked ? ` · ${t.tracked} tracked now` : ""}` : "Nothing yet.";
+  return setRow("What it has cost", esc(text), "");
+}
 const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
@@ -505,6 +512,9 @@ function settingsSheet() {
     ${setRow("Above the text box", `Click one to send it, after anything you've typed in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
     <div class="set-group">Steps</div>
     ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. One line each: click a step for its output or diff.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "One line each"], ["all", "Everything"], ["hidden", "Hidden"]]))}
+    <div class="set-group">Tasks</div>
+    ${setRow("Track what's left in every session", "Off: a session's list starts only when you click Track what's left in its Tasks tab. On: every session gets one when its next turn ends. Either way a small model (Haiku) reads the session's chat and lists what you still have to check, build, decide or OK; after each turn it reads only the new messages and strikes out what's done or called off and adds what's new. It's a separate call each time: the session never sees it and nothing is saved as a session. Each session's Tasks tab shows what its list has cost.", toggle("tasks.auto", st.tasks?.auto === true))}
+    ${tasksSpentRow()}
     <div class="set-group">Context</div>
     ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each card keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
     ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}

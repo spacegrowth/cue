@@ -232,9 +232,14 @@ impl Hub {
                 self.cache_tick();
                 self.changed();
                 self.turn_changes(&sid);
-                // A tracked session: its list of what's left reads this turn (tasks.rs).
-                if let Some(me) = self.shared().filter(|_| crate::tasks::is_tracked(&sid)) {
-                    crate::tasks::turn_ended(me, &sid);
+                // A tracked session: its list of what's left reads this turn (tasks.rs). With Settings' "Track every
+                // session" on, one that isn't tracked yet starts now, its first list from the chat so far.
+                if let Some(me) = self.shared() {
+                    if crate::tasks::is_tracked(&sid) {
+                        crate::tasks::turn_ended(me, &sid);
+                    } else if crate::config::flag("/tasks/auto") {
+                        let _ = crate::tasks::start(me, &sid);
+                    }
                 }
                 // A lead's turn ended: its next queued review goes (after a moment, for its hooks to settle).
                 if let Some(me) = self.shared().filter(|_| self.st().review_queue.iter().any(|q| q.lead == sid)) {

@@ -28,7 +28,7 @@ impl Hub {
             return Err("nothing new since you looked".into());
         }
         let seen = before.iter().rev().find(|e| e.role == "agent").map(|e| e.text.as_str());
-        crate::btw::catch_up(seen, &since)
+        crate::btw::catch_up(seen, &since, session_id)
     }
 
     /// A session's chat, oldest first, its newest 200 messages: Cue's log, with the live thread for what isn't
