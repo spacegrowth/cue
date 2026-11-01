@@ -2273,7 +2273,7 @@ function mcpLoad(sid, force = false) {
 let mcpPicking = false;      // the ⋯ menu shows the MCP picker instead of its items
 const mcpPick = new Map();   // key → Set of checked names, once you've changed a box (else what it has now)
 const mcpToolsOpen = new Set();   // "<key>|<server>": its tools unfolded in the list
-const mcpPickable = (m) => m.scope !== "session";   // any server with a definition can be passed; Claude Code's own can't
+const mcpPickable = (m) => m.scope !== "session" && !m.blocked;   // any server with a definition can be passed; Claude Code's own can't, nor one a settings file blocks
 function mcpChecked(key) {
   if (mcpPick.has(key)) return mcpPick.get(key);
   const servers = mcpCache.get(key)?.data?.servers || [];
@@ -2314,13 +2314,15 @@ function mcpList(key, compact = false) {
     const list = open && tools.length ? `<div class="mcp-tools mono">${tools.map((t) => `<span>${esc(t)}${calls(t) ? `<span class="mcp-tn"> · ${calls(t)}</span>` : ""}</span>`).join("")}</div>` : "";
     return `<label class="mcp-it ${can ? "" : "fixed"}"><input type="checkbox" data-mcp-pick="${esc(key)}" value="${esc(m.name)}" ${(can ? on.has(m.name) : m.selected ?? m.enabled) ? "checked" : ""} ${can ? "" : "disabled"}/><span class="mcp-nm">${esc(m.name)}</span><span class="mcp-sc">${esc(mcpScopeWord(m))}</span>${mcpLiveWord(m)}${n}${fold}</label>${list}`;
   };
-  const mine = servers.filter(mcpPickable), theirs = servers.filter((m) => !mcpPickable(m));
+  const mine = servers.filter((m) => m.scope !== "session"), theirs = servers.filter((m) => m.scope === "session");
   if (!mine.length && !theirs.length) return `<div class="mcp-none">No MCP servers are set up in Claude Code</div>`;
   return `<div class="mcp-list ${compact ? "compact" : ""}">${mine.map(item).join("")}${theirs.length ? `<div class="mcp-sub">Claude Code adds these itself</div>${theirs.map(item).join("")}` : ""}</div>`;
 }
 /** What the running session really has from a server (logs/mcp.rs with_live), so a tick never passes
  *  for working: connected, waiting for sign-in, connecting, failed, or (one it should have) not loaded. */
 function mcpLiveWord(m) {
+  // Blocked by a settings file's deniedMcpServers: Claude Code never loads it, ticked or not. The file, from its folder on.
+  if (m.blocked) return `<span class="mcp-live bad">· blocked in ${esc(m.blocked.split("/").slice(-3).join("/"))}</span>`;
   const w = { on: ["connected", "ok"], "sign-in": ["needs sign-in: /mcp in its terminal", "warn"], connecting: ["connecting", ""], failed: ["didn't connect", "bad"] }[m.live]
     || (m.live === "off" && (m.selected ?? m.enabled) ? ["not loaded", "bad"] : null);
   return w ? `<span class="mcp-live ${w[1]}">· ${w[0]}</span>` : "";

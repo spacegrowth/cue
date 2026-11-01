@@ -96,14 +96,64 @@ struct Approvals {
 }
 
 fn approvals(cfg_path: &Path, proj: Option<&Value>, key: &str) -> Approvals {
-    let home = cfg_path.parent().map(|d| d.join(".claude")).unwrap_or_default();
-    let repo = Path::new(key).join(".claude");
     let mut sources: Vec<Value> = proj.cloned().into_iter().collect();
-    for f in [home.join("settings.json"), home.join("settings.local.json"), repo.join("settings.json"), repo.join("settings.local.json")] {
-        sources.push(read_json(&f));
-    }
+    sources.extend(settings_files(cfg_path, key, key).iter().map(|f| read_json(f)));
     let names = |k: &str| -> Vec<String> { sources.iter().flat_map(|v| v.get(k).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string)).collect() };
     Approvals { all: sources.iter().any(|v| v.get("enableAllProjectMcpServers") == Some(&json!(true))), on: names("enabledMcpjsonServers"), off: names("disabledMcpjsonServers") }
+}
+
+/// Claude Code's settings files that apply to a session in `cwd` (repo top `key`): yours
+/// (`~/.claude/settings.json`; it doesn't read a `settings.local.json` there), the repo's and the session
+/// folder's `.claude/settings.json` and `settings.local.json`, and your organization's managed settings.
+fn settings_files(cfg_path: &Path, cwd: &str, key: &str) -> Vec<PathBuf> {
+    let mut out = vec![cfg_path.parent().map(|d| d.join(".claude").join("settings.json")).unwrap_or_default()];
+    for folder in [key, cwd] {
+        for f in ["settings.json", "settings.local.json"] {
+            let p = Path::new(folder).join(".claude").join(f);
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    if !cfg!(test) {
+        out.push(PathBuf::from("/Library/Application Support/ClaudeCode/managed-settings.json"));
+    }
+    out
+}
+
+/// The file whose `deniedMcpServers` blocks a server, if one does. Claude Code then never loads it,
+/// even passed with `--mcp-config` (a session's own selection). An entry names it (`serverName`), matches
+/// its URL (`serverUrl`, `*` matching anything) or its command and arguments (`serverCommand`).
+fn blocked_by(files: &[PathBuf], name: &str, def: &Value) -> Option<PathBuf> {
+    let url = def.get("url").and_then(Value::as_str).unwrap_or("");
+    let command: Vec<&str> = def.get("command").and_then(Value::as_str).into_iter().chain(def.get("args").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str)).collect();
+    files.iter().find(|f| {
+        read_json(f).get("deniedMcpServers").and_then(Value::as_array).into_iter().flatten().any(|e| {
+            e.get("serverName").and_then(Value::as_str) == Some(name)
+                || e.get("serverUrl").and_then(Value::as_str).is_some_and(|p| !url.is_empty() && glob(p, url))
+                || e.get("serverCommand").and_then(Value::as_array).is_some_and(|c| !command.is_empty() && c.iter().map(Value::as_str).eq(command.iter().map(|s| Some(*s))))
+        })
+    }).cloned()
+}
+
+/// `*` in `pattern` matches any run of characters; the rest literally.
+fn glob(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == text;
+    }
+    let (first, last) = (parts[0], parts[parts.len() - 1]);
+    if !text.starts_with(first) || !text[first.len()..].ends_with(last) || text.len() < first.len() + last.len() {
+        return false;
+    }
+    let mut rest = &text[first.len()..text.len() - last.len()];
+    for mid in &parts[1..parts.len() - 1] {
+        match rest.find(mid) {
+            Some(i) => rest = &rest[i + mid.len()..],
+            None => return false,
+        }
+    }
+    true
 }
 
 impl Approvals {
@@ -224,7 +274,8 @@ pub fn with_selection(mut v: Value, sel: Option<Map<String, Value>>, sel_path: &
         for r in rows.iter_mut() {
             let name = r["name"].as_str().unwrap_or("").to_string();
             if r["scope"] != "session" {
-                r["selected"] = json!(sel.contains_key(&name));
+                // Blocked: Claude Code won't load it from the selection either.
+                r["selected"] = json!(sel.contains_key(&name) && r.get("blocked").is_none());
             }
             seen.push(name);
         }
@@ -436,6 +487,17 @@ pub fn for_session_in(cfg_path: &Path, cwd: &str, transcript_path: &str) -> Valu
             rows.push(row(name, "session", &Value::Null, "", true, false, Some(u)));
         }
     }
+    // Blocked by a settings file: off whatever else says on, with the file to show.
+    let files = settings_files(cfg_path, cwd, &key);
+    let defs = definitions_in(cfg_path, cwd);
+    for r in rows.iter_mut() {
+        let name = r["name"].as_str().unwrap_or("").to_string();
+        if let Some(f) = blocked_by(&files, &name, defs.get(&name).unwrap_or(&Value::Null)) {
+            r["blocked"] = json!(f.to_string_lossy());
+            r["enabled"] = json!(false);
+            r["selected"] = json!(false);
+        }
+    }
     json!({ "servers": rows, "calls": calls, "pinned": false })
 }
 
@@ -645,6 +707,51 @@ mod tests {
         let v = for_session_in(&cfg, &sub_s, "");
         assert_eq!(find(&v, "c")["enabled"], true);
         assert_eq!(find(&v, "a")["enabled"], false, "refused wins over approve-all");
+    }
+
+    #[test]
+    fn denied_servers_are_blocked_whatever_turns_them_on() {
+        let d = dir();
+        let repo = d.join("repo");
+        let sub = repo.join("sub");
+        std::fs::create_dir_all(sub.join(".claude")).unwrap();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(repo.join(".claude")).unwrap();
+        std::fs::create_dir_all(d.join(".claude")).unwrap();
+        std::fs::write(repo.join(".mcp.json"), json!({ "mcpServers": {
+            "jira": { "type": "http", "url": "https://mcp.example.com/jira" },
+            "slack": { "command": "npx", "args": ["-y", "slack-mcp"] },
+            "drive": { "type": "http", "url": "https://drive.example.org/mcp" },
+            "kept": { "command": "k" },
+        } }).to_string()).unwrap();
+        let sub_s = sub.to_string_lossy().to_string();
+        let cfg = d.join("claude.json");
+        std::fs::write(&cfg, "{}").unwrap();
+        std::fs::write(d.join(".claude").join("settings.json"), json!({ "enableAllProjectMcpServers": true }).to_string()).unwrap();
+        std::fs::write(repo.join(".claude").join("settings.local.json"), json!({ "deniedMcpServers": [{ "serverName": "jira" }, { "serverCommand": ["npx", "-y", "slack-mcp"] }] }).to_string()).unwrap();
+        std::fs::write(sub.join(".claude").join("settings.local.json"), json!({ "deniedMcpServers": [{ "serverUrl": "https://*.example.org/*" }] }).to_string()).unwrap();
+        let v = for_session_in(&cfg, &sub_s, "");
+        let repo_file = repo.join(".claude").join("settings.local.json").to_string_lossy().to_string();
+        assert_eq!(find(&v, "jira")["blocked"], repo_file.as_str());
+        assert_eq!(find(&v, "jira")["enabled"], false);
+        assert_eq!(find(&v, "slack")["blocked"], repo_file.as_str());
+        assert_eq!(find(&v, "drive")["blocked"], sub.join(".claude").join("settings.local.json").to_string_lossy().as_ref());
+        assert_eq!(find(&v, "kept")["enabled"], true);
+        assert!(find(&v, "kept").get("blocked").is_none());
+        // A session's own selection can't bring one back.
+        let sel: Map<String, Value> = [("jira".to_string(), json!({ "url": "https://mcp.example.com/jira" })), ("kept".to_string(), json!({ "command": "k" }))].into_iter().collect();
+        let v = with_selection(v, Some(sel), &d.join("sel.json"));
+        assert_eq!(find(&v, "jira")["selected"], false);
+        assert_eq!(find(&v, "kept")["selected"], true);
+    }
+
+    #[test]
+    fn globs() {
+        assert!(glob("https://*.example.com/*", "https://a.example.com/mcp"));
+        assert!(glob("http://127.0.0.1:*", "http://127.0.0.1:9/mcp"));
+        assert!(!glob("https://*.example.com/*", "https://example.org/mcp"));
+        assert!(glob("exact", "exact"));
+        assert!(!glob("ab*ba", "aba"), "the two ends can't share a character");
     }
 
     #[test]
