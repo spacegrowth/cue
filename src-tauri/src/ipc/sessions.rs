@@ -175,7 +175,16 @@ pub(crate) fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &
     let session_id = session_id.as_str();
     let o = p.session.origin.clone();
     // On this Mac, with its MCP selection when it has one (logs/mcp.rs), so the choice sticks.
-    let args = if o.machine.is_empty() { crate::logs::mcp::selection_flags(session_id) } else { vec![] };
+    // And its model, as Fork does: resumed without one, Claude Code starts on its default model and window.
+    let mut args = vec![];
+    if o.machine.is_empty() {
+        if o.harness == "claude" && !o.transcript_path.is_empty() {
+            if let Some(m) = crate::logs::steps::model_of(&o.transcript_path) {
+                args.extend(["--model".to_string(), m]);
+            }
+        }
+        args.extend(crate::logs::mcp::selection_flags(session_id));
+    }
     let mut line = focus::resume_line_for_with(&o.harness, &o.cwd, session_id, &args)?;
     if !message.trim().is_empty() {
         line += &format!(" {}", focus::shq(message.trim()));

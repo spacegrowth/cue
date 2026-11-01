@@ -6,8 +6,12 @@
 //! - `mcpServers` at the top of ~/.claude.json: "user" scope, on for every folder. Claude Code has no
 //!   per-folder off switch for these, so Cue shows them but doesn't toggle them.
 //! - `projects[<folder>].mcpServers`: "local" scope, this folder only.
-//! - `<folder>/.mcp.json`: "project" scope (checked in with the project), approved or refused through
-//!   `projects[<folder>].enabledMcpjsonServers` / `disabledMcpjsonServers`.
+//! - `.mcp.json` in the folder or any folder above it: "project" scope (checked in with the project),
+//!   loaded only once approved: `projects[<folder>].enabledMcpjsonServers` (or `disabledMcpjsonServers`
+//!   to refuse), or the same keys, or `enableAllProjectMcpServers`, in Claude Code's settings files.
+//!
+//! `<folder>` is the repo's top folder (the nearest one holding `.git`), not the session's own: Claude
+//! Code keys its entry by it, so a session in a subfolder shares it (see project_key).
 //!
 //! Cue's own key `projects[<folder>].cueMcpOff` holds the definition of a local server turned off here,
 //! so it can come back; Claude Code ignores keys it doesn't know.
@@ -76,9 +80,42 @@ fn mcp_json(cwd: &str) -> PathBuf {
     Path::new(cwd).join(".mcp.json")
 }
 
-/// The `.mcp.json` files that apply to `cwd`, nearest first: its own, then each parent folder's up to
-/// the repo's top (the folder holding `.git`), or up to `/` outside a repo. Claude Code looks in the
-/// parents too, so a session started in a subfolder still has the servers checked in at the top.
+/// The folder Claude Code keys `projects[…]` by for a session in `cwd`: the nearest folder holding
+/// `.git` (the repo's top, or a worktree's), else `cwd` itself.
+fn project_key(cwd: &str) -> String {
+    Path::new(cwd).ancestors().find(|d| d.join(".git").exists()).map(|d| d.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string())
+}
+
+/// The `.mcp.json` approvals for a session: whether every one is approved, and the names approved and
+/// refused. From the folder's entry in `~/.claude.json` and Claude Code's settings files (yours in
+/// `~/.claude/`, the repo's in `<repo>/.claude/`).
+struct Approvals {
+    all: bool,
+    on: Vec<String>,
+    off: Vec<String>,
+}
+
+fn approvals(cfg_path: &Path, proj: Option<&Value>, key: &str) -> Approvals {
+    let home = cfg_path.parent().map(|d| d.join(".claude")).unwrap_or_default();
+    let repo = Path::new(key).join(".claude");
+    let mut sources: Vec<Value> = proj.cloned().into_iter().collect();
+    for f in [home.join("settings.json"), home.join("settings.local.json"), repo.join("settings.json"), repo.join("settings.local.json")] {
+        sources.push(read_json(&f));
+    }
+    let names = |k: &str| -> Vec<String> { sources.iter().flat_map(|v| v.get(k).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string)).collect() };
+    Approvals { all: sources.iter().any(|v| v.get("enableAllProjectMcpServers") == Some(&json!(true))), on: names("enabledMcpjsonServers"), off: names("disabledMcpjsonServers") }
+}
+
+impl Approvals {
+    /// Whether Claude Code loads this `.mcp.json` server: approved and not refused.
+    fn loads(&self, name: &str) -> bool {
+        !self.off.iter().any(|n| n == name) && (self.all || self.on.iter().any(|n| n == name))
+    }
+}
+
+/// The `.mcp.json` files that apply to `cwd`, nearest first: its own, then every parent folder's up to
+/// `/`, as Claude Code looks for them. Not stopping at a repo's top: a workspace folder holding several
+/// repos can keep the servers they share in its own `.mcp.json`.
 fn mcp_jsons(cwd: &str) -> Vec<PathBuf> {
     let mut out = vec![];
     let mut dir = Some(Path::new(cwd));
@@ -86,9 +123,6 @@ fn mcp_jsons(cwd: &str) -> Vec<PathBuf> {
         let f = d.join(".mcp.json");
         if f.is_file() {
             out.push(f);
-        }
-        if d.join(".git").exists() {
-            break;
         }
         dir = d.parent();
     }
@@ -293,7 +327,8 @@ pub fn definitions(cwd: &str) -> Map<String, Value> {
 
 pub fn definitions_in(cfg_path: &Path, cwd: &str) -> Map<String, Value> {
     let cfg = read_json(cfg_path);
-    let proj = cfg.pointer(&format!("/projects/{}", escape(cwd)));
+    let key = project_key(cwd);
+    let proj = cfg.pointer(&format!("/projects/{}", escape(&key)));
     let mut out = Map::new();
     let mut add = |list: Vec<(String, Value)>| {
         for (name, def) in list {
@@ -304,7 +339,7 @@ pub fn definitions_in(cfg_path: &Path, cwd: &str) -> Map<String, Value> {
     add(servers_in(proj.and_then(|p| p.get("mcpServers"))));
     add(project_servers(cwd).into_iter().map(|(n, d, _)| (n, d)).collect());
     add(servers_in(proj.and_then(|p| p.get(OFF_KEY))));
-    add(elsewhere(&cfg, cwd).into_iter().map(|(n, d, _)| (n, d)).collect());
+    add(elsewhere(&cfg, &key).into_iter().map(|(n, d, _)| (n, d)).collect());
     out
 }
 
@@ -364,7 +399,8 @@ pub fn for_session_in(cfg_path: &Path, cwd: &str, transcript_path: &str) -> Valu
     let (uses, calls) = usage(transcript_path);
     let mut rows: Vec<Value> = vec![];
     let mut seen: Vec<String> = vec![];
-    let proj = cfg.pointer(&format!("/projects/{}", escape(cwd)));
+    let key = project_key(cwd);
+    let proj = cfg.pointer(&format!("/projects/{}", escape(&key)));
     for (name, def) in servers_in(cfg.get("mcpServers")) {
         rows.push(row(&name, "user", &def, &cfg_s, true, false, uses.get(&name)));
         seen.push(name);
@@ -375,10 +411,10 @@ pub fn for_session_in(cfg_path: &Path, cwd: &str, transcript_path: &str) -> Valu
             seen.push(name);
         }
     }
-    let disabled: Vec<String> = proj.and_then(|p| p.get("disabledMcpjsonServers")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+    let approved = approvals(cfg_path, proj, &key);
     for (name, def, mcp_path) in project_servers(cwd) {
         if !seen.contains(&name) {
-            rows.push(row(&name, "project", &def, &mcp_path.to_string_lossy(), !disabled.contains(&name), true, uses.get(&name)));
+            rows.push(row(&name, "project", &def, &mcp_path.to_string_lossy(), approved.loads(&name), true, uses.get(&name)));
             seen.push(name);
         }
     }
@@ -389,7 +425,7 @@ pub fn for_session_in(cfg_path: &Path, cwd: &str, transcript_path: &str) -> Valu
             seen.push(name);
         }
     }
-    for (name, def, from) in elsewhere(&cfg, cwd) {
+    for (name, def, from) in elsewhere(&cfg, &key) {
         if !seen.contains(&name) {
             rows.push(row(&name, "available", &def, &from, false, true, uses.get(&name)));
             seen.push(name);
@@ -443,12 +479,13 @@ pub fn set_enabled_in(cfg_path: &Path, cwd: &str, name: &str, on: bool) -> Resul
         return Err("that server is on for every folder (user scope)".into());
     }
     let in_project = project_servers(cwd).iter().any(|(n, _, _)| n == name);
-    let from_elsewhere = elsewhere(&cfg, cwd).into_iter().find(|(n, _, _)| n == name).map(|(_, d, _)| d);
+    let key = project_key(cwd);
+    let from_elsewhere = elsewhere(&cfg, &key).into_iter().find(|(n, _, _)| n == name).map(|(_, d, _)| d);
     let projects = cfg.as_object_mut().unwrap().entry("projects").or_insert_with(|| json!({}));
     if !projects.is_object() {
         return Err("\"projects\" isn't an object".into());
     }
-    let proj = projects.as_object_mut().unwrap().entry(cwd.to_string()).or_insert_with(|| json!({}));
+    let proj = projects.as_object_mut().unwrap().entry(key).or_insert_with(|| json!({}));
     let Some(proj) = proj.as_object_mut() else { return Err("that folder's entry isn't an object".into()) };
     if in_project {
         let (into, out_of) = if on { ("enabledMcpjsonServers", "disabledMcpjsonServers") } else { ("disabledMcpjsonServers", "enabledMcpjsonServers") };
@@ -531,6 +568,7 @@ mod tests {
                 &cwd_s: {
                     "allowedTools": ["Bash"],
                     "mcpServers": { "local-one": { "command": "npx", "args": ["-y", "local-one"] } },
+                    "enabledMcpjsonServers": ["proj-on"],
                     "disabledMcpjsonServers": ["proj-off"],
                 },
                 &other_s: {
@@ -539,7 +577,7 @@ mod tests {
             },
             "tipsHistory": { "a": 1 }
         })).unwrap()).unwrap();
-        std::fs::write(cwd.join(".mcp.json"), json!({ "mcpServers": { "proj-on": { "command": "p1" }, "proj-off": { "url": "http://x", "type": "sse" } } }).to_string()).unwrap();
+        std::fs::write(cwd.join(".mcp.json"), json!({ "mcpServers": { "proj-on": { "command": "p1" }, "proj-off": { "url": "http://x", "type": "sse" }, "proj-pending": { "command": "p2" } } }).to_string()).unwrap();
         let t = d.join("t.jsonl");
         std::fs::write(&t, concat!(
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"mcp__linear__list_issues","input":{}}]}}"#, "\n",
@@ -558,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    fn mcp_json_found_up_to_the_repo_top() {
+    fn mcp_json_found_in_every_parent_folder() {
         let d = dir();
         let top = d.join("repo");
         let sub = top.join("a").join("b");
@@ -573,10 +611,40 @@ mod tests {
         let defs = definitions_in(&cfg, &sub_s);
         assert!(defs.contains_key("top"));
         assert_eq!(defs["both"]["command"], "near");
-        assert!(!defs.contains_key("outside"), "stops at the repo's top");
+        assert!(defs.contains_key("outside"), "past the repo's top: a workspace folder above the repos");
         let v = for_session_in(&cfg, &sub_s, "");
         assert_eq!(find(&v, "top")["scope"], "project");
         assert_eq!(find(&v, "top")["from"], top.join(".mcp.json").to_string_lossy().as_ref());
+    }
+
+    #[test]
+    fn a_subfolder_shares_its_repos_entry_and_approvals() {
+        let d = dir();
+        let repo = d.join("repo");
+        let sub = repo.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join(".mcp.json"), json!({ "mcpServers": { "a": { "command": "a" }, "b": { "command": "b" }, "c": { "command": "c" } } }).to_string()).unwrap();
+        let (repo_s, sub_s) = (repo.to_string_lossy().to_string(), sub.to_string_lossy().to_string());
+        let cfg = d.join("claude.json");
+        std::fs::write(&cfg, json!({ "projects": { &repo_s: { "enabledMcpjsonServers": ["a"], "mcpServers": { "loc": { "command": "l" } } }, &sub_s: { "enabledMcpjsonServers": ["c"] } } }).to_string()).unwrap();
+        // The repo's settings approve b; the subfolder's own entry is one Claude Code never reads.
+        std::fs::create_dir_all(repo.join(".claude")).unwrap();
+        std::fs::write(repo.join(".claude").join("settings.local.json"), json!({ "enabledMcpjsonServers": ["b"] }).to_string()).unwrap();
+        let v = for_session_in(&cfg, &sub_s, "");
+        assert_eq!(find(&v, "a")["enabled"], true);
+        assert_eq!(find(&v, "b")["enabled"], true);
+        assert_eq!(find(&v, "c")["enabled"], false);
+        assert_eq!(find(&v, "loc")["scope"], "local");
+        set_enabled_in(&cfg, &sub_s, "c", true).unwrap();
+        assert_eq!(read_json(&cfg)["projects"][&repo_s]["enabledMcpjsonServers"], json!(["a", "c"]));
+        // Yours approve every one.
+        std::fs::create_dir_all(d.join(".claude")).unwrap();
+        std::fs::write(d.join(".claude").join("settings.json"), json!({ "enableAllProjectMcpServers": true }).to_string()).unwrap();
+        std::fs::write(&cfg, json!({ "projects": { &repo_s: { "disabledMcpjsonServers": ["a"] } } }).to_string()).unwrap();
+        let v = for_session_in(&cfg, &sub_s, "");
+        assert_eq!(find(&v, "c")["enabled"], true);
+        assert_eq!(find(&v, "a")["enabled"], false, "refused wins over approve-all");
     }
 
     #[test]
@@ -599,8 +667,9 @@ mod tests {
         assert_eq!(local["transport"], "stdio");
         assert_eq!(local["target"], "npx -y local-one");
         assert_eq!(find(&v, "proj-on")["scope"], "project");
-        assert_eq!(find(&v, "proj-on")["enabled"], true);
-        assert_eq!(find(&v, "proj-off")["enabled"], false);
+        assert_eq!(find(&v, "proj-on")["enabled"], true, "approved");
+        assert_eq!(find(&v, "proj-off")["enabled"], false, "refused");
+        assert_eq!(find(&v, "proj-pending")["enabled"], false, "neither: Claude Code waits for an approval and doesn't load it");
         assert_eq!(find(&v, "proj-off")["transport"], "sse");
         let avail = find(&v, "chrome-devtools");
         assert_eq!(avail["scope"], "available");
@@ -619,11 +688,12 @@ mod tests {
         let c = read_json(&cfg);
         let p = &c["projects"][&cwd];
         assert_eq!(p["disabledMcpjsonServers"], json!([]));
-        assert_eq!(p["enabledMcpjsonServers"], json!(["proj-off"]));
+        assert_eq!(p["enabledMcpjsonServers"], json!(["proj-on", "proj-off"]));
         assert_eq!(find(&for_session_in(&cfg, &cwd, &t.to_string_lossy()), "proj-off")["enabled"], true);
         set_enabled_in(&cfg, &cwd, "proj-on", false).unwrap();
         let c = read_json(&cfg);
         assert_eq!(c["projects"][&cwd]["disabledMcpjsonServers"], json!(["proj-on"]));
+        assert_eq!(c["projects"][&cwd]["enabledMcpjsonServers"], json!(["proj-off"]));
         // Unrelated keys stay.
         assert_eq!(c["numStartups"], 5);
         assert_eq!(c["tipsHistory"]["a"], 1);
