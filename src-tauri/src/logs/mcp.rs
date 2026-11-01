@@ -76,6 +76,30 @@ fn mcp_json(cwd: &str) -> PathBuf {
     Path::new(cwd).join(".mcp.json")
 }
 
+/// The `.mcp.json` files that apply to `cwd`, nearest first: its own, then each parent folder's up to
+/// the repo's top (the folder holding `.git`), or up to `/` outside a repo. Claude Code looks in the
+/// parents too, so a session started in a subfolder still has the servers checked in at the top.
+fn mcp_jsons(cwd: &str) -> Vec<PathBuf> {
+    let mut out = vec![];
+    let mut dir = Some(Path::new(cwd));
+    while let Some(d) = dir {
+        let f = d.join(".mcp.json");
+        if f.is_file() {
+            out.push(f);
+        }
+        if d.join(".git").exists() {
+            break;
+        }
+        dir = d.parent();
+    }
+    out
+}
+
+/// The servers in every `.mcp.json` that applies to `cwd`, nearest first, each with its file.
+fn project_servers(cwd: &str) -> Vec<(String, Value, PathBuf)> {
+    mcp_jsons(cwd).into_iter().flat_map(|f| servers_in(read_json(&f).get("mcpServers")).into_iter().map(move |(n, d)| (n, d, f.clone()))).collect()
+}
+
 /// Tool calls per server in a session's transcript: `mcp__<server>__<tool>` names, split at the last
 /// `__`; a call failed when its tool_result says is_error. The last 8 MB of the file.
 fn usage(transcript_path: &str) -> (BTreeMap<String, Use>, u64) {
@@ -278,7 +302,7 @@ pub fn definitions_in(cfg_path: &Path, cwd: &str) -> Map<String, Value> {
     };
     add(servers_in(cfg.get("mcpServers")));
     add(servers_in(proj.and_then(|p| p.get("mcpServers"))));
-    add(servers_in(read_json(&mcp_json(cwd)).get("mcpServers")));
+    add(project_servers(cwd).into_iter().map(|(n, d, _)| (n, d)).collect());
     add(servers_in(proj.and_then(|p| p.get(OFF_KEY))));
     add(elsewhere(&cfg, cwd).into_iter().map(|(n, d, _)| (n, d)).collect());
     out
@@ -351,9 +375,8 @@ pub fn for_session_in(cfg_path: &Path, cwd: &str, transcript_path: &str) -> Valu
             seen.push(name);
         }
     }
-    let mcp_path = mcp_json(cwd);
     let disabled: Vec<String> = proj.and_then(|p| p.get("disabledMcpjsonServers")).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
-    for (name, def) in servers_in(read_json(&mcp_path).get("mcpServers")) {
+    for (name, def, mcp_path) in project_servers(cwd) {
         if !seen.contains(&name) {
             rows.push(row(&name, "project", &def, &mcp_path.to_string_lossy(), !disabled.contains(&name), true, uses.get(&name)));
             seen.push(name);
@@ -419,7 +442,7 @@ pub fn set_enabled_in(cfg_path: &Path, cwd: &str, name: &str, on: bool) -> Resul
     if cfg.pointer(&format!("/mcpServers/{}", escape(name))).is_some() {
         return Err("that server is on for every folder (user scope)".into());
     }
-    let in_project = read_json(&mcp_json(cwd)).pointer(&format!("/mcpServers/{}", escape(name))).is_some();
+    let in_project = project_servers(cwd).iter().any(|(n, _, _)| n == name);
     let from_elsewhere = elsewhere(&cfg, cwd).into_iter().find(|(n, _, _)| n == name).map(|(_, d, _)| d);
     let projects = cfg.as_object_mut().unwrap().entry("projects").or_insert_with(|| json!({}));
     if !projects.is_object() {
@@ -532,6 +555,28 @@ mod tests {
 
     fn find<'a>(v: &'a Value, name: &str) -> &'a Value {
         v["servers"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap_or_else(|| panic!("no {name} in {v}"))
+    }
+
+    #[test]
+    fn mcp_json_found_up_to_the_repo_top() {
+        let d = dir();
+        let top = d.join("repo");
+        let sub = top.join("a").join("b");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::create_dir_all(top.join(".git")).unwrap();
+        std::fs::write(d.join(".mcp.json"), json!({ "mcpServers": { "outside": { "command": "o" } } }).to_string()).unwrap();
+        std::fs::write(top.join(".mcp.json"), json!({ "mcpServers": { "top": { "command": "t" }, "both": { "command": "far" } } }).to_string()).unwrap();
+        std::fs::write(top.join("a").join(".mcp.json"), json!({ "mcpServers": { "both": { "command": "near" } } }).to_string()).unwrap();
+        let cfg = d.join("claude.json");
+        std::fs::write(&cfg, "{}").unwrap();
+        let sub_s = sub.to_string_lossy().to_string();
+        let defs = definitions_in(&cfg, &sub_s);
+        assert!(defs.contains_key("top"));
+        assert_eq!(defs["both"]["command"], "near");
+        assert!(!defs.contains_key("outside"), "stops at the repo's top");
+        let v = for_session_in(&cfg, &sub_s, "");
+        assert_eq!(find(&v, "top")["scope"], "project");
+        assert_eq!(find(&v, "top")["from"], top.join(".mcp.json").to_string_lossy().as_ref());
     }
 
     #[test]
