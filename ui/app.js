@@ -482,9 +482,15 @@ function bindMain() {
     if (fwdTo && forward) { forward.to = fwdTo.dataset.fwdTo; renderMain(); return document.querySelector(".fwd-note")?.focus(); }
     if (t.closest("[data-act='send-forward']")) return sendForward();
     if (t.closest("[data-act='cancel-forward']")) { sheet = forward = null; return renderMain(); }
-    // A path: ⌘-click opens it (or shows it in Finder); a plain click stays what it was (text, or the row it's in).
+    // A path opens on a click, as a link does (settings.rs how_to_open: its app, as text, or shown in Finder).
+    // Not when the press was you selecting part of it.
     const pl = t.closest("a[data-path]");
-    if (pl) { e.preventDefault(); if (e.metaKey || e.ctrlKey) return invoke("open_link", { url: pl.dataset.path }).catch((err) => toast(`Couldn't open: ${err}`)); }
+    if (pl) {
+      e.preventDefault();
+      const sel = getSelection();
+      if (!sel.isCollapsed && pl.contains(sel.anchorNode)) return;
+      return invoke("open_link", { url: pl.dataset.path }).catch((err) => toast(`Couldn't open: ${err}`));
+    }
     const link = t.closest("a[data-href]");
     if (link) { e.preventDefault(); return invoke("open_link", { url: link.dataset.href }).catch((err) => toast(`Couldn't open: ${err}`)); }
     const llb = t.closest("[data-local-lb]");

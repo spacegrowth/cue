@@ -123,8 +123,12 @@ pub(crate) async fn open_link(url: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let target = link_target(&url)?;
         let mut open = std::process::Command::new("/usr/bin/open");
-        if !is_web(&target) && !safe_to_open(std::path::Path::new(&target)) {
-            open.arg("-R");
+        if !is_web(&target) {
+            match how_to_open(std::path::Path::new(&target)) {
+                Opener::App => {}
+                Opener::Text => { open.arg("-t"); }
+                Opener::Finder => { open.arg("-R"); }
+            }
         }
         open.arg(&target).spawn().map(|_| ()).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -134,25 +138,50 @@ pub(crate) fn is_web(url: &str) -> bool {
     url.starts_with("https://") || url.starts_with("http://")
 }
 
-/// Documents that open in an app without running anything. Not on the list (a script, an app, an
-/// installer, a .command, a macro-enabled .docm, a web page, …): shown in Finder only.
+/// Documents that open in an app without running anything (a web page opens in the browser, as a web link does).
 pub(crate) const OPENABLE: &[&str] = &[
     "pdf", "md", "markdown", "txt", "log", "csv", "tsv", "json", "yaml", "yml", "toml", "rtf",
-    "png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp",
+    "png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "bmp", "svg",
     "mp4", "mov", "m4v", "mp3", "m4a", "wav",
     "docx", "xlsx", "pptx", "pages", "numbers", "key",
+    "html", "htm",
 ];
 
-/// Whether a path opens rather than only showing in Finder: a document on OPENABLE, or a plain folder
-/// (one with no extension: .app and other bundles are folders too). The real file decides, not a
-/// link's name (a "notes.pdf" link to a script is shown, not opened).
-pub(crate) fn safe_to_open(p: &std::path::Path) -> bool {
-    let Ok(real) = std::fs::canonicalize(p) else { return false };
+/// Code and config: opened as text (`open -t`, your text editor), because opening some of them the usual
+/// way runs them (a .py in Python Launcher, a .sh or .command in Terminal).
+pub(crate) const AS_TEXT: &[&str] = &[
+    "rs", "js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "rb", "go", "java", "kt", "kts", "swift", "c", "h", "cc",
+    "cpp", "hpp", "m", "mm", "cs", "php", "pl", "lua", "sh", "bash", "zsh", "fish", "command", "sql", "css",
+    "scss", "less", "xml", "vue", "svelte", "ini", "conf", "cfg", "env", "lock", "gradle", "tf", "proto",
+    "graphql", "dart", "scala", "ex", "exs", "hs", "r", "jl", "diff", "patch", "plist",
+];
+
+/// How a path opens.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Opener {
+    /// In its own app: a document on OPENABLE, or a plain folder.
+    App,
+    /// As text in your editor: code and config (AS_TEXT), or a file with no extension (Makefile, .env, a binary
+    /// shows as text and never runs).
+    Text,
+    /// Shown in Finder only: anything else (an app, an installer, a macro-enabled .docm, a disk image, …).
+    Finder,
+}
+
+/// The real file decides, not a link's name: a "notes.pdf" link to a script opens as text, not in Preview.
+pub(crate) fn how_to_open(p: &std::path::Path) -> Opener {
+    let Ok(real) = std::fs::canonicalize(p) else { return Opener::Finder };
     let ext = real.extension().map(|e| e.to_string_lossy().to_lowercase());
     if real.is_dir() {
-        return ext.is_none();
+        // .app and other bundles are folders too: those only show.
+        return if ext.is_none() { Opener::App } else { Opener::Finder };
     }
-    ext.is_some_and(|e| OPENABLE.contains(&e.as_str()))
+    match ext.as_deref() {
+        None => Opener::Text,
+        Some(e) if OPENABLE.contains(&e) => Opener::App,
+        Some(e) if AS_TEXT.contains(&e) => Opener::Text,
+        _ => Opener::Finder,
+    }
 }
 
 /// What `open` gets: web links as-is; everything else is a path — file:// stripped, ~ expanded,
@@ -282,18 +311,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn documents_and_folders_open_but_scripts_and_apps_only_show() {
+    fn documents_open_code_opens_as_text_and_apps_only_show() {
         let dir = std::env::temp_dir().join(format!("cue-open-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("Some.app")).unwrap();
-        for f in ["notes.md", "Report.PDF", "run.sh", "go.command", "x.docm", "page.html", "noext"] {
+        for f in ["notes.md", "Report.PDF", "page.html", "run.sh", "go.command", "main.py", "lib.RS", "Makefile", "x.docm", "disk.dmg"] {
             std::fs::write(dir.join(f), "x").unwrap();
         }
         std::os::unix::fs::symlink(dir.join("run.sh"), dir.join("fake.pdf")).unwrap();
-        let ok = |f: &str| safe_to_open(&dir.join(f));
-        assert!(ok("notes.md") && ok("Report.PDF"), "documents open in their app");
-        assert!(safe_to_open(&dir), "a plain folder opens");
-        for f in ["run.sh", "go.command", "x.docm", "page.html", "noext", "Some.app", "fake.pdf", "missing.pdf"] {
-            assert!(!ok(f), "{f}: shown in Finder only");
+        let how = |f: &str| how_to_open(&dir.join(f));
+        for f in ["notes.md", "Report.PDF", "page.html"] {
+            assert_eq!(how(f), Opener::App, "{f}: opens in its app");
+        }
+        assert_eq!(how_to_open(&dir), Opener::App, "a plain folder opens");
+        for f in ["run.sh", "go.command", "main.py", "lib.RS", "Makefile", "fake.pdf"] {
+            assert_eq!(how(f), Opener::Text, "{f}: opens as text, never runs");
+        }
+        for f in ["x.docm", "disk.dmg", "Some.app", "missing.pdf"] {
+            assert_eq!(how(f), Opener::Finder, "{f}: shown in Finder only");
         }
         assert_eq!(link_target(&format!("file://{}/My%20Notes.md", "/tmp")).unwrap_err(), "nothing at that path");
         std::fs::write(dir.join("My Notes.md"), "x").unwrap();

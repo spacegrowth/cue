@@ -629,22 +629,36 @@ function table(lines, inline) {
   return `<div class="md-table"><table>${head ? `<thead>${row(head, "th")}</thead>` : ""}<tbody>${body.map((cs) => row(cs, "td")).join("")}</tbody></table></div>`;
 }
 
-/** Clickable links in already-escaped text: [label](url) and bare URLs (opened by open_link). Markdown links
- *  are set aside first so the bare-URL pass can't reach into their attributes. */
-function linkify(h) {
+/** Clickable links in already-escaped text: [label](url) and bare URLs, and paths (all opened by open_link on a
+ *  click). `base` is the session the text came from: a path relative to its folder (src/main.rs, ./notes.md)
+ *  links too, joined to that folder; on another machine no path links at all (it isn't on this Mac, and
+ *  looking it up here can stall). Links are set aside as they're made, so a later pass can't reach into one. */
+function linkify(h, base = null) {
   const links = [];
+  const keep = (html) => `\u0000${links.push(html) - 1}\u0000`;
   const a = (u, label) => `<a href="#" data-href="${u}">${label}</a>`;
-  // A path in a message is not a link on a plain click (paths are everywhere in agent text), but
-  // ⌘-click opens it (a document in its app; a script or an app only shown in Finder): the click
-  // handler sends data-path to open_link.
-  const pa = (u) => `<a href="#" data-path="${u}">${u}</a>`;
-  return h.replace(/\[([^\]\n]+)\]\(((?:https?|file):\/\/[^\s)]+)\)/g, (_, label, u) => `\u0000${links.push(a(u, label)) - 1}\u0000`)
-    .replace(/(?:https?|file):\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => a(u, u))
-    .replace(/(^|[^\w@/\\<])(\/[\w.@~+-]+(?:\/[\w.@~+-]+)*\/?|~\/[^\s<>"'`]+)/g, (m, pre, raw) => {
-      const t = raw.match(/[.,;:!?]+$/)?.[0] || "";
-      return pre + pa(raw.slice(0, raw.length - t.length)) + t;
-    })
-    .replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
+  // A path opens on a click like a link: a document in its app, code as text, anything else shown in Finder
+  // (settings.rs how_to_open decides, from the real file).
+  const pa = (path, shown) => `<a href="#" data-path="${path}">${shown}</a>`;
+  const remote = !!base?.machine;
+  const trail = (raw) => raw.match(/[.,;:!?]+$/)?.[0] || "";
+  let out = h.replace(/\[([^\]\n]+)\]\(((?:https?|file):\/\/[^\s)]+)\)/g, (_, label, u) => keep(a(u, label)))
+    .replace(/(?:https?|file):\/\/[^\s<>"'\u0000]*[^\s<>"'.,;:!?)\]\u0000]/g, (u) => keep(a(u, u)));
+  if (remote) return out.replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
+  out = out.replace(/(^|[^\w@/\\<.])(\/[\w.@~+-]+(?:\/[\w.@~+-]+)*\/?|~\/[^\s<>"'`\u0000]+)/g, (m, pre, raw) => {
+    const t = trail(raw), p = raw.slice(0, raw.length - t.length);
+    return pre + keep(pa(p, p)) + t;
+  });
+  // Relative to the session's folder: ./x or ../x, or a/b.ext (a slash and a file's extension, so "and/or" stays words).
+  if (base?.cwd) {
+    const dir = base.cwd.replace(/\/+$/, "");
+    out = out.replace(/(^|[^\w@/\\<.:\u0000-])((?:\.{1,2}\/)[\w.@+-]+(?:\/[\w.@+-]+)*\/?|[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)*\/[\w@+-][\w.@+-]*\.[A-Za-z][\w]{0,7})(?=$|[^\w/])/g, (m, pre, raw) => {
+      const t = trail(raw), p = raw.slice(0, raw.length - t.length);
+      if (/^[\w-]+(\.[\w-]+)+\//.test(p) && !/^\.\.?\//.test(p)) return m;   // example.com/page.html: a site, not a file here
+      return pre + keep(pa(`${dir}/${p.replace(/^\.\//, "")}`, p)) + t;
+    });
+  }
+  return out.replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
 }
 /** Markdown-lite for agents' messages: paragraphs, lists, tables, headings, quotes, code. Escapes first, so it's safe. */
 /** Copy on a code block or a command: what's in the block beside it, as plain text (a "$ " before a command isn't). */
@@ -671,7 +685,9 @@ function runCode(btn) {
 }
 function md(text, { runIn = null } = {}) {
   const out = [];
-  const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"));
+  const ses = runIn ? sessionOf(runIn) : null;   // its folder for relative paths; its machine (another: no paths)
+  const base = ses ? { cwd: ses.cwd, machine: ses.machine } : null;
+  const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base);
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {
     if (i % 2 === 1) {
