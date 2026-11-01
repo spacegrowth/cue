@@ -43,6 +43,10 @@ function renderMain() {
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   // A background script's output in its full view (chat.js scriptPane): where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
+  // Waiting is newest first, so a card that comes in lands on top and pushes the rest down. While the pointer
+  // is over the list, the card under it stays put: the new one comes in above, and the count says so.
+  const waitBody = document.querySelector(".sec-waiting .sec-body:hover");
+  const waitAnchor = waitBody && [...waitBody.querySelectorAll(".nrow[data-big]")].map((el) => ({ id: el.dataset.big, top: el.getBoundingClientRect().top })).find((a) => a.top >= waitBody.getBoundingClientRect().top - 1);
   const onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   const oldChat = document.querySelector("[data-chat]");
   const chatPinned = oldChat && oldChat.scrollHeight - oldChat.scrollTop - oldChat.clientHeight < 24;
@@ -68,6 +72,11 @@ function renderMain() {
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
   [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
+  if (waitAnchor) {
+    const el = [...document.querySelectorAll(".sec-waiting .sec-body .nrow[data-big]")].find((x) => x.dataset.big === waitAnchor.id);
+    const dy = el ? el.getBoundingClientRect().top - waitAnchor.top : 0;
+    if (Math.abs(dy) >= 1) el.closest(".sec-body").scrollTop += dy;
+  }
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
@@ -443,7 +452,7 @@ function bindMain() {
       return;
     }
     { const fd = t.closest("[data-fold]"); if (fd) return foldDrawer(fd.dataset.fold); }
-    if (t.closest("[data-fold-oldest]")) return foldOldest();
+    if (t.closest("[data-fold-newest]")) return foldNewest();
     // An ended Claude Code session, opened from search: back to work, as an older one resumes.
     if (t.closest("[data-act=convo-resume]")) return resumeOlder({ session_id: convo.sid, name: convo.name });
     if (t.closest("[data-act=convo-close]")) { sheet = null; return renderMain(); }
@@ -657,6 +666,7 @@ function bindMain() {
     if (act && it) {
       if (it.status === "pending" && act !== "dismiss" && act !== "back") active = { id: it.id, sid: it.session_id };
       if (act === "submit-answers") { const a = answersFor(it); return a && respond(it, { behavior: "allow", answers: a }); }
+      if (act === "back") return invoke("send_to_back", { id: it.id }).catch((e) => toast(`Couldn't move it to the bottom: ${e}`));
       if (act === "allow") return allow(it);
       if (act === "deny") return deny(it);
       if (act === "send") return submitText(it);
@@ -664,7 +674,6 @@ function bindMain() {
       if (act === "continue") return invoke("reply", { id: it.id, text: "continue", images: [] }).then((r) => toast(`“continue” ${r}`)).catch((e) => toast(`Couldn't send: ${e}`));
       if (act === "go") return goTo(it);
       if (act === "dismiss") { cleared.add(it.id); return invoke("dismiss", { id: it.id }); }
-      if (act === "back") return invoke("send_to_back", { id: it.id }).catch((e) => toast(`Couldn't send to back: ${e}`));
       if (act === "menu") { menuFor = menuFor === it.id ? null : it.id; return renderMain(); }
       if (act === "redirect") { redirectFor = it.id; renderMain(); return document.querySelector(`[data-text="${CSS.escape(it.id)}"]`)?.focus(); }
     }
