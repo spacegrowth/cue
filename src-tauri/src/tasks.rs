@@ -54,6 +54,29 @@ pub struct Track {
     /// What it's doing now ("listing", "updating"); "" when idle. Not kept: a restart finds it idle.
     #[serde(skip_deserializing)]
     pub busy: String,
+    /// What the session is about, one line: set by the first list, changed only when the work does.
+    #[serde(default)]
+    pub about: String,
+    /// Where it stands now, a line or two, after its last turn.
+    #[serde(default)]
+    pub now: String,
+    /// A line per turn the list read, oldest first, the newest TURNS_KEPT: what "since you looked" shows.
+    #[serde(default)]
+    pub turns: Vec<Turn>,
+}
+
+/// One turn, in a line: when it ended (its reply's time) and what it did.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Turn {
+    pub at_ms: u64,
+    pub line: String,
+}
+
+const TURNS_KEPT: usize = 60;
+
+/// Tasks are on (Settings → Chat → Tasks): off, nothing is tracked or asked, and the window shows none of it.
+pub fn on() -> bool {
+    crate::config::effective().pointer("/tasks/on").and_then(Value::as_bool).unwrap_or(false)
 }
 
 static TRACKS: Mutex<Option<HashMap<String, Track>>> = Mutex::new(None);
@@ -150,6 +173,9 @@ pub fn is_tracked(session_id: &str) -> bool {
 
 /// Track what's left in a session: its first list, asked for in the background.
 pub fn start(hub: Arc<Hub>, session_id: &str) -> Result<(), String> {
+    if !on() {
+        return Err("Tasks are off: turn them on in Settings → Chat → Tasks".into());
+    }
     if file(session_id).is_none() {
         return Err("not a session Cue can track".into());
     }
@@ -241,7 +267,13 @@ fn list(hub: &Hub, session_id: &str) -> Result<(), String> {
     let listed = parse_list(&a.text).ok_or_else(|| format!("its answer wasn't a list: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let seen = log.last().map(|e| e.at_ms).unwrap_or(0);
     change(session_id, |t| {
-        let (added, done) = reconcile(t, listed, now_ms());
+        if !listed.about.is_empty() {
+            t.about = listed.about.clone();
+        }
+        if !listed.now.is_empty() {
+            t.now = listed.now.clone();
+        }
+        let (added, done) = reconcile(t, listed.items, now_ms());
         t.spent.tokens += a.spent.tokens;
         t.spent.usd += a.spent.usd;
         t.seen_ms = t.seen_ms.max(seen);
@@ -258,10 +290,13 @@ fn update(hub: &Hub, session_id: &str) -> Result<(), String> {
         return Ok(());
     }
     let open: Vec<Item> = items.into_iter().filter(|i| i.state == "open").collect();
-    let a = crate::btw::ask_small(&update_prompt(&open, &since), session_id)?;
+    let about = with(|all| all.get(session_id).map(|t| t.about.clone())).unwrap_or_default();
+    let a = crate::btw::ask_small(&update_prompt(&about, &open, &since), session_id)?;
     spend(a.spent);
     let edits = parse_edits(&a.text).ok_or_else(|| format!("its answer wasn't a change to the list: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let newest = since.last().map(|e| e.at_ms).unwrap_or(seen);
+    // The turn's line goes at its reply's time, where "since you looked" counts from.
+    let reply_at = since.iter().rev().find(|e| e.role == "agent").map(|e| e.at_ms).unwrap_or(newest);
     change(session_id, |t| {
         let (added, done, dropped) = apply(t, &edits, now_ms());
         t.spent.tokens += a.spent.tokens;
@@ -269,6 +304,17 @@ fn update(hub: &Hub, session_id: &str) -> Result<(), String> {
         t.seen_ms = newest;
         t.updated_ms = now_ms();
         t.said = if edits.said.trim().is_empty() { said_words(added, done, dropped) } else { edits.said.trim().to_string() };
+        if !edits.about.is_empty() {
+            t.about = edits.about.clone();
+        }
+        if !edits.now.is_empty() {
+            t.now = edits.now.clone();
+        }
+        if !edits.said.trim().is_empty() {
+            t.turns.push(Turn { at_ms: reply_at, line: edits.said.trim().to_string() });
+            let over = t.turns.len().saturating_sub(TURNS_KEPT);
+            t.turns.drain(..over);
+        }
     });
     Ok(())
 }
@@ -287,7 +333,7 @@ fn said_words(added: usize, done: usize, dropped: usize) -> String {
     if w.is_empty() { "nothing changed".into() } else { w.join(" · ") }
 }
 
-/// An item as the models read it: "t3 [build] Review count on the pill".
+/// An item as the models read it: "t3 [build] A counter for reused sessions".
 fn lines(items: &[Item]) -> String {
     if items.is_empty() {
         return "(nothing yet)".into();
@@ -298,7 +344,7 @@ fn lines(items: &[Item]) -> String {
 const GROUP_WORDS: &str = "\"check\": something the owner still has to check or try; \"build\": still to build or fix; \
 \"decide\": the owner has to decide; \"ok\": a choice the agent made, or a question it asked, that waits on the owner's OK";
 
-const LIST_JSON: &str = r#"{"items":[{"id":"t3 or null","group":"check|build|decide|ok","text":"one short line","done":false}]}"#;
+const LIST_JSON: &str = r#"{"about":"what the whole session is about, under 10 words","now":"where it stands and what it waits on, under 25 words","items":[{"id":"t3 or null","group":"check|build|decide|ok","text":"one short line","done":false}]}"#;
 
 /// What the small model is asked for a whole list: from the chat, keeping the ids of the list so far.
 fn chat_prompt(open: &[Item], log: &[Exchange]) -> String {
@@ -312,14 +358,17 @@ fn chat_prompt(open: &[Item], log: &[Exchange]) -> String {
     )
 }
 
-fn update_prompt(open: &[Item], since: &[Exchange]) -> String {
+fn update_prompt(about: &str, open: &[Item], since: &[Exchange]) -> String {
     format!(
-        "What's left in a coding agent's session, so far:\n{}\n\nWhat was said since, oldest first:\n\n{}\n\n\
+        "A coding agent's session{}. What's left in it, so far:\n{}\n\nWhat was said since, oldest first:\n\n{}\n\n\
          Update the list from these messages. Mark an item done only when the agent says it's done or the owner confirms it. \
          Drop an item the owner called off or that no longer applies. Add what the owner asked for, what the agent left for later, \
          and questions or choices of the agent's that wait on the owner; not what was finished in these messages, and not what's \
-         already on the list. Groups: {GROUP_WORDS}.\n\n\
-         Answer with only this JSON: {{\"done\":[\"t1\"],\"dropped\":[],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\"}}],\"said\":\"a few words on what changed, or empty\"}}",
+         already on the list. Groups: {GROUP_WORDS}. Also say, in plain words for the owner: what the agent did in these messages, \
+         under 12 words (\"turn\"); where the session stands and what it waits on, under 25 words (\"now\"); and what the whole \
+         session is about, under 10 words (\"about\"), only if the work has moved to something else, else leave it empty.\n\n\
+         Answer with only this JSON: {{\"done\":[\"t1\"],\"dropped\":[],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\"}}],\"turn\":\"under 12 words\",\"now\":\"under 25 words\",\"about\":\"\"}}",
+        if about.is_empty() { String::new() } else { format!(", about: {about}") },
         lines(open),
         chat(since)
     )
@@ -362,10 +411,21 @@ fn group_of(v: &Value) -> String {
     if GROUPS.contains(&g.as_str()) { g } else { "build".into() }
 }
 
-fn parse_list(text: &str) -> Option<Vec<Listed>> {
+/// A whole list as answered, with what the session is about and where it stands.
+#[derive(Debug, PartialEq)]
+struct ListAnswer {
+    items: Vec<Listed>,
+    about: String,
+    now: String,
+}
+
+fn text_of(v: &Value, k: &str) -> String {
+    v.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string()
+}
+
+fn parse_list(text: &str) -> Option<ListAnswer> {
     let v = json_in(text)?;
-    Some(
-        v.get("items")?
+    let items = v.get("items")?
             .as_array()?
             .iter()
             .filter_map(|x| {
@@ -377,8 +437,8 @@ fn parse_list(text: &str) -> Option<Vec<Listed>> {
                     done: x.get("done").and_then(Value::as_bool).unwrap_or(false),
                 })
             })
-            .collect(),
-    )
+            .collect();
+    Some(ListAnswer { items, about: text_of(&v, "about"), now: text_of(&v, "now") })
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -386,7 +446,10 @@ struct Edits {
     done: Vec<String>,
     dropped: Vec<String>,
     add: Vec<(String, String)>,
+    /// What this turn did, in a line.
     said: String,
+    now: String,
+    about: String,
 }
 
 fn parse_edits(text: &str) -> Option<Edits> {
@@ -400,7 +463,9 @@ fn parse_edits(text: &str) -> Option<Edits> {
             .and_then(Value::as_array)
             .map(|a| a.iter().filter_map(|x| Some((group_of(x), x.get("text")?.as_str()?.trim().to_string()))).filter(|(_, t)| !t.is_empty()).collect())
             .unwrap_or_default(),
-        said: v.get("said").and_then(Value::as_str).unwrap_or("").to_string(),
+        said: Some(text_of(&v, "turn")).filter(|s| !s.is_empty()).unwrap_or_else(|| text_of(&v, "said")),
+        now: text_of(&v, "now"),
+        about: text_of(&v, "about"),
     })
 }
 
@@ -474,7 +539,9 @@ mod tests {
 
     #[test]
     fn a_first_list_is_read_from_the_answer_even_in_a_fence() {
-        let l = parse_list("```json\n{\"items\":[{\"id\":null,\"group\":\"Check\",\"text\":\"Try the lock\",\"done\":false},{\"group\":\"odd\",\"text\":\"Build it\"},{\"text\":\"  \"}]}\n```").unwrap();
+        let a = parse_list("```json\n{\"about\":\" Order router \",\"now\":\"Tests pass\",\"items\":[{\"id\":null,\"group\":\"Check\",\"text\":\"Run the replay\",\"done\":false},{\"group\":\"odd\",\"text\":\"Build it\"},{\"text\":\"  \"}]}\n```").unwrap();
+        assert_eq!((a.about.as_str(), a.now.as_str()), ("Order router", "Tests pass"));
+        let l = a.items;
         assert_eq!(l.len(), 2, "an empty line is left out");
         assert_eq!((l[0].id.clone(), l[0].group.as_str()), (None, "check"));
         assert_eq!(l[1].group, "build", "a group it made up goes under build");
@@ -483,11 +550,11 @@ mod tests {
 
     #[test]
     fn refresh_keeps_ids_marks_done_adds_new_and_leaves_what_is_over() {
-        let mut t = track(&[("build", "Review count", "open"), ("check", "Try landscape", "open"), ("build", "Reload lines", "dropped")]);
-        let listed = parse_list(r#"{"items":[{"id":"t1","group":"build","text":"Review count on the pill","done":true},{"id":"t3","group":"build","text":"Reload lines","done":false},{"id":null,"group":"decide","text":"When to commit"},{"id":null,"group":"check","text":"try landscape."}]}"#).unwrap();
+        let mut t = track(&[("build", "A counter", "open"), ("check", "Run the replay", "open"), ("build", "Drop the old pool", "dropped")]);
+        let listed = parse_list(r#"{"items":[{"id":"t1","group":"build","text":"A counter for reused sessions","done":true},{"id":"t3","group":"build","text":"Drop the old pool","done":false},{"id":null,"group":"decide","text":"When to commit"},{"id":null,"group":"check","text":"run the replay."}]}"#).unwrap().items;
         let (added, done) = reconcile(&mut t, listed, 2);
         assert_eq!((added, done), (1, 1));
-        assert_eq!((t.items[0].state.as_str(), t.items[0].text.as_str()), ("done", "Review count on the pill"));
+        assert_eq!((t.items[0].state.as_str(), t.items[0].text.as_str()), ("done", "A counter for reused sessions"));
         assert_eq!(t.items[1].state, "open", "left out of the answer: stays");
         assert_eq!(t.items[2].state, "dropped", "over stays over");
         assert_eq!(t.items.len(), 4, "the same line again isn't added");
@@ -497,20 +564,23 @@ mod tests {
     #[test]
     fn a_turns_edits_change_only_open_items() {
         let mut t = track(&[("build", "A", "open"), ("build", "B", "open"), ("check", "C", "done")]);
-        let e = parse_edits(r#"{"done":["t1","t3","t9"],"dropped":["t3"],"add":[{"group":"ok","text":"Back only steps answered calls"},{"group":"build","text":"a"}],"said":"Back confirmed"}"#).unwrap();
+        let e = parse_edits(r#"{"done":["t1","t3","t9"],"dropped":["t3"],"add":[{"group":"ok","text":"Retries stay at 3"},{"group":"build","text":"a"}],"said":"Reuse confirmed"}"#).unwrap();
         assert_eq!(apply(&mut t, &e, 5), (1, 1, 0));
         assert_eq!(t.items[0].state, "done");
         assert_eq!((t.items[1].state.as_str(), t.items[2].state.as_str()), ("open", "done"), "untouched, and over stays over");
         assert_eq!(t.items[3].group, "ok");
-        assert_eq!(e.said, "Back confirmed");
+        assert_eq!(e.said, "Reuse confirmed", "the old \"said\" still reads");
+        let e = parse_edits(r#"{"done":[],"turn":"Released 0.1.74","now":"Waits on you","about":""}"#).unwrap();
+        assert_eq!((e.said.as_str(), e.now.as_str(), e.about.as_str()), ("Released 0.1.74", "Waits on you", ""));
     }
 
     #[test]
     fn the_small_model_reads_the_newest_messages_and_the_list_by_id() {
         let ex = |role: &str, text: &str| -> Exchange { serde_json::from_value(serde_json::json!({ "role": role, "text": text, "at_ms": 1 })).unwrap() };
-        let t = track(&[("build", "Review count", "open")]);
-        let p = update_prompt(&t.items, &[ex("you", "back works"), ex("agent", "Good.")]);
-        assert!(p.contains("t1 [build] Review count") && p.contains("Owner: back works\n\nAgent: Good."), "{p}");
+        let t = track(&[("build", "A counter", "open")]);
+        let p = update_prompt("the order router", &t.items, &[ex("you", "the reuse works"), ex("agent", "Good.")]);
+        assert!(p.contains("session, about: the order router."), "{p}");
+        assert!(p.contains("t1 [build] A counter") && p.contains("Owner: the reuse works\n\nAgent: Good."), "{p}");
         let big = "x".repeat(MSG_CHARS);
         let many: Vec<_> = (0..30).map(|_| ex("agent", &big)).chain([ex("agent", "the newest")]).collect();
         let c = chat(&many);

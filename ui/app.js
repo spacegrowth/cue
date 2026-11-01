@@ -671,7 +671,9 @@ function bindMain() {
   });
   app.addEventListener("input", (e) => {
     if (e.target.matches?.("[data-hsession]")) { histSession = e.target.value; histOpen = null; return renderMain(); }
-    if (e.target.matches?.("[data-quick-edit]")) { qpEdit = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value); return; }
+    // Saved as you type (half a second after you stop), not on "change": a redraw while you type swaps the field
+    // for a new one, and the new one never fires "change", so nothing was saved though the field showed your words.
+    if (e.target.matches?.("[data-quick-edit]")) { qpEdit = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value); clearTimeout(qpSaveAt); qpSaveAt = setTimeout(saveQuickPhrases, 500); return; }
     const id = e.target.dataset?.text;
     if (!id) return;
     draft(id).text = e.target.value;
@@ -708,6 +710,8 @@ function bindMain() {
     e.preventDefault();
     attach(key, [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith("image/")));
   });
+  // Leaving a quick phrase field saves it at once (Esc closing Settings, a click elsewhere).
+  app.addEventListener("focusout", (e) => { if (e.target.matches?.("[data-quick-edit]")) saveQuickPhrases(); });
   app.addEventListener("change", (e) => {
     if (e.target.matches("[data-keep-custom]")) setSetting("history.keep", Math.max(10, Math.round(+e.target.value || 0)));
     if (e.target.matches("[data-usage-file]")) setSetting("usage.file", e.target.value.trim());
@@ -717,7 +721,7 @@ function bindMain() {
       remember("newModel", newModel); renderMain();
       return e.target.value === OTHER && document.querySelector('[data-text="new-model-id"]')?.focus();
     }
-    if (e.target.matches("[data-quick-edit]")) { const list = [...document.querySelectorAll("[data-quick-edit]")].map((i) => i.value.trim()).filter(Boolean); qpEdit = null; setSetting("quick.phrases", list); }
+    if (e.target.matches("[data-quick-edit]")) { saveQuickPhrases(); qpEdit = null; }
   });
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });

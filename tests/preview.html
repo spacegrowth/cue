@@ -81,17 +81,28 @@
         const it = (id, group, text, st = "open") => ({ id, group, text, state: st, at_ms: now - 30 * M });
         const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {
           items: [
-            it("t1", "check", "Lock: with the lock on, swipes spring back without answering"),
-            it("t2", "check", "Landscape: the Reviewed screen, line review, stock screen and search"),
-            it("t3", "build", "Tonight's list: an \"N of M\" sheet, tonight's calls grouped D/W/M"),
-            it("t4", "build", "Review count on the pill"),
-            it("t5", "decide", "When to commit: everything is uncommitted on main"),
-            it("t6", "ok", "Back only steps through calls you answered, not stocks from search"),
-            it("t7", "check", "Back: the card says Taken or Skipped", "done"),
-            it("t8", "ok", "Add an \"A · opened\" frame", "dropped"),
+            it("t1", "check", "Run the replay against yesterday's fills"),
+            it("t2", "check", "Watch one live partial fill in the log"),
+            it("t3", "build", "Drop the old session pool once nothing uses it"),
+            it("t4", "build", "A counter for reused sessions"),
+            it("t5", "decide", "Keep the old key valid for a day, or not"),
+            it("t6", "ok", "Retries stay at 3, as before"),
+            it("t7", "check", "The router reuses the broker session", "done"),
+            it("t8", "ok", "A second pool for slow brokers", "dropped"),
           ],
-          next: 8, said: "1 done (you said back works)", err: "", busy: "", spent: { tokens: 63120, usd: 0.0141 }, updated_ms: now - 2 * M,
+          next: 8, said: "1 done (you said the reuse works)", err: "", busy: "", spent: { tokens: 63120, usd: 0.0141 }, updated_ms: now - 2 * M,
+          about: "Order router: partial fills reuse one broker session",
+          now: "Tests pass on the new router. Waiting on you: keep the old key valid for a day?",
+          turns: [
+            { at_ms: now - 95 * M, line: "Reworked the router to reuse the session" },
+            { at_ms: now - 70 * M, line: "Ran the protocol tests: 41 passed" },
+            { at_ms: now - 28 * M, line: "Kept the old key valid behind a flag" },
+            { at_ms: now - 12 * M, line: "Listed what's left: 2 to check, 2 to build" },
+          ],
         };
+        state.settings.tasks = { on: true, auto: false };
+        // Last looked at every session 40 minutes ago: "Since you looked" shows where that was.
+        try { localStorage.setItem("cue.looked", JSON.stringify(Object.fromEntries(state.sessions.map((x) => [x.session_id, now - 40 * M])))); } catch {}
         for (const s of state.sessions) state.tasks[s.session_id] = JSON.parse(JSON.stringify(list));
       }
       if (q.has("usage")) {
@@ -605,7 +616,7 @@
       if (/settings=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
       if (/open=1/.test(q)) document.querySelector("[data-toggle]")?.click();
       // ?tasks=…: the open session's Tasks tab.
-      if (/tasks=/.test(q)) setTimeout(() => document.querySelector("[data-tasks-tab]")?.click(), 600);
+      if (/tasks=/.test(q) && !/chat=1/.test(q)) setTimeout(() => document.querySelector("[data-tasks-tab]")?.click(), 600);
       // ?more=1: open the chat header's ⋯ menu.
       if (/more=1/.test(q)) setTimeout(() => document.querySelector("[data-more]")?.click(), 500);
       // ?live=1&quiet=1: open the quiet session q2 (Sessions view → its tile).

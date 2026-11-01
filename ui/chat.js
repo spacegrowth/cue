@@ -182,7 +182,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { lo
 /** Catch me up, at the end of the chat (under the latest reply, above the status line): never a bar on the box. */
 function catchUpBar(sid, it, s) {
   const c = catchUp;
-  if (!c || c.sid !== sid || c.gone || !c.since) return "";
+  if (!c || c.sid !== sid || c.gone || !c.since || tasksTracked(sid)) return "";
   const ex = conversation(it, s);
   if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return "";
   const away = (at) => at > c.since && at <= c.openedAt;
@@ -762,8 +762,16 @@ const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
   return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
-/** Settings → Quick phrases as you type them (redraws keep them); saved when you leave a field. */
+/** Settings → Quick phrases as you type them (redraws keep them); saved as you type (app.js) and when you leave. */
 let qpEdit = null;
+let qpSaveAt = 0;
+/** What's in the quick phrase fields, saved (empty ones left out); nothing while none is being edited. */
+function saveQuickPhrases() {
+  clearTimeout(qpSaveAt);
+  if (!qpEdit) return;
+  const list = qpEdit.map((p) => p.trim()).filter(Boolean);
+  if (JSON.stringify(list) !== JSON.stringify(phrases())) setSetting("quick.phrases", list);
+}
 const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
 /** A box's images, before they're sent: each opens large, × takes it off. */
 function draftChips(key) {
@@ -1751,6 +1759,9 @@ function chatHtml(it, s, harness, paged = false) {
   const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
   const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
+  // A tracked session you come back to: "Since you looked" where the new part starts (tasks.js), no call.
+  const since = sid ? tasksSince(sid, ex) : null;
+  if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
