@@ -9,7 +9,7 @@ const tasksTabOn = new Set();     // sessions showing the Tasks tab
 const tasksTurnsOpen = new Set(); // sessions showing every turn, not just the newest 6
 
 const tasksOf = (sid) => state.tasks?.[sid];
-/** Tasks are on (Settings → Chat → Tasks): off, the window shows none of it, tracked or not. */
+/** Tasks are on (Settings → Tasks): off, the window shows none of it, tracked or not. */
 const tasksShown = () => state.settings?.tasks?.on === true;
 /** The session's track while Tasks are on; null otherwise. */
 const tasksTracked = (sid) => (tasksShown() ? tasksOf(sid) || null : null);
@@ -60,9 +60,9 @@ function tasksPage(sid) {
   const t = tasksOf(sid);
   if (!t) {
     return `<div class="tk-page"><div class="tk-intro">
-      <p>Keep a list of what's left in this session: what you still have to check, what's still to build, what you have to decide, and what waits on your OK.</p>
-      <p class="dim">A small model reads this session's chat and lists it, then reads each new turn and updates the list. The session never sees it. What it costs shows here.</p>
-      <button class="btn primary" data-tasks-do="start" data-sid="${esc(sid)}">Track what's left</button></div></div>`;
+      <p>A list of what's left in this session: what you still have to check, what's still to build, what you have to decide, and what waits on your OK.</p>
+      <p class="dim">Make a list sends this session's chat to a small model (Haiku), which writes the list. After each turn Cue sends it the new messages and it updates the list. The session never sees this. What it costs shows here.</p>
+      <button class="btn primary" data-tasks-do="start" data-sid="${esc(sid)}">Make a list</button></div></div>`;
   }
   const items = t.items || [];
   const seen = tasksLookedAt(sid), turns = [...(t.turns || [])].reverse();
@@ -80,11 +80,11 @@ function tasksPage(sid) {
   const now = t.busy ? `Reading ${t.busy === "listing" ? "the chat" : "the last turn"}…` : t.err ? `Couldn't update: ${t.err}` : t.said ? `Last turn: ${t.said}` : "";
   return `<div class="tk-page">${head}${turnsHtml}${groups ? `<div class="tk-head tk-left">WHAT'S LEFT · ${tasksLeft(t)}</div>` : ""}
     ${groups || `<div class="ac-empty">Nothing left, as far as the chat says.</div>`}
-    <div class="tk-note dim">Read from the chat after each turn. To change what's left, tell the session.</div>
+    <div class="tk-note dim">Written by a small model from the chat, after each turn. To change what's left, tell the session.</div>
     <div class="tk-foot">${now ? `<span class="${t.err && !t.busy ? "tk-err" : ""}">${esc(now)}</span>` : ""}<span class="grow"></span>
       <span class="dim">This session so far: ${tasksMoney(t.spent?.usd)} · ${esc(helperTokens(t.spent?.tokens || 0) || "0 tokens")}</span>
       <button class="btn" data-tasks-do="refresh" data-sid="${esc(sid)}" ${t.busy ? "disabled" : ""}>Refresh</button>
-      <button class="btn" data-tasks-do="stop" data-sid="${esc(sid)}">Stop tracking</button></div></div>`;
+      <button class="btn" data-tasks-do="stop" data-sid="${esc(sid)}">Remove the list</button></div></div>`;
 }
 
 /** One item: a dot while it's left; done (✓) or called off (–) struck through. Only marks: nothing to click. */

@@ -74,7 +74,7 @@ pub struct Turn {
 
 const TURNS_KEPT: usize = 60;
 
-/// Tasks are on (Settings → Chat → Tasks): off, nothing is tracked or asked, and the window shows none of it.
+/// Tasks are on (Settings → Tasks): off, no list is made or asked for, and the window shows none of it.
 pub fn on() -> bool {
     crate::config::effective().pointer("/tasks/on").and_then(Value::as_bool).unwrap_or(false)
 }
@@ -174,7 +174,7 @@ pub fn is_tracked(session_id: &str) -> bool {
 /// Track what's left in a session: its first list, asked for in the background.
 pub fn start(hub: Arc<Hub>, session_id: &str) -> Result<(), String> {
     if !on() {
-        return Err("Tasks are off: turn them on in Settings → Chat → Tasks".into());
+        return Err("Tasks are off: turn them on in Settings → Tasks".into());
     }
     if file(session_id).is_none() {
         return Err("not a session Cue can track".into());

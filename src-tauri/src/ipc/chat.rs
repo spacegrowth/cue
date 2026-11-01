@@ -536,7 +536,7 @@ pub(crate) fn tasks_refresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Res
     crate::tasks::refresh(hub.inner().clone(), &session_id)
 }
 
-/// The Tasks tab's Stop tracking: the list goes.
+/// The Tasks tab's Remove the list: the list goes.
 #[tauri::command]
 pub(crate) fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) {
     crate::tasks::stop(&session_id);

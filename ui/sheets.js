@@ -461,14 +461,23 @@ document.addEventListener("click", (e) => {
   projResetAsk = v === "ask";
   renderMain();
 }, true);
-/** Under Tasks' switch: what every session's list has cost together, kept after a session stops being tracked
- *  (tasks.rs spent). */
+/** Settings → Tasks: what turning it on does, in plain words (a small model writes the lists, not Cue, and the
+ *  session never sees it), which sessions get one, and what they've cost. */
+function tasksSettings(st) {
+  const on = st.tasks?.on === true;
+  return `
+    <div class="set-group">Tasks</div>
+    ${setRow("A list of what's left, per session", "A Tasks tab in each session. Make a list there and a small model (Haiku) reads the chat and lists what's left for you; it updates after each turn. The session never sees it.", toggle("tasks.on", on))}
+    ${on ? setRow("For every session", "Without clicking Make a list.", toggle("tasks.auto", st.tasks?.auto === true)) : ""}
+    ${tasksSpentRow()}`;
+}
+/** What every session's list has cost together, kept after a session's list is stopped (tasks.rs spent). */
 function tasksSpentRow() {
   const t = state.tasks_spent || {};
-  const text = t.calls ? `All sessions so far: ${tasksMoney(t.usd)} · ${helperTokens(t.tokens || 0) || "0 tokens"}${t.tracked ? ` · ${t.tracked} tracked now` : ""}` : "Nothing yet.";
+  const text = t.calls ? `All sessions so far: ${tasksMoney(t.usd)} · ${helperTokens(t.tokens || 0) || "0 tokens"}${t.tracked ? ` · ${t.tracked} session${t.tracked === 1 ? "" : "s"} with a list now` : ""}` : "Nothing yet.";
   return setRow("What it has cost", esc(text), "");
 }
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["tasks", "Tasks"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
@@ -512,15 +521,12 @@ function settingsSheet() {
     ${setRow("Above the text box", `Click one to send it, after anything you've typed in the box. Up to 4. Empty a field to remove it.`, `<div class="quick-edit">${[0, 1, 2, 3].map((n) => `<input class="qp-in" data-quick-edit id="qp-${n}" value="${esc(qpEdit ? qpEdit[n] : phrases()[n] || "")}" maxlength="40" placeholder="${n < phrases().length ? "" : "Add one"}" aria-label="Quick phrase ${n + 1}"/>`).join("")}</div>`)}
     <div class="set-group">Steps</div>
     ${setRow("Steps in the chat", "What the agent did between your message and its reply, read from its transcript when you look. One line each: click a step for its output or diff.", seg("steps.mode", st.steps?.mode ?? "line", [["line", "One line each"], ["all", "Everything"], ["hidden", "Hidden"]]))}
-    <div class="set-group">Tasks</div>
-    ${setRow("Tasks", "A Tasks tab in each session. Track what's left there and a small model (Haiku) reads the session's chat and keeps a list of what you still have to check, build, decide or OK, a line on what the session is about and where it stands (on its card), and a line per turn (\"Since you looked\" in the chat, in place of Catch me up). After each turn it reads only the new messages. A separate call each time: the session never sees it and nothing is saved as a session. Off: none of this shows and nothing is asked.", toggle("tasks.on", st.tasks?.on === true))}
-    ${st.tasks?.on ? setRow("Track every session", "Off: a session is tracked only when you click Track what's left in its Tasks tab. On: every session starts when its next turn ends.", toggle("tasks.auto", st.tasks?.auto === true)) : ""}
-    ${tasksSpentRow()}
     <div class="set-group">Context</div>
     ${setRow("Earlier in this session", "How many past exchanges (what it said or asked, what you answered) each card keeps.", seg("context.keep", st.context?.keep ?? 5, [[5, "5"], [10, "10"], [20, "20"]]))}
     ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
     <div class="set-group">History</div>
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
+    tasks: tasksSettings(st),
     voice: voiceSettings() + extRows("Voice"),
     insights: insSettings(st) + tipsSettings(st),
     actions: actSettings(),
