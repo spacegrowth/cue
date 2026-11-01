@@ -78,14 +78,14 @@
       state.tasks = {};
       state.tasks_spent = q.get("tasks") === "1" ? { tokens: 412300, usd: 0.087, calls: 23, tracked: 2 } : {};
       if (["1", "busy"].includes(q.get("tasks"))) {
-        const it = (id, group, text, st = "open") => ({ id, group, text, state: st, at_ms: now - 30 * M });
+        const it = (id, group, text, st = "open", detail = "") => ({ id, group, text, state: st, at_ms: now - 30 * M, detail });
         const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {
           items: [
-            it("t1", "check", "Run the replay against yesterday's fills"),
+            it("t1", "check", "Run the replay against yesterday's fills", "open", "The new router hasn't seen real traffic yet. Replaying yesterday's orders shows whether partial fills still land on the same broker session."),
             it("t2", "check", "Watch one live partial fill in the log"),
             it("t3", "build", "Drop the old session pool once nothing uses it"),
             it("t4", "build", "A counter for reused sessions"),
-            it("t5", "decide", "Keep the old key valid for a day, or not"),
+            it("t5", "decide", "Keep the old key valid for a day, or not", "open", "Brokers holding the old key keep working for a day if you say yes; say no and they reconnect at once."),
             it("t6", "ok", "Retries stay at 3, as before"),
             it("t7", "check", "The router reuses the broker session", "done"),
             it("t8", "ok", "A second pool for slow brokers", "dropped"),

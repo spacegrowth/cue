@@ -35,6 +35,9 @@ pub struct Item {
     /// "open" | "done" | "dropped" (the chat called it off). Done and dropped ones show struck through.
     pub state: String,
     pub at_ms: u64,
+    /// What it is, in a sentence or two for someone who didn't follow the chat (shown when you open the item).
+    #[serde(default)]
+    pub detail: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -273,11 +276,11 @@ fn list(hub: &Hub, session_id: &str) -> Result<(), String> {
         if !listed.now.is_empty() {
             t.now = listed.now.clone();
         }
-        let (added, done) = reconcile(t, listed.items, now_ms());
+        let (added, done, dropped) = reconcile(t, listed.items, now_ms());
         t.spent.tokens += a.spent.tokens;
         t.spent.usd += a.spent.usd;
         t.seen_ms = t.seen_ms.max(seen);
-        t.said = said_words(added, done, 0);
+        t.said = said_words(added, done, dropped);
     });
     Ok(())
 }
@@ -342,18 +345,32 @@ fn lines(items: &[Item]) -> String {
 }
 
 const GROUP_WORDS: &str = "\"check\": something the owner still has to check or try; \"build\": still to build or fix; \
-\"decide\": the owner has to decide; \"ok\": a choice the agent made, or a question it asked, that waits on the owner's OK";
+\"decide\": the owner has to decide; \"ok\": the agent asked the owner a yes-or-no question and is waiting for the answer";
 
-const LIST_JSON: &str = r#"{"about":"what the whole session is about, under 10 words","now":"where it stands and what it waits on, under 25 words","items":[{"id":"t3 or null","group":"check|build|decide|ok","text":"one short line","done":false}]}"#;
+/// What isn't something left. Agents' reports are long and full of asides; read as a list, every one became an item
+/// ("OK to leave the other edit alone", one item per part of a single question).
+const LEAVE_OUT: &str = "Only list what really holds the work up or is still to do: a question the agent asked the owner and waits on, \
+work the agent said is still to do, something the owner asked for that isn't done. Leave out the agent's notes, caveats and \
+assumptions; choices it made and went ahead with; what it will do by itself or does only if something happens (\"if you're \
+away…\"); what the owner already answered; and how-it-works details. One question with several parts is one item, not one \
+per part, and never two items for the same thing in other words. Write each item as an action, never a question \
+(\"Push the branch\", \"Decide whether to keep the list\"): it may be sent to the agent as \"Please finish this: …\". Few items are better than many: most sessions have 0 to 5.";
+
+const LIST_JSON: &str = r#"{"about":"what the whole session is about, under 10 words","now":"where it stands and what it waits on, under 25 words","items":[{"id":"t3 or null","group":"check|build|decide|ok","text":"one short line","detail":"one or two plain sentences","done":false,"dropped":false}]}"#;
+
+/// Each item's "detail": the line alone reads as shorthand to someone who wasn't following.
+const DETAIL_WORDS: &str = "For each item, \"detail\": one or two plain sentences for someone who didn't follow the chat: \
+what this is about and why it's left (what it waits on, or what happens once it's done). No file names or code unless needed.";
 
 /// What the small model is asked for a whole list: from the chat, keeping the ids of the list so far.
 fn chat_prompt(open: &[Item], log: &[Exchange]) -> String {
-    let have = if open.is_empty() { String::new() } else { format!("The list so far (keep each id; \"done\": true for one that's done now; \"id\": null for a new one):\n{}\n\n", lines(open)) };
+    let have = if open.is_empty() { String::new() } else { format!("The list so far, for its ids (keep the id of one that's still left; \"done\": true for one that's done now; \"id\": null for a new one; \
+one you leave out goes off the list):\n{}\n\n", lines(open)) };
     format!(
         "A coding agent's session with its owner, oldest first:\n\n{}\n\n{have}\
          List what is still left to do: what the owner still has to check, what is still to build or fix, what the owner has to \
          decide, and choices or questions of the agent's that wait on the owner's OK. Leave out what's done. One short line each, \
-         in plain words. Groups: {GROUP_WORDS}.\n\nAnswer with only this JSON: {LIST_JSON}",
+         in plain words. {LEAVE_OUT} Groups: {GROUP_WORDS}. {DETAIL_WORDS}\n\nAnswer with only this JSON: {LIST_JSON}",
         chat(log)
     )
 }
@@ -364,10 +381,12 @@ fn update_prompt(about: &str, open: &[Item], since: &[Exchange]) -> String {
          Update the list from these messages. Mark an item done only when the agent says it's done or the owner confirms it. \
          Drop an item the owner called off or that no longer applies. Add what the owner asked for, what the agent left for later, \
          and questions or choices of the agent's that wait on the owner; not what was finished in these messages, and not what's \
-         already on the list. Groups: {GROUP_WORDS}. Also say, in plain words for the owner: what the agent did in these messages, \
+         already on the list. {LEAVE_OUT} Groups: {GROUP_WORDS}. {DETAIL_WORDS} Also say, in plain words for the owner: what the agent did in these messages, \
          under 12 words (\"turn\"); where the session stands and what it waits on, under 25 words (\"now\"); and what the whole \
          session is about, under 10 words (\"about\"), only if the work has moved to something else, else leave it empty.\n\n\
-         Answer with only this JSON: {{\"done\":[\"t1\"],\"dropped\":[],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\"}}],\"turn\":\"under 12 words\",\"now\":\"under 25 words\",\"about\":\"\"}}",
+         \"left\": the ids of the items above that are still left now; one you leave out goes off the list (it was answered, \
+         is done, was asked again in other words, or no longer applies).\n\n\
+         Answer with only this JSON: {{\"done\":[\"t1\"],\"left\":[\"t2\"],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\",\"detail\":\"one or two plain sentences\"}}],\"turn\":\"under 12 words\",\"now\":\"under 25 words\",\"about\":\"\"}}",
         if about.is_empty() { String::new() } else { format!(", about: {about}") },
         lines(open),
         chat(since)
@@ -403,7 +422,10 @@ struct Listed {
     id: Option<String>,
     group: String,
     text: String,
+    detail: String,
     done: bool,
+    /// Refresh: on the list, but not something left (by the rules it's read with now).
+    dropped: bool,
 }
 
 fn group_of(v: &Value) -> String {
@@ -434,7 +456,9 @@ fn parse_list(text: &str) -> Option<ListAnswer> {
                     id: x.get("id").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty() && *s != "null").map(str::to_string),
                     group: group_of(x),
                     text,
+                    detail: text_of(x, "detail"),
                     done: x.get("done").and_then(Value::as_bool).unwrap_or(false),
+                    dropped: x.get("dropped").and_then(Value::as_bool).unwrap_or(false),
                 })
             })
             .collect();
@@ -445,7 +469,10 @@ fn parse_list(text: &str) -> Option<ListAnswer> {
 struct Edits {
     done: Vec<String>,
     dropped: Vec<String>,
-    add: Vec<(String, String)>,
+    /// (group, text, detail)
+    add: Vec<(String, String, String)>,
+    /// The open items still left; one not in it goes off the list. None: an answer without it (each id stays).
+    left: Option<Vec<String>>,
     /// What this turn did, in a line.
     said: String,
     now: String,
@@ -458,10 +485,11 @@ fn parse_edits(text: &str) -> Option<Edits> {
     Some(Edits {
         done: ids("done"),
         dropped: ids("dropped"),
+        left: v.get("left").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()),
         add: v
             .get("add")
             .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|x| Some((group_of(x), x.get("text")?.as_str()?.trim().to_string()))).filter(|(_, t)| !t.is_empty()).collect())
+            .map(|a| a.iter().filter_map(|x| Some((group_of(x), x.get("text")?.as_str()?.trim().to_string(), text_of(x, "detail")))).filter(|(_, t, _)| !t.is_empty()).collect())
             .unwrap_or_default(),
         said: Some(text_of(&v, "turn")).filter(|s| !s.is_empty()).unwrap_or_else(|| text_of(&v, "said")),
         now: text_of(&v, "now"),
@@ -475,37 +503,50 @@ fn same(a: &str, b: &str) -> bool {
     k(a) == k(b)
 }
 
-fn add(t: &mut Track, group: &str, text: &str, at_ms: u64) -> bool {
+fn add(t: &mut Track, group: &str, text: &str, detail: &str, at_ms: u64) -> bool {
     if t.items.iter().any(|i| same(&i.text, text)) {
         return false;
     }
     let id = format!("t{}", t.next.max(1));
     t.next = t.next.max(1) + 1;
-    t.items.push(Item { id, group: group.into(), text: text.into(), state: "open".into(), at_ms });
+    t.items.push(Item { id, group: group.into(), text: text.into(), state: "open".into(), at_ms, detail: detail.into() });
     true
 }
 
 /// A whole list (first, or Refresh) laid over the track: a known open item takes its new words and group, or is
-/// done; one with no id (or one Cue doesn't know) is added unless the list has it. One that's over stays over,
-/// and one the answer leaves out stays as it is. (added, done)
-fn reconcile(t: &mut Track, listed: Vec<Listed>, at_ms: u64) -> (usize, usize) {
-    let (mut added, mut done) = (0, 0);
+/// done, or dropped as not something left; one with no id (or one Cue doesn't know) is added unless the list has
+/// it. One that's over stays over, and an open one the answer leaves out is dropped: the answer is the whole list.
+/// (added, done, dropped)
+fn reconcile(t: &mut Track, listed: Vec<Listed>, at_ms: u64) -> (usize, usize, usize) {
+    let (mut added, mut done, mut dropped) = (0, 0, 0);
+    let named: Vec<String> = listed.iter().filter(|l| !l.done && !l.dropped).filter_map(|l| l.id.clone()).collect();
+    let before: Vec<String> = t.items.iter().filter(|i| i.state == "open").map(|i| i.id.clone()).collect();
     for l in listed {
         match l.id.as_deref().and_then(|id| t.items.iter_mut().find(|i| i.id == id)) {
             Some(i) if i.state != "open" => {}
             Some(i) => {
                 i.text = l.text;
                 i.group = l.group;
+                if !l.detail.is_empty() {
+                    i.detail = l.detail;
+                }
                 if l.done {
                     i.state = "done".into();
                     done += 1;
+                } else if l.dropped {
+                    i.state = "dropped".into();
+                    dropped += 1;
                 }
             }
-            None if !l.done => added += add(t, &l.group, &l.text, at_ms) as usize,
+            None if !l.done && !l.dropped => added += add(t, &l.group, &l.text, &l.detail, at_ms) as usize,
             None => {}
         }
     }
-    (added, done)
+    for i in t.items.iter_mut().filter(|i| i.state == "open" && before.contains(&i.id) && !named.contains(&i.id)) {
+        i.state = "dropped".into();
+        dropped += 1;
+    }
+    (added, done, dropped)
 }
 
 /// A turn's edits: only open items change. (added, done, dropped)
@@ -519,8 +560,15 @@ fn apply(t: &mut Track, e: &Edits, at_ms: u64) -> (usize, usize, usize) {
         n
     };
     let done = mark(&e.done, "done");
-    let dropped = mark(&e.dropped, "dropped");
-    let added = e.add.iter().filter(|(g, text)| add(t, g, text, at_ms)).count();
+    let mut dropped = mark(&e.dropped, "dropped");
+    // The list as it stands now: what it no longer names is gone (answered, said again in other words, moot).
+    if let Some(left) = &e.left {
+        for i in t.items.iter_mut().filter(|i| i.state == "open" && !left.contains(&i.id)) {
+            i.state = "dropped".into();
+            dropped += 1;
+        }
+    }
+    let added = e.add.iter().filter(|(g, text, detail)| add(t, g, text, detail, at_ms)).count();
     (added, done, dropped)
 }
 
@@ -531,7 +579,7 @@ mod tests {
     fn track(items: &[(&str, &str, &str)]) -> Track {
         let mut t = Track { next: 1, ..Default::default() };
         for (g, text, state) in items {
-            add(&mut t, g, text, 1);
+            add(&mut t, g, text, "", 1);
             t.items.last_mut().unwrap().state = state.to_string();
         }
         t
@@ -552,13 +600,50 @@ mod tests {
     fn refresh_keeps_ids_marks_done_adds_new_and_leaves_what_is_over() {
         let mut t = track(&[("build", "A counter", "open"), ("check", "Run the replay", "open"), ("build", "Drop the old pool", "dropped")]);
         let listed = parse_list(r#"{"items":[{"id":"t1","group":"build","text":"A counter for reused sessions","done":true},{"id":"t3","group":"build","text":"Drop the old pool","done":false},{"id":null,"group":"decide","text":"When to commit"},{"id":null,"group":"check","text":"run the replay."}]}"#).unwrap().items;
-        let (added, done) = reconcile(&mut t, listed, 2);
-        assert_eq!((added, done), (1, 1));
+        let (added, done, dropped) = reconcile(&mut t, listed, 2);
+        assert_eq!((added, done, dropped), (1, 1, 1));
         assert_eq!((t.items[0].state.as_str(), t.items[0].text.as_str()), ("done", "A counter for reused sessions"));
-        assert_eq!(t.items[1].state, "open", "left out of the answer: stays");
+        assert_eq!(t.items[1].state, "dropped", "left out of the answer: gone (the answer is the whole list)");
         assert_eq!(t.items[2].state, "dropped", "over stays over");
         assert_eq!(t.items.len(), 4, "the same line again isn't added");
         assert_eq!(t.items[3].id, "t4");
+    }
+
+    #[test]
+    fn refresh_drops_what_isnt_left_and_adds_no_dropped_line() {
+        let mut t = track(&[("ok", "OK to leave the other edit alone", "open"), ("check", "Run the replay", "open")]);
+        let listed = parse_list(r#"{"items":[{"id":"t1","group":"ok","text":"OK to leave the other edit alone","dropped":true},{"id":"t2","group":"check","text":"Run the replay"},{"id":null,"group":"ok","text":"An aside","dropped":true}]}"#).unwrap().items;
+        assert_eq!(reconcile(&mut t, listed, 2), (0, 0, 1));
+        assert_eq!((t.items[0].state.as_str(), t.items[1].state.as_str()), ("dropped", "open"));
+        assert_eq!(t.items.len(), 2, "a new one it calls dropped isn't added");
+        let ex = |role: &str, text: &str| -> Exchange { serde_json::from_value(serde_json::json!({ "role": role, "text": text, "at_ms": 1 })).unwrap() };
+        let p = chat_prompt(&t.items, &[ex("agent", "Done. Note: I left the other edit alone.")]);
+        assert!(p.contains("Leave out the agent's notes") && p.contains("one you leave out goes off the list"), "{p}");
+        assert!(update_prompt("x", &t.items, &[ex("agent", "ok")]).contains("Leave out the agent's notes"));
+    }
+
+    #[test]
+    fn each_item_keeps_its_detail_from_a_list_or_a_turn() {
+        let mut t = track(&[("check", "Try it", "open")]);
+        let listed = parse_list(r#"{"items":[{"id":"t1","group":"check","text":"Try it","detail":"Open the tab and tick two."},{"id":null,"group":"decide","text":"Push?","detail":"Whether to share it now."}]}"#).unwrap().items;
+        reconcile(&mut t, listed, 2);
+        assert_eq!((t.items[0].detail.as_str(), t.items[1].detail.as_str()), ("Open the tab and tick two.", "Whether to share it now."));
+        let e = parse_edits(r#"{"left":["t1","t2"],"add":[{"group":"build","text":"X","detail":"Why X."}]}"#).unwrap();
+        apply(&mut t, &e, 3);
+        assert_eq!(t.items[2].detail, "Why X.");
+        assert!(chat_prompt(&t.items, &[]).contains("\"detail\": one or two plain sentences"));
+        assert!(chat_prompt(&t.items, &[]).contains("never a question"), "items are sent as \"Please finish this\", so no \"Push it?\"");
+        let old: Item = serde_json::from_str(r#"{"id":"t1","group":"ok","text":"a","state":"open","at_ms":1}"#).unwrap();
+        assert_eq!(old.detail, "", "a list saved before details reads");
+    }
+
+    #[test]
+    fn a_turn_with_left_drops_what_it_no_longer_names_but_not_what_it_adds() {
+        let mut t = track(&[("ok", "OK the label?", "open"), ("ok", "OK the Ask label?", "open"), ("check", "Try it", "open"), ("build", "X", "done")]);
+        let e = parse_edits(r#"{"done":["t3"],"left":["t2"],"add":[{"group":"decide","text":"Push it?"}],"turn":"t"}"#).unwrap();
+        assert_eq!(apply(&mut t, &e, 5), (1, 1, 1));
+        let st: Vec<_> = t.items.iter().map(|i| i.state.as_str()).collect();
+        assert_eq!(st, ["dropped", "open", "done", "done", "open"], "the repeat goes, the one named stays, the new one is open");
     }
 
     #[test]

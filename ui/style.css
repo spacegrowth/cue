@@ -2217,21 +2217,20 @@ button.ins-n { cursor: pointer; }
 button.bg-more:hover { background: var(--panel-2); }
 /* In a tab its grey part says when too (started, ended, how long): it gives way on a narrow window. */
 .bg-page .bg-row .bg-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* The Tasks tab (tasks.js): what's left, grouped; what's done or called off struck through under it. */
-.tk-page { padding: 4px 16px 16px; display: flex; flex-direction: column; }
+/* The Tasks tab (tasks.js): what's left, grouped; what's done struck through under it; what went off the list isn't shown. */
+.tk-page { padding: 4px 16px 16px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; }
 .tk-intro { max-width: 520px; padding: 14px 2px; font-size: 13px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .tk-intro p { margin: 0; }
 .tk-head { font: 600 10.5px var(--mono); letter-spacing: 0.12em; color: var(--muted); margin: 14px 0 2px; }
 .tk-row { display: flex; align-items: flex-start; gap: 9px; padding: 6px 2px; border-bottom: 1px solid var(--panel-2); font-size: 13px; line-height: 1.45; }
 .tk-row.over .tk-text { color: var(--muted); text-decoration: line-through; }
-.tk-why { flex: none; font-size: 11.5px; color: var(--muted); }
 .tk-note { font-size: 12px; margin-top: 12px; }
 /* C: the tab opens with what the session is about, where it stands and its turns. */
-.tk-top { padding: 12px 2px 2px; display: flex; flex-direction: column; gap: 4px; }
 .tk-about { font-weight: 650; }
-.tk-about.big { font-size: 14px; }
 .tk-nowline { font-size: 13px; line-height: 1.45; }
-.tk-lbl { font: 600 10.5px var(--mono); letter-spacing: 0.12em; color: var(--muted); margin-right: 8px; }
+/* The About tab (tasks.js tasksAboutPage): what it's about, Now, a line per turn. */
+.tk-aboutpage { padding-top: 14px; }
+.tk-about.big { font-size: 14px; }
 .tk-turn { display: flex; gap: 10px; font-size: 13px; line-height: 1.45; padding: 3px 2px; }
 .tk-turn.new span:last-child { font-weight: 650; }
 .tk-t { flex: none; min-width: 64px; white-space: nowrap; font: 11.5px var(--mono); color: var(--muted); padding-top: 1px; }
@@ -2246,14 +2245,41 @@ button.bg-more:hover { background: var(--panel-2); }
 .tk-since { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .tk-div { display: flex; align-items: center; gap: 10px; font: 600 10.5px var(--mono); letter-spacing: 0.12em; color: var(--muted); }
 .tk-div i { flex: 1; height: 1px; background: var(--line); }
-/* A mark, not a control: a dot while it's left, ✓ when done, a dash when called off. */
+/* A mark, not a control: a dot while it's left, ✓ when done. */
 .tk-mk { flex: none; width: 14px; text-align: center; font: 700 12px var(--mono); line-height: 1.45; color: var(--muted); }
 .tk-mk.open::before { content: "•"; color: var(--ink); }
 .tk-mk.done::before { content: "✓"; }
-.tk-mk.dropped::before { content: "–"; }
 .tk-text { flex: 1; min-width: 0; }
-.tk-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+/* A group's name: a tag, the accent for the two that wait on you (your OK, a decision), plain for the rest. */
+.tk-tag { display: inline-block; padding: 2px 7px; margin-right: 8px; border-radius: 999px; background: var(--panel-2); color: var(--ink); font: 700 10px var(--mono); letter-spacing: 0.1em; }
+.tk-tag.you { background: var(--accent); color: var(--on-accent); }
+/* Pointing at a card's "N left" (tasks.js tasksPeekShow): what's left, under the pill. Not something to click in. */
+.tk-peek { position: fixed; z-index: 60; width: 320px; max-height: 60vh; overflow: hidden; padding: 10px 12px; border-radius: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22); display: none; flex-direction: column; gap: 3px; pointer-events: none; font-size: 12.5px; line-height: 1.4; }
+.tk-peek.show { display: flex; }
+.tk-peek .tk-about { font-size: 13px; margin-bottom: 2px; }
+.tk-peek-g { margin-top: 6px; }
+.tk-peek-r { display: flex; gap: 6px; }
+.tk-peek-foot { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+/* A row still left is a checkbox drawn as a button (tasks.js tasksRow): tick some, then Finish these / Ask about these. */
+.tk-box { flex: none; width: 13px; height: 13px; margin: 3px 0 0 1px; padding: 0; background: none; border: 1.5px solid var(--muted); border-radius: 3px; display: grid; place-items: center; cursor: pointer; }
+.tk-box:hover { border-color: var(--ink); }
+/* Its line: opens what it is (the small model's detail) under it. */
+.tk-body { flex: 1; min-width: 0; }
+.tk-line { display: flex; gap: 6px; width: 100%; padding: 0; text-align: left; background: none; border: 0; font: inherit; color: var(--ink); cursor: pointer; }
+.tk-line:hover .tk-text { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.tk-chev { flex: none; color: var(--muted); font-size: 10px; padding-top: 2px; }
+.tk-detail { margin: 3px 0 1px; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.tk-open.on .tk-box { border-color: var(--accent); background: var(--accent); }
+.tk-open.on .tk-box::after { content: "✓"; font: 700 9px/1 var(--mono); color: var(--on-accent); }
+/* The ticked bar and the foot (status, spend, Refresh): at the pane's bottom, a short list or a long one (the page fills
+   the pane, the dock takes the space left above it); a long list scrolls under them. */
+.tk-dock { position: sticky; bottom: 0; margin: auto -16px -16px; padding: 0 16px 12px; background: var(--panel); }
+.tk-pick { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.tk-pick-n { font: 600 11px var(--mono); letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+.tk-foot { display: flex; align-items: center; gap: 8px; white-space: nowrap; margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .tk-err { color: var(--deny); }
+/* One line: what the last turn did gives way ("…") so the buttons stay on it. */
+.tk-said { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ac-page { padding: 4px 16px 16px; }
 .ac-head { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 16px 0 2px; }
 .ac-head span { font: 500 11px var(--mono); letter-spacing: 0; opacity: 0.85; }

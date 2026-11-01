@@ -525,7 +525,8 @@ function sendWaitingNow(sid) {
   else return false;
   return true;
 }
-const sendTo = (sid, now = false) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, `s:${sid}`, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
+/** `key`: the draft that goes (the session's box; Tasks' Finish these sends one of its own). */
+const sendTo = (sid, now = false, key = `s:${sid}`) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, key, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
 async function pullHeld(sid) {
@@ -1009,7 +1010,7 @@ const helperRunning = (h) => !!h.running;
 const helperSpan = (h) => { const ms = (h.finished_ms || (h.running === false && h.last_ms) || Date.now()) - h.started_ms; const m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000); return m ? `${m}m ${sec}s` : `${sec}s`; };
 const helperModel = (h) => (h.model || "").replace(/^claude-/, "").replace(/-\d.*$/, "");
 /** "12k tokens" an agent has used so far; "" until it has used any (a script uses none). */
-const helperTokens = (n) => !(n > 0) ? "" : n < 1000 ? `${n} tokens` : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k tokens`;
+const helperTokens = (n) => !(n > 0) ? "" : n < 1000 ? `${n} tokens` : n < 1e6 ? `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k tokens` : `${(n / 1e6).toFixed(1)}M tokens`;
 /** Running but quiet for minutes (the feed says so): shown amber, with how long since it last did anything. */
 const helperStuck = (h) => helperRunning(h) && !!h.stuck;
 const helperQuiet = (h) => `<span class="bg-quiet">quiet · ${Math.max(1, Math.floor((Date.now() - (h.last_ms || h.started_ms)) / 60000))}m</span>`;
