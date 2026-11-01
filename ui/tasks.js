@@ -88,7 +88,8 @@ function tasksPage(sid) {
   const doneBtn = nDone ? `<button class="tk-more" data-tasks-do="done" data-sid="${esc(sid)}">${showDone ? "Hide what's done" : `Show ${nDone} done`}</button>` : "";
   const picked = tasksPicks(sid, items);
   const pickBar = picked.length ? `<div class="tk-pick"><span class="tk-pick-n">${picked.length} ticked</span><span class="grow"></span>
-      <button class="btn" data-tasks-do="unpick" data-sid="${esc(sid)}">Clear</button>
+      <button class="btn" data-tasks-do="unpick" data-sid="${esc(sid)}">Untick</button>
+      <button class="btn" data-tasks-do="remove" data-sid="${esc(sid)}">Take off</button>
       <button class="btn" data-tasks-do="ask" data-sid="${esc(sid)}">Ask about these</button>
       <button class="btn primary" data-tasks-do="finish" data-sid="${esc(sid)}">Finish these</button></div>` : "";
   const now = t.busy ? `Reading ${t.busy === "listing" ? "the chat" : "the last turn"}…` : t.err ? `Couldn't update: ${t.err}` : t.said ? `Last turn: ${t.said}` : "";
@@ -101,16 +102,16 @@ function tasksPage(sid) {
       <button class="btn" data-tasks-do="stop" data-sid="${esc(sid)}">Remove the list</button></div></div></div>`;
 }
 
-/** The About tab: what the session is about, where it stands now, and a line per turn (newest first, the ones since
+/** The About tab: what the session is about and, under it, the session in a few sentences; where it stands now, and a line per turn (newest first, the ones since
  *  you looked in bold; 12, then "N earlier"). The same small model's reading as the list, after each turn. */
 function tasksAboutPage(sid) {
   const t = tasksOf(sid), seen = tasksLookedAt(sid), turns = [...(t.turns || [])].reverse();
   const shown = tasksTurnsOpen.has(sid) ? turns : turns.slice(0, 12);
   const unseen = turns.filter((u) => seen && u.at_ms > seen).length;
-  return `<div class="tk-page tk-aboutpage">${t.about ? `<div class="tk-about big">${esc(t.about)}</div>` : ""}
+  return `<div class="tk-page tk-aboutpage">${t.about ? `<div class="tk-about big">${esc(t.about)}</div>` : ""}${t.summary ? `<p class="tk-summary">${esc(t.summary)}</p>` : ""}
     ${t.now ? `<div class="tk-head">NOW</div><div class="tk-nowline">${esc(t.now)}</div>` : ""}
     ${turns.length ? `<div class="tk-head">TURNS${unseen ? ` · ${unseen} SINCE YOU LOOKED` : ""}</div>${shown.map((u) => `<div class="tk-turn ${seen && u.at_ms > seen ? "new" : ""}"><span class="tk-t">${esc(tasksClock(u.at_ms))}</span><span>${esc(u.line)}</span></div>`).join("")}${turns.length > shown.length ? `<button class="tk-more" data-tasks-do="turns" data-sid="${esc(sid)}">${turns.length - shown.length} earlier</button>` : ""}` : ""}
-    ${!t.about && !t.now && !turns.length ? `<div class="ac-empty">${t.busy ? "Reading the chat…" : "Nothing yet: it fills in after the next turn."}</div>` : ""}</div>`;
+    ${!t.about && !t.summary && !t.now && !turns.length ? `<div class="ac-empty">${t.busy ? "Reading the chat…" : "Nothing yet: it fills in after the next turn."}</div>` : ""}</div>`;
 }
 
 /** A group's name as a tag: the two that wait on you (your OK, a decision) in the accent, the others plain. */
@@ -253,6 +254,12 @@ document.addEventListener("click", (e) => {
   if (what === "unpick") { tasksPicked.delete(sid); return renderMain(); }
   if (what === "finish") return tasksFinish(sid);
   if (what === "ask") return tasksAsk(sid);
+  if (what === "remove") {
+    const ids = tasksPicks(sid).map((i) => i.id);
+    tasksPicked.delete(sid);
+    renderMain();
+    return invoke("tasks_remove", { sessionId: sid, ids }).catch((x) => toast(String(x)));
+  }
   const cmd = { start: "tasks_start", refresh: "tasks_refresh", stop: "tasks_stop" }[what];
   if (cmd) invoke(cmd, { sessionId: sid }).catch((x) => toast(String(x)));
 }, true);

@@ -1821,8 +1821,8 @@ const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}
  *  state it's in (working on your message, your turn, waiting on them), so they never drop out of sight. */
 function statusLine(it, s) {
   const tray = s?.session_id ? helperTray(s.session_id) : "";
-  // Waiting on them: the tray says it all.
-  if (tray && s.state === "agent" && s.helpers) return tray;
+  // Waiting on them: the tray says it all, unless it's compacting (or just did): that line shows above it.
+  if (tray && s.state === "agent" && s.helpers && !s.compacting_ms && !s.compacted_ms) return tray;
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
   return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
 }
@@ -1906,8 +1906,7 @@ function submitNewProj(sid) {
   newProjFor = null; newProjNote = ""; moreFor = handoffArm = null; movingProj = false;
   moveToProject(sid, name);
   // The window goes to the new project, the moved session still open in it.
-  projFilter = name;
-  try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
+  setProjFilter(name);
   renderMain();
 }
 function moreMenu(sid, s, closable = false) {
@@ -1988,7 +1987,7 @@ function metaInline(sid) {
  *  mid-turn; the same as ⋯ → Compact), then insights.js handoffChips (one chip, Fresh session ▾, whatever the state). */
 function titleChips(sid) {
   const s = sessionOf(sid), pct = ctxPct(stepFeeds.get(sid)?.meta);
-  const compact = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !justCompacted(s) ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">Compact</button>` : "";
+  const compact = pct !== null && pct >= 80 && s && s.state !== "working" && !s.compacting_ms && !justCompacted(s) ? `<button class="mi-compact" data-cmd="compact" data-sid="${esc(sid)}">${BULB}Compact</button>` : "";
   return compact + handoffChips(sid, s);
 }
 /** A quiet session open in Active: running, but started before Cue was connected, so it never

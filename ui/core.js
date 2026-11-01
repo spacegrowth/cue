@@ -334,7 +334,7 @@ function removeProject(p) {
   setSetting("project.moves", pr.moves);
   setSetting("project.folders", pr.folders);
   setSetting("project.made", pr.made);
-  if (projFilter === p) { projFilter = ""; try { localStorage.setItem("cue.projFilter", ""); } catch {} }
+  if (projFilter === p) setProjFilter("");
   toast(`Removed ${projLabel(p)}`);
 }
 /** The projects pinned beside All projects in the header (config.rs PINS_MAX), in the order pinned. */
@@ -362,6 +362,11 @@ function setProjColor(project, idx) {
 }
 // ---------- one project at a time: the Projects chip in the header hides every other project's cards ----------
 let projFilter = (() => { try { return localStorage.getItem("cue.projFilter") || ""; } catch { return ""; } })();
+/** The window goes to project `p` ("" for All projects), remembered for the next launch. */
+function setProjFilter(p) {
+  projFilter = p;
+  try { localStorage.setItem("cue.projFilter", p); } catch {}
+}
 let pjOpen = false;
 /** + New project… at the foot of the projects list: its name box is open, and what it last said back. */
 let pjNewOpen = false, pjNewNote = "";
@@ -985,6 +990,10 @@ function setActive(id, sid, exact = false) {
   view = "board";
   quietOpen = null;
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
+  // One from another project (⌘K, a chip, a notice): the window goes to its project, so it's shown with its
+  // own sessions, not in the one you were on. All projects stays All projects.
+  const proj = active.sid ? sessionOf(active.sid)?.project ?? state.items.find((i) => i.session_id === active.sid)?.project ?? parkedOf(active.sid)?.project : findItem(id)?.project;
+  if (projFilter && proj && proj !== projFilter) setProjFilter(proj);
   seenSession(active.sid);
   if (termSid && termSid !== active.sid) closeTerm(true);
   loadSteps(active.sid);   // now, not on the next tick

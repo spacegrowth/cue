@@ -298,7 +298,9 @@ function bindMain() {
       if (pj.dataset.pj === "toggle") { pjOpen = !pjOpen; pjNewOpen = false; }
       else {
         const was = projFilter;
-        projFilter = pj.dataset.project || ""; pjOpen = false; try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
+        setProjFilter(pj.dataset.project || ""); pjOpen = false;
+        // The terminal isn't per project: picking one there takes you to its board.
+        if (view === "terminal") view = "board";
         if (projFilter !== was) openTopWaiting();
       }
       return renderMain();

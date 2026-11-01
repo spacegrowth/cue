@@ -32,7 +32,7 @@ pub struct Item {
     pub id: String,
     pub group: String,
     pub text: String,
-    /// "open" | "done" | "dropped" (the chat called it off). Done and dropped ones show struck through.
+    /// "open" | "done" | "dropped" (the chat called it off) | "removed" (you took it off; never listed again).
     pub state: String,
     pub at_ms: u64,
     /// What it is, in a sentence or two for someone who didn't follow the chat (shown when you open the item).
@@ -63,6 +63,9 @@ pub struct Track {
     /// Where it stands now, a line or two, after its last turn.
     #[serde(default)]
     pub now: String,
+    /// The session in a few plain sentences (what it's for, what's done, what's open): the About tab, under About.
+    #[serde(default)]
+    pub summary: String,
     /// A line per turn the list read, oldest first, the newest TURNS_KEPT: what "since you looked" shows.
     #[serde(default)]
     pub turns: Vec<Turn>,
@@ -220,6 +223,29 @@ pub fn refresh(hub: Arc<Hub>, session_id: &str) -> Result<(), String> {
     start(hub, session_id)
 }
 
+/// Take items off the list by hand (ones you don't want there): they're hidden, and the small model is told
+/// never to list them again. How many went.
+pub fn remove(session_id: &str, ids: &[String]) -> Result<usize, String> {
+    change(session_id, |t| {
+        let mut n = 0;
+        for i in t.items.iter_mut().filter(|i| i.state == "open" && ids.contains(&i.id)) {
+            i.state = "removed".into();
+            n += 1;
+        }
+        n
+    })
+    .ok_or_else(|| "this session isn't tracked".into())
+}
+
+/// What you took off the list, for the small model: never to come back, in any words.
+fn took_off(items: &[Item]) -> String {
+    let off: Vec<String> = items.iter().filter(|i| i.state == "removed").map(|i| format!("- {}", i.text)).collect();
+    if off.is_empty() {
+        return String::new();
+    }
+    format!("\n\nThe owner took these off the list. Never list them again, in any words, and don't count them:\n{}", off.join("\n"))
+}
+
 /// Stop tracking a session: its list goes.
 pub fn stop(session_id: &str) {
     with(|all| all.remove(session_id));
@@ -264,8 +290,9 @@ fn list(hub: &Hub, session_id: &str) -> Result<(), String> {
         return Err("nothing has been said in this session yet".into());
     }
     let now = with(|all| all.get(session_id).map(|t| t.items.clone())).ok_or("this session isn't tracked")?;
+    let off = took_off(&now);
     let open: Vec<Item> = now.into_iter().filter(|i| i.state == "open").collect();
-    let a = crate::btw::ask_small(&chat_prompt(&open, &log), session_id)?;
+    let a = crate::btw::ask_small(&format!("{}{off}", chat_prompt(&open, &log)), session_id)?;
     spend(a.spent);
     let listed = parse_list(&a.text).ok_or_else(|| format!("its answer wasn't a list: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let seen = log.last().map(|e| e.at_ms).unwrap_or(0);
@@ -275,6 +302,9 @@ fn list(hub: &Hub, session_id: &str) -> Result<(), String> {
         }
         if !listed.now.is_empty() {
             t.now = listed.now.clone();
+        }
+        if !listed.summary.is_empty() {
+            t.summary = listed.summary.clone();
         }
         let (added, done, dropped) = reconcile(t, listed.items, now_ms());
         t.spent.tokens += a.spent.tokens;
@@ -292,9 +322,10 @@ fn update(hub: &Hub, session_id: &str) -> Result<(), String> {
     if !since.iter().any(|e| e.role == "agent") {
         return Ok(());
     }
+    let off = took_off(&items);
     let open: Vec<Item> = items.into_iter().filter(|i| i.state == "open").collect();
-    let about = with(|all| all.get(session_id).map(|t| t.about.clone())).unwrap_or_default();
-    let a = crate::btw::ask_small(&update_prompt(&about, &open, &since), session_id)?;
+    let (about, summary) = with(|all| all.get(session_id).map(|t| (t.about.clone(), t.summary.clone()))).unwrap_or_default();
+    let a = crate::btw::ask_small(&format!("{}{off}", update_prompt(&about, &summary, &open, &since)), session_id)?;
     spend(a.spent);
     let edits = parse_edits(&a.text).ok_or_else(|| format!("its answer wasn't a change to the list: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let newest = since.last().map(|e| e.at_ms).unwrap_or(seen);
@@ -312,6 +343,9 @@ fn update(hub: &Hub, session_id: &str) -> Result<(), String> {
         }
         if !edits.now.is_empty() {
             t.now = edits.now.clone();
+        }
+        if !edits.summary.is_empty() {
+            t.summary = edits.summary.clone();
         }
         if !edits.said.trim().is_empty() {
             t.turns.push(Turn { at_ms: reply_at, line: edits.said.trim().to_string() });
@@ -356,7 +390,11 @@ away…\"); what the owner already answered; and how-it-works details. One quest
 per part, and never two items for the same thing in other words. Write each item as an action, never a question \
 (\"Push the branch\", \"Decide whether to keep the list\"): it may be sent to the agent as \"Please finish this: …\". Few items are better than many: most sessions have 0 to 5.";
 
-const LIST_JSON: &str = r#"{"about":"what the whole session is about, under 10 words","now":"where it stands and what it waits on, under 25 words","items":[{"id":"t3 or null","group":"check|build|decide|ok","text":"one short line","detail":"one or two plain sentences","done":false,"dropped":false}]}"#;
+const LIST_JSON: &str = r#"{"about":"what the whole session is about, under 10 words","now":"where it stands and what it waits on, under 25 words","summary":"2 to 4 plain sentences","items":[{"id":"t3 or null","group":"check|build|decide|ok","text":"one short line","detail":"one or two plain sentences","done":false,"dropped":false}]}"#;
+
+/// The About tab's few sentences under About: the one line alone doesn't say what the session did or where it's going.
+const SUMMARY_WORDS: &str = "\"summary\": the whole session in 2 to 4 plain sentences for someone who didn't follow it: what \
+it's for, what's been done, and what's still open. No file names or code unless needed.";
 
 /// Each item's "detail": the line alone reads as shorthand to someone who wasn't following.
 const DETAIL_WORDS: &str = "For each item, \"detail\": one or two plain sentences for someone who didn't follow the chat: \
@@ -370,24 +408,25 @@ one you leave out goes off the list):\n{}\n\n", lines(open)) };
         "A coding agent's session with its owner, oldest first:\n\n{}\n\n{have}\
          List what is still left to do: what the owner still has to check, what is still to build or fix, what the owner has to \
          decide, and choices or questions of the agent's that wait on the owner's OK. Leave out what's done. One short line each, \
-         in plain words. {LEAVE_OUT} Groups: {GROUP_WORDS}. {DETAIL_WORDS}\n\nAnswer with only this JSON: {LIST_JSON}",
+         in plain words. {LEAVE_OUT} Groups: {GROUP_WORDS}. {DETAIL_WORDS} {SUMMARY_WORDS}\n\nAnswer with only this JSON: {LIST_JSON}",
         chat(log)
     )
 }
 
-fn update_prompt(about: &str, open: &[Item], since: &[Exchange]) -> String {
+fn update_prompt(about: &str, summary: &str, open: &[Item], since: &[Exchange]) -> String {
     format!(
-        "A coding agent's session{}. What's left in it, so far:\n{}\n\nWhat was said since, oldest first:\n\n{}\n\n\
+        "A coding agent's session{}.{} What's left in it, so far:\n{}\n\nWhat was said since, oldest first:\n\n{}\n\n\
          Update the list from these messages. Mark an item done only when the agent says it's done or the owner confirms it. \
          Drop an item the owner called off or that no longer applies. Add what the owner asked for, what the agent left for later, \
          and questions or choices of the agent's that wait on the owner; not what was finished in these messages, and not what's \
          already on the list. {LEAVE_OUT} Groups: {GROUP_WORDS}. {DETAIL_WORDS} Also say, in plain words for the owner: what the agent did in these messages, \
          under 12 words (\"turn\"); where the session stands and what it waits on, under 25 words (\"now\"); and what the whole \
-         session is about, under 10 words (\"about\"){}.\n\n\
+         session is about, under 10 words (\"about\"){}. {SUMMARY_WORDS} Rewrite it with these messages in.\n\n\
          \"left\": the ids of the items above that are still left now; one you leave out goes off the list (it was answered, \
          is done, was asked again in other words, or no longer applies).\n\n\
-         Answer with only this JSON: {{\"done\":[\"t1\"],\"left\":[\"t2\"],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\",\"detail\":\"one or two plain sentences\"}}],\"turn\":\"under 12 words\",\"now\":\"under 25 words\",\"about\":\"\"}}",
+         Answer with only this JSON: {{\"done\":[\"t1\"],\"left\":[\"t2\"],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\",\"detail\":\"one or two plain sentences\"}}],\"turn\":\"under 12 words\",\"now\":\"under 25 words\",\"about\":\"\",\"summary\":\"2 to 4 plain sentences\"}}",
         if about.is_empty() { String::new() } else { format!(", about: {about}") },
+        if summary.is_empty() { String::new() } else { format!(" In short so far: {summary}") },
         lines(open),
         chat(since),
         // A list made before it had one (or whose first answer left it out) gets one now; else only when the work moved.
@@ -441,6 +480,7 @@ struct ListAnswer {
     items: Vec<Listed>,
     about: String,
     now: String,
+    summary: String,
 }
 
 fn text_of(v: &Value, k: &str) -> String {
@@ -464,7 +504,7 @@ fn parse_list(text: &str) -> Option<ListAnswer> {
                 })
             })
             .collect();
-    Some(ListAnswer { items, about: text_of(&v, "about"), now: text_of(&v, "now") })
+    Some(ListAnswer { items, about: text_of(&v, "about"), now: text_of(&v, "now"), summary: text_of(&v, "summary") })
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -479,6 +519,7 @@ struct Edits {
     said: String,
     now: String,
     about: String,
+    summary: String,
 }
 
 fn parse_edits(text: &str) -> Option<Edits> {
@@ -496,6 +537,7 @@ fn parse_edits(text: &str) -> Option<Edits> {
         said: Some(text_of(&v, "turn")).filter(|s| !s.is_empty()).unwrap_or_else(|| text_of(&v, "said")),
         now: text_of(&v, "now"),
         about: text_of(&v, "about"),
+        summary: text_of(&v, "summary"),
     })
 }
 
@@ -588,6 +630,19 @@ mod tests {
     }
 
     #[test]
+    fn what_you_take_off_stays_off() {
+        let mut t = track(&[("build", "A counter", "open"), ("check", "Run the replay", "open")]);
+        t.items[0].state = "removed".into();
+        assert!(took_off(&t.items).contains("- A counter"));
+        assert!(!took_off(&t.items).contains("Run the replay"));
+        assert!(!add(&mut t, "build", "a counter", "", 2), "said again, it isn't added back");
+        let listed = parse_list(r#"{"items":[{"id":"t1","group":"build","text":"A counter"},{"id":"t2","group":"check","text":"Run the replay"}]}"#).unwrap().items;
+        reconcile(&mut t, listed, 3);
+        assert_eq!(t.items[0].state, "removed", "named again by id, it stays off");
+        assert_eq!(took_off(&[]), "");
+    }
+
+    #[test]
     fn a_first_list_is_read_from_the_answer_even_in_a_fence() {
         let a = parse_list("```json\n{\"about\":\" Order router \",\"now\":\"Tests pass\",\"items\":[{\"id\":null,\"group\":\"Check\",\"text\":\"Run the replay\",\"done\":false},{\"group\":\"odd\",\"text\":\"Build it\"},{\"text\":\"  \"}]}\n```").unwrap();
         assert_eq!((a.about.as_str(), a.now.as_str()), ("Order router", "Tests pass"));
@@ -621,7 +676,7 @@ mod tests {
         let ex = |role: &str, text: &str| -> Exchange { serde_json::from_value(serde_json::json!({ "role": role, "text": text, "at_ms": 1 })).unwrap() };
         let p = chat_prompt(&t.items, &[ex("agent", "Done. Note: I left the other edit alone.")]);
         assert!(p.contains("Leave out the agent's notes") && p.contains("one you leave out goes off the list"), "{p}");
-        assert!(update_prompt("x", &t.items, &[ex("agent", "ok")]).contains("Leave out the agent's notes"));
+        assert!(update_prompt("x", "", &t.items, &[ex("agent", "ok")]).contains("Leave out the agent's notes"));
     }
 
     #[test]
@@ -637,6 +692,10 @@ mod tests {
         assert!(chat_prompt(&t.items, &[]).contains("never a question"), "items are sent as \"Please finish this\", so no \"Push it?\"");
         let old: Item = serde_json::from_str(r#"{"id":"t1","group":"ok","text":"a","state":"open","at_ms":1}"#).unwrap();
         assert_eq!(old.detail, "", "a list saved before details reads");
+        let l = parse_list(r#"{"about":"a","summary":"It did X. Y is left.","items":[]}"#).unwrap();
+        assert_eq!(l.summary, "It did X. Y is left.");
+        assert_eq!(parse_edits(r#"{"summary":"Now Z."}"#).unwrap().summary, "Now Z.");
+        assert!(chat_prompt(&[], &[]).contains("2 to 4 plain sentences"));
     }
 
     #[test]
@@ -665,10 +724,11 @@ mod tests {
     fn the_small_model_reads_the_newest_messages_and_the_list_by_id() {
         let ex = |role: &str, text: &str| -> Exchange { serde_json::from_value(serde_json::json!({ "role": role, "text": text, "at_ms": 1 })).unwrap() };
         let t = track(&[("build", "A counter", "open")]);
-        let p = update_prompt("the order router", &t.items, &[ex("you", "the reuse works"), ex("agent", "Good.")]);
-        assert!(p.contains("session, about: the order router."), "{p}");
+        let p = update_prompt("the order router", "It moved the router onto one session. The replay is left.", &t.items, &[ex("you", "the reuse works"), ex("agent", "Good.")]);
+        assert!(p.contains("session, about: the order router. In short so far: It moved the router onto one session."), "{p}");
+        assert!(p.contains("Rewrite it with these messages in") && p.contains("\"summary\":"), "{p}");
         assert!(p.contains("only if the work has moved"), "with an about, it changes only when the work does: {p}");
-        let fresh = update_prompt("", &t.items, &[ex("you", "go")]);
+        let fresh = update_prompt("", "", &t.items, &[ex("you", "go")]);
         assert!(fresh.contains("(\"about\").") && !fresh.contains("only if the work has moved"), "no about yet: always asked for: {fresh}");
         assert!(p.contains("t1 [build] A counter") && p.contains("Owner: the reuse works\n\nAgent: Good."), "{p}");
         let big = "x".repeat(MSG_CHARS);

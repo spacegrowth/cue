@@ -284,8 +284,7 @@ async function lvAct(act, d) {
       const i = nfProj.info;
       if (nfNewProj && r.session_id) {
         moveToProject(r.session_id, nfNewProj);
-        projFilter = nfNewProj;
-        try { localStorage.setItem("cue.projFilter", projFilter); } catch {}
+        setProjFilter(nfNewProj);
       } else if (i && nfProj.pick != null && nfProj.pick !== i.name) putFolder(i.key, nfProj.pick, i.own);
       nfProj = { at: "", info: null, pick: null, open: false };
       nfNewProj = "";

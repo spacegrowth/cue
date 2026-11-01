@@ -536,6 +536,14 @@ pub(crate) fn tasks_refresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Res
     crate::tasks::refresh(hub.inner().clone(), &session_id)
 }
 
+/// The Tasks tab's Take off: the ticked items go off the list and stay off.
+#[tauri::command]
+pub(crate) fn tasks_remove(hub: State<'_, Arc<Hub>>, session_id: String, ids: Vec<String>) -> Result<(), String> {
+    crate::tasks::remove(&session_id, &ids)?;
+    hub.redraw();
+    Ok(())
+}
+
 /// The Tasks tab's Remove the list: the list goes.
 #[tauri::command]
 pub(crate) fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) {

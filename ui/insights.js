@@ -322,7 +322,7 @@ function handoffMenu(sid, s) {
   if (aheadCan(sid) && aheadWatched(sid)) items += `<button data-act="ins-watch" data-sid="${esc(sid)}">Don't hand off on its own<span>It hands off if you don't come back before its cache runs out</span></button>`;
   return items;
 }
-/** On the open session's title row, beside its state ("your turn"): one chip, Fresh session ▾, whatever the state
+/** On the open session's title row, beside its state ("your turn"): one chip, the bulb then Fresh session ▾, whatever the state
  *  (freshState); a click opens its plan right under it (handoffPlan). The last minutes of a cache (Write hand-off
  *  now, Compact now) are in ⋯ only. "" when there's nothing to do. */
 function handoffChips(sid, s) {
@@ -332,7 +332,7 @@ function handoffChips(sid, s) {
   if (f.kind === "due") insShown(sid, "handoff");
   const open = insPlan.has(sid);
   const caret = `<svg class="mi-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
-  return `<span class="ins-chip-wrap"><button class="mi-act" data-act="ins-plan" data-sid="${esc(sid)}" aria-expanded="${open}">Fresh session${caret}</button>${open ? handoffPlan(sid, s, f) : ""}</span>`;
+  return `<span class="ins-chip-wrap"><button class="mi-act" data-act="ins-plan" data-sid="${esc(sid)}" aria-expanded="${open}">${BULB}Fresh session${caret}</button>${open ? handoffPlan(sid, s, f) : ""}</span>`;
 }
 /** Under the open session's chat: a hand-off on its way or continued, a note written ahead, what you just tapped,
  *  the cache's cost once it's gone, and a ticked "Hand off if I don't come back". Nothing sits above the box. */

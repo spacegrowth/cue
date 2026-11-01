@@ -1038,7 +1038,7 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
    the right, under the buttons. */
 .ap-sub { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px 0 44px; min-width: 0; }
 .ap-sub .crew-line { min-width: 0; }
-.ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; min-width: 0; flex: 0 1000 auto; display: flex; overflow: hidden; }
+.ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; min-width: 0; max-width: 50%; flex: 0 1000 auto; display: flex; overflow: hidden; }   /* never more than half the line */
 /* Cut in the middle: the start gives way first, the folder's own name only when nothing else is left. */
 .cwd-head { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cwd-tail { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
@@ -1936,6 +1936,9 @@ button.ins-n { cursor: pointer; }
 .mi-act[aria-expanded="true"] { background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .mi-act .mi-caret { width: 9px; height: 9px; margin-left: 4px; vertical-align: -0.5px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
 .mi-act[aria-expanded="true"] .mi-caret { transform: rotate(180deg); }
+/* An insight's chip starts with its bulb, in the chip's own amber. */
+.mi-act .ins-bulb, .mi-compact .ins-bulb { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1.5px; stroke: currentColor; }
+.mi-act .ins-bulb path:first-child, .mi-compact .ins-bulb path:first-child { fill: currentColor; }
 .ins-plan { width: min(460px, calc(100vw - 48px)); padding: 12px 14px; gap: 10px; cursor: default; }
 .ins-plan .ins-why { font-size: 13.5px; }
 .ins-plan-steps { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; color: var(--ink); }
@@ -2231,6 +2234,7 @@ button.bg-more:hover { background: var(--panel-2); }
 /* The About tab (tasks.js tasksAboutPage): what it's about, Now, a line per turn. */
 .tk-aboutpage { padding-top: 14px; }
 .tk-about.big { font-size: 14px; }
+.tk-summary { margin: 6px 0 0; max-width: 640px; font-size: 13px; line-height: 1.55; }
 .tk-turn { display: flex; gap: 10px; font-size: 13px; line-height: 1.45; padding: 3px 2px; }
 .tk-turn.new span:last-child { font-weight: 650; }
 .tk-t { flex: none; min-width: 64px; white-space: nowrap; font: 11.5px var(--mono); color: var(--muted); padding-top: 1px; }
