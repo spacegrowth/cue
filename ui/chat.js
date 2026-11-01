@@ -307,6 +307,7 @@ function openExec(sid, id = null) {
     if (quietOpen !== sid) setActive(null, null);   // (not when it's this one: that would end its terminal)
     view = "board";
     quietOpen = sid;
+    followProject(sid);
     renderMain();
   }
   return openTerm(sid);

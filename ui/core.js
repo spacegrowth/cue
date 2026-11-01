@@ -986,14 +986,20 @@ function restoreSpot() {
   if (spot.sid && (card || sessionOf(spot.sid) || parkedOf(spot.sid))) active = { id: card?.id || null, sid: spot.sid };
   renderMain();
 }
+/** A session opened from another project (⌘K, a chip, a notice): the window goes to its project, so it's shown
+ *  with its own sessions, not in the one you were on. All projects stays All projects. `id`: its card, when
+ *  that's all there is to go by. */
+function followProject(sid, id = null) {
+  const proj = sid
+    ? sessionOf(sid)?.project ?? state.items.find((i) => i.session_id === sid)?.project ?? parkedOf(sid)?.project ?? (state.live || []).find((q) => q.session_id === sid)?.project
+    : findItem(id)?.project;
+  if (projFilter && proj && proj !== projFilter) setProjFilter(proj);
+}
 function setActive(id, sid, exact = false) {
   view = "board";
   quietOpen = null;
   active = { id: id || null, sid: sid || findItem(id)?.session_id || null, exact };
-  // One from another project (⌘K, a chip, a notice): the window goes to its project, so it's shown with its
-  // own sessions, not in the one you were on. All projects stays All projects.
-  const proj = active.sid ? sessionOf(active.sid)?.project ?? state.items.find((i) => i.session_id === active.sid)?.project ?? parkedOf(active.sid)?.project : findItem(id)?.project;
-  if (projFilter && proj && proj !== projFilter) setProjFilter(proj);
+  followProject(active.sid, id);
   seenSession(active.sid);
   if (termSid && termSid !== active.sid) closeTerm(true);
   loadSteps(active.sid);   // now, not on the next tick

@@ -519,11 +519,13 @@ fn put_projects(snap: &mut Value, put: &HashMap<String, String>) {
 fn move_projects(snap: &mut Value, moved: &HashMap<String, String>) -> HashMap<String, String> {
     let pid_of = |row: &Value| row.get("agent_pid").or_else(|| row.get("pid")).and_then(Value::as_i64).filter(|p| *p > 0);
     let sid_of = |row: &Value| row.get("session_id").and_then(Value::as_str).map(str::to_string);
-    let mut by_pid: HashMap<i64, String> = HashMap::new();
+    // Same process and same folder: a process number alone is reused by an unrelated session later.
+    let cwd_of = |row: &Value| row.get("cwd").and_then(Value::as_str).unwrap_or("").trim_end_matches('/').to_string();
+    let mut by_pid: HashMap<i64, (String, String)> = HashMap::new();
     for list in ["sessions", "live"] {
         for row in snap.get(list).and_then(Value::as_array).into_iter().flatten() {
             if let (Some(pid), Some(to)) = (pid_of(row), sid_of(row).and_then(|sid| moved.get(&sid).cloned())) {
-                by_pid.insert(pid, to);
+                by_pid.insert(pid, (to, cwd_of(row)));
             }
         }
     }
@@ -531,7 +533,7 @@ fn move_projects(snap: &mut Value, moved: &HashMap<String, String>) -> HashMap<S
     for list in ["sessions", "live"] {
         for row in snap.get(list).and_then(Value::as_array).into_iter().flatten() {
             if let (Some(pid), Some(sid)) = (pid_of(row), sid_of(row)) {
-                if let Some(to) = by_pid.get(&pid).filter(|_| !moved.contains_key(&sid)) {
+                if let Some((to, _)) = by_pid.get(&pid).filter(|(_, cwd)| !moved.contains_key(&sid) && *cwd == cwd_of(row)) {
                     taken.insert(sid, to.clone());
                 }
             }
@@ -588,7 +590,7 @@ mod move_tests {
     #[test]
     fn a_new_session_in_a_moved_ones_process_takes_its_move() {
         let mut snap = json!({
-            "sessions": [{ "session_id": "old", "project": "web", "agent_pid": 7 }, { "session_id": "new", "project": "web", "agent_pid": 7 }, { "session_id": "other", "project": "web", "agent_pid": 8 }],
+            "sessions": [{ "session_id": "old", "project": "web", "agent_pid": 7, "cwd": "/x/web" }, { "session_id": "new", "project": "web", "agent_pid": 7, "cwd": "/x/web/" }, { "session_id": "other", "project": "web", "agent_pid": 8, "cwd": "/x/web" }],
             "live": [{ "session_id": "quiet", "pid": 7, "cwd": "/x/web" }],
         });
         let taken = move_projects(&mut snap, &HashMap::from([("old".to_string(), "api".to_string())]));
@@ -596,6 +598,10 @@ mod move_tests {
         assert_eq!(snap["sessions"][1]["project"], "api");
         assert_eq!(snap["sessions"][2]["project"], "web", "another process keeps its own");
         assert_eq!(snap["live"][0]["project"], "api", "a live entry says it too");
+        // The same process number in another folder is another session (numbers get reused): it keeps its own.
+        let mut snap = json!({ "sessions": [{ "session_id": "old", "agent_pid": 7, "cwd": "/x/web", "project": "web" }, { "session_id": "late", "agent_pid": 7, "cwd": "/x/cue", "project": "cue" }] });
+        assert!(move_projects(&mut snap, &HashMap::from([("old".to_string(), "api".to_string())])).is_empty());
+        assert_eq!(snap["sessions"][1]["project"], "cue");
         // Moved by you, it keeps yours.
         let mut snap = json!({ "sessions": [{ "session_id": "old", "agent_pid": 7, "project": "web" }, { "session_id": "new", "agent_pid": 7, "project": "web" }] });
         let taken = move_projects(&mut snap, &HashMap::from([("old".to_string(), "api".to_string()), ("new".to_string(), "web".to_string())]));

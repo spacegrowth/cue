@@ -232,6 +232,17 @@ pub fn moved() -> std::collections::HashMap<String, String> {
         .unwrap_or_default()
 }
 
+/// A session started from another (a hand-off, a fork) shows under the project that one was moved to.
+pub fn carry_move(from: &str, to: &str) {
+    if to.is_empty() {
+        return;
+    }
+    let mut all = moved();
+    let Some(p) = all.get(from).cloned() else { return };
+    all.insert(to.to_string(), p);
+    let _ = set("project.moves", Value::Object(all.into_iter().map(|(k, v)| (k, json!(v))).collect()));
+}
+
 pub fn history_keep() -> usize {
     load().pointer("/history/keep").and_then(Value::as_u64).unwrap_or(HISTORY_DEFAULT).max(10) as usize
 }

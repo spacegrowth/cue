@@ -508,6 +508,7 @@ pub(crate) fn fork(h: &Arc<Hub>, session_id: &str, message: &str) -> Result<serd
         h.started(origin, message, &[], false);
     }
     h.name_new(&sid, &name);
+    crate::config::carry_move(session_id, &sid);
     Ok(serde_json::json!({ "session_id": sid, "name": name, "detail": format!("Forked as {name} in {what}") }))
 }
 

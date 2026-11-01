@@ -240,7 +240,8 @@ async function lvAct(act, d) {
   if (act === "new") {
     if (d.spot) { sheet = lightbox = null; liveSpot = true; }   // the header's + New: in the middle, like ⌘N
     liveOpen = newOpen = true;
-    nfNewProj = "";
+    // On a project you made (one with no folder of its own), the new session goes in it, as Move to project would.
+    nfNewProj = projFilter && madeProject(projFilter) ? projFilter : "";
     draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || machineFolders("")[0] || recentFolders()[0] || "");
     if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
     renderMain();
@@ -604,7 +605,7 @@ async function svAct(act, sid) {
       try { await invoke("adopt_session", { sessionId: sid }); setState(await invoke("get_state")); return setActive(null, sid); }
       catch (e) { toast(`Couldn't open it here: ${e}`); }
     }
-    setActive(null, null); quietOpen = sid; loadSteps(sid); return renderMain();
+    setActive(null, null); quietOpen = sid; followProject(sid); loadSteps(sid); return renderMain();
   }
   if (act === "tab") {
     renderMain();
