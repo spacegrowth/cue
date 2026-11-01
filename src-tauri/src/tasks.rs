@@ -383,13 +383,15 @@ fn update_prompt(about: &str, open: &[Item], since: &[Exchange]) -> String {
          and questions or choices of the agent's that wait on the owner; not what was finished in these messages, and not what's \
          already on the list. {LEAVE_OUT} Groups: {GROUP_WORDS}. {DETAIL_WORDS} Also say, in plain words for the owner: what the agent did in these messages, \
          under 12 words (\"turn\"); where the session stands and what it waits on, under 25 words (\"now\"); and what the whole \
-         session is about, under 10 words (\"about\"), only if the work has moved to something else, else leave it empty.\n\n\
+         session is about, under 10 words (\"about\"){}.\n\n\
          \"left\": the ids of the items above that are still left now; one you leave out goes off the list (it was answered, \
          is done, was asked again in other words, or no longer applies).\n\n\
          Answer with only this JSON: {{\"done\":[\"t1\"],\"left\":[\"t2\"],\"add\":[{{\"group\":\"check|build|decide|ok\",\"text\":\"one short line\",\"detail\":\"one or two plain sentences\"}}],\"turn\":\"under 12 words\",\"now\":\"under 25 words\",\"about\":\"\"}}",
         if about.is_empty() { String::new() } else { format!(", about: {about}") },
         lines(open),
-        chat(since)
+        chat(since),
+        // A list made before it had one (or whose first answer left it out) gets one now; else only when the work moved.
+        if about.is_empty() { "" } else { ", only if the work has moved to something else, else leave it empty" },
     )
 }
 
@@ -665,6 +667,9 @@ mod tests {
         let t = track(&[("build", "A counter", "open")]);
         let p = update_prompt("the order router", &t.items, &[ex("you", "the reuse works"), ex("agent", "Good.")]);
         assert!(p.contains("session, about: the order router."), "{p}");
+        assert!(p.contains("only if the work has moved"), "with an about, it changes only when the work does: {p}");
+        let fresh = update_prompt("", &t.items, &[ex("you", "go")]);
+        assert!(fresh.contains("(\"about\").") && !fresh.contains("only if the work has moved"), "no about yet: always asked for: {fresh}");
         assert!(p.contains("t1 [build] A counter") && p.contains("Owner: the reuse works\n\nAgent: Good."), "{p}");
         let big = "x".repeat(MSG_CHARS);
         let many: Vec<_> = (0..30).map(|_| ex("agent", &big)).chain([ex("agent", "the newest")]).collect();
