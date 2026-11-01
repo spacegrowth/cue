@@ -236,10 +236,13 @@ pub fn history_keep() -> usize {
     load().pointer("/history/keep").and_then(Value::as_u64).unwrap_or(HISTORY_DEFAULT).max(10) as usize
 }
 
+/// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
+/// below reads the window's scripts for every key they save).
+const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto"];
+
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
-    let allowed = ["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick"];
-    if !allowed.contains(&key) {
+    if !ALLOWED.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
     let value = match key {
@@ -292,6 +295,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         }
         // Insights hidden until this time (ms since 1970); 0 shows them again.
         "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
+        "tasks.on" | "tasks.auto" => json!(value.as_bool().ok_or("must be on or off")?),
         "voice.pick" => match value.as_str() {
             Some(v) if v.len() <= 24 && v.chars().all(|c| c.is_ascii_lowercase() || c == '_') => json!(v),
             _ => return Err("the voice must be one of Kokoro's names, or empty for the Mac's own".into()),
@@ -523,6 +527,34 @@ pub fn tray_shown() -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// Every setting the window saves (a Settings switch or choice, or a call from its scripts) is one Cue
+    /// takes: a key left off ALLOWED fails as "unknown setting" only when someone flips it.
+    #[test]
+    fn every_setting_the_window_saves_is_allowed() {
+        let ui = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui");
+        let mut keys = Vec::new();
+        for entry in std::fs::read_dir(&ui).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "js") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).unwrap();
+            for opener in ["toggle(\"", "seg(\"", "setSetting(\"", "set_setting\", { key: \""] {
+                for (i, _) in src.match_indices(opener) {
+                    let rest = &src[i + opener.len()..];
+                    let key: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_').collect();
+                    // A dotted key and its closing quote: not a class name (classList.toggle) or a built key.
+                    if key.contains('.') && rest[key.len()..].starts_with('"') {
+                        keys.push((key, path.file_name().unwrap().to_string_lossy().to_string()));
+                    }
+                }
+            }
+        }
+        assert!(keys.iter().any(|(k, _)| k == "history.keep"), "the scan found the Settings keys");
+        let missing: Vec<_> = keys.iter().filter(|(k, _)| !super::ALLOWED.contains(&k.as_str())).collect();
+        assert!(missing.is_empty(), "saved by the window but not allowed: {missing:?}");
+    }
+
     #[test]
     fn idle_compaction_covers_big_idle_sessions_unless_turned_off() {
         use super::idle_compacts_in;
