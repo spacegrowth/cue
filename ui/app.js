@@ -553,7 +553,7 @@ function bindMain() {
     const stop = t.closest("[data-act=interrupt]");
     if (stop) return interrupt(stop.dataset.sid);
     const st_ = t.closest("[data-act=send-to]");
-    if (st_) return sendTo(st_.dataset.sid, !!st_.dataset.now);
+    if (st_) return sendTo(st_.dataset.sid);
     if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); }
     const lv = t.closest("[data-lv]");
     if (lv) return lvAct(lv.dataset.lv, lv.dataset);

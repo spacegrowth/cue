@@ -2220,12 +2220,11 @@ function activePane() {
     foot = `<div class="foot">${field(it, `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
   } else if (s) {
     const busy = s.state === "working";
-    // Working: what you send waits for its current step (Queue, ↵), or stops it and goes now (Now, ⌘↵):
-    // with something typed, both are there by the box, so you see you have the choice.
+    // Working: what you send waits for its current step (Queue, ↵), or stops it and goes now (⌘↵; the
+    // queued message says so, with Send now).
     // Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn ends.
     const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-    const now = busy ? `<button class="btn send-now" data-act="send-to" data-now="1" data-sid="${esc(sid)}">Now <kbd>⌘↵</kbd></button>` : "";
-    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, now)}</div>`;
+    foot = `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
   } else foot = "";
   const cm = crewOf(sid);
   // A background agent opened in full (helperPane): it takes the chat area and the box, under the same head.

@@ -33,7 +33,7 @@ pub(crate) fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'st
 /// One session again in tmux, as Resume does: `claude --resume` typed into its new pane,
 /// the new pane recorded (its old one died with the reboot). Failures skip it, quietly.
 pub(crate) fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
-    let Ok(line) = focus::resume_line_local(&o.cwd, &o.session_id) else { return };
+    let Ok(line) = focus::resume_line_local(&o.cwd, &o.session_id, &o.transcript_path) else { return };
     let Ok(tab) = focus::open_in_tmux(&line, &o.cwd, label) else { return };
     let fresh = model::Origin {
         session_id: o.session_id.clone(),
@@ -66,7 +66,7 @@ pub(crate) fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Orig
                 Ok(_) => return,
                 Err(e) => { machines::hooks::log_raw(&machine, &format!("rebuild {} skipped: {e}", o.session_id)); return; }
             }
-            let Ok(line) = focus::resume_line(&o.cwd, &o.session_id) else { return };
+            let Ok(line) = focus::resume_line_with(&o.cwd, &o.session_id, &focus::model_args(&o.transcript_path, &machine)) else { return };
             let label = if !name.is_empty() { name.clone() } else { model::folder_of(&o.cwd) };
             let (pane, tty, dir) = match machines::open_in_tmux(&m, &line, &o.cwd, &label) {
                 Ok(t) => t,

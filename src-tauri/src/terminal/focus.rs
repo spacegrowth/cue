@@ -731,10 +731,20 @@ pub fn fork_line(cwd: &str, session_id: &str, fork_id: &str, name: &str, args: &
     Ok(line)
 }
 
-/// A Claude Code session on this Mac resumed as Cue left it: with its MCP selection when it has one
-/// (logs/mcp.rs), so a choice made in Cue sticks across park, close and restart.
-pub fn resume_line_local(cwd: &str, session_id: &str) -> Result<String, String> {
-    resume_line_with(cwd, session_id, &crate::logs::mcp::selection_flags(session_id))
+/// A Claude Code session on this Mac resumed as Cue left it: on its model (model_args) and with its MCP
+/// selection when it has one (logs/mcp.rs), so a choice made in Cue sticks across park, close and restart.
+pub fn resume_line_local(cwd: &str, session_id: &str, transcript: &str) -> Result<String, String> {
+    let mut args = model_args(transcript, "");
+    args.extend(crate::logs::mcp::selection_flags(session_id));
+    resume_line_with(cwd, session_id, &args)
+}
+
+/// `--model <its model>` to resume a Claude Code session on (its 1M window as `[1m]`; logs::steps::model_of),
+/// when its log can be read here: this Mac's, or a machine's copy (machines::logs; a machine's own path is
+/// never read from here). Resumed without it, Claude Code comes back on its default model and window.
+pub fn model_args(transcript: &str, machine: &str) -> Vec<String> {
+    let readable = !transcript.is_empty() && (machine.is_empty() || std::path::Path::new(transcript).starts_with(crate::server::cue_dir().join("machines")));
+    readable.then(|| crate::logs::steps::model_of(transcript)).flatten().map(|m| vec!["--model".to_string(), m]).unwrap_or_default()
 }
 
 /// The command line that picks a parked session back up, for its agent: `claude --resume <id>`,

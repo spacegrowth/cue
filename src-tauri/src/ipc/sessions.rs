@@ -31,7 +31,7 @@ pub(crate) async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub
 /// The work behind Resume (the window's search). Blocking: it opens a terminal tab.
 pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let (path, cwd, title) = archive::lookup(session_id).ok_or("can't tell which folder that session ran in")?;
-    let line = focus::resume_line_local(&cwd, session_id)?;
+    let line = focus::resume_line_local(&cwd, session_id, &path)?;
     let name = model::folder_of(&cwd);
     let tab = open_for_resume(&line, &cwd, &name)?;
     let origin = model::Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd, transcript_path: path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
@@ -175,14 +175,9 @@ pub(crate) fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &
     let session_id = session_id.as_str();
     let o = p.session.origin.clone();
     // On this Mac, with its MCP selection when it has one (logs/mcp.rs), so the choice sticks.
-    // And its model, as Fork does: resumed without one, Claude Code starts on its default model and window.
-    let mut args = vec![];
+    // And on its model, here or on its machine (focus::model_args).
+    let mut args = if o.harness == "claude" { focus::model_args(&o.transcript_path, &o.machine) } else { vec![] };
     if o.machine.is_empty() {
-        if o.harness == "claude" && !o.transcript_path.is_empty() {
-            if let Some(m) = crate::logs::steps::model_of(&o.transcript_path) {
-                args.extend(["--model".to_string(), m]);
-            }
-        }
         args.extend(crate::logs::mcp::selection_flags(session_id));
     }
     let mut line = focus::resume_line_for_with(&o.harness, &o.cwd, session_id, &args)?;
@@ -679,7 +674,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
     let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
     let label = if name.is_empty() { model::folder_of(&cwd) } else { name };
-    let line = focus::resume_line_local(&cwd, session_id)?;
+    let line = focus::resume_line_local(&cwd, session_id, &path)?;
     // Its window in Cue first, empty: only once that's there does the old one end, so a tmux that won't
     // cooperate never leaves the session ended and nowhere.
     let mut tab = focus::open_in_tmux("", &cwd, &label)?;
