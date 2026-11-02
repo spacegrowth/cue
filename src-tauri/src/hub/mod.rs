@@ -276,7 +276,7 @@ impl Hub {
         let skill_handoffs = crate::db::handoffs();
         // Sessions with "Hand off if I don't come back" on (insights.js ahead).
         let ahead_watch = crate::db::ahead_watched();
-        // Each tracked session's list of what's left (tasks.rs), its own lock, taken before the hub's.
+        // What each followed session is about (tasks.rs), its own lock, taken before the hub's.
         let tasks = crate::tasks::view();
         let tasks_spent = crate::tasks::spent();
         let mut st = self.st();

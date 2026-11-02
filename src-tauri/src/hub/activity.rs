@@ -240,8 +240,8 @@ impl Hub {
                 self.cache_tick();
                 self.changed();
                 self.turn_changes(&sid);
-                // A tracked session: its list of what's left reads this turn (tasks.rs). With Settings' "Track every
-                // session" on, one that isn't tracked yet starts now, its first list from the chat so far. Tasks off: neither.
+                // A followed session: its About reads this turn (tasks.rs). With Settings' "For every session" on, one
+                // that isn't followed yet starts now, from the chat so far. About off: neither.
                 if let Some(me) = self.shared().filter(|_| crate::tasks::on()) {
                     if crate::tasks::is_tracked(&sid) {
                         crate::tasks::turn_ended(me, &sid);

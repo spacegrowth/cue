@@ -523,28 +523,20 @@ pub(crate) async fn catch_up(hub: State<'_, Arc<Hub>>, session_id: String, seen_
     tauri::async_runtime::spawn_blocking(move || h.catch_up(&session_id, seen_ms)).await.map_err(|e| e.to_string())?
 }
 
-/// The Tasks tab: track what's left in a session (tasks.rs). Its first list is asked for in the background; the
-/// window's state carries it as it comes.
+/// The About tab: follow a session (tasks.rs). Its first read is asked for in the background; the window's state
+/// carries it as it comes.
 #[tauri::command]
 pub(crate) fn tasks_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     crate::tasks::start(hub.inner().clone(), &session_id)
 }
 
-/// The Tasks tab's Refresh: the whole list asked for again, with the list as it stands.
+/// The About tab's Refresh: the whole chat read again.
 #[tauri::command]
 pub(crate) fn tasks_refresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     crate::tasks::refresh(hub.inner().clone(), &session_id)
 }
 
-/// The Tasks tab's Take off: the ticked items go off the list and stay off.
-#[tauri::command]
-pub(crate) fn tasks_remove(hub: State<'_, Arc<Hub>>, session_id: String, ids: Vec<String>) -> Result<(), String> {
-    crate::tasks::remove(&session_id, &ids)?;
-    hub.redraw();
-    Ok(())
-}
-
-/// The Tasks tab's Remove the list: the list goes.
+/// The About tab's Stop: what it kept for the session goes.
 #[tauri::command]
 pub(crate) fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) {
     crate::tasks::stop(&session_id);

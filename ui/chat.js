@@ -182,7 +182,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { lo
 /** Catch me up, at the end of the chat (under the latest reply, above the status line): never a bar on the box. */
 function catchUpBar(sid, it, s) {
   const c = catchUp;
-  if (!c || c.sid !== sid || c.gone || !c.since || tasksTracked(sid)) return "";
+  if (!c || c.sid !== sid || c.gone || !c.since || aboutTracked(sid)) return "";
   const ex = conversation(it, s);
   if (ex.some((e) => e.role === "you" && e.at_ms > c.openedAt)) return "";
   const away = (at) => at > c.since && at <= c.openedAt;
@@ -526,7 +526,7 @@ function sendWaitingNow(sid) {
   else return false;
   return true;
 }
-/** `key`: the draft that goes (the session's box; Tasks' Finish these sends one of its own). */
+/** `key`: the draft that goes (the session's box, or one of its own). */
 const sendTo = (sid, now = false, key = `s:${sid}`) => state.restarting?.[sid] ? toast("It's restarting. Send once it's back.") : sessionOf(sid)?.state === "deciding" ? toast("It's asking you something first. Answer that, then send.") : deliver(sid, key, (text, images) => { insSent(sid, text, now); return invoke("send_to_session", { sessionId: sid, text, images, now }); });
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
@@ -1761,8 +1761,8 @@ function chatHtml(it, s, harness, paged = false) {
   const chose = it && !isPending(it) && it.resolved_ms ? [{ at: it.resolved_ms, html: keyed(resultLine(it), "chose") }] : [];
   const ran = sid ? (ranLog.get(sid) || []).map((e, n) => ({ at: e.at, html: keyed(ranCard(sid, e, n), K(`ran:${e.at}`)) })) : [];
   const restarts = sid ? (state.restarted?.[sid] || []).map((r, n, all) => ({ at: r.at_ms, html: keyed(restartLine(sid, r, n === all.length - 1), K(`rs:${r.at_ms}`)) })) : [];
-  // A tracked session you come back to: "Since you looked" where the new part starts (tasks.js), no call.
-  const since = sid ? tasksSince(sid, ex) : null;
+  // A tracked session you come back to: "Since you looked" where the new part starts (about.js), no call.
+  const since = sid ? aboutSince(sid, ex) : null;
   if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
@@ -2256,7 +2256,7 @@ function activePane() {
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}
-    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${tasksSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
+    ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
     ${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
@@ -2321,7 +2321,7 @@ function mcpList(key, compact = false) {
   };
   const mine = servers.filter((m) => m.scope !== "session"), theirs = servers.filter((m) => m.scope === "session");
   if (!mine.length && !theirs.length) return `<div class="mcp-none">No MCP servers are set up in Claude Code</div>`;
-  return `<div class="mcp-list ${compact ? "compact" : ""}">${mine.map(item).join("")}${theirs.length ? `<div class="mcp-sub">Claude Code adds these itself</div>${theirs.map(item).join("")}` : ""}</div>`;
+  return `<div class="mcp-list ${compact ? "compact" : ""}" data-mcp-key="${esc(key)}">${mine.map(item).join("")}${theirs.length ? `<div class="mcp-sub">Claude Code adds these itself</div>${theirs.map(item).join("")}` : ""}</div>`;
 }
 /** What the running session really has from a server (logs/mcp.rs with_live), so a tick never passes
  *  for working: connected, waiting for sign-in, connecting, failed, or (one it should have) not loaded. */

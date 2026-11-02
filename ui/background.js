@@ -72,7 +72,7 @@ document.addEventListener("click", (e) => {
     const sid = tab.dataset.sid;
     actTabOn.delete(sid);
     extTabOf.delete(sid);
-    tasksTabOn.delete(sid);
+    aboutTabOn.delete(sid);
     bgTabOn.set(sid, tab.dataset.bgTab);
     helperView = null;
     return renderMain();

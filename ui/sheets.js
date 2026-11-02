@@ -461,23 +461,7 @@ document.addEventListener("click", (e) => {
   projResetAsk = v === "ask";
   renderMain();
 }, true);
-/** Settings → Tasks: what turning it on does, in plain words (a small model writes the lists, not Cue, and the
- *  session never sees it), which sessions get one, and what they've cost. */
-function tasksSettings(st) {
-  const on = st.tasks?.on === true;
-  return `
-    <div class="set-group">Tasks</div>
-    ${setRow("A list of what's left, per session", "A Tasks tab in each session. Make a list there and a small model (Haiku) reads the chat and lists what's left for you; it updates after each turn. The session never sees it.", toggle("tasks.on", on))}
-    ${on ? setRow("For every session", "Without clicking Make a list.", toggle("tasks.auto", st.tasks?.auto === true)) : ""}
-    ${tasksSpentRow()}`;
-}
-/** What every session's list has cost together, kept after a session's list is stopped (tasks.rs spent). */
-function tasksSpentRow() {
-  const t = state.tasks_spent || {};
-  const text = t.calls ? `All sessions so far: ${tasksMoney(t.usd)} · ${helperTokens(t.tokens || 0) || "0 tokens"}${t.tracked ? ` · ${t.tracked} session${t.tracked === 1 ? "" : "s"} with a list now` : ""}` : "Nothing yet.";
-  return setRow("What it has cost", esc(text), "");
-}
-const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["tasks", "Tasks"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
+const SET_TABS = [["general", "General"], ["agents", "Agents"], ["chat", "Chat"], ["summaries", "Summaries"], ["voice", "Voice"], ["insights", "Insights"], ["actions", "Actions"], ["usage", "Usage"]];
 let setTab = (() => { try { return localStorage.getItem("cue.setTab") || "general"; } catch { return "general"; } })();
 function settingsSheet() {
   const st = state.settings || {};
@@ -525,7 +509,7 @@ function settingsSheet() {
     ${setRow("When a Stop hook makes the agent continue, the card shows", "The answer: the agent's final reply, with the hook's output (e.g. a checklist) tucked underneath. The last message: whatever it wrote last, usually the hook's output.", seg("turn.mode", st.turn?.mode ?? "answer", [["answer", "The answer"], ["last", "The last message"]]))}
     <div class="set-group">History</div>
     ${setRow("Keep the last", `${state.history.length.toLocaleString()} saved now · ~/.cue/history.jsonl`, `<div style="display:flex;gap:8px;align-items:center">${seg("history.keep", keep, [[100, "100"], [300, "300"], [1000, "1,000"], [5000, "5,000"]])}<input class="num" type="number" min="10" step="50" value="${keep}" data-keep-custom aria-label="Custom history size"/></div>`)}`,
-    tasks: tasksSettings(st),
+    summaries: aboutSettings(st),
     voice: voiceSettings() + extRows("Voice"),
     insights: insSettings(st) + tipsSettings(st),
     actions: actSettings(),

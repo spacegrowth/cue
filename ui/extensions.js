@@ -46,17 +46,17 @@ function extFrame(e) {
   return f;
 }
 
-/** The row under the activity bar: Chat, Tasks (tasks.js), Actions (actions.js), Agents and Scripts (background.js), then a tab
+/** The row under the activity bar: Chat, Actions (actions.js), Agents and Scripts (background.js), then a tab
  *  per extension that has one. */
 function sessTabs(sid) {
   const tabs = extTabs();
   if (!sid) return "";
   const on = extOn(sid);
   const ran = on && extRan.get(on);
-  return `<div class="stabs"><button class="stab ${on || actTabOn.has(sid) || bgTabOn.has(sid) || tasksTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${tasksTabBtn(sid)}${actTabBtn(sid)}${bgTabBtn(sid)}${tabs.map((e) => {
+  return `<div class="stabs"><button class="stab ${on || actTabOn.has(sid) || bgTabOn.has(sid) || aboutTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${actTabBtn(sid)}${bgTabBtn(sid)}${tabs.map((e) => {
     const b = extBadges.get(`${e.name}|${sid}`);
     return `<button class="stab ${on === e.name ? "on" : ""}" data-stab="${esc(e.name)}" data-sid="${esc(sid)}">${esc(e.tab)}${b ? `<span class="stab-n">${esc(b)}</span>` : ""}</button>`;
-  }).join("")}${tasksAboutBtn(sid)}<span class="grow"></span>${ran ? `<span class="stab-ran">ran <code>${esc(ran)}</code></span>` : ""}</div>`;
+  }).join("")}${aboutTabBtn(sid)}<span class="grow"></span>${ran ? `<span class="stab-ran">ran <code>${esc(ran)}</code></span>` : ""}</div>`;
 }
 /** Where the tab's page goes, in place of the chat (the chat's element stays, hidden: see placeExt). */
 const extSlot = (sid) => (extOn(sid) ? `<div class="ext-slot" data-ext-slot></div>` : "");
@@ -67,7 +67,7 @@ function placeExt() {
   const slot = name && document.querySelector(".active-pane [data-ext-slot]");
   const covered = !!(sheet || lightbox);
   const chat = document.querySelector(".active-pane [data-chat]");
-  if (chat) chat.style.display = slot || document.querySelector(".active-pane [data-act-slot], .active-pane [data-bg-slot], .active-pane [data-tasks-slot]") ? "none" : "";
+  if (chat) chat.style.display = slot || document.querySelector(".active-pane [data-act-slot], .active-pane [data-bg-slot], .active-pane [data-about-slot]") ? "none" : "";
   for (const [n, f] of extFrames) if (n !== name || !slot || covered) f.hidden = true;
   extNotify();
   if (!slot || covered) return;
@@ -84,7 +84,7 @@ document.addEventListener("click", (e) => {
   e.stopPropagation();
   actTabOn.delete(t.dataset.sid);
   bgTabOn.delete(t.dataset.sid);
-  tasksTabOn.delete(t.dataset.sid);
+  aboutTabOn.delete(t.dataset.sid);
   if (t.dataset.stab) extTabOf.set(t.dataset.sid, t.dataset.stab); else extTabOf.delete(t.dataset.sid);
   renderMain();
 }, true);

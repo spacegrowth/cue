@@ -56,9 +56,10 @@ function projChip() {
   const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button>${actDots(shown, "chip")}</span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
   // Its dot changes its color, as the projects chip's does.
-  // What waits on you there, while another project is shown (with All projects, or that one, it's on screen already).
-  const waitIn = (p) => projFilter && projFilter !== p ? state.items.filter((i) => i.project === p && !parkedIds().has(i.session_id)).length : 0;
-  const waitN = (p) => { const n = waitIn(p); return n ? `<span class="pj-wait" aria-label="${n} waiting on you">${n}</span>` : ""; };
+  // Replies that just came back there, in a conversation you're having (In conversation's rule), while another project
+  // is shown: what's been waiting a while you know about; with All projects, or on that one, it's on screen already.
+  const backIn = (p) => projFilter && projFilter !== p ? state.items.filter((i) => i.project === p && !parkedIds().has(i.session_id) && talking(i)).length : 0;
+  const waitN = (p) => { const n = backIn(p); return n ? `<span class="pj-wait" aria-label="${n} just replied">${n}</span>` : ""; };
   const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span>${waitN(p)}</button>${actDots(p, "pin")}</span></span>`).join("");
   return main + chips;
 }
@@ -371,7 +372,7 @@ const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.rol
 /** "3 bg": what a session has running in the background (agents and scripts), beside its state, on any of its
  *  cards. A click opens the session onto it (app.js). */
 const bgPill = (s) => s?.background > 0 ? `<button class="bg-pill" data-bg-open="${esc(s.session_id)}">${s.background} bg</button>` : "";
-const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}${tasksPill(s)}<span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div><div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
+const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}"><div class="nrow-top">${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}<span class="grow"></span><span class="age">${ago(s.since_ms)}</span></div><div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
 /** The grey line under a card's name: why it's in conversation, or that it just left it. */
 function talkNote(it) {
   const gap = talkGap(it);
@@ -428,9 +429,9 @@ function laterRow({ sid, s, it }) {
   const what = it ? "" : s.state === "working" ? "working" : "idle";
   const text = it ? plain(summary(it)) : s.prompt ? `› ${s.prompt}` : "";
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
-    <div class="nrow-top">${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}${bgPill(s)}${tasksPill(s)}<span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
+    <div class="nrow-top">${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}${bgPill(s)}<span class="grow"></span><span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button></div>
     ${cardCrew(sid)}
-    ${tasksCardText(sid) || (text ? `<div class="nrow-text">${esc(text)}</div>` : "")}${insCardLine(sid)}</div>`;
+    ${aboutCardText(sid) || (text ? `<div class="nrow-text">${esc(text)}</div>` : "")}${insCardLine(sid)}</div>`;
 }
 const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc(it.id)}" aria-label="Move to bottom">↓</button>`;
 /** A compact row in Waiting: enough to recognise it, quick answers for the easy ones, click to open in Active. */
@@ -449,9 +450,9 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    <div class="nrow-top">${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${bgPill(sessionOf(it.session_id))}${tasksPill(sessionOf(it.session_id))}<span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
+    <div class="nrow-top">${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${bgPill(sessionOf(it.session_id))}<span class="grow"></span><span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}</div>
     ${talkNote(it)}${cardCrew(it.session_id)}
-    ${(it.kind === "waiting" && tasksCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
+    ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
 /** A lead whose team needs you while it has nothing waiting itself: a slim card holding the team's tree.
  *  Its title line opens the lead; a row in the tree opens that executor. */
@@ -763,8 +764,8 @@ function boardView() {
   const card = (s, open = false) => { const tree = sessTree.has(s.session_id) ? teamTree(s.session_id) : "", go = `data-session="${esc(s.session_id)}"`;
     const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
     return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
-      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}${tasksPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
-      ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}${tasksCardText(s.session_id)}
+      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
+      ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
       ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`; };
   const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
