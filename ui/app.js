@@ -41,6 +41,7 @@ function renderMain() {
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
   const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
+  const mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
   // A background script's output in its full view (chat.js scriptPane): where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
   // Waiting is newest first, so a card that comes in lands on top and pushes the rest down. While the pointer
@@ -77,6 +78,7 @@ function renderMain() {
     const dy = el ? el.getBoundingClientRect().top - waitAnchor.top : 0;
     if (Math.abs(dy) >= 1) el.closest(".sec-body").scrollTop += dy;
   }
+  document.querySelectorAll(".mcp-list[data-mcp-key]").forEach((el) => { const top = mcpTops.get(el.dataset.mcpKey); if (top) el.scrollTop = top; });
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
   // A redraw replaces every element, which would start each pulsing dot over: its phase comes from the
   // clock instead, so it carries on through the redraws that come every couple of seconds while steps
