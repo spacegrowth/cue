@@ -334,6 +334,10 @@ function removeProject(p) {
   setSetting("project.moves", pr.moves);
   setSetting("project.folders", pr.folders);
   setSetting("project.made", pr.made);
+  // Its pin, color and name go with it: a pin would keep showing a project that's gone.
+  if (projPins().includes(p)) { pr.pins = projPins().filter((x) => x !== p); setSetting("project.pins", pr.pins); }
+  if (pr.colors && p in pr.colors) { const { [p]: _, ...rest } = pr.colors; pr.colors = rest; setSetting("project.colors", rest); }
+  if (pr.names && p in pr.names) { const { [p]: _, ...rest } = pr.names; pr.names = rest; setSetting("project.names", rest); }
   if (projFilter === p) setProjFilter("");
   toast(`Removed ${projLabel(p)}`);
 }

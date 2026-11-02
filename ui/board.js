@@ -56,7 +56,10 @@ function projChip() {
   const main = `<span class="pj-wrap"><span class="hchip pj-chip">${projBtn(shown || ALL_PROJ, "chip")}<button class="pj-open" data-pj="toggle">${shown ? esc(projLabel(shown)) : `<span class="hlbl">All projects</span>`}<span class="pj-car">▾</span></button>${actDots(shown, "chip")}</span>${pop}</span>`;
   // Pinned: one click shows that project alone; again, all of them.
   // Its dot changes its color, as the projects chip's does.
-  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span></button>${actDots(p, "pin")}</span></span>`).join("");
+  // What waits on you there, while another project is shown (with All projects, or that one, it's on screen already).
+  const waitIn = (p) => projFilter && projFilter !== p ? state.items.filter((i) => i.project === p && !parkedIds().has(i.session_id)).length : 0;
+  const waitN = (p) => { const n = waitIn(p); return n ? `<span class="pj-wait" aria-label="${n} waiting on you">${n}</span>` : ""; };
+  const chips = pins.map((p) => `<span class="pj-wrap"><span class="hchip pj-chip pj-pinned ${projFilter === p ? "hot" : ""}">${projBtn(p, "pin")}<button class="pj-open" data-pj="pick" data-project="${projFilter === p ? "" : esc(p)}" aria-pressed="${projFilter === p}"><span class="pj-pn">${esc(projLabel(p))}</span>${waitN(p)}</button>${actDots(p, "pin")}</span></span>`).join("");
   return main + chips;
 }
 

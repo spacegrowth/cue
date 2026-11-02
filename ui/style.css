@@ -663,6 +663,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .pj-pin.on svg { fill: currentColor; }
 .pj-pinned { max-width: 170px; }
 .pj-pinned .pj-open { min-width: 0; }
+/* A pinned project's count of what waits on you, while another project is shown: amber, like the Dock's badge. */
+.pj-wait { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font: 700 11px var(--mono); background: #f6e7c8; color: #5b3d05; }
 /* A row's ✎ (rename it in Cue), shown as its pin is; the name's box in its place; its own name under yours. */
 .pj-ren { display: grid; place-items: center; width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; font-size: 12px; color: var(--muted); opacity: 0; }
 .pj-row:hover .pj-ren, .pj-ren:focus-visible { opacity: 0.7; }
