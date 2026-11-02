@@ -165,17 +165,21 @@ try { looked = JSON.parse(localStorage.getItem(LOOKED) || "{}") || {}; } catch {
 let lookedSid = null;   // the session whose chat the last draw showed
 let catchUp = null;     // this opening's strip: { sid, since, asking, got, err, gone }
 /** The chat for `sid` is on screen: the first draw after opening it sets up its strip from when it was last
- *  looked at; every draw while the window is in front notes the time. Hidden, the window isn't being looked at. */
+ *  looked at; every draw while the window is in front notes the time. Hidden, or behind another app, it isn't being
+ *  looked at (a session's replies still redraw it). */
 function noteLooked(sid) {
-  if (!sid || document.hidden) return;
+  if (!sid || document.hidden || !document.hasFocus()) return;
   if (sid !== lookedSid) { lookedSid = sid; catchUp = { sid, since: looked[sid] || 0, openedAt: now() }; }
   looked[sid] = now();
   const keys = Object.keys(looked);
   if (keys.length > 50) for (const k of keys.sort((a, b) => looked[a] - looked[b]).slice(0, keys.length - 50)) delete looked[k];
   try { localStorage.setItem(LOOKED, JSON.stringify(looked)); } catch {}
 }
-// Back in front: the chat open counts as opened again (looked at last when the window went away).
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { lookedSid = null; renderMain(); } });
+// Back in front (shown again, or back from another app): the chat open counts as opened again, looked at last
+// when the window went away.
+const backInFront = () => { if (!document.hidden && document.hasFocus()) { lookedSid = null; renderMain(); } };
+document.addEventListener("visibilitychange", backInFront);
+window.addEventListener("focus", backInFront);
 /** The bar for the open chat, or "": only for a session you last looked at 15 minutes or more ago that had
  *  replied by the time you opened it. What comes in while it's open isn't "while you were away", and once you
  *  write to it you're caught up: the bar goes. */
