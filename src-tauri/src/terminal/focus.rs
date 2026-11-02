@@ -46,8 +46,34 @@ fn private_tmux() {
     });
 }
 
+/// A command's output, given at most `secs`: past that it's killed and this is an error. What Cue runs
+/// to type into a terminal or read it (osascript, tmux, kitten, wezterm) answers in well under a second;
+/// one that doesn't (iTerm busy, a tmux server not answering) would otherwise hold a send for good.
+fn capped(cmd: &mut Command, secs: u64) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+    let mut child = cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
+    // Read as it runs: a full pipe would stop it before it could exit.
+    let drain = |p: Option<Box<dyn Read + Send>>| std::thread::spawn(move || { let mut b = vec![]; if let Some(mut p) = p { let _ = p.read_to_end(&mut b); } b });
+    let out = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let err = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if std::time::Instant::now() >= until {
+            let _ = child.kill();
+            let _ = child.wait();
+            let name = cmd.get_program().to_string_lossy().rsplit('/').next().unwrap_or("").to_string();
+            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, format!("{name} didn't answer in {secs}s")));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    Ok(std::process::Output { status, stdout: out.join().unwrap_or_default(), stderr: err.join().unwrap_or_default() })
+}
+
 fn run(cmd: &str, args: &[&str]) -> bool {
-    Command::new(bin(cmd)).args(args).status().map(|s| s.success()).unwrap_or(false)
+    capped(Command::new(bin(cmd)).args(args), 10).map(|o| o.status.success()).unwrap_or(false)
 }
 
 fn osa(s: &str) -> String {
@@ -55,7 +81,7 @@ fn osa(s: &str) -> String {
 }
 
 fn run_osascript(script: &str) -> Result<String, String> {
-    let out = Command::new("osascript").arg("-e").arg(script).output().map_err(|e| e.to_string())?;
+    let out = capped(Command::new("osascript").arg("-e").arg(script), 20).map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -273,7 +299,7 @@ pub fn tmux_kill_pane(pane: &str) {
 
 /// tmux's answer, trimmed; None if it failed.
 fn tmux_out(args: &[&str]) -> Option<String> {
-    let out = Command::new(bin("tmux")).args(args).output().ok()?;
+    let out = capped(Command::new(bin("tmux")).args(args), 10).ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
@@ -288,7 +314,7 @@ pub(crate) fn pane_in_its_session(pane: &str, name: &str) -> bool {
 
 /// What a tmux pane shows right now, as plain text (wrapped lines joined), blank lines at the end dropped.
 pub fn tmux_screen(pane: &str) -> Result<String, String> {
-    let out = Command::new(bin("tmux")).args(["capture-pane", "-p", "-J", "-t", pane]).output().map_err(|e| e.to_string())?;
+    let out = capped(Command::new(bin("tmux")).args(["capture-pane", "-p", "-J", "-t", pane]), 10).map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!("tmux pane {pane} is gone"));
     }
@@ -1358,6 +1384,19 @@ mod iterm_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_that_hangs_is_cut_off() {
+        let t = std::time::Instant::now();
+        let e = capped(Command::new("/bin/sleep").arg("30"), 1).unwrap_err();
+        assert!(t.elapsed() < std::time::Duration::from_secs(3), "{:?}", t.elapsed());
+        assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
+        assert!(e.to_string().contains("sleep didn't answer in 1s"), "{e}");
+        // One that answers: all of its output, more than a pipe holds, and its status.
+        let o = capped(Command::new("/bin/sh").args(["-c", "head -c 200000 /dev/zero | tr '\\0' x; exit 3"]), 10).unwrap();
+        assert_eq!(o.stdout.len(), 200_000);
+        assert_eq!(o.status.code(), Some(3));
+    }
 
     #[test]
     fn a_new_tmux_window_is_read_back_as_its_pane_and_its_tty() {

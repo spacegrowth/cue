@@ -4,7 +4,6 @@ use crate::config;
 use crate::db;
 use crate::notify;
 use crate::uploads;
-use crate::tray;
 use crate::terminal::focus;
 use crate::hub::Hub;
 use std::sync::Arc;
@@ -77,30 +76,10 @@ pub(crate) async fn install_update(app: tauri::AppHandle) -> Result<(), String> 
     app.restart()
 }
 
-/// A newer Cue was found (in the background, or from a menu): the menu bar icon's menu offers it and
-/// the window shows its card.
+/// A newer Cue was found (in the background): the window shows its card.
 pub(crate) fn offer_update(app: &tauri::AppHandle, u: &tauri_plugin_updater::Update) {
     use tauri::Emitter;
-    tray::update_item(&format!("Update to Cue {} and Restart", u.version), true);
     let _ = app.emit("update-ready", serde_json::json!({ "version": u.version, "notes": u.body }));
-}
-
-/// The menu bar icon's "Check for Updates…": check, and once one is found, install it and restart.
-pub(crate) async fn update_from_menu(app: tauri::AppHandle) {
-    if tray::update_offered() {
-        tray::update_item("Installing the update…", false);
-        if let Err(e) = install_update(app).await {
-            eprintln!("cue: update: {e}");
-            tray::update_item("Couldn't update. Try again", true);
-        }
-        return;
-    }
-    tray::update_item("Checking for updates…", false);
-    match find_update(&app).await {
-        Ok(Some(u)) => offer_update(&app, &u),
-        Ok(None) => tray::update_item("Cue is up to date", true),
-        Err(_) => tray::update_item("Couldn't check for updates", true),
-    }
 }
 
 /// A Cue built with the add-on never offers a release: releases are built without it, so installing

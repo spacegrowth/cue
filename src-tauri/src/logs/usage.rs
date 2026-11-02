@@ -260,6 +260,61 @@ pub fn last_api_error(transcript: &str) -> Option<(String, String)> {
     None
 }
 
+/// Claude Code failing to reach the API and trying again: it writes a `system` / `api_error` line per
+/// try (the error, try n of max, the wait before the next), for minutes before it gives up with an
+/// API-error reply (last_api_error). Meanwhile its terminal only shows a spinner, so Cue says it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Retry {
+    /// What went wrong, in Claude Code's words ("Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)").
+    pub error: String,
+    pub attempt: u64,
+    pub max: u64,
+    /// When it tries again (ms; from the line's time and its wait).
+    pub next_ms: u64,
+    /// It couldn't connect at all (no network, or nothing at that address), not an error the API sent.
+    pub network: bool,
+}
+
+/// The retry a Claude Code turn is in now: the last `api_error` line, when nothing since says the API
+/// answered (a reply) or a new turn started (something you wrote). The last 256KB, as last_api_error.
+pub fn retrying(transcript: &str) -> Option<Retry> {
+    let mut f = std::fs::File::open(transcript).ok()?;
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(256 * 1024))).ok()?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    for line in text.lines().rev() {
+        // Most lines are neither: skip them without parsing.
+        if !line.contains("\"api_error\"") && !line.contains("\"type\":\"assistant\"") && !line.contains("\"type\":\"user\"") {
+            continue;
+        }
+        let Ok(e) = serde_json::from_str::<Value>(line) else { continue };
+        if e.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        match e.get("type").and_then(Value::as_str) {
+            Some("assistant") => return None,
+            Some("user") if e.get("isMeta").and_then(Value::as_bool) != Some(true) => return None,
+            Some("system") if e.get("subtype").and_then(Value::as_str) == Some("api_error") => {
+                let n = |k: &str| e.get(k).and_then(Value::as_u64).unwrap_or(0);
+                let err = e.get("error");
+                let error = err.and_then(|x| x.get("formatted").or_else(|| x.get("message"))).and_then(Value::as_str).unwrap_or("API error").to_string();
+                let at = e.get("timestamp").and_then(Value::as_str).and_then(super::transcript::iso_ms).unwrap_or(0);
+                return Some(Retry {
+                    error,
+                    attempt: n("retryAttempt"),
+                    max: n("maxRetries"),
+                    next_ms: at + n("retryInMs"),
+                    network: err.and_then(|x| x.get("isNetworkDown")).and_then(Value::as_bool) == Some(true) || err.and_then(|x| x.get("connection")).is_some_and(|c| !c.is_null()),
+                });
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// "4:10am" for a time today, "Sat 8am" otherwise.
 pub fn when(ms: u64, now: u64) -> String {
     let tm = local_tm(ms / 1000);
@@ -280,6 +335,32 @@ pub fn when(ms: u64, now: u64) -> String {
 mod tests {
     use super::*;
     use crate::model::now_ms;
+
+    #[test]
+    fn a_retry_is_read_until_the_api_answers_or_you_write() {
+        let p = std::env::temp_dir().join(format!("cue-retry-{}.jsonl", std::process::id()));
+        // As Claude Code 2.1.316 writes them, trimmed.
+        let user = r#"{"type":"user","isSidechain":false,"timestamp":"2026-11-01T22:57:28.000Z","message":{"role":"user","content":"hi"}}"#;
+        let try1 = r#"{"type":"system","subtype":"api_error","level":"error","isSidechain":false,"timestamp":"2026-11-01T22:57:29.199Z","retryAttempt":1,"maxRetries":10,"retryInMs":502,"error":{"message":"Connection error.","formatted":"Connection refused — a firewall or proxy may be blocking it (ECONNREFUSED)","connection":{"code":"ECONNREFUSED"},"isNetworkDown":true,"rateLimits":null,"noResponse":null}}"#;
+        let try5 = r#"{"type":"system","subtype":"api_error","level":"error","isSidechain":false,"timestamp":"2026-11-01T22:57:40.000Z","retryAttempt":5,"maxRetries":10,"retryInMs":9620,"error":{"message":"Overloaded","formatted":"Overloaded","connection":null,"isNetworkDown":false}}"#;
+        let reply = r#"{"type":"assistant","isSidechain":false,"timestamp":"2026-11-01T22:58:00.000Z","message":{"content":[{"type":"text","text":"hello"}]}}"#;
+        let bookkeeping = r#"{"type":"api-request","timestamp":"2026-11-01T22:57:41.000Z"}"#;
+        let write = |lines: &[&str]| std::fs::write(&p, lines.join("\n") + "\n").unwrap();
+        let path = p.to_str().unwrap();
+        write(&[user, try1, bookkeeping]);
+        let r = retrying(path).unwrap();
+        assert_eq!((r.attempt, r.max, r.network), (1, 10, true));
+        assert!(r.error.contains("ECONNREFUSED"), "{}", r.error);
+        assert_eq!(r.next_ms, crate::logs::transcript::iso_ms("2026-11-01T22:57:29.199Z").unwrap() + 502);
+        write(&[user, try1, try5]);
+        let r = retrying(path).unwrap();
+        assert_eq!((r.attempt, r.network, r.error.as_str()), (5, false, "Overloaded"));
+        write(&[user, try1, reply]);
+        assert!(retrying(path).is_none(), "the API answered");
+        write(&[try1, user]);
+        assert!(retrying(path).is_none(), "a new turn");
+        let _ = std::fs::remove_file(&p);
+    }
 
     #[test]
     fn limit_messages_say_which_limit() {

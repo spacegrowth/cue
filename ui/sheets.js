@@ -503,7 +503,6 @@ function settingsSheet() {
     ${setRow("Sound", "What every notification plays. Click one to hear it.", seg("notify.sound", st.notify?.sound ?? "pluck", SOUNDS))}
     <div class="set-group">Mac</div>
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
-    ${setRow("Show icon in menu bar", "Off: no icon up top; open Cue from the Dock. Alerts still arrive as notifications.", toggle("tray.show", st.tray?.show ?? true))}
     <div class="set-group">Projects</div>
     ${projResetRows()}`,
     agents: `

@@ -308,7 +308,7 @@ impl Hub {
         self.session_command(&sid, "compact")
     }
 
-    /// Cue just started: show what was already waiting (menu bar icon, Dock badge) now,
+    /// Cue just started: show what was already waiting (the Dock badge) now,
     /// not at the next change.
     pub fn show_waiting(&self) {
         self.changed();

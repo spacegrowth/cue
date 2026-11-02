@@ -25,7 +25,6 @@ mod extensions;
 mod server;
 mod sessions;
 mod uploads;
-mod tray;
 mod terminal;
 mod machines;
 mod remote_poll;
@@ -339,9 +338,10 @@ pub fn run() {
                 notify::init(app.handle());
                 archive::start(); // older Claude Code sessions, indexed by name in the background
                 logs::turns::start(); // every session's turns, for the Insights tab, in the background
-                tray::init(app.handle())?;
+                // At launch: Cue turns on "Open at login" the first time (it's the default; Settings can undo it).
+                config::login::first_run();
             }
-            // What was waiting before the restart: the icon and the badge show it now.
+            // What was waiting before the restart: the Dock badge shows it now.
             waiting.show_waiting();
             // Your usage file: when it changes, the usage pill shows the new numbers (or what's wrong).
             let h = waiting.clone();

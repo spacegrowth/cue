@@ -61,11 +61,15 @@ the card either way.
 3. The first time Cue jumps to or types into a tab, macOS asks to let Cue control iTerm or
    Terminal: allow it.
 
-Cue updates itself: it checks for a new version now and then, and the menu bar icon's menu has
-**Check for Updates…**.
+Cue updates itself: it checks for a new version now and then, and Settings has
+**Check for updates**.
 
 From source instead: `./install.sh` builds the app and connects Claude Code, Codex and Pi;
 `./install.sh --uninstall` removes it all again.
+
+To uninstall (hooks, status line, Pi extension; your other settings stay, backed up first):
+`curl -fsSL https://raw.githubusercontent.com/spacegrowth/cue/main/install.sh | bash -s -- --uninstall`,
+then drag **Cue** from Applications to the Trash. Deleting the app alone leaves its hooks in Claude Code's settings.
 
 ## Your own usage meters
 

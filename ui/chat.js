@@ -1842,6 +1842,12 @@ function whereNow(it, s) {
   if (s?.trust_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is asking whether you trust ${esc(homeless(s.cwd) || "this folder")}.</b> It won't start until you answer.</span><button class="btn small primary" data-act="trust" data-sid="${esc(s.session_id)}">Trust folder</button></div>`;
   // Waiting for Enter on a screen before Claude Code starts ("Security notes … Press Enter to continue").
   if (s?.enter_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>Claude Code is waiting for Enter in its terminal before it starts.</b> Nothing runs until then.</span><button class="btn small primary" data-act="continue-start" data-sid="${esc(s.session_id)}">Continue</button></div>`;
+  // Working, but Claude Code can't reach the API (or the proxy in front of it) and keeps trying: minutes of a
+  // spinner in its terminal otherwise. What failed, which try; Stop ends the turn instead of waiting it out.
+  if (s?.state === "working" && s.retry) {
+    const r = s.retry, head = r.network ? "Can't reach the API." : "The API returned an error.";
+    return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>${head}</b> ${esc(r.error)}. Claude Code is trying again${r.max ? ` (${r.attempt} of ${r.max})` : ""}; messages you send wait until it gets through or gives up.</span><button class="btn small deny" data-act="interrupt" data-sid="${esc(s.session_id)}">Stop</button></div>`;
+  }
   // Working, but nothing new from it in a while: a command waiting for input in its terminal, or hung.
   if (s?.state === "working" && s.stuck_ms) return `<div class="cv-status stuck"><span class="lim-dot"></span><span><b>No new output for <span data-ago="${s.stuck_ms}">${ago(s.stuck_ms)}</span>.</b> ${esc((s.doing || "Thinking").replace(/…$/, ""))}. If it's waiting for input, it's in its terminal.</span></div>`;
   // Compact (⋯) typed /compact: it's summarizing, until Claude Code says it's done.

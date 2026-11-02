@@ -423,20 +423,17 @@ impl Hub {
             crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
         }
         let _ = app.emit("state", self.snapshot());
-        let (decisions, items, answered) = {
+        let (decisions, answered) = {
             let mut st = self.st();
             let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
-            // Answered anywhere (Cue, menu bar, the terminal): take the notification back.
+            // Answered anywhere (Cue, the terminal): take the notification back.
             let answered: Vec<String> = st.notified.difference(&live).cloned().collect();
             for id in &answered {
                 st.notified.remove(id);
             }
-            (st.items.iter().filter(|i| i.kind != "waiting").count(), st.items.clone(), answered)
+            (st.items.iter().filter(|i| i.kind != "waiting").count(), answered)
         };
         crate::notify::remove(&answered);
-        if std::env::var_os("CUE_QUIET").is_none() {
-            crate::tray::sync(app, &items);
-        }
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
         }

@@ -4,6 +4,24 @@
 use super::*;
 use super::history::{first_line, push_history};
 
+/// How long a message waits for the one before it to finish being typed into the same session. Typing one
+/// takes seconds (up to ~25 with its checks); longer means that one is stuck, and this fails instead of
+/// spinning on "Sending…" for good.
+const TURN_WAIT: std::time::Duration = std::time::Duration::from_secs(45);
+
+/// This session's typing turn (see Hub::typing), or an error once the one before has held it for TURN_WAIT.
+fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
+    let until = std::time::Instant::now() + TURN_WAIT;
+    loop {
+        match gate.try_lock() {
+            Ok(g) => return Ok(g),
+            Err(std::sync::TryLockError::Poisoned(e)) => return Ok(e.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) if std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(std::sync::TryLockError::WouldBlock) => return Err("the message before this one is still being typed into its terminal (stuck?): try again in a moment".into()),
+        }
+    }
+}
+
 impl Hub {
     /// Typed into its terminal, and the agent hasn't said it took it. A command may have opened a dialog
     /// (it ran: a card with its choices). The text may still sit in its box (the Enter didn't take: the
@@ -199,7 +217,7 @@ impl Hub {
         let sid = it.origin.session_id.clone();
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).
         let gate = self.typing_gate(&sid);
-        let _typing = gate.lock().unwrap_or_else(|e| e.into_inner());
+        let _typing = wait_turn(&gate)?;
         self.set_later(&sid, false); // you replied: decided
         let t0 = now_ms();
         let saved = crate::uploads::save(images)?;
@@ -335,7 +353,7 @@ impl Hub {
         let text = typed.trim();
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).
         let gate = self.typing_gate(session_id);
-        let _typing = gate.lock().unwrap_or_else(|e| e.into_inner());
+        let _typing = wait_turn(&gate)?;
         self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy) = {
             let st = self.st();
@@ -636,6 +654,20 @@ fn command_before(origin: &Origin, text: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_message_waits_its_turn_but_not_for_good() {
+        let gate = std::sync::Arc::new(Mutex::new(()));
+        assert!(wait_turn(&gate).is_ok(), "free: at once");
+        // Held a moment by the one before: it gets its turn.
+        let g2 = gate.clone();
+        let held = std::thread::spawn(move || { let _g = g2.lock().unwrap(); std::thread::sleep(std::time::Duration::from_millis(300)); });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let t = std::time::Instant::now();
+        assert!(wait_turn(&gate).is_ok());
+        assert!(t.elapsed() >= std::time::Duration::from_millis(200));
+        held.join().unwrap();
+    }
 
     #[test]
     fn a_log_is_read_only_where_it_is_on_this_mac() {

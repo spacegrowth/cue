@@ -37,7 +37,6 @@ pub fn effective() -> Value {
         "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "cold": b("/notify/cold", true), "sound": crate::sounds::choice() },
         // Read from macOS, so it matches System Settings → Login Items.
         "login": { "open": login::enabled() },
-        "tray": { "show": tray_shown() },
         // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
         "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::terminal::focus::tmux_installed(), "terminal": crate::terminal::focus::terminal_name() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
@@ -249,7 +248,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "tray.show", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto"];
+const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -529,11 +528,6 @@ pub fn refresh_hooks() {
             }
         }
     }
-}
-
-/// The menu bar icon. On unless you hide it: Cue stays in the Dock either way.
-pub fn tray_shown() -> bool {
-    load().pointer("/tray/show").and_then(Value::as_bool).unwrap_or(true)
 }
 
 #[cfg(test)]

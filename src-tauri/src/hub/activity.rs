@@ -588,6 +588,20 @@ impl Hub {
             let limited: Vec<crate::usage::Limit> = all.iter().filter(|s| s.state == "limited").filter_map(|s| s.limit.clone()).collect();
             (stuck, limited)
         };
+        // Can't reach the API: Claude Code tries again for minutes before it gives up, its terminal only
+        // spinning, so the chat says what failed and when the next try is.
+        let retrying: Vec<Origin> = {
+            let st = self.st();
+            st.sessions.all().iter().filter(|s| s.origin.harness == "claude" && !s.origin.transcript_path.is_empty() && (s.state == "working" || s.retry.is_some())).map(|s| s.origin.clone()).collect()
+        };
+        let mut retry_changed = false;
+        for o in retrying {
+            let r = crate::usage::retrying(&o.transcript_path);
+            retry_changed |= self.st().sessions.set_retry(&o.session_id, r);
+        }
+        if retry_changed {
+            self.changed();
+        }
         for o in stuck {
             if let Some((kind, text)) = crate::usage::last_api_error(&o.transcript_path) {
                 self.failed(o, &kind, &text);
@@ -668,14 +682,18 @@ impl Hub {
         // can take longer than that. Nor when a message reached it since moments ago: a machine's log copy
         // can lag behind its hook, still ending on the interrupt while the agent works on what came next.
         let now = now_ms();
-        let stuck: Vec<Origin> = {
+        // The candidates under the lock, their transcripts read after it's let go: the window's own
+        // commands wait on this lock, and this runs every second.
+        let candidates: Vec<(Origin, u64)> = {
             let st = self.st();
             let recent = |m: &HashMap<String, u64>, sid: &str, ms: u64| m.get(sid).is_some_and(|t| now.saturating_sub(*t) < ms);
             st.sessions.all().into_iter().filter(|s| s.state == "working" && s.origin.harness == "claude" && !s.origin.transcript_path.is_empty())
                 .filter(|s| !recent(&st.stopped_to_send, &s.origin.session_id, STOPPED_TO_SEND_MS) && !recent(&st.active_at, &s.origin.session_id, LOG_LAG_MS))
-                .filter(|s| transcript::interrupted_at(&s.origin.transcript_path).is_some_and(|at| at + 1500 >= s.since_ms && now.saturating_sub(at) > 3000))
-                .map(|s| s.origin).collect()
+                .map(|s| (s.origin, s.since_ms)).collect()
         };
+        let stuck: Vec<Origin> = candidates.into_iter()
+            .filter(|(o, since)| transcript::interrupted_at(&o.transcript_path).is_some_and(|at| at + 1500 >= *since && now.saturating_sub(at) > 3000))
+            .map(|(o, _)| o).collect();
         for o in stuck {
             let sid = o.session_id.clone();
             let driver = crate::leads::resolve_driver(&sid, "");
@@ -838,12 +856,12 @@ impl Hub {
         // A session Cue started in a folder Claude Code didn't trust yet, in a terminal Cue can't read:
         // asking until ~/.claude.json says it's trusted (answered there). Given up after 30 minutes. Only
         // on this Mac: a machine's folder is never looked up here.
-        let done: Vec<String> = {
+        // ~/.claude.json can be megabytes: read after the lock is let go.
+        let asking: Vec<(String, String, u64)> = {
             let st = self.st();
-            st.sessions.asking_trust().into_iter()
-                .filter(|(sid, _, _)| st.sessions.origin(sid).is_some_and(|o| o.machine.is_empty() && o.tmux_pane.is_empty()))
-                .filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect()
+            st.sessions.asking_trust().into_iter().filter(|(sid, _, _)| st.sessions.origin(sid).is_some_and(|o| o.machine.is_empty() && o.tmux_pane.is_empty())).collect()
         };
+        let done: Vec<String> = asking.into_iter().filter(|(_, cwd, at)| now.saturating_sub(*at) > 30 * 60_000 || crate::focus::claude_trusts(cwd)).map(|(sid, _, _)| sid).collect();
         if !done.is_empty() {
             let mut st = self.st();
             for sid in &done {

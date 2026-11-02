@@ -75,6 +75,10 @@ pub struct Session {
     /// the session runs again, so Cue can offer to resend what didn't run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<crate::logs::usage::Limit>,
+    /// Working, but Claude Code can't reach the API and is trying again (usage::retrying): what failed,
+    /// which try, when the next one is. Cleared when its state changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<crate::logs::usage::Retry>,
     /// What it's doing right now ("Running: cargo test"): a working Claude Code session's latest step,
     /// read from its transcript every second; cleared when its state changes. And since when.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -164,6 +168,7 @@ impl Parked {
         s.queued = None;
         s.held = None;
         s.limit = None;
+        s.retry = None;
         s.doing.clear();
         s.doing_ms = 0;
         s.compacting_ms = 0;
@@ -230,6 +235,7 @@ impl Sessions {
             rename_check: None,
             rename_error: String::new(),
             limit: None,
+            retry: None,
             doing: String::new(),
             doing_ms: 0,
             compacting_ms: 0,
@@ -286,6 +292,7 @@ impl Sessions {
         if s.state != state {
             s.state = state.to_string();
             s.doing.clear();
+            s.retry = None;
             s.since_ms = now;
         }
         if state != "limited" {
@@ -631,6 +638,17 @@ impl Sessions {
     /// Its latest step, if it changed and belongs to this turn. `at_ms` is when the step was written
     /// (0 = now): a step from before it started working is the last turn's, read before the new
     /// prompt reached the log, so it's ignored. True when it changed.
+    /// A working session's retry (None: it isn't retrying). True if that changed anything.
+    pub fn set_retry(&mut self, session_id: &str, retry: Option<crate::logs::usage::Retry>) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.retry != retry && (retry.is_none() || s.state == "working") => {
+                s.retry = retry;
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn set_doing(&mut self, session_id: &str, doing: &str, at_ms: u64) -> bool {
         match self.0.get_mut(session_id) {
             Some(s) if s.state == "working" && s.doing != doing && (at_ms == 0 || at_ms + 1500 >= s.since_ms) => {
