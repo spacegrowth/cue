@@ -47,7 +47,7 @@ function statusHtml(status, key, open) {
   const head = `<button class="st-line" data-ask-open="${esc(key)}" aria-expanded="${open}"><span class="st-bar">${bar}</span><span class="st-now">${here}</span><span class="st-count">· ${done} of ${items.length} done</span><span class="st-more">${open ? "▾" : "▸"}</span></button>`;
   const mark = (state) => Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === state);
   const full = open ? `<div class="st-list">${items.map((i) => `<div class="st-item ${i.state}"><span class="st-mark">${mark(i.state)}</span>${esc(i.text)}</div>`).join("")}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div>` : "";
-  return `<div class="cv-status">${head}${full}</div>`;
+  return `<div class="cv-statuslist">${head}${full}</div>`;
 }
 
 if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusHtml };

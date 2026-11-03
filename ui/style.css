@@ -601,7 +601,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-voice-ask { font: inherit; font-weight: 650; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
 .cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
 /* The status list under the latest reply: one line (a segment per item, where it is, how many are done), opening to all of it. */
-.cv-status { margin-top: 8px; font-size: 12.5px; }
+.cv-statuslist { margin-top: 8px; font-size: 12.5px; }
 .st-line { display: flex; align-items: center; gap: 8px; width: 100%; font: inherit; color: var(--ink); background: var(--panel-2); border: 0; border-radius: 10px; padding: 6px 10px; cursor: pointer; text-align: left; }
 .st-bar { display: flex; gap: 2px; flex: none; }
 .st-seg { width: 10px; height: 5px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--muted); }
