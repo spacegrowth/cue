@@ -15,7 +15,7 @@ let shellMac = "";             // this Mac's short host name (from the first she
 let shellRenaming = null;      // the tab whose name is being typed
 let shellSeq = 0;
 let pipEl = null;
-let peek = null;               // the peek: null (away), "glance" (pointed at: a look) or "open" (clicked or ⌘J: typing)
+let peek = null;               // the peek: null (away), "glance" (pointed at: a look, with the keyboard) or "open" (clicked, ⌘J or typed in: it stays)
 let pipDone = false;           // a command ended while it was away (until it's back out)
 let shellViewOn = false;       // the Terminal view is on show (syncShellView)
 const pipOut = () => !!pipEl && !pipEl.hidden;
@@ -26,7 +26,7 @@ const escToShell = (sh) => shellViewOn || peek !== "open" || (!!sh.what && !sh.b
 /** The peek's hint, as Esc would act now. */
 function peekHint() {
   const el = pipEl?.querySelector(".pip-hint"), sh = shellOf(shellCur);
-  if (el) el.textContent = shellViewOn ? "" : peek === "glance" ? "Click to type" : sh && escToShell(sh) ? "⌘J to put away" : "Esc to put away";
+  if (el) el.textContent = shellViewOn ? "" : peek === "glance" ? "Type, or click to keep it" : sh && escToShell(sh) ? "⌘J to put away" : "Esc to put away";
 }
 /** You have it in front of you: the peek open, or the Terminal view. A look (pointing at the button) isn't:
  *  the button keeps its dot and its look while you point at it, so nothing on it moves. */
@@ -96,8 +96,9 @@ function ensurePip() {
     if (e.target.closest(".pip-view")) { setPeek(null); view = "terminal"; return renderMain(); }
     if (e.target.closest(".pip-hide")) return setPeek(null);
   });
-  // A look becomes the real thing as soon as you press in it.
+  // A look becomes the real thing as soon as you press or type in it (it stays when the pointer leaves).
   pipEl.addEventListener("pointerdown", () => { if (peek === "glance") setPeek("open"); });
+  pipEl.addEventListener("keydown", () => { if (peek === "glance") setPeek("open"); }, true);
   // A double-click on a tab names it.
   pipEl.querySelector(".pip-tabs").addEventListener("dblclick", (e) => { const t = e.target.closest("[data-shell]"); if (t) renameShell(t.dataset.shell); });
   // More tabs than fit: the row scrolls sideways (a mouse wheel too, not only a trackpad), and fades at
@@ -350,8 +351,8 @@ function syncShellView() {
   markShells();
 }
 const shellView = () => `<div class="shell-view"><div class="quiet-big">No shell open</div><button class="btn" data-act="shell-new">New shell <kbd>⌘T</kbd></button></div>`;
-/** The peek: away (null), a look ("glance": nothing takes the keyboard) or open to type in ("open"). Away again,
- *  the keyboard goes back to the message box if it was in the terminal. */
+/** The peek: away (null), a look ("glance": it has the keyboard, so you can just type) or open ("open": it stays
+ *  until put away). Away again, the keyboard goes back to the message box if it was in the terminal. */
 function setPeek(m) {
   if (shellViewOn || !pipEl || !shells.length) return;
   const was = pipEl.contains(document.activeElement);
@@ -359,7 +360,7 @@ function setPeek(m) {
   pipEl.hidden = !m;
   if (m === "open") pipDone = false;
   placePip();
-  if (m === "open") shellOf(shellCur)?.term?.focus();
+  if (m) shellOf(shellCur)?.term?.focus();
   else if (was) { document.activeElement?.blur(); focusComposer(); }
   markShells();
 }
