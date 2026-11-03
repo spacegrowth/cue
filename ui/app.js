@@ -87,6 +87,7 @@ function renderMain() {
   const liveChat = kept ? document.querySelector("[data-chat]") : null;
   document.querySelectorAll(".dot-live").forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
   markMore();   // lists end on whole cards before anything measures where cards landed
+  statusPopPaint();   // an open status card stays where it was across the redraw
   if (view === "sessions") fitSvRest();
   flipPlay(flipFrom);
   // A card just answered: its ✓ row eases from the card's height down to its own.

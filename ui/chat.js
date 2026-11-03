@@ -792,10 +792,13 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
   const chips = images ? draftChips(key) : "";
+  // A session's box: its latest reply's status list, as a ring and count ahead of the mic (status.js).
+  const sess = images && sidOfKey(key) && sessionOf(sidOfKey(key));
+  const status = sess ? statusChip(null, sess) : "";
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
-    <button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
+    ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
     ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
 }
@@ -1797,9 +1800,8 @@ function chatHtml(it, s, harness, paged = false) {
     const folded = !recent.has(n) && long && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
-    const said = parseStatus(e.text);
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(said.body, { runIn: s?.session_id })}</div>${n === lastAgent ? statusHtml(said, `${key}:list`, openAsks.has(`${key}:list`)) : ""}${thumbs(e.images)}${localImages(e.text)}
+      <div class="msg cv-text">${md(stripStatus(e.text), { runIn: s?.session_id })}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
@@ -1838,6 +1840,12 @@ function statusLine(it, s) {
   if (tray && s.state === "agent" && s.helpers && !s.compacting_ms && !s.compacted_ms) return tray;
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
   return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
+}
+/** The chip for the latest reply's status list (status.js), in the box's row ahead of the mic; "" when it ended
+ *  without one. */
+function statusChip(it, s) {
+  const last = conversation(it, s).findLast((e) => e.role === "agent");
+  return last ? statusChipHtml(parseStatus(last.text), `${s?.session_id || it?.id}:${last.at_ms}`) : "";
 }
 /** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
  *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot
@@ -2043,8 +2051,7 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
-  const said = parseStatus(tail.map((x) => x.text).join("\n\n"));
-  const reply = tail.length ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(said.body)}</div>${latest ? statusHtml(said, `a:${t.at_ms}:list`, openAsks.has(`a:${t.at_ms}:list`)) : ""}</div>` : "";
+  const reply = tail.length ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(stripStatus(tail.map((x) => x.text).join("\n\n")))}</div></div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
 // ---------- Parked: sessions you stopped, to come back to ----------
