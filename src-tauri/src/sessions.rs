@@ -381,7 +381,7 @@ impl Sessions {
         // Never the same moment as the entry before: two noted at once (a teammate's messages, then the
         // reply to them) are saved by moment and speaker, and the second would overwrite the first.
         let at_ms = now_ms().max(s.thread.last().map_or(0, |l| l.at_ms + 1));
-        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false });
+        s.thread.push(Exchange { role: role.into(), text, at_ms, images: images.to_vec(), from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None });
         let excess = s.thread.len().saturating_sub(keep);
         s.thread.drain(..excess);
     }
@@ -498,6 +498,15 @@ impl Sessions {
         if let Some(e) = yours_mut(s, text) {
             e.voice = true;
         }
+    }
+
+    /// Your message `text` to it had a status list asked for by a prompt hook (`ask`: the hook's text): the bubble's note.
+    /// True when the bubble changed.
+    pub fn mark_status_ask(&mut self, session_id: &str, text: &str, ask: &str) -> bool {
+        let Some(e) = self.0.get_mut(session_id).and_then(|s| yours_mut(s, text)) else { return false };
+        let changed = e.status_ask.as_deref() != Some(ask);
+        e.status_ask = Some(ask.to_string());
+        changed
     }
 
     /// Your message `text` to it: Cue hasn't seen the agent take it yet (`on`: a ring on the bubble while
@@ -769,7 +778,7 @@ impl Sessions {
                 h.text = [h.text.as_str(), text].iter().filter(|t| !t.trim().is_empty()).cloned().collect::<Vec<_>>().join("\n\n");
                 h.images.extend(images);
             }
-            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false }),
+            None => s.held = Some(Exchange { role: "you".into(), text: text.to_string(), at_ms: now_ms(), images, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None }),
         }
     }
 
@@ -1555,6 +1564,21 @@ mod tests {
         assert!(t[2].at_ms > t[1].at_ms, "in time order, so a reload keeps it there");
         s.below_reply("q", &q); // already last: stays
         assert_eq!(s.thread("q").len(), 3);
+    }
+
+    #[test]
+    fn a_status_ask_goes_on_the_message_it_came_with() {
+        let mut s = Sessions::default();
+        s.mark(&origin("a"), "waiting", None);
+        s.note("a", "you", "fix the bar", 5);
+        s.note("a", "agent", "Fixed.", 5);
+        s.note("a", "you", "and commit", 5);
+        assert!(s.mark_status_ask("a", "fix the bar", "ask"));
+        assert!(!s.mark_status_ask("a", "fix the bar", "ask"), "already there: nothing changed");
+        assert!(!s.mark_status_ask("a", "a message never sent", "ask"));
+        let thread = s.thread("a");
+        let asks: Vec<Option<&str>> = thread.iter().map(|e| e.status_ask.as_deref()).collect();
+        assert_eq!(asks, [Some("ask"), None, None]);
     }
 
     #[test]

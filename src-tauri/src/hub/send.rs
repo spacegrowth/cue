@@ -408,7 +408,7 @@ impl Hub {
                 // It's mid-turn: the agent reads this when it finishes its current step.
                 // The same message as the thread's copy (same time), so the chat shows it once, as queued.
                 let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false };
+                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None };
                 st.sessions.set_queued(session_id, Some(q));
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
@@ -593,6 +593,19 @@ impl Hub {
     pub fn said_by_voice(&self, session_id: &str, message: &str) {
         self.st().sessions.mark_voice(session_id, &crate::sessions::unwrap_pasted(message));
         self.changed();
+    }
+
+    /// A turn ended: the status lists a prompt hook asked for with your recent messages (read from its transcript)
+    /// go on those bubbles, as notes.
+    pub fn status_asks_from(&self, session_id: &str, transcript_path: &str) {
+        let asks = crate::logs::transcript::status_asks(transcript_path);
+        let changed = {
+            let mut st = self.st();
+            asks.iter().fold(false, |c, (text, ask)| st.sessions.mark_status_ask(session_id, &crate::sessions::unwrap_pasted(text), ask) || c)
+        };
+        if changed {
+            self.changed();
+        }
     }
 
     /// A message another agent session sent this one: shown in its chat as from that session.

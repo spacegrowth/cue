@@ -881,13 +881,20 @@ function yourWords(e) {
   const asked = VOICE_ASK.test(e.text);
   return { voice: !!e.voice || asked, text: asked ? e.text.replace(VOICE_ASK, "") : e.text };
 }
+/** A small note under your message: "+ <label>", which opens to `line`, what Cue (or a prompt hook) added for the
+ *  agent, word for word. `key` says which note is open (openAsks). */
+function addedNote(key, label, line) {
+  const open = openAsks.has(key);
+  return `<div class="cv-voice-note"><button class="cv-voice-ask" data-ask-open="${esc(key)}" aria-expanded="${open}">${open ? "−" : "+"} ${label}</button>${open ? `<div class="cv-voice-line">${esc(line)}</div>` : ""}</div>`;
+}
 /** Your message's bubble. Said by voice: a mic beside it, and inside it the line Cue added for the agent (or will
- *  add, `later`: kept in Cue or queued, it hasn't gone yet); its + opens the line word for word (`key`). */
+ *  add, `later`: kept in Cue or queued, it hasn't gone yet). A status list asked for by a prompt hook (`status_ask`)
+ *  gets its own note. Each + opens its text word for word (`key`). */
 function yourBubble(e, key, style = "", later = false) {
   const said = yourWords(e);
-  const open = said.voice && openAsks.has(key);
-  const note = !said.voice ? "" : `<div class="cv-voice-note"><button class="cv-voice-ask" data-voice-ask="${esc(key)}" aria-expanded="${open}">${open ? "−" : "+"} Cue ${later ? "will ask" : "asked"} for a short spoken answer</button>${open ? `<div class="cv-voice-line">${esc(VOICE_ASK_LINE)}</div>` : ""}</div>`;
-  const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${linkify(esc(said.text)).replace(/\n/g, "<br>")}${note}</div>`;
+  const notes = (said.voice ? addedNote(key, `Cue ${later ? "will ask" : "asked"} for a short spoken answer`, VOICE_ASK_LINE) : "")
+    + (e.status_ask ? addedNote(`${key}:status`, "Status list asked for", e.status_ask) : "");
+  const bubble = `<div class="cv-you-text"${style ? ` style="${style}"` : ""}>${linkify(esc(said.text)).replace(/\n/g, "<br>")}${notes}</div>`;
   return said.voice ? `<div class="cv-you-row"><span class="cv-mic" role="img" aria-label="Said by voice">${MIC_ICON}</span>${bubble}</div>` : bubble;
 }
 const fwdMsgs = new Map();  // chat key -> { text, from, fromSid }: what "Send to another session" sends
@@ -1247,7 +1254,7 @@ function readerPane(sid, it, s, harness, rv) {
     <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
     ${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</div>`;
-  const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(r.text)}</div>${localImages(r.text)}</div>`;
+  const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(stripStatus(r.text))}</div>${localImages(r.text)}</div>`;
   const asks = isPending(it) && it.kind !== "waiting";
   const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b>${it.kind === "question" ? "" : `<span class="dim"> · ${esc(verb(it))}</span>`}</span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";
   return { bar, body, foot: listenPlayer(r.key) + foot };
@@ -1545,7 +1552,7 @@ function listenNext() {
   const next = all[all.findIndex((r) => r.key === l.key) + 1];
   if (!next) return listenStop();
   if (readerView?.key === l.key) readerView = { sid, key: next.key };
-  listening = { ...l, key: next.key, i: 0, n: 0, html: md(next.text), follow: true };
+  listening = { ...l, key: next.key, i: 0, n: 0, html: md(stripStatus(next.text)), follow: true };
   renderMain();
   listenSay();
 }
@@ -1790,8 +1797,9 @@ function chatHtml(it, s, harness, paged = false) {
     const folded = !recent.has(n) && long && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
     fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
+    const said = parseStatus(e.text);
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(e.text, { runIn: s?.session_id })}</div>${thumbs(e.images)}${localImages(e.text)}
+      <div class="msg cv-text">${md(said.body, { runIn: s?.session_id })}</div>${n === lastAgent ? statusHtml(said, `${key}:list`, openAsks.has(`${key}:list`)) : ""}${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
@@ -2035,7 +2043,8 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
-  const reply = tail.length ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(tail.map((x) => x.text).join("\n\n"))}</div></div>` : "";
+  const said = parseStatus(tail.map((x) => x.text).join("\n\n"));
+  const reply = tail.length ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(said.body)}</div>${latest ? statusHtml(said, `a:${t.at_ms}:list`, openAsks.has(`a:${t.at_ms}:list`)) : ""}</div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }
 // ---------- Parked: sessions you stopped, to come back to ----------
@@ -2140,7 +2149,7 @@ function parkedPane(p) {
   const K = keyer();
   const rows = shown.map((e) => keyed(e.role === "you"
     ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago</div></div>`
-    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(e.text)}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
+    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(stripStatus(e.text))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
   const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
   const line = w
     ? `<div class="cv-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`

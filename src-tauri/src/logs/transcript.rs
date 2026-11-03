@@ -421,11 +421,52 @@ pub fn find_claude(session_id: &str) -> Option<String> {
     std::fs::read_dir(format!("{home}/.claude/projects")).ok()?.flatten().map(|d| d.path().join(format!("{session_id}.jsonl"))).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
 }
 
+/// What a prompt hook added for the agent, as the lines of its context (an attachment row after your prompt).
+fn hook_context(e: &Value) -> Vec<&str> {
+    if e.get("type").and_then(Value::as_str) != Some("attachment") || e.pointer("/attachment/type").and_then(Value::as_str) != Some("hook_additional_context") {
+        return vec![];
+    }
+    e.pointer("/attachment/content").and_then(Value::as_array).map(|c| c.iter().filter_map(Value::as_str).collect()).unwrap_or_default()
+}
+
 /// The prompt hook's added context, with the line Cue adds to what you said by voice.
 fn said_by_voice(e: &Value) -> bool {
-    e.get("type").and_then(Value::as_str) == Some("attachment")
-        && e.pointer("/attachment/type").and_then(Value::as_str) == Some("hook_additional_context")
-        && e.pointer("/attachment/content").and_then(Value::as_array).is_some_and(|c| c.iter().any(|l| l.as_str() == Some(crate::talk::ASK)))
+    hook_context(e).contains(&crate::talk::ASK)
+}
+
+/// What marks a status-list ask in a prompt hook's context: the heading the agent ends its replies with.
+const STATUS_MARK: &str = "**Where we are**";
+
+/// The text a prompt hook added to ask for (or recall) the agent's status list, word for word. Only
+/// context that holds the status heading counts, so another hook's note isn't taken for it.
+fn status_ask(e: &Value) -> Option<String> {
+    let asks: Vec<&str> = hook_context(e).into_iter().filter(|l| l.contains(STATUS_MARK)).collect();
+    (!asks.is_empty()).then(|| asks.join("\n\n"))
+}
+
+/// The text blocks of a transcript entry, joined.
+fn text_of(e: &Value) -> String {
+    content_blocks(e).iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n\n")
+}
+
+/// The status lists a prompt hook asked for with your recent prompts (the last 256 KB of the transcript): each
+/// prompt's text with the hook's text, for the prompts whose hook context holds the status heading.
+pub fn status_asks(path: &str) -> Vec<(String, String)> {
+    let Some(log) = std::fs::metadata(path).ok().and_then(|m| read_from(path, m.len().saturating_sub(256 * 1024))) else { return vec![] };
+    let mut prompts: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut out = vec![];
+    for e in lines(&log) {
+        if let Some(ask) = status_ask(&e) {
+            if let Some(text) = e.get("parentUuid").and_then(Value::as_str).and_then(|u| prompts.get(u)) {
+                out.push((text.clone(), ask));
+            }
+        } else if e.get("type").and_then(Value::as_str) == Some("user") && e.get("isSidechain").and_then(Value::as_bool) != Some(true) {
+            if let Some(uuid) = e.get("uuid").and_then(Value::as_str) {
+                prompts.insert(uuid.to_string(), text_of(&e).trim().to_string());
+            }
+        }
+    }
+    out
 }
 
 /// The conversation as Cue's chat shows it, from the transcript: your prompts, and the agent's last
@@ -456,7 +497,14 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
             }
             continue;
         }
-        let text: String = content_blocks(&e).iter().filter(|b| b.get("type").and_then(Value::as_str) == Some("text")).filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n\n");
+        // A status list asked for: another prompt hook added its ask to that message.
+        if let Some(ask) = status_ask(&e) {
+            if let Some((_, i)) = yours.as_ref().filter(|(uuid, _)| e.get("parentUuid").and_then(Value::as_str) == Some(uuid)) {
+                out[*i]["status_ask"] = Value::String(ask);
+            }
+            continue;
+        }
+        let text = text_of(&e);
         // Slash-command plumbing, notices, a Stop hook's feedback and "[Request interrupted…]" aren't conversation.
         if text.trim().is_empty() || text.starts_with('<') || text.starts_with("[Request interrupted") || harness_text(&text) {
             continue;
@@ -826,6 +874,42 @@ mod tests {
         let got = conversation_before(&p.0, iso_ms(&at(9)).unwrap(), 10);
         let voice: Vec<(&str, bool)> = got.iter().filter(|e| e["role"] == "you").map(|e| (e["text"].as_str().unwrap(), e["voice"] == true)).collect();
         assert_eq!(voice, [("is the fix installed?", true), ("now commit it", false)]);
+    }
+
+    #[test]
+    fn a_message_whose_hook_asked_for_a_status_list_carries_that_text() {
+        let at = |m: u32| format!("2026-10-04T08:{m:02}:00.000Z");
+        let added = |parent: &str, line: &str| json!({"type":"attachment","timestamp":at(2),"parentUuid":parent,"attachment":{"type":"hook_additional_context","content":[line],"hookName":"UserPromptSubmit","hookEvent":"UserPromptSubmit"}});
+        let ask = "End this reply with the status list, exactly this shape:\n**Where we are**\n\u{2713} done";
+        let recall = "Your status list from the end of your last reply:\n**Where we are**\n\u{25CB} next";
+        let p = write_transcript(&[
+            json!({"type":"user","uuid":"u1","timestamp":at(1),"message":{"content":"first"}}),
+            added("u1", ask),
+            json!({"type":"assistant","timestamp":at(3),"message":{"content":[{"type":"text","text":"Ok."}]}}),
+            json!({"type":"user","uuid":"u2","timestamp":at(4),"message":{"content":"second"}}),
+            added("u2", "some other hook's note"),
+            json!({"type":"assistant","timestamp":at(5),"message":{"content":[{"type":"text","text":"Ok."}]}}),
+            json!({"type":"user","uuid":"u3","timestamp":at(6),"message":{"content":"third, by voice"}}),
+            added("u3", recall),
+            added("u3", crate::talk::ASK),
+        ]);
+        let got = conversation_before(&p.0, iso_ms(&at(9)).unwrap(), 10);
+        let you: Vec<(&str, Option<&str>, bool)> = got.iter().filter(|e| e["role"] == "you").map(|e| (e["text"].as_str().unwrap(), e["status_ask"].as_str(), e["voice"] == true)).collect();
+        assert_eq!(you, [("first", Some(ask), false), ("second", None, false), ("third, by voice", Some(recall), true)]);
+    }
+
+    #[test]
+    fn the_status_asks_of_recent_prompts_are_read_from_the_transcript_tail() {
+        let at = |m: u32| format!("2026-10-04T08:{m:02}:00.000Z");
+        let added = |parent: &str, line: &str| json!({"type":"attachment","timestamp":at(2),"parentUuid":parent,"attachment":{"type":"hook_additional_context","content":[line]}});
+        let p = write_transcript(&[
+            json!({"type":"user","uuid":"u1","timestamp":at(1),"message":{"content":"fix the bar"}}),
+            added("u1", "End this reply with the status list:\n**Where we are**"),
+            json!({"type":"user","uuid":"u2","timestamp":at(4),"message":{"content":"and commit"}}),
+            added("u2", "another hook's note"),
+        ]);
+        assert_eq!(status_asks(&p.0), [("fix the bar".to_string(), "End this reply with the status list:\n**Where we are**".to_string())]);
+        assert!(status_asks("/no/such/file.jsonl").is_empty());
     }
 
     /// As Claude Code writes them into the lead's log (from a real lead and its teammate "reader").

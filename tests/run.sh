@@ -10,4 +10,5 @@ export CUE_BIN="$ROOT/src-tauri/target/debug/cue"
 "$CUE_BIN" >/dev/null 2>&1 &
 trap 'pkill -f "$CUE_BIN"; rm -rf "$CUE_HOME"' EXIT   # every test Cue process, hooks included
 for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
+node "$ROOT/tests/status.test.js"
 python3 "$ROOT/tests/test_protocol.py"

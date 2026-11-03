@@ -43,6 +43,10 @@ pub struct Exchange {
     /// prompt hook, or after your words). The bubble says so.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub voice: bool,
+    /// Yours: the text a prompt hook added to ask the agent for its status list (the hook's, not Cue's), read
+    /// from the transcript when the turn ends. The bubble has a note that opens it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_ask: Option<String>,
     /// Yours: how you answered a permission or a question (Allow, an option picked), not a message you wrote.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub decision: bool,

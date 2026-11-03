@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS exchanges (
   text        TEXT NOT NULL,
   images      TEXT NOT NULL DEFAULT '[]',
   voice       INTEGER NOT NULL DEFAULT 0, -- yours, said by voice
+  status_ask  TEXT NOT NULL DEFAULT '',    -- yours: what a prompt hook added to ask for a status list
   PRIMARY KEY (session_id, at_ms, role)
 );
 
@@ -256,6 +257,11 @@ fn open() -> rusqlite::Result<Connection> {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN voice INTEGER NOT NULL DEFAULT 0", []);
         c.pragma_update(None, "user_version", 7)?;
     }
+    // The status list a prompt hook asked for with a message of yours: the column. A new database has it already.
+    if version < 8 {
+        let _ = c.execute("ALTER TABLE exchanges ADD COLUMN status_ask TEXT NOT NULL DEFAULT ''", []);
+        c.pragma_update(None, "user_version", 8)?;
+    }
     Ok(c)
 }
 
@@ -407,9 +413,9 @@ pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
 fn put_exchange(c: &Connection, session_id: &str, e: &Exchange) -> rusqlite::Result<()> {
     // Same moment, same speaker: the same exchange (its images may have been filled in since).
     c.execute(
-        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images, voice = excluded.voice",
-        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice],
+        "INSERT INTO exchanges (session_id, at_ms, role, text, images, voice, status_ask) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(session_id, at_ms, role) DO UPDATE SET text = excluded.text, images = excluded.images, voice = excluded.voice, status_ask = excluded.status_ask",
+        params![session_id, e.at_ms as i64, e.role, e.text, serde_json::to_string(&e.images).unwrap_or_else(|_| "[]".into()), e.voice, e.status_ask.as_deref().unwrap_or("")],
     )?;
     Ok(())
 }
@@ -571,7 +577,7 @@ pub fn known_session_ids() -> std::collections::HashSet<String> {
 /// Everything Cue logged for one session, oldest first: the whole conversation, ended sessions too.
 pub fn session_log(session_id: &str) -> Vec<Value> {
     with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images, voice FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask FROM exchanges WHERE session_id = ?1 ORDER BY at_ms")?;
         let rows = st.query_map(params![session_id], log_row)?;
         rows.collect()
     })
@@ -582,7 +588,7 @@ pub fn session_log(session_id: &str) -> Vec<Value> {
 /// chat loads earlier messages a page at a time as you scroll up). Fewer than `limit`: that's the start.
 pub fn session_log_page(session_id: &str, before_ms: u64, limit: usize) -> Vec<Value> {
     let mut page = with(|c| {
-        let mut st = c.prepare("SELECT at_ms, role, text, images, voice FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
+        let mut st = c.prepare("SELECT at_ms, role, text, images, voice, status_ask FROM exchanges WHERE session_id = ?1 AND at_ms < ?2 ORDER BY at_ms DESC LIMIT ?3")?;
         let rows = st.query_map(params![session_id, before_ms as i64, limit as i64], log_row)?;
         rows.collect::<rusqlite::Result<Vec<Value>>>()
     })
@@ -596,6 +602,10 @@ fn log_row(r: &rusqlite::Row) -> rusqlite::Result<Value> {
     let mut row = json!({ "at_ms": r.get::<_, i64>(0)?, "role": r.get::<_, String>(1)?, "text": r.get::<_, String>(2)?, "images": images });
     if r.get::<_, bool>(4)? {
         row["voice"] = json!(true);
+    }
+    let ask = r.get::<_, String>(5)?;
+    if !ask.is_empty() {
+        row["status_ask"] = json!(ask);
     }
     Ok(row)
 }
@@ -1091,7 +1101,7 @@ mod tests {
             "driven_by": driven_by, "queued": null, "since_ms": now_ms(), "prompt": "", "segments": [], "thread": []
         }))
         .unwrap();
-        s.thread = vec![Exchange { role: "agent".into(), text: "done".into(), at_ms: 1, images: vec![], from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false }];
+        s.thread = vec![Exchange { role: "agent".into(), text: "done".into(), at_ms: 1, images: vec![], from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None }];
         s
     }
 
@@ -1167,6 +1177,32 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(gone, 0);
         assert_eq!(kept, 5);
+    }
+
+    #[test]
+    fn a_database_from_before_status_asks_gets_the_column_and_keeps_its_log() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-db-v7-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        // Version 7's exchanges table (no `status_ask`), with a message of yours said by voice.
+        {
+            let c = Connection::open(path()).unwrap();
+            c.execute_batch("CREATE TABLE exchanges (session_id TEXT NOT NULL, at_ms INTEGER NOT NULL, role TEXT NOT NULL, text TEXT NOT NULL, images TEXT NOT NULL DEFAULT '[]', voice INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (session_id, at_ms, role));
+                INSERT INTO exchanges (session_id, at_ms, role, text, voice) VALUES ('s', 10, 'you', 'hello', 1);
+                PRAGMA user_version = 7;").unwrap();
+        }
+        reset();
+        let old = session_log("s");
+        assert_eq!((old[0]["text"].as_str(), old[0]["voice"] == true, old[0].get("status_ask")), (Some("hello"), true, None));
+        let mut e = session("s", "").thread[0].clone();
+        (e.role, e.at_ms, e.text, e.status_ask) = ("you".into(), 20, "next".into(), Some("the ask\n**Where we are**".into()));
+        with(|c| put_exchange(c, "s", &e)).unwrap();
+        assert_eq!(session_log("s")[1]["status_ask"], "the ask\n**Where we are**");
+        std::env::remove_var("CUE_HOME");
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
