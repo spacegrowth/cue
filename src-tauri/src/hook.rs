@@ -4,8 +4,8 @@
 //!   cue hook <event> [claude|codex]
 //!
 //!   permission  PermissionRequest  -> ask Cue and wait; print the decision JSON
-//!   stop        Stop               -> tell Cue "finished, waiting for you"
-//!   prompt      UserPromptSubmit   -> tell Cue you're back (clears the waiting card)
+//!   stop        Stop               -> tell Cue "finished, waiting for you" (or, a reply missing its status list, send it back once)
+//!   prompt      UserPromptSubmit   -> tell Cue you're back (clears the waiting card); hand it its status list
 //!   end         SessionEnd         -> tell Cue the session is gone
 //!   compact     PreCompact         -> tell Cue it's compacting (Claude Code)
 //!   notice      Notification       -> a prompt is showing in its terminal that never reached Cue (Claude Code)
@@ -31,14 +31,25 @@ pub fn main(args: &[String]) {
     }
     let Ok(p) = serde_json::from_str::<Value>(&input) else { return };
     // Something you said by voice: the line asking for a short answer goes with it, read by the agent only (the
-    // chat shows just your words). Claude Code takes it as the prompt hook's added context.
-    let voice = event == "prompt" && harness == "claude" && match crate::talk::hook_context(&s(&p, "prompt")) {
-        Some(ask) => {
-            println!("{}", json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": ask } }));
-            true
+    // chat shows just your words). With it, the session's status list (statuslist.rs). Claude Code takes both as
+    // the prompt hook's added context.
+    let voice_ask = if event == "prompt" && harness == "claude" { crate::talk::hook_context(&s(&p, "prompt")) } else { None };
+    let voice = voice_ask.is_some();
+    let listed = harness == "claude" && crate::statuslist::on_for(&crate::config::load(), &s(&p, "session_id"));
+    if event == "prompt" {
+        let status = if listed { crate::statuslist::on_prompt(&p, voice) } else { None };
+        let context = [voice_ask.map(str::to_string), status].into_iter().flatten().collect::<Vec<_>>().join("\n\n");
+        if !context.is_empty() {
+            println!("{}", json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": context } }));
         }
-        None => false,
-    };
+    }
+    // A reply that should have ended with its status list and didn't: back to add it, and the turn isn't over.
+    if event == "stop" && listed {
+        if let Some(back) = crate::statuslist::on_stop(&p) {
+            println!("{back}");
+            return;
+        }
+    }
     let _ = match event {
         "permission" => ask(&p, harness),
         // A finished turn carries its last exchange and who drives it; the rest are just the event.

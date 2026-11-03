@@ -3,7 +3,7 @@
 //   ✓ done   → now   ○ left
 //   Waiting on you: <a decision, or "nothing">      (older replies: "⏸ Waiting on you: …")
 // No reply shows the block: the latest list is a ring and count in the box, ahead of the mic (statusChipHtml), which
-// opens it. The rules are kept in this one place.
+// opens it, and where it's turned on or off for the session. The rules are kept in this one place.
 
 const STATUS_HEADING = /^[ \t]*\*\*Where we are\*\*:?[ \t]*$/gm;
 const STATUS_MARKS = { "✓": "done", "→": "now", "○": "left" };
@@ -44,18 +44,27 @@ function statusRing(done, now, total) {
   return `<svg class="st-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" stroke-width="${w}" aria-hidden="true">${circle("trk")}${circle("now", arc(done + now))}${circle("done", arc(done))}</svg>`;
 }
 
-/** The chip for the latest reply's list: a small ring and "done/total" (a click or hover opens the card above
- *  it: the whole list, then what it waits on, as plain lines). `key` says which list; the card shows while it
- *  is the open one (statusPop). Nothing for a reply without a list. */
-function statusChipHtml(status, key, open = statusPop?.key === key) {
+/** The ring beside the mic, for the latest reply's list: the ring and "done/total" (a click or hover opens the card
+ *  above it: the whole list, then what it waits on, as plain lines). `key` says which list; the card shows while it
+ *  is the open one (statusPop). Nothing for a reply without a list.
+ *  With `sw` ({ sid, on, working }: a session's own ring, while the status list is on in Settings) it's also where the
+ *  list is turned on or off for that session: its card ends with the switch. Off: a faint empty ring, its card the
+ *  switch alone; on with no list yet: the empty ring at full strength, its card the switch and when its first list
+ *  comes (when this turn ends, while it's working; else with your next message). */
+function statusChipHtml(status, key, open = statusPop?.key === key, sw = null) {
   const { items, waiting } = status;
-  if (!items.length) return "";
+  const listed = items.length && (!sw || sw.on);
+  if (!listed && !sw) return "";
   const done = items.filter((i) => i.state === "done").length;
   const now = items.filter((i) => i.state === "now").length;
   const mark = (state) => Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === state);
   // Numbered, so an item can be named ("do 3"), its mark at the end; a long one wraps under its own text.
-  const list = items.map((i, n) => `<div class="st-item ${i.state}"><span class="st-n">${n + 1}</span><span>${esc(i.text)}</span><span class="st-mark">${mark(i.state)}</span></div>`).join("");
-  return `<div class="cv-schip ${open ? "open" : ""}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="Status list, ${done} of ${items.length} done">${statusRing(done, now, items.length)}${done}/${items.length}</button><div class="cv-spop"><div class="st-list">${list}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div></div></div>`;
+  const list = listed ? `<div class="st-list">${items.map((i, n) => `<div class="st-item ${i.state}"><span class="st-n">${n + 1}</span><span>${esc(i.text)}</span><span class="st-mark">${mark(i.state)}</span></div>`).join("")}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div>` : "";
+  const ring = listed ? `${statusRing(done, now, items.length)}${done}/${items.length}` : statusRing(0, 0, 1);
+  const label = listed ? `Status list, ${done} of ${items.length} done` : `Status list ${sw.on ? "on" : "off"} for this session`;
+  const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
+  const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";
+  return `<div class="cv-schip ${open ? "open" : ""} ${listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${list}${toggle}${starts}</div></div>`;
 }
 
 /** The open card, if any: { key, pinned }. Hovering the chip opens it until the pointer leaves; a click keeps it open
@@ -115,4 +124,9 @@ function bindStatusChip() {
 }
 if (typeof document !== "undefined") bindStatusChip();
 
-if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml };
+/** The status list is on in Settings → Progress (it is unless turned off there): sessions' rings show. */
+const statusShown = (st = typeof state !== "undefined" ? state.settings?.status : null) => st?.on !== false;
+/** On for this session: shown, and turned on from its ring (each session starts off). */
+const statusOn = (sid, st = typeof state !== "undefined" ? state.settings?.status : null) => statusShown(st) && (st?.sessions || []).includes(sid);
+
+if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusOn, statusShown };

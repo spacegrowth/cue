@@ -792,9 +792,9 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   const ready = d.text.trim() || (images && d.images.length);
   if (bangTyped(d.text) && !d.images.length) label = "Run";
   const chips = images ? draftChips(key) : "";
-  // A session's box: its latest reply's status list, as a ring and count ahead of the mic (status.js).
+  // A Claude Code session's box: its ring ahead of the mic (status.js), while the status list is on in Settings.
   const sess = images && sidOfKey(key) && sessionOf(sidOfKey(key));
-  const status = sess ? statusChip(null, sess) : "";
+  const status = sess?.harness === "claude" && statusShown() ? statusChip(null, sess) : "";
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
     <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
@@ -1841,11 +1841,14 @@ function statusLine(it, s) {
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
   return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
 }
-/** The chip for the latest reply's status list (status.js), in the box's row ahead of the mic; "" when it ended
- *  without one. */
+/** A session's ring (status.js), in the box's row ahead of the mic: its latest reply's list while it's on for the
+ *  session, and its switch. */
 function statusChip(it, s) {
-  const last = conversation(it, s).findLast((e) => e.role === "agent");
-  return last ? statusChipHtml(parseStatus(last.text), `${s?.session_id || it?.id}:${last.at_ms}`) : "";
+  const sid = s?.session_id || it?.session_id, on = statusOn(sid);
+  const last = on ? conversation(it, s).findLast((e) => e.role === "agent") : null;
+  const status = last ? parseStatus(last.text) : { items: [], waiting: "" };
+  const key = status.items.length ? `${sid}:${last.at_ms}` : `${sid}:${on ? "on" : "off"}`;
+  return statusChipHtml(status, key, undefined, { sid, on, working: s?.state === "working" });
 }
 /** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
  *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot

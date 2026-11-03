@@ -1,6 +1,6 @@
 // Run: node tests/status.test.js  (the status-list parser, ui/status.js)
 const assert = require("assert");
-const { parseStatus, stripStatus, statusChipHtml } = require("../ui/status.js");
+const { parseStatus, stripStatus, statusChipHtml, statusOn, statusShown } = require("../ui/status.js");
 global.esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const list = "**Where we are**\n✓ built it\n→ testing it\n○ ship it\nWaiting on you: nothing";
@@ -38,4 +38,21 @@ assert.ok(statusChipHtml(b, "k").includes("Waiting on you: which branch?"));
 assert.ok(!chip.includes("cv-schip open"), "closed unless it is the open one");
 assert.ok(statusChipHtml(a, "k", true).includes("cv-schip open"));
 assert.strictEqual(statusChipHtml(parseStatus("plain"), "k"), "");
+// Shown unless turned off in Settings; each session off until turned on from its ring.
+assert.ok(statusShown(undefined) && statusShown({}) && !statusShown({ on: false }));
+assert.ok(!statusOn("a", {}), "a session starts off");
+assert.ok(statusOn("a", { sessions: ["a"] }) && !statusOn("b", { sessions: ["a"] }));
+assert.ok(!statusOn("a", { on: false, sessions: ["a"] }), "off in Settings: off for every one");
+// A session's ring: off (empty ring, "Off", the switch alone), on without a list yet ("On"), on with its list (the switch last).
+const off = statusChipHtml(parseStatus("plain"), "a:off", false, { sid: "a", on: false });
+assert.ok(off.includes("st-off") && off.includes("</svg></button>") && off.includes('data-act="status-session" data-sid="a" data-on="1"') && off.includes("st-toggle solo") && !off.includes("st-list"), "off: a faint ring, no word, the switch alone");
+const offListed = statusChipHtml(a, "a:off", false, { sid: "a", on: false });
+assert.ok(offListed.includes("st-off") && !offListed.includes("st-list"), "off: its list isn't shown even if a reply has one");
+const onEmpty = statusChipHtml(parseStatus("plain"), "a:on", false, { sid: "a", on: true });
+assert.ok(onEmpty.includes("st-empty") && !onEmpty.includes("st-off") && onEmpty.includes('data-on="0"'), "on, no list yet: the ring at full strength");
+assert.ok(onEmpty.includes("Status tracking starts with your next message"), "idle: starts with your next message");
+assert.ok(statusChipHtml(parseStatus("plain"), "a:on", false, { sid: "a", on: true, working: true }).includes("Status tracking starts when this turn ends"), "working: when this turn ends");
+const onList = statusChipHtml(a, "a:1", false, { sid: "a", on: true });
+assert.ok(onList.includes("</svg>1/3</button>") && onList.indexOf("st-list") < onList.indexOf("st-toggle") && onList.includes('data-on="0"'));
+assert.ok(!off.includes("Status tracking starts") && !onList.includes("Status tracking starts"), "only while it's on and waiting for its first list");
 console.log("status.test.js: ok");

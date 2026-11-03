@@ -279,6 +279,7 @@ impl Hub {
         // What each followed session is about (tasks.rs), its own lock, taken before the hub's.
         let tasks = crate::tasks::view();
         let tasks_spent = crate::tasks::spent();
+        let status_spent = crate::statuslist::spent();
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
@@ -312,6 +313,7 @@ impl Hub {
             "ahead_watch": ahead_watch,
             "tasks": tasks,
             "tasks_spent": tasks_spent,
+            "status_spent": status_spent,
             "live": live,
             "branches": branches,
             "projects": projects,

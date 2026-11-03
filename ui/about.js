@@ -94,19 +94,25 @@ document.addEventListener("click", (e) => {
   if (cmd) invoke(cmd, { sessionId: sid }).catch((x) => toast(String(x)));
 }, true);
 
-/** Settings → Summaries: what turning it on does, in plain words (a small model writes it, not Cue, and the session
- *  never sees it), which sessions get one, and what it has cost. */
+/** Settings → Progress: the status list each session ends its replies with (statuslist.rs), then About: what turning
+ *  it on does, in plain words (a small model writes it, not Cue, and the session never sees it), which sessions get
+ *  one, and what it has cost. */
 function aboutSettings(st) {
   const on = st.tasks?.on === true;
   return `
+    <div class="set-group">Where each session stands</div>
+    ${setRow("Status list", "A session's replies end with what's done, what it's on and what's left: the ring beside the mic, a click for the whole list. Each session starts off: turn it on from its ring. The session writes it itself, about 0.2¢ a reply. Off here: no ring in any session.", toggle("status.on", st.status?.on !== false))}
     <div class="set-group">About each session</div>
     ${setRow("What each session is about", "An About tab in each session. Start it there and a small model (Haiku) reads the chat and writes what the session is about, where it stands and a line per turn; the cards show it too. The session never sees it.", toggle("tasks.on", on))}
     ${on ? setRow("For every session", "Without clicking Start.", toggle("tasks.auto", st.tasks?.auto === true)) : ""}
     ${aboutSpentRow()}`;
 }
-/** What every session's About has cost together, kept after one is stopped (tasks.rs spent). */
+/** What this tab's two have cost, all sessions together: the status list (an estimate: it's part of each session's own
+ *  bill, which doesn't count it apart; statuslist.rs spent) and About (exact: Cue's own calls, kept after one is
+ *  stopped; tasks.rs spent). */
 function aboutSpentRow() {
-  const t = state.tasks_spent || {};
-  const text = t.calls ? `All sessions so far: ${aboutMoney(t.usd)} · ${helperTokens(t.tokens || 0) || "0 tokens"}${t.tracked ? ` · ${t.tracked} session${t.tracked === 1 ? "" : "s"} followed now` : ""}` : "Nothing yet.";
-  return setRow("What it has cost", esc(text), "");
+  const l = state.status_spent || {}, t = state.tasks_spent || {};
+  const list = l.replies ? `about ${aboutMoney(l.usd)} · ~${helperTokens(l.tokens || 0) || "0 tokens"} over ${l.replies} message${l.replies === 1 ? "" : "s"} (an estimate: it's part of each session's own bill)` : "nothing yet";
+  const about = t.calls ? `${aboutMoney(t.usd)} · ${helperTokens(t.tokens || 0) || "0 tokens"}${t.tracked ? ` · ${t.tracked} session${t.tracked === 1 ? "" : "s"} followed now` : ""}` : "nothing yet";
+  return setRow("What it has cost", `<span class="set-line">Status list: ${esc(list)}</span><span class="set-line">About: ${esc(about)}</span>`, "");
 }

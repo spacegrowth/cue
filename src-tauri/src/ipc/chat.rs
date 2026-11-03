@@ -543,6 +543,12 @@ pub(crate) fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) {
     hub.redraw();
 }
 
+/// A session's ring → its switch: the status list on (or off again) for that session (statuslist.rs).
+#[tauri::command]
+pub(crate) fn status_session(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
+    hub.set_setting("status.sessions", crate::statuslist::sessions_with(&crate::config::load(), &session_id, on))
+}
+
 /// "Go to tab" for a session that has no card (a working one).
 #[tauri::command]
 pub(crate) async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {

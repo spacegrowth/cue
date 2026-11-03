@@ -326,6 +326,9 @@ function bindMain() {
     // Tell me when it's done (the line under the chat, or ⋯: done with the menu too).
     const wt = t.closest("[data-act=watch]");
     if (wt) { moreFor = handoffArm = null; return setWatch(wt.dataset.sid, wt.dataset.on === "1"); }
+    // A session's ring → its switch: the status list on (or off again) for this session (statuslist.rs).
+    const stOne = t.closest("[data-act=status-session]");
+    if (stOne) return invoke("status_session", { sessionId: stOne.dataset.sid, on: stOne.dataset.on === "1" }).catch((x) => toast(String(x)));
     // A tip's ×: that tip never comes back (tips.js).
     const tx = t.closest("[data-act=tip-x]");
     if (tx) { tipUsed(tx.dataset.tipId); return renderMain(); }
