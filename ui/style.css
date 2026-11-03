@@ -616,7 +616,27 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .st-list { display: flex; flex-direction: column; gap: 3px; line-height: 1.45; }
 .st-item.left { color: var(--muted); }
 .st-item.now { font-weight: 650; }
-.st-item { display: grid; grid-template-columns: 2em 1fr 1.6em; }
+.st-item { display: grid; grid-template-columns: 2em 1fr 1.6em; column-gap: 6px; }
+/* The track (status.js statusTree): a step is its number, its dot on the line, its text and mark; a side-by-side
+   group is one step, its items in a box beside one dot (a box item: number, text, mark). */
+.st-step { display: grid; grid-template-columns: 2em 14px 1fr 1.6em; column-gap: 6px; }
+.st-dot { position: relative; align-self: stretch; --st-line: color-mix(in srgb, var(--muted) 45%, var(--panel)); }
+.st-dot::before { content: ""; position: absolute; left: 6.25px; top: -2px; bottom: -2px; width: 1.5px; background: var(--st-line); }
+.st-step.first > .st-dot::before { top: 0.72em; }
+.st-step.last > .st-dot::before { bottom: calc(100% - 0.72em); }
+.st-dot::after { content: ""; position: absolute; left: 3.25px; top: calc(0.72em - 3.5px); width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--muted); background: var(--panel); }
+.st-group > .st-dot::after { top: calc(50% - 3.5px); }
+.st-group.first > .st-dot::before { top: 50%; }
+.st-group.last > .st-dot::before { bottom: 50%; }
+.st-step.done > .st-dot::after { border-color: var(--accent); background: var(--accent); }
+.st-step.now > .st-dot::after { border-color: var(--accent); }
+.st-box { grid-column: 3 / 5; margin: 1px 0; padding: 3px 0; border-radius: 8px; background: var(--panel-2); }
+.st-box .st-item { grid-template-columns: 2em 1fr 1.6em; padding-right: 8px; }
+.st-spin { display: inline-block; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; border: 1.6px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: stSpin 0.9s linear infinite; }
+@keyframes stSpin { to { transform: rotate(360deg); } }
+.st-par { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; user-select: none; -webkit-user-select: none; }
+.st-par small { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.st-par .btn { flex: none; height: 26px; }
 .st-mark { text-align: right; }
 .st-n { text-align: right; padding-right: 0.5em; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 500; }
 .st-wait { margin-top: 4px; color: var(--muted); }

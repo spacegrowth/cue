@@ -329,6 +329,9 @@ function bindMain() {
     // A session's ring → its switch: the status list on (or off again) for this session (statuslist.rs).
     const stOne = t.closest("[data-act=status-session]");
     if (stOne) return invoke("status_session", { sessionId: stOne.dataset.sid, on: stOne.dataset.on === "1" }).catch((x) => toast(String(x)));
+    // …and its Parallelize: asks the session to run the side-by-side group it's at (status.js), like a quick phrase.
+    const stPar = t.closest("[data-act=status-parallel]");
+    if (stPar) { statusPop = null; return sendPhrase(`s:${stPar.dataset.sid}`, PARALLELIZE); }
     // A tip's ×: that tip never comes back (tips.js).
     const tx = t.closest("[data-act=tip-x]");
     if (tx) { tipUsed(tx.dataset.tipId); return renderMain(); }
@@ -436,15 +439,7 @@ function bindMain() {
     const sl = t.closest("[data-step]");
     if (sl) { const k = sl.dataset.step; stepFlip.has(k) ? stepFlip.delete(k) : stepFlip.add(k); renderMain(); return wantDetails(k.split("|")[0]); }
     const qp = t.closest("[data-quick]");
-    if (qp) {
-      const key = qp.dataset.quick, d = draft(key);
-      d.text = withPhrase(d.text, qp.dataset.phrase);
-      saveDrafts();
-      renderMain();
-      // …and it goes, the way that box's Send would send it.
-      document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`)?.closest(".composer")?.querySelector(".btn.send")?.click();
-      return;
-    }
+    if (qp) return sendPhrase(qp.dataset.quick, qp.dataset.phrase);
     const cr = t.closest("[data-cmd-refresh]");
     if (cr) { cmdList(sidOfKey(cr.dataset.cmdRefresh), true); renderMain(); return document.querySelector(`[data-text="${CSS.escape(cr.dataset.cmdRefresh)}"]`)?.focus(); }
     const cp = t.closest("[data-cmd-pick]");

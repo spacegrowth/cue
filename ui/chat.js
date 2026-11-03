@@ -779,6 +779,15 @@ function saveQuickPhrases() {
   if (JSON.stringify(list) !== JSON.stringify(phrases())) setSetting("quick.phrases", list);
 }
 const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
+/** A phrase sent from box `key`: after anything typed in it, and sent the way that box's Send would send it (a
+ *  quick phrase; the status list's Parallelize). */
+function sendPhrase(key, phrase) {
+  const d = draft(key);
+  d.text = withPhrase(d.text, phrase);
+  saveDrafts();
+  renderMain();
+  document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`)?.closest(".composer")?.querySelector(".btn.send")?.click();
+}
 /** A box's images, before they're sent: each opens large, × takes it off. */
 function draftChips(key) {
   const d = draft(key);

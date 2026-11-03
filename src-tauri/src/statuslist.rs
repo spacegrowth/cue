@@ -21,6 +21,7 @@ pub const SPEC: &str = "End this reply with the status list, exactly this shape,
 → <item in progress or next>\n\
 ○ <item still left>\n\
 Waiting on you: <decision needed, or 'nothing'> (plain text, no icon)\n\
+Items that can run side by side (different files, no order between them) get ∥ after their mark (○ ∥ <item>); ∥ items next to each other run together, everything else in order, top to bottom.\n\
 Keep every item from the previous list (tick finished ones, add new asks) until the whole request is done.";
 
 /// On a spoken message: the list only to answer from, no list read out at the end.
