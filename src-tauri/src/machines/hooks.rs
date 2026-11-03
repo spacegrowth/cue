@@ -1,7 +1,8 @@
 //! Cue's hooks on a machine (+ New → Machine), for the agents installed there. Cue's own hook is a
 //! Mac program, so a machine gets a small POSIX script instead, ~/.cue/cue-hook: it drops each hook
 //! event into ~/.cue/in/ and, for a permission question, waits for Cue's answer in ~/.cue/out/ while
-//! Cue is watching. On the Mac, one SSH stream per machine picks the events up and hands each to Cue
+//! Cue is watching. For a session with the status list on (named in ~/.cue/status-on, which Cue keeps
+//! up to date), a message sent and a reply ending wait a moment too, for its list (statuslist.rs). On the Mac, one SSH stream per machine picks the events up and hands each to Cue
 //! as a local hook would, so everything after that is the same as on this Mac. Nothing listens on the
 //! network. When Cue isn't watching, the script leaves at once and the agent asks in its terminal.
 use crate::machines::{self, Machine};
@@ -23,11 +24,27 @@ id="$(date +%s)-$$"
 [ "$(wc -c 2>/dev/null <"$d/hook.log" || echo 0)" -lt 65536 ] || mv -f "$d/hook.log" "$d/hook.log.old" 2>/dev/null
 echo "$id $1 ${TMUX_PANE:-}" >>"$d/hook.log" 2>/dev/null
 # The event (a prompt, a command about to run) is yours alone: the file is readable by you only.
+input=$(cat)
 ( umask 077; {
   printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}"
-  cat
+  printf '%s' "$input"
   printf '}\n'
 } >"$d/in/$id.tmp" ) 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"
+# A message sent, or a reply ending, in a session with the status list on (~/.cue/status-on, kept by Cue): Cue's
+# answer (its list carried forward, or the reply sent back for one), waited for 3 seconds at most while Cue is
+# watching. Any other session never waits.
+if [ "$1" = prompt ] || [ "$1" = stop ]; then
+  sid=$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p')
+  [ -n "$sid" ] && grep -qxF "$sid" "$d/status-on" 2>/dev/null || exit 0
+  seen=$(cat "$d/watching" 2>/dev/null) || seen=0
+  [ $(( $(date +%s) - ${seen:-0} )) -lt 5 ] || exit 0
+  end=$(( $(date +%s) + 3 ))
+  while [ "$(date +%s)" -le "$end" ]; do
+    if [ -e "$d/out/$id.json" ]; then cat "$d/out/$id.json"; rm -f "$d/out/$id.json"; exit 0; fi
+    sleep 0.1 2>/dev/null || sleep 1
+  done
+  exit 0
+fi
 [ "$1" = permission ] || exit 0
 # A permission question: wait for the answer while Cue is watching (it stamps the time every second).
 # Not watching now: leave at once. Once it has the question, a dropped line (the Mac asleep, Wi-Fi)
@@ -282,6 +299,18 @@ fn new_session_seen(machine: &str, sid: &str) {
 /// The hook on the machine brought up to this Cue's, when it was set up there and has changed since
 /// (a fix in the script reaches the machine with the next connection, no setup to run again). Not set
 /// up: nothing is put there. Can't be checked (the line dropped): left as it is.
+/// The sessions the status list is on for, onto every machine (~/.cue/status-on, one id a line): its hook waits for
+/// Cue's answer only for those. Whenever the list changes, and as a machine's stream starts.
+pub fn push_status_on() {
+    for m in machines::list() {
+        std::thread::spawn(move || status_on_to(&m));
+    }
+}
+fn status_on_to(m: &Machine) {
+    let ids = crate::statuslist::sessions_on(&crate::config::load()).join("\n");
+    let _ = machines::run_with_input(&m.host, r#"d="$HOME/.cue"; mkdir -p "$d" && cat >"$d/status-on.new" && mv -f "$d/status-on.new" "$d/status-on""#, &ids);
+}
+
 fn refresh_hook(m: &Machine) {
     let script = r#"f="$HOME/.cue/cue-hook"; t="$f.new"; cat >"$t" || exit 0; if [ -x "$f" ] && ! cmp -s "$t" "$f"; then chmod 755 "$t" && mv -f "$t" "$f" && echo updated; else rm -f "$t"; fi"#;
     if let Ok(out) = machines::run_with_input(&m.host, script, SCRIPT) {
@@ -294,6 +323,7 @@ fn refresh_hook(m: &Machine) {
 /// One SSH stream: runs until the connection drops or the machine is removed.
 fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
     refresh_hook(m);
+    status_on_to(m);
     let mut child = machines::stream_command(&m.host, &watch_script()).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
     let out = child.stdout.take().ok_or("no output")?;
     let mut reached = false;
@@ -472,6 +502,7 @@ pub(crate) fn log_raw(machine: &str, line: &str) {
 fn handle(m: &Machine, id: &str, ev: Value) {
     log(&m.name, id, &ev);
     let Some(mut msg) = to_cue(&m.name, &ev) else { return };
+    let event = ev["event"].as_str().unwrap_or_default().to_string();
     if let Some(sid) = msg["session_id"].as_str().filter(|s| !s.is_empty()) {
         new_session_seen(&m.name, sid);
     }
@@ -486,6 +517,21 @@ fn handle(m: &Machine, id: &str, ev: Value) {
             crate::machines::logs::local_copy(m, &remote)
         };
         msg["transcript_path"] = json!(local);
+    }
+    // The status list, for a session it's on for: Cue's answer for the hook waiting on the machine (it always gets one, if
+    // only an empty one, so it stops waiting). A reply sent back for its list isn't the end of the turn: Cue isn't told.
+    if (event == "prompt" || event == "stop") && ev["harness"] == "claude" && msg["session_id"].as_str().is_some_and(|sid| crate::statuslist::on_for(&crate::config::load(), sid)) {
+        let mut p = ev["input"].clone();
+        p["transcript_path"] = msg["transcript_path"].clone();
+        let answer = crate::statuslist::remote_answer(&event, &p);
+        let sent_back = event == "stop" && answer.is_some();
+        let (host, id, text) = (m.host.clone(), id.to_string(), answer.map(|a| a.to_string()).unwrap_or_default());
+        std::thread::spawn(move || {
+            let _ = machines::run_with_input(&host, &format!(r#"umask 077; cat >"$HOME/.cue/out/{id}.tmp" && mv "$HOME/.cue/out/{id}.tmp" "$HOME/.cue/out/{id}.json""#), &text);
+        });
+        if sent_back {
+            return;
+        }
     }
     if msg["type"] != "ask" {
         if let Some(mut s) = crate::hook::connect(Duration::from_millis(800)) {
@@ -831,6 +877,43 @@ mod tests {
         let t = std::time::Instant::now();
         let out = run_sh(SCRIPT, &home, &["permission", "claude"], r#"{"session_id":"s1","tool_name":"Bash"}"#);
         assert!(out.is_empty() && t.elapsed() < Duration::from_secs(3));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_message_or_reply_waits_for_its_status_list_only_in_a_session_its_on_for_while_cue_is_watching() {
+        let home = std::env::temp_dir().join(format!("cue-mh-status-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/out")).unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        std::fs::write(home.join(".cue/watching"), format!("{now}\n")).unwrap();
+        std::fs::write(home.join(".cue/status-on"), "s-on\nother").unwrap();
+        // Cue's side: answer whatever shows up, as handle() does.
+        let answer_next = |home: std::path::PathBuf| std::thread::spawn(move || {
+            for _ in 0..30 {
+                std::thread::sleep(Duration::from_millis(100));
+                let ev = std::fs::read_dir(home.join(".cue/in")).ok().into_iter().flatten().flatten().find(|e| !home.join(format!(".cue/out/{}.json", e.path().file_stem().unwrap().to_string_lossy())).exists() && std::fs::read_to_string(e.path()).is_ok_and(|t| t.contains("s-on")));
+                if let Some(f) = ev {
+                    let id = f.path().file_stem().unwrap().to_string_lossy().to_string();
+                    std::fs::write(home.join(format!(".cue/out/{id}.json")), r#"{"hookSpecificOutput":{"additionalContext":"list"}}"#).unwrap();
+                    return;
+                }
+            }
+        });
+        // A session it isn't on for: no wait, nothing back (its event still goes to Cue).
+        let t = std::time::Instant::now();
+        assert_eq!(run_sh(SCRIPT, &home, &["prompt", "claude"], r#"{"session_id":"s-off","prompt":"hi"}"#), "");
+        assert!(t.elapsed() < Duration::from_secs(1), "never waits for a session it's off for");
+        assert_eq!(std::fs::read_dir(home.join(".cue/in")).unwrap().count(), 1);
+        // One it's on for: Cue's answer, handed to the agent.
+        let a = answer_next(home.clone());
+        assert_eq!(run_sh(SCRIPT, &home, &["prompt", "claude"], r#"{"session_id":"s-on","prompt":"hi"}"#), r#"{"hookSpecificOutput":{"additionalContext":"list"}}"#);
+        a.join().unwrap();
+        // Cue not watching: no wait at all.
+        std::fs::write(home.join(".cue/watching"), "0\n").unwrap();
+        let t = std::time::Instant::now();
+        assert_eq!(run_sh(SCRIPT, &home, &["stop", "claude"], r#"{"session_id":"s-on","last_assistant_message":"Done."}"#), "");
+        assert!(t.elapsed() < Duration::from_secs(1), "Cue away: never waits");
         let _ = std::fs::remove_dir_all(&home);
     }
 

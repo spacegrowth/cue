@@ -3,7 +3,9 @@
 //! Cue's own hook carries it (hook.rs): on each message you send, the session is handed its last list and
 //! asked to end its reply with an updated one; when a turn that used tools ends without one, it's sent
 //! back once to add it. A session gets it once you turn it on from its ring (each starts off), while it's on in
-//! Settings → Progress (it is unless turned off there: off, no session gets it and no ring shows).
+//! Settings → Progress (it is unless turned off there: off, no session gets it and no ring shows). A machine's sessions
+//! (+ New → Machine) get it too: their hook waits a moment for Cue's answer (machines/hooks.rs), worked out here
+//! from the live copy of their transcript on this Mac.
 
 use serde_json::{json, Value};
 use std::io::Write;
@@ -69,6 +71,25 @@ fn stop_reason(p: &Value, rows: &[Value]) -> Option<String> {
     }
     let turn = this_turn(rows);
     (used_tools(turn) && !spoken(turn)).then(|| format!("Your reply is missing the status list. {SPEC}"))
+}
+
+/// The sessions it's on for now (none while it's off in Settings): what a machine's hook waits for Cue's answer on.
+pub fn sessions_on(cfg: &Value) -> Vec<String> {
+    if !cfg.pointer("/status/on").and_then(Value::as_bool).unwrap_or(true) {
+        return vec![];
+    }
+    cfg.pointer("/status/sessions").and_then(Value::as_array).map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect()).unwrap_or_default()
+}
+
+/// A machine's session's hook answer (`p`: its hook input, its transcript the live copy on this Mac): the prompt hook's
+/// added context, or a reply sent back for its list. None: nothing to add. (No voice line there: a machine's hook
+/// can't read Cue's data folder, so nothing it's sent is spoken.)
+pub fn remote_answer(event: &str, p: &Value) -> Option<Value> {
+    match event {
+        "prompt" => on_prompt(p, false).map(|c| json!({ "hookSpecificOutput": { "hookEventName": "UserPromptSubmit", "additionalContext": c } })),
+        "stop" => on_stop(p),
+        _ => None,
+    }
 }
 
 /// `status.sessions` with one session turned on (or off again) from its ring: the newest 500 kept.
@@ -256,5 +277,8 @@ mod tests {
         assert_eq!(sessions_with(&cfg, "b", true), json!(["a", "b"]));
         assert_eq!(sessions_with(&cfg, "a", true), json!(["a"]));
         assert_eq!(sessions_with(&cfg, "a", false), json!([]));
+        // What a machine's hook waits on: those turned on, none while it's off in Settings.
+        assert_eq!(sessions_on(&cfg), vec!["a".to_string()]);
+        assert!(sessions_on(&json!({ "status": { "on": false, "sessions": ["a"] } })).is_empty());
     }
 }

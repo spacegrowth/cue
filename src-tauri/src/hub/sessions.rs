@@ -477,6 +477,10 @@ impl Hub {
         if key == "quick.phrases" {
             crate::notify::set_phrases(&crate::config::quick_phrases());
         }
+        // The status list's sessions (or the setting itself) changed: each machine's hook learns which to wait on.
+        if key.starts_with("status.") {
+            crate::machines::hooks::push_status_on();
+        }
         if key == "history.keep" {
             let history = crate::db::history(crate::config::history_keep());
             self.st().history = history;
