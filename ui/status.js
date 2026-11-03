@@ -11,7 +11,7 @@ const STATUS_HEADING = /^[ \t]*\*\*Where we are\*\*:?[ \t]*$/gm;
 const STATUS_MARKS = { "✓": "done", "→": "now", "○": "left" };
 const STATUS_WAITING = /^(?:⏸\s*)?Waiting on you:\s*(.*)$/i;
 const STATUS_NOTHING = /^(?:nothing|none)\.?$/i;
-const STATUS_PAR = /^(?:∥|\|\|)\s*/;
+const STATUS_PAR = /^∥+\s*/;
 /** What the Parallelize button sends the session: it decides, Cue only asks. */
 const PARALLELIZE = "Parallelize the current step: run the ∥ items that are ready now side by side as background agents, if they touch different files and it's worth the cost; otherwise keep them in order and say why. Mark each one running with →.";
 
@@ -31,8 +31,8 @@ function parseStatus(text) {
     const state = STATUS_MARKS[line[0]];
     const wait = STATUS_WAITING.exec(line);
     if (state) {
-      const text = line.slice(1).trim(), par = STATUS_PAR.test(text);
-      items.push({ state, text: text.replace(STATUS_PAR, ""), par });
+      const text = line.slice(1).trim(), par = STATUS_PAR.test(text), words = text.replace(STATUS_PAR, "");
+      if (words) items.push({ state, text: words, par });   // a mark with no words: nothing to show
     }
     else if (wait) waiting = STATUS_NOTHING.test(wait[1].trim()) ? "" : wait[1].trim();
     else return none;   // writing after the list: not its status list
@@ -68,15 +68,15 @@ function parallelReady(steps) {
  *  is one step, its items together in one box beside a single dot. Each item: its number, its text, its mark at the
  *  end (a spinner for a group item that's running). */
 function statusTree(items) {
-  const mark = (i) => (i.par && i.state === "now" ? `<span class="st-spin"></span>` : Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === i.state));
-  const cells = (i, dot = "") => `<span class="st-n">${i.n}</span>${dot}<span class="st-text">${esc(i.text)}</span><span class="st-mark">${mark(i)}</span>`;
+  const mark = (i, boxed) => (boxed && i.state === "now" ? `<span class="st-spin"></span>` : Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === i.state));
+  const cells = (i, dot = "", boxed = false) => `<span class="st-n">${i.n}</span>${dot}<span class="st-text">${esc(i.text)}</span><span class="st-mark">${mark(i, boxed)}</span>`;
   const steps = statusSteps(items), end = steps.length - 1;
   return steps.map((st, k) => {
     const at = [k === 0 && "first", k === end && "last"].filter(Boolean).join(" ");
     const cls = (...names) => [...names, at].filter(Boolean).join(" ");
     if (!Array.isArray(st)) return `<div class="${cls("st-item st-step", st.state)}">${cells(st, '<span class="st-dot"></span>')}</div>`;
     const state = st.every((i) => i.state === "done") ? "done" : st.some((i) => i.state === "now") ? "now" : "left";
-    return `<div class="${cls("st-group st-step", state)}"><span></span><span class="st-dot"></span><div class="st-box">${st.map((i) => `<div class="st-item ${i.state}">${cells(i)}</div>`).join("")}</div></div>`;
+    return `<div class="${cls("st-group st-step", state)}"><span></span><span class="st-dot"></span><div class="st-box">${st.map((i) => `<div class="st-item ${i.state}">${cells(i, "", true)}</div>`).join("")}</div></div>`;
   }).join("");
 }
 

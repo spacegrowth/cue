@@ -33,6 +33,11 @@ assert.ok(Math.abs(arc("now") - 2 / 3) < 1e-9, "the item it's on follows it");
 assert.ok(chip.includes('class="trk"'), "a track for what's left");
 const row = (n, mark, text) => `<span class="st-n">${n}</span><span class="st-dot"></span><span class="st-text">${text}</span><span class="st-mark">${mark}</span>`;
 assert.ok(chip.includes(row(1, "✓", "built it")) && chip.includes(row(2, "→", "testing it")) && chip.includes(row(3, "○", "ship it")), "numbered, in order, with their marks");
+assert.ok(chip.includes("Waiting on you: nothing") && !chip.includes("⏸"), "plain text, no icon");
+assert.ok(statusChipHtml(b, "k").includes("Waiting on you: which branch?"));
+assert.ok(!chip.includes("cv-schip open"), "closed unless it is the open one");
+assert.ok(statusChipHtml(a, "k", true).includes("cv-schip open"));
+assert.strictEqual(statusChipHtml(parseStatus("plain"), "k"), "");
 assert.ok(chip.includes('class="st-item st-step done first"') && chip.includes('class="st-item st-step left last"'), "one line, from the first dot down to the last");
 // Shown unless turned off in Settings; each session off until turned on from its ring.
 assert.ok(statusShown(undefined) && statusShown({}) && !statusShown({ on: false }));
@@ -52,8 +57,8 @@ const onList = statusChipHtml(a, "a:1", false, { sid: "a", on: true });
 assert.ok(onList.includes("</svg>1/3</button>") && onList.indexOf("st-list") < onList.indexOf("st-toggle") && onList.includes('data-on="0"'));
 assert.ok(!off.includes("Status tracking starts") && !onList.includes("Status tracking starts"), "only while it's on and waiting for its first list");
 // Side by side: ∥ after the mark; the ∥ items next to each other are one group, run together; the rest in order.
-const tree = parseStatus("x\n**Where we are**\n✓ parse\n○ ∥ api\n→ || web\n○ ∥ button\n○ tests\n○ ∥ lone\nWaiting on you: nothing");
-assert.deepStrictEqual(tree.items.map((i) => [i.text, i.par]), [["parse", false], ["api", true], ["web", true], ["button", true], ["tests", false], ["lone", true]], "∥ (or ||) read and taken off the text");
+const tree = parseStatus("x\n**Where we are**\n✓ parse\n○ ∥ api\n→ ∥∥web\n○ ∥ button\n○ tests\n○ ∥ lone\nWaiting on you: nothing");
+assert.deepStrictEqual(tree.items.map((i) => [i.text, i.par]), [["parse", false], ["api", true], ["web", true], ["button", true], ["tests", false], ["lone", true]], "∥ (one or more, any spacing) read and taken off the text");
 const steps = statusSteps(tree.items);
 assert.deepStrictEqual(steps.map((st) => (Array.isArray(st) ? st.map((i) => i.n) : st.n)), [1, [2, 3, 4], 5, 6], "a run of ∥ is a group; a lone ∥ is a step");
 assert.strictEqual(parallelReady(steps).length, 3, "the first step not done is a group with two or more left: ready");
@@ -77,4 +82,6 @@ assert.ok(treeChip.indexOf("st-par") < treeChip.indexOf("st-toggle"), "above the
 assert.ok(!statusChipHtml(tree, "t", false).includes("status-parallel"), "not on a ring that isn't a session's own");
 assert.ok(!onList.includes("status-parallel"), "no group: no button");
 assert.ok(PARALLELIZE.startsWith("Parallelize the current step") && PARALLELIZE.includes("∥"));
+assert.deepStrictEqual(parseStatus("x\n**Where we are**\n○ || operator handling\n○ ∥\n○").items.map((i) => [i.text, i.par]), [["|| operator handling", false]], "|| is just text; an item with no words is left out");
+assert.ok(statusChipHtml(parseStatus("x\n**Where we are**\n→ ∥ solo\n○ b"), "s", false, { sid: "a", on: true }).includes('<span class="st-mark">→</span>'), "a lone ∥ item is a plain step: its → stays, no spinner");
 console.log("status.test.js: ok");
