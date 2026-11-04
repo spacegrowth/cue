@@ -646,6 +646,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .st-toggle .toggle { flex: none; }
 .cv-schip.st-empty .cv-spop { min-width: 0; }   /* the switch alone: one line */
 .st-note { margin-top: 2px; color: var(--muted); font-size: 12px; }   /* on, no list yet: when it starts */
+.st-toggle ~ .st-note { width: 0; min-width: 100%; }   /* notes under the switch wrap to the card's width, never widen it */
 .cv-schip.st-empty .st-ring .trk { stroke: var(--muted); }
 .cv-schip.st-off .cv-schip-btn { opacity: 0.45; }   /* off for this session: there, not asking for attention */
 .cv-schip.st-off.open .cv-schip-btn, .cv-schip.st-off .cv-schip-btn:hover { opacity: 0.8; }

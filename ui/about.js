@@ -101,7 +101,7 @@ function aboutSettings(st) {
   const on = st.tasks?.on === true;
   return `
     <div class="set-group">Where each session stands</div>
-    ${setRow("Status list", "A session's replies end with what's done, what it's on and what's left: the ring beside the mic, a click for the whole list. Each session starts off: turn it on from its ring. The session writes it itself, about 0.2¢ a reply. Off here: no ring in any session.", toggle("status.on", st.status?.on !== false))}
+    ${setRow("Status list", "A session's replies end with what's done, what it's on and what's left: the ring beside the mic, a click for the whole list. Each session starts off: turn it on from its ring. The session writes it itself, about half a cent a reply. Off here: no ring in any session.", toggle("status.on", st.status?.on !== false))}
     <div class="set-group">About each session</div>
     ${setRow("What each session is about", "An About tab in each session. Start it there and a small model (Haiku) reads the chat and writes what the session is about, where it stands and a line per turn; the cards show it too. The session never sees it.", toggle("tasks.on", on))}
     ${on ? setRow("For every session", "Without clicking Start.", toggle("tasks.auto", st.tasks?.auto === true)) : ""}

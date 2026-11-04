@@ -84,4 +84,6 @@ assert.ok(!onList.includes("status-parallel"), "no group: no button");
 assert.ok(PARALLELIZE.startsWith("Parallelize the current step") && PARALLELIZE.includes("∥"));
 assert.deepStrictEqual(parseStatus("x\n**Where we are**\n○ || operator handling\n○ ∥\n○").items.map((i) => [i.text, i.par]), [["|| operator handling", false]], "|| is just text; an item with no words is left out");
 assert.ok(statusChipHtml(parseStatus("x\n**Where we are**\n→ ∥ solo\n○ b"), "s", false, { sid: "a", on: true }).includes('<span class="st-mark">→</span>'), "a lone ∥ item is a plain step: its → stays, no spinner");
+assert.ok(off.includes("about half a cent each") && onList.includes("Total in Settings → Progress"), "under the switch: what it costs, where the total is");
+assert.ok(!statusChipHtml(a, "k", false).includes("half a cent"), "not on a ring that isn't a session's own");
 console.log("status.test.js: ok");

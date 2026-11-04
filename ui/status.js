@@ -12,6 +12,8 @@ const STATUS_MARKS = { "✓": "done", "→": "now", "○": "left" };
 const STATUS_WAITING = /^(?:⏸\s*)?Waiting on you:\s*(.*)$/i;
 const STATUS_NOTHING = /^(?:nothing|none)\.?$/i;
 const STATUS_PAR = /^∥+\s*/;
+/** Under a session's switch: how it works and what it costs (Settings → Progress keeps the running total). */
+const STATUS_COST = "The agent writes this list at the end of each reply, about half a cent each. Total in Settings → Progress.";
 /** What the Parallelize button sends the session: it decides, Cue only asks. */
 const PARALLELIZE = "Parallelize the current step: run the ∥ items that are ready now side by side as background agents, if they touch different files and it's worth the cost; otherwise keep them in order and say why. Mark each one running with →.";
 
@@ -110,7 +112,9 @@ function statusChipHtml(status, key, open = statusPop?.key === key, sw = null) {
   const label = listed ? `Status list, ${done} of ${items.length} done` : `Status list ${sw.on ? "on" : "off"} for this session`;
   const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
   const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";
-  return `<div class="cv-schip ${open ? "open" : ""} ${listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${list}${par}${toggle}${starts}</div></div>`;
+  // What it is and what it costs, in a line under the switch: the agent writes the list (tokens it's paid for).
+  const cost = sw ? `<div class="st-note">${STATUS_COST}</div>` : "";
+  return `<div class="cv-schip ${open ? "open" : ""} ${listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${list}${par}${toggle}${starts}${cost}</div></div>`;
 }
 
 /** The open card, if any: { key, pinned }. Hovering the chip opens it until the pointer leaves; a click keeps it open

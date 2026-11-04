@@ -832,11 +832,21 @@ async function loadOlder(sid, fromTranscript = false) {
   o.msgs = [...page, ...o.msgs];
   if (fromTranscript) o.tdone = page.length < OLDER_PAGE;
   else o.done = page.length < OLDER_PAGE;
+  // Past the start of Cue's log: one message from its transcript says whether anything came before. A session that
+  // started in Cue has nothing, so it ends here, without offering to load what isn't there (a failed look keeps it).
+  // (The transcript's own copy of that first message can be stamped a moment earlier: it doesn't count.)
+  if (!fromTranscript && o.done && (cur.it?.harness || cur.s?.harness) === "claude") {
+    const top = o.msgs[0] || conversation(cur.it, cur.s)[0];
+    const probe = await invoke("transcript_page", { sessionId: sid, beforeMs: top.at_ms, limit: 2 }).catch(() => null);
+    o.tdone = Array.isArray(probe) && probe.every((e) => sameMessage(e, top));
+  }
   o.busy = false;
   const chat = document.querySelector("[data-chat]");
   if (chat) holdChat = chat.scrollHeight - chat.scrollTop;
   renderMain();
 }
+/** The same message, from two records of it (Cue's log and the transcript): who said it and what. */
+const sameMessage = (a, b) => a.role === b.role && String(a.text || "").trim() === String(b.text || "").trim();
 /** The thread keeps only the last few messages, so once earlier ones are loaded, new messages push
  *  its oldest out: fetch those back from the log so nothing goes missing between the two. */
 async function fillOlderGap(sid, o, upTo) {

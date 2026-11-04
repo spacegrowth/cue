@@ -33,8 +33,9 @@ pub fn on_for(cfg: &Value, session_id: &str) -> bool {
         && cfg.pointer("/status/sessions").and_then(Value::as_array).is_some_and(|on| on.iter().any(|s| s == session_id))
 }
 
-/// The prompt hook's added context: the session's last list, then the ask for a new one (`spoken`: a voice
-/// message, which gets the list to answer from but no ask). None when there's nothing to add.
+/// The prompt hook's added context: the ask for a new list, after the session's last list when a compaction has
+/// dropped it (`spoken`: a voice message, which gets that list to answer from but no ask). None when there's nothing
+/// to add.
 pub fn on_prompt(p: &Value, spoken: bool) -> Option<String> {
     let rows = rows(p);
     let (context, wrote) = prompt_context(&rows, spoken);
@@ -43,11 +44,14 @@ pub fn on_prompt(p: &Value, spoken: bool) -> Option<String> {
     context
 }
 
-/// The added context for a session's transcript, and how long the list its last reply wrote is.
+/// The added context for a session's transcript, and how long the list its last reply wrote is. The last list is
+/// carried over only when the conversation was compacted after it: until then it's still there, ending that reply.
 fn prompt_context(rows: &[Value], spoken: bool) -> (Option<String>, usize) {
     let last = last_list(rows);
-    let wrote = last.as_deref().map_or(0, str::len);
-    let carried = last.map(|l| format!("Your status list from the end of your last reply:\n{l}\n\n"));
+    let wrote = last.as_ref().map_or(0, |(_, l)| l.len());
+    let carried = last
+        .filter(|(at, _)| rows[*at..].iter().any(is_compaction))
+        .map(|(_, l)| format!("Your status list from the end of your last reply:\n{l}\n\n"));
     let context = match (spoken, carried) {
         (true, None) => None,
         (true, Some(c)) => Some(c + SPOKEN),
@@ -195,12 +199,19 @@ fn used_tools(rows: &[Value]) -> bool {
     rows.iter().filter(|r| r["type"] == "assistant").any(|r| blocks(r).iter().any(|b| b["type"] == "tool_use"))
 }
 
-/// The last list the session wrote: from its heading to the end of that reply.
-fn last_list(rows: &[Value]) -> Option<String> {
-    rows.iter().rev().filter(|r| r["type"] == "assistant").flat_map(|r| blocks(r).into_iter().rev()).find_map(|b| {
-        let text = b["text"].as_str()?;
-        text.find(MARKER).map(|at| text[at..].trim_end().to_string())
+/// The last list the session wrote: its row, and the list from its heading to the end of that reply.
+fn last_list(rows: &[Value]) -> Option<(usize, String)> {
+    rows.iter().enumerate().rev().filter(|(_, r)| r["type"] == "assistant").find_map(|(i, r)| {
+        blocks(r).into_iter().rev().find_map(|b| {
+            let text = b["text"].as_str()?;
+            text.find(MARKER).map(|at| (i, text[at..].trim_end().to_string()))
+        })
     })
+}
+
+/// Where Claude Code compacted the conversation: what came before it is no longer there as written.
+fn is_compaction(row: &Value) -> bool {
+    row["type"] == "system" && row["subtype"] == "compact_boundary"
 }
 
 #[cfg(test)]
@@ -214,23 +225,29 @@ mod tests {
     const LIST: &str = "**Where we are**\n✓ built it\n→ testing it\nWaiting on you: nothing";
     fn you(text: &str) -> Value { json!({ "type": "user", "message": { "content": text } }) }
     fn said(text: &str) -> Value { json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": text }] } }) }
+    fn compaction() -> Value { json!({ "type": "system", "subtype": "compact_boundary" }) }
     fn tool() -> Value { json!({ "type": "assistant", "message": { "content": [{ "type": "tool_use", "name": "Bash" }] } }) }
     fn result() -> Value { json!({ "type": "user", "message": { "content": [{ "type": "tool_result" }] } }) }
 
     #[test]
-    fn a_message_carries_the_last_list_and_asks_for_a_new_one() {
+    fn a_message_asks_for_a_new_list_and_carries_the_last_only_after_a_compaction() {
         let rows = [you("go"), said(&format!("Done.\n\n{LIST}")), you("next")];
-        let c = ctx(&rows, false).unwrap();
+        assert_eq!(ctx(&rows, false).unwrap(), SPEC, "the last list is still in the conversation: just the ask");
+        assert_eq!(prompt_context(&rows, false).1, LIST.len(), "the list it wrote, for its cost");
+        let compacted = [you("go"), said(&format!("Done.\n\n{LIST}")), compaction(), you("next")];
+        let c = ctx(&compacted, false).unwrap();
         assert!(c.starts_with("Your status list from the end of your last reply:\n**Where we are**\n✓ built it"));
         assert!(c.ends_with(SPEC));
-        assert_eq!(prompt_context(&rows, false).1, LIST.len(), "the list it wrote, for its cost");
+        let since = [you("go"), compaction(), said(&format!("Done.\n\n{LIST}")), you("next")];
+        assert_eq!(ctx(&since, false).unwrap(), SPEC, "a list written after the compaction is still there");
         // The first message of a session: just the ask.
         assert_eq!(ctx(&[you("hi")], false).unwrap(), SPEC);
     }
 
     #[test]
     fn a_spoken_message_gets_the_list_to_answer_from_and_no_ask() {
-        let c = ctx(&[said(LIST)], true).unwrap();
+        assert_eq!(ctx(&[said(LIST)], true), None, "still in the conversation: nothing to add");
+        let c = ctx(&[said(LIST), compaction()], true).unwrap();
         assert!(c.contains("✓ built it") && c.ends_with(SPOKEN) && !c.contains("End this reply"));
         assert_eq!(ctx(&[you("hi")], true), None);
     }
