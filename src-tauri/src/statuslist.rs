@@ -30,6 +30,10 @@ Waiting on you: <decision needed, or 'nothing'> (plain text, no icon)\n\
 Items that can run side by side (different files, no order between them) get ∥ after their mark (○ ∥ <item>); ∥ items next to each other run together, everything else in order, top to bottom.\n\
 Keep every item from the previous list (tick finished ones, add new asks) until the whole request is done.";
 
+/// Added after the list's ask while background agents are on for the session (Start background agents on its status
+/// line): the ∥ steps become agents, each named after its step so the line can show which agent runs which step.
+pub const BACKGROUND: &str = "Background agents are on: start the side-by-side (∥) steps of the status list as background agents (Agent tool, run_in_background), each with its step's words as its description, and keep working on the current step.";
+
 /// On a spoken message: the list only to answer from, no list read out at the end.
 const SPOKEN: &str = "This is a spoken ask: answer from this list if it helps, no footer this time.";
 
@@ -39,15 +43,36 @@ pub fn on_for(cfg: &Value, session_id: &str) -> bool {
         && cfg.pointer("/status/sessions").and_then(Value::as_array).is_some_and(|on| on.iter().any(|s| s == session_id))
 }
 
+/// Background agents are on for this session: the status list is (they run its ∥ steps), and it was turned on for the
+/// session from its status line (`background.sessions`, each starts off). Never for a relay lead: it hands its steps to
+/// executors itself, and its status line has no switch to turn this off again.
+pub fn background_for(cfg: &Value, session_id: &str) -> bool {
+    background_on(cfg, session_id, crate::leads::is_relay_lead(session_id))
+}
+
+/// background_for, with whether the session is a relay lead given.
+fn background_on(cfg: &Value, session_id: &str, relay_lead: bool) -> bool {
+    !relay_lead && on_for(cfg, session_id) && cfg.pointer("/background/sessions").and_then(Value::as_array).is_some_and(|on| on.iter().any(|s| s == session_id))
+}
+
 /// The prompt hook's added context: the ask for a new list, after the session's last list when a compaction has
-/// dropped it (`spoken`: a voice message, which gets that list to answer from but no ask). None when there's nothing
-/// to add.
+/// dropped it (`spoken`: a voice message, which gets that list to answer from but no ask), and the background agents'
+/// line while they're on for the session. None when there's nothing to add.
 pub fn on_prompt(p: &Value, spoken: bool) -> Option<String> {
     let rows = rows(p);
     let (context, wrote) = prompt_context(&rows, spoken);
+    let context = with_background(context, spoken, background_for(&crate::config::load(), p["session_id"].as_str().unwrap_or_default()));
     // What it costs: this context read in, and the list the last reply wrote out.
     spend(p["session_id"].as_str().unwrap_or_default(), &model_of(&rows), context.as_deref().map_or(0, str::len), wrote);
     context
+}
+
+/// `context` with the background agents' line after it, when they're on (not on a spoken message, which asks for no list).
+fn with_background(context: Option<String>, spoken: bool, on: bool) -> Option<String> {
+    match context {
+        Some(c) if on && !spoken => Some(format!("{c}\n\n{BACKGROUND}")),
+        c => c,
+    }
 }
 
 /// The added context for a session's transcript, and how long the list its last reply wrote is. The last list is
@@ -103,9 +128,9 @@ pub fn remote_answer(event: &str, p: &Value) -> Option<Value> {
     }
 }
 
-/// `status.sessions` with one session turned on (or off again) from its ring: the newest 500 kept.
-pub fn sessions_with(cfg: &Value, session_id: &str, on: bool) -> Value {
-    let mut ids: Vec<Value> = cfg.pointer("/status/sessions").and_then(Value::as_array).cloned().unwrap_or_default();
+/// `section`'s `sessions` ("status" or "background") with one session turned on (or off again): the newest 500 kept.
+fn ids_with(cfg: &Value, section: &str, session_id: &str, on: bool) -> Value {
+    let mut ids: Vec<Value> = cfg.pointer(&format!("/{section}/sessions")).and_then(Value::as_array).cloned().unwrap_or_default();
     ids.retain(|s| s != session_id);
     if on {
         ids.push(json!(session_id));
@@ -114,26 +139,53 @@ pub fn sessions_with(cfg: &Value, session_id: &str, on: bool) -> Value {
     Value::Array(ids.split_off(skip))
 }
 
-/// `status.sessions` with `new` added when the list is on for `old` and not yet for `new`: the switch carried over
-/// to the session that takes over from `old`. None when there's nothing to change. Never turns anything off.
-fn sessions_carrying(cfg: &Value, old: &str, new: &str) -> Option<Value> {
-    let on = |id: &str| cfg.pointer("/status/sessions").and_then(Value::as_array).is_some_and(|a| a.iter().any(|s| s == id));
-    (on(old) && !on(new)).then(|| sessions_with(cfg, new, true))
+/// `status.sessions` with one session turned on (or off again) from its ring: the newest 500 kept.
+pub fn sessions_with(cfg: &Value, session_id: &str, on: bool) -> Value {
+    ids_with(cfg, "status", session_id, on)
 }
 
-/// `new` takes over from `old` (a hand-off): the status list is on for it too when it was for `old`, as if you'd
-/// switched it on from its ring. Called once when the link is learned; whatever you set for `new` afterwards stays.
-/// True when it switched `new` on.
+/// `background.sessions` with one session turned on (or off again) from its status line: the newest 500 kept.
+pub fn background_with(cfg: &Value, session_id: &str, on: bool) -> Value {
+    ids_with(cfg, "background", session_id, on)
+}
+
+/// `section`'s sessions with `new` added when it's on for `old` and not yet for `new`: the switch carried over to the
+/// session that takes over from `old`. None when there's nothing to change. Never turns anything off.
+fn carrying(cfg: &Value, section: &str, old: &str, new: &str) -> Option<Value> {
+    let on = |id: &str| cfg.pointer(&format!("/{section}/sessions")).and_then(Value::as_array).is_some_and(|a| a.iter().any(|s| s == id));
+    (on(old) && !on(new)).then(|| ids_with(cfg, section, new, true))
+}
+fn sessions_carrying(cfg: &Value, old: &str, new: &str) -> Option<Value> {
+    carrying(cfg, "status", old, new)
+}
+
+/// `background.sessions` carried to `new`, as `carrying`, except to a relay lead (a relay hand-off's successor always is
+/// one): it has no switch to turn it off again.
+fn carrying_background(cfg: &Value, old: &str, new: &str, new_is_relay_lead: bool) -> Option<Value> {
+    if new_is_relay_lead { None } else { carrying(cfg, "background", old, new) }
+}
+
+/// `new` takes over from `old` (a hand-off): the status list, and background agents (not for a relay lead), are on for
+/// it too when they were for `old`, as if you'd switched them on yourself. Called once when the link is learned;
+/// whatever you set for `new` afterwards stays. True when it switched something on for `new`.
 pub fn carry_over(old: &str, new: &str) -> bool {
     if old.is_empty() || new.is_empty() || old == new {
         return false;
     }
-    let Some(sessions) = sessions_carrying(&crate::config::load(), old, new) else { return false };
-    if crate::config::set("status.sessions", sessions).is_err() {
-        return false;
+    let cfg = crate::config::load();
+    let mut carried = false;
+    for (key, sessions) in [
+        ("status.sessions", carrying(&cfg, "status", old, new)),
+        ("background.sessions", carrying_background(&cfg, old, new, crate::leads::is_relay_lead(new))),
+    ] {
+        if let Some(sessions) = sessions {
+            carried |= crate::config::set(key, sessions).is_ok();
+        }
     }
-    crate::machines::hooks::push_status_on();
-    true
+    if carried {
+        crate::machines::hooks::push_status_on();
+    }
+    carried
 }
 
 /// What the status list has cost, kept as a line per message in Cue's folder (the hook runs once per event, often
@@ -387,5 +439,56 @@ mod tests {
         // What a machine's hook waits on: those turned on, none while it's off in Settings.
         assert_eq!(sessions_on(&cfg), vec!["a".to_string()]);
         assert!(sessions_on(&json!({ "status": { "on": false, "sessions": ["a"] } })).is_empty());
+    }
+
+    #[test]
+    fn background_agents_are_a_per_session_switch_that_needs_the_list() {
+        let cfg = json!({ "status": { "sessions": ["a", "b"] }, "background": { "sessions": ["a", "c"] } });
+        assert!(background_for(&cfg, "a"), "on for a, and the list is on for it");
+        assert!(!background_for(&cfg, "b"), "the list is on but not background agents: off");
+        assert!(!background_for(&cfg, "c"), "background on but the list isn't: off");
+        assert!(!background_for(&json!({ "status": { "on": false, "sessions": ["a"] }, "background": { "sessions": ["a"] } }), "a"), "the list off in Settings: off");
+        assert!(!background_for(&json!({}), "a"), "a session starts off");
+        // Turned on, then off again; never listed twice; its own list, apart from the status list's.
+        assert_eq!(background_with(&cfg, "d", true), json!(["a", "c", "d"]));
+        assert_eq!(background_with(&cfg, "a", true), json!(["c", "a"]));
+        assert_eq!(background_with(&cfg, "a", false), json!(["c"]));
+        assert_eq!(sessions_with(&cfg, "d", true), json!(["a", "b", "d"]), "the status list's sessions are untouched");
+    }
+
+    #[test]
+    fn a_relay_lead_never_gets_the_background_line_even_when_listed() {
+        let cfg = json!({ "status": { "sessions": ["a"] }, "background": { "sessions": ["a"] } });
+        assert!(background_on(&cfg, "a", false), "a plain session listed: on");
+        assert!(!background_on(&cfg, "a", true), "a relay lead listed: off, so no hook line");
+        // The line itself: only added when it's on, so a lead's prompt carries the list's ask alone.
+        let list = Some(SPEC.to_string());
+        assert_eq!(with_background(list.clone(), false, background_on(&cfg, "a", true)), list);
+    }
+
+    #[test]
+    fn a_relay_hand_off_does_not_carry_background_agents_but_a_plain_handoff_does() {
+        let cfg = json!({ "status": { "sessions": ["old"] }, "background": { "sessions": ["old"] } });
+        assert_eq!(carrying_background(&cfg, "old", "new", true), None, "a relay hand-off's successor is a lead: not carried");
+        assert_eq!(carrying_background(&cfg, "old", "new", false), Some(json!(["old", "new"])), "a plain /handoff successor: carried");
+        assert_eq!(sessions_carrying(&cfg, "old", "new"), Some(json!(["old", "new"])), "the status list is carried either way");
+    }
+
+    #[test]
+    fn a_successor_gets_background_agents_when_the_old_session_had_them() {
+        let cfg = json!({ "background": { "sessions": ["old"] } });
+        assert_eq!(carrying(&cfg, "background", "old", "new"), Some(json!(["old", "new"])));
+        assert_eq!(carrying(&cfg, "background", "plain", "new"), None, "off stays off");
+        assert_eq!(carrying(&json!({ "background": { "sessions": ["old", "new"] } }), "background", "old", "new"), None, "already on");
+    }
+
+    #[test]
+    fn the_background_line_is_added_only_while_on_and_not_to_a_spoken_ask() {
+        let list = Some(SPEC.to_string());
+        assert_eq!(with_background(list.clone(), false, false), list, "off: the list's ask alone");
+        let on = with_background(list.clone(), false, true).unwrap();
+        assert!(on.starts_with(SPEC) && on.ends_with(BACKGROUND), "on: the line after the list's ask");
+        assert_eq!(with_background(Some(SPOKEN.to_string()), true, true), Some(SPOKEN.to_string()), "a spoken ask has no list to run");
+        assert_eq!(with_background(None, true, true), None, "nothing to add stays nothing");
     }
 }

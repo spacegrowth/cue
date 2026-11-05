@@ -15,10 +15,6 @@ const STATUS_NOTHING = /^(?:nothing|none)\.?$/i;
 const STATUS_PAR = /^∥+\s*/;
 /** Under a session's switch: how it works and what it costs (Settings → Progress keeps the running total). */
 const STATUS_COST = "The agent writes this list at the end of each reply, about half a cent each. Total in Settings → Progress.";
-/** What the Parallelize button sends the session: it decides, Cue only asks. */
-/** Run on relay (a relay lead's list): hands the steps left to executors, as relay's own plan. */
-const RUN_ON_RELAY = "Run the steps left in the status list on relay: hand each one to an executor as a packet and add them to /relay:plan. Steps in order go one after another; neighbouring ∥ steps go out at once only if they touch different files. Mark each one handed out with →.";
-const PARALLELIZE = "Parallelize the current step: run the ∥ items that are ready now side by side as background agents, if they touch different files and it's worth the cost; otherwise keep them in order and say why. Mark each one running with →.";
 
 /** A reply split into its words and its status list: { body, items: [{ state, text, par }], waiting, now } or, when it
  *  doesn't end with a list (none, or more writing after it), { body: text, items: [] }. `waiting`: what it waits on,
@@ -60,21 +56,18 @@ function statusSteps(items) {
   });
   return steps.map((st) => (Array.isArray(st) && st.length === 1 ? st[0] : st));
 }
-/** The side-by-side group the session could start now: the first step not done, when it's a group with two or more
- *  items left and not already running side by side (two or more →). Else null. */
-function parallelReady(steps) {
-  const open = (i) => i.state !== "done";
-  const next = steps.find((st) => (Array.isArray(st) ? st.some(open) : open(st)));
-  if (!Array.isArray(next)) return null;
-  return next.filter(open).length >= 2 && next.filter((i) => i.state === "now").length < 2 ? next : null;
-}
+/** The agent that runs a step, if it's known: the one whose description (or name) is the step's words, best effort
+ *  (the session is asked to give each agent its step's words). `agents`: [{ text: [what it goes by], mark, name }]. */
+const statusKey = (t) => String(t ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+const agentOfStep = (item, agents) => (agents || []).find((a) => a.text.some((t) => statusKey(t) === statusKey(item.text))) || null;
 
 /** The list as a track (see the top): one line down through the steps in order, a dot each; a side-by-side group
  *  is one step, its items together in one box beside a single dot. Each item: its number, its text, its mark (✓ → ○)
- *  at the end. */
-function statusTree(items) {
+ *  at the end; a step whose agent is known (background agents on) shows the agent's mark and name under its text. */
+function statusTree(items, agents = null) {
   const mark = (i) => Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === i.state);
-  const cells = (i, dot = "") => `<span class="st-n">${i.n}</span>${dot}<span class="st-text">${esc(i.text)}</span><span class="st-mark">${mark(i)}</span>`;
+  const agent = (i) => { const a = agentOfStep(i, agents); return a ? `<span class="st-agent">${a.mark}${esc(a.name)}</span>` : ""; };
+  const cells = (i, dot = "") => `<span class="st-n">${i.n}</span>${dot}<span class="st-text">${esc(i.text)}${agent(i)}</span><span class="st-mark">${mark(i)}</span>`;
   const steps = statusSteps(items), end = steps.length - 1;
   return steps.map((st, k) => {
     const at = [k === 0 && "first", k === end && "last"].filter(Boolean).join(" ");
@@ -94,7 +87,7 @@ function statusRing(done, now, total) {
 }
 
 /** What a list shows, in its parts, for the ring's card and the panel above the chat (status_panel.js) alike:
- *  `list` the track and what it waits on, `par` the Parallelize row, `relay` relay's buttons for the line (a session's
+ *  `list` the track and what it waits on, `relay` relay's and the background agents' buttons for the line (a session's
  *  own list only), `toggle` the session's switch, `starts` when tracking starts (on, no list yet), `cost` what it costs. `listed`: there is a list
  *  to show (and, with `sw`, it's on for the session). */
 function statusParts(status, sw = null) {
@@ -103,23 +96,22 @@ function statusParts(status, sw = null) {
   const done = items.filter((i) => i.state === "done").length;
   const now = items.filter((i) => i.state === "now").length;
   // Numbered, so an item can be named ("do 3"), its mark at the end; a long one wraps under its own text.
-  const list = listed ? `<div class="st-list">${statusTree(items)}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div>` : "";
-  // A group ready to start side by side: the button asks the session to (a session's own list only).
-  const ready = listed && sw ? parallelReady(statusSteps(items)) : null;
-  const par = ready ? `<div class="st-par"><span>${ready.filter((i) => i.state !== "done").length} can run side by side<small>Asks the session; it decides</small></span><button class="btn" data-act="status-parallel" data-sid="${esc(sw.sid)}">Parallelize</button></div>` : "";
-  // Relay mode (`sw.relay`: { on }, while relay's skills are there for the session), on the line so it's always in
-  // view: Enable relay makes the session a lead; a lead gets Run on relay (hands the steps left to helpers, while two
-  // or more aren't started) and Stop relay.
+  const list = listed ? `<div class="st-list">${statusTree(items, sw?.background?.on ? sw.agents : null)}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div>` : "";
+  // The line's buttons (`sw.relay`: { on }, while relay's skills are there for the session), always in view: Start relay
+  // makes the session a lead, a lead gets Stop relay. Background agents (`sw.background`: { on, n, live }, none for a
+  // lead: relay hands steps to executors itself): Start / Stop, and while on, how many agents and a live dot.
   const rl = listed && sw?.relay;
-  const left = items.filter((i) => i.state === "left").length;
   const pill = (act, label) => `<button class="st-pill" data-act="${act}" data-sid="${esc(sw.sid)}">${label}</button>`;
-  const relay = !rl ? "" : !rl.on ? pill("status-relay", "Enable relay") : `${left >= 2 ? pill("status-relay-run", "Run on relay") : ""}${pill("status-relay-stop", "Stop relay")}`;
+  const relayPill = !rl ? "" : !rl.on ? pill("status-relay", "Start relay") : pill("status-relay-stop", "Stop relay");
+  const bg = listed && !rl?.on ? sw?.background : null;
+  const count = bg?.on ? `<span class="st-agents">${bg.live ? '<span class="dot-live"></span>' : ""}${bg.n} agent${bg.n === 1 ? "" : "s"}</span>` : "";
+  const relay = relayPill + (bg ? pill("status-background", bg.on ? "Stop background agents" : "Start background agents") + count : "");
   // What it has cost this session (`sw.spent`, in words), beside its name.
   const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session${sw.spent ? ` <span class="st-dim">(${esc(sw.spent)})</span>` : ""}</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
   const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";
   // What it is and what it costs, in a line under the switch: the agent writes the list (tokens it's paid for).
   const cost = sw ? `<div class="st-note">${STATUS_COST}</div>` : "";
-  return { listed, done, now, list, par, relay, toggle, starts, cost };
+  return { listed, done, now, list, relay, toggle, starts, cost };
 }
 
 /** The ring beside the mic, for the latest reply's list: the ring and "done/total". `key` says which list.
@@ -138,7 +130,7 @@ function statusChipHtml(status, key, open = statusPop?.key === key, sw = null) {
     return `<div class="cv-schip"><button class="cv-schip-btn" data-act="status-panel" data-sid="${esc(sw.sid)}" aria-pressed="${!!sw.shown}" aria-label="${label}">${ring}</button></div>`;
   }
   const label = p.listed ? `Status list, ${p.done} of ${total} done` : `Status list ${sw.on ? "on" : "off"} for this session`;
-  return `<div class="cv-schip ${open ? "open" : ""} ${p.listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${p.list}${p.par}${p.toggle}${p.starts}${p.cost}</div></div>`;
+  return `<div class="cv-schip ${open ? "open" : ""} ${p.listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${p.list}${p.toggle}${p.starts}${p.cost}</div></div>`;
 }
 
 /** The open card, if any: { key, pinned }. Hovering the chip opens it until the pointer leaves; a click keeps it open
@@ -203,4 +195,8 @@ const statusShown = (st = typeof state !== "undefined" ? state.settings?.status 
 /** On for this session: shown, and turned on from its ring (each session starts off). */
 const statusOn = (sid, st = typeof state !== "undefined" ? state.settings?.status : null) => statusShown(st) && (st?.sessions || []).includes(sid);
 
-if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusParts, statusRing, statusOn, statusShown, statusSteps, parallelReady, PARALLELIZE, RUN_ON_RELAY };
+/** Background agents are on for this session (Start background agents on its status line): its prompt hook asks for the
+ *  ∥ steps to run as agents. Needs the status list on for it. */
+const backgroundOn = (sid, settings = typeof state !== "undefined" ? state.settings : null) => statusOn(sid, settings?.status) && (settings?.background?.sessions || []).includes(sid);
+
+if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusParts, statusRing, statusOn, statusShown, statusSteps, agentOfStep, backgroundOn };

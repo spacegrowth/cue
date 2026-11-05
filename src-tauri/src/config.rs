@@ -54,6 +54,8 @@ pub fn effective() -> Value {
         "tasks": { "on": b("/tasks/on", false), "auto": b("/tasks/on", false) && b("/tasks/auto", false) },
         // The status list (statuslist.rs): on unless turned off, and the sessions turned on from their ring.
         "status": { "on": b("/status/on", true), "sessions": c.pointer("/status/sessions").cloned().unwrap_or_else(|| json!([])) },
+        // Background agents (statuslist.rs): the sessions turned on from their status line (each starts off).
+        "background": { "sessions": c.pointer("/background/sessions").cloned().unwrap_or_else(|| json!([])) },
         // The first-launch "Connect your agents" screen, closed with Done.
         "setup": { "done": b("/setup/done", false) },
         "usage": { "file": usage_file(), "claude": b("/usage/claude", true) },
@@ -251,7 +253,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions"];
+const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
@@ -310,7 +312,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
         "tasks.on" | "tasks.auto" | "status.on" => json!(value.as_bool().ok_or("must be on or off")?),
         // The sessions the status list is on for: their ids (statuslist::sessions_with keeps the newest 500).
-        "status.sessions" => match value.as_array() {
+        "status.sessions" | "background.sessions" => match value.as_array() {
             Some(ids) if ids.len() <= 500 && ids.iter().all(|i| i.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 100)) => value,
             _ => return Err("the sessions are a list of session ids".into()),
         },

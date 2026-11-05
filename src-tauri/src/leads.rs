@@ -758,6 +758,15 @@ pub fn is_executor(session_id: &str) -> bool {
     crate::locking::lock(&INDEX, "INDEX").as_ref().is_some_and(|i| executor_in(i, session_id))
 }
 
+/// A relay lead (not an executor, not pi-lead's): its steps go to executors through relay itself.
+pub fn is_relay_lead(session_id: &str) -> bool {
+    crate::locking::lock(&INDEX, "INDEX").as_ref().is_some_and(|i| relay_lead_in(i, session_id))
+}
+
+fn relay_lead_in(index: &HashMap<String, Member>, session_id: &str) -> bool {
+    index.get(session_id).is_some_and(|m| m.role == "lead" && m.plugin == "relay")
+}
+
 fn executor_in(index: &HashMap<String, Member>, session_id: &str) -> bool {
     index.get(session_id).is_some_and(|m| m.role == "executor")
 }
@@ -1762,6 +1771,11 @@ __CUE_LIVE__
         }
         for sid in ["L9", "PL1", "someone-else"] {
             assert!(!executor_in(&index, sid), "{sid}: not an executor");
+        }
+        // Only a relay lead is one: not its executors, not pi-lead's lead.
+        assert!(relay_lead_in(&index, "L9"), "relay's lead");
+        for sid in ["C9", "C7", "pe-1", "PL1", "someone-else"] {
+            assert!(!relay_lead_in(&index, sid), "{sid}: not a relay lead");
         }
     }
 

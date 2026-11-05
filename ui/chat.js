@@ -780,7 +780,7 @@ function saveQuickPhrases() {
 }
 const withPhrase = (text, p) => (text.trim() ? `${text.trimEnd()} ${p}` : p);
 /** A phrase sent from box `key`: after anything typed in it, and sent the way that box's Send would send it (a
- *  quick phrase; the status list's Parallelize). */
+ *  quick phrase). */
 function sendPhrase(key, phrase) {
   const d = draft(key);
   d.text = withPhrase(d.text, phrase);
@@ -1878,7 +1878,10 @@ function statusPanel(it, s) {
   const { status, key, sw } = latestStatus(it, s);
   const own = state.status_spent?.sessions?.[sw.sid];
   const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${aboutMoney(own.usd)} so far` : "";
-  return statusPanelHtml(status, { ...sw, spent, key, relay: relayMode(sw.sid) }, statusPanelView(sw.sid));
+  const relay = relayMode(sw.sid), bg = backgroundOn(sw.sid), agents = agentsOf(sw.sid), live = agents.filter(agentLive).length;
+  // The agents each step runs on, found by the step's words in the agent's description (agents.js agentOfStep).
+  const known = bg ? agents.map((a) => ({ text: [a.h?.desc, a.name].filter(Boolean), mark: agentMark(a), name: a.name })) : [];
+  return statusPanelHtml(status, { ...sw, spent, key, relay, background: { on: bg, n: agentCount(sw.sid).n, live: live > 0 }, agents: known }, statusPanelView(sw.sid));
 }
 /** Relay mode started or stopped from Cue, until relay shows the change (the session runs /relay:mode or /relay:stop in
  *  its turn, so its crew entry comes a while after): sid → { on, at }. */
@@ -1896,6 +1899,8 @@ function relayMode(sid) {
 /** Start or stop a session's relay mode: relay's own skill, typed into it (session_command). */
 function setRelayMode(sid, on) {
   relayAsked.set(sid, { on, at: Date.now() });
+  // A relay lead hands its steps to executors itself: background agents go off when relay starts.
+  if (on && backgroundOn(sid)) invoke("background_session", { sessionId: sid, on: false }).catch(() => {});
   renderMain();
   invoke("session_command", { sessionId: sid, action: on ? "relay-on" : "relay-off" }).then((m) => toast(m), (e) => { relayAsked.delete(sid); renderMain(); toast(`Couldn't: ${e}`); });
 }

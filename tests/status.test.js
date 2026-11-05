@@ -1,9 +1,9 @@
 // Run: node tests/status.test.js  (the status-list parser, ui/status.js)
 const assert = require("assert");
-const { parseStatus, stripStatus, statusChipHtml, statusParts, statusOn, statusShown, statusSteps, parallelReady, PARALLELIZE } = require("../ui/status.js");
+const { parseStatus, stripStatus, statusChipHtml, statusParts, statusOn, statusShown, statusSteps, agentOfStep, backgroundOn } = require("../ui/status.js");
 global.esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Everything a session's list shows (in the panel above the chat, or its ring's card), in order. */
-const body = (st, sw) => { const p = statusParts(st, sw); return p.list + p.par + p.toggle + p.starts + p.cost; };
+const body = (st, sw) => { const p = statusParts(st, sw); return p.list + p.toggle + p.starts + p.cost; };
 
 const list = "**Where we are**\n✓ built it\n→ testing it\n○ ship it\nWaiting on you: nothing";
 const a = parseStatus(`Done.\n\n${list}`);
@@ -46,6 +46,11 @@ assert.ok(statusShown(undefined) && statusShown({}) && !statusShown({ on: false 
 assert.ok(!statusOn("a", {}), "a session starts off");
 assert.ok(statusOn("a", { sessions: ["a"] }) && !statusOn("b", { sessions: ["a"] }));
 assert.ok(!statusOn("a", { on: false, sessions: ["a"] }), "off in Settings: off for every one");
+// Background agents: per session, kept in background.sessions, and only while the status list is on for it.
+const cfgBg = { status: { sessions: ["a", "b"] }, background: { sessions: ["a", "c"] } };
+assert.ok(backgroundOn("a", cfgBg) && !backgroundOn("b", cfgBg) && !backgroundOn("c", cfgBg) && !backgroundOn("z", cfgBg), "on for the session turned on, with its list on; each starts off");
+assert.ok(!backgroundOn("a", { ...cfgBg, status: { on: false, sessions: ["a"] } }), "the status list off in Settings: off for every one");
+assert.ok(!backgroundOn("a", {}), "no settings: off");
 // A session's ring: off (empty ring, "Off", the switch alone), on without a list yet ("On"), on with its list (the switch last).
 const off = statusChipHtml(parseStatus("plain"), "a:off", false, { sid: "a", on: false });
 assert.ok(off.includes("st-off") && off.includes("</svg></button>") && off.includes('data-act="status-session" data-sid="a" data-on="1"') && off.includes("st-toggle solo") && !off.includes("st-list"), "off: a faint ring, no word, the switch alone");
@@ -69,11 +74,6 @@ const tree = parseStatus("x\n**Where we are**\n✓ parse\n○ ∥ api\n→ ∥�
 assert.deepStrictEqual(tree.items.map((i) => [i.text, i.par]), [["parse", false], ["api", true], ["web", true], ["button", true], ["tests", false], ["lone", true]], "∥ (one or more, any spacing) read and taken off the text");
 const steps = statusSteps(tree.items);
 assert.deepStrictEqual(steps.map((st) => (Array.isArray(st) ? st.map((i) => i.n) : st.n)), [1, [2, 3, 4], 5, 6], "a run of ∥ is a group; a lone ∥ is a step");
-assert.strictEqual(parallelReady(steps).length, 3, "the first step not done is a group with two or more left: ready");
-assert.strictEqual(parallelReady(statusSteps(parseStatus("x\n**Where we are**\n→ a\n○ ∥ b\n○ ∥ c").items)), null, "an earlier step not done yet: not ready");
-assert.strictEqual(parallelReady(statusSteps(parseStatus("x\n**Where we are**\n→ ∥ b\n→ ∥ c\n○ ∥ d").items)), null, "already running side by side");
-assert.strictEqual(parallelReady(statusSteps(parseStatus("x\n**Where we are**\n✓ ∥ b\n○ ∥ c\n○ d").items)), null, "only one left in it");
-assert.strictEqual(parallelReady(statusSteps(parseStatus("x\n**Where we are**\n○ a\n○ b").items)), null, "no group");
 const treeChip = body(tree, { sid: "a", on: true });
 // A group is one step: one dot on the line, its items together in one box; no words.
 const groupOf = (html) => /<div class="st-group st-step (\w+)[^"]*"><span><\/span><span class="st-dot"><\/span><div class="st-box">(.*?)<\/div><\/div>(?=<div class="st-item st-step|<div class="st-wait)/.exec(html);
@@ -86,11 +86,16 @@ const endGroup = body(parseStatus("x\n**Where we are**\n✓ a\n✓ ∥ b\n✓ �
 assert.ok(endGroup.includes('class="st-group st-step done last"'), "a group at the end, all done: its dot filled, the line ends there");
 assert.ok(treeChip.includes(`<span class="st-n">3</span><span class="st-text">web</span><span class="st-mark">→</span>`), "a group item it's on: its →, its number kept");
 assert.ok(!body(tree, { sid: "a", on: true, working: true }).includes("st-spin"), "no spinners, working or not");
-assert.ok(treeChip.includes('data-act="status-parallel" data-sid="a"') && treeChip.includes("3 can run side by side"), "Parallelize, counting the group items not done (one → is not yet side by side)");
-assert.ok(treeChip.indexOf("st-par") < treeChip.indexOf("st-toggle"), "above the switch");
-assert.ok(!statusChipHtml(tree, "t", false).includes("status-parallel"), "not on a ring that isn't a session's own");
-assert.ok(!onBody.includes("status-parallel"), "no group: no button");
-assert.ok(PARALLELIZE.startsWith("Parallelize the current step") && PARALLELIZE.includes("∥"));
+// The one-time "N can run side by side · Parallelize" row is gone: the background agents switch replaces it.
+assert.ok(!treeChip.includes("status-parallel") && !treeChip.includes("st-par") && !treeChip.includes("can run side by side"), "no Parallelize row, a ready group or not");
+assert.ok(!statusChipHtml(tree, "t", false).includes("status-parallel"), "not on a ring either");
+// A step whose agent is known shows the agent's mark and name, matched by the step's words (best effort).
+const known = [{ text: ["Web", "web agent"], mark: "<i>A</i>", name: "web" }];
+assert.strictEqual(agentOfStep(tree.items[2], known)?.name, "web", "matched by description, any case");
+assert.strictEqual(agentOfStep(tree.items[1], known), null, "no match: nothing");
+const withAgents = body(tree, { sid: "a", on: true, background: { on: true, n: 1, live: true }, agents: known });
+assert.ok(withAgents.includes('<span class="st-agent"><i>A</i>web</span>') && (withAgents.match(/st-agent/g) || []).length === 1, "the matched step shows its agent, the others nothing");
+assert.ok(!body(tree, { sid: "a", on: true, background: { on: false, n: 1, live: true }, agents: known }).includes("st-agent"), "background agents off: no agent under a step");
 assert.deepStrictEqual(parseStatus("x\n**Where we are**\n○ || operator handling\n○ ∥\n○").items.map((i) => [i.text, i.par]), [["|| operator handling", false]], "|| is just text; an item with no words is left out");
 assert.ok(body(parseStatus("x\n**Where we are**\n→ ∥ solo\n○ b"), { sid: "a", on: true }).includes('<span class="st-mark">→</span>'), "a lone ∥ item is a plain step: its →");
 assert.ok(off.includes("about half a cent each") && onBody.includes("Total in Settings → Progress"), "under the switch: what it costs, where the total is");
