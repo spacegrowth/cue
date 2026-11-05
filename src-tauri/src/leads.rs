@@ -584,7 +584,9 @@ pub fn refresh() -> bool {
     verify_reported(&fresh, &relay_dir());
     let verified = VERIFIED.swap(false, std::sync::atomic::Ordering::Relaxed);
     *crate::locking::lock(&LOCAL, "LOCAL") = Some(fresh);
-    merge() || verified
+    let changed = merge();
+    carry_status_over();
+    changed || verified
 }
 
 /// INDEX again from this Mac's part and every machine's (this Mac's wins a clash). True when it changed.
@@ -601,6 +603,37 @@ fn merge() -> bool {
     }
     *cur = Some(all);
     true
+}
+
+/// The hand-offs whose status-list switch was already looked at (old lead, new lead): each link once per run.
+static CARRIED: Mutex<Option<HashSet<(String, String)>>> = Mutex::new(None);
+
+/// A hand-off older than this isn't carried over when Cue first sees it (Cue starting up finds every old one).
+const FRESH_HANDOFF_MS: u64 = 3_600_000;
+
+/// The leads in `index` that took over from another and weren't in `seen` yet, as (old, new), and only the ones that
+/// started within `FRESH_HANDOFF_MS` of `now_ms` (a start time relay didn't give counts as old).
+fn new_successors(index: &HashMap<String, Member>, seen: &mut HashSet<(String, String)>, now_ms: u64) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = index
+        .iter()
+        .filter(|(_, m)| m.role == "lead" && !m.predecessor.is_empty())
+        .filter(|(sid, m)| seen.insert((m.predecessor.clone(), (*sid).clone())) && m.started_ms > 0 && now_ms.saturating_sub(m.started_ms) < FRESH_HANDOFF_MS)
+        .map(|(sid, m)| (m.predecessor.clone(), sid.clone()))
+        .collect();
+    out.sort();
+    out
+}
+
+/// A relay hand-off Cue just learned of: the status list is on for the new lead if it was for the one before.
+fn carry_status_over() {
+    let found = {
+        let index = crate::locking::lock(&INDEX, "INDEX").clone().unwrap_or_default();
+        let mut seen = crate::locking::lock(&CARRIED, "CARRIED");
+        new_successors(&index, seen.get_or_insert_with(HashSet::new), crate::model::now_ms())
+    };
+    for (old, new) in found {
+        crate::statuslist::carry_over(&old, &new);
+    }
 }
 
 /// What runs on a machine to list its crews: relay's command there (from Claude Code's installed
@@ -644,7 +677,9 @@ pub fn refresh_remote(machine: &str, host: &str) -> (bool, Option<HashSet<String
     crate::locking::lock(&REMOTE_SCREENS, "REMOTE_SCREENS").get_or_insert_with(HashMap::new).insert(machine.to_string(), screens.into_iter().map(|(p, (_, s))| (p, s)).collect());
     crate::locking::lock(&REMOTE_PILEAD, "REMOTE_PILEAD").get_or_insert_with(HashMap::new).insert(machine.to_string(), pilead_bin_of(&out));
     crate::locking::lock(&REMOTE, "REMOTE").get_or_insert_with(HashMap::new).insert(machine.to_string(), parsed);
-    (merge(), Some(live_of(&out)))
+    let changed = merge();
+    carry_status_over();
+    (changed, Some(live_of(&out)))
 }
 
 /// What a machine's tmux pane (`pane`, its id there) showed at the last listing, if it's a screen before
@@ -1554,6 +1589,23 @@ ML
         // Closed, relay's record says so on the next listing, and the row goes.
         let after = parse_remote(&out.replace("\"stalled\"", "\"closed\""), "box").1;
         assert!(!view_rows(&after, "ML").iter().any(|s| s == "relay:stuck-1"));
+    }
+
+    #[test]
+    fn a_new_lead_is_a_successor_once_and_only_when_it_just_started() {
+        let lead = |predecessor: &str, started_ms: u64| Member { role: "lead".into(), predecessor: predecessor.into(), started_ms, ..Default::default() };
+        let now = 10_000_000_000;
+        let index = HashMap::from([
+            ("NEW".to_string(), lead("OLD", now - 60_000)),
+            ("ANCIENT".to_string(), lead("EARLIER", now - 2 * FRESH_HANDOFF_MS)),
+            ("UNDATED".to_string(), lead("BEFORE", 0)),
+            ("FIRST".to_string(), lead("", now)),
+            ("EXEC".to_string(), Member { role: "executor".into(), predecessor: "X".into(), started_ms: now, ..Default::default() }),
+        ]);
+        let mut seen = HashSet::new();
+        assert_eq!(new_successors(&index, &mut seen, now), vec![("OLD".to_string(), "NEW".to_string())], "relay successor: just the fresh hand-off");
+        assert!(seen.contains(&("EARLIER".to_string(), "ANCIENT".to_string())), "an old one is noted, so it's never carried later");
+        assert!(new_successors(&index, &mut seen, now).is_empty(), "each link once");
     }
 
     fn view_rows(index: &HashMap<String, Member>, lead: &str) -> Vec<String> {

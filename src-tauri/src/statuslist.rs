@@ -114,6 +114,28 @@ pub fn sessions_with(cfg: &Value, session_id: &str, on: bool) -> Value {
     Value::Array(ids.split_off(skip))
 }
 
+/// `status.sessions` with `new` added when the list is on for `old` and not yet for `new`: the switch carried over
+/// to the session that takes over from `old`. None when there's nothing to change. Never turns anything off.
+fn sessions_carrying(cfg: &Value, old: &str, new: &str) -> Option<Value> {
+    let on = |id: &str| cfg.pointer("/status/sessions").and_then(Value::as_array).is_some_and(|a| a.iter().any(|s| s == id));
+    (on(old) && !on(new)).then(|| sessions_with(cfg, new, true))
+}
+
+/// `new` takes over from `old` (a hand-off): the status list is on for it too when it was for `old`, as if you'd
+/// switched it on from its ring. Called once when the link is learned; whatever you set for `new` afterwards stays.
+/// True when it switched `new` on.
+pub fn carry_over(old: &str, new: &str) -> bool {
+    if old.is_empty() || new.is_empty() || old == new {
+        return false;
+    }
+    let Some(sessions) = sessions_carrying(&crate::config::load(), old, new) else { return false };
+    if crate::config::set("status.sessions", sessions).is_err() {
+        return false;
+    }
+    crate::machines::hooks::push_status_on();
+    true
+}
+
 /// What the status list has cost, kept as a line per message in Cue's folder (the hook runs once per event, often
 /// for several sessions at once: an appended line is never lost): `<ms> <tokens> <usd> <session>`, totalled for
 /// Settings → Progress and per session for its open list. (Lines from before the session was written have three
@@ -266,6 +288,22 @@ mod tests {
     fn a_reply_is_read_aloud_without_its_list() {
         assert_eq!(without_list(&format!("Done, both installed.\n\n{LIST}")), "Done, both installed.");
         assert_eq!(without_list("No list here."), "No list here.");
+    }
+
+    #[test]
+    fn a_successor_gets_the_switch_only_when_the_old_session_had_it() {
+        let cfg = json!({ "status": { "sessions": ["old", "other"] } });
+        assert_eq!(sessions_carrying(&cfg, "old", "new"), Some(json!(["old", "other", "new"])), "on for the old one: on for the new");
+        assert_eq!(sessions_carrying(&cfg, "plain", "new"), None, "off stays off");
+        assert_eq!(sessions_carrying(&json!({}), "old", "new"), None, "no sessions at all");
+    }
+
+    #[test]
+    fn carrying_over_never_turns_anything_off_or_repeats() {
+        let cfg = json!({ "status": { "sessions": ["old", "new"] } });
+        assert_eq!(sessions_carrying(&cfg, "old", "new"), None, "already on: nothing to change");
+        let cfg = json!({ "status": { "sessions": ["new"] } });
+        assert_eq!(sessions_carrying(&cfg, "old", "new"), None, "the old one off, the new one on: left as it is");
     }
 
     #[test]

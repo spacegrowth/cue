@@ -293,6 +293,7 @@ pub(crate) fn handoff_continue_now(h: &Arc<Hub>, session_id: &str) -> Result<ser
     let started = start_after(h, session_id, |last| if takes_resume { format!("/{skill} resume") } else { resume_ask(last, true, &note, &note_file(session_id)) });
     if let Some(new_id) = started.as_ref().ok().filter(|id| !id.is_empty()) {
         db::handoff_continued(session_id, new_id);
+        crate::statuslist::carry_over(session_id, new_id);
     }
     {
         let mut guard = crate::locking::lock(&CONTINUING, "CONTINUING");
@@ -342,6 +343,7 @@ pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) 
 
 pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
     let new_id = start_after(h, session_id, |last| resume_ask(last, false, "", ""))?;
+    crate::statuslist::carry_over(session_id, &new_id);
     let (closed, detail) = close_replaced(h, session_id, "Started fresh from its last reply");
     Ok(serde_json::json!({ "session_id": new_id, "closed": closed, "detail": detail }))
 }
