@@ -108,12 +108,12 @@ function statusParts(status, sw = null) {
   const ready = listed && sw ? parallelReady(statusSteps(items)) : null;
   const par = ready ? `<div class="st-par"><span>${ready.filter((i) => i.state !== "done").length} can run side by side<small>Asks the session; it decides</small></span><button class="btn" data-act="status-parallel" data-sid="${esc(sw.sid)}">Parallelize</button></div>` : "";
   // Relay mode (`sw.relay`: { on }, while relay's skills are there for the session), on the line so it's always in
-  // view: its switch (on makes the session a lead, off steps it down), and while it's on, Run on relay (hands the steps
-  // left to helpers, while two or more aren't started).
+  // view: Enable relay makes the session a lead; a lead gets Run on relay (hands the steps left to helpers, while two
+  // or more aren't started) and Stop relay.
   const rl = listed && sw?.relay;
   const left = items.filter((i) => i.state === "left").length;
   const pill = (act, label) => `<button class="st-pill" data-act="${act}" data-sid="${esc(sw.sid)}">${label}</button>`;
-  const relay = !rl ? "" : `${rl.on && left >= 2 ? pill("status-relay-run", "Run on relay") : ""}<span class="st-relay">Relay<button class="toggle ${rl.on ? "on" : ""}" data-act="status-relay" data-sid="${esc(sw.sid)}" data-on="${rl.on ? 0 : 1}" role="switch" aria-checked="${!!rl.on}" aria-label="Relay mode"><span></span></button></span>`;
+  const relay = !rl ? "" : !rl.on ? pill("status-relay", "Enable relay") : `${left >= 2 ? pill("status-relay-run", "Run on relay") : ""}${pill("status-relay-stop", "Stop relay")}`;
   // What it has cost this session (`sw.spent`, in words), beside its name.
   const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session${sw.spent ? ` <span class="st-dim">(${esc(sw.spent)})</span>` : ""}</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
   const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";

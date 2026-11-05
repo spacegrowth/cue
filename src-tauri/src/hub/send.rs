@@ -543,7 +543,7 @@ impl Hub {
             "compact" => "/compact",
             "handoff" if !lead() => return Err("only a relay lead can hand off".into()),
             "handoff" => "/relay:handoff",
-            // Relay mode on or off (the status line's relay switch, ⋯ Start relay): relay's own skills do it.
+            // Relay mode on or off (the status line's Enable relay / Stop relay, ⋯ Start relay): relay's own skills do it.
             "relay-on" if lead() => return Err("It's a relay lead already".into()),
             "relay-on" => "/relay:mode",
             "relay-off" if !lead() => return Err("It isn't a relay lead".into()),
