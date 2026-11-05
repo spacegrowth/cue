@@ -641,8 +641,6 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* The ring's switch: the status list on or off for this session (at the card's end; alone while it's off). */
 .st-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; user-select: none; -webkit-user-select: none; }
 .st-toggle.solo { margin-top: 0; padding-top: 0; border-top: 0; }
-.st-relay { margin: 0 0 8px; padding: 0 0 8px; border-top: 0; border-bottom: 1px solid var(--line); }   /* relay mode's switch: on top of the open list */
-.st-relay .st-dim { font-weight: 400; }
 .st-toggle .toggle { flex: none; }
 .cv-schip.st-empty .cv-spop { min-width: 0; }   /* the switch alone: one line */
 .st-note { margin-top: 2px; color: var(--muted); font-size: 12px; }   /* on, no list yet: when it starts */
@@ -658,7 +656,11 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); } }
 :root[data-theme="dark"] .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); }
 .st-panel { position: relative; flex: none; margin: 8px 16px 6px; z-index: 5; }
-.st-bar { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px 0 12px; border: 0; border-radius: 10px; font: 12.5px var(--sans); text-align: left; cursor: pointer; }
+.st-head { display: flex; align-items: center; gap: 6px; border-radius: 10px; }   /* the line and relay's buttons, one band */
+.st-head:has(> .st-pill) { padding-right: 6px; }
+.st-pill { flex: none; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
+.st-pill:hover { border-color: var(--muted); }
+.st-bar { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 32px; padding: 0 10px 0 12px; border: 0; border-radius: 10px; font: 12.5px var(--sans); text-align: left; cursor: pointer; }
 .st-bar b { flex: none; font-weight: 700; }
 .st-bar:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
 .st-line { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -666,7 +668,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .st-toggle .st-dim { font-weight: 400; }   /* the cost beside the switch's name: a note, not part of the name */
 .st-chev { flex: none; font-size: 15px; line-height: 1; opacity: 0.85; }
 .st-drawer { user-select: text; -webkit-user-select: text; cursor: text; position: absolute; top: 100%; left: 0; right: 0; max-height: 60vh; overflow-y: auto; padding: 10px 12px; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; font-size: 12.5px; box-shadow: var(--shadow); }
-.st-panel:has(> .st-drawer:not(.closing)) .st-bar { border-radius: 10px 10px 0 0; }   /* the list hangs from the line: one shape; the shape follows the list itself, so it can't stay behind */
+.st-panel:has(> .st-drawer:not(.closing)) :is(.st-head, .st-bar) { border-radius: 10px 10px 0 0; }   /* the list hangs from the line: one shape; the shape follows the list itself, so it can't stay behind */
 /* It unrolls down from the line, and rolls back up into it. */
 .st-drawer.slide { animation: stUnroll 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .st-drawer.closing { pointer-events: none; }   /* rolling up (statusPanelCloseAll animates it) */

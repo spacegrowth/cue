@@ -1883,20 +1883,20 @@ function statusPanel(it, s) {
   const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${aboutMoney(own.usd)} so far` : "";
   return statusPanelHtml(status, { ...sw, spent, key, relay: relayMode(sw.sid) }, statusPanelView(sw.sid));
 }
-/** Relay mode switched on or off from Cue, until relay shows the change (the session runs /relay:mode or /relay:stop
- *  in its turn, so its crew entry comes a while after): sid → { on, at }. */
+/** Relay mode started or stopped from Cue, until relay shows the change (the session runs /relay:mode or /relay:stop in
+ *  its turn, so its crew entry comes a while after): sid → { on, at }. */
 const relayAsked = new Map();
 const RELAY_CATCH_UP_MS = 90000;
 const isRelayLead = (sid) => crewOf(sid)?.role === "lead" && crewOf(sid)?.plugin === "relay";
 /** A session's relay mode: null while relay's skills aren't there for it (its "/" list has no relay:mode), else
- *  { on }: on while it's a relay lead, or as you just switched it until relay catches up (or a while passes). */
+ *  { on }: on while it's a relay lead, or as you just started or stopped it until relay catches up (or a while passes). */
 function relayMode(sid) {
   if (!cmdList(sid).some((c) => c.name === "relay:mode")) return null;
   const lead = isRelayLead(sid), asked = relayAsked.get(sid);
   if (asked && (asked.on === lead || Date.now() - asked.at > RELAY_CATCH_UP_MS)) relayAsked.delete(sid);
   return { on: relayAsked.has(sid) ? asked.on : lead };
 }
-/** Turn a session's relay mode on or off: relay's own skill, typed into it (session_command). */
+/** Start or stop a session's relay mode: relay's own skill, typed into it (session_command). */
 function setRelayMode(sid, on) {
   relayAsked.set(sid, { on, at: Date.now() });
   renderMain();

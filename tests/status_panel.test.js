@@ -36,16 +36,16 @@ assert.ok(!open.includes("so far)") && !statusPanelHtml(long, { ...sw, spent: "x
 assert.ok(statusPanelHtml(short, sw, { open: true, slide: true }).includes("st-drawer st-inv slide"), "just opened: it slides down");
 assert.ok(!statusPanelHtml(short, sw, { open: true }).includes(" slide\""), "otherwise not (a redraw doesn't slide it again)");
 
-// Relay mode: its switch on top of the open list while relay's skills are there; on, Run on relay while 2+ steps aren't started.
-const relayOff = statusPanelHtml(short, { ...sw, relay: { on: false } }, { open: true });
-const dr = relayOff.slice(relayOff.indexOf("st-drawer"));
-assert.ok(dr.includes('data-act="status-relay"') && dr.includes('data-on="1"') && dr.indexOf("st-relay") < dr.indexOf("st-list"), "relay mode's switch, off, on top");
-assert.ok(!dr.includes("status-relay-run"), "off: no Run on relay");
+// Relay mode, on the line (open or not) while relay's skills are there: Enable relay; a lead gets Run on relay (2+
+// steps not started) and Stop relay.
+const head = (h) => h.slice(h.indexOf("st-head"), h.indexOf("st-drawer") < 0 ? undefined : h.indexOf("st-drawer"));
+const relayOff = statusPanelHtml(short, { ...sw, relay: { on: false } }, {});
+assert.ok(head(relayOff).includes('data-act="status-relay"') && head(relayOff).includes(">Enable relay<") && !relayOff.includes("status-relay-run"), "not a lead: Enable relay on the line");
 const relayOn = statusPanelHtml(short, { ...sw, relay: { on: true } }, { open: true });
-assert.ok(relayOn.includes('aria-checked="true"') && relayOn.includes("Run the 3 steps left on relay") && relayOn.indexOf("status-relay-run") < relayOn.indexOf("Status list for this session"), "on: Run on relay, above the session's switch");
+assert.ok(head(relayOn).includes(">Run on relay<") && head(relayOn).includes(">Stop relay<") && !relayOn.includes('data-act="status-relay"'), "a lead: Run on relay and Stop relay on the line");
 assert.ok(!statusPanelHtml(L("✓ a\n→ b\n○ c"), { ...sw, relay: { on: true } }, { open: true }).includes("status-relay-run"), "one step left: nothing to hand out");
+assert.ok(statusPanelHtml(L("✓ a\n→ b\n○ c"), { ...sw, relay: { on: true } }, {}).includes(">Stop relay<"), "one step left: still Stop relay");
 assert.ok(!statusPanelHtml(short, sw, { open: true }).includes("status-relay"), "no relay for the session: no switch");
-assert.ok(!statusPanelHtml(short, { ...sw, relay: { on: true } }, {}).includes("status-relay"), "closed: not on the line");
 
 // Nothing: put away, off for the session, or no list.
 assert.strictEqual(statusPanelHtml(short, sw, { away: true }), "", "put away with the ring");
