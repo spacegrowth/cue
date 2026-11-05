@@ -641,6 +641,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 /* The ring's switch: the status list on or off for this session (at the card's end; alone while it's off). */
 .st-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; user-select: none; -webkit-user-select: none; }
 .st-toggle.solo { margin-top: 0; padding-top: 0; border-top: 0; }
+.st-relay { margin: 0 0 8px; padding: 0 0 8px; border-top: 0; border-bottom: 1px solid var(--line); }   /* relay mode's switch: on top of the open list */
+.st-relay .st-dim { font-weight: 400; }
 .st-toggle .toggle { flex: none; }
 .cv-schip.st-empty .cv-spop { min-width: 0; }   /* the switch alone: one line */
 .st-note { margin-top: 2px; color: var(--muted); font-size: 12px; }   /* on, no list yet: when it starts */

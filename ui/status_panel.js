@@ -1,8 +1,8 @@
 // The status list above the chat: one line under a session's tabs (so it's in view on every tab: Chat, Actions,
 // Agents, About), in the theme's own color. A click on it slides the whole list down over the chat, hanging from the
-// line, with Parallelize when a group is ready and the session's switch and what the list costs. A click on the line
-// again, anywhere else, or Esc slides it back up. The ring by the box (statusChipHtml) puts the line
-// away or brings it back; that choice is kept per session.
+// line: relay mode's switch on top, then the list, Parallelize when a group is ready, Run on relay in relay mode, the
+// session's switch and what the list costs. A click on the line again, anywhere else, or Esc slides it back up. The
+// ring by the box (statusChipHtml) puts the line away or brings it back; that choice is kept per session.
 
 /** How many sessions' put-away choices are kept (the oldest go first). */
 const STATUS_PANEL_KEEP = 200;
@@ -53,7 +53,7 @@ function statusPanelHtml(status, sw, view) {
   if (!p.listed || view.away) return "";
   const sid = esc(sw.sid), ring = statusRing(p.done, p.now, status.items.length), open = !!view.open;
   const bar = `<button class="st-bar st-inv" data-act="status-open" data-sid="${sid}" aria-expanded="${open}" aria-label="${open ? "Close the status list" : "Open the status list"}">${ring}${statusOneLine(status, p.done)}<span class="st-chev">${open ? "▴" : "▾"}</span></button>`;
-  const drawer = open ? `<div class="st-drawer st-inv${view.slide ? " slide" : ""}" data-sid="${sid}" data-key="${esc(sw.key || "")}">${p.list}${p.par}${p.toggle}${p.cost}</div>` : "";
+  const drawer = open ? `<div class="st-drawer st-inv${view.slide ? " slide" : ""}" data-sid="${sid}" data-key="${esc(sw.key || "")}">${p.relay}${p.list}${p.par}${p.run}${p.toggle}${p.cost}</div>` : "";
   return `<div class="st-panel">${bar}${drawer}</div>`;
 }
 

@@ -538,15 +538,16 @@ impl Hub {
         if state == "working" {
             return Err("It's working: do this when its turn ends".into());
         }
+        let lead = || crate::leads::view(&std::iter::once(session_id.to_string()).collect()).get(session_id).is_some_and(|m| m["role"] == "lead" && m["plugin"] == "relay");
         let line = match action {
             "compact" => "/compact",
-            "handoff" => {
-                let lead = crate::leads::view(&std::iter::once(session_id.to_string()).collect()).get(session_id).is_some_and(|m| m["role"] == "lead" && m["plugin"] == "relay");
-                if !lead {
-                    return Err("only a relay lead can hand off".into());
-                }
-                "/relay:handoff"
-            }
+            "handoff" if !lead() => return Err("only a relay lead can hand off".into()),
+            "handoff" => "/relay:handoff",
+            // Relay mode on or off (the status list's switch, ⋯ Start relay): relay's own skills do it.
+            "relay-on" if lead() => return Err("It's a relay lead already".into()),
+            "relay-on" => "/relay:mode",
+            "relay-off" if !lead() => return Err("It isn't a relay lead".into()),
+            "relay-off" => "/relay:stop",
             _ => return Err(format!("Cue doesn't know \"{action}\"")),
         };
         crate::focus::type_into(&origin, line)?;
@@ -567,6 +568,8 @@ impl Hub {
         }
         Ok(match action {
             "compact" => "Compacting: it summarizes the conversation to free up context".into(),
+            "relay-on" => "Relay mode: it becomes a relay lead and hands work to helpers".into(),
+            "relay-off" => "Relay mode off: it steps down as lead".into(),
             _ => "Relay handoff: it writes its notes, relay opens the new lead, then this one steps down".into(),
         })
     }

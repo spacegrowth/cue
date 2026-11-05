@@ -337,6 +337,11 @@ function bindMain() {
     // …and its Parallelize: asks the session to run the side-by-side group it's at (status.js), like a quick phrase.
     const stPar = t.closest("[data-act=status-parallel]");
     if (stPar) { statusPop = null; return sendPhrase(`s:${stPar.dataset.sid}`, PARALLELIZE); }
+    // …relay mode's switch on top of it, and Run on relay in relay mode (hands the steps left to helpers).
+    const stRelay = t.closest("[data-act=status-relay]");
+    if (stRelay) return setRelayMode(stRelay.dataset.sid, stRelay.dataset.on === "1");
+    const stRun = t.closest("[data-act=status-relay-run]");
+    if (stRun) return sendPhrase(`s:${stRun.dataset.sid}`, RUN_ON_RELAY);
     // A tip's ×: that tip never comes back (tips.js).
     const tx = t.closest("[data-act=tip-x]");
     if (tx) { tipUsed(tx.dataset.tipId); return renderMain(); }
@@ -378,6 +383,7 @@ function bindMain() {
       const { cmd, sid } = mc.dataset;
       if (cmd === "handoff" && handoffArm !== sid) { handoffArm = sid; return renderMain(); }
       moreFor = handoffArm = null;
+      if (cmd === "relay-on") return setRelayMode(sid, true);
       renderMain();
       invoke("session_command", { sessionId: sid, action: cmd }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
       return;

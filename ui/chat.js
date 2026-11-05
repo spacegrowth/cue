@@ -1881,7 +1881,26 @@ function statusPanel(it, s) {
   const { status, key, sw } = latestStatus(it, s);
   const own = state.status_spent?.sessions?.[sw.sid];
   const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${aboutMoney(own.usd)} so far` : "";
-  return statusPanelHtml(status, { ...sw, spent, key }, statusPanelView(sw.sid));
+  return statusPanelHtml(status, { ...sw, spent, key, relay: relayMode(sw.sid) }, statusPanelView(sw.sid));
+}
+/** Relay mode switched on or off from Cue, until relay shows the change (the session runs /relay:mode or /relay:stop
+ *  in its turn, so its crew entry comes a while after): sid → { on, at }. */
+const relayAsked = new Map();
+const RELAY_CATCH_UP_MS = 90000;
+const isRelayLead = (sid) => crewOf(sid)?.role === "lead" && crewOf(sid)?.plugin === "relay";
+/** A session's relay mode: null while relay's skills aren't there for it (its "/" list has no relay:mode), else
+ *  { on }: on while it's a relay lead, or as you just switched it until relay catches up (or a while passes). */
+function relayMode(sid) {
+  if (!cmdList(sid).some((c) => c.name === "relay:mode")) return null;
+  const lead = isRelayLead(sid), asked = relayAsked.get(sid);
+  if (asked && (asked.on === lead || Date.now() - asked.at > RELAY_CATCH_UP_MS)) relayAsked.delete(sid);
+  return { on: relayAsked.has(sid) ? asked.on : lead };
+}
+/** Turn a session's relay mode on or off: relay's own skill, typed into it (session_command). */
+function setRelayMode(sid, on) {
+  relayAsked.set(sid, { on, at: Date.now() });
+  renderMain();
+  invoke("session_command", { sessionId: sid, action: on ? "relay-on" : "relay-off" }).then((m) => toast(m), (e) => { relayAsked.delete(sid); renderMain(); toast(`Couldn't: ${e}`); });
 }
 /** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
  *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot
@@ -1984,6 +2003,7 @@ function moreMenu(sid, s, closable = false) {
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${tellItem(sid, s)}
       ${handoffMenu(sid, s)}
+      ${relayMode(sid)?.on === false ? `<button data-cmd="relay-on" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Start relay<span>${busy ? "When this turn ends" : "Make it a relay lead (/relay:mode): it plans and hands work to helpers"}</span></button>` : ""}
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}

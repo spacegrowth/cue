@@ -16,6 +16,8 @@ const STATUS_PAR = /^∥+\s*/;
 /** Under a session's switch: how it works and what it costs (Settings → Progress keeps the running total). */
 const STATUS_COST = "The agent writes this list at the end of each reply, about half a cent each. Total in Settings → Progress.";
 /** What the Parallelize button sends the session: it decides, Cue only asks. */
+/** Run on relay (a relay lead's list): hands the steps left to executors, as relay's own plan. */
+const RUN_ON_RELAY = "Run the steps left in the status list on relay: hand each one to an executor as a packet and add them to /relay:plan. Steps in order go one after another; neighbouring ∥ steps go out at once only if they touch different files. Mark each one handed out with →.";
 const PARALLELIZE = "Parallelize the current step: run the ∥ items that are ready now side by side as background agents, if they touch different files and it's worth the cost; otherwise keep them in order and say why. Mark each one running with →.";
 
 /** A reply split into its words and its status list: { body, items: [{ state, text, par }], waiting, now } or, when it
@@ -92,7 +94,8 @@ function statusRing(done, now, total) {
 }
 
 /** What a list shows, in its parts, for the ring's card and the panel above the chat (status_panel.js) alike:
- *  `list` the track and what it waits on, `par` the Parallelize row (a session's own list only), `toggle` the
+ *  `list` the track and what it waits on, `par` the Parallelize row and `relay`/`run` relay mode's switch and its Run
+ *  on relay row (a session's own list only), `toggle` the
  *  session's switch, `starts` when tracking starts (on, no list yet), `cost` what it costs. `listed`: there is a list
  *  to show (and, with `sw`, it's on for the session). */
 function statusParts(status, sw = null) {
@@ -105,12 +108,18 @@ function statusParts(status, sw = null) {
   // A group ready to start side by side: the button asks the session to (a session's own list only).
   const ready = listed && sw ? parallelReady(statusSteps(items)) : null;
   const par = ready ? `<div class="st-par"><span>${ready.filter((i) => i.state !== "done").length} can run side by side<small>Asks the session; it decides</small></span><button class="btn" data-act="status-parallel" data-sid="${esc(sw.sid)}">Parallelize</button></div>` : "";
+  // Relay mode (`sw.relay`: { on }, while relay's skills are there for the session): its switch, then, on, Run on relay
+  // while two or more steps aren't started (a session's own list only).
+  const rl = listed && sw?.relay;
+  const relay = rl ? `<div class="st-toggle st-relay"><span>Relay mode <span class="st-dim">${rl.on ? "(this session is the lead)" : "(hand steps to helpers)"}</span></span><button class="toggle ${rl.on ? "on" : ""}" data-act="status-relay" data-sid="${esc(sw.sid)}" data-on="${rl.on ? 0 : 1}" role="switch" aria-checked="${!!rl.on}" aria-label="Relay mode"><span></span></button></div>` : "";
+  const left = items.filter((i) => i.state === "left").length;
+  const run = rl?.on && left >= 2 ? `<div class="st-par"><span>Run the ${left} steps left on relay<small>In order; side by side only if they touch different files</small></span><button class="btn" data-act="status-relay-run" data-sid="${esc(sw.sid)}">Run on relay</button></div>` : "";
   // What it has cost this session (`sw.spent`, in words), beside its name.
   const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session${sw.spent ? ` <span class="st-dim">(${esc(sw.spent)})</span>` : ""}</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
   const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";
   // What it is and what it costs, in a line under the switch: the agent writes the list (tokens it's paid for).
   const cost = sw ? `<div class="st-note">${STATUS_COST}</div>` : "";
-  return { listed, done, now, list, par, toggle, starts, cost };
+  return { listed, done, now, list, par, relay, run, toggle, starts, cost };
 }
 
 /** The ring beside the mic, for the latest reply's list: the ring and "done/total". `key` says which list.
@@ -194,4 +203,4 @@ const statusShown = (st = typeof state !== "undefined" ? state.settings?.status 
 /** On for this session: shown, and turned on from its ring (each session starts off). */
 const statusOn = (sid, st = typeof state !== "undefined" ? state.settings?.status : null) => statusShown(st) && (st?.sessions || []).includes(sid);
 
-if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusParts, statusRing, statusOn, statusShown, statusSteps, parallelReady, PARALLELIZE };
+if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusParts, statusRing, statusOn, statusShown, statusSteps, parallelReady, PARALLELIZE, RUN_ON_RELAY };
