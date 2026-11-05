@@ -410,12 +410,13 @@ const crewBtn = (sid, action, label, primary = false, short = "") => `<button cl
 /** Diff: relay's diff page comes from relay's command, here or on its machine; pi-lead writes its page on the
  *  machine it runs on and Cue can't bring that one here, so a pi-lead executor on another machine has no Diff. */
 const diffBtn = (sid, m) => m?.plugin === "pilead" && m.machine ? "" : crewBtn(sid, "diff", "Diff");
-/** "in review" once you've sent an executor's review, "review queued" while it waits for its lead,
- *  "reviewed" once its lead has seen the report (Cue tells every screen), else "". */
-const reviewWord = (sid) => { const w = state.reviews?.[sid] || ""; return w === "not picked up" ? "" : w; };
+/** Where a packet waiting on you stands in its review (Cue tells every screen, see reviewcard.js): "review queued"
+ *  while it waits for its lead, "in review" once your review is typed in, "reviewed" once one ran, else "". */
+const REVIEW_WORDS = { queued: "review queued", reviewing: "in review", reviewed: "reviewed" };
+const reviewWord = (sid) => REVIEW_WORDS[state.reviews?.[sid]?.state] || "";
 /** A report relay never woke its lead for: ready a while, unseen, its lead listening and free. Cue says so
  *  instead of "waiting for review"; Review in lead stays. */
-const missedWake = (sid) => state.reviews?.[sid] === "not picked up";
+const missedWake = (sid) => !!state.reviews?.[sid]?.missed;
 /** An executor whose agent exited before it reported (stalled: it never got past a trust prompt, say; dead:
  *  its process is gone): nothing will ever report, so its row says so and offers Close. */
 const stalled = (status) => status === "stalled" || status === "dead";

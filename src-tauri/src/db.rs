@@ -75,6 +75,14 @@ CREATE TABLE IF NOT EXISTS review_queue (
   at_ms       INTEGER NOT NULL
 );
 
+-- Packets you set aside on a Review card: the executor's relay id and the packet.
+CREATE TABLE IF NOT EXISTS set_aside (
+  exec        TEXT NOT NULL,
+  packet      INTEGER NOT NULL,
+  at_ms       INTEGER NOT NULL,
+  PRIMARY KEY (exec, packet)
+);
+
 -- The "/" commands Claude Code reports for a folder (see commands.rs): read once, kept a week, so a
 -- relaunch of Cue doesn't ask again.
 CREATE TABLE IF NOT EXISTS commands (
@@ -662,6 +670,20 @@ pub fn queue_review(exec: &str, lead: &str, text: &str, at_ms: u64) {
 /// A queued review sent, or taken back.
 pub fn unqueue_review(exec: &str) {
     with(|c| c.execute("DELETE FROM review_queue WHERE exec = ?1", params![exec]));
+}
+
+/// Every packet you set aside: (executor id, packet).
+pub fn set_aside() -> Vec<(String, u64)> {
+    with(|c| {
+        let mut q = c.prepare("SELECT exec, packet FROM set_aside")?;
+        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64)))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    })
+    .unwrap_or_default()
+}
+
+pub fn add_set_aside(exec: &str, packet: u64) {
+    with(|c| c.execute("INSERT OR IGNORE INTO set_aside (exec, packet, at_ms) VALUES (?1, ?2, ?3)", params![exec, packet as i64, crate::model::now_ms() as i64]));
 }
 
 // ---------- "/" commands by folder ----------

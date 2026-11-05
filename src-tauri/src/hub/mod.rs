@@ -81,6 +81,8 @@ struct Store {
     /// Reviews asked for while their lead was busy, oldest first: each goes when its lead is free,
     /// one at a time. Saved, so a restart doesn't drop them.
     review_queue: Vec<QueuedReview>,
+    /// Packets you set aside on their Review card: (relay's executor id, packet). Saved.
+    set_aside: HashSet<(String, u64)>,
     /// Claude sessions missing from Claude Code's own list of running sessions, and since when: gone
     /// for GONE_AFTER_MS, they're ended in Cue (see `sweep`).
     missing: HashMap<String, u64>,
@@ -143,6 +145,7 @@ impl Hub {
         st.items = waiting;
         st.parked = crate::db::parked();
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
+        st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
         Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()) }

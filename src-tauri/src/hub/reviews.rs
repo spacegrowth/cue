@@ -5,6 +5,9 @@ use super::*;
 /// After typing a review into a lead, wait this long before judging it free again.
 const REVIEW_SETTLE_MS: u64 = 8000;
 
+/// A Review card shows this many lines of findings.
+const FINDING_LINES: usize = 10;
+
 /// "in review" stops showing after this long even if the executor still reads as done.
 const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
 
@@ -23,7 +26,7 @@ impl Hub {
             if st.review_queue.iter().any(|q| q.exec == exec) {
                 return Ok("Already queued: it goes when its lead is free".into());
             }
-            // relay woke the lead for it already (or you reviewed it): a second review is the same work twice.
+            // A review of this packet already ran (relay saved it or ledgered it): a second one is the same work twice.
             if crate::leads::is_reviewed(exec) {
                 return Ok("Its lead already reviewed this report".into());
             }
@@ -69,7 +72,7 @@ impl Hub {
     pub fn drain_reviews(&self) {
         let due: Vec<QueuedReview> = {
             let mut st = self.st();
-            // Moot: no longer waiting for a review, or its lead got to it already (relay wakes it).
+            // Moot: no longer waiting for a review, or a review of it already ran.
             let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec)).map(|q| q.exec.clone()).collect();
             for e in &stale {
                 crate::db::unqueue_review(e);
@@ -117,22 +120,67 @@ impl Hub {
         None
     }
 
-    /// For every screen: each executor whose review you sent, executor → "in review", or that waits
-    /// for its lead, → "review queued"; or whose report its lead never picked up, → "not picked up".
+    /// Set aside (the Review card's button): this executor's current packet stops waiting on you. Cue's own
+    /// note, saved; relay isn't told, and the executor's next packet shows a card again.
+    pub fn set_aside(&self, exec: &str) -> Result<String, String> {
+        let (id, packet) = crate::leads::packet_of(exec).ok_or("Cue doesn't know this executor's packet")?;
+        crate::db::add_set_aside(&id, packet);
+        self.st().set_aside.insert((id, packet));
+        self.changed();
+        Ok("Set aside".into())
+    }
+
+    /// For every screen: where each packet that waits on you stands in its review, by executor, in one
+    /// place. The apps show it as it is. Per packet: `state` (`waiting`: nothing has reviewed it yet;
+    /// `auto`: its lead is on auto mode and reviews it on its own; `queued`: your Review waits for its lead;
+    /// `reviewing`: your Review is typed in and running; `reviewed`: a review ran, it waits for you to
+    /// commit or send fixes), `missed` (relay's wake-up never reached its lead), and what a card shows:
+    /// executor, lead, packet, goal, outcome, the diff's size (`stat`) and the review's findings.
     pub(super) fn reviews_view(st: &mut Store) -> Value {
         let now = now_ms();
-        // "in review" until its lead has seen the report and finished its turn (or 15 minutes).
+        // "in review" until its lead has finished its turn after a review ran (or 15 minutes).
         let working = |s: &Store, lead: &str| s.sessions.state(lead).as_deref() == Some("working");
         let done: Vec<String> = st.review_sent.iter().filter(|(e, (lead, _))| crate::leads::is_reviewed(e) && !working(st, lead)).map(|(e, _)| e.clone()).collect();
         st.review_sent.retain(|exec, (_, at)| now.saturating_sub(*at) < REVIEW_SHOWN_MS && crate::leads::is_done(exec) && !done.contains(exec));
-        // Later words win: not picked up, reviewed, then in review, then queued.
-        // "not picked up": its report sat unseen though its lead is listening and free (relay's wake-up never came).
         let free = |s: &Store, lead: &str| Self::lead_busy(s, lead, now).is_none();
-        let missed = crate::leads::missed(|lead| free(st, lead)).into_iter().map(|e| (e, json!("not picked up")));
-        let reviewed = crate::leads::reviewed().into_iter().map(|(e, _)| (e, json!("reviewed")));
-        let sent = st.review_sent.keys().map(|e| (e.clone(), json!("in review"))).collect::<Vec<_>>();
-        let queued = st.review_queue.iter().map(|q| (q.exec.clone(), json!("review queued")));
-        Value::Object(missed.chain(reviewed).chain(sent).chain(queued).collect())
+        let missed: HashSet<String> = crate::leads::missed(|lead| free(st, lead)).into_iter().collect();
+        let mut out = serde_json::Map::new();
+        for (sid, m, lead_auto) in crate::leads::needing_you() {
+            if m.packet.is_some_and(|n| st.set_aside.contains(&(m.id.clone(), n))) {
+                continue;
+            }
+            let missed = missed.contains(&sid);
+            let state = if st.review_queue.iter().any(|q| q.exec == sid) {
+                "queued"
+            } else if st.review_sent.contains_key(&sid) {
+                "reviewing"
+            } else if m.reviewed {
+                "reviewed"
+            } else if lead_auto && !missed {
+                "auto"
+            } else {
+                "waiting"
+            };
+            let findings = if state == "reviewed" { Self::findings(st, &m) } else { vec![] };
+            out.insert(sid, json!({
+                "state": state, "missed": missed, "name": m.name, "lead": m.lead, "packet": m.packet, "goal": m.goal, "outcome": m.outcome,
+                "stat": Self::stat_line(&m), "findings": findings,
+            }));
+        }
+        Value::Object(out)
+    }
+
+    /// "3 files · +94 −2": the size of what the packet staged, when relay recorded it.
+    fn stat_line(m: &crate::leads::Member) -> String {
+        m.diff_size.filter(|(files, ..)| *files > 0).map(|(files, added, removed)| format!("{files} file{} · +{added} −{removed}", if files == 1 { "" } else { "s" })).unwrap_or_default()
+    }
+
+    /// The numbered findings of a review: relay's saved review, else what the lead said last (an inline review
+    /// has no file: its reply is the review). A few lines.
+    fn findings(st: &Store, m: &crate::leads::Member) -> Vec<String> {
+        let reply = || st.items.iter().find(|i| i.kind == "waiting" && i.origin.session_id == m.lead).map(|i| if i.message.is_empty() { i.context.last().map(|c| c.text.clone()).unwrap_or_default() } else { i.message.clone() });
+        let text = if m.review.is_empty() { reply().unwrap_or_default() } else { m.review.clone() };
+        text.lines().map(str::trim).filter(|l| !l.is_empty()).take(FINDING_LINES).map(String::from).collect()
     }
 
     /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×).
@@ -162,10 +210,66 @@ mod tests {
         assert_eq!(Hub::lead_busy(&st, "OTHER", t + 1000), None);
     }
 
+    /// One state per packet that waits on you, from every fact: a woken lead is nothing yet (waiting), a lead on auto reviews on
+    /// its own, a review waiting for its lead is queued, one Cue sent is reviewing, one that ran is reviewed, set aside is gone.
+    #[test]
+    fn each_packet_waiting_on_you_has_one_state() {
+        let _g = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _d = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-rs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let hub = Hub::new(None);
+        let exec = |woken: bool, reviewed: bool, auto: bool| {
+            let lead = crate::leads::Member { role: "lead".into(), plugin: "relay".into(), auto: Some(auto), ..Default::default() };
+            let e = crate::leads::Member { woken, reviewed, ..crate::leads::reported_exec() };
+            crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), e)].into());
+        };
+        let state = |hub: &Hub| Hub::reviews_view(&mut hub.st())["E"]["state"].clone();
+        exec(true, false, false);
+        assert_eq!(state(&hub), "waiting", "woken but unreviewed: it waits for you");
+        exec(true, false, true);
+        assert_eq!(state(&hub), "auto", "its lead is on auto mode and woken");
+        hub.st().review_queue.push(QueuedReview { exec: "E".into(), lead: "L".into(), text: "r".into(), at_ms: 1 });
+        assert_eq!(state(&hub), "queued");
+        hub.st().review_queue.clear();
+        hub.st().review_sent.insert("E".into(), ("L".into(), now_ms()));
+        assert_eq!(state(&hub), "reviewing", "Review sent");
+        exec(true, true, true);
+        assert_eq!(state(&hub), "reviewed", "the review ran (a saved review or relay's ledger): the in-review note is dropped");
+        assert!(hub.st().review_sent.is_empty());
+        hub.set_aside("E").unwrap();
+        assert!(Hub::reviews_view(&mut hub.st()).get("E").is_none(), "set aside: no longer waiting on you");
+        assert!(Hub::new(None).st().set_aside.contains(&("ex".to_string(), 1)), "kept across a restart");
+        crate::db::reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A lead whose wake-up never arrived is waiting for you, never "reviewing on its own", even on auto mode; the
+    /// findings of a review are its saved text, else the lead's last reply.
+    #[test]
+    fn a_missed_wake_shows_as_waiting_and_a_reviews_findings_come_from_its_file_or_the_leads_reply() {
+        let _g = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut st = Store::default();
+        let lead = crate::leads::Member { role: "lead".into(), plugin: "relay".into(), auto: Some(true), ..Default::default() };
+        let late = crate::leads::Member { ready_late: true, ..crate::leads::reported_exec() };
+        crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), late)].into());
+        let v = Hub::reviews_view(&mut st);
+        assert_eq!((v["E"]["state"].as_str(), v["E"]["missed"].as_bool()), (Some("waiting"), Some(true)));
+        let m = crate::leads::Member { review: "1. one\n\n2. two\n".into(), ..crate::leads::reported_exec() };
+        assert_eq!(Hub::findings(&st, &m), ["1. one", "2. two"]);
+        let mut said = Hub::new_item(&mut st, "waiting", Origin { session_id: "L".into(), ..Default::default() });
+        said.message = "looks right\n1. only thing".into();
+        st.items.push(said);
+        assert_eq!(Hub::findings(&st, &crate::leads::reported_exec()), ["looks right", "1. only thing"], "an inline review has no file: the reply is the review");
+    }
+
     #[test]
     fn a_review_for_a_busy_lead_is_queued_kept_across_restarts_and_dropped_once_moot() {
         let dir = std::env::temp_dir().join(format!("cue-rq-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _l = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("CUE_HOME", &dir);
         crate::db::reset();
@@ -185,7 +289,8 @@ mod tests {
             let q = Hub::review_queue_view(&st);
             let names: Vec<&str> = q["L"].as_array().unwrap().iter().map(|r| r["exec"].as_str().unwrap()).collect();
             assert_eq!(names, ["E1", "E2"], "in the order you asked");
-            assert_eq!(Hub::reviews_view(&mut st)["E2"], "review queued");
+            crate::leads::install_index(["E1", "E2"].map(|e| (e.to_string(), crate::leads::reported_exec())).into());
+            assert_eq!(Hub::reviews_view(&mut st)["E2"]["state"], "queued");
         }
         // Saved: a restart keeps them, in order.
         let again = Hub::new(None);
@@ -194,6 +299,7 @@ mod tests {
         again.unqueue_review("E1");
         assert_eq!(Hub::new(None).store.lock().unwrap().review_queue.len(), 1);
         // An executor no longer waiting for a review (closed, unknown to relay) is dropped, not sent.
+        crate::leads::install_index(HashMap::new());
         again.drain_reviews();
         assert!(again.store.lock().unwrap().review_queue.is_empty());
         assert!(Hub::new(None).store.lock().unwrap().review_queue.is_empty());

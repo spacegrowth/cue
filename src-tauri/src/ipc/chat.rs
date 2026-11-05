@@ -476,6 +476,9 @@ pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result
         }
         return Ok(format!("Handed {} executor{} to {}", cmds.len(), if cmds.len() == 1 { "" } else { "s" }, leads::name_of(to)));
     }
+    if action == "aside" {
+        return h.set_aside(session_id);
+    }
     match leads::act(session_id, action)? {
         // One review at a time per lead: refused while it's busy (see Hub::review).
         leads::Act::Send { to, text } if action == "review" => h.review(&to, session_id, &text),

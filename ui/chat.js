@@ -2331,7 +2331,7 @@ function activePane() {
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>
     ${btwPanel(sid)}
     ${subHead(s?.cwd || it?.cwd, "", sid)}
-    ${sid ? leadCard(sid) + packetCard(sid) : ""}
+    ${sid ? reviewCard(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(it, s) : ""}
     ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}

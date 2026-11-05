@@ -86,17 +86,31 @@ pub struct Member {
     /// whether you trust the folder; "enter": waiting for Enter), so it isn't working, whatever relay says.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub setup: String,
-    /// Executor: its lead has seen this packet's report (relay's `report_seen_packet`): reviewed,
-    /// by your Review or by relay waking the lead itself.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    /// Executor: relay has woken its lead for this packet's report, or the lead opened its diff
+    /// (relay's `report_seen_packet`). Only that the lead was told: with auto off it announces and waits for you.
+    #[serde(skip)]
+    pub woken: bool,
+    /// Executor: a review of this packet ran (relay ledgered `report_reviewed`, or saved
+    /// `packets/<NNN>-review.md`).
+    #[serde(skip)]
     pub reviewed: bool,
+    /// Executor with a review: the saved review's text, "" when relay saved none (an inline review).
+    #[serde(skip)]
+    pub review: String,
+    /// Executor: the staged diff's files, lines added and lines removed, when relay's ledger has them.
+    #[serde(skip)]
+    pub diff_size: Option<(u64, u64, u64)>,
+    /// Executor: relay parked it after a review (`auto_closed: reviewed`) and what it staged is still
+    /// staged in its worktree: nobody has committed or discarded it yet.
+    #[serde(skip)]
+    pub parked_staged: bool,
     /// Executor: its report has been ready (done: reported or idle) for MISSED_WAKE_SECS or more, going
     /// by relay's `updated`. Kept as a flag, not a time, so the window redraws when it turns true.
     #[serde(skip)]
     pub ready_late: bool,
     /// Sort key for duplicates (an executor id reused by a resume): the newest record wins.
     #[serde(skip)]
-    updated: String,
+    pub(crate) updated: String,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -208,11 +222,32 @@ fn first_line(p: &Path) -> String {
     line
 }
 
-/// Whether a relay executor's lead has seen its current packet's report (relay marks it when the
-/// lead reviews or opens its diff).
-fn seen_report(e: &Value) -> bool {
+/// Whether relay has woken the lead for the current packet's report (it marks that when it wakes the lead,
+/// or when the lead opens the diff). Whether a review ran is a separate fact: Member::reviewed.
+fn report_woken(e: &Value) -> bool {
     let n = |k: &str| e.get(k).and_then(Value::as_u64);
     matches!((n("current_packet"), n("report_seen_packet")), (Some(cur), Some(seen)) if seen >= cur)
+}
+
+/// Whether anything is still staged in a worktree (what an executor left for the lead to commit). A
+/// commit or a discard empties it. Asked of git, at most every few seconds per folder (the crew is
+/// rescanned often). A folder git can't read, or one that's gone, counts as nothing staged.
+fn has_staged(worktree: &str) -> bool {
+    static ASKED: Mutex<Option<HashMap<String, (std::time::Instant, bool)>>> = Mutex::new(None);
+    if worktree.is_empty() {
+        return false;
+    }
+    {
+        let cache = crate::locking::lock(&ASKED, "ASKED");
+        if let Some((at, yes)) = cache.as_ref().and_then(|c| c.get(worktree)) {
+            if at.elapsed() < std::time::Duration::from_secs(5) {
+                return *yes;
+            }
+        }
+    }
+    let yes = std::process::Command::new("git").args(["-C", worktree, "diff", "--cached", "--quiet"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.code() == Some(1));
+    crate::locking::lock(&ASKED, "ASKED").get_or_insert_with(HashMap::new).insert(worktree.to_string(), (std::time::Instant::now(), yes));
+    yes
 }
 
 /// A relay session id Cue may build a path from (`<relay>/<id>/...`): one folder name, never a path.
@@ -265,7 +300,7 @@ fn ready_late(e: &Value, now: u64, zone: Option<i64>) -> bool {
 /// listening and free (`lead_free`: not working, compacting or asking you something). relay would
 /// normally have woken it by now.
 fn missed_wake(m: &Member, lead_free: bool) -> bool {
-    m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle") && !m.reviewed && m.ready_late && m.lead_armed == Some(true) && lead_free
+    m.role == "executor" && matches!(m.status.as_str(), "reported" | "idle") && !m.woken && !m.reviewed && m.ready_late && m.lead_armed == Some(true) && lead_free
 }
 
 /// Done executors whose lead missed the wake-up, as Cue session id; `lead_free` says whether a lead
@@ -315,7 +350,7 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
         };
         put(index, sid, lead);
     }
-    let verdicts = ledger_verdicts(&root.join("sessions.jsonl"));
+    let ledger = read_ledger(&root.join("sessions.jsonl"));
     for d in subdirs(root) {
         let Some(e) = read_json(&d.join("session.json")) else { continue };
         if !s(&e, "agent").starts_with("relay-executor") {
@@ -328,20 +363,29 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
         let owner = s(&e, "owner_lead");
         let lead = leads.get(&owner);
         let packet = e.get("current_packet").and_then(Value::as_u64);
-        // Goal and outcome only for executors still at work: closed ones pile up by the hundred.
-        let open = packet.filter(|_| !GONE.contains(&s(&e, "status").as_str()));
+        // Goal and outcome only for executors still at work (closed ones pile up by the hundred), and for
+        // one relay parked after a review that nobody has committed yet: its Review card is still up.
+        let status = s(&e, "status");
+        let id = s(&e, "session_id");
+        let parked = status == "closed" && s(&e, "auto_closed") == "reviewed" && live.contains(&owner);
+        let open = packet.filter(|_| !GONE.contains(&status.as_str()) || parked);
         let (goal, outcome) = match open {
             Some(n) => (first_line(&d.join(format!("packets/{n:03}-packet.md"))), first_line(&d.join(format!("packets/{n:03}-report.md")))),
             None => (String::new(), String::new()),
         };
-        let verify = open.and_then(|n| verdicts.get(&(s(&e, "session_id"), n)).cloned());
+        let verify = open.and_then(|n| ledger.verdicts.get(&(id.clone(), n)).cloned());
+        let review_file = open.map(|n| d.join(format!("packets/{n:03}-review.md")));
+        let reviewed = open.is_some_and(|n| ledger.reviews.contains(&(id.clone(), n))) || review_file.as_ref().is_some_and(|f| f.is_file());
+        let review = if reviewed { review_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default() } else { String::new() };
+        let diff_size = open.and_then(|n| ledger.stats.get(&(id.clone(), n)).copied());
+        let parked_staged = parked && lead.is_some() && has_staged(&s(&e, "worktree"));
         let m = Member {
             role: "executor".into(),
             plugin: "relay".into(),
             name: Some(s(&e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| s(&e, "session_id")),
             color: lead.and_then(|l| l.1),
             model: s(&e, "model"),
-            status: s(&e, "status"),
+            status,
             packet: e.get("current_packet").and_then(Value::as_u64),
             lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(&e, "owner_project")),
             lead_armed: Some(lead.is_some() && live.contains(&owner)),
@@ -349,9 +393,13 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
             goal,
             outcome,
             verify,
-            reviewed: seen_report(&e),
+            woken: report_woken(&e),
+            reviewed,
+            review,
+            diff_size,
+            parked_staged,
             ready_late: ready_late(&e, now_secs(), None),
-            id: s(&e, "session_id"),
+            id,
             updated: s(&e, "updated"),
             ..Default::default()
         };
@@ -499,24 +547,28 @@ type Verdicts = std::sync::Arc<HashMap<(String, u64), Verdict>>;
 /// when). relay's own record of a lead (its marker, which names its predecessor) goes once that lead
 /// steps down or ends; the ledger keeps the handoff for good.
 type Handoffs = std::sync::Arc<HashMap<String, (String, String, u64)>>;
+/// Every packet relay ledgered a review for (`report_reviewed`): (executor id, packet).
+type Reviews = std::sync::Arc<HashSet<(String, u64)>>;
+/// The staged diff's size relay recorded for a packet (its auto-commit check): (files, added, removed).
+type DiffStats = std::sync::Arc<HashMap<(String, u64), (u64, u64, u64)>>;
+#[derive(Clone, Default)]
 struct Ledger {
     inode: u64,
     /// Bytes read so far: the end of the last complete line seen.
     offset: u64,
     verdicts: Verdicts,
     handoffs: Handoffs,
+    reviews: Reviews,
+    stats: DiffStats,
 }
 /// By path (Cue reads one ledger; tests read several).
 static LEDGER: Mutex<Option<HashMap<PathBuf, Ledger>>> = Mutex::new(None);
 
-fn ledger_verdicts(path: &Path) -> Verdicts {
-    read_ledger(path).0
-}
 fn ledger_handoffs(path: &Path) -> Handoffs {
-    read_ledger(path).1
+    read_ledger(path).handoffs
 }
 
-fn read_ledger(path: &Path) -> (Verdicts, Handoffs) {
+fn read_ledger(path: &Path) -> Ledger {
     use std::io::{Read, Seek, SeekFrom};
     use std::os::unix::fs::MetadataExt;
     let Ok(meta) = std::fs::metadata(path) else { return Default::default() };
@@ -524,10 +576,10 @@ fn read_ledger(path: &Path) -> (Verdicts, Handoffs) {
     let cache = cache.get_or_insert_with(HashMap::new);
     let same = cache.get(path).is_some_and(|l| l.inode == meta.ino() && l.offset <= meta.len());
     if !same {
-        cache.insert(path.to_path_buf(), Ledger { inode: meta.ino(), offset: 0, verdicts: Default::default(), handoffs: Default::default() });
+        cache.insert(path.to_path_buf(), Ledger { inode: meta.ino(), ..Default::default() });
     }
     let ledger = cache.get_mut(path).unwrap();
-    let seen = |l: &Ledger| (l.verdicts.clone(), l.handoffs.clone());
+    let seen = |l: &Ledger| l.clone();
     if meta.len() == ledger.offset {
         return seen(ledger);
     }
@@ -549,6 +601,23 @@ fn read_ledger(path: &Path) -> (Verdicts, Handoffs) {
         let (from, to) = (s(&d, "from_lead"), s(&d, "to_lead"));
         if s(&d, "event") == "lead_handoff" && !from.is_empty() && !to.is_empty() {
             handoffs.insert(from, (to, s(&d, "project"), epoch_secs(&s(&d, "ts"), None).map_or(0, |t| t * 1000)));
+        }
+    }
+    let reviews = std::sync::Arc::make_mut(&mut ledger.reviews);
+    let stats = std::sync::Arc::make_mut(&mut ledger.stats);
+    for line in text.lines().filter(|l| l.contains("\"report_reviewed\"") || l.contains("\"auto_commit")) {
+        let Ok(d) = serde_json::from_str::<Value>(line) else { continue };
+        let (sid, n) = (s(&d, "session_id"), d.get("packet").and_then(Value::as_u64));
+        let (true, Some(n)) = (!sid.is_empty(), n) else { continue };
+        match s(&d, "event").as_str() {
+            "report_reviewed" => {
+                reviews.insert((sid, n));
+            }
+            "auto_commit" | "auto_commit_blocked" => {
+                let k = |f: &str| d.get(f).and_then(Value::as_u64).unwrap_or(0);
+                stats.insert((sid, n), (k("files"), k("insertions"), k("deletions")));
+            }
+            _ => {}
         }
     }
     let map = std::sync::Arc::make_mut(&mut ledger.verdicts);
@@ -831,7 +900,7 @@ fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String, Member>) {
             lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
             lead_armed: Some(lead.is_some() && live.contains(&owner)),
             lead: owner,
-            reviewed: seen_report(e),
+            woken: report_woken(e),
             ready_late: ready_late(e, now_secs(), zone),
             id: s(e, "session_id"),
             updated: s(e, "updated"),
@@ -1183,10 +1252,39 @@ pub fn is_reviewed(session_id: &str) -> bool {
     crate::locking::lock(&INDEX, "INDEX").as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && m.reviewed)
 }
 
-/// Done executors whose report their lead has seen: Cue session id → its lead's session id.
-pub fn reviewed() -> Vec<(String, String)> {
+/// Every executor whose packet waits on you, with whether its lead is on auto mode: it reported and
+/// nobody has acted yet, or relay parked it after a review and what it staged is still staged. Cue session id first.
+pub fn needing_you() -> Vec<(String, Member, bool)> {
     let cur = crate::locking::lock(&INDEX, "INDEX");
-    cur.as_ref().map(|i| i.iter().filter(|(_, m)| m.role == "executor" && m.reviewed && matches!(m.status.as_str(), "reported" | "idle")).map(|(sid, m)| (sid.clone(), m.lead.clone())).collect()).unwrap_or_default()
+    let Some(index) = cur.as_ref() else { return vec![] };
+    index
+        .iter()
+        .filter(|(_, m)| m.role == "executor" && (matches!(m.status.as_str(), "reported" | "idle") || m.parked_staged))
+        .map(|(sid, m)| (sid.clone(), m.clone(), index.get(&m.lead).and_then(|l| l.auto) == Some(true)))
+        .collect()
+}
+
+/// The relay id and current packet of an executor, which is what a set-aside packet is remembered by.
+pub fn packet_of(session_id: &str) -> Option<(String, u64)> {
+    let cur = crate::locking::lock(&INDEX, "INDEX");
+    let m = cur.as_ref()?.get(session_id).filter(|m| m.role == "executor")?;
+    Some((m.id.clone(), m.packet?))
+}
+
+/// The tests that fill INDEX / REMOTE take turns (here and in the hub's).
+#[cfg(test)]
+pub static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// For the hub's tests: the crew as relay's files would give it.
+#[cfg(test)]
+pub fn install_index(index: HashMap<String, Member>) {
+    *crate::locking::lock(&INDEX, "INDEX") = Some(index);
+}
+
+/// For the hub's tests: a relay executor that reported to its lead L.
+#[cfg(test)]
+pub fn reported_exec() -> Member {
+    Member { role: "executor".into(), plugin: "relay".into(), status: "reported".into(), lead: "L".into(), lead_armed: Some(true), id: "ex".into(), packet: Some(1), ..Default::default() }
 }
 
 /// A lead's or executor's name (relay's topic), else its session id.
@@ -1350,14 +1448,16 @@ C9
     }
 
     #[test]
-    fn an_executor_counts_as_reviewed_once_its_lead_saw_this_packets_report() {
+    fn an_executor_counts_as_seen_once_its_lead_was_woken_for_this_packets_report() {
         let e = |v: &str| serde_json::from_str::<Value>(v).unwrap();
-        assert!(seen_report(&e(r#"{"current_packet": 2, "report_seen_packet": 2}"#)));
-        assert!(!seen_report(&e(r#"{"current_packet": 2, "report_seen_packet": 1}"#)), "seen: the last packet's, not this one's");
-        assert!(!seen_report(&e(r#"{"current_packet": 1, "report_seen_packet": null}"#)));
-        assert!(!seen_report(&e(r#"{"current_packet": 1}"#)));
+        assert!(report_woken(&e(r#"{"current_packet": 2, "report_seen_packet": 2}"#)));
+        assert!(!report_woken(&e(r#"{"current_packet": 2, "report_seen_packet": 1}"#)), "woken: the last packet's, not this one's");
+        assert!(!report_woken(&e(r#"{"current_packet": 1, "report_seen_packet": null}"#)));
+        assert!(!report_woken(&e(r#"{"current_packet": 1}"#)));
         let out = "BIN:/r\n{\"leads\": [], \"executors\": [{\"agent\": \"relay-executor\", \"session_id\": \"a\", \"claude_session\": \"CA\", \"status\": \"reported\", \"current_packet\": 1, \"report_seen_packet\": 1}]}\n__CUE_LIVE__\n";
-        assert!(parse_remote(out, "box").1["CA"].reviewed, "on a machine too");
+        let ca = &parse_remote(out, "box").1["CA"];
+        assert!(ca.woken, "on a machine too");
+        assert!(!ca.reviewed, "woken is not reviewed");
     }
 
     #[test]
@@ -1376,7 +1476,7 @@ C9
     }
 
     /// The tests that fill INDEX / REMOTE take turns.
-    static GLOBALS: Mutex<()> = Mutex::new(());
+    use super::TEST_LOCK as GLOBALS;
 
     #[test]
     fn relay_and_pilead_leads_own_their_executors() {
@@ -1542,7 +1642,8 @@ C9
         assert!(missed_wake(&Member { status: "idle".into(), ..done_exec() }, true), "idle is done too");
         assert!(!missed_wake(&Member { status: "busy".into(), ..done_exec() }, true), "not done");
         assert!(!missed_wake(&Member { status: "stalled".into(), ..done_exec() }, true), "stalled never reported");
-        assert!(!missed_wake(&Member { reviewed: true, ..done_exec() }, true), "its lead has seen it");
+        assert!(!missed_wake(&Member { woken: true, ..done_exec() }, true), "its lead was woken for it");
+        assert!(!missed_wake(&Member { reviewed: true, ..done_exec() }, true), "its lead reviewed it");
         assert!(!missed_wake(&Member { ready_late: false, ..done_exec() }, true), "ready under 90 seconds ago");
         assert!(!missed_wake(&Member { lead_armed: Some(false), ..done_exec() }, true), "its lead isn't listening");
         assert!(!missed_wake(&Member { lead_armed: None, ..done_exec() }, true));
@@ -1900,7 +2001,7 @@ __CUE_LIVE__
         let dir = std::env::temp_dir().join(format!("cue-ledger-inc-{}", std::process::id()));
         let path = dir.join("sessions.jsonl");
         let ev = |sid: &str, n: u64, v: &str| format!("{{\"event\":\"report_verify\",\"session_id\":\"{sid}\",\"packet\":{n},\"verdict\":\"{v}\",\"mismatches\":0}}\n");
-        let get = |sid: &str, n: u64| ledger_verdicts(&path).get(&(sid.to_string(), n)).map(|v| v.verdict.clone());
+        let get = |sid: &str, n: u64| read_ledger(&path).verdicts.get(&(sid.to_string(), n)).map(|v| v.verdict.clone());
         let offset = || crate::locking::lock(&LEDGER, "LEDGER").as_ref().and_then(|c| c.get(&path)).map(|l| l.offset).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(get("a", 1), None, "no ledger yet: no verdicts");
@@ -1975,6 +2076,66 @@ __CUE_LIVE__
         assert_eq!(scan(&relay, &pi, &cs)["C3"].verify, Some(Verdict { verdict: "MISMATCH".into(), note: "3 mismatches".into() }));
         // The window gets it as `verify`, on the executor and in its lead's list.
         assert_eq!(verdict_of(&index["C2"]).map(|v| v.verdict), Some("MALFORMED".to_string()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let ok = std::process::Command::new("git").arg("-C").arg(dir).args(["-c", "user.email=t@t", "-c", "user.name=t"]).args(args).output().unwrap().status.success();
+        assert!(ok, "git {args:?}");
+    }
+
+    /// "Woken" and "reviewed" are separate facts: relay waking the lead says nothing about a review. A packet waits
+    /// on you until its work is committed or discarded, including one relay parked after its review.
+    #[test]
+    fn a_woken_lead_is_not_a_review_and_a_packet_waits_on_you_until_its_work_is_committed() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let root = std::env::temp_dir().join(format!("cue-card-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (relay, pi, cs) = (root.join("relay"), root.join("pi"), root.join("cs"));
+        write(&cs.join("1.json"), &format!(r#"{{"pid":{},"sessionId":"L"}}"#, std::process::id()));
+        write(&relay.join("lead/L/marker.json"), r#"{"session_id":"L","project":"proj","autonomous":true}"#);
+        let ex = |id: &str, extra: &str| write(&relay.join(format!("{id}/session.json")), &format!(r#"{{"session_id":"{id}","agent":"relay-executor","claude_session":"C-{id}","owner_lead":"L","topic":"{id}","current_packet":1,{extra}}}"#));
+        ex("woken", r#""status":"reported","report_seen_packet":1"#);
+        ex("fresh", r#""status":"reported""#);
+        ex("filed", r#""status":"reported","report_seen_packet":1"#);
+        write(&relay.join("filed/packets/001-review.md"), "1. A thing\n2. Another\n");
+        ex("ledgered", r#""status":"reported""#);
+        ex("older", r#""status":"reported","current_packet":2"#);
+        write(&relay.join("older/packets/001-review.md"), "old findings");
+        let (staged, committed) = (root.join("wt-staged"), root.join("wt-committed"));
+        for wt in [&staged, &committed] {
+            std::fs::create_dir_all(wt).unwrap();
+            git(wt, &["init", "-q"]);
+            write(&wt.join("f.txt"), "x\n");
+            git(wt, &["add", "f.txt"]);
+        }
+        git(&committed, &["commit", "-q", "-m", "c"]);
+        for (id, wt) in [("parked-staged", &staged), ("parked-committed", &committed)] {
+            ex(id, &format!(r#""status":"closed","auto_closed":"reviewed","worktree":"{}""#, wt.display()));
+            write(&relay.join(format!("{id}/packets/001-review.md")), "findings");
+        }
+        ex("closed", r#""status":"closed""#);
+        write(&relay.join("sessions.jsonl"), concat!(r#"{"event":"report_reviewed","session_id":"ledgered","packet":1,"mode":"inline"}"#, "\n", r#"{"event":"auto_commit","session_id":"fresh","packet":1,"cleared":true,"files":3,"insertions":94,"deletions":2}"#, "\n"));
+        let index = scan(&relay, &pi, &cs);
+        let got = |id: &str| index[&format!("C-{id}")].clone();
+        assert!(got("woken").woken && !got("woken").reviewed, "woken is not reviewed");
+        assert!(!missed_wake(&Member { ready_late: true, ..got("woken") }, true), "a woken lead isn't a missed wake");
+        assert!(!got("fresh").woken && !got("fresh").reviewed);
+        assert_eq!(got("fresh").diff_size, Some((3, 94, 2)), "the diff's size, when relay recorded it");
+        assert!(got("filed").reviewed && got("filed").review.contains("2. Another"), "a review file is a review, with its findings");
+        assert!(got("ledgered").reviewed && got("ledgered").review.is_empty(), "ledgered inline: reviewed, no file");
+        assert!(!got("older").reviewed, "another packet's review");
+        assert!(got("parked-staged").parked_staged && got("parked-staged").reviewed);
+        assert!(!got("parked-committed").parked_staged, "committed: nothing staged anymore");
+
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
+        let mut waiting: Vec<(String, bool)> = needing_you().into_iter().map(|(_, m, auto)| (m.name, auto)).collect();
+        waiting.sort();
+        let names: Vec<&str> = waiting.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["filed", "fresh", "ledgered", "older", "parked-staged", "woken"], "reported ones and the parked one still staged wait; committed and closed ones don't");
+        assert!(waiting.iter().all(|(_, auto)| *auto), "each with whether its lead is on auto mode");
+        assert_eq!(packet_of("C-woken"), Some(("woken".to_string(), 1)));
+        *crate::locking::lock(&INDEX, "INDEX") = None;
         let _ = std::fs::remove_dir_all(&root);
     }
 }
