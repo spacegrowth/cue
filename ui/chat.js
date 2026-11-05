@@ -1860,14 +1860,28 @@ function statusLine(it, s) {
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
   return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
 }
-/** A session's ring (status.js), in the box's row ahead of the mic: its latest reply's list while it's on for the
- *  session, and its switch. */
-function statusChip(it, s) {
+/** A session's latest status list while it's on for the session: { status, key, sw } (`sw` as status.js takes it). */
+function latestStatus(it, s) {
   const sid = s?.session_id || it?.session_id, on = statusOn(sid);
   const last = on ? conversation(it, s).findLast((e) => e.role === "agent") : null;
   const status = last ? parseStatus(last.text) : { items: [], waiting: "" };
   const key = status.items.length ? `${sid}:${last.at_ms}` : `${sid}:${on ? "on" : "off"}`;
-  return statusChipHtml(status, key, undefined, { sid, on, working: s?.state === "working" });
+  return { status, key, sw: { sid, on, working: s?.state === "working" } };
+}
+/** A session's ring (status.js), in the box's row ahead of the mic: the panel's count and its put away / bring back,
+ *  or (no list) its switch. */
+function statusChip(it, s) {
+  const { status, key, sw } = latestStatus(it, s);
+  return statusChipHtml(status, key, undefined, { ...sw, shown: !statusPanelView(sw.sid).away });
+}
+/** A Claude Code session's list above its chat, under its tabs (status_panel.js), while the status list is on; its
+ *  switch says what the list has cost this session (statuslist.rs spent, the same estimate as Settings'). */
+function statusPanel(it, s) {
+  if (s?.harness !== "claude" || !statusShown()) return "";
+  const { status, key, sw } = latestStatus(it, s);
+  const own = state.status_spent?.sessions?.[sw.sid];
+  const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${aboutMoney(own.usd)} so far` : "";
+  return statusPanelHtml(status, { ...sw, spent, key }, statusPanelView(sw.sid));
 }
 /** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
  *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot
@@ -2297,7 +2311,7 @@ function activePane() {
     ${subHead(s?.cwd || it?.cwd, "", sid)}
     ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
-    ${sessTabs(sid)}
+    ${sessTabs(sid)}${sid ? statusPanel(it, s) : ""}
     ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
     ${"" /* The Next bar, hidden for now (it read as part of the terminal tabs and the box; N still works): pending ? "" : nextBar() */}
     ${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;

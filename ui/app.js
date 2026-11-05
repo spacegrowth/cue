@@ -88,6 +88,7 @@ function renderMain() {
   document.querySelectorAll(".dot-live").forEach((el) => { if (!liveChat?.contains(el)) el.style.animationDelay = phase; });
   markMore();   // lists end on whole cards before anything measures where cards landed
   statusPopPaint();   // an open status card stays where it was across the redraw
+  statusPanelFit();   // an open status list ends above the pane's bottom, scrolling past that
   if (view === "sessions") fitSvRest();
   flipPlay(flipFrom);
   // A card just answered: its ✓ row eases from the card's height down to its own.
@@ -329,6 +330,10 @@ function bindMain() {
     // A session's ring → its switch: the status list on (or off again) for this session (statuslist.rs).
     const stOne = t.closest("[data-act=status-session]");
     if (stOne) return invoke("status_session", { sessionId: stOne.dataset.sid, on: stOne.dataset.on === "1" }).catch((x) => toast(String(x)));
+    // The list above the chat (status_panel.js): the ring puts its line away or brings it back, the line opens the list.
+    const stPanel = t.closest("[data-act=status-panel], [data-act=status-open]");
+    if (stPanel?.dataset.act === "status-open" && statusPanelView(stPanel.dataset.sid).open) return void statusPanelCloseAll();   // rolls back up
+    if (stPanel) { statusPanelFlip(stPanel.dataset.sid, stPanel.dataset.act === "status-open" ? "open" : "away"); return renderMain(); }
     // …and its Parallelize: asks the session to run the side-by-side group it's at (status.js), like a quick phrase.
     const stPar = t.closest("[data-act=status-parallel]");
     if (stPar) { statusPop = null; return sendPhrase(`s:${stPar.dataset.sid}`, PARALLELIZE); }

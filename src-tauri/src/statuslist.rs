@@ -8,6 +8,7 @@
 //! from the live copy of their transcript on this Mac.
 
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Mutex;
 
@@ -40,7 +41,7 @@ pub fn on_prompt(p: &Value, spoken: bool) -> Option<String> {
     let rows = rows(p);
     let (context, wrote) = prompt_context(&rows, spoken);
     // What it costs: this context read in, and the list the last reply wrote out.
-    spend(&model_of(&rows), context.as_deref().map_or(0, str::len), wrote);
+    spend(p["session_id"].as_str().unwrap_or_default(), &model_of(&rows), context.as_deref().map_or(0, str::len), wrote);
     context
 }
 
@@ -65,7 +66,7 @@ fn prompt_context(rows: &[Value], spoken: bool) -> (Option<String>, usize) {
 pub fn on_stop(p: &Value) -> Option<Value> {
     let rows = rows(p);
     let reason = stop_reason(p, &rows)?;
-    spend(&model_of(&rows), reason.len(), 0);
+    spend(p["session_id"].as_str().unwrap_or_default(), &model_of(&rows), reason.len(), 0);
     Some(json!({ "decision": "block", "reason": reason }))
 }
 
@@ -109,7 +110,9 @@ pub fn sessions_with(cfg: &Value, session_id: &str, on: bool) -> Value {
 }
 
 /// What the status list has cost, kept as a line per message in Cue's folder (the hook runs once per event, often
-/// for several sessions at once: an appended line is never lost), totalled for Settings → Progress.
+/// for several sessions at once: an appended line is never lost): `<ms> <tokens> <usd> <session>`, totalled for
+/// Settings → Progress and per session for its open list. (Lines from before the session was written have three
+/// fields: they count in the total only.)
 fn spent_file() -> std::path::PathBuf {
     crate::server::cue_dir().join("status-spent.log")
 }
@@ -132,36 +135,63 @@ pub fn cost(model: &str, read: usize, wrote: usize) -> (u64, f64) {
     (tin + tout, r.map_or(0.0, |r| (tin as f64 * r.write_5m + tout as f64 * r.output) / 1e6))
 }
 
-fn spend(model: &str, read: usize, wrote: usize) {
+fn spend(session_id: &str, model: &str, read: usize, wrote: usize) {
     if read + wrote == 0 {
         return;
     }
     let (tokens, usd) = cost(model, read, wrote);
     // One write per line, so lines from hooks running at once never mix.
-    let line = format!("{} {tokens} {usd:.6}\n", crate::model::now_ms());
+    let line = format!("{} {tokens} {usd:.6} {session_id}\n", crate::model::now_ms());
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(spent_file()) {
         let _ = f.write_all(line.as_bytes());
     }
 }
 
-/// The total so far, for Settings: { replies, tokens, usd }. Read again only when the file has grown.
+/// What a stretch of the log adds up to: replies (lines), tokens, dollars.
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+struct Tally {
+    replies: u64,
+    tokens: u64,
+    usd: f64,
+}
+impl Tally {
+    fn add(&mut self, tokens: u64, usd: f64) {
+        self.replies += 1;
+        self.tokens += tokens;
+        self.usd += usd;
+    }
+    fn json(&self) -> Value {
+        json!({ "replies": self.replies, "tokens": self.tokens, "usd": self.usd })
+    }
+}
+
+/// The log's lines added up: the total, and each session's own (lines that name one).
+fn tally(log: &str) -> (Tally, HashMap<String, Tally>) {
+    let (mut all, mut by) = (Tally::default(), HashMap::<String, Tally>::new());
+    for line in log.lines() {
+        let f: Vec<&str> = line.split(' ').collect();
+        let (Some(t), Some(u)) = (f.get(1).and_then(|t| t.parse().ok()), f.get(2).and_then(|u| u.parse().ok())) else { continue };
+        all.add(t, u);
+        if let Some(sid) = f.get(3).filter(|s| !s.is_empty()) {
+            by.entry((*sid).to_string()).or_default().add(t, u);
+        }
+    }
+    (all, by)
+}
+
+/// The total so far, for Settings, and each session's (for its open list): { replies, tokens, usd, sessions: { id: {
+/// replies, tokens, usd } } }. Read again only when the file has grown.
 pub fn spent() -> Value {
-    static SEEN: Mutex<(u64, u64, u64, f64)> = Mutex::new((0, 0, 0, 0.0));
+    static SEEN: Mutex<Option<(u64, Value)>> = Mutex::new(None);
     let len = std::fs::metadata(spent_file()).map_or(0, |m| m.len());
     let mut g = crate::locking::lock(&SEEN, "what the status list has cost");
-    if g.0 != len {
-        let (mut n, mut tok, mut usd) = (0, 0, 0.0);
-        for line in std::fs::read_to_string(spent_file()).unwrap_or_default().lines() {
-            let f: Vec<&str> = line.split(' ').collect();
-            if let [_, t, u] = f[..] {
-                n += 1;
-                tok += t.parse::<u64>().unwrap_or(0);
-                usd += u.parse::<f64>().unwrap_or(0.0);
-            }
-        }
-        *g = (len, n, tok, usd);
+    if g.as_ref().map(|(l, _)| *l) != Some(len) {
+        let (all, by) = tally(&std::fs::read_to_string(spent_file()).unwrap_or_default());
+        let mut v = all.json();
+        v["sessions"] = by.into_iter().map(|(sid, t)| (sid, t.json())).collect::<serde_json::Map<_, _>>().into();
+        *g = Some((len, v));
     }
-    json!({ "replies": g.1, "tokens": g.2, "usd": g.3 })
+    g.as_ref().map_or(Value::Null, |(_, v)| v.clone())
 }
 
 /// The session's transcript, a row per line (unreadable lines skipped).
@@ -226,6 +256,16 @@ mod tests {
     fn you(text: &str) -> Value { json!({ "type": "user", "message": { "content": text } }) }
     fn said(text: &str) -> Value { json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": text }] } }) }
     fn compaction() -> Value { json!({ "type": "system", "subtype": "compact_boundary" }) }
+
+    #[test]
+    fn spent_adds_up_the_total_and_each_session() {
+        let (all, by) = tally("1 100 0.010000 a\n2 50 0.005000 b\n3 10 0.001000\n4 20 0.002000 a\nbroken\n");
+        assert_eq!((all.replies, all.tokens), (4, 180), "every line in the total, old ones without a session too");
+        assert!((all.usd - 0.018).abs() < 1e-9);
+        assert_eq!((by["a"].replies, by["a"].tokens), (2, 120), "a's own two");
+        assert_eq!(by["b"].replies, 1);
+        assert_eq!(by.len(), 2, "a line without a session is in no session's");
+    }
     fn tool() -> Value { json!({ "type": "assistant", "message": { "content": [{ "type": "tool_use", "name": "Bash" }] } }) }
     fn result() -> Value { json!({ "type": "user", "message": { "content": [{ "type": "tool_result" }] } }) }
 

@@ -4,8 +4,9 @@
 //   Waiting on you: <a decision, or "nothing">      (older replies: "⏸ Waiting on you: …")
 // Shown as a track: one line down through the steps in order, a dot each; each run of ∥ items is one step, its items
 // together in one box beside a single dot.
-// No reply shows the block: the latest list is a ring and count in the box, ahead of the mic (statusChipHtml), which
-// opens it, and where it's turned on or off for the session. The rules are kept in this one place.
+// No reply shows the block: the latest list is a panel above the chat (status_panel.js) and a ring and count in the
+// box, ahead of the mic (statusChipHtml), which puts the panel away or brings it back, and is where the list is turned
+// on for the session. The rules are kept in this one place.
 
 const STATUS_HEADING = /^[ \t]*\*\*Where we are\*\*:?[ \t]*$/gm;
 const STATUS_MARKS = { "✓": "done", "→": "now", "○": "left" };
@@ -67,18 +68,18 @@ function parallelReady(steps) {
 }
 
 /** The list as a track (see the top): one line down through the steps in order, a dot each; a side-by-side group
- *  is one step, its items together in one box beside a single dot. Each item: its number, its text, its mark at the
- *  end (a spinner for a group item that's running). */
+ *  is one step, its items together in one box beside a single dot. Each item: its number, its text, its mark (✓ → ○)
+ *  at the end. */
 function statusTree(items) {
-  const mark = (i, boxed) => (boxed && i.state === "now" ? `<span class="st-spin"></span>` : Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === i.state));
-  const cells = (i, dot = "", boxed = false) => `<span class="st-n">${i.n}</span>${dot}<span class="st-text">${esc(i.text)}</span><span class="st-mark">${mark(i, boxed)}</span>`;
+  const mark = (i) => Object.keys(STATUS_MARKS).find((m) => STATUS_MARKS[m] === i.state);
+  const cells = (i, dot = "") => `<span class="st-n">${i.n}</span>${dot}<span class="st-text">${esc(i.text)}</span><span class="st-mark">${mark(i)}</span>`;
   const steps = statusSteps(items), end = steps.length - 1;
   return steps.map((st, k) => {
     const at = [k === 0 && "first", k === end && "last"].filter(Boolean).join(" ");
     const cls = (...names) => [...names, at].filter(Boolean).join(" ");
     if (!Array.isArray(st)) return `<div class="${cls("st-item st-step", st.state)}">${cells(st, '<span class="st-dot"></span>')}</div>`;
     const state = st.every((i) => i.state === "done") ? "done" : st.some((i) => i.state === "now") ? "now" : "left";
-    return `<div class="${cls("st-group st-step", state)}"><span></span><span class="st-dot"></span><div class="st-box">${st.map((i) => `<div class="st-item ${i.state}">${cells(i, "", true)}</div>`).join("")}</div></div>`;
+    return `<div class="${cls("st-group st-step", state)}"><span></span><span class="st-dot"></span><div class="st-box">${st.map((i) => `<div class="st-item ${i.state}">${cells(i)}</div>`).join("")}</div></div>`;
   }).join("");
 }
 
@@ -90,31 +91,45 @@ function statusRing(done, now, total) {
   return `<svg class="st-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" stroke-width="${w}" aria-hidden="true">${circle("trk")}${circle("now", arc(done + now))}${circle("done", arc(done))}</svg>`;
 }
 
-/** The ring beside the mic, for the latest reply's list: the ring and "done/total" (a click or hover opens the card
- *  above it: the whole list, then what it waits on, as plain lines). `key` says which list; the card shows while it
- *  is the open one (statusPop). Nothing for a reply without a list.
- *  With `sw` ({ sid, on, working }: a session's own ring, while the status list is on in Settings) it's also where the
- *  list is turned on or off for that session: its card ends with the switch. Off: a faint empty ring, its card the
- *  switch alone; on with no list yet: the empty ring at full strength, its card the switch and when its first list
- *  comes (when this turn ends, while it's working; else with your next message). */
-function statusChipHtml(status, key, open = statusPop?.key === key, sw = null) {
+/** What a list shows, in its parts, for the ring's card and the panel above the chat (status_panel.js) alike:
+ *  `list` the track and what it waits on, `par` the Parallelize row (a session's own list only), `toggle` the
+ *  session's switch, `starts` when tracking starts (on, no list yet), `cost` what it costs. `listed`: there is a list
+ *  to show (and, with `sw`, it's on for the session). */
+function statusParts(status, sw = null) {
   const { items, waiting } = status;
-  const listed = items.length && (!sw || sw.on);
-  if (!listed && !sw) return "";
+  const listed = !!items.length && (!sw || sw.on);
   const done = items.filter((i) => i.state === "done").length;
   const now = items.filter((i) => i.state === "now").length;
   // Numbered, so an item can be named ("do 3"), its mark at the end; a long one wraps under its own text.
   const list = listed ? `<div class="st-list">${statusTree(items)}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div>` : "";
-  // A group ready to start side by side: the button asks the session to (a session's own ring only).
+  // A group ready to start side by side: the button asks the session to (a session's own list only).
   const ready = listed && sw ? parallelReady(statusSteps(items)) : null;
   const par = ready ? `<div class="st-par"><span>${ready.filter((i) => i.state !== "done").length} can run side by side<small>Asks the session; it decides</small></span><button class="btn" data-act="status-parallel" data-sid="${esc(sw.sid)}">Parallelize</button></div>` : "";
-  const ring = listed ? `${statusRing(done, now, items.length)}${done}/${items.length}` : statusRing(0, 0, 1);
-  const label = listed ? `Status list, ${done} of ${items.length} done` : `Status list ${sw.on ? "on" : "off"} for this session`;
-  const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
+  // What it has cost this session (`sw.spent`, in words), beside its name.
+  const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session${sw.spent ? ` <span class="st-dim">(${esc(sw.spent)})</span>` : ""}</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
   const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";
   // What it is and what it costs, in a line under the switch: the agent writes the list (tokens it's paid for).
   const cost = sw ? `<div class="st-note">${STATUS_COST}</div>` : "";
-  return `<div class="cv-schip ${open ? "open" : ""} ${listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${list}${par}${toggle}${starts}${cost}</div></div>`;
+  return { listed, done, now, list, par, toggle, starts, cost };
+}
+
+/** The ring beside the mic, for the latest reply's list: the ring and "done/total". `key` says which list.
+ *  A session's own ring (`sw`: { sid, on, working, shown }, while the status list is on in Settings) with a list:
+ *  the list is the panel above the chat (status_panel.js) and a click on the ring puts it away or brings it back
+ *  (`shown`: it's out). Otherwise a click or hover opens the card above it (statusPop): the list, or (no list yet, or
+ *  off for the session) the session's switch: off, a faint empty ring, its card the switch alone; on with no list
+ *  yet, the empty ring at full strength, its card the switch and when its first list comes. Nothing for a reply
+ *  without a list and no switch. */
+function statusChipHtml(status, key, open = statusPop?.key === key, sw = null) {
+  const p = statusParts(status, sw), total = status.items.length;
+  if (!p.listed && !sw) return "";
+  const ring = p.listed ? `${statusRing(p.done, p.now, total)}${p.done}/${total}` : statusRing(0, 0, 1);
+  if (p.listed && sw) {
+    const label = `Status list, ${p.done} of ${total} done: ${sw.shown ? "put it away" : "show it"}`;
+    return `<div class="cv-schip"><button class="cv-schip-btn" data-act="status-panel" data-sid="${esc(sw.sid)}" aria-pressed="${!!sw.shown}" aria-label="${label}">${ring}</button></div>`;
+  }
+  const label = p.listed ? `Status list, ${p.done} of ${total} done` : `Status list ${sw.on ? "on" : "off"} for this session`;
+  return `<div class="cv-schip ${open ? "open" : ""} ${p.listed ? "" : sw.on ? "st-empty" : "st-empty st-off"}" data-status-chip="${esc(key)}"><button class="cv-schip-btn" aria-expanded="${open}" aria-label="${label}">${ring}</button><div class="cv-spop">${p.list}${p.par}${p.toggle}${p.starts}${p.cost}</div></div>`;
 }
 
 /** The open card, if any: { key, pinned }. Hovering the chip opens it until the pointer leaves; a click keeps it open
@@ -179,4 +194,4 @@ const statusShown = (st = typeof state !== "undefined" ? state.settings?.status 
 /** On for this session: shown, and turned on from its ring (each session starts off). */
 const statusOn = (sid, st = typeof state !== "undefined" ? state.settings?.status : null) => statusShown(st) && (st?.sessions || []).includes(sid);
 
-if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusOn, statusShown, statusSteps, parallelReady, PARALLELIZE };
+if (typeof module !== "undefined") module.exports = { parseStatus, stripStatus, statusChipHtml, statusParts, statusRing, statusOn, statusShown, statusSteps, parallelReady, PARALLELIZE };

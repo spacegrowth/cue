@@ -630,10 +630,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .st-group.last > .st-dot::before { bottom: 50%; }
 .st-step.done > .st-dot::after { border-color: var(--accent); background: var(--accent); }
 .st-step.now > .st-dot::after { border-color: var(--accent); }
-.st-box { grid-column: 3 / 5; margin: 1px 0; padding: 3px 0; border-radius: 8px; background: var(--panel-2); }
-.st-box .st-item { grid-template-columns: 2em 1fr 1.6em; padding-right: 8px; }
-.st-spin { display: inline-block; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; border: 1.6px solid color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); animation: stSpin 0.9s linear infinite; }
-@keyframes stSpin { to { transform: rotate(360deg); } }
+.st-box { grid-column: 3 / 5; margin: 1px 0; }   /* side by side: indented together under one dot; the indent says it, no shading */
+.st-box .st-item { grid-template-columns: 2em 1fr 1.6em; }
 .st-par { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; user-select: none; -webkit-user-select: none; }
 .st-par small { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); }
 .st-par .btn { flex: none; height: 26px; }
@@ -648,7 +646,31 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .st-note { margin-top: 2px; color: var(--muted); font-size: 12px; }   /* on, no list yet: when it starts */
 .st-toggle ~ .st-note { width: 0; min-width: 100%; }   /* notes under the switch wrap to the card's width, never widen it */
 .cv-schip.st-empty .st-ring .trk { stroke: var(--muted); }
-.cv-schip.st-off .cv-schip-btn { opacity: 0.45; }   /* off for this session: there, not asking for attention */
+.cv-schip.st-off .cv-schip-btn { opacity: 0.45; }
+/* The list above the chat, under the tabs (status_panel.js): one line in the theme's own color (the window behind the
+   panes, with its text); a click slides the list down over the chat. The list's own rules are reused as they are: inside
+   .st-inv the tokens they read are the theme's. */
+.st-inv { --panel: var(--bg); --ink: var(--on-bg); --muted: var(--on-bg-muted); --panel-2: color-mix(in srgb, var(--on-bg) 10%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 22%, var(--bg)); --accent: var(--on-bg); --on-accent: var(--bg); background: var(--panel); color: var(--ink); }
+/* Dark: the theme color sits a shade below the pane, so dark on dark would blend in. The band is lifted a clear step
+   above the pane instead (its light text mixed in), still the theme's hue, never a pale bar in a dark window. */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); } }
+:root[data-theme="dark"] .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); }
+.st-panel { position: relative; flex: none; margin: 8px 16px 6px; z-index: 5; }
+.st-bar { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px 0 12px; border: 0; border-radius: 10px; font: 12.5px var(--sans); text-align: left; cursor: pointer; }
+.st-bar b { flex: none; font-weight: 700; }
+.st-bar:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+.st-line { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-dim { color: var(--muted); }
+.st-toggle .st-dim { font-weight: 400; }   /* the cost beside the switch's name: a note, not part of the name */
+.st-chev { flex: none; font-size: 15px; line-height: 1; opacity: 0.85; }
+.st-drawer { user-select: text; -webkit-user-select: text; cursor: text; position: absolute; top: 100%; left: 0; right: 0; max-height: 60vh; overflow-y: auto; padding: 10px 12px; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; font-size: 12.5px; box-shadow: var(--shadow); }
+.st-panel:has(> .st-drawer:not(.closing)) .st-bar { border-radius: 10px 10px 0 0; }   /* the list hangs from the line: one shape; the shape follows the list itself, so it can't stay behind */
+/* It unrolls down from the line, and rolls back up into it. */
+.st-drawer.slide { animation: stUnroll 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.st-drawer.closing { pointer-events: none; }   /* rolling up (statusPanelCloseAll animates it) */
+@keyframes stUnroll { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 -40px 0); } }
+@media (prefers-reduced-motion: reduce) { .st-drawer.slide { animation: none; } }
+   /* off for this session: there, not asking for attention */
 .cv-schip.st-off.open .cv-schip-btn, .cv-schip.st-off .cv-schip-btn:hover { opacity: 0.8; }
 .cv-you.sending { opacity: 0.6; }
 .cv-you.queued .cv-you-text { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
