@@ -1860,11 +1860,16 @@ function statusLine(it, s) {
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
   return (s?.session_id ? handoffStatus(s.session_id, s) : "") + whereNow(it, s) + tray;
 }
-/** A session's latest status list while it's on for the session: { status, key, sw } (`sw` as status.js takes it). */
+/** A session's latest status list while it's on for the session: { status, key, sw } (`sw` as status.js takes it).
+ *  The latest reply that has one: a reply without a list (a spoken answer, a short one with no tools, a note
+ *  mid-turn) keeps the one before it in view. */
 function latestStatus(it, s) {
   const sid = s?.session_id || it?.session_id, on = statusOn(sid);
-  const last = on ? conversation(it, s).findLast((e) => e.role === "agent") : null;
-  const status = last ? parseStatus(last.text) : { items: [], waiting: "" };
+  let last = null, status = { items: [], waiting: "" };
+  if (on) for (const e of conversation(it, s).filter((e) => e.role === "agent").reverse()) {
+    const p = parseStatus(e.text);
+    if (p.items.length) { last = e; status = p; break; }
+  }
   const key = status.items.length ? `${sid}:${last.at_ms}` : `${sid}:${on ? "on" : "off"}`;
   return { status, key, sw: { sid, on, working: s?.state === "working" } };
 }
