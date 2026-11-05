@@ -52,9 +52,11 @@ function statusPanelHtml(status, sw, view) {
   const p = statusParts(status, sw);
   if (!p.listed || view.away) return "";
   const sid = esc(sw.sid), ring = statusRing(p.done, p.now, status.items.length), open = !!view.open;
-  const bar = `<button class="st-bar st-inv" data-act="status-open" data-sid="${sid}" aria-expanded="${open}" aria-label="${open ? "Close the status list" : "Open the status list"}">${ring}${statusOneLine(status, p.done)}<span class="st-chev">${open ? "▴" : "▾"}</span></button>`;
+  const bar = `<button class="st-bar st-inv" data-act="status-open" data-sid="${sid}" aria-expanded="${open}" aria-label="${open ? "Close the status list" : "Open the status list"}">${ring}${statusOneLine(status, p.done)}</button>`;
+  // ▾ / ▴ at the line's right edge, past relay's switch; it opens and closes the list too.
+  const chev = `<button class="st-chev" data-act="status-open" data-sid="${sid}" tabindex="-1" aria-hidden="true">${open ? "▴" : "▾"}</button>`;
   const drawer = open ? `<div class="st-drawer st-inv${view.slide ? " slide" : ""}" data-sid="${sid}" data-key="${esc(sw.key || "")}">${p.list}${p.par}${p.toggle}${p.cost}</div>` : "";
-  return `<div class="st-panel"><div class="st-head st-inv">${bar}${p.relay}</div>${drawer}</div>`;
+  return `<div class="st-panel"><div class="st-head st-inv">${bar}${p.relay}${chev}</div>${drawer}</div>`;
 }
 
 /** An open list is at most half the chat's height and ends above its bottom (the box stays free; on a tab with the
@@ -99,8 +101,8 @@ function statusPanelCloseAll() {
   document.querySelectorAll(".st-panel .st-bar").forEach((b) => {
     b.setAttribute("aria-expanded", "false");
     b.setAttribute("aria-label", "Open the status list");
-    b.querySelector(".st-chev").textContent = "▾";
   });
+  document.querySelectorAll(".st-panel .st-chev").forEach((c) => { c.textContent = "▾"; });
   return true;
 }
 if (typeof document !== "undefined") {
