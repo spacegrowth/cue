@@ -15,6 +15,11 @@ use std::sync::Mutex;
 /// The heading that starts the list (ui/status.js finds it by the same words).
 pub const MARKER: &str = "**Where we are**";
 
+/// A reply as it's read aloud: without the list at its end (it's for the eye, on the status line).
+pub fn without_list(text: &str) -> &str {
+    text.find(MARKER).map_or(text, |at| text[..at].trim_end())
+}
+
 /// What a session is asked to end its reply with.
 pub const SPEC: &str = "End this reply with the status list, exactly this shape, kept short:\n\
 **Where we are**\n\
@@ -256,6 +261,12 @@ mod tests {
     fn you(text: &str) -> Value { json!({ "type": "user", "message": { "content": text } }) }
     fn said(text: &str) -> Value { json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": text }] } }) }
     fn compaction() -> Value { json!({ "type": "system", "subtype": "compact_boundary" }) }
+
+    #[test]
+    fn a_reply_is_read_aloud_without_its_list() {
+        assert_eq!(without_list(&format!("Done, both installed.\n\n{LIST}")), "Done, both installed.");
+        assert_eq!(without_list("No list here."), "No list here.");
+    }
 
     #[test]
     fn spent_adds_up_the_total_and_each_session() {

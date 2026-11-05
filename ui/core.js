@@ -576,7 +576,9 @@ function leadCard(sid) {
   });
   // Its plan: what it sends next, and how many wait. (Auto mode is the switch beside its LEAD tag.)
   const plan = m.plan_queued ? `<span class="crew-plan">Next: <b>${esc(m.plan_next)}</b> · ${m.plan_queued} more queued</span>` : "";
-  return `<div class="team-card">${took}${rows.join("") || (took ? "" : `<div class="tc-st">Nothing from the team needs you.</div>`)}${plan ? `<div class="tc-foot">${plan}</div>` : ""}</div>`;
+  // Nothing needs you and nothing is queued: no card at all.
+  if (!took && !rows.length && !plan) return "";
+  return `<div class="team-card">${took}${rows.join("")}${plan ? `<div class="tc-foot">${plan}</div>` : ""}</div>`;
 }
 /** On the board, inside a lead's card: its executors as a tree. What needs you, with its buttons; what's
  *  done, with Diff / Review; the rest, one line each (past five, a count). */

@@ -496,7 +496,7 @@ fn outcome(snap: &Value, t: &Turn) -> Option<Value> {
     }
     let thread = s["thread"].as_array()?;
     if let Some(reply) = thread.iter().rev().find(|e| e["role"] == "agent" && e["at_ms"].as_u64().unwrap_or(0) > t.after) {
-        return Some(json!({ "answer": reply["text"] }));
+        return Some(json!({ "answer": crate::statuslist::without_list(reply["text"].as_str().unwrap_or("")) }));
     }
     let stopped = items_of(snap, &t.sid).any(|i| i["kind"] == "waiting" && i["interrupted"] == true && i["created_ms"].as_u64().unwrap_or(0) > t.after);
     stopped.then(|| json!({ "stopped": true }))
@@ -515,7 +515,9 @@ fn followed(snap: &Value, f: &Follow) -> Option<(u64, String)> {
     }
     let e = s["thread"].as_array()?.iter().rev().find(|e| e["role"] == "agent")?;
     let at = e["at_ms"].as_u64().unwrap_or(0);
-    (at > f.seen).then(|| (at, e["text"].as_str().unwrap_or("").to_string())).filter(|(_, t)| !t.trim().is_empty())
+    // Read aloud without the status list at its end.
+    let text = crate::statuslist::without_list(e["text"].as_str().unwrap_or(""));
+    (at > f.seen).then(|| (at, text.to_string())).filter(|(_, t)| !t.trim().is_empty())
 }
 
 /// You wrote to the followed session yourself since its last reply was told: a message that isn't a voice one
