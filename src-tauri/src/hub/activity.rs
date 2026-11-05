@@ -672,6 +672,12 @@ impl Hub {
         let todo = self.st().sessions.working_transcripts();
         let found: Vec<(String, (String, u64))> =
             todo.into_iter().filter_map(|(sid, harness, path)| crate::transcript::activity_of(&harness, &path).map(|a| (sid, a))).collect();
+        // Each session's agents, as its chat lists them (its card says the same count). Read after the lock is let
+        // go; a session at rest only while something else reads its feed (its chat open), so idle ones cost nothing.
+        let agents: Vec<(String, u64)> = {
+            let todo = self.st().sessions.agent_transcripts();
+            todo.into_iter().filter_map(|(sid, path, at_work)| crate::steps::agent_count(&path, at_work).map(|n| (sid, n as u64))).collect()
+        };
         // A message you queued that Claude Code or Codex has since taken (into the running turn, or as
         // the next prompt): it's no longer queued, so no "Queued" bubble pinned below the answer, and no Send now.
         let queued: Vec<(String, String, String, crate::model::Exchange)> = {
@@ -889,7 +895,8 @@ impl Hub {
             for sid in &taken {
                 st.sessions.set_queued(sid, None);
             }
-            found.iter().fold(!taken.is_empty(), |any, (sid, (a, at))| st.sessions.set_doing(sid, a, *at) || any)
+            let any = agents.iter().fold(!taken.is_empty(), |any, (sid, n)| st.sessions.set_agents(sid, *n) || any);
+            found.iter().fold(any, |any, (sid, (a, at))| st.sessions.set_doing(sid, a, *at) || any)
         };
         if changed {
             self.changed();

@@ -379,7 +379,7 @@ let pjDelArm = null;
 const inProj = (project) => !projFilter || project === projFilter;
 /** A lead no longer: one a new lead took over from, or one relay stepped down (it names it "[ex-Lead] …"). */
 const exLead = (sid) => !crewOf(sid) && (!!handoffOf(sid) || /^\[ex-Lead\]/i.test(recordOf(sid)?.name || (state.live || []).find((q) => q.session_id === sid)?.name || ""));
-const roleTag = (sid, live = false) => { const m = crewOf(sid); if (exLead(sid)) return `<span class="role was">EX-LEAD</span>`; return m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "EXEC"}</span>${m.role === "lead" ? autoToggle(sid, m, live) : ""}` : ""; };
+const roleTag = (sid, live = false) => { const m = crewOf(sid); if (exLead(sid)) return `<span class="role was">EX-LEAD</span>`; return m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "RELAY"}</span>${m.role === "lead" ? autoToggle(sid, m, live) : ""}` : ""; };
 /** An executor's lead: a link when Cue has that session, else its name. */
 const leadLink = (m) => sessionOf(m.lead) ? `<button class="crew-lead" data-session="${esc(m.lead)}">${esc(m.lead_name || "its lead")}</button>` : `<b>${esc(m.lead_name || "its lead")}</b>`;
 const pkt = (n) => n ? `packet ${n}` : "";
@@ -392,16 +392,16 @@ function crewLine(sid, verdict = true) {
   const vf = verdict && reported(m.status) && m.verify ? ` ${verifyTag(m.verify)}` : "";
   return `<div class="crew-line">of ${leadLink(m)}${bits.length ? " · " + bits.join(" · ") : ""}${vf}${orphan}</div>`;
 }
-/** On a Waiting card, under the top row (which is full): the role tag, then an executor's lead
- *  ("EXEC of ● agent-relay · pkt 3 · busy"), a lead's executors ("● LEAD · 3 executors · 1 reported"), or
+/** On a Waiting card, under the top row (which is full): the role tag, then a relay agent's lead
+ *  ("RELAY of ● agent-relay · packet 3 · working"), a lead's agents ("LEAD 3 agents"), or
  *  that it doesn't lead anymore ("EX-LEAD not leading anymore"). */
 function cardCrew(sid) {
   const m = crewOf(sid);
   if (m?.role === "executor") return crewLine(sid, false).replace('<div class="crew-line">', `<div class="crew-line">${roleTag(sid)} `);
   if (exLead(sid)) return `<div class="crew-line">${roleTag(sid)} ${handoffOf(sid) ? "relay handoff to a new lead" : "not leading anymore"}</div>`;
   if (m?.role !== "lead") return "";
-  const n = (m.executors || []).length;
-  return `<div class="crew-line">${roleTag(sid)} ${n ? `team of ${n}` : "no executors right now"}</div>`;
+  const n = agentCount(sid).n;
+  return `<div class="crew-line">${roleTag(sid)} ${n ? `${n} agent${n === 1 ? "" : "s"}` : "no agents right now"}</div>`;
 }
 /** An executor that's done its packet and is waiting on its lead's review. */
 const reported = (status) => status === "reported" || status === "idle";
@@ -416,12 +416,10 @@ const reviewWord = (sid) => { const w = state.reviews?.[sid] || ""; return w ===
 /** A report relay never woke its lead for: ready a while, unseen, its lead listening and free. Cue says so
  *  instead of "waiting for review"; Review in lead stays. */
 const missedWake = (sid) => state.reviews?.[sid] === "not picked up";
-/** (the narrow team tree on the board says just "not picked up") */
-const NOT_PICKED_UP = "its lead hasn't picked this up";
 /** An executor whose agent exited before it reported (stalled: it never got past a trust prompt, say; dead:
  *  its process is gone): nothing will ever report, so its row says so and offers Close. */
 const stalled = (status) => status === "stalled" || status === "dead";
-const stalledWord = (status) => status === "dead" ? "stopped: its agent is gone" : "stalled: its agent exited";
+const stalledWord = (status) => status === "dead" ? "stopped: its agent is gone" : "stuck: its agent exited";
 /** relay's auto mode beside a lead's LEAD tag: a switch in its chat (`live`: click to flip it),
  *  and on cards and rows just "auto" while it's on. In the chat, hover says what it means. */
 const autoToggle = (sid, m, live = false) => {
@@ -453,9 +451,9 @@ async function crewAct(sid, action) {
   } catch (e) { toast(`Couldn't ${action === "close-left" ? "close them" : action.startsWith("hand:") ? "hand them over" : action}: ${e}`); }
 }
 // ---------- teams: a lead and its executors, shown as one ----------
-// The same team bar in the lead's chat and each executor's (lead first, then executors as they started;
-// they never reorder), then one card for where you are: an executor's packet, or what the team needs
-// from you in the lead's. On the board, a lead's card holds its executors as a small tree.
+// A lead's executors are its relay agents (agents.js: one list with its other agents). On an executor's title line,
+// "for <lead> ›"; then one card for where you are: an executor's packet, or what the team needs from you in the
+// lead's. On the board, a lead's card holds its executors as a small tree.
 /** An executor by its session id: its own crew record (a session Cue holds), else its line on its lead's
  *  executor list (one Cue doesn't hold, on another machine say), with its lead filled in. Null for anything else. */
 function execOf(sid) {
@@ -482,22 +480,19 @@ function teamOf(sid) {
 }
 /** Something an executor asks you (a permission or a question): you, not its lead, answer that. */
 const asksOf = (sid) => state.items.find((i) => i.session_id === sid && i.kind !== "waiting");
-/** An executor's state, in a word or two. */
 /** What a working session is doing right now ("Running: cargo test"), from its transcript, and since
  *  when: Cue reads it every few seconds, so it follows the agent step by step. Empty when unknown. */
 const liveStep = (sid) => { const s = sessionOf(sid); return s?.state === "working" && s.doing && !preStart(s) ? { what: s.doing, at: s.doing_ms } : null; };
 /** Before Claude Code starts, its terminal can sit on a screen of its own (no hook comes until it's past
  *  it): what that is in words, for a session (`trust_ms` / `enter_ms`) or a machine's executor (`setup`). */
 const preStart = (s) => s?.trust_ms || s?.setup === "trust" ? "asking whether you trust its folder" : s?.enter_ms || s?.setup === "enter" ? "waiting for Enter in its terminal" : "";
+/** An executor's state as any agent's (agents.js agentState): its word ("needs you", "working", "stuck", "done",
+ *  "idle", "stopped") and the class its chip or dot takes. */
 function exState(e) {
-  if (asksOf(e.session_id)) return { word: "needs you", cls: "need" };
-  if (preStart(e) || preStart(sessionOf(e.session_id))) return { word: "waiting in its terminal", cls: "need" };
-  if (reported(e.status)) return { word: "done", cls: "done" };
-  if (e.status === "busy") return { word: "working", cls: "busy" };
-  return { word: { stalled: "stalled", closed: "closed", superseded: "replaced", dead: "stopped" }[e.status] || e.status || "", cls: "" };
+  const s = sessionOf(e.session_id);
+  const st = agentState({ relay: true, status: e.status, asks: !!asksOf(e.session_id) || !!preStart(e) || !!preStart(s), quiet: !!s?.stuck_ms });
+  return { state: st, word: AGENT_WORDS[st], cls: AGENT_CLS[st] };
 }
-/** Under the chat's header, lead's or executor's: the whole team, this one lit; each chip ends with its role
- *  (lead / exec); a chip opens that chat. */
 /** Where the lead a handoff opened is now: "open" (a session in Cue), "quiet" (running, Cue hasn't heard
  *  from it yet), "ended" (on this Mac: Resume brings it back), or "" (ended on another machine). */
 function newLeadAt(ho) {
@@ -513,23 +508,13 @@ function newLeadBtn(ho, cls = "btn primary") {
   if (at === "ended") return `<button class="${cls}" data-resume="${esc(ho.to)}" data-name="${esc(name)}">Resume new lead</button>`;
   return "";
 }
-function teamBar(sid) {
-  const ho = !crewOf(sid) && handoffOf(sid);
-  if (ho) {
-    // Both usually carry the project's name (a handoff keeps it): "this one" and "new lead" tell them apart.
-    const at = newLeadAt(ho);
-    const chip = `${esc(bareName(ho.name))} <span class="tm-sub">${at === "open" || at === "quiet" ? "new lead" : "new lead · ended"}</span>`;
-    const to = at === "open" ? `<button class="tm-chip" data-session="${esc(ho.to)}">${chip}</button>` : at === "quiet" ? `<button class="tm-chip" data-sv="quiet" data-sid="${esc(ho.to)}">${chip}</button>` : `<span class="tm-chip gone">${chip}</span>`;
-    return `<div class="team-bar"><span class="tm-label">Relay handoff</span><span class="tm-chip me">this one</span><span class="tm-sub">→</span>${to}${ho.executors ? `<span class="tm-sub">· took its ${ho.executors} executor${ho.executors === 1 ? "" : "s"}</span>` : ""}</div>`;
-  }
-  const t = teamOf(sid);
-  if (!t) return "";
-  const chip = (id, name, word, cls) => {
-    const me = id === sid, go = !me && sessionOf(id);
-    return `<${go ? "button" : "span"} class="tm-chip ${cls} ${me ? "me" : ""}" ${go ? `data-session="${esc(id)}"` : ""}>${cls === "busy" ? `<span class="dot-live"></span>` : ""}${esc(name)}${word ? ` <span class="tm-sub">${esc(word)}</span>` : ""}${cls !== "lead" ? ` <span class="tm-sub tm-role">exec</span>` : ""}</${go ? "button" : "span"}>`;
-  };
-  const lead = sessionOf(t.lead) || t.lead === sid ? chip(t.lead, t.leadName, "lead", "lead") : `<span class="tm-chip gone">${esc(t.leadName)} <span class="tm-sub">lead · not running</span></span>`;
-  return `<div class="team-bar">${lead}${t.ex.map((e) => { const st = exState(e); return chip(e.session_id, e.name, st.word, st.cls); }).join("")}</div>`;
+/** On a relay agent's title line (after its RELAY tag): "for <lead> ›", which opens its lead's chat, or that its lead
+ *  isn't running. A lead's (any session's) agents are agents.js agentChips. */
+function teamChips(sid) {
+  const t = teamOf(sid), m = t && execOf(sid);
+  if (!m) return "";
+  const lead = sessionOf(t.lead) ? `<button class="tm-chip" data-session="${esc(t.lead)}"><span class="tm-n">for ${esc(t.leadName)}</span> <span class="tm-sub">›</span></button>` : `<span class="tm-chip gone"><span class="tm-n">${esc(t.leadName)}</span> <span class="tm-sub">lead · not running</span></span>`;
+  return `<span class="tm-chips">${lead}</span>`;
 }
 /** relay verify's verdict, in words: it checks every file the report lists is staged, not that the work is right. */
 const verifyWords = (v) => !v?.verdict ? "" : v.verdict === "COUNTS-MATCH" ? "its report matches what's staged"
@@ -552,13 +537,14 @@ function packetCard(sid, m = crewOf(sid)) {
   return `<div class="team-card"><div class="tc-h">PACKET${m.packet ? ` ${m.packet}` : ""}</div>${m.goal ? `<div class="tc-goal">${esc(m.goal.charAt(0).toUpperCase() + m.goal.slice(1))}</div>` : ""}
     <div class="tc-st">${st}</div>${gone}${acts ? `<div class="tc-acts">${acts}</div>` : ""}</div>`;
 }
-/** A lead's chat: what its team needs from you (asks, finished packets), then its plan and auto mode. */
+/** A lead's chat: the notes about its lead role (a handoff, the lead it took over from) and its plan. What its relay
+ *  agents ask and the packets they finished are on their agent rows (agents.js), as any agent's are. */
 function leadCard(sid) {
   const m = crewOf(sid);
   const ho = !m && handoffOf(sid);
   if (ho) {
     const at = newLeadAt(ho), via = ho.hops > 1 ? ` It has been handed off ${ho.hops} times since; this goes to the latest lead.` : "";
-    const where = at === "open" || at === "quiet" ? "This one isn't leading anymore; its executors report to the new lead now."
+    const where = at === "open" || at === "quiet" ? "This one isn't leading anymore; its relay agents report to the new lead now."
       : at === "ended" ? "That lead has ended too. Resume it to pick up where it stopped." : `That lead has ended${ho.machine ? ` on ${esc(ho.machine)}` : ""}.`;
     return `<div class="team-card"><div class="tc-row"><span><b>Relay handoff:</b> a new lead took over${ho.at_ms ? ` ${ago(ho.at_ms)} ago` : ""}. ${where}${via}</span><span class="tc-acts">${newLeadBtn(ho)}${closeBtn(sid)}</span></div></div>`;
   }
@@ -568,17 +554,11 @@ function leadCard(sid) {
   // The lead it took over from, while that one is still open: name it, and Close it from here.
   const pred = predecessorOf(sid);
   const took = pred ? `<div class="tc-row"><span>Took over in a relay handoff from <button class="crew-lead" data-session="${esc(pred)}">the previous lead</button>${m.started_ms ? ` ${ago(m.started_ms)} ago` : ""}. That one's still open, but it isn't leading anymore.</span><span class="tc-acts">${closeBtn(pred)}</span></div>` : "";
-  const rows = (m.executors || []).flatMap((e) => {
-    const ask = asksOf(e.session_id);
-    if (ask) return [`<div class="tc-row need" data-big="${esc(ask.id)}" role="button"><span><b>${esc(e.name)}</b> ${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></span>${ask.kind === "permission" ? `<span class="tc-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></span>` : ""}</div>`];
-    if (reported(e.status) && !reviewWord(e.session_id)) return [`<div class="tc-row"><span><b>${esc(e.name)}</b> is done${e.outcome ? `: ${esc(e.outcome)}` : ""}${missedWake(e.session_id) ? ` · ${NOT_PICKED_UP}` : ""}</span><span class="tc-acts">${diffBtn(e.session_id, e)}${crewBtn(e.session_id, "review", "Review", true)}</span></div>`];
-    return [];
-  });
   // Its plan: what it sends next, and how many wait. (Auto mode is the switch beside its LEAD tag.)
   const plan = m.plan_queued ? `<span class="crew-plan">Next: <b>${esc(m.plan_next)}</b> · ${m.plan_queued} more queued</span>` : "";
-  // Nothing needs you and nothing is queued: no card at all.
-  if (!took && !rows.length && !plan) return "";
-  return `<div class="team-card">${took}${rows.join("")}${plan ? `<div class="tc-foot">${plan}</div>` : ""}</div>`;
+  // Nothing to say: no card at all.
+  if (!took && !plan) return "";
+  return `<div class="team-card">${took}${plan ? `<div class="tc-foot">${plan}</div>` : ""}</div>`;
 }
 /** On the board, inside a lead's card: its executors as a tree. What needs you, with its buttons; what's
  *  done, with Diff / Review; the rest, one line each (past five, a count). */

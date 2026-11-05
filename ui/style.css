@@ -395,7 +395,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-line:disabled { cursor: default; }
 .stx-ic { width: 17px; height: 17px; border-radius: 4px; flex: none; display: grid; place-items: center; font: 800 9.5px var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
 .stx-ic.k-edit { background: var(--sel); color: var(--on-sel); }
-.stx-ic.k-run { background: var(--slab); color: var(--on-slab); }
+.stx-ic.k-run, .stx-ic.k-relay { background: var(--slab); color: var(--on-slab); }
 .stx-line.bad .stx-ic { background: color-mix(in srgb, var(--deny) 16%, var(--panel)); color: var(--deny); }
 .stx-what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stx-what .mono { font-size: 11.5px; }
@@ -418,6 +418,24 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-row .bg-meta .bad, .bg-view-meta .bad { color: var(--deny); font-weight: 650; }
 .bg-row .bg-tail { flex: 1; min-width: 0; text-align: right; font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stx-steps .bg-row { margin-left: 25px; width: calc(100% - 25px); }
+/* Agents, any kind (agents.js): the row above the box's head, the Agents tab's groups, a row's buttons and ask. */
+.ag-head { display: flex; align-items: center; gap: 8px; padding: 2px 6px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.ag-more { border: 0; background: none; padding: 0; font: 600 11.5px var(--sans); letter-spacing: 0; color: var(--muted); cursor: pointer; }
+.ag-more:hover { color: var(--ink); }
+.ag-group { padding: 10px 6px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.ag-group:first-child { padding-top: 2px; }
+.ag-row { cursor: pointer; }
+.ag-acts { flex: none; display: inline-flex; gap: 6px; margin-left: 6px; }
+.ag-need { color: var(--deny); font-weight: 650; }
+.ag-row .ag-ask { font-family: var(--sans); }
+.ag-row .ag-ask .mono { font-family: var(--mono); }
+.ag-view-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.ag-view-name { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.role.ag-kind { border: 1px solid var(--muted); color: var(--muted); }
+.pill.soft.stuck { color: #d99a3a; }
+.pill.soft.need { color: var(--deny); }
+.pill.soft .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
+.tm-chip.small { height: 18px; padding: 0 7px; font-size: 10.5px; }
 /* A script's output in its full view: terminal-dark, its lines as they came. */
 .bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
 .bg-out div { white-space: pre; }
@@ -1130,20 +1148,18 @@ button.auto-tg:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .auto-tag { flex: none; margin-left: 4px; font: 800 9.5px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.3; padding: 1px 5px; border-radius: 4px; border: 1px solid currentColor; color: inherit; }
 .crew-plan { margin-left: auto; font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .crew-plan b { color: var(--ink); font-weight: 650; }
-/* A team: the same bar in the lead's chat and each executor's (lead first; this one lit); then the
-   packet card (an executor) or what the team needs from you (the lead). */
-.team-bar { margin: 2px 16px 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
-.tm-label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-weight: 600; margin-right: 2px; }
-.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; }
+/* Chips on the chat's title line: a session's agents (agents.js agentChips), or a relay agent's lead; then the packet
+   card (an executor) or what the team needs from you (the lead). */
+.tm-chips { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.tm-n { overflow: hidden; text-overflow: ellipsis; min-width: 3ch; }
 button.tm-chip:hover { background: var(--panel-2); }
-.tm-chip.me { background: var(--sel); color: var(--on-sel); border-color: transparent; }
-.tm-chip.me .tm-sub { color: inherit; opacity: 0.75; }
+.tm-chip.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.tm-chip.on .tm-sub { color: inherit; opacity: 0.75; }
 .tm-chip.gone { opacity: 0.6; }
 .tm-sub { font-weight: 500; color: var(--muted); }
 .tm-chip.need .tm-sub { color: var(--deny); font-weight: 650; }
-.tm-chip.need .tm-role { color: var(--muted); font-weight: 500; }
-.tm-chip.me .tm-role { color: inherit; }
-.tm-chip .dot-live { width: 6px; height: 6px; }
+.tm-chip .dot-live { width: 6px; height: 6px; flex: none; }
 .team-card { margin: 0 16px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); padding: 9px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 .tc-h { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
 .tc-goal { font-weight: 650; }
@@ -1154,9 +1170,6 @@ button.tm-chip:hover { background: var(--panel-2); }
 .tc-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
 .tc-row:first-child { border-top: 0; }
 .tc-row > span:first-child { flex: 1; min-width: 0; }
-.tc-row.need { cursor: pointer; }
-.tc-row.need b + * { color: var(--deny); }
-.tc-row .mono { font: 12px var(--mono); }
 .tc-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
 /* On the board: a lead's executors inside its card, as a small tree. */
 .team-tree { margin: 9px -2px -2px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }

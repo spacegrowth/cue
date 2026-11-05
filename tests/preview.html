@@ -595,7 +595,10 @@
   <script src="../ui/vendor/xterm/addon-fit.js"></script>
   <script src="../ui/vendor/xterm/addon-webgl.js"></script>
   <script src="../ui/core.js"></script>
+  <script src="../ui/status.js"></script>
+  <script src="../ui/status_panel.js"></script>
   <script src="../ui/chat.js"></script>
+  <script src="../ui/agents.js"></script>
   <script src="../ui/insights.js"></script>
   <script src="../ui/tips.js"></script>
   <script src="../ui/shells.js"></script>
@@ -607,6 +610,7 @@
   <script src="../ui/sheets.js"></script>
   <script src="../ui/actions.js"></script>
   <script src="../ui/background.js"></script>
+  <script src="../ui/about.js"></script>
   <script src="../ui/tasks.js"></script>
   <script src="../ui/app.js"></script>
   <script>
@@ -700,14 +704,14 @@
       const bgQ = new URLSearchParams(q).get("bg");
       if (openQ && bgQ) setTimeout(() => { helperView = { sid: openQ, id: bgQ }; renderMain(); }, 400);
       // (&view=sessions: the Sessions view, dns-cutover marked as the one open, no click to leave the view.)
-      // &held=1&via=tree|chip|live: dns-cutover opened from its row in its lead's tree, its chip on the team bar
-      // of its lead's chat, or its row in the "N live" list. Each way, its own terminal opens (body[data-term-opens])
+      // &held=1&via=tree|chip|live: dns-cutover opened from its row in its lead's tree, its row in its lead's Agents
+      // tab (via=chip: what the title line's "N agents ›" opens), or its row in the "N live" list. Each way, its own terminal opens (body[data-term-opens])
       // beside its chat (body[data-open]): tests/exec_attach.sh checks all three, and via=lead below.
       const via = new URLSearchParams(q).get("via");
       if (/remote=1/.test(q) && /held=1/.test(q) && via) setTimeout(() => {
         const done = () => { document.body.dataset.open = active?.sid || ""; };
         if (via === "tree") { view = "board"; renderMain(); document.querySelector('.team-tree [data-exec-term="rx-dns"], .team-tree [data-session="rx-dns"]')?.click(); }
-        if (via === "chip") { setActive(null, "rlead"); document.querySelector('.team-bar [data-session="rx-dns"]')?.click(); }
+        if (via === "chip") { bgTabOn.set("rlead", "agents"); setActive(null, "rlead"); document.querySelector('.bg-page [data-exec-term="rx-dns"], .bg-page [data-session="rx-dns"]')?.click(); }
         if (via === "live") { lvAct("toggle", {}); document.querySelector('.lv-row[data-sid="rx-dns"]')?.click(); }
         // (via=lead: its lead's own row, on the same machine but no executor: its chat only, no terminal.)
         if (via === "lead") { view = "board"; renderMain(); document.querySelector('.team-top[data-session="rlead"], .working[data-session="rlead"]')?.click(); }

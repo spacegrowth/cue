@@ -2,7 +2,7 @@
 # A remote executor that Cue also holds as a session (its hooks reached Cue from the machine), with its own
 # tmux session there: opened from any of its rows, its chat opens AND its own terminal (term_open for it,
 # which attaches to that tmux session). Runs tests/preview.html?crew=1&remote=1&held=1&via=… in headless
-# Chrome, once per way in: its row in its lead's tree, its chip on the lead chat's team bar, its row in the
+# Chrome, once per way in: its row in its lead's tree, its row in the lead chat's Agents tab, its row in the
 # "N live" list. And its lead's own row (in tmux on the same machine, not an executor) still opens only its
 # chat: no terminal. Exit 0 when all pass.
 set -u

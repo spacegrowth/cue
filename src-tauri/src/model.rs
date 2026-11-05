@@ -113,6 +113,10 @@ pub enum ClientMsg {
         suggestions: Value,
         #[serde(default)]
         context: Vec<Ctx>,
+        /// The agent inside the session that asks (Claude Code's `agent_id` on a hook fired from within a
+        /// background agent or teammate: the id its log and its task go by); "" for the session itself.
+        #[serde(default)]
+        agent_id: String,
     },
     /// Fire-and-forget lifecycle event: stopped (waiting for you), active, ended.
     Event {
@@ -295,6 +299,13 @@ pub struct Item {
     /// it starts no turn, so the session goes back to its prompt, not to Working.
     #[serde(skip)]
     pub at_prompt: bool,
+    /// Asked by one of the session's agents (a background agent or teammate), not the session itself: its id
+    /// (the steps feed's helper id) and what it goes by, so the window shows the ask on that agent's row and a
+    /// card can name it. "" for the session's own asks.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_name: String,
 }
 
 pub fn now_ms() -> u64 {

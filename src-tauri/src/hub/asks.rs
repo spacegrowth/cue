@@ -18,7 +18,10 @@ impl Hub {
         tool_input: Value,
         suggestions: Value,
         mut context: Vec<Ctx>,
+        agent_id: String,
     ) -> (String, oneshot::Receiver<Reply>) {
+        // One of its agents asks: what it goes by, from the session's steps feed (read before the lock is taken).
+        let agent_name = if agent_id.is_empty() || origin.transcript_path.is_empty() { String::new() } else { crate::steps::agent_name(&origin.transcript_path, &agent_id) };
         if context.is_empty() && !origin.transcript_path.is_empty() {
             context = transcript::recent_context(&origin.transcript_path, 4);
         }
@@ -37,6 +40,8 @@ impl Hub {
             it.tool_input = tool_input;
             it.suggestions = suggestions;
             it.context = context;
+            it.agent_id = agent_id;
+            it.agent_name = agent_name;
             it.scan_from = scan_from;
             let asked = match it.kind.as_str() {
                 "question" => format!("asked: {}", summary(&it)),
@@ -434,6 +439,31 @@ mod tests {
     }
 
     #[test]
+    fn an_ask_from_inside_an_agent_names_that_agent() {
+        let dir = std::env::temp_dir().join(format!("cue-agent-ask-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("s1/subagents")).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        crate::db::reset();
+        let path = dir.join("s1.jsonl");
+        std::fs::write(&path, [
+            r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Clean the build","subagent_type":"general-purpose","prompt":"go"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a7","description":"Clean the build"}}"#,
+        ].join("\n") + "\n").unwrap();
+        let origin = Origin { session_id: "s1".into(), harness: "claude".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
+        let hub = Hub::new(None);
+        hub.add_ask(origin.clone(), "permission".into(), "Bash".into(), json!({"command": "rm -rf target"}), json!([]), vec![], "a7".into());
+        hub.add_ask(origin, "permission".into(), "Bash".into(), json!({"command": "ls"}), json!([]), vec![], String::new());
+        let items = hub.pending();
+        let mine: Vec<(&str, &str)> = items.iter().map(|i| (i.agent_id.as_str(), i.agent_name.as_str())).collect();
+        assert_eq!(mine, [("a7", "Clean the build"), ("", "")], "the agent's ask carries its id and name; the session's own doesn't");
+        let v = serde_json::to_value(&items[1]).unwrap();
+        assert!(v.get("agent_id").is_none(), "the session's own ask sends no agent fields");
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn the_late_permission_notice_for_a_call_just_allowed_here_isnt_a_card() {
         let dir = std::env::temp_dir().join(format!("cue-late-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -445,7 +475,7 @@ mod tests {
         std::fs::write(&path, call("tu1", "sleep 20")).unwrap();
         let origin = Origin { session_id: "s1".into(), harness: "claude".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
         let hub = Hub::new(None);
-        let (id, _rx) = hub.add_ask(origin.clone(), "permission".into(), "Bash".into(), json!({"command": "sleep 20"}), json!([]), vec![]);
+        let (id, _rx) = hub.add_ask(origin.clone(), "permission".into(), "Bash".into(), json!({"command": "sleep 20"}), json!([]), vec![], String::new());
         hub.finish(&id, "answered", "allowed");
         // Claude Code's "needs your permission" notice, six seconds after the prompt appeared: after
         // your answer, naming the call you allowed (still running). Not a card.

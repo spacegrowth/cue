@@ -623,6 +623,35 @@ pub fn running_background(path: &str) -> usize {
     feed.helpers.iter().filter(|h| h.running()).count()
 }
 
+/// How many agents a session has: the background agents and teammates (not its scripts) in its feed, the same
+/// list the window shows as its agents (with a lead's relay agents, which come from relay). `open`: start its feed
+/// when there's none (a session at work); else None while nobody reads it, and a feed only this asks for isn't kept
+/// alive by it.
+pub fn agent_count(path: &str, open: bool) -> Option<usize> {
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    if !open && !feeds.contains_key(path) {
+        return None;
+    }
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    if open {
+        feed.used = Instant::now();
+    }
+    feed.catch_up();
+    Some(feed.helpers.iter().filter(|h| !h.script).count())
+}
+
+/// What one of a session's agents goes by (a teammate its name, a background agent its task), by its id; "" when its
+/// feed doesn't list it (yet).
+pub fn agent_name(path: &str, id: &str) -> String {
+    let mut guard = crate::locking::lock(&FEEDS, "FEEDS");
+    let feeds = guard.get_or_insert_with(HashMap::new);
+    let feed = feeds.entry(path.to_string()).or_insert_with(|| Feed::open(path, 1));
+    feed.used = Instant::now();
+    feed.catch_up();
+    feed.helpers.iter().find(|h| h.id == id).map(|h| if h.teammate && !h.name.is_empty() { h.name.clone() } else { h.desc.clone() }).unwrap_or_default()
+}
+
 /// The background tasks that failed after a while since last asked, across every open feed (each is
 /// given out once). Nothing is read here: a failure is noted when its session's feed reads the notice.
 pub fn take_task_failures() -> Vec<TaskFailure> {
@@ -2623,6 +2652,9 @@ mod tests {
         assert!(!h.stuck(last + STUCK_MS) && h.stuck(last + STUCK_MS + 1), "stuck once nothing happened for STUCK_MS");
         assert_eq!(running_helpers(p), vec!["Backend: names".to_string()]);
         assert_eq!(running_background(p), 1);
+        assert_eq!(agent_count(p, true), Some(1), "its agents: the same list the window shows");
+        assert_eq!(agent_name(p, "a1"), "Backend: names", "an ask from inside it is named by its task");
+        assert_eq!(agent_name(p, "nope"), "");
         let shown = &steps(p, 0)["helpers"][0];
         assert_eq!((shown["tokens"].as_u64(), shown["last_ms"].as_u64(), shown["running"].as_bool(), shown["stuck"].as_bool()), (Some(2265), Some(last), Some(true), Some(true)), "sent as such (and that step is years old by now): {shown}");
         // It writes its report: it's done, even before its session hears so.
@@ -2641,6 +2673,8 @@ mod tests {
         assert_eq!(f.helpers[0].finished_ms, crate::logs::transcript::iso_ms("2026-10-04T10:01:00.000Z").unwrap());
         assert!(running_helpers(p).is_empty());
         assert_eq!(running_background(p), 0);
+        assert_eq!(agent_count(p, false), Some(1), "a finished agent still counts: it's in the list");
+        assert_eq!(agent_count(&format!("{p}.none"), false), None, "no feed: not opened just to count");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

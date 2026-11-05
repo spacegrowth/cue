@@ -1,10 +1,11 @@
 // ---------- The Agents and Scripts tabs: a session's background work, all of it ----------
-// Beside Actions, each shown once the session has that kind of work: Agents (its background agents and
-// teammates) and Scripts (the shell commands it ran in the background). Each lists one row per piece of work
-// (chat.js bgRow), what's running first, then a teammate waiting, then what's over, newest first; the tab
-// shows a live dot and how many run while any do. A click opens it in full (chat.js helperPane); Back comes
-// back here. The live feed keeps a session's newest few; "Show earlier" reads its whole transcript for the
-// rest, only once asked, and an earlier one is read in full only when it's opened.
+// Beside Actions, each shown once the session has that kind of work: Agents (every agent of it, any kind: its
+// background agents, teammates and a lead's relay agents, grouped Needs you / Working / Done: agents.js agentsPage)
+// and Scripts (the shell commands it ran in the background, one row each (chat.js bgRow), what's running first, then
+// what's over, newest first). The tab shows a live dot and how many work while any do. A click opens it in full
+// (chat.js helperPane; a relay agent: its chat); Back comes back here. The live feed keeps a session's newest few;
+// "Show earlier" reads its whole transcript for the rest, only once asked, and an earlier one is read in full only
+// when it's opened.
 const BG_TABS = [["agents", "Agents", (h) => !h.script], ["scripts", "Scripts", (h) => !!h.script]];
 const bgTabOn = new Map();     // sid → "agents" | "scripts": the tab it shows
 const bgEarlier = new Map();   // sid → { loading, list, err }: the session's whole history, once asked for
@@ -18,7 +19,14 @@ const bgTabName = (sid) => BG_TABS.find(([k]) => k === bgTabOn.get(sid))?.[1] ||
 function bgTabBtn(sid) {
   const all = bgAll(sid);
   return BG_TABS.map(([k, label, is]) => {
-    const hs = all.filter(is), on = bgTabOn.get(sid) === k;
+    const on = bgTabOn.get(sid) === k;
+    if (k === "agents") {
+      // Its count is the one every place says (agents.js agentCount); the tab shows while it has any, earlier ones too.
+      const ags = agentsOf(sid, all), n = ags.filter(agentLive).length, total = agentCount(sid).n;
+      if (!ags.length && !total && !on) return "";
+      return `<button class="stab ${on ? "on" : ""}" data-bg-tab="${k}" data-sid="${esc(sid)}">${label}<span class="stab-n">${n ? `<span class="dot-live"></span>${total} · ${n} working` : total}</span></button>`;
+    }
+    const hs = all.filter(is);
     if (!hs.length && !on) return "";
     const n = hs.filter(helperRunning).length;
     return `<button class="stab ${on ? "on" : ""}" data-bg-tab="${k}" data-sid="${esc(sid)}">${label}${n ? `<span class="stab-n"><span class="dot-live"></span>${n} running</span>` : ""}</button>`;
@@ -33,12 +41,12 @@ function bgAll(sid) {
   const live = helpersOf(sid), ids = new Set(live.map((h) => h.id));
   return [...live, ...(bgEarlier.get(sid)?.list || []).filter((h) => !ids.has(h.id))];
 }
-/** Running first (oldest first), then a teammate waiting, then what's over (newest first). */
-const bgOrder = (a, b) => (helperRunning(b) - helperRunning(a)) || (!!b.teammate - !!a.teammate) || (helperRunning(a) ? a.started_ms - b.started_ms : (b.finished_ms || b.last_ms || b.started_ms) - (a.finished_ms || a.last_ms || a.started_ms));
+/** Running first (oldest first), then what's over (newest first). */
+const bgOrder = (a, b) => (helperRunning(b) - helperRunning(a)) || (helperRunning(a) ? a.started_ms - b.started_ms : (b.finished_ms || b.last_ms || b.started_ms) - (a.finished_ms || a.last_ms || a.started_ms));
 
 function bgPage(sid, tab) {
-  const [, label, is] = BG_TABS.find(([k]) => k === tab) || BG_TABS[0];
-  const rows = bgAll(sid).filter(is).sort(bgOrder).map((h) => bgRow(sid, h, true)).join("");
+  const [k, label, is] = BG_TABS.find(([k]) => k === tab) || BG_TABS[0];
+  const rows = k === "agents" ? agentsPage(sid, bgAll(sid)) : bgAll(sid).filter(is).sort(bgOrder).map((h) => bgRow(sid, h, true)).join("");
   const e = bgEarlier.get(sid);
   const more = e?.list ? "" : e?.loading ? `<div class="bg-more dim">Reading the session's transcript…</div>` : `<button class="bg-more" data-bg-earlier="${esc(sid)}">Show earlier</button>${e?.err ? `<span class="dim"> · couldn't read it: ${esc(e.err)}</span>` : ""}`;
   return `<div class="bg-page">${rows || `<div class="ac-empty">No ${label.toLowerCase()} in this session yet.</div>`}${more}</div>`;

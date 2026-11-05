@@ -402,9 +402,9 @@ function bindMain() {
     if (cc) return copyCode(cc);
     const rc = t.closest("[data-run-code]");
     if (rc) return runCode(rc);
-    // A card's "N bg": open its session (its item, on a waiting card) with the newest still running in full.
+    // A card's "N agents": open its session (its item, on a waiting card) on its Agents tab.
     const bo = t.closest("[data-bg-open]");
-    if (bo) { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; helperView = { sid, id: null }; return it ? setActive(it) : openSession(sid); }
+    if (bo) { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; bgTabOn.set(sid, "agents"); return it ? setActive(it) : openSession(sid); }
     const hb = t.closest("[data-helper]");
     if (hb) { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; return renderMain(); }
     // Back to the chat (Go to chat, ‹ Back to chat, the lead's chip): with the cursor in its box, ready to write.

@@ -38,6 +38,10 @@ pub struct Session {
     /// (the card counts them; `helpers` alone says what it waits on). 0 = none.
     #[serde(default)]
     pub background: u64,
+    /// Its agents (background agents and teammates, any state) in the list its chat shows (steps::agent_count): its
+    /// cards count these, with a lead's relay agents, so a card and its chat say the same "N agents".
+    #[serde(default)]
+    pub agents: u64,
     /// A background task of its that failed after running a while: when (0 = none), what it was, and its
     /// output's last line. Said once; cleared when the session's state changes.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -225,6 +229,7 @@ impl Sessions {
             driven_by: String::new(),
             helpers: 0,
             background: 0,
+            agents: 0,
             task_failed_ms: 0,
             task_failed: String::new(),
             task_failed_line: String::new(),
@@ -937,6 +942,24 @@ impl Sessions {
                 s.task_failed_ms = at_ms;
                 s.task_failed = desc.to_string();
                 s.task_failed_line = line.to_string();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Claude Code sessions with a transcript, for their agent count: (id, transcript, at work: working or waiting on
+    /// its agents).
+    pub fn agent_transcripts(&self) -> Vec<(String, String, bool)> {
+        self.0.values().filter(|s| s.origin.harness == "claude" && !s.origin.transcript_path.is_empty())
+            .map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone(), s.state == "working" || s.state == "agent")).collect()
+    }
+
+    /// Its agent count (see `agents`). True when it changed.
+    pub fn set_agents(&mut self, session_id: &str, n: u64) -> bool {
+        match self.0.get_mut(session_id) {
+            Some(s) if s.agents != n => {
+                s.agents = n;
                 true
             }
             _ => false,

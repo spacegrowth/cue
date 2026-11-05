@@ -348,6 +348,8 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
     msg.insert("tool_name".into(), json!(tool));
     msg.insert("tool_input".into(), p.get("tool_input").cloned().unwrap_or(json!({})));
     msg.insert("suggestions".into(), p.get("permission_suggestions").cloned().unwrap_or(json!([])));
+    // Asked from within one of its agents (a background agent or teammate): which one, so Cue shows it on that agent.
+    msg.insert("agent_id".into(), json!(s(p, "agent_id")));
     let line = format!("{}\n", Value::Object(msg));
     let mut first = true;
     let mut gone_since: Option<Instant> = None;

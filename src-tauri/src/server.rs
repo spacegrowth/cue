@@ -163,8 +163,8 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
         }
     }
     match msg {
-        ClientMsg::Ask { origin, kind, tool_name, tool_input, suggestions, context } => {
-            let (id, rx) = hub.add_ask(origin, kind, tool_name, tool_input, suggestions, context);
+        ClientMsg::Ask { origin, kind, tool_name, tool_input, suggestions, context, agent_id } => {
+            let (id, rx) = hub.add_ask(origin, kind, tool_name, tool_input, suggestions, context, agent_id);
             // The agent can give up before it even hears back: then the request is gone, not pending forever.
             if send(&mut w, json!({"type": "queued", "id": id})).await.is_err() {
                 hub.finish(&id, "gone", "agent stopped waiting");

@@ -1121,8 +1121,6 @@ const scriptEnd = (h) => helperRunning(h) ? "" : h.stopped ? "stopped" : h.faile
  *  person in a ring. */
 const PERSON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`;
 const bgIcon = (h) => h.script ? `<i class="stx-ic k-run">$</i>` : h.teammate ? `<i class="stx-ic k-team">${PERSON_ICON}</i>` : `<i class="stx-ic k-bgagent">A</i>`;
-/** What it is, in plain words: "script", "teammate", "Explore agent" (an agent by its type). */
-const bgKind = (h) => h.script ? "script" : h.teammate ? "teammate" : h.kind ? `${h.kind} agent` : "agent";
 /** What it goes by: a teammate its name; an agent or a script the task it was given. */
 const bgName = (h) => (h.teammate && h.name) || h.desc || h.kind || "agent";
 /** The newest thing it did, in a few words: a script's last line, an agent's last step (else the first line of what it said). */
@@ -1139,20 +1137,19 @@ function bgClock(ms) {
   if (d.toDateString() === new Date().toDateString()) return t;
   return `${d.toLocaleDateString(undefined, now() - ms < 6 * 86400000 ? { weekday: "short" } : { month: "short", day: "numeric" })} ${t}`;
 }
-/** One piece of background work as one row, drawn like a step line: its mark, what it goes by, its kind and
- *  how long (or how it ended, or "idle" for a teammate) in grey, the live dot (amber, with how long it's been
- *  quiet), and the newest thing it did in grey at the right. A click opens it in full. `times` (the Agents and
- *  Scripts tabs): when it started, when it ended, and how long it took. */
+/** One piece of background work as one row, drawn like a step line. An agent or a teammate is an agent's row
+ *  (agents.js agentRow); a script: its mark, what it ran, how long (or how it ended) in grey, the live dot (amber,
+ *  with how long it's been quiet), and its newest line in grey at the right. A click opens it in full. `times`
+ *  (the Agents and Scripts tabs): when it started, when it ended, and how long it took. */
 function bgRow(sid, h, times = false) {
-  const running = helperRunning(h), idle = h.teammate && !running;
-  const end = h.script ? scriptEnd(h) : running ? "" : idle ? "idle, can take more" : "finished";
+  if (!h.script) return agentRow(helperAgent(sid, h), times);
+  const running = helperRunning(h), end = scriptEnd(h);
   const span = running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span>` : helperSpan(h);
   const endWord = end === "failed" ? `<span class="bad">failed</span>` : end;
   const when = !times
-    ? (running ? span : idle ? end : `${endWord} · ${span}`)
-    : `started ${bgClock(h.started_ms)} · ${running ? `running ${span}` : idle ? end : `${endWord} ${bgClock(h.finished_ms || h.last_ms || h.started_ms)} · took ${span}`}`;
-  const tok = helperTokens(h.tokens);
-  return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""} ${idle ? "idle" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times && h.script ? "" : `· ${esc(bgKind(h))} `}· ${when}${tok ? ` · ${tok}` : ""}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
+    ? (running ? span : `${endWord} · ${span}`)
+    : `started ${bgClock(h.started_ms)} · ${running ? `running ${span}` : `${endWord} ${bgClock(h.finished_ms || h.last_ms || h.started_ms)} · took ${span}`}`;
+  return `<button class="stx-line bg-row ${end === "failed" ? "bad" : ""}" data-key="h:${esc(h.id)}" data-helper="${esc(`${sid}|${h.id}`)}">${bgIcon(h)}<span class="bg-name">${esc(bgName(h))}</span><span class="bg-meta">${times ? "" : "· script "}· ${when}${helperStuck(h) ? ` · ${helperQuiet(h)}` : ""}</span>${running ? liveDot(h) : ""}<span class="bg-tail">${esc(bgLatest(h))}</span><span class="stx-chev">›</span></button>`;
 }
 /** One agent in full, in place of the chat: who it is, every step Cue has of it, and once it's finished
  *  its reply (its last words). Read-only: there's no messaging a background agent, so no box; the foot
@@ -1168,9 +1165,9 @@ function helperPane(sid, h) {
   h.items.slice(0, end).forEach((x) => steps.push(x.t === "step" ? stepLine(sid, x, false, true) : `<div class="stx-say msg small" data-key="${esc(x.id || `s:${x.at_ms}`)}">${md(x.text)}</div>`));
   h.items.slice(end).forEach((x) => tail.push(x.text));
   const tok = helperTokens(h.tokens);
-  const bar = helperViewBar(sid);
-  const body = `<div class="bg-view-title" data-key="title">${bgIcon(h)}<b>${esc(bgName(h))}</b><span class="bg-view-kind">${esc(bgKind(h))}</span>${running ? liveDot(h) : ""}</div>
-    <div class="bg-view-meta" data-key="meta">${h.teammate ? `<span>${esc(h.desc)}</span>` : ""}${model ? `<span>${esc(model)}</span>` : ""}${tok ? `<span>${tok}</span>` : ""}<span>${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far` : h.teammate ? "idle, can take more" : `finished · ${helperSpan(h)}`}</span>${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${h.items.filter((x) => x.t === "step").length + (h.more || 0)} steps</span></div>
+  // The head every agent's view has (agents.js agentHead): ‹ Back, its mark, name, kind, state, whose it is.
+  const bar = agentHead(helperAgent(sid, h), helperBack(sid));
+  const body = `<div class="bg-view-meta" data-key="meta">${h.teammate ? `<span>${esc(h.desc)}</span>` : ""}${model ? `<span>${esc(model)}</span>` : ""}${tok ? `<span>${tok}</span>` : ""}<span>${running ? `<span data-helper-span="${h.started_ms}">${helperSpan(h)}</span> so far` : h.teammate ? "idle" : `${AGENT_WORDS[agentState(h)]} · ${helperSpan(h)}`}</span>${helperStuck(h) ? `<span>${helperQuiet(h)}</span>` : ""}<span>${h.items.filter((x) => x.t === "step").length + (h.more || 0)} steps</span></div>
     ${h.more ? `<div class="stx-more dim" data-key="more">${h.more} earlier steps not shown</div>` : ""}
     ${steps.length ? `<div class="stx-steps bg-view-steps" data-key="steps">${steps.join("")}</div>` : `<div class="dim" data-key="none">${running ? "Starting…" : "No steps were kept for it."}</div>`}
     ${tail.length ? `<div class="bg-view-reply" data-key="reply"><span class="bg-view-k">Its reply</span><div class="msg">${md(tail.join("\n\n"))}</div></div>` : ""}`;
@@ -1182,7 +1179,8 @@ function helperPane(sid, h) {
 }
 /** The top of a full view: ‹ Back, to the Agents or Scripts tab it was opened from, else the chat (the tab
  *  lists the session's other background work). */
-const helperViewBar = (sid) => `<div class="bg-view-head" data-key="head"><button class="bg-back" data-helper-back="1"><span class="bg-back-ch">‹</span>Back to ${bgTabName(sid) || "chat"}</button></div>`;
+const helperBack = (sid) => `<button class="bg-back" data-helper-back="1"><span class="bg-back-ch">‹</span>Back to ${bgTabName(sid) || "chat"}</button>`;
+const helperViewBar = (sid) => `<div class="bg-view-head" data-key="head">${helperBack(sid)}</div>`;
 /** A teammate's foot: its messages reach its lead by themselves (and show in the lead's chat), so there's
  *  nothing to send from here. */
 function teammateFoot(sid, h) {
@@ -1685,12 +1683,6 @@ function listenPlayer(key) {
     <label class="ls-then"><input type="checkbox" data-listen-then="1" ${listenThen ? "checked" : ""}/>Then the next reply</label>
     <button class="btn" data-listen-stop="1">Stop</button></div>`;
 }
-/** Above the message box: the session's background work still at work, one row each (bgRow), oldest first.
- *  "" when nothing is; what's over, and an idle teammate, are in the Agents and Scripts tabs. */
-function helperTray(sid) {
-  const rows = helpersOf(sid).filter(helperRunning).sort((a, b) => a.started_ms - b.started_ms).map((h) => bgRow(sid, h)).join("");
-  return rows ? `<div class="bg-rows" data-key="bg-rows">${rows}</div>` : "";
-}
 /** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
  *  wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
@@ -1854,7 +1846,7 @@ const changesTip = (ch) => ch.files.map((f) => `${f.path}  +${f.add} −${f.del}
 /** Under the chat: where the session is now, and while any of its background agents run, their tray, whatever
  *  state it's in (working on your message, your turn, waiting on them), so they never drop out of sight. */
 function statusLine(it, s) {
-  const tray = s?.session_id ? helperTray(s.session_id) : "";
+  const tray = s?.session_id ? agentTray(s.session_id) : "";
   // Waiting on them: the tray says it all, unless it's compacting (or just did): that line shows above it.
   if (tray && s.state === "agent" && s.helpers && !s.compacting_ms && !s.compacted_ms) return tray;
   // A hand-off on its way, a note written ahead, a cache gone (insights.js): lines here, never a bar on the box.
@@ -2008,7 +2000,7 @@ function moreMenu(sid, s, closable = false) {
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${tellItem(sid, s)}
       ${handoffMenu(sid, s)}
-      ${relayMode(sid)?.on === false ? `<button data-cmd="relay-on" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Start relay<span>${busy ? "When this turn ends" : "Make it a relay lead (/relay:mode): it plans and hands work to helpers"}</span></button>` : ""}
+      ${relayMode(sid)?.on === false ? `<button data-cmd="relay-on" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Start relay<span>${busy ? "When this turn ends" : "Make it a relay lead (/relay:mode): it plans and hands work to relay agents"}</span></button>` : ""}
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
@@ -2102,8 +2094,8 @@ function quietPane() {
 function execPane(sid, e) {
   const st = exState(e);
   return `<div class="active-pane exec-pane">
-    <div class="ap-head">${badge(e.plugin === "pilead" ? "pi" : "claude")}<span class="proj">${esc(e.name || sid)}</span><span class="role executor">EXEC</span>${e.model ? `<span class="dim">${esc(shortModel(e.model))}</span>` : ""}<span class="mach">${esc(machShort(e.machine))}</span>${st.word ? `<span class="pill soft">${esc(st.word)}</span>` : ""}<span class="grow"></span></div>
-    ${teamBar(sid)}${packetCard(sid, e)}
+    <div class="ap-head">${relayBack(sid)}${badge(e.plugin === "pilead" ? "pi" : "claude")}<i class="stx-ic k-relay">R</i><span class="proj">${esc(e.name || sid)}</span><span class="role executor">RELAY</span>${e.model ? `<span class="dim">${esc(shortModel(e.model))}</span>` : ""}<span class="mach">${esc(machShort(e.machine))}</span>${st.word ? `<span class="pill soft">${esc(st.word)}</span>` : ""}${teamChips(sid)}<span class="grow"></span></div>
+    ${packetCard(sid, e)}
     ${termDock(sid)}</div>`;
 }
 /** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
@@ -2143,7 +2135,7 @@ function deleteDialog() {
   const m = crewOf(sid), n = m?.role === "lead" && m?.plugin === "relay" ? (m.executors || []).length : 0;
   return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="del-title">
     <div class="move-title" id="del-title">Delete ${esc(name)}?</div>
-    <div class="end-text">${sessionOf(sid) ? `It stops${n ? `, with its ${n} executor${n === 1 ? "" : "s"},` : ""} and its tab closes. ` : ""}Cue forgets it, and its conversation is deleted, so it can't be resumed. This can't be undone.</div>
+    <div class="end-text">${sessionOf(sid) ? `It stops${n ? `, with its ${n} relay agent${n === 1 ? "" : "s"},` : ""} and its tab closes. ` : ""}Cue forgets it, and its conversation is deleted, so it can't be resumed. This can't be undone.</div>
     <div class="row-btns"><span class="grow"></span><button class="btn" data-act="delete-no">Cancel <kbd>Esc</kbd></button><button class="btn deny" data-act="delete-yes">Delete <kbd>↵</kbd></button></div>
   </div></div>`;
 }
@@ -2327,14 +2319,14 @@ function activePane() {
     ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
   // At work (a turn, or compacting): a light sweeps along the top edge, as in its terminal tab. Not while it waits.
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
-    <div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${sid ? titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+    <div class="ap-head">${relayBack(sid)}${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${relayMark(sid)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${onMachine}${pill}${sid ? (execOf(sid) ? teamChips(sid) : agentChips(sid)) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" })) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" }) ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>
     ${btwPanel(sid)}
     ${subHead(s?.cwd || it?.cwd, "", sid)}
-    ${sid ? teamBar(sid) + leadCard(sid) + packetCard(sid) : ""}
+    ${sid ? leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(it, s) : ""}
     ${full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"))}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
