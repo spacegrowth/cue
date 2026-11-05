@@ -337,9 +337,9 @@ function bindMain() {
     // …and its Parallelize: asks the session to run the side-by-side group it's at (status.js), like a quick phrase.
     const stPar = t.closest("[data-act=status-parallel]");
     if (stPar) { statusPop = null; return sendPhrase(`s:${stPar.dataset.sid}`, PARALLELIZE); }
-    // …relay's buttons on its line: Enable relay, and a lead's Stop relay and Run on relay (hands the steps left to helpers).
-    const stRelay = t.closest("[data-act=status-relay], [data-act=status-relay-stop]");
-    if (stRelay) return setRelayMode(stRelay.dataset.sid, stRelay.dataset.act === "status-relay");
+    // …relay's switch on its line, and a lead's Run on relay (hands the steps left to helpers).
+    const stRelay = t.closest("[data-act=status-relay]");
+    if (stRelay) return setRelayMode(stRelay.dataset.sid, stRelay.dataset.on === "1");
     const stRun = t.closest("[data-act=status-relay-run]");
     if (stRun) return sendPhrase(`s:${stRun.dataset.sid}`, RUN_ON_RELAY);
     // A tip's ×: that tip never comes back (tips.js).

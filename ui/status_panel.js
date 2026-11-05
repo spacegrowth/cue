@@ -1,7 +1,7 @@
 // The status list above the chat: one line under a session's tabs (so it's in view on every tab: Chat, Actions,
 // Agents, About), in the theme's own color. A click on it slides the whole list down over the chat, hanging from the
-// line: the list, Parallelize when a group is ready, the session's switch and what the list costs. Relay's buttons
-// (Enable relay; a lead's Run on relay and Stop relay) sit on the line itself, so they're always in view. A click on the line again, anywhere else, or Esc slides it back up. The
+// line: the list, Parallelize when a group is ready, the session's switch and what the list costs. Relay's switch
+// (and a lead's Run on relay) sit on the line itself, so they're always in view. A click on the line again, anywhere else, or Esc slides it back up. The
 // ring by the box (statusChipHtml) puts the line away or brings it back; that choice is kept per session.
 
 /** How many sessions' put-away choices are kept (the oldest go first). */
