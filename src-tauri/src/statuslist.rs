@@ -172,16 +172,10 @@ pub fn carry_over(old: &str, new: &str) -> bool {
     if old.is_empty() || new.is_empty() || old == new {
         return false;
     }
-    let cfg = crate::config::load();
-    let mut carried = false;
-    for (key, sessions) in [
-        ("status.sessions", carrying(&cfg, "status", old, new)),
-        ("background.sessions", carrying_background(&cfg, old, new, crate::leads::is_relay_lead(new))),
-    ] {
-        if let Some(sessions) = sessions {
-            carried |= crate::config::set(key, sessions).is_ok();
-        }
-    }
+    let relay_lead = crate::leads::is_relay_lead(new);
+    let status = crate::config::update("status.sessions", |c| carrying(c, "status", old, new));
+    let background = crate::config::update("background.sessions", |c| carrying_background(c, old, new, relay_lead));
+    let carried = (status == Ok(true)) | (background == Ok(true));
     if carried {
         crate::machines::hooks::push_status_on();
     }

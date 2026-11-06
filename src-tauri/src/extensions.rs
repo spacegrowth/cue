@@ -442,14 +442,18 @@ pub async fn ext_enable(name: String, on: bool) -> Result<(), String> {
 
 fn enable(name: &str, on: bool) -> Result<(), String> {
     let m = manifest(name).ok_or("no such extension")?;
-    let a = approval(name);
-    let v = if on {
-        json!({ "on": true, "capabilities": m["capabilities"].clone(), "programs": m["programs"].clone(), "version": m["version"].clone() })
-    } else {
-        json!({ "on": false, "capabilities": a["capabilities"].clone(), "programs": a["programs"].clone(), "version": a["version"].clone() })
-    };
+    // Switched off, what you approved stays: read and written back with no other save between.
+    crate::config::update_with(&format!("extensions.{name}"), |c| {
+        let a = &c["extensions"][name];
+        let v = if on {
+            json!({ "on": true, "capabilities": m["capabilities"].clone(), "programs": m["programs"].clone(), "version": m["version"].clone() })
+        } else {
+            json!({ "on": false, "capabilities": a["capabilities"].clone(), "programs": a["programs"].clone(), "version": a["version"].clone() })
+        };
+        Ok((Some(v), ()))
+    })?;
     log(&format!("{name} switched {} in Settings", if on { "on" } else { "off" }));
-    crate::config::remember(&format!("extensions.{name}"), v)
+    Ok(())
 }
 
 /// The last `n` lines extensions.log has about `name`, newest last.

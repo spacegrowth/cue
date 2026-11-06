@@ -372,10 +372,10 @@ impl Hub {
         put_projects(&mut snap, &put);
         let moved = crate::config::moved();
         let taken = move_projects(&mut snap, &moved);
-        // Moves a new session took over (after /clear): saved, so they stay once the old session's gone.
+        // Moves a new session took over (after /clear): saved, so they stay once the old session's gone. Added
+        // to the moves as they are when saved, not as read above: one saved meanwhile stays.
         if !taken.is_empty() {
-            let all: serde_json::Map<String, Value> = moved.into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect();
-            let _ = crate::config::set("project.moves", Value::Object(all));
+            let _ = crate::config::update("project.moves", |c| Some(Value::Object(crate::config::moves_in(c).into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect())));
         }
         (seq, snap)
     }

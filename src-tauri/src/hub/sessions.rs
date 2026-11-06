@@ -474,6 +474,21 @@ impl Hub {
         if let Some(c) = sound {
             crate::sounds::preview(&c);
         }
+        self.setting_changed(key);
+        Ok(())
+    }
+
+    /// Change one setting from what it is now (`f`, given the whole config; None leaves it), with no other
+    /// save between the read and the write (config::update): a list one session is added to or taken out of.
+    pub fn update_setting(&self, key: &str, f: impl FnOnce(&Value) -> Option<Value>) -> Result<(), String> {
+        if crate::config::update(key, f)? {
+            self.setting_changed(key);
+        }
+        Ok(())
+    }
+
+    /// What follows a setting saved: the parts of Cue that keep it elsewhere learn it, and the window redraws.
+    fn setting_changed(&self, key: &str) {
         if key == "quick.phrases" {
             crate::notify::set_phrases(&crate::config::quick_phrases());
         }
@@ -491,7 +506,6 @@ impl Hub {
             }
         }
         self.changed();
-        Ok(())
     }
 
     /// Rename a session: Cue shows the name at once, and the agent is told in its own way. Claude Code:

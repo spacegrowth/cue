@@ -4,6 +4,9 @@
 use serde_json::{json, Value};
 
 pub mod login;
+mod save;
+
+pub use save::update_with;
 
 pub const HISTORY_DEFAULT: u64 = 300;
 
@@ -231,7 +234,12 @@ pub fn folders_put() -> std::collections::HashMap<String, String> {
 }
 /// The moved sessions: session id → the project it shows under.
 pub fn moved() -> std::collections::HashMap<String, String> {
-    load().pointer("/project/moves").and_then(Value::as_object)
+    moves_in(&load())
+}
+
+/// The moved sessions in config `c`.
+pub fn moves_in(c: &Value) -> std::collections::HashMap<String, String> {
+    c.pointer("/project/moves").and_then(Value::as_object)
         .map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|p| (k.clone(), p.to_string()))).collect())
         .unwrap_or_default()
 }
@@ -241,10 +249,12 @@ pub fn carry_move(from: &str, to: &str) {
     if to.is_empty() {
         return;
     }
-    let mut all = moved();
-    let Some(p) = all.get(from).cloned() else { return };
-    all.insert(to.to_string(), p);
-    let _ = set("project.moves", Value::Object(all.into_iter().map(|(k, v)| (k, json!(v))).collect()));
+    let _ = update("project.moves", |c| {
+        let mut all = moves_in(c);
+        let p = all.get(from)?.clone();
+        all.insert(to.to_string(), p);
+        Some(Value::Object(all.into_iter().map(|(k, v)| (k, json!(v))).collect()))
+    });
 }
 
 pub fn history_keep() -> usize {
@@ -257,10 +267,34 @@ const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions"
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
+    match key {
+        // Your actions prompt ("" is Cue's own again): kept with the actions (actions/), not here.
+        "actions.prompt" => crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
+        "login.open" => {
+            let on = value.as_bool().ok_or("must be true or false")?;
+            login::set(on)?;
+            remember(key, json!(on))
+        }
+        _ => remember(key, checked(key, value)?),
+    }
+}
+
+/// A setting the window may save, changed from what it is now (`f`, given the whole config: None leaves it)
+/// with no other save between the read and the write (save.rs), the new value checked as `set` checks it.
+/// True when it wrote. Not for the settings that do more than save (actions.prompt, login.open).
+pub fn update(key: &str, f: impl FnOnce(&Value) -> Option<Value>) -> Result<bool, String> {
+    update_with(key, |c| match f(c) {
+        Some(v) => Ok((Some(checked(key, v)?), true)),
+        None => Ok((None, false)),
+    })
+}
+
+/// `value` as setting `key` saves it, or why it can't be.
+fn checked(key: &str, value: Value) -> Result<Value, String> {
     if !ALLOWED.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
-    let value = match key {
+    Ok(match key {
         "history.keep" => json!(value.as_u64().ok_or("keep must be a number")?.max(10)),
         "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
         "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
@@ -320,8 +354,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             Some(v) if v.len() <= 24 && v.chars().all(|c| c.is_ascii_lowercase() || c == '_') => json!(v),
             _ => return Err("the voice must be one of Kokoro's names, or empty for the Mac's own".into()),
         },
-        // Your actions prompt ("" is Cue's own again).
-        "actions.prompt" => return crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
+        "actions.prompt" | "login.open" => return Err(format!("{key} is saved with config::set")),
         "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
         // Your own Color, past the ten: a hue and a strength (null: one of the ten, project.all).
         "project.hue" if value.is_null() || own_hue(&value) => value,
@@ -342,33 +375,13 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
             }
             json!(phrases)
         }
-        "login.open" => {
-            let on = value.as_bool().ok_or("must be true or false")?;
-            login::set(on)?;
-            json!(on)
-        }
         _ => json!(value.as_bool().ok_or("must be true or false")?),
-    };
-    remember(key, value)
+    })
 }
 
-/// Write one dotted key as-is (no checks): for values Cue sets itself. Settings are saved from many threads
-/// at once (the window's commands, ticks, hooks): one at a time here, each reading what the last one wrote,
-/// and the file replaced whole, so neither a reader (`load`, the hook process) nor the next writer ever
-/// sees half of one, which `load` would take for no settings at all.
+/// Write one dotted key as-is (no checks): for values Cue sets itself. One save at a time (save.rs).
 pub fn remember(key: &str, value: Value) -> Result<(), String> {
-    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = crate::locking::lock(&WRITING, "config writes");
-    let mut c = load();
-    let (section, name) = key.split_once('.').unwrap();
-    if !c[section].is_object() {
-        c[section] = json!({});
-    }
-    c[section][name] = value;
-    std::fs::create_dir_all(crate::server::cue_dir()).map_err(|e| e.to_string())?;
-    let next = path().with_extension("json.next");
-    std::fs::write(&next, serde_json::to_string_pretty(&c).unwrap() + "\n").map_err(|e| e.to_string())?;
-    std::fs::rename(&next, path()).map_err(|e| e.to_string())
+    update_with(key, |_| Ok((Some(value), ())))
 }
 
 /// Is Cue actually connected? Checked live so the Settings screen can say why nothing shows up.
@@ -691,5 +704,38 @@ mod tests {
         for i in 0..16 {
             assert_eq!(c["many"][format!("k{i}")], i, "k{i} lost to another save");
         }
+    }
+
+    /// Lists changed from what they are (a session's status list switched, a machine added) by many threads at
+    /// once: each change is made to what the one before it saved, so none is lost.
+    #[test]
+    fn changes_made_from_the_saved_value_at_once_from_many_threads_all_stay() {
+        let dir = std::env::temp_dir().join(format!("cue-cfg-update-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        std::fs::write(dir.join("config.json"), "{}").unwrap();
+        let switches: Vec<_> = (0..16)
+            .map(|i| std::thread::spawn(move || update("status.sessions", |c| Some(crate::statuslist::sessions_with(c, &format!("s{i}"), true))).unwrap()))
+            .collect();
+        let machines: Vec<_> = (0..8).map(|i| std::thread::spawn(move || crate::machines::add(&format!("box{i}"), "").unwrap())).collect();
+        for t in switches {
+            assert!(t.join().unwrap(), "each one wrote");
+        }
+        for t in machines {
+            t.join().unwrap();
+        }
+        let c = load();
+        let unchanged = update("status.sessions", |_| None).unwrap();
+        let refused = update("status.sessions", |_| Some(json!("not a list"))).is_err();
+        std::env::remove_var("CUE_HOME");
+        std::fs::remove_dir_all(&dir).ok();
+        let on: Vec<&str> = c["status"]["sessions"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        for i in 0..16 {
+            assert!(on.contains(&format!("s{i}").as_str()), "s{i} lost to another switch: {on:?}");
+        }
+        assert_eq!(c["machines"]["list"].as_array().unwrap().len(), 8, "a machine lost to another add");
+        assert!(!unchanged, "nothing to change: nothing written");
+        assert!(refused, "checked as set checks it");
     }
 }

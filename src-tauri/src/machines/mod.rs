@@ -27,11 +27,20 @@ pub struct Machine {
 pub const TOOLS: [&str; 6] = ["claude", "codex", "pi", "tmux", "node", "npm"];
 
 pub fn list() -> Vec<Machine> {
-    crate::config::load().pointer("/machines/list").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
+    listed(&crate::config::load())
 }
 
-fn save(list: &[Machine]) -> Result<(), String> {
-    crate::config::remember("machines.list", serde_json::to_value(list).map_err(|e| e.to_string())?)
+fn listed(c: &serde_json::Value) -> Vec<Machine> {
+    c.pointer("/machines/list").cloned().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
+}
+
+/// The list changed by `f` and saved, with no other save between reading it and writing it back.
+fn edit<R>(f: impl FnOnce(&mut Vec<Machine>) -> Result<R, String>) -> Result<R, String> {
+    crate::config::update_with("machines.list", |c| {
+        let mut all = listed(c);
+        let out = f(&mut all)?;
+        Ok((Some(serde_json::to_value(all).map_err(|e| e.to_string())?), out))
+    })
 }
 
 pub fn get(name: &str) -> Option<Machine> {
@@ -50,14 +59,14 @@ pub fn add(host: &str, name: &str) -> Result<Machine, String> {
         return Err("Use an SSH alias from ~/.ssh/config, or user@host (letters, digits, @ . _ - only)".into());
     }
     let name = Some(name.trim()).filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| host.rsplit('@').next().unwrap_or(host).to_string());
-    let mut all = list();
-    if all.iter().any(|m| m.name == name || m.host == host) {
-        return Err(format!("{name} is added already"));
-    }
-    let m = Machine { name, host: host.to_string(), label: String::new() };
-    all.push(m.clone());
-    save(&all)?;
-    Ok(m)
+    edit(|all| {
+        if all.iter().any(|m| m.name == name || m.host == host) {
+            return Err(format!("{name} is added already"));
+        }
+        let m = Machine { name, host: host.to_string(), label: String::new() };
+        all.push(m.clone());
+        Ok(m)
+    })
 }
 
 /// Rename it: what Cue shows for it from now on (empty: back to its name).
@@ -66,12 +75,11 @@ pub fn rename(name: &str, label: &str) -> Result<Machine, String> {
     if label.chars().count() > 40 {
         return Err("Keep it under 40 characters".into());
     }
-    let mut all = list();
-    let m = all.iter_mut().find(|m| m.name == name).ok_or("that machine isn't added")?;
-    m.label = label.to_string();
-    let out = m.clone();
-    save(&all)?;
-    Ok(out)
+    edit(|all| {
+        let m = all.iter_mut().find(|m| m.name == name).ok_or("that machine isn't added")?;
+        m.label = label.to_string();
+        Ok(m.clone())
+    })
 }
 
 /// What Cue shows for a machine: what you renamed it to, else its name shortened (`short_name`).
@@ -80,9 +88,10 @@ pub fn display_name(name: &str) -> String {
 }
 
 pub fn remove(name: &str) -> Result<(), String> {
-    let mut all = list();
-    all.retain(|m| m.name != name);
-    save(&all)
+    edit(|all| {
+        all.retain(|m| m.name != name);
+        Ok(())
+    })
 }
 
 /// The shared connection: one per machine, kept 15 minutes after its last use. Its socket lives in

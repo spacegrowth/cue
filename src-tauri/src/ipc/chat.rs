@@ -541,13 +541,13 @@ pub(crate) async fn tasks_stop(hub: State<'_, Arc<Hub>>, session_id: String) -> 
 /// A session's ring → its switch: the status list on (or off again) for that session (statuslist.rs).
 #[tauri::command]
 pub(crate) async fn status_session(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
-    with_hub(&hub, move |h| h.set_setting("status.sessions", crate::statuslist::sessions_with(&crate::config::load(), &session_id, on))).await?
+    with_hub(&hub, move |h| h.update_setting("status.sessions", |c| Some(crate::statuslist::sessions_with(c, &session_id, on)))).await?
 }
 
 /// A session's status line → Start / Stop background agents: its ∥ steps run as agents while it's on (statuslist.rs).
 #[tauri::command]
 pub(crate) async fn background_session(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
-    with_hub(&hub, move |h| h.set_setting("background.sessions", crate::statuslist::background_with(&crate::config::load(), &session_id, on))).await?
+    with_hub(&hub, move |h| h.update_setting("background.sessions", |c| Some(crate::statuslist::background_with(c, &session_id, on)))).await?
 }
 
 /// "Go to tab" for a session that has no card (a working one).
