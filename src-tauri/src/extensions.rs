@@ -237,7 +237,7 @@ pub fn serve(req: Request<Vec<u8>>) -> Response<Vec<u8>> {
 fn log(line: &str) {
     use std::io::Write;
     static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+    let _one = crate::locking::lock(&ONE, "extensions log");
     let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(crate::server::cue_dir().join("extensions.log")) {
         let _ = writeln!(f, "{at} {line}");

@@ -53,14 +53,14 @@ fn wait_capped(child: std::process::Child) -> Result<(std::process::Output, bool
     let (watch, flag) = (done.clone(), timed_out.clone());
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(TIMEOUT_SECS));
-        if !*watch.lock().unwrap() {
-            *flag.lock().unwrap() = true;
+        if !*crate::locking::lock(&watch, "shell line: done") {
+            *crate::locking::lock(&flag, "shell line: timed out") = true;
             let _ = Command::new("/bin/kill").arg(pid.to_string()).status();
         }
     });
     let out = child.wait_with_output().map_err(|e| e.to_string());
-    *done.lock().unwrap() = true;
-    let timed_out = *timed_out.lock().unwrap();
+    *crate::locking::lock(&done, "shell line: done") = true;
+    let timed_out = *crate::locking::lock(&timed_out, "shell line: timed out");
     Ok((out?, timed_out))
 }
 
