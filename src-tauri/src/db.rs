@@ -16,6 +16,9 @@ use std::sync::Mutex;
 
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 
+/// The longest a statement waits for another connection's write to finish.
+const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
@@ -216,6 +219,9 @@ fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
 fn open() -> rusqlite::Result<Connection> {
     let _ = std::fs::create_dir_all(crate::server::cue_dir());
     let c = Connection::open(path())?;
+    // Another connection writing (a test Cue, sqlite3 in a terminal) makes a write wait its turn, for up to
+    // BUSY_WAIT and no longer: DB stays locked for every other caller in Cue while it waits.
+    c.busy_timeout(BUSY_WAIT)?;
     // WAL: a crash mid-write never corrupts what was already saved.
     c.pragma_update(None, "journal_mode", "WAL")?;
     c.pragma_update(None, "synchronous", "NORMAL")?;
@@ -1112,6 +1118,41 @@ mod tests {
         // Opened again (a version 6 database): nothing to do, nothing lost.
         reset();
         assert_eq!(handoff("s2").map(|k| k.ahead), Some(2));
+        std::env::remove_var("CUE_HOME");
+        reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_write_waits_for_another_connections_write_instead_of_failing() {
+        let _g = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("cue-db-busy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        reset();
+        set_draft("k", "before", &json!([]));
+        // Another connection takes the write lock and keeps it for a moment.
+        let other = Connection::open(path()).unwrap();
+        other.execute_batch("BEGIN IMMEDIATE; INSERT INTO drafts (key, text, images, updated_ms) VALUES ('other', 'x', '[]', 1);").unwrap();
+        let let_go = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            other.execute_batch("COMMIT").unwrap();
+        });
+        set_draft("k", "after", &json!([]));
+        let_go.join().unwrap();
+        assert_eq!(draft_text("k"), "after", "saved once the other write was done, not dropped as locked");
+        assert_eq!(draft_text("other"), "x");
+        // A write held longer than BUSY_WAIT: given up after BUSY_WAIT (rusqlite's own default is 5 s,
+        // all that time with DB locked for every other caller in Cue).
+        let other = Connection::open(path()).unwrap();
+        other.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let t0 = std::time::Instant::now();
+        set_draft("k", "too late", &json!([]));
+        let waited = t0.elapsed();
+        other.execute_batch("ROLLBACK").unwrap();
+        assert!(waited >= BUSY_WAIT && waited < BUSY_WAIT + std::time::Duration::from_secs(1), "{waited:?}");
+        assert_eq!(draft_text("k"), "after");
         std::env::remove_var("CUE_HOME");
         reset();
         let _ = std::fs::remove_dir_all(&dir);

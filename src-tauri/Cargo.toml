@@ -31,7 +31,13 @@ jsonwebtoken = { version = "9", optional = true }
 vt100 = { version = "0.16", optional = true }
 
 [profile.release]
-strip = true
+# File and line for every address, kept out of the app: rustc writes them to cue.dSYM next to the binary
+# (dsymutil, at link time) and only then strips the binary's debug info. release.sh keeps the dSYM, so a
+# hang report's addresses resolve with atos. The symbol table stays, so the backtraces Cue writes to
+# locks.log name their functions.
+debug = "line-tables-only"
+split-debuginfo = "packed"
+strip = "debuginfo"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }

@@ -156,7 +156,7 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
     let watch = child.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(30));
-        let _ = watch.lock().unwrap().kill();
+        let _ = crate::locking::lock(&watch, "command list reader").kill();
     });
     let _ = writeln!(input, "{SETUP}");
     let reply = BufReader::new(out)
@@ -166,7 +166,7 @@ fn read_folder(cwd: &str) -> Option<Vec<Cmd>> {
         .find(|v| v.get("type").and_then(Value::as_str) == Some("control_response"));
     drop(input);
     {
-        let mut c = child.lock().unwrap();
+        let mut c = crate::locking::lock(&child, "command list reader");
         let _ = c.kill();
         let _ = c.wait();
     }

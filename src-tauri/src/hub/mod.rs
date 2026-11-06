@@ -398,7 +398,7 @@ impl Hub {
     /// The store, locked. A panic on another thread while it held the lock poisons it; what's in it is
     /// still whole (each change is made under one lock), so Cue goes on with it rather than panicking
     /// at every lock from then on, which would leave the window up and nothing behind it.
-    fn st(&self) -> std::sync::MutexGuard<'_, Store> {
+    fn st(&self) -> crate::locking::Guard<'_, Store> {
         crate::locking::lock(&self.store, "the hub's store")
     }
 

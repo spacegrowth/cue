@@ -18,7 +18,7 @@ fn helper() -> Result<std::path::PathBuf, String> {
 }
 
 pub fn start(app: AppHandle, d: &Dictation) -> Result<(), String> {
-    let mut slot = d.0.lock().unwrap();
+    let mut slot = crate::locking::lock(&d.0, "dictation");
     if slot.is_some() {
         return Ok(()); // already listening
     }
@@ -38,7 +38,7 @@ pub fn start(app: AppHandle, d: &Dictation) -> Result<(), String> {
             }
         }
         let _ = child.wait();
-        app.state::<Dictation>().0.lock().unwrap().take(); // it may have stopped on its own
+        crate::locking::lock(&app.state::<Dictation>().0, "dictation").take(); // it may have stopped on its own
         let _ = app.emit("dictation", serde_json::json!({"done": true}));
     });
     Ok(())
@@ -46,5 +46,5 @@ pub fn start(app: AppHandle, d: &Dictation) -> Result<(), String> {
 
 /// Stop listening; the final text still arrives as an event, then {"done": true}.
 pub fn stop(d: &Dictation) {
-    d.0.lock().unwrap().take(); // dropping stdin closes it
+    crate::locking::lock(&d.0, "dictation").take(); // dropping stdin closes it
 }

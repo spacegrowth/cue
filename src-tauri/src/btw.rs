@@ -199,12 +199,12 @@ fn asked(mut child: std::process::Child, prompt: &str) -> Result<std::process::O
     let watch = done.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(TIMEOUT_SECS));
-        if !*watch.lock().unwrap() {
+        if !*crate::locking::lock(&watch, "btw: asked") {
             let _ = Command::new("/bin/kill").arg(pid.to_string()).status();
         }
     });
     let out = child.wait_with_output().map_err(|e| e.to_string());
-    *done.lock().unwrap() = true;
+    *crate::locking::lock(&done, "btw: asked") = true;
     out
 }
 
