@@ -149,7 +149,7 @@ fn once(sid: &str, cols: u16, rows: u16, launch: impl FnOnce() -> Result<(u64, O
         Err(p) => {
             let mut r = crate::locking::lock(&p.result, "term opening");
             while r.is_none() {
-                r = p.ready.wait(r).unwrap_or_else(|e| e.into_inner());
+                r = crate::locking::Guard::wait(r, &p.ready);
             }
             let gen = r.clone().unwrap_or_else(|| Err("its terminal didn't open".into()));
             drop(r);
