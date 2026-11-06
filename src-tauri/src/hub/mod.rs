@@ -477,7 +477,9 @@ impl Hub {
             }
             (st.items.iter().filter(|i| i.kind != "waiting").count(), answered)
         };
-        crate::notify::remove(&answered);
+        if !answered.is_empty() {
+            crate::notify::later(move || crate::notify::remove(&answered));
+        }
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
         }
@@ -502,6 +504,8 @@ impl Hub {
         self.notify_full(id, title, body, category, watched, true);
     }
 
+    /// Notification Center's part (is Cue in front, the post itself) runs on its own thread (notify::later):
+    /// here only the checks against the store.
     fn notify_full(&self, id: &str, title: &str, body: &str, category: &str, watched: bool, mutable: bool) {
         let Some(app) = &self.app else { return };
         // Test instances run with CUE_QUIET=1 so they never ping you.
@@ -519,17 +523,24 @@ impl Hub {
                 return;
             }
         }
-        // Cue is the window in front of you: the new item is already on screen in Waiting.
-        if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
-            return;
-        }
-        let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
-        if crate::notify::post_sound(id, title, body, category, &sound) {
-            self.st().notified.insert(id.to_string());
-        } else {
-            // Unbundled dev binary: a plain notification Cue can't take back.
-            let _ = app.notification().builder().title(title).body(body).show();
-        }
+        let noted = id.to_string();
+        let (app, id, title, body, category) = (app.clone(), id.to_string(), title.to_string(), body.to_string(), category.to_string());
+        let post = move || {
+            // Cue is the window in front of you: the new item is already on screen in Waiting.
+            if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
+                return;
+            }
+            let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
+            if !crate::notify::post_sound(&id, &title, &body, &category, &sound) {
+                // Unbundled dev binary: a plain notification Cue can't take back.
+                let _ = app.notification().builder().title(&title).body(&body).show();
+            }
+        };
+        // Noted as notified with the post handed in, under one lock: `changed` either sees neither, or sees it
+        // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
+        let mut st = self.st();
+        st.notified.insert(noted);
+        crate::notify::later(post);
     }
 }
 
