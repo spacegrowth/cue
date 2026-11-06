@@ -94,6 +94,21 @@ lipo -archs "$APP/Contents/MacOS/cue" | grep -q x86_64 || die "not a universal b
 DIST="$ROOT/dist/v$VERSION"; rm -rf "$DIST"; mkdir -p "$DIST"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
+# --- symbols: Cue.dSYM, so addresses in a hang report from this build resolve (atos) --------------------
+# rustc wrote each chip's cue.dSYM as it linked (Cargo.toml's release profile), before stripping the binary's
+# debug info. The two become one, as the app's binary did, checked to be this very build's (same UUIDs), and
+# stay in dist/ with their UUIDs; they're not published.
+DSYM="$WORK/Cue.dSYM"
+DWARF="$DSYM/Contents/Resources/DWARF"
+cp -RL src-tauri/target/aarch64-apple-darwin/release/cue.dSYM "$DSYM" || die "no dSYM from the build (see Cargo.toml's release profile)"   # (a link into deps/)
+rm -f "$DWARF"/*
+lipo -create -output "$DWARF/cue" src-tauri/target/{aarch64,x86_64}-apple-darwin/release/cue.dSYM/Contents/Resources/DWARF/* || die "couldn't join the two dSYMs"
+uuids() { dwarfdump --uuid "$1" | awk '{print $2, $3}' | sort; }
+UUIDS="$(uuids "$APP/Contents/MacOS/cue")"
+[ "$(uuids "$DSYM")" = "$UUIDS" ] || die "the dSYM isn't this build's (its UUIDs differ from the app's)"
+ditto -c -k --keepParent "$DSYM" "$DIST/Cue.dSYM.zip"
+printf 'Cue %s, dSYM UUIDs (dwarfdump --uuid):\n%s\n' "$VERSION" "$UUIDS" > "$DIST/dSYM-uuids.txt"
+
 # --- notarize the app and staple Apple's ticket to it ---------------------------------------------------
 if [ "$NOTARIZE" = 1 ]; then
   say "notarizing the app…"
