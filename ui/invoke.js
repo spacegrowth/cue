@@ -1,6 +1,6 @@
 // Cue UI bridge — `invoke`, Tauri's, with the calls that must land in the order they're made kept in order.
 // Cue runs every command off the window's thread (src-tauri/src/ipc), so two calls in flight at once can land
-// in either order: keystrokes typed into a terminal, a close and the open after it, a setting switched twice.
+// in either order: keystrokes typed into a terminal, a terminal opened twice, a setting switched twice.
 // The calls in one lane go one at a time, each once the one before it is back (done or failed); calls in
 // different lanes, and calls to any other command, go at once.
 
@@ -10,11 +10,12 @@ const INVOKE_LANES = {
   // After every write sent before it: one still waiting would otherwise go in once its input is let go again.
   term_resume: (a) => `term-input:${a.sessionId}`,
   term_resize: (a) => `term-size:${a.sessionId}`,
-  // One terminal's open and close (a shell's tab, an action's terminal: the same ids).
+  // One terminal's opens (a shell's tab, an action's terminal: the same ids). Not its close: that goes at
+  // once, even while an open hangs, and names the opening it means (term::close_if), so it never closes a
+  // newer one whichever lands first.
   term_open: (a) => `term:${a.sessionId}`,
   shell_open: (a) => `term:${a.id}`,
   actions_term_open: (a) => `term:${a.sid}`,
-  term_close: (a) => `term:${a.sessionId}`,
   set_setting: (a) => `setting:${a.key}`,
   // These two read the list from the settings and save it back with one session added or taken out.
   status_session: () => "setting:status.sessions",

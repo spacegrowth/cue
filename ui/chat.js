@@ -325,7 +325,7 @@ function openSession(sid, id = null) {
 }
 /** Close it (the session keeps running in tmux). `quiet`: no redraw, another opening follows. */
 function closeTerm(quiet = false) {
-  const sid = termSid;
+  const sid = termSid, gen = termGen;
   termSid = null;
   termGen = 0;
   termWatch?.disconnect();
@@ -335,7 +335,7 @@ function closeTerm(quiet = false) {
   termObj?.dispose();
   termHost?.remove();
   termWatch = termObj = termFit = termHost = null;
-  if (sid) invoke("term_close", { sessionId: sid }).catch(() => {});
+  if (sid) invoke("term_close", { sessionId: sid, gen: gen || null }).catch(() => {});
   if (!quiet) { renderMain(); homeFocus(); }
 }
 function onTermOutput(p) {

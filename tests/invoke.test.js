@@ -56,18 +56,20 @@ const tick = () => new Promise((r) => setImmediate(r));
     await tick();
     assert.deepStrictEqual(b.started.map((c) => `${c.cmd}:${c.args?.data ?? ""}`), ["term_write:a", "term_write:c", "term_resize:", "get_state:"]);
   }
-  // A terminal closed and opened again: the open goes after the close, never before it (it would be closed).
+  // A terminal's opens go one at a time; its close never waits behind an open (one that hangs, its machine
+  // asleep, would hold it for good): it goes at once, naming the opening it means (term::close_if).
   {
     const b = bridge();
     const invoke = orderedInvoke(b.call);
-    invoke("term_close", { sessionId: "s1" });
     invoke("term_open", { sessionId: "s1", cols: 80, rows: 24 });
+    invoke("term_open", { sessionId: "s1", cols: 90, rows: 24 });
+    invoke("term_close", { sessionId: "s1", gen: 7 });
     invoke("shell_open", { id: "shell-1", cwd: "~", cols: 80, rows: 24 });
     await tick();
-    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_close", "shell_open"]);
+    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_open", "term_close", "shell_open"]);
     b.answer(0);
     await tick(); await tick();
-    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_close", "shell_open", "term_open"]);
+    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_open", "term_close", "shell_open", "term_open"]);
   }
   // A setting switched twice: saved in that order (the last one wins); a session's status list and a direct save
   // of the same setting share its lane.

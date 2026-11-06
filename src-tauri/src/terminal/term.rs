@@ -8,10 +8,13 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use std::collections::HashMap;
 use crate::terminal::input::Input;
 use std::io::Read;
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 struct Open {
+    /// Which opening it is (the "term" events' `gen`): a close names the one it means (`close_if`).
+    gen: u64,
     /// Its own lock, apart from `open_terms`: a resize takes the terminal out of that and resizes it
     /// with that lock released (a resize is quick; nothing slow is ever done under this one).
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
@@ -27,9 +30,9 @@ struct Open {
 }
 
 impl Open {
-    fn new(sid: &str, master: Box<dyn MasterPty + Send>, child: Box<dyn Child + Send + Sync>) -> Result<Open, String> {
+    fn new(sid: &str, gen: u64, master: Box<dyn MasterPty + Send>, child: Box<dyn Child + Send + Sync>) -> Result<Open, String> {
         let input = Input::new(sid, master.take_writer().map_err(|e| e.to_string())?)?;
-        Ok(Open { master: Arc::new(Mutex::new(master)), input, child, view: None })
+        Ok(Open { gen, master: Arc::new(Mutex::new(master)), input, child, view: None })
     }
 
     /// End its client (and the ssh carrying it, for a machine's session). A machine's view is removed
@@ -59,12 +62,20 @@ impl Open {
     }
 }
 
-/// An opening in flight: what it came to (its `gen`, or why it failed), for the opens that join it.
+/// An opening in flight: what it came to (its `gen`, or why it failed), and the opens that joined it, each
+/// waiting for the answer on a channel of its own (so each can give up after JOIN_BOUND).
 #[derive(Default)]
-struct Pending {
-    result: Mutex<Option<Result<u64, String>>>,
-    ready: Condvar,
+struct Pending(Mutex<Answer>);
+
+#[derive(Default)]
+struct Answer {
+    result: Option<Result<u64, String>>,
+    waiting: Vec<std::sync::mpsc::Sender<Result<u64, String>>>,
 }
+
+/// How long an open that joined one in flight waits for it. The first opening's SSH round trip can hang (a
+/// machine asleep); the open that joined it then says so rather than waiting with it for good.
+const JOIN_BOUND: Duration = Duration::from_secs(20);
 
 /// The terminals open, and the ones being opened, by session: one lock for both, so two opens of one
 /// session (two clicks, a click and the shortcut) can never both start a client.
@@ -140,6 +151,11 @@ fn attach_args(name: &str) -> Option<Vec<String>> {
 /// open after it finished replaces it: the old client is ended first. Whatever is still recorded when
 /// the new one lands is ended too, and an opening that was closed (or replaced) meanwhile ends its own.
 fn once(sid: &str, cols: u16, rows: u16, launch: impl FnOnce() -> Result<(u64, Open), String>) -> Result<u64, String> {
+    once_within(sid, cols, rows, JOIN_BOUND, launch)
+}
+
+/// `once`, an open that joins one in flight waiting `join_bound` at most.
+fn once_within(sid: &str, cols: u16, rows: u16, join_bound: Duration, launch: impl FnOnce() -> Result<(u64, Open), String>) -> Result<u64, String> {
     let (mine, old) = {
         let mut t = crate::locking::lock(open_terms(), "open_terms");
         let joined = t.opening.get(sid).cloned();
@@ -156,12 +172,7 @@ fn once(sid: &str, cols: u16, rows: u16, launch: impl FnOnce() -> Result<(u64, O
         Ok(p) => p,
         // Joined: the first opening's answer, at this one's size.
         Err(p) => {
-            let mut r = crate::locking::lock(&p.result, "term opening");
-            while r.is_none() {
-                r = crate::locking::Guard::wait(r, &p.ready);
-            }
-            let gen = r.clone().unwrap_or_else(|| Err("its terminal didn't open".into()));
-            drop(r);
+            let gen = joined(&p, join_bound);
             if gen.is_ok() {
                 let _ = resize(sid, cols, rows);
             }
@@ -196,10 +207,27 @@ fn once(sid: &str, cols: u16, rows: u16, launch: impl FnOnce() -> Result<(u64, O
     result
 }
 
+/// An open that joined opening `p`: its answer, once it's in, or an error after `bound`.
+fn joined(p: &Pending, bound: Duration) -> Result<u64, String> {
+    let answer = {
+        let mut a = crate::locking::lock(&p.0, "term opening");
+        if let Some(r) = &a.result {
+            return r.clone();
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        a.waiting.push(tx);
+        rx
+    };
+    answer.recv_timeout(bound).unwrap_or_else(|_| Err("its terminal is still opening (its machine may not be answering): try again".into()))
+}
+
 /// Hand an opening's outcome to the opens waiting on it.
 fn answer(p: &Pending, result: Result<u64, String>) {
-    *crate::locking::lock(&p.result, "term opening") = Some(result);
-    p.ready.notify_all();
+    let mut a = crate::locking::lock(&p.0, "term opening");
+    for w in a.waiting.drain(..) {
+        let _ = w.send(result.clone());
+    }
+    a.result = Some(result);
 }
 
 /// An opening in flight, owned by the open that started it. Dropped before it was answered (its launch
@@ -282,7 +310,7 @@ fn start(sid: &str, gen: u64, pair: portable_pty::PtyPair, cmd: CommandBuilder, 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let open = Open::new(sid, pair.master, child)?;
+    let open = Open::new(sid, gen, pair.master, child)?;
     let id = sid.to_string();
     std::thread::spawn(move || {
         let b64 = base64::engine::general_purpose::STANDARD;
@@ -407,6 +435,20 @@ pub fn close(sid: &str) {
     }
 }
 
+/// Close the client opening `gen` gave, if it's still the one open; anything newer (an open that replaced
+/// it, or one on its way) is left alone. A close and the open after it go to Cue at once (neither waits for
+/// the other, ui/invoke.js), and whichever lands first, the new one stays.
+pub fn close_if(sid: &str, gen: u64) {
+    let open = {
+        let mut t = crate::locking::lock(open_terms(), "open_terms");
+        let mine = t.open.get(sid).is_some_and(|o| o.gen == gen);
+        if mine { t.open.remove(sid) } else { None }
+    };
+    if let Some(o) = open {
+        o.end();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,7 +481,8 @@ mod tests {
         let child = pair.slave.spawn_command(c).map_err(|e| e.to_string())?;
         drop(pair.slave);
         crate::locking::lock(&starts, "starts").push(child.process_id().unwrap_or(0));
-        Ok((next_gen(), Open::new("fake", pair.master, child)?))
+        let gen = next_gen();
+        Ok((gen, Open::new("fake", gen, pair.master, child)?))
     }
 
     fn alive(pid: u32) -> bool {
@@ -522,7 +565,7 @@ mod tests {
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let pid = child.process_id().unwrap_or(0);
-        let mut o = Open::new(sid, pair.master, child).unwrap();
+        let mut o = Open::new(sid, next_gen(), pair.master, child).unwrap();
         if let Some(w) = input {
             o.input = Input::new(sid, w).unwrap();
         }
@@ -599,6 +642,53 @@ mod tests {
         let err = failed.expect("a megabyte into a pty nobody reads can't all go in");
         assert!(err.contains("isn't responding"), "{err}");
         assert!(took < crate::terminal::input::BOUND + std::time::Duration::from_secs(1), "{took:?}");
+    }
+
+    #[test]
+    fn an_open_that_joined_a_hung_opening_gives_up_in_time_and_a_close_lets_the_next_open_start() {
+        let sid = format!("hung-{}", std::process::id());
+        let starts = Arc::new(M::new(vec![]));
+        let (go, hang) = std::sync::mpsc::channel::<()>();
+        let (a, s1) = (sid.clone(), starts.clone());
+        // Its SSH round trip never comes back (until the test lets it).
+        let first = std::thread::spawn(move || {
+            once(&a, 20, 4, || {
+                let _ = hang.recv();
+                fake(&s1, 0)
+            })
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let t0 = std::time::Instant::now();
+        let joined = once_within(&sid, 20, 4, std::time::Duration::from_millis(300), || panic!("joined: never launches its own"));
+        assert!(joined.unwrap_err().contains("still opening"));
+        assert!(t0.elapsed() < std::time::Duration::from_secs(2), "{:?}", t0.elapsed());
+        // Closed (no opening named: whatever's in flight goes), the next open launches its own at once.
+        close(&sid);
+        let s2 = starts.clone();
+        let second = within(5000, { let sid = sid.clone(); move || once(&sid, 20, 4, || fake(&s2, 0)) });
+        assert!(matches!(second, Some(Ok(_))), "not held by the hung one: {second:?}");
+        go.send(()).unwrap();
+        first.join().unwrap().unwrap();
+        let pids = crate::locking::lock(&starts, "starts").clone();
+        assert_eq!(pids.len(), 2);
+        assert!(until(|| !alive(pids[1])), "the hung one's client, landing after the close, is ended");
+        assert!(alive(pids[0]), "the new one runs");
+        close(&sid);
+    }
+
+    #[test]
+    fn a_close_that_names_an_earlier_opening_leaves_the_one_opened_since() {
+        let sid = format!("closeif-{}", std::process::id());
+        let starts = Arc::new(M::new(vec![]));
+        let g1 = once(&sid, 20, 4, || fake(&starts, 0)).unwrap();
+        // Opened again (the window closed it and opened it again, and the open landed first).
+        let g2 = once(&sid, 20, 4, || fake(&starts, 0)).unwrap();
+        let pids = crate::locking::lock(&starts, "starts").clone();
+        close_if(&sid, g1);
+        assert!(until(|| !alive(pids[0])), "the first is gone (replaced)");
+        assert!(alive(pids[1]) && foreground(&sid).len() == 1, "the close of the first left the second open");
+        close_if(&sid, g2);
+        assert!(until(|| !alive(pids[1])), "naming it closes it");
     }
 
     #[test]
