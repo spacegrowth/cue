@@ -104,8 +104,10 @@ cp -RL src-tauri/target/aarch64-apple-darwin/release/cue.dSYM "$DSYM" || die "no
 rm -f "$DWARF"/*
 lipo -create -output "$DWARF/cue" src-tauri/target/{aarch64,x86_64}-apple-darwin/release/cue.dSYM/Contents/Resources/DWARF/* || die "couldn't join the two dSYMs"
 uuids() { dwarfdump --uuid "$1" | awk '{print $2, $3}' | sort; }
-UUIDS="$(uuids "$APP/Contents/MacOS/cue")"
-[ "$(uuids "$DSYM")" = "$UUIDS" ] || die "the dSYM isn't this build's (its UUIDs differ from the app's)"
+UUIDS="$(uuids "$APP/Contents/MacOS/cue")"; DSYM_UUIDS="$(uuids "$DSYM")"
+# (Two empty lists would compare equal: none read is a failure, not a match.)
+[ -n "$UUIDS" ] && [ -n "$DSYM_UUIDS" ] || die "couldn't read the UUIDs of the app or its dSYM (dwarfdump --uuid)"
+[ "$DSYM_UUIDS" = "$UUIDS" ] || die "the dSYM isn't this build's (its UUIDs differ from the app's)"
 ditto -c -k --keepParent "$DSYM" "$DIST/Cue.dSYM.zip"
 printf 'Cue %s, dSYM UUIDs (dwarfdump --uuid):\n%s\n' "$VERSION" "$UUIDS" > "$DIST/dSYM-uuids.txt"
 
