@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::mpsc;
+use std::sync::{mpsc, Condvar};
 
 /// A thread named `name` that holds `m` until told to let go; returns once it holds it.
 fn hold(m: &'static Mutex<u32>, what: &'static str, name: &str) -> (mpsc::Sender<()>, std::thread::JoinHandle<()>) {
@@ -44,19 +44,51 @@ fn two_different_locks_on_one_thread_are_not_a_reentry() {
     assert_eq!(*a + *b, 3);
 }
 
+/// The release path: the waiter blocks, and the watchdog reports it from the waiters' table, naming both
+/// threads; the waiter adds where it waited once it has the lock.
 #[test]
-fn a_long_wait_is_logged_naming_the_holder() {
+fn a_long_wait_is_reported_by_the_watchdog_naming_holder_and_waiter() {
     static W: Mutex<u32> = Mutex::new(0);
     let (let_go, holder) = hold(&W, "watchdog test lock", "watchdog-test holder");
     let patience = Patience { report_after: Duration::from_millis(50), panic_after: None };
-    let waiter = std::thread::spawn(move || *lock_with(&W, "watchdog test lock", patience) + 1);
-    std::thread::sleep(Duration::from_millis(200));
+    let waiter = std::thread::Builder::new().name("watchdog-test waiter".into()).spawn(move || *lock_with(&W, "watchdog test lock", patience) + 1).unwrap();
+    std::thread::sleep(Duration::from_millis(400));
     let_go.send(()).unwrap();
     holder.join().unwrap();
     assert_eq!(waiter.join().unwrap(), 1, "it gets the lock once let go");
     let said = report::said();
-    let wait = said.iter().find(|e| e.contains("LOCK WAIT watchdog test lock")).expect("the long wait is logged");
-    assert!(wait.contains("held by watchdog-test holder"), "{wait}");
+    let wait = said.iter().find(|e| e.contains("LOCK WAIT watchdog test lock:")).expect("the long wait is reported");
+    assert!(wait.contains("watchdog-test waiter") && wait.contains("held by watchdog-test holder"), "{wait}");
+    let over = said.iter().find(|e| e.contains("LOCK WAIT watchdog test lock over after")).expect("and where it waited");
+    assert!(over.contains("watchdog-test waiter") && over.lines().count() > 1, "with a backtrace: {over}");
+}
+
+#[test]
+fn a_short_wait_is_not_reported() {
+    static Q: Mutex<u32> = Mutex::new(0);
+    let (let_go, holder) = hold(&Q, "short wait test lock", "short-wait holder");
+    let patience = Patience { report_after: Duration::from_secs(2), panic_after: None };
+    let waiter = std::thread::spawn(move || drop(lock_with(&Q, "short wait test lock", patience)));
+    std::thread::sleep(Duration::from_millis(150));
+    let_go.send(()).unwrap();
+    holder.join().unwrap();
+    waiter.join().unwrap();
+    let said = report::said();
+    assert!(!said.iter().any(|e| e.contains("LOCK WAIT short wait test lock")), "{said:?}");
+}
+
+#[test]
+fn an_rwlock_read_and_write_are_held_and_checked_as_a_lock_is() {
+    static RW: RwLock<u32> = RwLock::new(7);
+    let r = read(&RW, "rwlock test lock");
+    assert_eq!(*r, 7);
+    assert!(held::all().iter().any(|h| h.starts_with("rwlock test lock held by")));
+    let again = std::panic::catch_unwind(|| drop(write(&RW, "rwlock test lock")));
+    assert!(panic_message(again).contains("LOCK REENTRY rwlock test lock"), "a write under this thread's own read");
+    drop(r);
+    *write(&RW, "rwlock test lock") += 1;
+    assert_eq!(*read(&RW, "rwlock test lock"), 8);
+    assert!(!held::all().iter().any(|h| h.starts_with("rwlock test lock")));
 }
 
 #[test]
