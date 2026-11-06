@@ -634,7 +634,7 @@ mod tests {
         assert!(!elsewhere.contains("typed into the executor"), "and nothing else: {elsewhere:?}");
         assert!(detached && heard_end, "closing ends the client");
         assert!(after.lines().any(|l| l == name), "its session keeps running: {after:?}");
-        assert!(gone_ends, "a session that's gone ends the terminal: {:?}", crate::locking::lock(&seen2, "seen2"));
+        assert!(gone_ends, "a session that's gone ends the terminal: {:?}", &*crate::locking::lock(&seen2, "seen2"));
         assert!(longer_clients.trim().is_empty(), "never the longer-named session: {longer_clients:?}");
     }
 
@@ -676,7 +676,7 @@ mod tests {
         let after = tmux(&["list-sessions", "-F", "#{session_name}"]);
         tmux(&["kill-session", "-t", &name]);
         assert!(views_open, "a viewer of Cue's own while open");
-        assert!(shown, "it shows what the session prints: {:?}", crate::locking::lock(&seen, "seen"));
+        assert!(shown, "it shows what the session prints: {:?}", &*crate::locking::lock(&seen, "seen"));
         assert!(reached, "what you type reaches the session");
         assert!(views_gone, "the viewer is gone once closed: {after:?}");
         assert!(after.lines().any(|l| l == name), "the session keeps running: {after:?}");
