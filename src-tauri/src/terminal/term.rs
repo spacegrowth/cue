@@ -156,8 +156,7 @@ fn once(sid: &str, cols: u16, rows: u16, launch: impl FnOnce() -> Result<(u64, O
         Ok(p) => p,
         // Joined: the first opening's answer, at this one's size.
         Err(p) => {
-            // A plain lock, not locking::lock: Condvar::wait needs the standard guard itself.
-            let mut r = p.result.lock().unwrap_or_else(|e| e.into_inner());
+            let mut r = crate::locking::lock(&p.result, "term opening");
             while r.is_none() {
                 r = p.ready.wait(r).unwrap_or_else(|e| e.into_inner());
             }
