@@ -1,6 +1,9 @@
 //! The window's commands (`#[tauri::command]`) and the helpers they share, one file per area; lib.rs
 //! lists them in `generate_handler!`.
 
+use crate::hub::Hub;
+use std::sync::Arc;
+
 mod chat;
 mod insights;
 mod insights_tab;
@@ -29,7 +32,8 @@ pub(crate) async fn blocking<R: Send + 'static>(f: impl FnOnce() -> R + Send + '
 }
 
 /// `blocking`, with the hub: nearly every command's work is a hub call, and each takes the store's lock.
-pub(crate) async fn with_hub<R: Send + 'static>(hub: &tauri::State<'_, std::sync::Arc<crate::hub::Hub>>, f: impl FnOnce(&std::sync::Arc<crate::hub::Hub>) -> R + Send + 'static) -> Result<R, String> {
-    let h = hub.inner().clone();
+/// (A command's `State<Arc<Hub>>` passes as `&hub`.)
+pub(crate) async fn with_hub<R: Send + 'static>(hub: &Arc<Hub>, f: impl FnOnce(&Arc<Hub>) -> R + Send + 'static) -> Result<R, String> {
+    let h = hub.clone();
     blocking(move || f(&h)).await
 }

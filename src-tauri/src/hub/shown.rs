@@ -34,6 +34,17 @@ impl Shown {
 }
 
 #[cfg(test)]
+impl super::Hub {
+    /// Tests: the store held, as a slow or stuck hub call holds it: `held` hears once it is, and it's let go
+    /// when `release` hears (or hangs up).
+    pub(crate) fn hold_store(&self, held: std::sync::mpsc::Sender<()>, release: std::sync::mpsc::Receiver<()>) {
+        let _st = self.st();
+        let _ = held.send(());
+        let _ = release.recv();
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -76,11 +87,7 @@ mod tests {
         let (held_tx, held) = channel();
         let (go, release) = channel::<()>();
         let h = hub.clone();
-        let holder = std::thread::spawn(move || {
-            let _st = h.st();
-            held_tx.send(()).unwrap();
-            let _ = release.recv();
-        });
+        let holder = std::thread::spawn(move || h.hold_store(held_tx, release));
         held.recv().unwrap();
         let before = crate::model::now_ms();
         let (h, (tx, rx)) = (hub.clone(), channel());
