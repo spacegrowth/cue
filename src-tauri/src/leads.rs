@@ -305,9 +305,14 @@ fn missed_wake(m: &Member, lead_free: bool) -> bool {
 
 /// Done executors whose lead missed the wake-up, as Cue session id; `lead_free` says whether a lead
 /// (its Cue session id) is free to take a review.
+/// `lead_free` runs after the index is let go: it may read the index itself (a lead's name, say), and a
+/// second lock on INDEX from the same thread would wait forever.
 pub fn missed(lead_free: impl Fn(&str) -> bool) -> Vec<String> {
-    let cur = crate::locking::lock(&INDEX, "INDEX");
-    cur.as_ref().map(|i| i.iter().filter(|(_, m)| missed_wake(m, lead_free(&m.lead))).map(|(sid, _)| sid.clone()).collect()).unwrap_or_default()
+    let waiting: Vec<(String, String)> = {
+        let cur = crate::locking::lock(&INDEX, "INDEX");
+        cur.as_ref().map(|i| i.iter().filter(|(_, m)| missed_wake(m, true)).map(|(sid, m)| (sid.clone(), m.lead.clone())).collect()).unwrap_or_default()
+    };
+    waiting.into_iter().filter(|(_, lead)| lead_free(lead)).map(|(sid, _)| sid).collect()
 }
 
 /// The key an executor is filed under: its Claude session, or (a stalled one that never got as far
@@ -1668,6 +1673,7 @@ ML
         *crate::locking::lock(&INDEX, "INDEX") = Some(index);
         assert_eq!(missed(|_| true), ["MC1"], "seen and fresh reports aren't missed");
         assert!(missed(|_| false).is_empty(), "its lead is busy");
+        assert_eq!(missed(|lead| name_of(lead) != "\u{0}"), ["MC1"], "a lead check that reads the index itself doesn't wait on it");
     }
 
     #[test]
