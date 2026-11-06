@@ -86,6 +86,18 @@ const tick = () => new Promise((r) => setImmediate(r));
     await tick(); await tick();
     assert.deepStrictEqual(b.started.map((c) => c.args.value ?? c.args.on), [true, true, false, []]);
   }
+  // A hand-off continued and then kept, an extension's log lines: in order, per session and per extension.
+  {
+    const b = bridge();
+    const invoke = orderedInvoke(b.call);
+    invoke("handoff_continue", { sessionId: "s1" });
+    invoke("handoff_keep", { sessionId: "s1" });
+    invoke("handoff_keep", { sessionId: "s2" });
+    invoke("ext_log", { ext: "x", text: "one" });
+    invoke("ext_log", { ext: "x", text: "two" });
+    await tick();
+    assert.deepStrictEqual(b.started.map((c) => `${c.cmd}:${c.args.sessionId || c.args.text}`), ["handoff_continue:s1", "handoff_keep:s2", "ext_log:one"]);
+  }
   // Every lane names a command the backend has (src-tauri/src/lib.rs generate_handler!).
   const handlers = require("fs").readFileSync(__dirname + "/../src-tauri/src/lib.rs", "utf8").match(/generate_handler!\[([^\]]*)\]/)[1].split(",").map((s) => s.trim().split("::").pop());
   for (const cmd of Object.keys(INVOKE_LANES)) assert.ok(handlers.includes(cmd), `${cmd} is a command`);

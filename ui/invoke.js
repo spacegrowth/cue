@@ -25,6 +25,17 @@ const INVOKE_LANES = {
   set_watch: (a) => `watch:${a.sessionId}`,
   set_starred: (a) => `star:${a.sessionId}`,
   ext_enable: (a) => `ext:${a.name}`,
+  ext_set: (a) => `ext-set:${a.id}`,
+  // An extension's log lines, in the order its page wrote them.
+  ext_log: (a) => `ext-log:${a.ext}`,
+  // A session's hand-off: sent, written ahead, continued, kept, started fresh, each after the one before.
+  handoff_sent: (a) => `handoff:${a.sessionId}`,
+  handoff_cue: (a) => `handoff:${a.sessionId}`,
+  handoff_continue: (a) => `handoff:${a.sessionId}`,
+  handoff_keep: (a) => `handoff:${a.sessionId}`,
+  handoff_fresh: (a) => `handoff:${a.sessionId}`,
+  // What an insight did, and then what you did with it (shown before acted): each stamped as it's saved.
+  insight_log: (a) => `insight:${a.sessionId}`,
   dictate_start: () => "dictate",
   dictate_stop: () => "dictate",
   speak_send: () => "speak",
