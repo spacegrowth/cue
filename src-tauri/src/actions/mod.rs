@@ -588,7 +588,7 @@ fn mach(m: Option<String>) -> String {
 
 /// Blocking work off the window's thread.
 async fn off<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
+    crate::ipc::blocking(f).await?
 }
 
 /// The project's actions: {actions: [Action], file: {path, there}, error, pending, prompt}.

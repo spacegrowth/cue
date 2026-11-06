@@ -338,7 +338,7 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
 
 #[tauri::command]
 pub async fn ext_git(ext: String, op: String, folder: String, machine: Option<String>, against: Option<String>, path: Option<String>, transcript: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || git_read(&ext, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await.map_err(|e| e.to_string())?
+    crate::ipc::blocking(move || git_read(&ext, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await?
 }
 
 // ---------- programs.run: programs installed on this Mac ----------
@@ -424,21 +424,25 @@ pub fn run_program(ext: &str, program: &str, args: &[String], cwd: Option<&str>)
 
 #[tauri::command]
 pub async fn ext_program(ext: String, program: String, args: Vec<String>, cwd: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_program(&ext, &program, &args, cwd.as_deref())).await.map_err(|e| e.to_string())?
+    crate::ipc::blocking(move || run_program(&ext, &program, &args, cwd.as_deref())).await?
 }
 
 /// Where extensions go, and each one there with where it stands.
 #[tauri::command]
-pub fn ext_list() -> Value {
-    json!({ "root": root().display().to_string(), "list": list() })
+pub async fn ext_list() -> Result<Value, String> {
+    crate::ipc::blocking(|| json!({ "root": root().display().to_string(), "list": list() })).await
 }
 
 /// Switch an extension on (approving everything its manifest asks for now) or off (what you approved
 /// stays noted, so switching it back on asks nothing new). From Settings only: pages can't call this.
 #[tauri::command]
-pub fn ext_enable(name: String, on: bool) -> Result<(), String> {
-    let m = manifest(&name).ok_or("no such extension")?;
-    let a = approval(&name);
+pub async fn ext_enable(name: String, on: bool) -> Result<(), String> {
+    crate::ipc::blocking(move || enable(&name, on)).await?
+}
+
+fn enable(name: &str, on: bool) -> Result<(), String> {
+    let m = manifest(name).ok_or("no such extension")?;
+    let a = approval(name);
     let v = if on {
         json!({ "on": true, "capabilities": m["capabilities"].clone(), "programs": m["programs"].clone(), "version": m["version"].clone() })
     } else {
@@ -450,26 +454,36 @@ pub fn ext_enable(name: String, on: bool) -> Result<(), String> {
 
 /// The last `n` lines extensions.log has about `name`, newest last.
 #[tauri::command]
-pub fn ext_activity(name: String, n: usize) -> Vec<String> {
+pub async fn ext_activity(name: String, n: usize) -> Result<Vec<String>, String> {
+    crate::ipc::blocking(move || activity(&name, n)).await
+}
+
+fn activity(name: &str, n: usize) -> Vec<String> {
     let text = std::fs::read_to_string(crate::server::cue_dir().join("extensions.log")).unwrap_or_default();
-    let mine: Vec<&str> = text.lines().filter(|l| l.split(' ').nth(1) == Some(name.as_str())).collect();
+    let mine: Vec<&str> = text.lines().filter(|l| l.split(' ').nth(1) == Some(name)).collect();
     mine[mine.len().saturating_sub(n.min(50))..].iter().map(|l| l.to_string()).collect()
 }
 
 /// The extensions folder in Finder (made first if it isn't there yet).
 #[tauri::command]
-pub fn ext_reveal() -> Result<(), String> {
-    let dir = root();
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Command::new("/usr/bin/open").arg(&dir).spawn().map(|_| ()).map_err(|e| e.to_string())
+pub async fn ext_reveal() -> Result<(), String> {
+    crate::ipc::blocking(|| {
+        let dir = root();
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        Command::new("/usr/bin/open").arg(&dir).spawn().map(|_| ()).map_err(|e| e.to_string())
+    })
+    .await?
 }
 
 /// A line from an extension's page, into extensions.log.
 #[tauri::command]
-pub fn ext_log(ext: String, text: String) -> Result<(), String> {
-    enabled(&ext).ok_or("no such extension")?;
-    log(&format!("{ext} says: {}", text.replace('\n', " ").chars().take(500).collect::<String>()));
-    Ok(())
+pub async fn ext_log(ext: String, text: String) -> Result<(), String> {
+    crate::ipc::blocking(move || {
+        enabled(&ext).ok_or("no such extension")?;
+        log(&format!("{ext} says: {}", text.replace('\n', " ").chars().take(500).collect::<String>()));
+        Ok(())
+    })
+    .await?
 }
 
 #[cfg(test)]
@@ -512,7 +526,7 @@ mod tests {
         assert!(read().unwrap_err().contains("isn't switched on"));
 
         // Switched on: what it asked for is approved; its page is served. Still nothing it didn't ask for.
-        ext_enable("demo".into(), true).unwrap();
+        enable("demo", true).unwrap();
         assert_eq!(list()[0]["enabled"], json!(true));
         assert_eq!(page(), 200);
         assert!(read().unwrap_err().contains("didn't ask to read git"));
@@ -526,10 +540,10 @@ mod tests {
         assert!(read().unwrap_err().contains("isn't switched on"));
 
         // Switched off: nothing served, nothing runs; its log names the switches.
-        ext_enable("demo".into(), true).unwrap();
-        ext_enable("demo".into(), false).unwrap();
+        enable("demo", true).unwrap();
+        enable("demo", false).unwrap();
         assert_eq!(page(), 404);
-        assert!(ext_activity("demo".into(), 10).iter().any(|l| l.ends_with("switched off in Settings")));
+        assert!(activity("demo", 10).iter().any(|l| l.ends_with("switched off in Settings")));
 
         std::env::remove_var("CUE_HOME");
         std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
@@ -550,7 +564,7 @@ mod tests {
         let run = |p: &str, a: &[&str]| run_program("tools", p, &a.iter().map(|s| s.to_string()).collect::<Vec<_>>(), None);
 
         assert!(run("git", &["--version"]).unwrap_err().contains("isn't switched on"), "nothing until you switch it on");
-        ext_enable("tools".into(), true).unwrap();
+        enable("tools", true).unwrap();
         let ok = run("git", &["--version"]).unwrap();
         assert_eq!(ok["code"], json!(0));
         assert!(ok["stdout"].as_str().unwrap().starts_with("git version"));
@@ -559,11 +573,11 @@ mod tests {
         assert!(run(&ext.join("mytool").display().to_string(), &[]).unwrap_err().contains("can't be run"), "no paths");
         assert!(run("ls", &[]).is_ok(), "listed and installed");
         assert!(run("cat", &["/etc/hosts"]).unwrap_err().contains("didn't list"), "only what it listed");
-        assert!(ext_activity("tools".into(), 10).iter().any(|l| l.contains("ran git --version -> 0")), "logged");
+        assert!(activity("tools", 10).iter().any(|l| l.contains("ran git --version -> 0")), "logged");
         // An update that wants another program: off until you approve it.
         std::fs::write(ext.join("manifest.json"), r#"{"tab":"T","capabilities":["programs.run"],"programs":["git","bash","ls","curl"]}"#).unwrap();
         assert!(run("git", &["--version"]).unwrap_err().contains("isn't switched on"), "off until approved again");
-        ext_enable("tools".into(), false).unwrap();
+        enable("tools", false).unwrap();
         assert!(run("git", &["--version"]).is_err(), "off");
 
         std::env::remove_var("CUE_HOME");
@@ -588,7 +602,7 @@ mod tests {
         // Cue's own: listed, marked as such, off until switched on, served once it is.
         assert_eq!(list().len(), 2);
         assert_eq!((get("tool")["builtin"].clone(), get("tool")["enabled"].clone()), (json!(true), json!(false)));
-        ext_enable("tool".into(), true).unwrap();
+        enable("tool", true).unwrap();
         assert_eq!(serve(Request::builder().uri("cueext://localhost/tool/index.html").body(vec![]).unwrap()).into_body(), b"v1");
 
         // A change to its files changes its stamp (its page reloads).
@@ -634,7 +648,7 @@ mod tests {
 
         // Off: nothing.
         assert!(read("toplevel", None, None, None).unwrap_err().contains("isn't switched on"));
-        ext_enable("r".into(), true).unwrap();
+        enable("r", true).unwrap();
         assert_eq!(read("toplevel", None, None, None).unwrap()["stdout"].as_str().unwrap().trim(), folder);
         let d = read("diff", Some("HEAD"), None, None).unwrap();
         assert!(d["stdout"].as_str().unwrap().contains("+two"));

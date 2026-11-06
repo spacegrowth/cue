@@ -20,6 +20,27 @@ pub fn is_quiet(session_id: &str) -> bool {
     q.iter().any(|s| s == session_id)
 }
 
+/// A job for Notification Center (posting, taking back): each is an XPC round trip to macOS's notification
+/// service, which can be slow to answer, and whoever changed Cue's state (a hook's connection, the window's
+/// command, a tick) mustn't wait on it. They run on one thread of their own, in the order handed in, so a
+/// notification taken back is never posted after it was.
+pub fn later(job: impl FnOnce() + Send + 'static) {
+    type Job = Box<dyn FnOnce() + Send>;
+    static JOBS: std::sync::OnceLock<std::sync::mpsc::Sender<Job>> = std::sync::OnceLock::new();
+    let jobs = JOBS.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Job>();
+        let run = move || {
+            for job in rx {
+                // One that panics doesn't take the thread, and every later notification, with it.
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+            }
+        };
+        std::thread::Builder::new().name("cue-notify".into()).spawn(run).expect("a thread for notifications");
+        tx
+    });
+    let _ = jobs.send(Box::new(job));
+}
+
 #[cfg(target_os = "macos")]
 mod mac {
     use block2::RcBlock;
@@ -234,3 +255,30 @@ pub fn post_sound(_id: &str, _title: &str, _body: &str, _category: &str, _sound:
 pub fn set_phrases(_phrases: &[String]) {}
 #[cfg(not(target_os = "macos"))]
 pub fn remove(_ids: &[String]) {}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    #[test]
+    fn notification_jobs_run_in_order_off_the_callers_thread_and_survive_a_panic() {
+        let (stuck_tx, stuck) = channel::<()>();
+        let (ran_tx, ran) = channel();
+        let t0 = std::time::Instant::now();
+        // Notification Center slow to answer: the one handing the job in doesn't wait for it.
+        super::later(move || {
+            let _ = stuck.recv();
+        });
+        super::later(|| panic!("a bad job"));
+        for i in 0..3 {
+            let tx = ran_tx.clone();
+            super::later(move || tx.send(i).unwrap());
+        }
+        assert!(t0.elapsed() < Duration::from_millis(100), "handed in without waiting: {:?}", t0.elapsed());
+        assert!(ran.recv_timeout(Duration::from_millis(200)).is_err(), "in order: nothing passes the slow one");
+        stuck_tx.send(()).unwrap();
+        let got: Vec<i32> = (0..3).map(|_| ran.recv_timeout(Duration::from_secs(2)).unwrap()).collect();
+        assert_eq!(got, [0, 1, 2], "after it, in order, the panic notwithstanding");
+    }
+}

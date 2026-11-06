@@ -4,6 +4,7 @@
 //! the first message of the session a hand-off continues in), and the hand-off ask before a cache runs
 //! out where you turned that on (a session's "Hand off if I don't come back", or Settings: hub/activity.rs).
 
+use super::{blocking, with_hub};
 use crate::db;
 use crate::hub::Hub;
 use crate::logs::steps;
@@ -26,8 +27,7 @@ fn local_log(h: &Hub, session_id: &str) -> Option<String> {
 /// cards count down from it and say how far a session has grown.
 #[tauri::command]
 pub(crate) async fn insight_state(hub: State<'_, Arc<Hub>>, session_ids: Vec<String>) -> Result<serde_json::Value, String> {
-    let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || insight_states(&h, &session_ids)).await.map_err(|e| e.to_string())
+    with_hub(&hub, move |h| insight_states(&h, &session_ids)).await
 }
 
 /// The numbers insight_state answers with (it reads the sessions' logs: call it off the main thread).
@@ -97,7 +97,7 @@ fn note_is_new(kept: Option<&db::Handoff>, at_ms: u64) -> Option<bool> {
 #[tauri::command]
 pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_json::Value, String> {
     let fresh = fresh.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         if fresh {
             crate::commands::reread_all();
         }
@@ -115,7 +115,6 @@ pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_jso
         serde_json::json!({ "hosts": out, "commands": all, "reading": reading })
     })
     .await
-    .map_err(|e| e.to_string())
 }
 
 /// Cue's own hand-off, for a host with no hand-off skill (or when you choose it): what it's kept as.
@@ -166,21 +165,24 @@ fn resume_ask(last: &str, noted: bool, note: &str, file: &str) -> String {
 /// new session, so "Continue in a new session" is still offered after a restart. `resume`: the skill takes
 /// "resume" (its description says so); otherwise Cue's own message starts the next session.
 #[tauri::command]
-pub(crate) fn handoff_sent(hub: State<'_, Arc<Hub>>, session_id: String, skill: String, resume: Option<bool>) {
+pub(crate) async fn handoff_sent(hub: State<'_, Arc<Hub>>, session_id: String, skill: String, resume: Option<bool>) -> Result<(), String> {
     let skill: String = skill.trim_start_matches('/').chars().take(120).collect();
-    if !skill.is_empty() && !skill.contains(char::is_whitespace) {
-        db::handoff_sent(&session_id, &skill, resume.unwrap_or(true) && skill != CUE_HANDOFF, 0);
-        hub.redraw();
+    if skill.is_empty() || skill.contains(char::is_whitespace) {
+        return Ok(());
     }
+    with_hub(&hub, move |h| {
+        db::handoff_sent(&session_id, &skill, resume.unwrap_or(true) && skill != CUE_HANDOFF, 0);
+        h.redraw();
+    })
+    .await
 }
 
 /// Cue's own hand-off: sends the session HANDOFF_ASK (your click is the message), queued if it's working.
 /// `ahead`: Write hand-off now, before its cache runs out (its session then stays open when it continues).
 #[tauri::command]
 pub(crate) async fn handoff_cue(hub: State<'_, Arc<Hub>>, session_id: String, ahead: Option<bool>) -> Result<String, String> {
-    let h = hub.inner().clone();
     let ahead = if ahead.unwrap_or(false) { AHEAD_YOU } else { 0 };
-    tauri::async_runtime::spawn_blocking(move || handoff_cue_ahead(&h, &session_id, ahead)).await.map_err(|e| e.to_string())?
+    with_hub(&hub, move |h| handoff_cue_ahead(&h, &session_id, ahead)).await?
 }
 
 pub(crate) fn handoff_cue_now(h: &Hub, session_id: &str) -> Result<String, String> {
@@ -216,8 +218,8 @@ pub(crate) fn handoff_cue_ahead(h: &Hub, session_id: &str, ahead: u8) -> Result<
 
 /// "Continue here" on a note written ahead: it's dropped (the session goes on with all of its context).
 #[tauri::command]
-pub(crate) fn handoff_keep(hub: State<'_, Arc<Hub>>, session_id: String) {
-    handoff_keep_now(hub.inner(), &session_id);
+pub(crate) async fn handoff_keep(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    with_hub(&hub, move |h| handoff_keep_now(h, &session_id)).await
 }
 
 pub(crate) fn handoff_keep_now(h: &Hub, session_id: &str) {
@@ -230,9 +232,12 @@ pub(crate) fn handoff_keep_now(h: &Hub, session_id: &str) {
 
 /// A session's "Hand off if I don't come back", on or off.
 #[tauri::command]
-pub(crate) fn ahead_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) {
-    db::ahead_watch(&session_id, on);
-    hub.redraw();
+pub(crate) async fn ahead_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: bool) -> Result<(), String> {
+    with_hub(&hub, move |h| {
+        db::ahead_watch(&session_id, on);
+        h.redraw();
+    })
+    .await
 }
 
 /// "Continue in a new session": a new session of the same agent, in the same folder and on the same
@@ -241,8 +246,7 @@ pub(crate) fn ahead_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: bool
 /// unless background agents are still at work there. Linked both ways.
 #[tauri::command]
 pub(crate) async fn handoff_continue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
-    let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handoff_continue_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+    with_hub(&hub, move |h| handoff_continue_now(&h, &session_id)).await?
 }
 
 /// A new session in place of `session_id`: the same agent, folder and machine (Claude Code: the same
@@ -337,8 +341,7 @@ fn close_replaced(h: &Arc<Hub>, session_id: &str, done: &str) -> (bool, String) 
 /// it), as every way to a fresh session does; a parked or closed one stays where it is.
 #[tauri::command]
 pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
-    let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handoff_fresh_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+    with_hub(&hub, move |h| handoff_fresh_now(&h, &session_id)).await?
 }
 
 pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {
@@ -351,8 +354,8 @@ pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_
 /// One thing an insight did, or you did with it: shown, acted (with what you picked), later, dismissed.
 /// `tokens`: what acting on it saved, where that's known when it happens.
 #[tauri::command]
-pub(crate) fn insight_log(session_id: String, rule: String, action: String, detail: Option<String>, tokens: Option<u64>) {
-    record_insight(&session_id, &rule, &action, &detail.unwrap_or_default(), tokens.unwrap_or(0));
+pub(crate) async fn insight_log(session_id: String, rule: String, action: String, detail: Option<String>, tokens: Option<u64>) -> Result<(), String> {
+    blocking(move || record_insight(&session_id, &rule, &action, &detail.unwrap_or_default(), tokens.unwrap_or(0))).await
 }
 
 /// Record one insight event: known rules and actions only, the detail kept short.
@@ -368,9 +371,10 @@ pub(crate) fn record_insight(session_id: &str, rule: &str, action: &str, detail:
 
 /// The last 30 days, per insight: shown, acted on, and the tokens acting on them saved.
 #[tauri::command]
-pub(crate) fn insight_counts() -> serde_json::Value {
+pub(crate) async fn insight_counts() -> Result<serde_json::Value, String> {
     let since = crate::model::now_ms().saturating_sub(30 * 24 * 3600 * 1000);
-    serde_json::Value::Array(db::insight_counts(since).into_iter().map(|(rule, shown, acted, tokens)| serde_json::json!({ "rule": rule, "shown": shown, "acted": acted, "tokens": tokens })).collect())
+    let counts = blocking(move || db::insight_counts(since)).await?;
+    Ok(serde_json::Value::Array(counts.into_iter().map(|(rule, shown, acted, tokens)| serde_json::json!({ "rule": rule, "shown": shown, "acted": acted, "tokens": tokens })).collect()))
 }
 
 #[cfg(test)]

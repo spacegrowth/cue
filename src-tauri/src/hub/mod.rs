@@ -16,6 +16,7 @@ mod history;
 mod reviews;
 mod send;
 mod sessions;
+mod shown;
 
 pub use history::{split_turn, summary};
 
@@ -101,6 +102,8 @@ struct Store {
     /// SHORTCUT: kept while Cue runs, not saved: a relaunch drops the lines (the restart itself is
     /// done). Save them with the session (db) if they should outlive that.
     restarted: HashMap<String, Vec<Value>>,
+    /// How many snapshots have been taken from the store (each takes the next number): their order (shown.rs).
+    shown_seq: u64,
 }
 
 /// A restart in progress. Underneath it's a park and a resume, but the window never sees those: the
@@ -133,6 +136,8 @@ pub struct Hub {
     /// One gate per session for typing into it: a second message waits until the first has been typed and taken
     /// (or not), so two sent at once never mix in its box (pasted A, pasted B, Enter, Enter → one prompt "AB").
     typing: Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>>,
+    /// The window's state as last built, handed out without building it again (shown.rs).
+    shown: shown::Shown,
 }
 
 impl Hub {
@@ -148,7 +153,7 @@ impl Hub {
         st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()) }
+        Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default() }
     }
 
     /// The session's typing gate (see `typing`). Held for seconds by design (typing, then waiting for its hook):
@@ -247,10 +252,28 @@ impl Hub {
         self.st().sessions.pids()
     }
 
-    pub fn snapshot(&self) -> Value {
+    /// The window's state as last built, or built now if nothing is current (the first ask, or after a change
+    /// with no window to send it to). Its clock reads now: the window sets its clock against it.
+    pub fn state(&self) -> Value {
+        let snap = self.shown.get().unwrap_or_else(|| self.snapshot());
+        let mut v = (*snap).clone();
+        v["now_ms"] = json!(now_ms());
+        v
+    }
+
+    /// The window's state built now, and kept as the last one (shown.rs) unless a newer one is in already.
+    pub fn snapshot(&self) -> Arc<Value> {
+        let (seq, snap) = self.build_snapshot();
+        let snap = Arc::new(snap);
+        self.shown.put(seq, snap.clone());
+        snap
+    }
+
+    /// The snapshot, and its place in the order snapshots were taken from the store.
+    fn build_snapshot(&self) -> (u64, Value) {
         // What the files say (each Claude session's transcript tail, each folder's git HEAD) is read
-        // with the store unlocked: this runs on the window's thread and on every change, and a slow disk
-        // mustn't hold every hook and tick behind it.
+        // with the store unlocked: this runs on every change, and a slow disk mustn't hold every hook and
+        // tick behind it.
         let (known, live, transcripts, cwds) = self.snapshot_sources();
         // Your latest request to each Claude session, from its transcript: no model.
         let about: HashMap<String, Value> = transcripts.into_iter()
@@ -289,6 +312,8 @@ impl Hub {
         let connections = crate::config::connections();
         let usage_file = crate::usage_file::read();
         let mut st = self.st();
+        st.shown_seq += 1;
+        let seq = st.shown_seq;
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.
@@ -342,7 +367,7 @@ impl Hub {
             let all: serde_json::Map<String, Value> = moved.into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect();
             let _ = crate::config::set("project.moves", Value::Object(all));
         }
-        snap
+        (seq, snap)
     }
 
     /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each
@@ -408,13 +433,22 @@ impl Hub {
 
     /// Something outside the store changed what the window shows (who leads whom): redraw only.
     pub fn redraw(&self) {
-        if let Some(app) = &self.app {
-            let _ = app.emit("state", self.snapshot());
+        match &self.app {
+            Some(app) => {
+                let _ = app.emit("state", &*self.snapshot());
+            }
+            None => self.unshown(),
         }
     }
 
+    /// No window to build the new state for (tests): the next ask for it builds it.
+    fn unshown(&self) {
+        let seq = self.st().shown_seq;
+        self.shown.forget(seq);
+    }
+
     fn changed(&self) {
-        let Some(app) = &self.app else { return };
+        let Some(app) = &self.app else { return self.unshown() };
         {
             let mut st = self.st();
             // A parked session that's live again (you resumed it yourself, in a terminal) isn't parked.
@@ -432,7 +466,7 @@ impl Hub {
             drop(st);
             crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
         }
-        let _ = app.emit("state", self.snapshot());
+        let _ = app.emit("state", &*self.snapshot());
         let (decisions, answered) = {
             let mut st = self.st();
             let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
@@ -443,7 +477,9 @@ impl Hub {
             }
             (st.items.iter().filter(|i| i.kind != "waiting").count(), answered)
         };
-        crate::notify::remove(&answered);
+        if !answered.is_empty() {
+            crate::notify::later(move || crate::notify::remove(&answered));
+        }
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
         }
@@ -468,6 +504,8 @@ impl Hub {
         self.notify_full(id, title, body, category, watched, true);
     }
 
+    /// Notification Center's part (is Cue in front, the post itself) runs on its own thread (notify::later):
+    /// here only the checks against the store.
     fn notify_full(&self, id: &str, title: &str, body: &str, category: &str, watched: bool, mutable: bool) {
         let Some(app) = &self.app else { return };
         // Test instances run with CUE_QUIET=1 so they never ping you.
@@ -485,17 +523,24 @@ impl Hub {
                 return;
             }
         }
-        // Cue is the window in front of you: the new item is already on screen in Waiting.
-        if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
-            return;
-        }
-        let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
-        if crate::notify::post_sound(id, title, body, category, &sound) {
-            self.st().notified.insert(id.to_string());
-        } else {
-            // Unbundled dev binary: a plain notification Cue can't take back.
-            let _ = app.notification().builder().title(title).body(body).show();
-        }
+        let noted = id.to_string();
+        let (app, id, title, body, category) = (app.clone(), id.to_string(), title.to_string(), body.to_string(), category.to_string());
+        let post = move || {
+            // Cue is the window in front of you: the new item is already on screen in Waiting.
+            if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
+                return;
+            }
+            let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
+            if !crate::notify::post_sound(&id, &title, &body, &category, &sound) {
+                // Unbundled dev binary: a plain notification Cue can't take back.
+                let _ = app.notification().builder().title(&title).body(&body).show();
+            }
+        };
+        // Noted as notified with the post handed in, under one lock: `changed` either sees neither, or sees it
+        // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
+        let mut st = self.st();
+        st.notified.insert(noted);
+        crate::notify::later(post);
     }
 }
 

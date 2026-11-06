@@ -352,8 +352,13 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
     remember(key, value)
 }
 
-/// Write one dotted key as-is (no checks): for values Cue sets itself.
+/// Write one dotted key as-is (no checks): for values Cue sets itself. Settings are saved from many threads
+/// at once (the window's commands, ticks, hooks): one at a time here, each reading what the last one wrote,
+/// and the file replaced whole, so neither a reader (`load`, the hook process) nor the next writer ever
+/// sees half of one, which `load` would take for no settings at all.
 pub fn remember(key: &str, value: Value) -> Result<(), String> {
+    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = crate::locking::lock(&WRITING, "config writes");
     let mut c = load();
     let (section, name) = key.split_once('.').unwrap();
     if !c[section].is_object() {
@@ -361,7 +366,9 @@ pub fn remember(key: &str, value: Value) -> Result<(), String> {
     }
     c[section][name] = value;
     std::fs::create_dir_all(crate::server::cue_dir()).map_err(|e| e.to_string())?;
-    std::fs::write(path(), serde_json::to_string_pretty(&c).unwrap() + "\n").map_err(|e| e.to_string())
+    let next = path().with_extension("json.next");
+    std::fs::write(&next, serde_json::to_string_pretty(&c).unwrap() + "\n").map_err(|e| e.to_string())?;
+    std::fs::rename(&next, path()).map_err(|e| e.to_string())
 }
 
 /// Is Cue actually connected? Checked live so the Settings screen can say why nothing shows up.
@@ -659,5 +666,30 @@ mod tests {
         assert_eq!(again["hooks"]["Stop"].as_array().unwrap().len(), 2);
         assert!(std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).any(|e| e.file_name().to_string_lossy().contains(".cue-backup-")));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Settings saved from many threads at once (the window's commands run off its thread now): every one is
+    /// kept, and a reader never finds the file half written (which it would take for no settings at all).
+    #[test]
+    fn settings_saved_at_once_from_many_threads_all_stay() {
+        let dir = std::env::temp_dir().join(format!("cue-cfg-many-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("CUE_HOME", &dir);
+        std::fs::write(dir.join("config.json"), r#"{"history":{"keep":12}}"#).unwrap();
+        let writers: Vec<_> = (0..16).map(|i| std::thread::spawn(move || remember(&format!("many.k{i}"), json!(i)).unwrap())).collect();
+        let reader = std::thread::spawn(|| (0..200).all(|_| load()["history"]["keep"] == 12));
+        for w in writers {
+            w.join().unwrap();
+        }
+        let never_empty = reader.join().unwrap();
+        let c = load();
+        std::env::remove_var("CUE_HOME");
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(never_empty, "a read in the middle of a save saw no settings");
+        assert_eq!(c["history"]["keep"], 12);
+        for i in 0..16 {
+            assert_eq!(c["many"][format!("k{i}")], i, "k{i} lost to another save");
+        }
     }
 }

@@ -6,13 +6,17 @@
 use base64::Engine;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use crate::terminal::input::Input;
+use std::io::Read;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
 
 struct Open {
-    master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    /// Its own lock, apart from `open_terms`: a resize takes the terminal out of that and resizes it
+    /// with that lock released (a resize is quick; nothing slow is ever done under this one).
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    /// What's typed into it goes through here, never written under `open_terms` (input.rs).
+    input: Input,
     child: Box<dyn Child + Send + Sync>,
     /// A machine's view session (host, name), Cue's own: removed there by Cue on close, before its client
     /// goes. Some SSH servers never hang up a dropped client, so the view would stay attached
@@ -23,6 +27,11 @@ struct Open {
 }
 
 impl Open {
+    fn new(sid: &str, master: Box<dyn MasterPty + Send>, child: Box<dyn Child + Send + Sync>) -> Result<Open, String> {
+        let input = Input::new(sid, master.take_writer().map_err(|e| e.to_string())?)?;
+        Ok(Open { master: Arc::new(Mutex::new(master)), input, child, view: None })
+    }
+
     /// End its client (and the ssh carrying it, for a machine's session). A machine's view is removed
     /// first, off this thread (one SSH trip), then the client. A removal that fails or hasn't come back
     /// in 5 s (a machine asleep, a dead line under the shared connection) doesn't hold the client: it
@@ -273,7 +282,7 @@ fn start(sid: &str, gen: u64, pair: portable_pty::PtyPair, cmd: CommandBuilder, 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
-    let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
+    let open = Open::new(sid, pair.master, child)?;
     let id = sid.to_string();
     std::thread::spawn(move || {
         let b64 = base64::engine::general_purpose::STANDARD;
@@ -286,7 +295,7 @@ fn start(sid: &str, gen: u64, pair: portable_pty::PtyPair, cmd: CommandBuilder, 
         }
         out(serde_json::json!({ "sid": id, "gen": gen, "end": true }));
     });
-    Ok((gen, Open { master: pair.master, writer, child, view: None }))
+    Ok((gen, open))
 }
 
 /// "cue-view-<when>-<pid>-": the start of every view this launch of Cue opens (when: the second it first
@@ -346,20 +355,26 @@ pub(crate) fn spawn(sid: &str, cmd: CommandBuilder, cols: u16, rows: u16, out: i
 /// foreground of its terminal (the same as its process while it sits at its prompt).
 pub(crate) fn foreground(prefix: &str) -> Vec<(String, Option<u32>, Option<i32>)> {
     let t = crate::locking::lock(open_terms(), "open_terms");
-    t.open.iter().filter(|(id, _)| id.starts_with(prefix)).map(|(id, o)| (id.clone(), o.child.process_id(), o.master.process_group_leader())).collect()
+    t.open
+        .iter()
+        .filter(|(id, _)| id.starts_with(prefix))
+        .map(|(id, o)| (id.clone(), o.child.process_id(), crate::locking::lock(&o.master, "pty master").process_group_leader()))
+        .collect()
 }
 
-/// What you typed in it (and the terminal's own replies, as xterm.js produces them).
+/// What you typed in it (and the terminal's own replies, as xterm.js produces them). Written with no
+/// lock held, in order; a terminal that isn't reading makes this an error within input::BOUND.
 pub fn write(sid: &str, data: &str) -> Result<(), String> {
-    let mut terms = crate::locking::lock(open_terms(), "open_terms");
-    let t = terms.open.get_mut(sid).ok_or("its terminal isn't open")?;
-    t.writer.write_all(data.as_bytes()).and_then(|_| t.writer.flush()).map_err(|e| e.to_string())
+    let input = crate::locking::lock(open_terms(), "open_terms").open.get(sid).map(|o| o.input.clone());
+    input.ok_or("its terminal isn't open")?.write(data.as_bytes())
 }
 
 pub fn resize(sid: &str, cols: u16, rows: u16) -> Result<(), String> {
-    let terms = crate::locking::lock(open_terms(), "open_terms");
-    let t = terms.open.get(sid).ok_or("its terminal isn't open")?;
-    t.master.resize(PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 }).map_err(|e| e.to_string())
+    let master = crate::locking::lock(open_terms(), "open_terms").open.get(sid).map(|o| o.master.clone());
+    let master = master.ok_or("its terminal isn't open")?;
+    let size = PtySize { rows: rows.max(2), cols: cols.max(10), pixel_width: 0, pixel_height: 0 };
+    let resized = crate::locking::lock(&master, "pty master").resize(size);
+    resized.map_err(|e| e.to_string())
 }
 
 /// Close it: Cue's client goes (its grouped session with it); the session itself keeps running. One
@@ -406,9 +421,8 @@ mod tests {
         c.arg("30");
         let child = pair.slave.spawn_command(c).map_err(|e| e.to_string())?;
         drop(pair.slave);
-        starts.lock().unwrap().push(child.process_id().unwrap_or(0));
-        let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
-        Ok((next_gen(), Open { master: pair.master, writer, child, view: None }))
+        crate::locking::lock(&starts, "starts").push(child.process_id().unwrap_or(0));
+        Ok((next_gen(), Open::new("fake", pair.master, child)?))
     }
 
     fn alive(pid: u32) -> bool {
@@ -425,14 +439,14 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let second = std::thread::spawn(move || once(&b, 20, 4, || fake(&s2, 400)));
         let (g1, g2) = (first.join().unwrap().unwrap(), second.join().unwrap().unwrap());
-        assert_eq!(starts.lock().unwrap().len(), 1, "one client, not two");
+        assert_eq!(crate::locking::lock(&starts, "starts").len(), 1, "one client, not two");
         assert_eq!(g1, g2, "the second joined the first");
-        let pid1 = starts.lock().unwrap()[0];
+        let pid1 = crate::locking::lock(&starts, "starts")[0];
         assert!(alive(pid1), "the client runs");
         // Opened again once it's open (it ended, say): the old client is ended, the new one recorded.
         let g3 = once(&sid, 20, 4, || fake(&starts, 0)).unwrap();
         assert_ne!(g3, g1);
-        let pid2 = starts.lock().unwrap()[1];
+        let pid2 = crate::locking::lock(&starts, "starts")[1];
         assert!(until(|| !alive(pid1)), "the replaced client is gone");
         assert!(alive(pid2), "the new one runs");
         // Closed while an opening is in flight: that opening ends its own client when it lands.
@@ -443,7 +457,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(100));
         close(&sid);
         late.join().unwrap().unwrap();
-        let pid3 = starts.lock().unwrap()[2];
+        let pid3 = crate::locking::lock(&starts, "starts")[2];
         assert!(until(|| !alive(pid3)), "nobody wanted it: ended");
         assert!(write(&sid, "x").is_err(), "nothing open");
     }
@@ -484,6 +498,92 @@ mod tests {
         assert!(!pending, "no opening left behind");
     }
 
+    /// `cmd` in a pty of its own, recorded as terminal `sid` (whatever's typed in it goes to `input`, or
+    /// to the pty when None), the way `once` records one.
+    fn record(sid: &str, cmd: CommandBuilder, input: Option<Box<dyn std::io::Write + Send>>) -> u32 {
+        let pair = native_pty_system().openpty(PtySize { rows: 4, cols: 20, pixel_width: 0, pixel_height: 0 }).unwrap();
+        let child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let pid = child.process_id().unwrap_or(0);
+        let mut o = Open::new(sid, pair.master, child).unwrap();
+        if let Some(w) = input {
+            o.input = Input::new(sid, w).unwrap();
+        }
+        crate::locking::lock(open_terms(), "open_terms").open.insert(sid.to_string(), o);
+        pid
+    }
+
+    fn sleeper() -> CommandBuilder {
+        let mut c = CommandBuilder::new("/bin/sleep");
+        c.arg("30");
+        c
+    }
+
+    /// `f` on a thread of its own, its answer if it's back within `ms`.
+    fn within<R: Send + 'static>(ms: u64, f: impl FnOnce() -> R + Send + 'static) -> Option<R> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_millis(ms)).ok()
+    }
+
+    #[test]
+    fn typing_into_a_terminal_whose_client_stopped_reading_fails_in_time_and_holds_up_nothing_else() {
+        let (stuck, fine) = (format!("stuck-{}", std::process::id()), format!("fine-{}", std::process::id()));
+        let (go, release) = std::sync::mpsc::channel();
+        let got = Arc::new(M::new(vec![]));
+        let stuck_pid = record(&stuck, sleeper(), Some(Box::new(crate::terminal::input::tests::Stalled { release, got })));
+        record(&fine, sleeper(), None);
+        let s = stuck.clone();
+        let t0 = std::time::Instant::now();
+        let typing = std::thread::spawn(move || write(&s, "lost in a stopped client"));
+        // While that write waits: the other terminal takes input, this one resizes, and opening and closing go on.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let (f, s2) = (fine.clone(), stuck.clone());
+        assert_eq!(within(500, move || write(&f, "x")), Some(Ok(())), "another terminal's write isn't held");
+        assert_eq!(within(500, move || resize(&s2, 30, 6)), Some(Ok(())), "a resize isn't held");
+        let s3 = stuck.clone();
+        assert!(within(500, move || foreground(&s3).len()) == Some(1), "the open terminals can be read");
+        let err = typing.join().unwrap().unwrap_err();
+        let took = t0.elapsed();
+        assert!(took >= crate::terminal::input::BOUND && took < crate::terminal::input::BOUND + std::time::Duration::from_secs(1), "{took:?}");
+        assert!(err.contains("isn't taking input"), "{err}");
+        // Still stopped: refused at once, not another wait.
+        let s4 = stuck.clone();
+        assert!(matches!(within(300, move || write(&s4, "y")), Some(Err(_))), "refused at once while stuck");
+        let s5 = stuck.clone();
+        assert_eq!(within(1000, move || close(&s5)), Some(()), "closing it isn't held by the stuck write");
+        assert!(until(|| !alive(stuck_pid)), "its client ended");
+        drop(go);
+        close(&fine);
+    }
+
+    #[test]
+    fn a_real_pty_whose_reader_never_reads_fills_up_and_its_write_fails_in_time() {
+        let sid = format!("full-{}", std::process::id());
+        // Raw mode, as a tmux client's terminal is, and nothing ever reading it: the pty's input buffer fills.
+        let mut c = CommandBuilder::new("/bin/sh");
+        c.args(["-c", "stty raw -echo; exec sleep 30"]);
+        let pid = record(&sid, c, None);
+        std::thread::sleep(std::time::Duration::from_millis(300)); // stty has run
+        let chunk = "k".repeat(4096);
+        let t0 = std::time::Instant::now();
+        let mut failed = None;
+        for _ in 0..256 {
+            if let Err(e) = write(&sid, &chunk) {
+                failed = Some(e);
+                break;
+            }
+        }
+        let took = t0.elapsed();
+        close(&sid);
+        assert!(until(|| !alive(pid)));
+        let err = failed.expect("a megabyte into a pty nobody reads can't all go in");
+        assert!(err.contains("isn't taking input"), "{err}");
+        assert!(took < crate::terminal::input::BOUND + std::time::Duration::from_secs(1), "{took:?}");
+    }
+
     #[test]
     fn an_executors_terminal_attaches_to_its_own_tmux_session_by_its_whole_name() {
         assert_eq!(attach_args("relay-exec_2"), Some(vec!["-u".to_string(), "attach-session".into(), "-t".into(), "=relay-exec_2".into()]));
@@ -503,29 +603,29 @@ mod tests {
         let watch = |seen: Arc<M<String>>, ended: Arc<M<bool>>| move |v: serde_json::Value| {
             if let Some(d) = v["data"].as_str() {
                 let bytes = base64::engine::general_purpose::STANDARD.decode(d).unwrap();
-                seen.lock().unwrap().push_str(&String::from_utf8_lossy(&bytes));
+                crate::locking::lock(&seen, "seen").push_str(&String::from_utf8_lossy(&bytes));
             }
             if v["end"] == true {
-                *ended.lock().unwrap() = true;
+                *crate::locking::lock(&ended, "ended") = true;
             }
         };
         let target = Target::Session(&name);
         let out = watch(seen.clone(), ended.clone());
         once("ex", 80, 12, || launch("ex", &target, None, 80, 12, out)).unwrap();
-        let attached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).lines().count() == 1 && !seen.lock().unwrap().is_empty());
+        let attached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).lines().count() == 1 && !crate::locking::lock(&seen, "seen").is_empty());
         write("ex", "typed into the executor\r").unwrap();
         let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("typed into the executor"));
         let elsewhere = tmux(&["capture-pane", "-p", "-t", &other]);
         close("ex");
         let detached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).trim().is_empty());
-        let heard_end = until(|| *ended.lock().unwrap());
+        let heard_end = until(|| *crate::locking::lock(&ended, "ended"));
         let after = tmux(&["list-sessions", "-F", "#{session_name}"]);
         // Its session gone: a session that only starts with its name is never attached instead.
         tmux(&["kill-session", "-t", &format!("={name}")]);
         let (seen2, ended2) = (Arc::new(M::new(String::new())), Arc::new(M::new(false)));
         let out2 = watch(seen2.clone(), ended2.clone());
         let r = once("ex2", 80, 12, || launch("ex2", &target, None, 80, 12, out2));
-        let gone_ends = r.is_ok() && until(|| *ended2.lock().unwrap());
+        let gone_ends = r.is_ok() && until(|| *crate::locking::lock(&ended2, "ended2"));
         let longer_clients = tmux(&["list-clients", "-t", &format!("={longer}"), "-F", "#{client_name}"]);
         close("ex2");
         tmux(&["kill-session", "-t", &format!("={longer}")]);
@@ -534,7 +634,7 @@ mod tests {
         assert!(!elsewhere.contains("typed into the executor"), "and nothing else: {elsewhere:?}");
         assert!(detached && heard_end, "closing ends the client");
         assert!(after.lines().any(|l| l == name), "its session keeps running: {after:?}");
-        assert!(gone_ends, "a session that's gone ends the terminal: {:?}", seen2.lock().unwrap());
+        assert!(gone_ends, "a session that's gone ends the terminal: {:?}", crate::locking::lock(&seen2, "seen2"));
         assert!(longer_clients.trim().is_empty(), "never the longer-named session: {longer_clients:?}");
     }
 
@@ -558,25 +658,25 @@ mod tests {
         open_with("t", &pane, None, 80, 12, move |v| {
             if let Some(d) = v["data"].as_str() {
                 let bytes = base64::engine::general_purpose::STANDARD.decode(d).unwrap();
-                s2.lock().unwrap().push_str(&String::from_utf8_lossy(&bytes));
+                crate::locking::lock(&s2, "s2").push_str(&String::from_utf8_lossy(&bytes));
             }
             if v["end"] == true {
-                *e2.lock().unwrap() = true;
+                *crate::locking::lock(&e2, "e2") = true;
             }
         })
         .unwrap();
         // Its viewer is up (it has drawn something) before anything is typed into it.
-        let views_open = until(|| tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")) && !seen.lock().unwrap().is_empty());
+        let views_open = until(|| tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")) && !crate::locking::lock(&seen, "seen").is_empty());
         write("t", "hello from cue\r").unwrap();
-        let shown = until(|| seen.lock().unwrap().contains("hello from cue"));
+        let shown = until(|| crate::locking::lock(&seen, "seen").contains("hello from cue"));
         let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("hello from cue"));
         close("t");
         let views_gone = until(|| !tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")));
-        let heard_end = until(|| *ended.lock().unwrap());
+        let heard_end = until(|| *crate::locking::lock(&ended, "ended"));
         let after = tmux(&["list-sessions", "-F", "#{session_name}"]);
         tmux(&["kill-session", "-t", &name]);
         assert!(views_open, "a viewer of Cue's own while open");
-        assert!(shown, "it shows what the session prints: {:?}", seen.lock().unwrap());
+        assert!(shown, "it shows what the session prints: {:?}", crate::locking::lock(&seen, "seen"));
         assert!(reached, "what you type reaches the session");
         assert!(views_gone, "the viewer is gone once closed: {after:?}");
         assert!(after.lines().any(|l| l == name), "the session keeps running: {after:?}");
@@ -613,11 +713,11 @@ mod perf {
             let t0 = Instant::now();
             open_with("p", &pane, Some(&host), 80, 12, move |v| {
                 if let Some(d) = v["data"].as_str() {
-                    s2.lock().unwrap().push_str(&String::from_utf8_lossy(&base64::engine::general_purpose::STANDARD.decode(d).unwrap()));
+                    crate::locking::lock(&s2, "s2").push_str(&String::from_utf8_lossy(&base64::engine::general_purpose::STANDARD.decode(d).unwrap()));
                 }
             })
             .unwrap();
-            while !seen.lock().unwrap().contains(&mark) && t0.elapsed() < Duration::from_secs(15) {
+            while !crate::locking::lock(&seen, "seen").contains(&mark) && t0.elapsed() < Duration::from_secs(15) {
                 std::thread::sleep(Duration::from_millis(5));
             }
             opens.push(t0.elapsed().as_millis());

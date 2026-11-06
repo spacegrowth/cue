@@ -1,5 +1,6 @@
 //! Settings, updates, links, images and drafts: the window's commands that aren't about one session.
 
+use super::{blocking, with_hub};
 use crate::config;
 use crate::db;
 use crate::notify;
@@ -16,20 +17,22 @@ use crate::ext;
 #[tauri::command]
 pub(crate) async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, harness: String) -> Result<String, String> {
     let pi_ext = app.path().resource_dir().map_err(|e| e.to_string())?.join("pi/cue.ts");
-    let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    with_hub(&hub, move |h| {
         let done = config::connect(&harness, &pi_ext);
         h.redraw(); // Settings shows it connected
         done
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await?
 }
 
 /// Settings rows that talking from anywhere (talk.rs) and an add-on add ([{ group, tab?, rows: [{ title, sub, art?,
 /// pick? }] }], `pick`: { id, value, options: [[value, label]] }).
 #[tauri::command]
-pub(crate) fn ext_settings() -> serde_json::Value {
+pub(crate) async fn ext_settings() -> Result<serde_json::Value, String> {
+    blocking(ext_settings_rows).await
+}
+
+fn ext_settings_rows() -> serde_json::Value {
     #[cfg(feature = "ext")]
     let mut rows = ext::settings();
     #[cfg(not(feature = "ext"))]
@@ -43,12 +46,16 @@ pub(crate) fn ext_settings() -> serde_json::Value {
 
 /// One of those Settings picks changed (a row's `pick`: its `id`, the option picked).
 #[tauri::command]
-pub(crate) fn ext_set(id: String, value: String) -> Result<(), String> {
-    if crate::talk::set(&id, &value).is_ok() {
+pub(crate) async fn ext_set(id: String, value: String) -> Result<(), String> {
+    blocking(move || ext_set_now(&id, &value)).await?
+}
+
+fn ext_set_now(id: &str, value: &str) -> Result<(), String> {
+    if crate::talk::set(id, value).is_ok() {
         return Ok(());
     }
     #[cfg(feature = "ext")]
-    return ext::set(&id, &value);
+    return ext::set(id, value);
     #[cfg(not(feature = "ext"))]
     Err(format!("nothing to set {id} to {value}"))
 }
@@ -99,7 +106,7 @@ pub(crate) async fn find_update(app: &tauri::AppHandle) -> Result<Option<tauri_p
 #[tauri::command]
 pub(crate) async fn open_link(url: String) -> Result<(), String> {
     // Off the window's thread: a path on a volume that's gone can take a while to say so.
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         let target = link_target(&url)?;
         let mut open = std::process::Command::new("/usr/bin/open");
         if !is_web(&target) {
@@ -110,7 +117,7 @@ pub(crate) async fn open_link(url: String) -> Result<(), String> {
             }
         }
         open.arg(&target).spawn().map(|_| ()).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    }).await?
 }
 
 pub(crate) fn is_web(url: &str) -> bool {
@@ -212,7 +219,7 @@ pub(crate) fn percent_decoded(s: &str) -> String {
 pub(crate) async fn image_data(path: String) -> Result<String, String> {
     // Off the window's thread (a 20 MB read and its base64), and judged by what the path really is: a
     // link named .png to something else is not an image.
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         use base64::Engine;
         let p = std::path::Path::new(&path);
         if !p.is_absolute() {
@@ -228,61 +235,63 @@ pub(crate) async fn image_data(path: String) -> Result<String, String> {
         }
         let bytes = std::fs::read(&real).map_err(|e| e.to_string())?;
         Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
-    }).await.map_err(|e| e.to_string())?
+    }).await?
 }
 
 /// The agents "+ New session" can offer (installed on this Mac).
 #[tauri::command]
 pub(crate) async fn agents_installed() -> Vec<String> {
-    tauri::async_runtime::spawn_blocking(focus::agents_installed).await.unwrap_or_default()
+    blocking(focus::agents_installed).await.unwrap_or_default()
 }
 
 #[tauri::command]
-pub(crate) fn set_setting(hub: State<Arc<Hub>>, key: String, value: serde_json::Value) -> Result<(), String> {
-    hub.set_setting(&key, value)
+pub(crate) async fn set_setting(hub: State<'_, Arc<Hub>>, key: String, value: serde_json::Value) -> Result<(), String> {
+    with_hub(&hub, move |h| h.set_setting(&key, value)).await?
 }
 
 /// Text onto your clipboard, from outside a click (a terminal's copy: tmux hands it over as it happens, when
 /// the window's own clipboard can refuse it).
 #[tauri::command]
 pub(crate) async fn copy_text(text: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         use std::io::Write;
         let mut c = std::process::Command::new("/usr/bin/pbcopy").stdin(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
         c.stdin.take().ok_or("no pbcopy")?.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
         c.wait().map_err(|e| e.to_string()).map(|_| ())
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await?
 }
 
 /// Paste fallback: the clipboard's image as a data: URL, if there is one.
 #[tauri::command]
 pub(crate) async fn clipboard_image() -> Option<String> {
-    tauri::async_runtime::spawn_blocking(uploads::clipboard_image).await.ok().flatten()
+    blocking(uploads::clipboard_image).await.ok().flatten()
 }
 
 /// Settings → "Send a test notification": the same path a real alert takes, minus the agent.
 #[tauri::command]
-pub(crate) fn test_notification(app: tauri::AppHandle) -> String {
+pub(crate) async fn test_notification(app: tauri::AppHandle) -> Result<String, String> {
     use tauri_plugin_notification::NotificationExt;
-    if notify::post("cue-test", "Cue test", "If you can read this, macOS notifications work.", "") {
-        "sent: check the top right of your screen".into()
-    } else {
-        let _ = app.notification().builder().title("Cue test").body("Fallback notification (unbundled build).").show();
-        "sent (fallback: this build isn't the installed app)".into()
-    }
+    blocking(move || {
+        if notify::post("cue-test", "Cue test", "If you can read this, macOS notifications work.", "") {
+            "sent: check the top right of your screen".into()
+        } else {
+            let _ = app.notification().builder().title("Cue test").body("Fallback notification (unbundled build).").show();
+            "sent (fallback: this build isn't the installed app)".into()
+        }
+    })
+    .await
 }
 
 /// Unsent drafts, per session (saved in cue.db so a restart keeps them).
 #[tauri::command]
-pub(crate) fn get_drafts() -> serde_json::Value {
-    db::drafts()
+pub(crate) async fn get_drafts() -> Result<serde_json::Value, String> {
+    blocking(db::drafts).await
 }
 
 #[tauri::command]
-pub(crate) fn set_draft(key: String, text: String, images: serde_json::Value) {
-    db::set_draft(&key, &text, &images)
+pub(crate) async fn set_draft(key: String, text: String, images: serde_json::Value) -> Result<(), String> {
+    blocking(move || db::set_draft(&key, &text, &images)).await
 }
 
 #[cfg(test)]
