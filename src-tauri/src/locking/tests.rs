@@ -110,3 +110,11 @@ fn a_lock_a_panicking_thread_held_is_still_taken() {
     .join();
     assert_eq!(*lock(&P, "poisoned test lock"), 1);
 }
+
+#[test]
+fn a_guard_shows_what_it_locks() {
+    static S: Mutex<String> = Mutex::new(String::new());
+    let mut g = lock(&S, "show test lock");
+    g.push_str("hi");
+    assert_eq!((format!("{g:?}"), format!("{g}")), ("\"hi\"".to_string(), "hi".to_string()));
+}

@@ -95,6 +95,19 @@ impl<'a, T> Guard<'a, T> {
     }
 }
 
+/// Shown as what's locked, as `MutexGuard` is (an assert's message can print a locked value).
+impl<T: std::fmt::Debug> std::fmt::Debug for Guard<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&*self.inner, f)
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for Guard<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&*self.inner, f)
+    }
+}
+
 impl<T> std::ops::Deref for Guard<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {
