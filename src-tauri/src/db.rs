@@ -16,8 +16,10 @@ use std::sync::Mutex;
 
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 
-/// The longest a statement waits for another connection's write to finish.
-const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// The longest a statement waits for another connection's write to finish. Half the two seconds after
+/// which a wait for a lock is reported (locking.rs): threads queued on DB behind such a wait get it well
+/// before then, so an outside write never reads as a lock bug in locks.log.
+const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS sessions (

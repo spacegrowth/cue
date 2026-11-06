@@ -14,12 +14,12 @@ pub(super) struct Shown(RwLock<(u64, Option<Arc<Value>>)>);
 impl Shown {
     /// The last snapshot, if one is current. Held for no longer than it takes to clone an `Arc`.
     pub(super) fn get(&self) -> Option<Arc<Value>> {
-        self.0.read().unwrap_or_else(|e| e.into_inner()).1.clone()
+        crate::locking::read(&self.0, "shown snapshot").1.clone()
     }
 
     /// `snap`, taken from the store at `seq`: kept unless a later one (or a later `forget`) is already in.
     pub(super) fn put(&self, seq: u64, snap: Arc<Value>) {
-        let mut cur = self.0.write().unwrap_or_else(|e| e.into_inner());
+        let mut cur = crate::locking::write(&self.0, "shown snapshot");
         if seq > cur.0 {
             *cur = (seq, Some(snap));
         }
@@ -28,7 +28,7 @@ impl Shown {
     /// The store changed after `seq` and nobody built the new state (no window to send it to): nothing taken
     /// at or before `seq` is current any more, and the next ask builds it.
     pub(super) fn forget(&self, seq: u64) {
-        let mut cur = self.0.write().unwrap_or_else(|e| e.into_inner());
+        let mut cur = crate::locking::write(&self.0, "shown snapshot");
         *cur = (cur.0.max(seq), None);
     }
 }
