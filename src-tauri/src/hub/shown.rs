@@ -79,7 +79,9 @@ mod tests {
         std::env::set_var("CUE_HOME", &dir);
         crate::db::reset();
         let hub = Arc::new(super::super::Hub::new(None));
+        assert!(hub.kept_state().is_none(), "nothing built yet: get_state builds it on the pool");
         assert!(hub.state()["items"].as_array().unwrap().is_empty(), "the first ask builds it");
+        assert!(hub.kept_state().is_some(), "and then it's kept: get_state answers without the pool");
         let origin = Origin { session_id: "s1".into(), harness: "claude".into(), cwd: "/x/proj".into(), ..Default::default() };
         hub.event(origin, "stopped", "Here's the fix.".into(), vec![], "");
         let after = hub.state();
@@ -91,7 +93,7 @@ mod tests {
         held.recv().unwrap();
         let before = crate::model::now_ms();
         let (h, (tx, rx)) = (hub.clone(), channel());
-        std::thread::spawn(move || tx.send(h.state()));
+        std::thread::spawn(move || tx.send(h.kept_state().expect("kept")));
         let got = rx.recv_timeout(std::time::Duration::from_millis(500)).expect("handed out without waiting for the store");
         go.send(()).unwrap();
         holder.join().unwrap();

@@ -255,8 +255,18 @@ impl Hub {
     /// The window's state as last built, or built now if nothing is current (the first ask, or after a change
     /// with no window to send it to). Its clock reads now: the window sets its clock against it.
     pub fn state(&self) -> Value {
-        let snap = self.shown.get().unwrap_or_else(|| self.snapshot());
-        let mut v = (*snap).clone();
+        self.kept_state().unwrap_or_else(|| Self::stamped(&self.snapshot()))
+    }
+
+    /// The window's state as last built, if one is current: no store, no file, nothing to wait on (one
+    /// `RwLock` read to clone an `Arc`), so it can be answered from any thread.
+    pub fn kept_state(&self) -> Option<Value> {
+        self.shown.get().map(|s| Self::stamped(&s))
+    }
+
+    /// A snapshot with its clock set to now.
+    fn stamped(snap: &Value) -> Value {
+        let mut v = snap.clone();
         v["now_ms"] = json!(now_ms());
         v
     }

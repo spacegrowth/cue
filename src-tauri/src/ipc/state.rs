@@ -7,10 +7,14 @@ use crate::model::Decision;
 use std::sync::Arc;
 use tauri::State;
 
-/// The window's state as last built (hub/shown.rs): never waits for the store.
+/// The window's state as last built (hub/shown.rs): never waits for the store, and not for the blocking
+/// pool either (busy hub calls can fill it). Only the first ask, before anything is built, builds it there.
 #[tauri::command]
 pub(crate) async fn get_state(hub: State<'_, Arc<Hub>>) -> Result<serde_json::Value, String> {
-    with_hub(&hub, |h| h.state()).await
+    match hub.kept_state() {
+        Some(v) => Ok(v),
+        None => with_hub(&hub, |h| h.state()).await,
+    }
 }
 
 #[tauri::command]

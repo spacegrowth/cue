@@ -225,7 +225,13 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
             })
             .await?;
         }
-        ClientMsg::List => send(&mut w, on_hub(&hub, |h| h.state()).await?).await?,
+        ClientMsg::List => {
+            let state = match hub.kept_state() {
+                Some(v) => v,
+                None => on_hub(&hub, |h| h.state()).await?,
+            };
+            send(&mut w, state).await?;
+        }
         ClientMsg::Respond { id, decision } => {
             let ok = on_hub(&hub, move |h| h.respond(&id, decision)).await?;
             send(&mut w, json!({"ok": ok})).await?;
