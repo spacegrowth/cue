@@ -32,6 +32,18 @@ const tick = () => new Promise((r) => setImmediate(r));
     const outcomes = await Promise.allSettled(done);
     assert.deepStrictEqual(outcomes.map((o) => o.status), ["fulfilled", "fulfilled", "rejected", "fulfilled", "fulfilled", "fulfilled"], "each caller hears its own answer");
   }
+  // Resume goes after the keystrokes sent before it, never ahead of one still waiting.
+  {
+    const b = bridge();
+    const invoke = orderedInvoke(b.call);
+    invoke("term_write", { sessionId: "s1", data: "a" });
+    invoke("term_write", { sessionId: "s1", data: "b" });
+    invoke("term_resume", { sessionId: "s1" });
+    await tick();
+    b.answer(0, "isn't responding"); await tick(); await tick();
+    b.answer(0, "isn't responding"); await tick(); await tick();
+    assert.deepStrictEqual(b.started.map((c) => c.cmd), ["term_write", "term_write", "term_resume"]);
+  }
   // Other lanes and other commands aren't held behind a stuck one: another terminal's keys, a resize, the state.
   {
     const b = bridge();

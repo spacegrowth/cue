@@ -834,7 +834,10 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .tdock.waiting .tstrip { background: color-mix(in srgb, #d99a3a 32%, var(--slab)); }
 .tdock.waiting .tlive { background: #d99a3a; }
 .tslot { height: min(360px, 42vh); padding: 4px 6px 6px 10px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
-.term-host { width: 100%; height: 100%; }
+.term-host { width: 100%; height: 100%; position: relative; }
+/* A terminal whose input stopped (chat.js termTyping): one line over its bottom edge, and Resume. */
+.term-stalled { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; background: var(--panel); color: var(--ink); font-size: 12.5px; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.term-stalled span { flex: 1; }
 .term-host .xterm-viewport { background: var(--slab) !important; }
 /* A remote executor Cue doesn't hold: its own terminal fills the pane under its packet. */
 .exec-pane .tdock { flex: 1 1 auto; min-height: 0; margin-bottom: 12px; border-radius: 12px; }
@@ -1867,7 +1870,7 @@ button.tm-chip:hover { background: var(--panel-2); }
 .pip-add, .pip-view, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
 .pip-add:hover, .pip-view:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
 .pip-slot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
-.pip-host { width: 100%; height: 100%; }
+.pip-host { width: 100%; height: 100%; position: relative; }
 .pip-host[hidden] { display: none; }
 .pip-host .xterm-viewport { background: var(--slab) !important; }
 /* The cursor blinks at Cue's 1.4s beat (the GPU renderer's is patched to match; chat.js xterm()). */

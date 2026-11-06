@@ -363,10 +363,27 @@ pub(crate) fn foreground(prefix: &str) -> Vec<(String, Option<u32>, Option<i32>)
 }
 
 /// What you typed in it (and the terminal's own replies, as xterm.js produces them). Written with no
-/// lock held, in order; a terminal that isn't reading makes this an error within input::BOUND.
-pub fn write(sid: &str, data: &str) -> Result<(), String> {
+/// lock held and no thread waiting, in order; a terminal that isn't reading makes this an error within
+/// input::BOUND, and every write after it too, until `resume`.
+pub async fn write(sid: &str, data: &str) -> Result<(), String> {
+    input_of(sid)?.write(data.as_bytes()).await
+}
+
+/// Typing into it again after a write didn't go (input.rs): what was waiting to go in is dropped.
+pub fn resume(sid: &str) -> Result<(), String> {
+    input_of(sid)?.resume();
+    Ok(())
+}
+
+/// Tests: `write`, waited for on this thread.
+#[cfg(test)]
+pub(crate) fn type_in(sid: &str, data: &str) -> Result<(), String> {
+    tauri::async_runtime::block_on(write(sid, data))
+}
+
+fn input_of(sid: &str) -> Result<Input, String> {
     let input = crate::locking::lock(open_terms(), "open_terms").open.get(sid).map(|o| o.input.clone());
-    input.ok_or("its terminal isn't open")?.write(data.as_bytes())
+    input.ok_or_else(|| "its terminal isn't open".into())
 }
 
 pub fn resize(sid: &str, cols: u16, rows: u16) -> Result<(), String> {
@@ -459,7 +476,7 @@ mod tests {
         late.join().unwrap().unwrap();
         let pid3 = crate::locking::lock(&starts, "starts")[2];
         assert!(until(|| !alive(pid3)), "nobody wanted it: ended");
-        assert!(write(&sid, "x").is_err(), "nothing open");
+        assert!(type_in(&sid, "x").is_err(), "nothing open");
     }
 
     #[test]
@@ -537,21 +554,21 @@ mod tests {
         record(&fine, sleeper(), None);
         let s = stuck.clone();
         let t0 = std::time::Instant::now();
-        let typing = std::thread::spawn(move || write(&s, "lost in a stopped client"));
+        let typing = std::thread::spawn(move || type_in(&s, "lost in a stopped client"));
         // While that write waits: the other terminal takes input, this one resizes, and opening and closing go on.
         std::thread::sleep(std::time::Duration::from_millis(100));
         let (f, s2) = (fine.clone(), stuck.clone());
-        assert_eq!(within(500, move || write(&f, "x")), Some(Ok(())), "another terminal's write isn't held");
+        assert_eq!(within(500, move || type_in(&f, "x")), Some(Ok(())), "another terminal's write isn't held");
         assert_eq!(within(500, move || resize(&s2, 30, 6)), Some(Ok(())), "a resize isn't held");
         let s3 = stuck.clone();
         assert!(within(500, move || foreground(&s3).len()) == Some(1), "the open terminals can be read");
         let err = typing.join().unwrap().unwrap_err();
         let took = t0.elapsed();
         assert!(took >= crate::terminal::input::BOUND && took < crate::terminal::input::BOUND + std::time::Duration::from_secs(1), "{took:?}");
-        assert!(err.contains("isn't taking input"), "{err}");
+        assert!(err.contains("isn't responding"), "{err}");
         // Still stopped: refused at once, not another wait.
         let s4 = stuck.clone();
-        assert!(matches!(within(300, move || write(&s4, "y")), Some(Err(_))), "refused at once while stuck");
+        assert!(matches!(within(300, move || type_in(&s4, "y")), Some(Err(_))), "refused at once while stuck");
         let s5 = stuck.clone();
         assert_eq!(within(1000, move || close(&s5)), Some(()), "closing it isn't held by the stuck write");
         assert!(until(|| !alive(stuck_pid)), "its client ended");
@@ -571,7 +588,7 @@ mod tests {
         let t0 = std::time::Instant::now();
         let mut failed = None;
         for _ in 0..256 {
-            if let Err(e) = write(&sid, &chunk) {
+            if let Err(e) = type_in(&sid, &chunk) {
                 failed = Some(e);
                 break;
             }
@@ -580,7 +597,7 @@ mod tests {
         close(&sid);
         assert!(until(|| !alive(pid)));
         let err = failed.expect("a megabyte into a pty nobody reads can't all go in");
-        assert!(err.contains("isn't taking input"), "{err}");
+        assert!(err.contains("isn't responding"), "{err}");
         assert!(took < crate::terminal::input::BOUND + std::time::Duration::from_secs(1), "{took:?}");
     }
 
@@ -613,7 +630,7 @@ mod tests {
         let out = watch(seen.clone(), ended.clone());
         once("ex", 80, 12, || launch("ex", &target, None, 80, 12, out)).unwrap();
         let attached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).lines().count() == 1 && !crate::locking::lock(&seen, "seen").is_empty());
-        write("ex", "typed into the executor\r").unwrap();
+        type_in("ex", "typed into the executor\r").unwrap();
         let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("typed into the executor"));
         let elsewhere = tmux(&["capture-pane", "-p", "-t", &other]);
         close("ex");
@@ -667,7 +684,7 @@ mod tests {
         .unwrap();
         // Its viewer is up (it has drawn something) before anything is typed into it.
         let views_open = until(|| tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")) && !crate::locking::lock(&seen, "seen").is_empty());
-        write("t", "hello from cue\r").unwrap();
+        type_in("t", "hello from cue\r").unwrap();
         let shown = until(|| crate::locking::lock(&seen, "seen").contains("hello from cue"));
         let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("hello from cue"));
         close("t");
@@ -681,7 +698,7 @@ mod tests {
         assert!(views_gone, "the viewer is gone once closed: {after:?}");
         assert!(after.lines().any(|l| l == name), "the session keeps running: {after:?}");
         assert!(heard_end, "the window hears it ended");
-        assert!(write("t", "x").is_err(), "nothing open any more");
+        assert!(type_in("t", "x").is_err(), "nothing open any more");
     }
 }
 

@@ -7,6 +7,8 @@
 /** Each ordered command's lane, from its arguments. */
 const INVOKE_LANES = {
   term_write: (a) => `term-input:${a.sessionId}`,
+  // After every write sent before it: one still waiting would otherwise go in once its input is let go again.
+  term_resume: (a) => `term-input:${a.sessionId}`,
   term_resize: (a) => `term-size:${a.sessionId}`,
   // One terminal's open and close (a shell's tab, an action's terminal: the same ids).
   term_open: (a) => `term:${a.sessionId}`,

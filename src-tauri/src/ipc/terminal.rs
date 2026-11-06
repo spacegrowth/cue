@@ -117,17 +117,25 @@ pub(crate) fn is_fullscreen(app: tauri::AppHandle) -> Result<bool, String> {
     app.get_webview_window("main").ok_or("no window")?.is_fullscreen().map_err(|e| e.to_string())
 }
 
-/// What you type in the built-in terminal: an error within 2 s when its client isn't reading (term::write).
-/// Two writes in flight at once could land in either order: the window sends a terminal's next only once
-/// the last is back (ui/invoke.js).
+/// What you type in the built-in terminal: an error within 2 s when its client isn't reading, and at once
+/// after that until term_resume (term::write). Waited for without a thread (not the blocking pool, which a
+/// busy hub can fill): a keystroke never queues behind other commands' work. Two writes in flight at once
+/// could land in either order: the window sends a terminal's next only once the last is back (ui/invoke.js).
 #[tauri::command]
 pub(crate) async fn term_write(session_id: String, data: String) -> Result<(), String> {
-    blocking(move || term::write(&session_id, &data)).await?
+    term::write(&session_id, &data).await
 }
 
+/// Typing into it again after its input stopped (term_write failed): what was waiting to go in is dropped.
+#[tauri::command]
+pub(crate) async fn term_resume(session_id: String) -> Result<(), String> {
+    term::resume(&session_id)
+}
+
+/// Its new size: two short locks (the open terminals', its pty's) and an ioctl, never waited on.
 #[tauri::command]
 pub(crate) async fn term_resize(session_id: String, cols: u16, rows: u16) -> Result<(), String> {
-    blocking(move || term::resize(&session_id, cols, rows)).await?
+    term::resize(&session_id, cols, rows)
 }
 
 /// Close it (the session keeps running). A shell's tab closed: the shell ends.

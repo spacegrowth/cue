@@ -387,6 +387,8 @@
             setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b64 } })), 150);
             return 1;
           }
+          // &stalled=1 (with ?term=1&open=term): its client stopped reading; what's typed into it isn't taken.
+          if (cmd === "term_write" && /stalled=1/.test(location.search) && !args.sessionId.startsWith("shell:")) throw "its terminal isn't responding: what you type isn't being sent until you resume it";
           // Cue's own shells (the floating terminal): a prompt that echoes what's typed, Enter a new prompt.
           if (cmd === "shell_open" || (cmd === "term_write" && args.sessionId.startsWith("shell:"))) {
             const id = args.id || args.sessionId, say = (t) => (listeners.term || []).forEach((f) => f({ payload: { sid: id, gen: 1, data: btoa(String.fromCharCode(...new TextEncoder().encode(t))) } }));
@@ -681,6 +683,7 @@
         termLast.set("relay", /wait=1/.test(q) ? "❯ 1. Yes   2. Yes, and don't ask again   3. No (esc)" : "✻ Baking… (12s) · Bash(make release)");
         setActive(null, "relay");
         if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
+        if (/stalled=1/.test(q)) setTimeout(() => ["l", "s"].forEach((k) => termObj?.input(k)), 700);
       }
       // &inspick=1 (with ?ins=1&open=relay): its hand-off insight's skill drop-up open.
       if (/inspick=1/.test(q)) setTimeout(() => insAct("ins-choose", { sid: "relay" }), 600);

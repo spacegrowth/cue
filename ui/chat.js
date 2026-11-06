@@ -292,7 +292,7 @@ async function openTerm(sid) {
   termHost.className = "term-host";
   slot.appendChild(termHost);
   ({ term: termObj, fit: termFit } = xterm(termHost));
-  termObj.onData((d) => { if (termSid) invoke("term_write", { sessionId: termSid, data: d }).catch(() => {}); });
+  termObj.onData(termTyping(termHost, sid));
   termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); });
   termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
   termWatch.observe(termHost);
@@ -384,6 +384,25 @@ function flushTerm() {
   termQueue = [];
   if (!termObj || !chunks.length) return;
   termObj.write(b64Bytes(chunks));
+}
+/** What you type into terminal `sid` (shown in `host`), on its way to it. A write that doesn't go (its client
+ *  stopped reading: a stopped tmux client, a dead SSH line) stops its input in Cue too (term::write): a line
+ *  over the terminal says so, once, and nothing typed is sent until Resume (term_resume), which drops what was
+ *  waiting to go in. Also Cue's own shells' (shells.js). */
+function termTyping(host, sid) {
+  let notice = null;
+  const stop = () => {
+    if (notice) return;
+    notice = document.createElement("div");
+    notice.className = "term-stalled";
+    notice.innerHTML = `<span>Terminal isn't responding — what you type isn't being sent.</span><button class="btn">Resume</button>`;
+    notice.querySelector("button").addEventListener("click", async () => {
+      try { await invoke("term_resume", { sessionId: sid }); notice?.remove(); notice = null; }
+      catch (e) { toast(`Couldn't resume it: ${e}`); }
+    });
+    host.appendChild(notice);
+  };
+  return (data) => { if (!notice) invoke("term_write", { sessionId: sid, data }).catch(stop); };
 }
 /** An xterm.js terminal in `host`, in Cue's colours, fitted to it: drawn on the GPU where it can be (much
  *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js).

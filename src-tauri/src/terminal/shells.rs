@@ -429,7 +429,7 @@ mod tests {
         })
         .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(300));
-        crate::terminal::term::write(&id, "echo \"at:$PWD\" \"$(cuetest)\" \"z:${ZDOTDIR-unset}\" \"lvl:$SHLVL\" \"ps:[$PS1]\"\r").unwrap();
+        crate::terminal::term::type_in(&id, "echo \"at:$PWD\" \"$(cuetest)\" \"z:${ZDOTDIR-unset}\" \"lvl:$SHLVL\" \"ps:[$PS1]\"\r").unwrap();
         until(|| seen.lock().unwrap().contains("from-rc"));
         crate::terminal::term::close(&id);
         let out = seen.lock().unwrap().clone();
@@ -496,12 +496,12 @@ mod tests {
         .unwrap();
         // Typed once it's up (its profile loaded): where it is, and a sum only a shell would work out.
         let up = until(|| !seen.lock().unwrap().is_empty());
-        crate::terminal::term::write(&id, "echo \"at:$PWD\" cue-$((40+2))\r").unwrap();
+        crate::terminal::term::type_in(&id, "echo \"at:$PWD\" cue-$((40+2))\r").unwrap();
         let answered = until(|| seen.lock().unwrap().contains("cue-42"));
         let in_folder = seen.lock().unwrap().contains(&format!("at:{dir}"));
         let idle = crate::terminal::term::foreground(PREFIX).into_iter().find(|(i, ..)| *i == id).map(|(_, p, g)| running(p, g));
         // A command running: another group in its foreground, named as ps names it.
-        crate::terminal::term::write(&id, "sleep 3\r").unwrap();
+        crate::terminal::term::type_in(&id, "sleep 3\r").unwrap();
         let mut busy = None;
         let caught = until(|| {
             busy = crate::terminal::term::foreground(PREFIX).into_iter().find(|(i, ..)| *i == id).and_then(|(_, p, g)| running(p, g));
@@ -518,7 +518,7 @@ mod tests {
         assert!(caught, "sleep running is seen");
         assert!(name.starts_with("sleep"), "named: {name:?}");
         assert!(closed, "closing it ends it");
-        assert!(crate::terminal::term::write(&id, "x").is_err(), "nothing open any more");
+        assert!(crate::terminal::term::type_in(&id, "x").is_err(), "nothing open any more");
     }
 
     #[test]
@@ -548,7 +548,7 @@ mod tests {
         let (_, in_tmux) = open_with(&id, &dir, 100, 20, tab(first.clone())).unwrap();
         until(|| !first.lock().unwrap().is_empty());
         std::thread::sleep(std::time::Duration::from_millis(300));
-        crate::terminal::term::write(&id, "echo \"at:$PWD\" cue-$((40+2)); export CUE_KEPT=still-here\r").unwrap();
+        crate::terminal::term::type_in(&id, "echo \"at:$PWD\" cue-$((40+2)); export CUE_KEPT=still-here\r").unwrap();
         let answered = until(|| first.lock().unwrap().contains("cue-42"));
         let script_gone = !std::path::Path::new(&crate::server::cue_dir().join("shell").join(format!("run-{}.sh", id.trim_start_matches(PREFIX)))).exists();
         // Cue quits: the tab's client goes, the shell doesn't.
@@ -562,7 +562,7 @@ mod tests {
         let again = Arc::new(Mutex::new(String::new()));
         open_with(&id, "/", 100, 20, tab(again.clone())).unwrap();
         let redrawn = until(|| again.lock().unwrap().contains("cue-42"));
-        crate::terminal::term::write(&id, "echo \"kept:$CUE_KEPT\"\r").unwrap();
+        crate::terminal::term::type_in(&id, "echo \"kept:$CUE_KEPT\"\r").unwrap();
         let same_shell = until(|| again.lock().unwrap().contains("kept:still-here"));
         let foreground = kept_foreground().into_iter().find(|(i, ..)| *i == id).map(|(_, p, g)| running(p, g));
         // Its tab closed: the shell ends.

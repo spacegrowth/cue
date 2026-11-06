@@ -146,7 +146,7 @@ async function attachShell(sh) {
   sh.term = term;
   sh.fit = fit;
   const id = sh.id;
-  term.onData((d) => invoke("term_write", { sessionId: id, data: d }).catch(() => {}));
+  term.onData(termTyping(sh.host, id));
   // Esc puts the peek away, unless what's in front needs it (escToShell).
   term.attachCustomKeyEventHandler((e) => {
     if (e.type !== "keydown" || e.key !== "Escape" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || escToShell(sh)) return true;
