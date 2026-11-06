@@ -8,6 +8,12 @@ use std::sync::{Arc, RwLock};
 /// The last snapshot built, if it's current, and the newest point in the store's order (`Store::shown_seq`)
 /// it accounts for: two built at once on two threads land in either order, and the older one must never
 /// replace the newer.
+///
+/// SHORTCUT: the order is the store's only. A build reads what's outside the store (transcripts, git, leads,
+/// settings, the db) before it takes its number under the store's lock, so of two builds at once, the one
+/// with the later number can carry the older outside reads, and it's the one kept until the next change or
+/// redraw. Closed by Phase 2's caches (stability-plan §2.4): the outside facts
+/// become values each with its own version, read in the same step as the store.
 #[derive(Default)]
 pub(super) struct Shown(RwLock<(u64, Option<Arc<Value>>)>);
 
