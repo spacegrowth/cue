@@ -27,3 +27,9 @@ pub(crate) use terminal::*;
 pub(crate) async fn blocking<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> Result<R, String> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())
 }
+
+/// `blocking`, with the hub: nearly every command's work is a hub call, and each takes the store's lock.
+pub(crate) async fn with_hub<R: Send + 'static>(hub: &tauri::State<'_, std::sync::Arc<crate::hub::Hub>>, f: impl FnOnce(&std::sync::Arc<crate::hub::Hub>) -> R + Send + 'static) -> Result<R, String> {
+    let h = hub.inner().clone();
+    blocking(move || f(&h)).await
+}

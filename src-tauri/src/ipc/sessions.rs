@@ -1,6 +1,6 @@
 //! A session's life: start, resume, park, close, rename, move to Cue.
 
-use super::blocking;
+use super::{blocking, with_hub};
 use crate::config;
 use crate::db;
 use crate::leads;
@@ -20,8 +20,7 @@ use crate::show_main;
 /// folder. Cue knows it at once (name and last few messages from its transcript), so it opens in Active.
 #[tauri::command]
 pub(crate) async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
-    let h = hub.inner().clone();
-    let res = blocking(move || resume_older(&h, &session_id)).await?;
+    let res = with_hub(&hub, move |h| resume_older(&h, &session_id)).await?;
     // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -57,8 +56,7 @@ pub(crate) fn open_for_resume(line: &str, cwd: &str, name: &str) -> Result<focus
 /// something, and not one relay runs.
 #[tauri::command]
 pub(crate) async fn park_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    let h = hub.inner().clone();
-    blocking(move || park(&h, &session_id)).await?
+    with_hub(&hub, move |h| park(&h, &session_id)).await?
 }
 
 pub(crate) fn park(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
@@ -104,9 +102,8 @@ fn wait_for_end(h: &Hub, session_id: &str) {
 /// the message goes on that command line, so the agent starts on it once the conversation is loaded.
 #[tauri::command]
 pub(crate) async fn resume_parked(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<String, String> {
-    let h = hub.inner().clone();
     let message = message.unwrap_or_default();
-    let res = blocking(move || resume_parked_session(&h, &session_id, &message)).await?;
+    let res = with_hub(&hub, move |h| resume_parked_session(&h, &session_id, &message)).await?;
     // Cue stays in front: a terminal tab may have opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -130,8 +127,8 @@ pub(crate) fn resume_parked_session(h: &Arc<Hub>, session_id: &str, message: &st
 /// Closed, in the Parked drawer: sessions that ended in the last 30 days (at most 30), newest first,
 /// not parked and not running again. To find the ones that got lost (an agent that exited, a tab closed).
 #[tauri::command]
-pub(crate) fn closed_sessions(hub: State<Arc<Hub>>) -> Vec<serde_json::Value> {
-    hub.closed(CLOSED_DAYS * 24 * 3600 * 1000, CLOSED_MAX)
+pub(crate) async fn closed_sessions(hub: State<'_, Arc<Hub>>) -> Result<Vec<serde_json::Value>, String> {
+    with_hub(&hub, |h| h.closed(CLOSED_DAYS * 24 * 3600 * 1000, CLOSED_MAX)).await
 }
 
 pub(crate) const CLOSED_DAYS: u64 = 30;
@@ -140,9 +137,8 @@ pub(crate) const CLOSED_MAX: usize = 30;
 /// Resume a closed session, as a parked one resumes: its agent's resume command, its record back.
 #[tauri::command]
 pub(crate) async fn resume_closed(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<String, String> {
-    let h = hub.inner().clone();
     let message = message.unwrap_or_default();
-    let res = blocking(move || {
+    let res = with_hub(&hub, move |h| {
         let p = closed_record(&h, &session_id)?;
         resume_record(&h, p, &message)
     }).await?;
@@ -154,10 +150,13 @@ pub(crate) async fn resume_closed(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
 
 /// Park a closed session: kept under Parked (nothing to stop, it has ended already).
 #[tauri::command]
-pub(crate) fn park_closed(hub: State<Arc<Hub>>, session_id: String) -> Result<(), String> {
-    let p = closed_record(hub.inner(), &session_id)?;
-    hub.add_parked(p.session);
-    Ok(())
+pub(crate) async fn park_closed(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    with_hub(&hub, move |h| {
+        let p = closed_record(h, &session_id)?;
+        h.add_parked(p.session);
+        Ok(())
+    })
+    .await?
 }
 
 /// A closed session's saved record, if it can be brought back: ended, not live again, an agent Cue resumes.
@@ -202,22 +201,23 @@ pub(crate) fn resume_record(h: &Arc<Hub>, p: crate::sessions::Parked, message: &
 
 /// Unpark: take it off Parked without resuming it. Its conversation stays in History and search.
 #[tauri::command]
-pub(crate) fn unpark_session(hub: State<Arc<Hub>>, session_id: String) {
-    hub.take_parked(&session_id);
+pub(crate) async fn unpark_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
+    with_hub(&hub, move |h| {
+        h.take_parked(&session_id);
+    })
+    .await
 }
 
 /// Rename a session (Cue, and the agent where it can be told). Typing into a terminal blocks: off the UI thread.
 #[tauri::command]
 pub(crate) async fn rename_session(hub: State<'_, Arc<Hub>>, session_id: String, name: String) -> Result<String, String> {
-    let h = hub.inner().clone();
-    blocking(move || h.rename(&session_id, &name)).await?
+    with_hub(&hub, move |h| h.rename(&session_id, &name)).await?
 }
 
 /// Open a session Cue hasn't heard from yet in Cue: its chat and message box, not only its tab.
 #[tauri::command]
 pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    let h = hub.inner().clone();
-    blocking(move || h.adopt(&session_id)).await?
+    with_hub(&hub, move |h| h.adopt(&session_id)).await?
 }
 
 /// Close a session from the Sessions view: an executor through relay / pilead (they mark it closed and
@@ -226,8 +226,7 @@ pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) 
 /// Never while it works or asks you something.
 #[tauri::command]
 pub(crate) async fn close_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    let h = hub.inner().clone();
-    blocking(move || end_session(&h, &session_id)).await?
+    with_hub(&hub, move |h| end_session(&h, &session_id)).await?
 }
 
 /// The work behind Close. Blocking: it ends a process and closes a tab.
@@ -268,8 +267,7 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
 /// Cue forgets everything it kept of it, and its conversation file goes, so it can't be resumed.
 #[tauri::command]
 pub(crate) async fn delete_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    let h = hub.inner().clone();
-    blocking(move || delete(&h, &session_id)).await?
+    with_hub(&hub, move |h| delete(&h, &session_id)).await?
 }
 
 pub(crate) fn delete(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
@@ -357,9 +355,8 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
 pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>) -> Result<serde_json::Value, String> {
-    let h = hub.inner().clone();
     let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default() };
-    let res = blocking(move || start_session_with(&h, &agent, &cwd, &message, &name, &opts))
+    let res = with_hub(&hub, move |h| start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await?;
     // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
@@ -456,8 +453,7 @@ fn paths_of(saved: &[crate::uploads::Saved]) -> Vec<String> {
 /// when there is one, is its first. The session itself goes on untouched. Returns the fork's id.
 #[tauri::command]
 pub(crate) async fn fork_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: String) -> Result<serde_json::Value, String> {
-    let h = hub.inner().clone();
-    let res = blocking(move || fork(&h, &session_id, &message)).await?;
+    let res = with_hub(&hub, move |h| fork(&h, &session_id, &message)).await?;
     // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -559,9 +555,8 @@ mod fork_tests {
 /// (its tmux pane, here or on a machine): Claude Code lists "No, exit" first, so a blind Enter would end it.
 #[tauri::command]
 pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
-    let h = hub.inner().clone();
-    blocking(move || {
+    with_hub(&hub, move |h| {
+        let origin = h.session_origin(&session_id).ok_or("that session is gone")?;
         if origin.tmux_pane.is_empty() {
             return Err("Cue can't see its terminal".into());
         }
@@ -588,9 +583,8 @@ pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -
 /// notes … Press Enter to continue…"): Enter, only while that screen is still there. Only from your click.
 #[tauri::command]
 pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
-    let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
-    let h = hub.inner().clone();
-    blocking(move || {
+    with_hub(&hub, move |h| {
+        let origin = h.session_origin(&session_id).ok_or("that session is gone")?;
         if origin.tmux_pane.is_empty() {
             return Err("Cue can't see its terminal".into());
         }
@@ -648,8 +642,7 @@ pub(crate) async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String
 /// whole (claude --resume), but anything mid-turn would be cut off. Shell state in the old tab is gone.
 #[tauri::command]
 pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    let h = hub.inner().clone();
-    blocking(move || move_session_to_cue(&h, &session_id)).await?
+    with_hub(&hub, move |h| move_session_to_cue(&h, &session_id)).await?
 }
 
 pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {

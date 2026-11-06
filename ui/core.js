@@ -1,6 +1,5 @@
-// Cue UI core — the Tauri bridge, the window's state, and the helpers every view shares (formatting, markdown, names, crews, caches).
+// Cue UI core — the Tauri bridge (its invoke, kept in order: invoke.js), the window's state, and the helpers every view shares (formatting, markdown, names, crews, caches).
 const T = window.__TAURI__;
-const invoke = T.core.invoke;
 
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
 let clockSkew = 0;          // backend clock − browser clock, so bars line up with the backend's timestamps

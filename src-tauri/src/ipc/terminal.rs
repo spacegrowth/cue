@@ -1,6 +1,6 @@
 //! The built-in terminal, a session's screen and keys, and dictation.
 
-use super::blocking;
+use super::{blocking, with_hub};
 use crate::leads;
 use crate::model;
 use crate::terminal::focus;
@@ -9,37 +9,36 @@ use crate::terminal::term;
 use crate::terminal::dictation;
 use crate::hub::Hub;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
-/// The mic button: start or stop dictating (words arrive as "dictation" events).
+/// The mic button: start or stop dictating (words arrive as "dictation" events). Starting starts a helper.
 #[tauri::command]
-pub(crate) fn dictate_start(app: tauri::AppHandle, d: State<dictation::Dictation>) -> Result<(), String> {
-    dictation::start(app, &d)
+pub(crate) async fn dictate_start(app: tauri::AppHandle) -> Result<(), String> {
+    blocking(move || dictation::start(app.clone(), &app.state::<dictation::Dictation>())).await?
 }
 
 #[tauri::command]
-pub(crate) fn dictate_stop(d: State<dictation::Dictation>) {
-    dictation::stop(&d)
+pub(crate) async fn dictate_stop(app: tauri::AppHandle) -> Result<(), String> {
+    blocking(move || dictation::stop(&app.state::<dictation::Dictation>())).await
 }
 
-/// Listen's natural voices: a line to cue-speak (its lines come back as "speak" events).
+/// Listen's natural voices: a line to cue-speak (its lines come back as "speak" events), written to its
+/// stdin (a pipe, which waits while the helper is busy).
 #[tauri::command]
-pub(crate) fn speak_send(app: tauri::AppHandle, s: State<crate::terminal::speak::Speak>, line: serde_json::Value) -> Result<(), String> {
-    crate::terminal::speak::send(app, &s, &line)
+pub(crate) async fn speak_send(app: tauri::AppHandle, line: serde_json::Value) -> Result<(), String> {
+    blocking(move || crate::terminal::speak::send(app.clone(), &app.state::<crate::terminal::speak::Speak>(), &line)).await?
 }
 
 /// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
 #[tauri::command]
 pub(crate) async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    let o = tmux_origin_of(&hub, &session_id)?;
-    blocking(move || focus::session_screen(&o)).await?
+    with_hub(&hub, move |h| focus::session_screen(&tmux_origin_of(h, &session_id)?)).await?
 }
 
 /// Keys pressed in that view (↑ ↓ Enter Esc 1 2 3…). Only from your click.
 #[tauri::command]
 pub(crate) async fn session_keys(hub: State<'_, Arc<Hub>>, session_id: String, keys: Vec<String>) -> Result<(), String> {
-    let o = tmux_origin_of(&hub, &session_id)?;
-    blocking(move || focus::tmux_keys(&o, &keys)).await?
+    with_hub(&hub, move |h| focus::tmux_keys(&tmux_origin_of(h, &session_id)?, &keys)).await?
 }
 
 /// Where a session is, for the commands that only work in tmux (on this Mac or a machine).
@@ -56,11 +55,11 @@ pub(crate) fn tmux_origin_of(hub: &Hub, session_id: &str) -> Result<model::Origi
 pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, cols: u16, rows: u16) -> Result<u64, String> {
     // A relay / pi-lead executor on a machine, in a tmux session of its own: that session, whatever
     // pane Cue has on record for it (and whether or not Cue holds it at all). Never its lead's.
-    if let Some((machine, name)) = leads::exec_tmux(&session_id) {
-        return blocking(move || term::open_attached(app, &session_id, &machine, &name, cols, rows)).await?;
-    }
-    let o = tmux_origin_of(&hub, &session_id)?;
-    blocking(move || term::open(app, &session_id, &o, cols, rows)).await?
+    with_hub(&hub, move |h| match leads::exec_tmux(&session_id) {
+        Some((machine, name)) => term::open_attached(app, &session_id, &machine, &name, cols, rows),
+        None => term::open(app, &session_id, &tmux_origin_of(h, &session_id)?, cols, rows),
+    })
+    .await?
 }
 
 /// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that
@@ -95,10 +94,12 @@ pub(crate) async fn shell_clear(id: String) -> Result<(), String> {
     blocking(move || shells::clear(&id)).await?
 }
 
+// The three window commands below stay sync, on the window's thread: they only ask the window itself
+// (AppKit's, main-thread work Tauri would send there anyway) and take no lock of Cue's.
+
 /// ⌘W outside Cue's terminal: the window hides, as closing it does (Cue keeps running).
 #[tauri::command]
 pub(crate) fn hide_window(app: tauri::AppHandle) {
-    use tauri::Manager;
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
     }
@@ -107,33 +108,36 @@ pub(crate) fn hide_window(app: tauri::AppHandle) {
 /// Esc in full screen: the window leaves it (the board follows, as it does for ⌃⌘F).
 #[tauri::command]
 pub(crate) fn set_fullscreen(app: tauri::AppHandle, on: bool) -> Result<(), String> {
-    use tauri::Manager;
     app.get_webview_window("main").ok_or("no window")?.set_fullscreen(on).map_err(|e| e.to_string())
 }
 
 /// Whether the window is full screen, which the board follows (⌃⌘F, the green button, View → Enter Full Screen).
 #[tauri::command]
 pub(crate) fn is_fullscreen(app: tauri::AppHandle) -> Result<bool, String> {
-    use tauri::Manager;
     app.get_webview_window("main").ok_or("no window")?.is_fullscreen().map_err(|e| e.to_string())
 }
 
-/// What you type in the built-in terminal.
+/// What you type in the built-in terminal: an error within 2 s when its client isn't reading (term::write).
+/// Two writes in flight at once could land in either order: the window sends a terminal's next only once
+/// the last is back (ui/invoke.js).
 #[tauri::command]
-pub(crate) fn term_write(session_id: String, data: String) -> Result<(), String> {
-    term::write(&session_id, &data)
+pub(crate) async fn term_write(session_id: String, data: String) -> Result<(), String> {
+    blocking(move || term::write(&session_id, &data)).await?
 }
 
 #[tauri::command]
-pub(crate) fn term_resize(session_id: String, cols: u16, rows: u16) -> Result<(), String> {
-    term::resize(&session_id, cols, rows)
+pub(crate) async fn term_resize(session_id: String, cols: u16, rows: u16) -> Result<(), String> {
+    blocking(move || term::resize(&session_id, cols, rows)).await?
 }
 
 /// Close it (the session keeps running). A shell's tab closed: the shell ends.
 #[tauri::command]
-pub(crate) fn term_close(session_id: String) {
-    if session_id.starts_with(shells::PREFIX) {
-        return shells::close(&session_id);
-    }
-    term::close(&session_id);
+pub(crate) async fn term_close(session_id: String) -> Result<(), String> {
+    blocking(move || {
+        if session_id.starts_with(shells::PREFIX) {
+            return shells::close(&session_id);
+        }
+        term::close(&session_id);
+    })
+    .await
 }

@@ -5,26 +5,32 @@ use crate::machines;
 
 /// + New → Machine: the machines you added, to run sessions on over SSH.
 #[tauri::command]
-pub(crate) fn machines_list() -> Vec<machines::Machine> {
-    machines::list()
+pub(crate) async fn machines_list() -> Result<Vec<machines::Machine>, String> {
+    blocking(machines::list).await
 }
 
 #[tauri::command]
-pub(crate) fn machine_add(host: String, name: String) -> Result<machines::Machine, String> {
-    let m = machines::add(&host, &name)?;
-    machines::hooks::watch(&m);
-    Ok(m)
+pub(crate) async fn machine_add(host: String, name: String) -> Result<machines::Machine, String> {
+    blocking(move || {
+        let m = machines::add(&host, &name)?;
+        machines::hooks::watch(&m);
+        Ok(m)
+    })
+    .await?
 }
 
 #[tauri::command]
-pub(crate) fn machine_rename(name: String, label: String) -> Result<machines::Machine, String> {
-    machines::rename(&name, &label)
+pub(crate) async fn machine_rename(name: String, label: String) -> Result<machines::Machine, String> {
+    blocking(move || machines::rename(&name, &label)).await?
 }
 
 #[tauri::command]
-pub(crate) fn machine_remove(name: String) -> Result<(), String> {
-    machines::hooks::unwatch(&name);
-    machines::remove(&name)
+pub(crate) async fn machine_remove(name: String) -> Result<(), String> {
+    blocking(move || {
+        machines::hooks::unwatch(&name);
+        machines::remove(&name)
+    })
+    .await?
 }
 
 /// Set up Cue's hooks there, for the agents its check found (never installing any): what it did.
