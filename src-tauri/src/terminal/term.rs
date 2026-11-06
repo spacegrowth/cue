@@ -422,7 +422,7 @@ mod tests {
         c.arg("30");
         let child = pair.slave.spawn_command(c).map_err(|e| e.to_string())?;
         drop(pair.slave);
-        starts.lock().unwrap().push(child.process_id().unwrap_or(0));
+        crate::locking::lock(&starts, "starts").push(child.process_id().unwrap_or(0));
         Ok((next_gen(), Open::new("fake", pair.master, child)?))
     }
 
@@ -440,14 +440,14 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let second = std::thread::spawn(move || once(&b, 20, 4, || fake(&s2, 400)));
         let (g1, g2) = (first.join().unwrap().unwrap(), second.join().unwrap().unwrap());
-        assert_eq!(starts.lock().unwrap().len(), 1, "one client, not two");
+        assert_eq!(crate::locking::lock(&starts, "starts").len(), 1, "one client, not two");
         assert_eq!(g1, g2, "the second joined the first");
-        let pid1 = starts.lock().unwrap()[0];
+        let pid1 = crate::locking::lock(&starts, "starts")[0];
         assert!(alive(pid1), "the client runs");
         // Opened again once it's open (it ended, say): the old client is ended, the new one recorded.
         let g3 = once(&sid, 20, 4, || fake(&starts, 0)).unwrap();
         assert_ne!(g3, g1);
-        let pid2 = starts.lock().unwrap()[1];
+        let pid2 = crate::locking::lock(&starts, "starts")[1];
         assert!(until(|| !alive(pid1)), "the replaced client is gone");
         assert!(alive(pid2), "the new one runs");
         // Closed while an opening is in flight: that opening ends its own client when it lands.
@@ -458,7 +458,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(100));
         close(&sid);
         late.join().unwrap().unwrap();
-        let pid3 = starts.lock().unwrap()[2];
+        let pid3 = crate::locking::lock(&starts, "starts")[2];
         assert!(until(|| !alive(pid3)), "nobody wanted it: ended");
         assert!(write(&sid, "x").is_err(), "nothing open");
     }
@@ -604,29 +604,29 @@ mod tests {
         let watch = |seen: Arc<M<String>>, ended: Arc<M<bool>>| move |v: serde_json::Value| {
             if let Some(d) = v["data"].as_str() {
                 let bytes = base64::engine::general_purpose::STANDARD.decode(d).unwrap();
-                seen.lock().unwrap().push_str(&String::from_utf8_lossy(&bytes));
+                crate::locking::lock(&seen, "seen").push_str(&String::from_utf8_lossy(&bytes));
             }
             if v["end"] == true {
-                *ended.lock().unwrap() = true;
+                *crate::locking::lock(&ended, "ended") = true;
             }
         };
         let target = Target::Session(&name);
         let out = watch(seen.clone(), ended.clone());
         once("ex", 80, 12, || launch("ex", &target, None, 80, 12, out)).unwrap();
-        let attached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).lines().count() == 1 && !seen.lock().unwrap().is_empty());
+        let attached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).lines().count() == 1 && !crate::locking::lock(&seen, "seen").is_empty());
         write("ex", "typed into the executor\r").unwrap();
         let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("typed into the executor"));
         let elsewhere = tmux(&["capture-pane", "-p", "-t", &other]);
         close("ex");
         let detached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).trim().is_empty());
-        let heard_end = until(|| *ended.lock().unwrap());
+        let heard_end = until(|| *crate::locking::lock(&ended, "ended"));
         let after = tmux(&["list-sessions", "-F", "#{session_name}"]);
         // Its session gone: a session that only starts with its name is never attached instead.
         tmux(&["kill-session", "-t", &format!("={name}")]);
         let (seen2, ended2) = (Arc::new(M::new(String::new())), Arc::new(M::new(false)));
         let out2 = watch(seen2.clone(), ended2.clone());
         let r = once("ex2", 80, 12, || launch("ex2", &target, None, 80, 12, out2));
-        let gone_ends = r.is_ok() && until(|| *ended2.lock().unwrap());
+        let gone_ends = r.is_ok() && until(|| *crate::locking::lock(&ended2, "ended2"));
         let longer_clients = tmux(&["list-clients", "-t", &format!("={longer}"), "-F", "#{client_name}"]);
         close("ex2");
         tmux(&["kill-session", "-t", &format!("={longer}")]);
@@ -635,7 +635,7 @@ mod tests {
         assert!(!elsewhere.contains("typed into the executor"), "and nothing else: {elsewhere:?}");
         assert!(detached && heard_end, "closing ends the client");
         assert!(after.lines().any(|l| l == name), "its session keeps running: {after:?}");
-        assert!(gone_ends, "a session that's gone ends the terminal: {:?}", seen2.lock().unwrap());
+        assert!(gone_ends, "a session that's gone ends the terminal: {:?}", crate::locking::lock(&seen2, "seen2"));
         assert!(longer_clients.trim().is_empty(), "never the longer-named session: {longer_clients:?}");
     }
 
@@ -659,25 +659,25 @@ mod tests {
         open_with("t", &pane, None, 80, 12, move |v| {
             if let Some(d) = v["data"].as_str() {
                 let bytes = base64::engine::general_purpose::STANDARD.decode(d).unwrap();
-                s2.lock().unwrap().push_str(&String::from_utf8_lossy(&bytes));
+                crate::locking::lock(&s2, "s2").push_str(&String::from_utf8_lossy(&bytes));
             }
             if v["end"] == true {
-                *e2.lock().unwrap() = true;
+                *crate::locking::lock(&e2, "e2") = true;
             }
         })
         .unwrap();
         // Its viewer is up (it has drawn something) before anything is typed into it.
-        let views_open = until(|| tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")) && !seen.lock().unwrap().is_empty());
+        let views_open = until(|| tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")) && !crate::locking::lock(&seen, "seen").is_empty());
         write("t", "hello from cue\r").unwrap();
-        let shown = until(|| seen.lock().unwrap().contains("hello from cue"));
+        let shown = until(|| crate::locking::lock(&seen, "seen").contains("hello from cue"));
         let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("hello from cue"));
         close("t");
         let views_gone = until(|| !tmux(&["list-sessions", "-F", "#{session_name}"]).lines().any(|l| l.starts_with("cue-view-")));
-        let heard_end = until(|| *ended.lock().unwrap());
+        let heard_end = until(|| *crate::locking::lock(&ended, "ended"));
         let after = tmux(&["list-sessions", "-F", "#{session_name}"]);
         tmux(&["kill-session", "-t", &name]);
         assert!(views_open, "a viewer of Cue's own while open");
-        assert!(shown, "it shows what the session prints: {:?}", seen.lock().unwrap());
+        assert!(shown, "it shows what the session prints: {:?}", crate::locking::lock(&seen, "seen"));
         assert!(reached, "what you type reaches the session");
         assert!(views_gone, "the viewer is gone once closed: {after:?}");
         assert!(after.lines().any(|l| l == name), "the session keeps running: {after:?}");
@@ -714,11 +714,11 @@ mod perf {
             let t0 = Instant::now();
             open_with("p", &pane, Some(&host), 80, 12, move |v| {
                 if let Some(d) = v["data"].as_str() {
-                    s2.lock().unwrap().push_str(&String::from_utf8_lossy(&base64::engine::general_purpose::STANDARD.decode(d).unwrap()));
+                    crate::locking::lock(&s2, "s2").push_str(&String::from_utf8_lossy(&base64::engine::general_purpose::STANDARD.decode(d).unwrap()));
                 }
             })
             .unwrap();
-            while !seen.lock().unwrap().contains(&mark) && t0.elapsed() < Duration::from_secs(15) {
+            while !crate::locking::lock(&seen, "seen").contains(&mark) && t0.elapsed() < Duration::from_secs(15) {
                 std::thread::sleep(Duration::from_millis(5));
             }
             opens.push(t0.elapsed().as_millis());

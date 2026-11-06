@@ -138,7 +138,7 @@ pub(crate) mod tests {
         go.send(()).unwrap();
         drop(go);
         input.write(b"c").unwrap();
-        assert_eq!(*got.lock().unwrap(), b"ac".to_vec());
+        assert_eq!(*crate::locking::lock(&got, "got"), b"ac".to_vec());
     }
 
     #[test]
@@ -151,6 +151,6 @@ pub(crate) mod tests {
         for k in &typed {
             input.write(k.as_bytes()).unwrap();
         }
-        assert_eq!(String::from_utf8(got.lock().unwrap().clone()).unwrap(), typed.concat());
+        assert_eq!(String::from_utf8(crate::locking::lock(&got, "got").clone()).unwrap(), typed.concat());
     }
 }
