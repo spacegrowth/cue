@@ -229,7 +229,7 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
                 hub.set_cost(&session_id, c);
             }
         }
-        ClientMsg::List => send(&mut w, hub.snapshot()).await?,
+        ClientMsg::List => send(&mut w, hub.state()).await?,
         ClientMsg::Respond { id, decision } => {
             let ok = hub.respond(&id, decision);
             send(&mut w, json!({"ok": ok})).await?;

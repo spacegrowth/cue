@@ -8,7 +8,7 @@ use tauri::State;
 
 #[tauri::command]
 pub(crate) fn get_state(hub: State<Arc<Hub>>) -> serde_json::Value {
-    hub.snapshot()
+    hub.state()
 }
 
 #[tauri::command]
