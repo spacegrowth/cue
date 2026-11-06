@@ -283,6 +283,11 @@ impl Hub {
         let tasks = crate::tasks::view();
         let tasks_spent = crate::tasks::spent();
         let status_spent = crate::statuslist::spent();
+        // Settings ask macOS (Login Items, a round trip to its service manager that can take seconds) and read
+        // files: before the hub's lock too, or typing into a session waits behind them.
+        let settings = crate::config::effective();
+        let connections = crate::config::connections();
+        let usage_file = crate::usage_file::read();
         let mut st = self.st();
         let reviews = Self::reviews_view(&mut st);
         // A session restarting stays in its place: its record from before while its agent is down, and
@@ -323,10 +328,10 @@ impl Hub {
             "about": about,
             "window_ms": crate::sessions::WINDOW_MS,
             "now_ms": now_ms(),
-            "settings": crate::config::effective(),
-            "connections": crate::config::connections(),
+            "settings": settings,
+            "connections": connections,
             "usage": st.rates,
-            "usage_file": crate::usage_file::read(),
+            "usage_file": usage_file,
         });
         drop(st);
         put_projects(&mut snap, &put);
