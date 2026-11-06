@@ -1,5 +1,6 @@
 //! A session's life: start, resume, park, close, rename, move to Cue.
 
+use super::blocking;
 use crate::config;
 use crate::db;
 use crate::leads;
@@ -20,7 +21,7 @@ use crate::show_main;
 #[tauri::command]
 pub(crate) async fn resume_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    let res = tauri::async_runtime::spawn_blocking(move || resume_older(&h, &session_id)).await.map_err(|e| e.to_string())?;
+    let res = blocking(move || resume_older(&h, &session_id)).await?;
     // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -57,7 +58,7 @@ pub(crate) fn open_for_resume(line: &str, cwd: &str, name: &str) -> Result<focus
 #[tauri::command]
 pub(crate) async fn park_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || park(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || park(&h, &session_id)).await?
 }
 
 pub(crate) fn park(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
@@ -105,7 +106,7 @@ fn wait_for_end(h: &Hub, session_id: &str) {
 pub(crate) async fn resume_parked(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<String, String> {
     let h = hub.inner().clone();
     let message = message.unwrap_or_default();
-    let res = tauri::async_runtime::spawn_blocking(move || resume_parked_session(&h, &session_id, &message)).await.map_err(|e| e.to_string())?;
+    let res = blocking(move || resume_parked_session(&h, &session_id, &message)).await?;
     // Cue stays in front: a terminal tab may have opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -141,10 +142,10 @@ pub(crate) const CLOSED_MAX: usize = 30;
 pub(crate) async fn resume_closed(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: Option<String>) -> Result<String, String> {
     let h = hub.inner().clone();
     let message = message.unwrap_or_default();
-    let res = tauri::async_runtime::spawn_blocking(move || {
+    let res = blocking(move || {
         let p = closed_record(&h, &session_id)?;
         resume_record(&h, p, &message)
-    }).await.map_err(|e| e.to_string())?;
+    }).await?;
     if res.is_ok() {
         show_main(&app, None);
     }
@@ -209,14 +210,14 @@ pub(crate) fn unpark_session(hub: State<Arc<Hub>>, session_id: String) {
 #[tauri::command]
 pub(crate) async fn rename_session(hub: State<'_, Arc<Hub>>, session_id: String, name: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.rename(&session_id, &name)).await.map_err(|e| e.to_string())?
+    blocking(move || h.rename(&session_id, &name)).await?
 }
 
 /// Open a session Cue hasn't heard from yet in Cue: its chat and message box, not only its tab.
 #[tauri::command]
 pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.adopt(&session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || h.adopt(&session_id)).await?
 }
 
 /// Close a session from the Sessions view: an executor through relay / pilead (they mark it closed and
@@ -226,7 +227,7 @@ pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) 
 #[tauri::command]
 pub(crate) async fn close_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || end_session(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || end_session(&h, &session_id)).await?
 }
 
 /// The work behind Close. Blocking: it ends a process and closes a tab.
@@ -268,7 +269,7 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
 #[tauri::command]
 pub(crate) async fn delete_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || delete(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || delete(&h, &session_id)).await?
 }
 
 pub(crate) fn delete(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
@@ -358,9 +359,8 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
 pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
     let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default() };
-    let res = tauri::async_runtime::spawn_blocking(move || start_session_with(&h, &agent, &cwd, &message, &name, &opts))
-        .await
-        .map_err(|e| e.to_string())?;
+    let res = blocking(move || start_session_with(&h, &agent, &cwd, &message, &name, &opts))
+        .await?;
     // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -457,7 +457,7 @@ fn paths_of(saved: &[crate::uploads::Saved]) -> Vec<String> {
 #[tauri::command]
 pub(crate) async fn fork_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, message: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    let res = tauri::async_runtime::spawn_blocking(move || fork(&h, &session_id, &message)).await.map_err(|e| e.to_string())?;
+    let res = blocking(move || fork(&h, &session_id, &message)).await?;
     // Cue stays in front: the terminal tab opened behind it.
     if res.is_ok() {
         show_main(&app, None);
@@ -561,7 +561,7 @@ mod fork_tests {
 pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         if origin.tmux_pane.is_empty() {
             return Err("Cue can't see its terminal".into());
         }
@@ -581,7 +581,7 @@ pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -
         focus::tmux_keys(&origin, &["Enter".to_string()])?;
         h.trust_answered(&session_id);
         Ok(())
-    }).await.map_err(|e| e.to_string())?
+    }).await?
 }
 
 /// Continue in Cue for a session whose terminal waits for Enter before Claude Code starts ("Security
@@ -590,7 +590,7 @@ pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -
 pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<(), String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         if origin.tmux_pane.is_empty() {
             return Err("Cue can't see its terminal".into());
         }
@@ -600,7 +600,7 @@ pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String)
             return Err("it isn't waiting for Enter any more".into());
         }
         focus::tmux_keys(&origin, &["Enter".to_string()])
-    }).await.map_err(|e| e.to_string())?
+    }).await?
 }
 
 /// "!" in a box: run the rest of the line in the session's folder (or `cwd`, for the + New session box),
@@ -633,14 +633,14 @@ pub(crate) async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String
             (c, m)
         }
     };
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         if machine.is_empty() {
             shell::run(&dir, &line)
         } else {
             let m = machines::get(&machine).ok_or(format!("{machine} isn't one of your machines any more (+ New → Machine)"))?;
             shell::run_on_machine(&m, &dir, &line)
         }
-    }).await.map_err(|e| e.to_string())?
+    }).await?
 }
 
 /// "Move to Cue": a Claude Code session in a terminal tab, ended (its tab closed with it) and resumed in
@@ -649,7 +649,7 @@ pub(crate) async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String
 #[tauri::command]
 pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || move_session_to_cue(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || move_session_to_cue(&h, &session_id)).await?
 }
 
 pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {

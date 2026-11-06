@@ -4,6 +4,7 @@
 //! the first message of the session a hand-off continues in), and the hand-off ask before a cache runs
 //! out where you turned that on (a session's "Hand off if I don't come back", or Settings: hub/activity.rs).
 
+use super::blocking;
 use crate::db;
 use crate::hub::Hub;
 use crate::logs::steps;
@@ -27,7 +28,7 @@ fn local_log(h: &Hub, session_id: &str) -> Option<String> {
 #[tauri::command]
 pub(crate) async fn insight_state(hub: State<'_, Arc<Hub>>, session_ids: Vec<String>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || insight_states(&h, &session_ids)).await.map_err(|e| e.to_string())
+    blocking(move || insight_states(&h, &session_ids)).await
 }
 
 /// The numbers insight_state answers with (it reads the sessions' logs: call it off the main thread).
@@ -97,7 +98,7 @@ fn note_is_new(kept: Option<&db::Handoff>, at_ms: u64) -> Option<bool> {
 #[tauri::command]
 pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_json::Value, String> {
     let fresh = fresh.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         if fresh {
             crate::commands::reread_all();
         }
@@ -115,7 +116,6 @@ pub(crate) async fn insight_host_skills(fresh: Option<bool>) -> Result<serde_jso
         serde_json::json!({ "hosts": out, "commands": all, "reading": reading })
     })
     .await
-    .map_err(|e| e.to_string())
 }
 
 /// Cue's own hand-off, for a host with no hand-off skill (or when you choose it): what it's kept as.
@@ -180,7 +180,7 @@ pub(crate) fn handoff_sent(hub: State<'_, Arc<Hub>>, session_id: String, skill: 
 pub(crate) async fn handoff_cue(hub: State<'_, Arc<Hub>>, session_id: String, ahead: Option<bool>) -> Result<String, String> {
     let h = hub.inner().clone();
     let ahead = if ahead.unwrap_or(false) { AHEAD_YOU } else { 0 };
-    tauri::async_runtime::spawn_blocking(move || handoff_cue_ahead(&h, &session_id, ahead)).await.map_err(|e| e.to_string())?
+    blocking(move || handoff_cue_ahead(&h, &session_id, ahead)).await?
 }
 
 pub(crate) fn handoff_cue_now(h: &Hub, session_id: &str) -> Result<String, String> {
@@ -242,7 +242,7 @@ pub(crate) fn ahead_watch(hub: State<'_, Arc<Hub>>, session_id: String, on: bool
 #[tauri::command]
 pub(crate) async fn handoff_continue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handoff_continue_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || handoff_continue_now(&h, &session_id)).await?
 }
 
 /// A new session in place of `session_id`: the same agent, folder and machine (Claude Code: the same
@@ -338,7 +338,7 @@ fn close_replaced(h: &Arc<Hub>, session_id: &str, done: &str) -> (bool, String) 
 #[tauri::command]
 pub(crate) async fn handoff_fresh(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || handoff_fresh_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || handoff_fresh_now(&h, &session_id)).await?
 }
 
 pub(crate) fn handoff_fresh_now(h: &Arc<Hub>, session_id: &str) -> Result<serde_json::Value, String> {

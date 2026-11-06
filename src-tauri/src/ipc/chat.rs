@@ -1,5 +1,6 @@
 //! The chat of a session: its box (sending, interrupting, commands), steps and log, search, crew actions.
 
+use super::blocking;
 use crate::db;
 use crate::commands;
 use crate::leads;
@@ -18,7 +19,7 @@ use tauri::State;
 #[tauri::command]
 pub(crate) async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.session_command(&session_id, &action)).await.map_err(|e| e.to_string())?
+    blocking(move || h.session_command(&session_id, &action)).await?
 }
 
 /// The "/" menu for a session's box. Claude Code: the commands it has enabled for the folder, read
@@ -73,7 +74,7 @@ pub(crate) fn models_list(fresh: bool, machine: Option<String>) -> serde_json::V
 #[tauri::command]
 pub(crate) async fn focus_session(hub: State<'_, Arc<Hub>>, id: String) -> Result<String, String> {
     let it = hub.get(&id).ok_or("no such item")?;
-    tauri::async_runtime::spawn_blocking(move || focus::focus(&it.origin)).await.map_err(|e| e.to_string())?
+    blocking(move || focus::focus(&it.origin)).await?
 }
 
 #[tauri::command]
@@ -81,21 +82,21 @@ pub(crate) async fn send_to_session(hub: State<'_, Arc<Hub>>, session_id: String
     let h = hub.inner().clone();
     let images = images.unwrap_or_default();
     let now = now.unwrap_or(false);
-    tauri::async_runtime::spawn_blocking(move || h.send_to_session(&session_id, &text, &images, now)).await.map_err(|e| e.to_string())?
+    blocking(move || h.send_to_session(&session_id, &text, &images, now)).await?
 }
 
 /// "Send now" on a queued message: stop the current turn so the agent reads it straight away.
 #[tauri::command]
 pub(crate) async fn send_queued_now(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.send_queued_now(&session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || h.send_queued_now(&session_id)).await?
 }
 
 /// Stop a working session mid-turn (the Stop button, Esc twice).
 #[tauri::command]
 pub(crate) async fn interrupt_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.interrupt(&session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || h.interrupt(&session_id)).await?
 }
 
 /// Search everything Cue has logged: session names, your messages, the agents' replies (ended sessions too).
@@ -116,7 +117,7 @@ pub(crate) fn search_all(q: &str) -> Vec<serde_json::Value> {
 #[tauri::command]
 pub(crate) async fn session_steps(hub: State<'_, Arc<Hub>>, session_id: String, version: Option<u64>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || steps_for(&h, &session_id, version.unwrap_or(0))).await.map_err(|e| e.to_string())
+    blocking(move || steps_for(&h, &session_id, version.unwrap_or(0))).await
 }
 
 /// A session's background work, all of it (the Background tab's Show earlier): read from its whole
@@ -124,21 +125,21 @@ pub(crate) async fn session_steps(hub: State<'_, Arc<Hub>>, session_id: String, 
 #[tauri::command]
 pub(crate) async fn session_bg_history(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || steps_path(&h, &session_id).map(|p| steps::history(&p)).unwrap_or_else(|| serde_json::json!([]))).await.map_err(|e| e.to_string())
+    blocking(move || steps_path(&h, &session_id).map(|p| steps::history(&p)).unwrap_or_else(|| serde_json::json!([]))).await
 }
 
 /// One piece of a session's earlier background work in full, from its history.
 #[tauri::command]
 pub(crate) async fn session_bg_helper(hub: State<'_, Arc<Hub>>, session_id: String, id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || steps_path(&h, &session_id).map(|p| steps::history_helper(&p, &id)).unwrap_or(serde_json::Value::Null)).await.map_err(|e| e.to_string())
+    blocking(move || steps_path(&h, &session_id).map(|p| steps::history_helper(&p, &id)).unwrap_or(serde_json::Value::Null)).await
 }
 
 /// Opened steps: each one's full command or path and its output or diff.
 #[tauri::command]
 pub(crate) async fn step_detail(hub: State<'_, Arc<Hub>>, session_id: String, ids: Vec<String>) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || step_detail_for(&h, &session_id, &ids)).await.map_err(|e| e.to_string())
+    blocking(move || step_detail_for(&h, &session_id, &ids)).await
 }
 
 /// The log a session's steps come from: a Claude Code session's transcript (a quiet one's found through
@@ -242,7 +243,7 @@ pub(crate) fn step_detail_for(h: &Hub, session_id: &str, ids: &[String]) -> serd
 #[tauri::command]
 pub(crate) async fn mcp_for(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || mcp_for_session(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || mcp_for_session(&h, &session_id)).await?
 }
 
 /// Turn a server on or off for the session's folder; the fresh list comes back. The session has to
@@ -250,7 +251,7 @@ pub(crate) async fn mcp_for(hub: State<'_, Arc<Hub>>, session_id: String) -> Res
 #[tauri::command]
 pub(crate) async fn mcp_set(hub: State<'_, Arc<Hub>>, session_id: String, name: String, on: bool) -> Result<serde_json::Value, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || mcp_set_for(&h, &session_id, &name, on)).await.map_err(|e| e.to_string())?
+    blocking(move || mcp_set_for(&h, &session_id, &name, on)).await?
 }
 
 /// A folder's MCP servers before any session runs there (the + New session form): the folder's config
@@ -258,14 +259,14 @@ pub(crate) async fn mcp_set(hub: State<'_, Arc<Hub>>, session_id: String, name: 
 #[tauri::command]
 pub(crate) async fn mcp_for_folder(cwd: String) -> Result<serde_json::Value, String> {
     let cwd = expand_home(&cwd);
-    tauri::async_runtime::spawn_blocking(move || crate::logs::mcp::for_session(&cwd, "")).await.map_err(|e| e.to_string())
+    blocking(move || crate::logs::mcp::for_session(&cwd, "")).await
 }
 
 /// Turn a server on or off for a folder (the + New session form): the session started there next loads it.
 #[tauri::command]
 pub(crate) async fn mcp_set_folder(cwd: String, name: String, on: bool) -> Result<serde_json::Value, String> {
     let cwd = expand_home(&cwd);
-    tauri::async_runtime::spawn_blocking(move || { crate::logs::mcp::set_enabled(&cwd, &name, on)?; Ok(crate::logs::mcp::for_session(&cwd, "")) }).await.map_err(|e| e.to_string())?
+    blocking(move || { crate::logs::mcp::set_enabled(&cwd, &name, on)?; Ok(crate::logs::mcp::for_session(&cwd, "")) }).await?
 }
 
 fn expand_home(p: &str) -> String {
@@ -280,7 +281,7 @@ fn expand_home(p: &str) -> String {
 #[tauri::command]
 pub(crate) async fn mcp_restart(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || mcp_restart_session(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || mcp_restart_session(&h, &session_id)).await?
 }
 
 /// The folder a session's MCP config is read from: on this Mac only.
@@ -325,7 +326,7 @@ pub(crate) fn mcp_restart_session(h: &Arc<Hub>, session_id: &str) -> Result<Stri
 #[tauri::command]
 pub(crate) async fn restart_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || restart_session_now(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || restart_session_now(&h, &session_id)).await?
 }
 
 /// What restart_session does (it waits on the agent: call it off the main thread).
@@ -384,14 +385,14 @@ fn restart_ends_when_running(h: Arc<Hub>, session_id: String) {
 #[tauri::command]
 pub(crate) async fn mcp_apply(hub: State<'_, Arc<Hub>>, session_id: String, names: Vec<String>) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || mcp_apply_for(&h, &session_id, names)).await.map_err(|e| e.to_string())?
+    blocking(move || mcp_apply_for(&h, &session_id, names)).await?
 }
 
 /// Back to the folder's servers: its selection dropped, then restarted without the flags.
 #[tauri::command]
 pub(crate) async fn mcp_apply_clear(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || mcp_apply_clear_for(&h, &session_id)).await.map_err(|e| e.to_string())?
+    blocking(move || mcp_apply_clear_for(&h, &session_id)).await?
 }
 
 pub(crate) fn mcp_apply_for(h: &Arc<Hub>, session_id: &str, names: Vec<String>) -> Result<String, String> {
@@ -443,7 +444,7 @@ pub(crate) fn session_log(session_id: String) -> Vec<serde_json::Value> {
 /// session's Claude Code transcript, the `limit` messages before `before_ms`. Only when you ask for it.
 #[tauri::command]
 pub(crate) async fn transcript_page(session_id: String, before_ms: u64, limit: Option<usize>) -> Vec<serde_json::Value> {
-    tauri::async_runtime::spawn_blocking(move || transcript::find_claude(&session_id).map(|p| transcript::conversation_before(&p, before_ms, limit.unwrap_or(30).min(200))).unwrap_or_default())
+    blocking(move || transcript::find_claude(&session_id).map(|p| transcript::conversation_before(&p, before_ms, limit.unwrap_or(30).min(200))).unwrap_or_default())
         .await
         .unwrap_or_default()
 }
@@ -458,7 +459,7 @@ pub(crate) fn session_log_page(session_id: String, before_ms: u64, limit: Option
 #[tauri::command]
 pub(crate) async fn crew_action(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || run_crew_action(&h, &session_id, &action)).await.map_err(|e| e.to_string())?
+    blocking(move || run_crew_action(&h, &session_id, &action)).await?
 }
 
 /// What a relay / pi-lead button does.
@@ -507,7 +508,7 @@ pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result
 #[tauri::command]
 pub(crate) async fn focus_live(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || focus::focus(&h.live_origin(&session_id).ok_or("that session is gone")?)).await.map_err(|e| e.to_string())?
+    blocking(move || focus::focus(&h.live_origin(&session_id).ok_or("that session is gone")?)).await?
 }
 
 /// "By the way": a side question about a Claude Code session, answered in a panel in Cue. The session
@@ -515,7 +516,7 @@ pub(crate) async fn focus_live(hub: State<'_, Arc<Hub>>, session_id: String) -> 
 #[tauri::command]
 pub(crate) async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: String) -> Result<String, String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
-    tauri::async_runtime::spawn_blocking(move || crate::btw::ask_about(&origin, &question)).await.map_err(|e| e.to_string())?
+    blocking(move || crate::btw::ask_about(&origin, &question)).await?
 }
 
 /// "Catch me up": what the session did since you last looked at its chat (`seen_ms`), a few lines and what it
@@ -523,7 +524,7 @@ pub(crate) async fn btw(hub: State<'_, Arc<Hub>>, session_id: String, question: 
 #[tauri::command]
 pub(crate) async fn catch_up(hub: State<'_, Arc<Hub>>, session_id: String, seen_ms: u64) -> Result<crate::btw::CatchUp, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.catch_up(&session_id, seen_ms)).await.map_err(|e| e.to_string())?
+    blocking(move || h.catch_up(&session_id, seen_ms)).await?
 }
 
 /// The About tab: follow a session (tasks.rs). Its first read is asked for in the background; the window's state
@@ -562,5 +563,5 @@ pub(crate) fn background_session(hub: State<'_, Arc<Hub>>, session_id: String, o
 #[tauri::command]
 pub(crate) async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let origin = hub.session_origin(&session_id).ok_or("that session is gone")?;
-    tauri::async_runtime::spawn_blocking(move || focus::focus(&origin)).await.map_err(|e| e.to_string())?
+    blocking(move || focus::focus(&origin)).await?
 }

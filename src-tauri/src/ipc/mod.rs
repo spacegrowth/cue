@@ -20,3 +20,10 @@ pub(crate) use sessions::*;
 pub(crate) use settings::*;
 pub(crate) use state::*;
 pub(crate) use terminal::*;
+
+/// `f` on the blocking pool: what a command does that can wait (a lock, the db, a file, a process, the
+/// network) runs there, never on the window's thread (where Tauri runs a command that isn't async) nor on
+/// an async worker. A panic in it comes back as the command's error.
+pub(crate) async fn blocking<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> Result<R, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())
+}

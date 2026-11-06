@@ -338,7 +338,7 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
 
 #[tauri::command]
 pub async fn ext_git(ext: String, op: String, folder: String, machine: Option<String>, against: Option<String>, path: Option<String>, transcript: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || git_read(&ext, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await.map_err(|e| e.to_string())?
+    crate::ipc::blocking(move || git_read(&ext, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await?
 }
 
 // ---------- programs.run: programs installed on this Mac ----------
@@ -424,7 +424,7 @@ pub fn run_program(ext: &str, program: &str, args: &[String], cwd: Option<&str>)
 
 #[tauri::command]
 pub async fn ext_program(ext: String, program: String, args: Vec<String>, cwd: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_program(&ext, &program, &args, cwd.as_deref())).await.map_err(|e| e.to_string())?
+    crate::ipc::blocking(move || run_program(&ext, &program, &args, cwd.as_deref())).await?
 }
 
 /// Where extensions go, and each one there with where it stands.

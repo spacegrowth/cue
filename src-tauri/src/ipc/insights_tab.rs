@@ -1,6 +1,7 @@
 //! The Insights tab: how sessions went over the last days, summed from the turns logs/turns.rs keeps
 //! (db.rs `turns`), and how hand-offs and insights went.
 
+use super::blocking;
 use crate::db;
 use crate::logs::prices;
 use serde_json::{json, Value};
@@ -11,7 +12,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[tauri::command]
 pub(crate) async fn insights_summary(days: Option<u32>) -> Result<Value, String> {
     let days = days.unwrap_or(30).clamp(1, 365);
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         let mut v = summary(days);
         // Still reading the logs' history (a new Mac, or years of logs): how far, for the tab's bar.
         if let Some((done, total)) = crate::logs::turns::catching_up() {
@@ -20,7 +21,6 @@ pub(crate) async fn insights_summary(days: Option<u32>) -> Result<Value, String>
         v
     })
     .await
-    .map_err(|e| e.to_string())
 }
 
 fn median(v: &mut [u64]) -> u64 {
@@ -126,7 +126,7 @@ pub(crate) fn relay_on() -> bool {
 /// Only those with something to say.
 #[tauri::command]
 pub(crate) async fn insight_delegate(session_ids: Vec<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || delegate_states(&session_ids)).await.map_err(|e| e.to_string())
+    blocking(move || delegate_states(&session_ids)).await
 }
 
 /// What insight_delegate answers with (it reads the turns history: call it off the main thread).

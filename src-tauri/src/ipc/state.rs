@@ -1,5 +1,6 @@
 //! What's waiting on you and a session's small flags: the commands that read or change the queue.
 
+use super::blocking;
 use crate::model;
 use crate::hub::Hub;
 use crate::model::Decision;
@@ -54,7 +55,7 @@ pub(crate) fn unhold_message(hub: State<Arc<Hub>>, session_id: String) -> Option
 #[tauri::command]
 pub(crate) async fn send_held_now(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let h = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || h.send_held(&session_id, true)).await.map_err(|e| e.to_string())?
+    blocking(move || h.send_held(&session_id, true)).await?
 }
 
 /// "Later" on a session: put it off (its finished turns wait under Need to decide), or back.
@@ -78,12 +79,12 @@ pub(crate) fn set_starred(hub: State<Arc<Hub>>, session_id: String, on: bool) {
 #[tauri::command]
 pub(crate) async fn answer_terminal(hub: State<'_, Arc<Hub>>, id: String, n: usize) -> Result<String, String> {
     let hub = hub.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || hub.answer_terminal(&id, n)).await.map_err(|e| e.to_string())?
+    blocking(move || hub.answer_terminal(&id, n)).await?
 }
 
 #[tauri::command]
 pub(crate) async fn reply(hub: State<'_, Arc<Hub>>, id: String, text: String, images: Option<Vec<model::Upload>>) -> Result<String, String> {
     let h = hub.inner().clone();
     let images = images.unwrap_or_default();
-    tauri::async_runtime::spawn_blocking(move || h.reply(&id, &text, &images)).await.map_err(|e| e.to_string())?
+    blocking(move || h.reply(&id, &text, &images)).await?
 }

@@ -1,5 +1,6 @@
 //! The built-in terminal, a session's screen and keys, and dictation.
 
+use super::blocking;
 use crate::leads;
 use crate::model;
 use crate::terminal::focus;
@@ -31,14 +32,14 @@ pub(crate) fn speak_send(app: tauri::AppHandle, s: State<crate::terminal::speak:
 #[tauri::command]
 pub(crate) async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     let o = tmux_origin_of(&hub, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || focus::session_screen(&o)).await.map_err(|e| e.to_string())?
+    blocking(move || focus::session_screen(&o)).await?
 }
 
 /// Keys pressed in that view (↑ ↓ Enter Esc 1 2 3…). Only from your click.
 #[tauri::command]
 pub(crate) async fn session_keys(hub: State<'_, Arc<Hub>>, session_id: String, keys: Vec<String>) -> Result<(), String> {
     let o = tmux_origin_of(&hub, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || focus::tmux_keys(&o, &keys)).await.map_err(|e| e.to_string())?
+    blocking(move || focus::tmux_keys(&o, &keys)).await?
 }
 
 /// Where a session is, for the commands that only work in tmux (on this Mac or a machine).
@@ -56,10 +57,10 @@ pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, s
     // A relay / pi-lead executor on a machine, in a tmux session of its own: that session, whatever
     // pane Cue has on record for it (and whether or not Cue holds it at all). Never its lead's.
     if let Some((machine, name)) = leads::exec_tmux(&session_id) {
-        return tauri::async_runtime::spawn_blocking(move || term::open_attached(app, &session_id, &machine, &name, cols, rows)).await.map_err(|e| e.to_string())?;
+        return blocking(move || term::open_attached(app, &session_id, &machine, &name, cols, rows)).await?;
     }
     let o = tmux_origin_of(&hub, &session_id)?;
-    tauri::async_runtime::spawn_blocking(move || term::open(app, &session_id, &o, cols, rows)).await.map_err(|e| e.to_string())?
+    blocking(move || term::open(app, &session_id, &o, cols, rows)).await?
 }
 
 /// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that
@@ -68,7 +69,7 @@ pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, s
 /// (`kept`: quitting Cue doesn't end it). One still running in tmux is attached again, as it was.
 #[tauri::command]
 pub(crate) async fn shell_open(app: tauri::AppHandle, id: String, cwd: String, cols: u16, rows: u16) -> Result<serde_json::Value, String> {
-    let (gen, kept) = tauri::async_runtime::spawn_blocking(move || shells::open(app, &id, &cwd, cols, rows)).await.map_err(|e| e.to_string())??;
+    let (gen, kept) = blocking(move || shells::open(app, &id, &cwd, cols, rows)).await??;
     let host = crate::machines::hooks::hostname();
     Ok(serde_json::json!({ "gen": gen, "kept": kept, "host": host.split('.').next().unwrap_or(&host) }))
 }
@@ -77,7 +78,7 @@ pub(crate) async fn shell_open(app: tauri::AppHandle, id: String, cwd: String, c
 /// the window gives each its tab back.
 #[tauri::command]
 pub(crate) async fn shell_list(app: tauri::AppHandle) -> serde_json::Value {
-    let list = tauri::async_runtime::spawn_blocking(move || shells::list(app)).await.unwrap_or_default();
+    let list = blocking(move || shells::list(app)).await.unwrap_or_default();
     let host = crate::machines::hooks::hostname();
     serde_json::json!({ "shells": list, "host": host.split('.').next().unwrap_or(&host) })
 }
@@ -85,13 +86,13 @@ pub(crate) async fn shell_list(app: tauri::AppHandle) -> serde_json::Value {
 /// A shell's tab renamed ("" for none): kept with the shell, for the next Cue.
 #[tauri::command]
 pub(crate) async fn shell_name(id: String, name: String) {
-    let _ = tauri::async_runtime::spawn_blocking(move || shells::rename(&id, &name)).await;
+    let _ = blocking(move || shells::rename(&id, &name)).await;
 }
 
 /// ⌘K in a shell in tmux.
 #[tauri::command]
 pub(crate) async fn shell_clear(id: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || shells::clear(&id)).await.map_err(|e| e.to_string())?
+    blocking(move || shells::clear(&id)).await?
 }
 
 /// ⌘W outside Cue's terminal: the window hides, as closing it does (Cue keeps running).
