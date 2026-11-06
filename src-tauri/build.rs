@@ -51,24 +51,21 @@ fn speak_helper(target: &str) {
 }
 
 /// A Swift helper in `dir`: SwiftPM on Apple silicon, `dir`/intel.swift on Intel, into binaries/`name`-<target>.
-/// Paths of this Mac are rewritten out of it, as release.sh checks: its sources' through prefix maps, and it's built
-/// in the temp folder (SwiftPM writes the build folder into it, to find FluidAudio's resources by).
+/// Paths of this Mac are rewritten out of it, as release.sh checks: its sources' through prefix maps, and its
+/// build folder is in the temp folder (SwiftPM writes that folder into it, to find FluidAudio's resources by).
 fn swift_helper(target: &str, dir: &str, name: &str) {
     let out = format!("binaries/{name}-{target}");
-    let home = std::env::var("HOME").unwrap_or_default();
-    let here = std::env::current_dir().map(|d| d.display().to_string()).unwrap_or_default();
     let ok = if target.starts_with("aarch64") {
-        let map = |flag: &str, to: &str, from: &str| [flag.to_string(), format!("{from}={to}")];
-        let scratch = std::env::temp_dir().join(format!("{name}-build")).display().to_string();
-        let mut args: Vec<String> = ["build", "-c", "release", "--package-path", dir, "--scratch-path", &scratch].map(String::from).to_vec();
-        for (from, to) in [(here.as_str(), "/cue"), (home.as_str(), "/home")] {
-            for [f, v] in [map("-file-prefix-map", to, from), map("-debug-prefix-map", to, from)] {
-                args.extend(["-Xswiftc".into(), f, "-Xswiftc".into(), v]);
-            }
-            args.extend(["-Xcc".into(), format!("-ffile-prefix-map={from}={to}")]);
-        }
-        std::process::Command::new("swift").args(&args).status().map(|s| s.success()).unwrap_or(false)
-            && std::process::Command::new("strip").args(["-x", "-o", &out, &format!("{scratch}/release/{name}")]).status().map(|s| s.success()).unwrap_or(false)
+        let scratch = swift_scratch(name);
+        let built = || swiftpm_build(dir, &scratch);
+        // A build folder the temp folder's cleanup half-emptied, or another build broke, fails the build (an
+        // xcframework without its Info.plist, say): built again once from nothing before giving up.
+        let ok = built() || {
+            println!("cargo:warning=building {name} failed; building it again from a clean {}", scratch.display());
+            let _ = std::fs::remove_dir_all(&scratch);
+            built()
+        };
+        ok && std::process::Command::new("strip").arg("-x").arg("-o").arg(&out).arg(scratch.join("release").join(name)).status().map(|s| s.success()).unwrap_or(false)
     } else {
         std::process::Command::new("swiftc")
             .args(["-O", "-target", &target.replace("apple-darwin", "apple-macos13.0"), "-o", &out, &format!("{dir}/intel.swift")])
@@ -81,4 +78,30 @@ fn swift_helper(target: &str, dir: &str, name: &str) {
     if std::path::Path::new(&arm).exists() && std::path::Path::new(&intel).exists() {
         let _ = std::process::Command::new("lipo").args(["-create", "-output", &format!("binaries/{name}-universal-apple-darwin"), &arm, &intel]).status();
     }
+}
+
+/// SwiftPM's build folder for helper `name`: one per checkout of Cue, so two checkouts building at once don't
+/// share (and break) one. In the temp folder, not target/: the path ends up in the helper, and target/ is
+/// under your home folder, whose path release.sh refuses to ship.
+fn swift_scratch(name: &str) -> std::path::PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut checkout = std::collections::hash_map::DefaultHasher::new();
+    std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default().hash(&mut checkout);
+    std::env::temp_dir().join(format!("cue-swift-{:016x}", checkout.finish())).join(name)
+}
+
+/// `swift build` of the package in `dir`, release, into `scratch`, with this Mac's paths mapped out of it.
+fn swiftpm_build(dir: &str, scratch: &std::path::Path) -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let here = std::env::current_dir().map(|d| d.display().to_string()).unwrap_or_default();
+    let map = |flag: &str, to: &str, from: &str| [flag.to_string(), format!("{from}={to}")];
+    let mut args: Vec<String> = ["build", "-c", "release", "--package-path", dir, "--scratch-path"].map(String::from).to_vec();
+    args.push(scratch.display().to_string());
+    for (from, to) in [(here.as_str(), "/cue"), (home.as_str(), "/home")] {
+        for [f, v] in [map("-file-prefix-map", to, from), map("-debug-prefix-map", to, from)] {
+            args.extend(["-Xswiftc".into(), f, "-Xswiftc".into(), v]);
+        }
+        args.extend(["-Xcc".into(), format!("-ffile-prefix-map={from}={to}")]);
+    }
+    std::process::Command::new("swift").args(&args).status().map(|s| s.success()).unwrap_or(false)
 }
