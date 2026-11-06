@@ -41,6 +41,42 @@ pub fn later(job: impl FnOnce() + Send + 'static) {
     let _ = jobs.send(Box::new(job));
 }
 
+/// A notification for Cue to post: `category` as `post` takes it; `watched`, a turn you asked to be told
+/// about (shown even with Cue in front, with its own sound).
+pub struct Note {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub category: String,
+    pub watched: bool,
+}
+
+/// `note` posted, on Notification Center's thread (`later`): not while Cue is the window in front of you
+/// (the item is on screen already), unless it's watched. An unbundled dev binary gets the plugin's plain
+/// notification instead, which Cue can't take back.
+pub fn show(app: tauri::AppHandle, note: Note) {
+    later(move || {
+        use tauri::Manager;
+        use tauri_plugin_notification::NotificationExt;
+        let Note { id, title, body, category, watched } = note;
+        if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
+            return;
+        }
+        let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
+        if !post_sound(&id, &title, &body, &category, &sound) {
+            let _ = app.notification().builder().title(&title).body(&body).show();
+        }
+    });
+}
+
+/// Notifications `ids` taken back out of Notification Center, on its thread (`later`): after every post
+/// handed in before, so one posted a moment ago is never left up because its taking back went first.
+pub fn take_back(ids: Vec<String>) {
+    if !ids.is_empty() {
+        later(move || remove(&ids));
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod mac {
     use block2::RcBlock;
@@ -280,5 +316,30 @@ mod tests {
         stuck_tx.send(()).unwrap();
         let got: Vec<i32> = (0..3).map(|_| ran.recv_timeout(Duration::from_secs(2)).unwrap()).collect();
         assert_eq!(got, [0, 1, 2], "after it, in order, the panic notwithstanding");
+    }
+
+    /// Notification Center is reached through `later` only: a post or a taking back made on the caller's
+    /// thread would wait on it there, and could pass one handed in before it.
+    #[test]
+    fn notification_center_is_reached_only_from_its_own_thread() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src];
+        let mut inline = vec![];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap().filter_map(Result::ok) {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("notify.rs") {
+                    let text = std::fs::read_to_string(&p).unwrap();
+                    for (i, line) in text.lines().enumerate() {
+                        if ["notify::remove(", "notify::post_sound("].iter().any(|c| line.contains(c)) {
+                            inline.push(format!("{}:{}", p.display(), i + 1));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(inline.is_empty(), "called outside notify::later: {inline:?}");
     }
 }

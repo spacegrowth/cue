@@ -736,7 +736,7 @@ impl Hub {
                 }
             } else if !stuck && was != 0 {
                 self.st().sessions.set_stuck(&sid, 0);
-                crate::notify::remove(&[format!("stuck-{sid}")]);
+                crate::notify::take_back(vec![format!("stuck-{sid}")]);
                 self.changed();
             }
         }
