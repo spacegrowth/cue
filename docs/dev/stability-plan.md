@@ -390,3 +390,12 @@ Total ≈ 33 executor-days; with 3 parallel executors ≈ 3 weeks wall-clock, Ph
 - Function and file lengths in §0 were re-measured with `xtask sizes` in Phase 1 (they were awk brace counts).
 - `tests/run.sh` runs only `status.test.js`; `agents/review_card/status_panel.test.js` aren't in any runner
   today — Phase 1 adds them.
+
+## Follow-ups queued during Phase 1 (lead)
+
+- UI layout bugs seen in Layer B baselines (fix after review-click lands on main, it owns reviewcard.js):
+  three review cards squeeze the chat to one line (relay-review); "needs you" overlaps the time on a
+  lead's Waiting card; at 900 px the Later button clips and a mono command breaks mid-word; a stray "0" at
+  the right end of the time bar on the waiting board; the open status-list drawer cuts off its cost line.
+- Terminal "stuck" detection: e2e spike saw a SIGSTOPped tmux client's pty accept ~8 MB before blocking,
+  so 1,000 typed chars never show the bar — track D is investigating.

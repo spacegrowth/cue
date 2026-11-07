@@ -1,0 +1,55 @@
+{
+ "now_ms": 1793984400000,
+ "window_ms": 1800000,
+ "settings": {
+  "history": {
+   "keep": 300
+  },
+  "notify": {
+   "finished": true,
+   "decisions": true
+  },
+  "pi": {
+   "gate": "dangerous"
+  },
+  "appearance": {
+   "mode": "system"
+  },
+  "quick": {
+   "phrases": [
+    "Commit",
+    "Go ahead",
+    "Think hard"
+   ]
+  },
+  "insights": {
+   "handoff": true,
+   "cache": true,
+   "queue": true,
+   "skills": {}
+  }
+ },
+ "ahead_watch": [],
+ "skill_handoffs": {},
+ "connections": {
+  "claude": {
+   "ok": true,
+   "events": [
+    "PermissionRequest",
+    "Stop",
+    "UserPromptSubmit",
+    "SessionEnd"
+   ]
+  },
+  "pi": {
+   "ok": true
+  }
+ },
+ "sessions": [],
+ "items": [],
+ "history": [],
+ "tasks": {},
+ "tasks_spent": {},
+ "parked": [],
+ "ended": []
+}
