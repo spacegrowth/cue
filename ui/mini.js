@@ -167,10 +167,15 @@
     m.note = "";
     m.shape = "chat";
     paint();
+    // The box has the cursor at once: the panel takes the keyboard (the app you're in stays active).
+    invoke("mini_key", { on: true }).then(() => root.querySelector("[data-box]")?.focus(), () => {});
   }
-  function closeChat() {
+  /** Fold the chat back to the notch or the rail; `giveBack`: hand the keyboard back too (not needed when it
+   *  already went, by a click outside). What you typed is kept for when you open it again. */
+  function closeChat(giveBack = true) {
+    if (m.shape !== "chat") return;
     m.open = null;
-    invoke("mini_key", { on: false }).catch(() => {});
+    if (giveBack) invoke("mini_key", { on: false }).catch(() => {});
     go("quiet");
   }
   async function answer(id, behavior) {
@@ -230,6 +235,8 @@
       else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
     });
     root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) invoke("mini_key", { on: true }).catch(() => {}); });
+    // A click anywhere outside takes the keyboard elsewhere: the open chat folds away, as a menu would.
+    window.addEventListener("blur", () => closeChat(false));
     root.addEventListener("input", (e) => { if (e.target.matches("[data-box]")) { m.typed[m.open] = e.target.value; grow(e.target); } });
     root.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { e.preventDefault(); closeChat(); }

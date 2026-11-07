@@ -2,20 +2,23 @@
 //! floats on every Space and beside full-screen apps, out of ⌘` and Mission Control, and it takes the keyboard
 //! only while you type in it.
 //!
-//! "Never brings Cue forward" is WindowServer's prevents-activation flag, the one a non-activating NSPanel
-//! sets; Tao's window can't become an NSPanel (its class keeps state of its own), so the flag is set on the
-//! window itself, where AppKit offers it (`_setPreventsActivation:`). Without it, a click activates Cue as any
-//! window's would, and handing the keyboard back (`key(false)`) brings back the app you were in.
+//! It does that by being a non-activating panel, as Spotlight's is: Tao's window gets an NSPanel class of
+//! Cue's own (`CueMiniPanel`), which can become the key window (you type into it) while the app you're in
+//! stays active. Tao's own state lives on the window's view, not on the window, so the class can change under
+//! it; what Tao's window class added (a drag on its background, `focusable`) isn't wanted here.
 
-use objc2::runtime::AnyObject;
+use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel};
 use objc2::{msg_send, sel};
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::OnceLock;
 
 /// Over other windows: the rail floats; the notch's island goes over the menu bar (a pop-up menu's level).
 const FLOATING: isize = 3;
 const OVER_MENU_BAR: isize = 101;
 /// NSWindowCollectionBehavior: on every Space, stationary in Exposé, out of ⌘`, beside full-screen apps.
 const EVERYWHERE: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+/// NSWindowStyleMaskNonactivatingPanel: a click in it leaves the app you're in active.
+const NONACTIVATING: usize = 1 << 7;
 
 /// The NSWindow, carried to the main thread (AppKit's windows are touched only there).
 struct Win(*mut AnyObject);
@@ -30,19 +33,39 @@ impl Win {
 /// The app you were in when the mini window last took the keyboard (its pid), given it back after.
 static BEFORE: AtomicI32 = AtomicI32::new(0);
 
-/// Settle a new mini window: its level, its Spaces, and clicks that don't bring Cue forward.
+/// Cue's panel class: an NSPanel that can take the keyboard but is never the main window.
+fn panel_class() -> Option<&'static AnyClass> {
+    static CLASS: OnceLock<Option<&'static AnyClass>> = OnceLock::new();
+    *CLASS.get_or_init(|| {
+        extern "C" fn yes(_: &AnyObject, _: Sel) -> Bool {
+            Bool::YES
+        }
+        extern "C" fn no(_: &AnyObject, _: Sel) -> Bool {
+            Bool::NO
+        }
+        let mut b = ClassBuilder::new(c"CueMiniPanel", AnyClass::get(c"NSPanel")?)?;
+        unsafe {
+            b.add_method(sel!(canBecomeKeyWindow), yes as extern "C" fn(_, _) -> _);
+            b.add_method(sel!(canBecomeMainWindow), no as extern "C" fn(_, _) -> _);
+        }
+        Some(b.register())
+    })
+}
+
+/// Settle a new mini window: a non-activating panel, its level, its Spaces.
 pub(super) fn settle(w: &tauri::WebviewWindow, notch: bool) {
     let Ok(ns) = w.ns_window() else { return };
     let win = Win(ns as *mut AnyObject);
     let _ = w.run_on_main_thread(move || unsafe {
+        if let Some(cls) = panel_class() {
+            objc2::ffi::object_setClass(win.ptr(), cls);
+        }
         let win = &*win.ptr();
+        let mask: usize = msg_send![win, styleMask];
+        let _: () = msg_send![win, setStyleMask: mask | NONACTIVATING];
         let _: () = msg_send![win, setLevel: if notch { OVER_MENU_BAR } else { FLOATING }];
         let _: () = msg_send![win, setCollectionBehavior: EVERYWHERE];
         let _: () = msg_send![win, setHidesOnDeactivate: false];
-        let has: bool = msg_send![win, respondsToSelector: sel!(_setPreventsActivation:)];
-        if has {
-            let _: () = msg_send![win, _setPreventsActivation: true];
-        }
     });
 }
 
