@@ -190,11 +190,24 @@ function openFromChip(kind, dir = 1) {
 
 // ---------- boot ----------
 const LINGER_MS = 1500;
-/** A "✓ answered" card's time is up: it fades and folds away, and the cards below close the gap. */
+/** The one timer for the "✓ answered" cards: set for the soonest one's time up (a timer per card per state
+ *  would fold the same card, and draw the window, once for every state that came while it lingered). */
+let ghostTimer = 0;
+function watchGhosts() {
+  clearTimeout(ghostTimer);
+  ghostTimer = 0;
+  if (!ghosts.size || folding) return;
+  const soonest = Math.min(...[...ghosts.values()].map((g) => g.at));
+  ghostTimer = setTimeout(leaveGhosts, Math.max(0, soonest + LINGER_MS - Date.now()) + 50);
+}
+/** A "✓ answered" card's time is up: it fades and folds away, and the cards below close the gap. One fold at a
+ *  time: the cards whose time comes meanwhile fold after it. */
 function leaveGhosts() {
+  ghostTimer = 0;
+  if (folding) return;
   const gone = [...ghosts].filter(([, g]) => Date.now() - g.at >= LINGER_MS).map(([id]) => id);
-  if (!gone.length) return;
-  const finish = () => { folding = false; heldDraw = false; gone.forEach((id) => ghosts.delete(id)); render(); };
+  if (!gone.length) return watchGhosts();
+  const finish = () => { folding = false; heldDraw = false; gone.forEach((id) => ghosts.delete(id)); render(); watchGhosts(); };
   const els = gone.map((id) => document.querySelector(`.nrow.ghost[data-detail="${CSS.escape(id)}"]`)).filter(Boolean);
   if (!els.length || matchMedia("(prefers-reduced-motion: reduce)").matches) return finish();
   // Fades out first, then closes up, eating the column's 10px gap too, so nothing below jumps at the end.
