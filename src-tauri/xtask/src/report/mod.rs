@@ -52,7 +52,8 @@ The analysis reads the source with `syn`; it doesn't type-check it. So:
   that function's calls of the parameter (in line, or on a thread when it spawns it); one it never calls
   is treated as run later, under no lock.
 - **Macros**: arguments of a macro are read when they parse as a comma-separated list of expressions
-  (`format!`, `vec!`, `assert!`, …); others (`json!({..})`, `matches!`) are skipped, calls inside them too.
+  (`format!`, `vec!`, `assert!`, …); `json!({..})` is read as JSON, each value (and parenthesized key) an
+  expression; others (`matches!`) are skipped, calls inside them too.
 - **Lock lifetimes follow Rust 2021's drop rules, simplified**: a `let` guard lives to the end of its
   block or `drop(guard)`; an unbound guard to the end of its statement (through a `match`/`if let`/`for`
   body), except a plain `if`/`while` condition. A guard moved into a function, returned, or kept in a

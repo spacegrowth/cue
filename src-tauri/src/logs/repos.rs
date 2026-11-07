@@ -37,10 +37,10 @@ pub struct Facts {
 const FIRST_WAIT: Duration = Duration::from_millis(200);
 /// How long `refresh` waits for its lookups before it reports what changed.
 const REFRESH_WAIT: Duration = Duration::from_secs(1);
-/// A folder not asked about for this long isn't looked up again until it's asked about.
-const RECENT: Duration = Duration::from_secs(600);
-/// A folder not asked about for this long is forgotten (unless its lookup is still out).
-const FORGET: Duration = Duration::from_secs(6 * 3600);
+/// A folder not asked about for this long (ms, by crate::clock) isn't looked up again until it's asked about.
+const RECENT_MS: u64 = 600_000;
+/// A folder not asked about for this long (ms) is forgotten (unless its lookup is still out).
+const FORGET_MS: u64 = 6 * 3600_000;
 
 struct Entry {
     facts: Option<Facts>,
@@ -48,7 +48,14 @@ struct Entry {
     looking: bool,
     /// Someone waited `first_wait` for it already, so nobody waits again.
     waited: bool,
-    asked: Instant,
+    /// When it was last asked about (crate::clock).
+    asked: u64,
+}
+
+impl Entry {
+    fn asked_within(&self, ms: u64) -> bool {
+        crate::clock::now_ms().saturating_sub(self.asked) < ms
+    }
 }
 
 #[derive(Default)]
@@ -79,8 +86,9 @@ impl Folders {
 
     /// `cwd` asked about: its entry, its lookup started if it's unknown and none is out.
     fn asked<'k>(&'static self, known: &'k mut Known, cwd: &str) -> &'k mut Entry {
-        let e = known.folders.entry(cwd.to_string()).or_insert_with(|| Entry { facts: None, looking: false, waited: false, asked: Instant::now() });
-        e.asked = Instant::now();
+        let now = crate::clock::now_ms();
+        let e = known.folders.entry(cwd.to_string()).or_insert_with(|| Entry { facts: None, looking: false, waited: false, asked: now });
+        e.asked = now;
         if e.facts.is_none() && !e.looking {
             e.looking = true;
             self.look_up(cwd.to_string());
@@ -113,9 +121,9 @@ impl Folders {
     /// folder unknown till now came back) since the last refresh.
     pub fn refresh(&'static self) -> bool {
         let mut known = crate::locking::lock(&self.known, "folder facts");
-        known.folders.retain(|_, e| e.looking || e.asked.elapsed() < FORGET);
+        known.folders.retain(|_, e| e.looking || e.asked_within(FORGET_MS));
         let due: Vec<String> = known.folders.iter_mut()
-            .filter(|(_, e)| !e.looking && e.asked.elapsed() < RECENT)
+            .filter(|(_, e)| !e.looking && e.asked_within(RECENT_MS))
             .map(|(cwd, e)| {
                 e.looking = true;
                 cwd.clone()

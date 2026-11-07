@@ -218,9 +218,38 @@ fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
     }
 }
 
+/// The database, opened; one that isn't a database (or is damaged where opening reads) is set aside
+/// (`keep_aside`) and a new one started, so Cue keeps what it does from here on instead of nothing at all.
 fn open() -> rusqlite::Result<Connection> {
     let _ = std::fs::create_dir_all(crate::server::cue_dir());
-    let c = Connection::open(path())?;
+    match open_at(&path()) {
+        Err(e) if unreadable(&e) => {
+            let kept = keep_aside(&path());
+            eprintln!("cue: {} can't be read ({e}): kept as {}, starting a new one", path().display(), kept.display());
+            open_at(&path())
+        }
+        r => r,
+    }
+}
+
+/// SQLite saying the file isn't a database it can read.
+fn unreadable(e: &rusqlite::Error) -> bool {
+    matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::NotADatabase | rusqlite::ErrorCode::DatabaseCorrupt))
+}
+
+/// `db` (and its write-ahead log) moved aside, as `<name>.unreadable-<ms>`: the backup, for a person to look at.
+fn keep_aside(db: &std::path::Path) -> std::path::PathBuf {
+    let stamp = format!("unreadable-{}", now_ms());
+    let kept = db.with_extension(format!("db.{stamp}"));
+    let _ = std::fs::rename(db, &kept);
+    for side in ["db-wal", "db-shm"] {
+        let _ = std::fs::rename(db.with_extension(side), db.with_extension(format!("{side}.{stamp}")));
+    }
+    kept
+}
+
+fn open_at(path: &std::path::Path) -> rusqlite::Result<Connection> {
+    let c = Connection::open(path)?;
     // Another connection writing (a test Cue, sqlite3 in a terminal) makes a write wait its turn, for up to
     // BUSY_WAIT and no longer: DB stays locked for every other caller in Cue while it waits.
     c.busy_timeout(BUSY_WAIT)?;
@@ -786,6 +815,8 @@ pub fn rewrite_paths(old: &str, new: &str) {
         tx.execute("UPDATE items SET data = replace(data, ?1, ?2)", params![old, new])?;
         tx.execute("UPDATE sessions SET data = replace(data, ?1, ?2)", params![old, new])?;
         tx.execute("UPDATE exchanges SET images = replace(images, ?1, ?2), text = replace(text, ?1, ?2)", params![old, new])?;
+        tx.execute("UPDATE parked SET data = replace(data, ?1, ?2)", params![old, new])?;
+        tx.execute("UPDATE drafts SET images = replace(images, ?1, ?2)", params![old, new])?;
         tx.commit()
     });
 }
@@ -1177,6 +1208,12 @@ pub fn reset() {
     *crate::locking::lock(&DB, "DB") = None;
     HANDOFFS.stale();
     AHEAD_WATCHED.stale();
+}
+
+/// Tests: `f` on the open database, as every call here runs.
+#[cfg(test)]
+pub fn raw<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
+    with(f)
 }
 
 /// How many exchanges the log holds for a session.

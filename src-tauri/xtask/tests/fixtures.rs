@@ -210,3 +210,52 @@ fn make() -> One { One }
     let calls = out.check.calls;
     assert_eq!((calls.followed, calls.not_followed, calls.outside), (3, 1, 1), "{}", out.check.render());
 }
+
+/// A call inside `json!({..})` counts: a lock taken in a value, a nested one, or a parenthesized key is an
+/// edge under the lock held around it (it was dropped once, until the call was moved out of the macro).
+#[test]
+fn calls_inside_json_are_followed() {
+    let a = r#"
+use std::sync::Mutex;
+static A: Mutex<u32> = Mutex::new(0);
+static B: Mutex<u32> = Mutex::new(0);
+static C: Mutex<u32> = Mutex::new(0);
+static D: Mutex<u32> = Mutex::new(0);
+fn b() -> u32 { *crate::locking::lock(&B, "B") }
+fn c() -> u32 { *crate::locking::lock(&C, "C") }
+fn d() -> String { crate::locking::lock(&D, "D").to_string() }
+pub fn view() -> serde_json::Value {
+    let _a = crate::locking::lock(&A, "A");
+    serde_json::json!({ "b": b(), "rows": [1, { "c": c() }], (d()): std::string::String::new(), "none": null })
+}
+"#;
+    let (failures, _) = run("json", &[("lib.rs", "mod a;\nmod locking;\n"), ("a.rs", a)], "");
+    let edges: Vec<&str> = failures.iter().filter_map(|f| f.strip_prefix("new lock order A → ")).map(|f| &f[..1]).collect();
+    assert_eq!(edges, ["B", "C", "D"], "{failures:#?}");
+}
+
+/// A standard-library call is never taken for a crate method of the same name: `OpenOptions::new()…open(p)`
+/// and `File::open(p)` beside a crate type with an `open` that takes a lock are no edge and no lock site.
+#[test]
+fn std_calls_are_never_a_same_named_crate_method() {
+    let a = r#"
+use std::sync::Mutex;
+static A: Mutex<u32> = Mutex::new(0);
+static FEEDS: Mutex<u32> = Mutex::new(0);
+pub struct Feed;
+impl Feed { pub fn open(_p: &str) -> Feed { let _g = crate::locking::lock(&FEEDS, "FEEDS"); Feed } }
+pub fn write_log(p: &str) {
+    let _a = crate::locking::lock(&A, "A");
+    let _f = std::fs::OpenOptions::new().create_new(true).append(true).open(p);
+    let _g = std::fs::File::open(p);
+    let _h = (std::fs::OpenOptions::new()).write(true).open(p).map(|_| ());
+}
+pub fn feed(p: &str) -> Feed {
+    let _a = crate::locking::lock(&A, "A");
+    Feed::open(p)
+}
+"#;
+    let (failures, _) = run("std-open", &[("lib.rs", "mod a;\nmod locking;\n"), ("a.rs", a)], "");
+    assert_eq!(failures.len(), 1, "{failures:#?}");
+    assert!(failures[0].starts_with("new lock order A → FEEDS: a::feed"), "only the crate's own Feed::open: {}", failures[0]);
+}

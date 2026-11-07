@@ -71,13 +71,36 @@ pub(super) fn stamp_of(path: &Path) -> Option<Stamp> {
     Some(Stamp { modified: m.modified().ok(), len: m.len(), inode: m.ino() })
 }
 
-/// The file's settings, read from disk: `{}` when it's missing or isn't a JSON object.
-pub(super) fn read_file(path: &Path) -> Value {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}))
+/// What config.json holds.
+pub(super) enum File {
+    /// No file (or one that can't be opened): no settings yet.
+    Missing,
+    Settings(Value),
+    /// A file that isn't settings (cut short, hand-edited into bad JSON, not an object): why.
+    Unreadable(String),
+}
+
+/// The file, read from disk.
+pub(super) fn read(path: &Path) -> File {
+    let Ok(text) = std::fs::read_to_string(path) else { return File::Missing };
+    match serde_json::from_str::<Value>(&text) {
+        Ok(v) if v.is_object() => File::Settings(v),
+        Ok(_) => File::Unreadable("it isn't a JSON object".into()),
+        Err(e) => File::Unreadable(e.to_string()),
+    }
+}
+
+/// The file's settings: `{}` when it's missing or isn't settings (said, so a hand edit gone wrong isn't
+/// silently every setting back to its default).
+fn read_file(path: &Path) -> Value {
+    match read(path) {
+        File::Settings(v) => v,
+        File::Missing => json!({}),
+        File::Unreadable(why) => {
+            eprintln!("cue: {} isn't valid settings ({why}): every setting is at its default until it's put right", path.display());
+            json!({})
+        }
+    }
 }
 
 /// Read `path` again if it changed on disk since the settings in memory were read from it (or none were).
