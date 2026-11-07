@@ -74,7 +74,7 @@ const CUE_HANDOFF = "cue:handoff";   // Cue's own hand-off, as it's kept when ch
  *  SHORTCUT: reads the one-line description only; a skill that takes "resume" without saying so there gets
  *  Cue's message (which still works). Upgrade path: read the skill's own file on its host. */
 const takesResume = (sid, name) => /\bresume\b/i.test(cmdList(sid).find((c) => c.name === name)?.desc || "");
-// Every insight's mark: a lit bulb (rays around it), in the theme's own color (style.css .ins-bulb).
+// Every insight's mark: a lit bulb (rays around it), in the theme's own color (styles/insights.css .ins-bulb).
 /** The bulb drawn small inside the cache's countdown ring (cacheLine). */
 const RING_BULB = `<g class="ins-bulb" transform="translate(12 12.4) scale(0.5) translate(-12 -12)"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></g>`;
 const BULB = `<svg class="ins-bulb" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></svg>`;
@@ -533,96 +533,95 @@ function insSent(sid, text, now_) {
   const ho = /^\/(\S*hand-?off)(?:\s+(?!resume\b)[\s\S]*)?$/i.exec(text.trim());
   if (ho && !ho[1].startsWith("relay:")) invoke("handoff_sent", { sessionId: sid, skill: ho[1], resume: takesResume(sid, ho[1]) }).catch(() => {});
 }
-function insAct(act, d) {
-  const sid = d.sid;
-  if (typeof moreFor !== "undefined" && moreFor) moreFor = null;   // an item picked in ⋯ closes it
-  if (act === "ins-choose") {
-    insQuery = "";
-    insChoosing = insChoosing === d.key ? "" : d.key;
-    // Opened: its host's commands read again, so a skill added a moment ago is in the list.
-    if (insChoosing) { cmdLists.clear(); cmdMissed.clear(); insFindSkills(true); }
+/** The skill picker for a nudge's command: opened (its host's commands read again, so a skill added a moment ago
+ *  is in the list) or closed. */
+function insChoose(d) {
+  insQuery = "";
+  insChoosing = insChoosing === d.key ? "" : d.key;
+  if (insChoosing) { cmdLists.clear(); cmdMissed.clear(); insFindSkills(true); }
+  renderMain();
+  return document.getElementById("ins-search")?.focus();
+}
+/** Nudges hidden for `days`, or off: said so, and where to bring them back. */
+function insSnooze(sid, d) {
+  const days = +d.days || 1;
+  insPlan.delete(sid);
+  insLog(sid, "handoff", "dismissed", `snooze ${days}d`);
+  toast(`Nudges hidden for ${days === 1 ? "a day" : `${days} days`}: Settings → Insights shows them again`);
+  return setSetting("insights.snooze", Date.now() + days * 86400000);
+}
+function insOff(sid) {
+  insPlan.delete(sid);
+  insLog(sid, "handoff", "dismissed", "off");
+  toast("Nudges off: Settings → Insights turns them on again");
+  return setSetting("insights.on", false);
+}
+/** Continue in a new session from its hand-off note: the insight says so until Cue has started it, then it opens. */
+function insContinue(sid) {
+  insPlan.delete(sid);
+  if (insContinuing.has(sid)) return;
+  const s = sessionOf(sid), ho = state.skill_handoffs?.[sid];
+  insContinuing.set(sid, { name: nameOf(sid, s?.project), starts: ho?.resume ? `/${ho.skill} resume` : "", ahead: ho?.ahead > 0 });
+  renderMain();
+  return invoke("handoff_continue", { sessionId: sid }).then((r) => {
+    insContinuing.delete(sid);
+    if (r.session_id) setActive(null, r.session_id);
+    toast(r.detail);
     renderMain();
-    return document.getElementById("ins-search")?.focus();
-  }
-  if (act === "ins-skill") { insChoosing = ""; insQuery = ""; return setSetting("insights.skills", { ...insSkills(), [d.key]: d.name }); }
-  if (act === "ins-skill-forget") { const { [d.key]: _, ...rest } = insSkills(); return setSetting("insights.skills", rest); }
-  // Opening keeps its colored moment (the bar stays as it was); acting on it, or Remind me, ends it.
-  if (act === "ins-plan") { insPlan.has(sid) ? insPlan.delete(sid) : insPlan.add(sid); return renderMain(); }
-  if (act === "ins-later") { insPlan.delete(sid); insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); }
-  if (act === "ins-snooze") {
-    const days = +d.days || 1;
-    insPlan.delete(sid);
-    insLog(sid, "handoff", "dismissed", `snooze ${days}d`);
-    toast(`Nudges hidden for ${days === 1 ? "a day" : `${days} days`}: Settings → Insights shows them again`);
-    return setSetting("insights.snooze", Date.now() + days * 86400000);
-  }
-  if (act === "ins-off") {
-    insPlan.delete(sid);
-    insLog(sid, "handoff", "dismissed", "off");
-    toast("Nudges off: Settings → Insights turns them on again");
-    return setSetting("insights.on", false);
-  }
-  if (act === "ins-unsnooze") return setSetting("insights.snooze", 0);
-  if (act === "ins-continue") {
-    insPlan.delete(sid);
-    if (insContinuing.has(sid)) return;
-    const s = sessionOf(sid), ho = state.skill_handoffs?.[sid];
-    insContinuing.set(sid, { name: nameOf(sid, s?.project), starts: ho?.resume ? `/${ho.skill} resume` : "", ahead: ho?.ahead > 0 });
-    renderMain();
-    return invoke("handoff_continue", { sessionId: sid }).then((r) => {
-      insContinuing.delete(sid);
-      if (r.session_id) setActive(null, r.session_id);
-      toast(r.detail);
-      renderMain();
-    }, (e) => { insContinuing.delete(sid); toast(`Couldn't continue: ${e}`); renderMain(); });
-  }
+  }, (e) => { insContinuing.delete(sid); toast(`Couldn't continue: ${e}`); renderMain(); });
+}
+/** Compact, from the hand-off card or the cache's Compact now (counted as what saved it). Mid-step, Cue's Compact
+ *  is refused ("do this when its turn ends"): /compact goes as a queued message instead. */
+function insCompact(sid, act) {
+  if (act === "ins-compact") insLog(sid, "handoff", "acted", "/compact");
+  else insLog(sid, "cache", "acted", "compact", cacheOf(sid)?.tokens || 0);
+  const go = sessionOf(sid)?.state === "working"
+    ? () => invoke("send_to_session", { sessionId: sid, text: "/compact", images: [], now: false }).then(() => toast("/compact queued: it compacts when this step ends"), (e) => toast(`Couldn't: ${e}`))
+    : () => invoke("session_command", { sessionId: sid, action: "compact" }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
+  return insRun(sid, "Compacting…", go);
+}
+/** A nudge's command, clicked: your click is the message, sent as you'd send it, like Compact or a quick phrase. */
+function insFill(sid, d) {
+  insSent(sid, d.insCmd, false);
+  insLog(sid, "handoff", "acted", d.insCmd);
+  insAutoTried.delete(sid);
+  return insRun(sid, `Sending ${d.insCmd}…`, () => invoke("send_to_session", { sessionId: sid, text: d.insCmd, images: [], now: false })
+    .then((r) => toast(`${d.insCmd} sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
+}
+/** An insight's buttons (data-act="ins-…"), by name: each gets the session, the button's data and its name.
+ *  Opening keeps its colored moment (the bar stays as it was); acting on it, or Remind me, ends it. */
+const INS_ACTS = {
+  "ins-choose": (sid, d) => insChoose(d),
+  "ins-skill": (sid, d) => { insChoosing = ""; insQuery = ""; return setSetting("insights.skills", { ...insSkills(), [d.key]: d.name }); },
+  "ins-skill-forget": (sid, d) => { const { [d.key]: _, ...rest } = insSkills(); return setSetting("insights.skills", rest); },
+  "ins-plan": (sid) => { insPlan.has(sid) ? insPlan.delete(sid) : insPlan.add(sid); return renderMain(); },
+  "ins-later": (sid, d) => { insPlan.delete(sid); insLater.set(sid, +d.at || Math.round((stepFeeds.get(sid)?.meta?.context || 0) * 1.25)); insLog(sid, "handoff", "later"); return renderMain(); },
+  "ins-snooze": insSnooze,
+  "ins-off": insOff,
+  "ins-unsnooze": () => setSetting("insights.snooze", 0),
+  "ins-continue": insContinue,
   // The session a hand-off continued in.
-  if (act === "ins-goto") return sessionOf(sid) ? openSession(sid) : setActive(null, sid);
+  "ins-goto": (sid) => (sessionOf(sid) ? openSession(sid) : setActive(null, sid)),
   // Write hand-off now: Cue's hand-off before its cache runs out; its session stays as it is.
-  if (act === "ins-ahead") {
-    return insRun(sid, "Writing its hand-off note…", () => invoke("handoff_cue", { sessionId: sid, ahead: true })
-      .then(() => toast("Hand-off note asked for: when you're back, continue here or start fresh from it"), (e) => toast(`Couldn't send: ${e}`)));
-  }
+  "ins-ahead": (sid) => insRun(sid, "Writing its hand-off note…", () => invoke("handoff_cue", { sessionId: sid, ahead: true })
+    .then(() => toast("Hand-off note asked for: when you're back, continue here or start fresh from it"), (e) => toast(`Couldn't send: ${e}`))),
   // Continue here, on a note written ahead: it's set aside, and the box is yours.
-  if (act === "ins-keep") {
-    insPlan.delete(sid);
-    return invoke("handoff_keep", { sessionId: sid }).then(() => document.querySelector(`textarea[data-text="${CSS.escape(`s:${sid}`)}"]`)?.focus(), (e) => toast(`Couldn't: ${e}`));
-  }
-  if (act === "ins-watch") {
-    // Only a ticked one shows now, so a click unticks it.
-    return invoke("ahead_watch", { sessionId: sid, on: false }).then(() => toast("It won't hand off on its own"), (e) => toast(`Couldn't: ${e}`));
-  }
-  if (act === "ins-cue") {
-    insAutoTried.delete(sid);
-    return insRun(sid, "Handing off…", () => invoke("handoff_cue", { sessionId: sid })
-      .then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
-  }
-  if (act === "ins-fresh") {
+  "ins-keep": (sid) => { insPlan.delete(sid); return invoke("handoff_keep", { sessionId: sid }).then(() => document.querySelector(`textarea[data-text="${CSS.escape(`s:${sid}`)}"]`)?.focus(), (e) => toast(`Couldn't: ${e}`)); },
+  // Only a ticked one shows now, so a click unticks it.
+  "ins-watch": (sid) => invoke("ahead_watch", { sessionId: sid, on: false }).then(() => toast("It won't hand off on its own"), (e) => toast(`Couldn't: ${e}`)),
+  "ins-cue": (sid) => { insAutoTried.delete(sid); return insRun(sid, "Handing off…", () => invoke("handoff_cue", { sessionId: sid }).then((r) => toast(`Hand-off sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`))); },
+  "ins-fresh": (sid) => {
     insPlan.delete(sid);
     insLog(sid, "cache", "acted", "fresh", cacheOf(sid)?.tokens || insCache.get(sid)?.tokens || 0);
-    return invoke("handoff_fresh", { sessionId: sid }).then((r) => {
-      if (r.session_id) setActive(null, r.session_id);
-      toast(r.detail);
-    }, (e) => toast(`Couldn't start it: ${e}`));
-  }
-  // Compact, from the hand-off card or the cache's Compact now (counted as what saved it).
-  if (act === "ins-compact" || act === "ins-compact-warm") {
-    if (act === "ins-compact") insLog(sid, "handoff", "acted", "/compact");
-    else insLog(sid, "cache", "acted", "compact", cacheOf(sid)?.tokens || 0);
-    // Mid-step, Cue's Compact is refused ("do this when its turn ends"): /compact goes as a queued message instead.
-    const go = sessionOf(sid)?.state === "working"
-      ? () => invoke("send_to_session", { sessionId: sid, text: "/compact", images: [], now: false }).then(() => toast("/compact queued: it compacts when this step ends"), (e) => toast(`Couldn't: ${e}`))
-      : () => invoke("session_command", { sessionId: sid, action: "compact" }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
-    return insRun(sid, "Compacting…", go);
-  }
-  if (act === "ins-fill") {
-    // Your click on the command is the message: it goes as you'd send it, like Compact or a quick phrase.
-    insSent(sid, d.insCmd, false);
-    insLog(sid, "handoff", "acted", d.insCmd);
-    insAutoTried.delete(sid);
-    return insRun(sid, `Sending ${d.insCmd}…`, () => invoke("send_to_session", { sessionId: sid, text: d.insCmd, images: [], now: false })
-      .then((r) => toast(`${d.insCmd} sent${r ? ` · ${String(r).replace(/^sent /, "")}` : ""}`), (e) => toast(`Couldn't send: ${e}`)));
-  }
+    return invoke("handoff_fresh", { sessionId: sid }).then((r) => { if (r.session_id) setActive(null, r.session_id); toast(r.detail); }, (e) => toast(`Couldn't start it: ${e}`));
+  },
+  "ins-compact": (sid, d, act) => insCompact(sid, act),
+  "ins-compact-warm": (sid, d, act) => insCompact(sid, act),
+  "ins-fill": insFill,
+};
+function insAct(act, d) {
+  if (typeof moreFor !== "undefined" && moreFor) moreFor = null;   // an item picked in ⋯ closes it
+  if (Object.hasOwn(INS_ACTS, act)) return INS_ACTS[act](d.sid, d, act);
 }
 /** A tap that sends something: says so in the insight at once (its buttons give way to `note`), then clears
  *  once the Mac has answered. By then the session's own state says what came of it (writing its hand-off

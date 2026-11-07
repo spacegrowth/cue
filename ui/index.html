@@ -5,7 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cue</title>
   <link rel="stylesheet" href="vendor/xterm/xterm.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/board.css" />
+  <link rel="stylesheet" href="styles/chat.css" />
+  <link rel="stylesheet" href="styles/terminal.css" />
+  <link rel="stylesheet" href="styles/cards.css" />
+  <link rel="stylesheet" href="styles/sheets.css" />
+  <link rel="stylesheet" href="styles/relay.css" />
+  <link rel="stylesheet" href="styles/box.css" />
+  <link rel="stylesheet" href="styles/sessions.css" />
+  <link rel="stylesheet" href="styles/shells.css" />
+  <link rel="stylesheet" href="styles/extensions.css" />
+  <link rel="stylesheet" href="styles/insights.css" />
+  <link rel="stylesheet" href="styles/rail.css" />
 </head>
 <body>
   <div id="app"></div>
@@ -14,15 +26,28 @@
   <script src="vendor/xterm/addon-webgl.js"></script>
   <script src="invoke.js"></script>
   <script src="core.js"></script>
+  <script src="window.js"></script>
   <script src="reviewcard.js"></script>
   <script src="status.js"></script>
   <script src="status_panel.js"></script>
-  <script src="chat.js"></script>
+  <script src="chat/send.js"></script>
+  <script src="chat/terminal.js"></script>
+  <script src="chat/compose.js"></script>
+  <script src="chat/thread.js"></script>
+  <script src="chat/helpers.js"></script>
+  <script src="chat/reader.js"></script>
+  <script src="chat/listen.js"></script>
+  <script src="chat/render.js"></script>
+  <script src="chat/parked.js"></script>
+  <script src="chat/pane.js"></script>
+  <script src="chat/mcp.js"></script>
+  <script src="chat/patch.js"></script>
   <script src="agents.js"></script>
   <script src="insights.js"></script>
   <script src="tips.js"></script>
   <script src="shells.js"></script>
   <script src="board.js"></script>
+  <script src="board_motion.js"></script>
   <script src="sessions.js"></script>
   <script src="history.js"></script>
   <script src="insights_tab.js"></script>
@@ -31,6 +56,15 @@
   <script src="actions.js"></script>
   <script src="background.js"></script>
   <script src="about.js"></script>
+  <script src="app/render.js"></script>
+  <script src="app/delegate.js"></script>
+  <script src="app/clicks_chat.js"></script>
+  <script src="app/clicks_board.js"></script>
+  <script src="app/clicks_sheets.js"></script>
+  <script src="app/clicks.js"></script>
+  <script src="app/inputs.js"></script>
+  <script src="app/keys.js"></script>
+  <script src="app/bind.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

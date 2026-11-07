@@ -234,7 +234,7 @@ pub fn start(app: &tauri::App, hub: Arc<Hub>) {
         }
         let _ = child.wait();
     });
-    // The window says which chat is open, and the swatch it wears (app.js, when either changes).
+    // The window says which chat is open, and the swatch it wears (ui/app/render.js, when either changes).
     let (open_tx, open_rx) = watch::channel(None::<String>);
     app.listen_any("chat-open", move |e| {
         let v = serde_json::from_str::<Value>(e.payload()).unwrap_or_default();
@@ -655,7 +655,7 @@ fn newest(snap: &Value, sid: &str) -> u64 {
     session(snap, sid).and_then(|s| s["thread"].as_array()).and_then(|t| t.last()).and_then(|e| e["at_ms"].as_u64()).unwrap_or(0)
 }
 
-/// The window's colors (style.css .proj-theme): the same OKLCH lightness and chroma per
+/// The window's colors (ui/styles/base.css .proj-theme): the same OKLCH lightness and chroma per
 /// token, at its swatch's hue. Light mode: the pill is light.
 mod colors {
     use serde_json::Value;

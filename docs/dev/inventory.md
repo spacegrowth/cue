@@ -907,17 +907,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
-| `ui/app.js::(anonymous)` |  | 2 of them |
-| `ui/app.js::bindMain` |  |  |
-| `ui/app.js::renderMain` |  |  |
-| `ui/board.js::boardView` |  |  |
-| `ui/chat.js::activePane` |  |  |
-| `ui/insights.js::insAct` |  |  |
-| `ui/insights_tab.js::insightsTabView` |  |  |
-| `ui/sessions.js::lvAct` |  |  |
-| `ui/sessions.js::sessionsView` |  |  |
 
-Files over 1000 lines: `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
+Files over 1000 lines: .
 
 ## What this can't see
 

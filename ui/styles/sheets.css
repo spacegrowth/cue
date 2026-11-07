@@ -1,0 +1,107 @@
+/* ---------- sheets (history, settings) ---------- */
+.scrim { position: fixed; inset: 0; background: rgba(10, 12, 5, 0.45); display: flex; justify-content: center; align-items: flex-start; padding-top: 60px; z-index: 10; }
+.sheet { width: min(760px, calc(100vw - 40px)); max-height: calc(100vh - 100px); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 18px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6); overflow: hidden; }
+.sheet-head { display: flex; align-items: center; gap: 10px; padding: 18px 22px 10px; }
+.sheet-head h3 { margin: 0; font-size: 16px; }
+/* Settings' tabs, under its title. */
+.set-tabs { margin: 0 22px 4px; align-self: flex-start; }
+.set-ver { font: 12px var(--mono); color: var(--muted); }
+.sheet-body { overflow-y: auto; padding: 0 22px 18px; }
+kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; background: var(--panel-2); color: var(--muted); box-shadow: inset 0 -1px 0 var(--line); }
+.tl { display: block; width: 100%; text-align: left; padding: 9px 12px 9px 28px; border-radius: 10px; position: relative; }
+.tl:hover { background: var(--panel-2); }
+.tl::before { content: ""; position: absolute; left: 11px; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); }
+/* Its session is working again: the dot pulses, as a working session's does. */
+.tl.live::before { background: var(--pc, var(--accent)); animation: pulse 1.4s ease-in-out infinite; }
+.tl.ok::before { background: var(--pc, var(--accent)); }
+.tl.no::before { background: var(--deny); }
+.tl-top { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; }
+.tl-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-out { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* + New → Machine: the picked machine's panel (status, agents there, Log in / Check / Remove). */
+.nf-mpanel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.nf-mhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.nf-mhead .mono { font-size: 11.5px; overflow-wrap: anywhere; }
+.mc-st { font-size: 12px; font-weight: 650; color: var(--muted); }
+.mc-st.ok { color: var(--accent); }
+.mc-st.warn { color: #b07a22; }
+.mc-st.bad { color: var(--deny); }
+.mc-tools { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+.mc-tool.has { color: var(--ink); }
+.mc-report { margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.mc-add { display: flex; gap: 6px; align-items: center; }
+.mc-add .nf-in { width: 200px; }
+/* + New → Machine → + Add: the host field, then what Cue will and won't do, under it. */
+.nf-addm { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.nf-addm .mc-add .nf-in { flex: 1; width: auto; min-width: 0; }
+.nf-hint.wrap { white-space: normal; overflow: visible; }
+.set-group { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 18px 0 2px; }
+.set-row { display: flex; align-items: center; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.set-sw { flex: none; display: flex; flex-direction: column; gap: 9px; }
+/* Your own Color, under the ten: a rainbow until it's picked, then its color; pressed, the Mac's color picker. */
+.pc-own { display: flex; align-items: center; gap: 9px; }
+.pc-sw.own:not(.on) { background: conic-gradient(oklch(0.7 0.12 0), oklch(0.7 0.12 90), oklch(0.7 0.12 180), oklch(0.7 0.12 270), oklch(0.7 0.12 360)); }
+.pc-own-l { font-size: 12px; color: var(--muted); }
+/* The color picker's input (core.js pickOwnColor): kept out of sight, it only opens the Mac's picker. */
+.own-input { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.set-text { flex: 1; min-width: 0; }
+.set-title { font-weight: 650; }
+.set-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.set-line { display: block; }   /* a row's sub on lines of its own (Progress → What it has cost) */
+.set-sub code { font: 11.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 5px; white-space: nowrap; }   /* a command or path stays whole, never split at its dashes */
+.seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel-2); flex: none; }
+.seg button { padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.seg button.on { background: var(--accent); color: var(--on-accent); }
+/* An add-on row's choice of many (sheets.js extPick): a button, and the choices listed under its row. */
+.xp-btn { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 280px; padding: 6px 10px; border-radius: 9px; background: var(--panel-2); color: var(--ink); font-size: 12.5px; font-weight: 650; }
+.xp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp-caret { color: var(--muted); font-size: 11px; }
+.xp-menu { margin: 0 0 10px; max-height: 300px; overflow-y: auto; padding: 6px; border-radius: 12px; background: var(--panel-2); display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.xp-opt { text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--ink); }
+.xp-opt:hover { background: var(--line); }
+.xp-opt.on { background: var(--accent); color: var(--on-accent); }
+.seg button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+.seg button.with-icon svg { flex: none; }
+.toggle { position: relative; width: 40px; height: 24px; border-radius: 999px; background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); flex: none; }
+.toggle span { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: left 0.15s ease; }
+.toggle.on { background: var(--accent); box-shadow: none; }
+.toggle.on span { left: 19px; background: var(--on-accent); }
+.num { width: 76px; height: 32px; border-radius: 9px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 600 12.5px var(--mono); }
+.conn { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 650; color: var(--deny); flex: none; }
+.conn i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.conn.ok { color: var(--accent); }
+
+.tip { position: fixed; z-index: 40; padding: 6px 9px; border-radius: 8px; background: var(--ink); color: var(--panel); font-size: 12px; font-weight: 500; line-height: 1.35; pointer-events: none; opacity: 0; transition: opacity .08s; box-shadow: var(--shadow); white-space: normal; overflow-wrap: anywhere; }
+.tip.show { opacity: 1; }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translate(-50%, 8px); background: var(--panel); color: var(--ink); padding: 9px 16px; border-radius: 12px; font-size: 13px; opacity: 0; transition: all 0.2s ease; pointer-events: none; box-shadow: var(--shadow), 0 0 0 1px var(--line); z-index: 20; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.btn.small { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+/* A newer Cue is out: bottom left, until you update or put it off. */
+/* In the header, between the chips and the views: never over a text box or the chips. */
+.upd-card { flex: none; display: flex; align-items: center; gap: 10px; background: var(--panel); color: var(--ink); padding: 3px 4px 3px 12px; border-radius: 10px; font-size: 13px; box-shadow: var(--shadow), 0 0 0 1px var(--line); white-space: nowrap; margin: -4px 0; }
+.upd-card .dim { font-size: 11.5px; }
+
+/* ---------- History view: one row per answer, by day; a row opens in place ---------- */
+.hist { margin-top: 14px; flex: 1; min-height: 0; overflow-y: auto; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); }
+.hhead, .hrow { display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(160px, 0.6fr) 56px; gap: 16px; align-items: center; padding: 10px 18px; }
+.hhead { font: 11px var(--mono); color: var(--muted); background: var(--panel-2); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; border-radius: 14px 14px 0 0; }
+.hgroup { padding: 12px 18px 5px; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--muted); }
+.hrow { border-top: 1px solid var(--line); font-size: 13px; cursor: pointer; }
+.hgroup + .hrow { border-top: 0; }
+.hrow:hover, .hrow.open { background: var(--panel-2); }
+.hwho { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.hwho .proj, .hwhat, .hout { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hwhat.mono { font: 12.5px var(--mono); }
+.hout { color: var(--muted); font-size: 12.5px; }
+.hout.ok { color: var(--accent); }
+.hout.no { color: var(--deny); }
+.hrow .age { text-align: right; }
+.hexpand { padding: 4px 18px 14px; background: var(--panel-2); border-top: 1px solid var(--line); }
+.hdetail { display: flex; flex-direction: column; gap: 14px; max-height: min(520px, 60vh); overflow-y: auto; padding: 12px 4px; }
+.hexpand .cv-result { margin: 4px 0 0; background: var(--panel); }
+.hfoot { padding: 12px 18px 16px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); }
+.hask { margin: 10px 0 4px; padding: 12px 14px; border-radius: 10px; background: var(--panel); }
+.hopts { margin: 6px 0 0; padding-left: 20px; font-size: 13px; }
+/* Your reply, in an opened History row: highlighted in the selection colour, it's where the row opens. */
+.hreply .cv-you-text { background: var(--sel); color: var(--on-sel); }
+

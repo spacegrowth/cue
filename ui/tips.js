@@ -1,4 +1,4 @@
-// Cue UI — tips: now and then, one short note at the end of the line under the chat (chat.js whereNow) about a
+// Cue UI — tips: now and then, one short note at the end of the line under the chat (chat/render.js whereNow) about a
 // key or a command that fits what the session is doing, each with its own icon. At most TIPS_PER_DAY a day, the
 // same one at most once a day, and it stays until that line changes. One you use, or close with ×, never comes
 // back. Settings → Insights → Show tips turns them off. What was shown and closed is kept in this window
