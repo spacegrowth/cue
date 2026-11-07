@@ -145,9 +145,12 @@ impl LiveWrites {
 
     /// One job written on the writer's thread. A write that panics loses only its job (said in the log): the
     /// writer goes on serving, and `flush` still sees it done, so quitting never waits on a writer that died.
+    /// What the last save wrote can't be trusted after it (it may have stopped halfway): the next save writes
+    /// every live session again, from the store.
     fn write_contained(&self, job: Job) {
         if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (self.writes)(self, job))).is_err() {
             eprintln!("cue: a database write failed (it panicked): that save is lost, the writer goes on");
+            crate::locking::lock(&self.written, "db writer's marks").marks = LiveMarks::default();
         }
     }
 
@@ -175,10 +178,11 @@ impl LiveWrites {
             }
         }
         for (sid, at) in deletes {
-            crate::db::delete_session(&sid);
-            // Its row is gone: live again (resumed), it's written whole, not judged unchanged.
+            // Marked before its row goes (a write that stops halfway still never saves anything of it from
+            // before): live again (resumed), it's written whole, not judged unchanged.
             w.marks.forget(&sid);
-            w.deleted.insert(sid, at);
+            w.deleted.insert(sid.clone(), at);
+            crate::db::delete_session(&sid);
         }
     }
 }
@@ -335,6 +339,30 @@ mod tests {
         w.flush();
         let ids: Vec<String> = crate::db::history(50).into_iter().map(|i| i.id).collect();
         assert!(ids.contains(&"after".to_string()) && ids.contains(&"later".to_string()), "{ids:?}");
+    }
+
+    /// A write that stopped halfway (it panicked after taking a session's row away) leaves what the last save
+    /// wrote untrusted: the next save writes every live session again, so the row comes back from the store.
+    #[test]
+    fn after_a_write_that_stopped_halfway_the_next_save_writes_every_live_session() {
+        let _db = Db::new("halfway");
+        let writes: Writes = |w, job| {
+            if job.answered.iter().any(|i| i.id == "half") {
+                crate::db::delete_session("t");
+                panic!("stopped halfway");
+            }
+            w.write(job)
+        };
+        let w = Arc::new(LiveWrites { writes, ..Default::default() });
+        w.hand(live(&["s", "t"]), true);
+        w.flush();
+        w.hand(Job { answered: vec![answered("half", "s", 10)], ..Default::default() }, true);
+        w.flush();
+        w.hand(live(&["s", "t"]), true);
+        w.flush();
+        let mut ids: Vec<String> = crate::db::live().0.iter().map(|s| s.origin.session_id.clone()).collect();
+        ids.sort();
+        assert_eq!(ids, ["s", "t"]);
     }
 
     /// Parked records are saved by the writer, not where they're handed in (a draw that takes a session off

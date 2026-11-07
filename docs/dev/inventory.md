@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 136 (3 sync) |
 | Lock declarations (static or field) | 92 |
-| Lock acquisitions | 211 |
+| Lock acquisitions | 212 |
 | Lock-graph edges | 45 |
 | Spawn sites | 74 |
 | External calls: fs / db / process / notify / login / socket | 339 / 146 / 48 / 4 / 1 / 3 |
@@ -191,7 +191,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `db/mod.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
-| `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (1 sites) |
+| `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
 | `hub/redraw.rs::Redraws.dirty` | `Mutex<bool>` | "redraw wanted" (3 sites) |
