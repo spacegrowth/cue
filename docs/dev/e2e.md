@@ -48,7 +48,7 @@ Cue looks with that TMUX_TMPDIR), and `Tmux` refuses a socket that is the defaul
 processes running this worktree's e2e binary (Cue and its hooks). A failed journey keeps its folder with
 `cue.log` and `window.png`; the run prints where.
 
-## Journeys (13; 12 must pass, 1 marks a known bug)
+## Journeys (13)
 
 | File | Journey |
 |---|---|
@@ -56,7 +56,7 @@ processes running this worktree's e2e binary (Cue and its hooks). A failed journ
 | sessions | reply on a finished card typed into its tmux pane, exactly · a setting survives a relaunch · Park from ⋯ ends the pane and stays parked across a relaunch |
 | terminal | open, type, close the built-in terminal · 1,000 keys while Cue's tmux client is SIGSTOPped · 1,000 keys while the pane's program is stopped · **freeze regression**: terminal nobody reads (tmux server SIGSTOPped), 2,000 keys, window answers < 500 ms throughout, "isn't responding" line, Resume after SIGCONT, typing goes in again |
 | load | 1,000 hook events at 100/s across 20 sessions while typing 1,000 keys: window < 500 ms throughout, every key and event lands |
-| relay | Review to a lead while another report waits (regression for 2e9abc0): cards render, review typed into the lead, window < 500 ms · *todo*: the other card says "missed" again after the lead settles |
+| relay | Review to a lead while another report waits (regression for 2e9abc0): cards render, review typed into the lead, window < 500 ms · the other card says "missed" again when the lead settles, with nothing else happening |
 
 The relay journey fails with 2e9abc0 reverted (Cue deadlocks; the review never reaches the lead) and passes
 with it: checked by reverting, rebuilding and running it.
@@ -80,13 +80,11 @@ shows the line. That's the freeze journey. 1,000 keys is just under that buffer,
 
 ## Bugs found
 
-- **Review cards go stale after a lead settles** (the *todo* journey). After Review is typed into a lead, its
-  other waiting reports read "busy" for the 8 s settle (`REVIEW_SETTLE_MS`). When the time passes nothing
-  changes in the store, so the kept snapshot (`hub/shown.rs`) isn't rebuilt and nothing is sent to the
-  window: the card never says "Its lead hasn't picked this up." again until an unrelated event redraws
-  (confirmed: one unrelated hook event flips it). The same holds for any snapshot field that changes with
-  time alone (`ready_late` crossing `MISSED_WAKE_SECS`). Fix belongs with §2.4's caches: a rebuild scheduled
-  at the next time-based change, or those facts versioned.
+- **Review cards went stale after a lead settled** (fixed: hub/shown.rs). After Review is typed into a lead,
+  its other waiting reports read "busy" for the 8 s settle (`REVIEW_SETTLE_MS`). When that time passed
+  nothing changed in the store, so the kept snapshot wasn't rebuilt and the window never heard: the card
+  never said "Its lead hasn't picked this up." again until an unrelated event redrew. Now each build says
+  when its next time-based change is (`NextChange`) and one timer per hub builds it again then.
 
 ## Not covered (and why)
 

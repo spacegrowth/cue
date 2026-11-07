@@ -5,10 +5,8 @@ import path from "node:path";
 import { test } from "node:test";
 import { World } from "./world.js";
 
-/** `todo`: a journey that shows a known bug (the reason, where it's written down). It runs and reports,
- *  and its failure doesn't fail the run. */
-export function journey(name, body, { timeout = 120_000, todo } = {}) {
-  test(name, { timeout, todo }, async () => {
+export function journey(name, body, { timeout = 120_000 } = {}) {
+  test(name, { timeout }, async () => {
     const world = new World(name);
     let failed = true;
     try {

@@ -46,5 +46,6 @@ journey("Review sent to a lead while another report waits: cards render and the 
 
 journey("once the lead has settled after a review, the other waiting report says it was missed again", async (world) => {
   await reviewWhileAnotherWaits(world);
-  await waitFor(async () => (await card(world, "e2e-exec-b"))?.missed === true, "parser's card after the lead settled", { timeout: 20_000 });
-}, { todo: "the kept snapshot isn't rebuilt when the settle time passes, only on the next change (docs/dev/e2e.md, Bugs found)" });
+  // The lead settles 8 s after the review (REVIEW_SETTLE_MS): the card changes then, with nothing else happening.
+  await waitFor(async () => (await card(world, "e2e-exec-b"))?.missed === true, "parser's card after the lead settled", { timeout: 12_000 });
+});
