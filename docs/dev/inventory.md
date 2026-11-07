@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
-| Lock declarations (static or field) | 82 |
+| Lock declarations (static or field) | 86 |
 | Lock acquisitions | 198 |
 | Lock-graph edges | 41 |
-| Spawn sites | 69 |
-| External calls: fs / db / process / notify / login / socket | 340 / 142 / 46 / 4 / 1 / 3 |
+| Spawn sites | 71 |
+| External calls: fs / db / process / notify / login / socket | 340 / 143 / 48 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -178,6 +178,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `actions/mod.rs::APP` | `OnceLock<AppHandle>` | — |
 | `actions/mod.rs::WATCH` | `Mutex<Option<HashMap<String,Watched>>>` | "actions WATCH" (6 sites) |
 | `actions/run.rs::PLAIN` | `Mutex<Option<HashMap<String,Plain>>>` | "PLAIN" (6 sites) |
+| `chaos/mod.rs::SET` | `OnceLock<Vec<(Knob,u64)>>` | — |
+| `clock.rs::START` | `std::sync::OnceLock<std::time::Instant>` | — |
 | `commands.rs::LISTS` | `Mutex<Option<HashMap<String,(u64,Vec<Cmd>)>>>` | "LISTS" (5 sites) |
 | `commands.rs::READING` | `Mutex<Option<HashSet<String>>>` | "READING" (3 sites) |
 | `config.rs::ON_CHANGE` | `std::sync::OnceLock<Box<dynFn()+Send+Sync>>` | — |
@@ -215,6 +217,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `locking/held.rs::HOLDERS` | `Mutex<Option<HashMap<(usize,ThreadId),Holder>>>` | — |
 | `locking/held.rs::WAITERS` | `Mutex<Option<HashMap<u64,Waiter>>>` | — |
 | `locking/report.rs::RECENT` | `Mutex<Option<Recent>>` | — |
+| `locking/stats.rs::WAITS` | `Mutex<BTreeMap<&'staticstr,Waits>>` | — |
+| `locking/stats.rs::PINGS` | `Mutex<VecDeque<u64>>` | — |
 | `locking/watchdog.rs::THREAD` | `OnceLock<Option<std::thread::Thread>>` | — |
 | `logs/archive.rs::INDEX` | `Mutex<Option<HashMap<String,(u64,Entry)>>>` | "archive INDEX" (4 sites) |
 | `logs/live.rs::CLAUDE` | `Mutex<Vec<Quiet>>` | "CLAUDE" (2 sites) |
@@ -318,6 +322,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 |---|---|---|
 | `actions/mod.rs::start` | thread::spawn | 1 |
 | `btw.rs::asked` | thread::spawn | 1 |
+| `chaos/db.rs::start` | Builder::spawn | 1 |
+| `chaos/ssh.rs::start` | Builder::spawn | 1 |
 | `commands.rs::for_folder` | thread::spawn | 1 |
 | `commands.rs::read_folder` | thread::spawn | 1 |
 | `config.rs::watch` | thread::spawn | 1 |
@@ -688,10 +694,11 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
 
-### db (142)
+### db (143)
 
 | In | Call | Times |
 |---|---|---|
+| `chaos/db.rs::start` | db::path | 1 |
 | `commands.rs::for_folder` | db::commands | 1 |
 | `commands.rs::for_folder` | db::set_commands | 1 |
 | `commands.rs::on_host` | db::all_commands | 1 |
@@ -821,7 +828,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (46)
+### process (48)
 
 | In | Call | Times |
 |---|---|---|
@@ -830,6 +837,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `actions/run.rs::tmux_here` | (program computed) | 1 |
 | `btw.rs::asked` | /bin/kill | 1 |
 | `btw.rs::run_full` | (program computed) | 1 |
+| `chaos/ssh.rs::end_ssh_children` | /bin/ps | 1 |
+| `chaos/ssh.rs::refused` | /bin/sh | 1 |
 | `commands.rs::read_folder` | (program computed) | 1 |
 | `extensions.rs::ext_reveal` | /usr/bin/open | 1 |
 | `extensions.rs::run_program` | (program computed) | 1 |
