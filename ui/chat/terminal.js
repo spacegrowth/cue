@@ -88,7 +88,10 @@ function keptTerm(slot) {
   }
   slot.appendChild(termKept.host);
   termKept.host.querySelector(".term-stalled")?.remove();
-  termKept.term.reset();
+  // Cleared once what the last session's output still waiting to be drawn is through, before any of this
+  // one's: reset() alone leaves that output queued, and it would be drawn over the new screen.
+  const { term } = termKept;
+  term.write("", () => term.reset());
   try { termKept.fit.fit(); } catch {}
   return termKept;
 }

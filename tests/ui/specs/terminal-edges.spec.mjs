@@ -1,6 +1,6 @@
 // A session's terminal when it doesn't go as planned: an open that fails says why and can be tried again, a
 // client that ends (ssh gone) closes it, an end from an earlier opening leaves the one open now alone, and
-// the terminal (one, kept from opening to opening) says nothing of the last session over the next.
+// the terminal (one, kept from opening to opening) shows nothing of the last session in the next.
 import { test, expect } from "./cue.mjs";
 import { openTerminal } from "./term.mjs";
 
@@ -33,6 +33,12 @@ test("an end from an earlier opening leaves the one open now", async ({ cue, pag
   await expect(page.locator(".term-host")).toHaveCount(1);
 });
 
+/** The open terminal's screen and scrollback, as text. */
+const screenText = (page) => page.evaluate(() => {
+  const b = termObj?.buffer.active;
+  return b ? Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString()).join("\n") : "";
+});
+
 /** Another session (det) in tmux, its chat and terminal opened as its strip's click opens them, after `before`
  *  runs in the window in the same turn. */
 const switchTo = (page, before) => page.evaluate((src) => {
@@ -41,6 +47,14 @@ const switchTo = (page, before) => page.evaluate((src) => {
   setActive(null, "det");
   openTerm("det");
 }, before.toString());
+
+test("the next session's terminal never shows output the last one's hadn't drawn yet", async ({ page }) => {
+  await openTerminal(page);
+  await switchTo(page, () => termObj.write("LEFTOVER-FROM-RELAY\r\n"));
+  await page.waitForFunction(() => termSid === "det" && termGen > 0);
+  await expect.poll(() => screenText(page)).toContain("Do you want to proceed?");
+  expect(await screenText(page)).not.toContain("LEFTOVER-FROM-RELAY");
+});
 
 test("typing refused in the last session's terminal says nothing over the next one's", async ({ cue, page }) => {
   await openTerminal(page);
