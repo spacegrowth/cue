@@ -22,10 +22,20 @@ unit() {
   mkdir -p "$TMUX_TMPDIR"
   (cd "$ROOT/src-tauri" && cargo test -q --workspace 2>&1 | grep -E "test result|FAILED|panicked" ; cargo build -q)
   "$CUE_BIN" >/dev/null 2>&1 &
-  # Every test Cue process (hooks included), the private tmux server by its own socket, then the folder.
-  trap 'pkill -f "$CUE_BIN"; tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null; rm -rf "$CUE_HOME"' EXIT
+  CUE_PID=$!
+  trap end_unit EXIT
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
   python3 "$ROOT/tests/test_protocol.py"
+}
+
+# What the unit run started, and only that: its private Cue (by its pid), whatever else runs with its CUE_HOME
+# (the hooks its tests ran), the private tmux server by its own socket, then the folder. Never another Cue built
+# from this checkout (a dev Cue, hooks shimmed to it). Each step may find nothing left to end.
+end_unit() {
+  kill "$CUE_PID" 2>/dev/null || true
+  ps -E -ww -x -o pid=,command= | awk -v me=$$ -v home="CUE_HOME=$CUE_HOME" '$1 != me && index($0 " ", home " ") { print $1 }' | xargs kill 2>/dev/null || true
+  tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null || true
+  rm -rf "$CUE_HOME"
 }
 
 ui() {

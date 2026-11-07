@@ -134,3 +134,37 @@ fn an_action_in_tmux_that_ignores_ctrl_c_is_killed_by_stop() {
     assert!(seen.stopped, "marked as stopped: {:?}", seen.state());
     assert_eq!(stop(&s.folder, "", &started.session), Ok(()), "stopping one that's stopped is nothing");
 }
+
+/// An action's output file of 2 GB (sparse, made in a moment): a log read takes its end at once, never the
+/// whole file.
+#[test]
+fn a_log_read_of_a_huge_output_takes_only_its_end() {
+    use std::io::{Seek, Write};
+    let s = Scratch::new("plain-huge");
+    let name = s.name("Huge");
+    plain_start(&s.spec("Huge", "true"), &name).unwrap();
+    assert!(within(10, || plain_list().iter().any(|x| x.session == name && !x.running)), "it ended");
+    let mut f = std::fs::OpenOptions::new().write(true).open(plain_out(&name)).unwrap();
+    f.set_len(2 << 30).unwrap();
+    f.seek(std::io::SeekFrom::End(0)).unwrap();
+    f.write_all(b"\nthe last line\n").unwrap();
+    let t0 = std::time::Instant::now();
+    let raw = plain_log(&name).unwrap();
+    let took = t0.elapsed();
+    assert!(took < std::time::Duration::from_millis(100), "read {took:?}");
+    assert!(raw.len() <= 512 * 1024 && raw.ends_with("the last line\n"), "{} bytes", raw.len());
+}
+
+/// A file cut shorter after its length was looked at is read from its start; one that grew since is read up
+/// to where it was.
+#[test]
+fn a_log_tail_copes_with_a_file_cut_or_grown_meanwhile() {
+    let path = std::env::temp_dir().join(format!("cue-act-tail-{}", std::process::id()));
+    std::fs::write(&path, "short\n").unwrap();
+    let mut f = std::fs::File::open(&path).unwrap();
+    assert_eq!(tail(&mut f, 10 << 20, 1024).as_deref(), Some("short\n"), "cut to 6 bytes after a look said 10 MB");
+    std::fs::write(&path, "0123456789later").unwrap();
+    let mut f = std::fs::File::open(&path).unwrap();
+    assert_eq!(tail(&mut f, 10, 4).as_deref(), Some("6789"), "grown past the look: up to where it was");
+    let _ = std::fs::remove_file(&path);
+}

@@ -143,10 +143,20 @@ impl Hub {
         for sid in &back {
             self.save_parked(sid);
         }
-        crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
+        // The answered cards handed to this draw go in the same write (saves.rs).
+        self.save_handed_answers(|answered| crate::db::sync_live_with(&sessions, &waiting.iter().collect::<Vec<_>>(), answered));
         // Each that ended since the last save, as it was when it ended, not as of the save before: a change and
         // the end can land within one draw. Taken with the live ones under one lock, so the two agree.
         crate::db::save_ended(&ended);
+    }
+
+    /// Whether a change is drawn (and saved) by a draw that follows it: the app's worker, or a test's queue.
+    pub(super) fn draws_later(&self) -> bool {
+        match &self.ports.later {
+            #[cfg(test)]
+            Later::Deferred(_) => true,
+            Later::Threads => self.app.is_some(),
+        }
     }
 
     /// Tests: how many draws have run.

@@ -1,6 +1,7 @@
 mod clock;
 mod config;
 mod actions;
+mod awake;
 mod btw;
 mod db;
 mod hook;
@@ -206,6 +207,7 @@ pub fn run() {
             std::env::remove_var(&k);
         }
     }
+    awake::stay_responsive();
     let builder = tauri::Builder::default();
     // The end-to-end tests (tests/e2e) drive this window through a WebDriver server inside the app, on
     // 127.0.0.1 at TAURI_WEBDRIVER_PORT. Only a debug build with the `e2e` feature has it (see E2E_DEBUG_ONLY).

@@ -32,7 +32,7 @@ pub(crate) fn find_bin(name: &str) -> String {
 /// A command's output, given at most `cap`: past that it's killed and this is an error. What Cue runs
 /// to type into a terminal or read it (osascript, tmux, kitten, wezterm) answers in well under a second;
 /// one that doesn't (iTerm busy, a tmux server not answering) would otherwise hold a send for good.
-pub(super) fn capped(cmd: &mut Command, cap: std::time::Duration) -> std::io::Result<std::process::Output> {
+pub(crate) fn capped(cmd: &mut Command, cap: std::time::Duration) -> std::io::Result<std::process::Output> {
     use std::io::Read;
     let mut child = cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
     // Read as it runs: a full pipe would stop it before it could exit.
