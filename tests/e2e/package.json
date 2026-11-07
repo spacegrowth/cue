@@ -1,0 +1,12 @@
+{
+  "name": "cue-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Drives a real debug Cue (built with the e2e feature) over its embedded WebDriver server",
+  "scripts": {
+    "test": "./run.sh"
+  },
+  "devDependencies": {
+    "webdriverio": "9.31.9"
+  }
+}
