@@ -12,8 +12,17 @@ use serde_json::{json, Value};
 pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>, R), String>) -> Result<R, String> {
     let _one = super::cache::hold_file();
     let path = super::path();
-    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost.
-    let mut c = super::cache::read_file(&path);
+    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost. One that
+    // isn't settings is kept aside before it's replaced: a hand edit with a typo isn't every setting gone.
+    let mut c = match super::cache::read(&path) {
+        super::cache::File::Settings(v) => v,
+        super::cache::File::Missing => json!({}),
+        super::cache::File::Unreadable(why) => {
+            let kept = keep_aside(&path)?;
+            eprintln!("cue: {} isn't valid settings ({why}): kept as {}, saving a new one", path.display(), kept.display());
+            json!({})
+        }
+    };
     let (value, out) = f(&c)?;
     let Some(value) = value else { return Ok(out) };
     let (section, name) = key.split_once('.').ok_or_else(|| format!("{key} isn't a dotted key"))?;
@@ -24,6 +33,15 @@ pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>
     let stamp = replace(&path, &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
     super::cache::keep(&path, stamp, c);
     Ok(out)
+}
+
+/// A copy of `path` beside it, as `<name>.unreadable-<ms>`, for a person to put right.
+fn keep_aside(path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".unreadable-{}", crate::clock::now_ms()));
+    let kept = path.with_file_name(name);
+    std::fs::copy(path, &kept).map_err(|e| format!("couldn't keep the unreadable {} aside: {e}", path.display()))?;
+    Ok(kept)
 }
 
 /// `path` holding `text`, replaced whole: written beside it and flushed to disk, then renamed over it, so a
