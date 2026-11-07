@@ -18,6 +18,54 @@ fn mine() -> PathBuf {
     Path::new("/tmp").join(format!("cue-test-tmux-{}", std::process::id()))
 }
 
+thread_local! {
+    /// The programs a test stands in on its own thread (`stand_in`), by name: a script, or one not installed.
+    static STAND_INS: std::cell::RefCell<std::collections::HashMap<String, String>> = std::cell::RefCell::default();
+    /// How long a tmux command may take on this thread before it's cut off (`cap_tmux`).
+    static CAP: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
+}
+
+/// While this lives, program `name` (tmux, ps) on this thread is `bin` (focus::bin), never the real one:
+/// what a test stands in to make it hang, fail, answer as it says, or be missing. Other threads (other
+/// tests) are untouched.
+pub struct StandIn(String);
+
+pub fn stand_in(name: &str, bin: &str) -> StandIn {
+    STAND_INS.with(|s| s.borrow_mut().insert(name.to_string(), bin.to_string()));
+    StandIn(name.to_string())
+}
+
+impl Drop for StandIn {
+    fn drop(&mut self) {
+        STAND_INS.with(|s| s.borrow_mut().remove(&self.0));
+    }
+}
+
+/// The program this thread's test stands in for `name`, if it does.
+pub fn standing_in(name: &str) -> Option<String> {
+    STAND_INS.with(|s| s.borrow().get(name).cloned())
+}
+
+/// While this lives, a tmux command on this thread is cut off after `cap` instead of focus::TMUX_CAP: a tmux
+/// that never answers fails in moments.
+pub struct Cap(());
+
+pub fn cap_tmux(cap: std::time::Duration) -> Cap {
+    CAP.with(|c| c.set(Some(cap)));
+    Cap(())
+}
+
+impl Drop for Cap {
+    fn drop(&mut self) {
+        CAP.with(|c| c.set(None));
+    }
+}
+
+/// The cap this thread's test put on tmux, if it did.
+pub fn tmux_cap() -> Option<std::time::Duration> {
+    CAP.with(|c| c.get())
+}
+
 /// Run by the loader before `main`: tmux, from here on, has only this process's own folder to go by.
 extern "C" fn isolate() {
     std::env::remove_var("TMUX");

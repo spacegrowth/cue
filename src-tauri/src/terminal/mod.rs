@@ -11,4 +11,6 @@ pub(crate) mod input;
 pub(crate) mod keys;
 pub(crate) mod term;
 #[cfg(test)]
+pub(crate) mod fake_tmux;
+#[cfg(test)]
 pub(crate) mod test_tmux;

@@ -220,6 +220,11 @@ impl Hub {
     /// Type your reply into a finished session's terminal and confirm it submitted.
     /// Blocking (typing takes ~1-2s): call off the UI thread.
     pub fn reply(&self, id: &str, text: &str, images: &[Upload]) -> Result<String, String> {
+        // Nothing to type is a bare Enter, which on a screen that changed meanwhile picks what's highlighted
+        // (a notification's reply field sent empty comes here as well as the box).
+        if text.trim().is_empty() && images.is_empty() {
+            return Err("nothing to send".into());
+        }
         let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
         let sid = it.origin.session_id.clone();
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).

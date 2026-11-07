@@ -6,12 +6,17 @@ use crate::model::Origin;
 use std::process::Command;
 
 /// Find a CLI tool. An app opened from Finder gets a bare PATH (/usr/bin:/bin:…), so Homebrew's
-/// tmux and friends must be looked up explicitly. In tests, tmux only ever on the tests' own server
-/// (terminal::test_tmux).
+/// tmux and friends must be looked up explicitly. In tests, tmux only ever on the tests' own server, or
+/// the stand-in a test put on its thread for any program (terminal::test_tmux).
 fn bin(name: &str) -> String {
     #[cfg(test)]
-    if name == "tmux" {
-        crate::terminal::test_tmux::check();
+    {
+        if let Some(stand_in) = crate::terminal::test_tmux::standing_in(name) {
+            return stand_in;
+        }
+        if name == "tmux" {
+            crate::terminal::test_tmux::check();
+        }
     }
     find_bin(name)
 }
@@ -29,14 +34,14 @@ pub(super) fn find_bin(name: &str) -> String {
 /// A command's output, given at most `secs`: past that it's killed and this is an error. What Cue runs
 /// to type into a terminal or read it (osascript, tmux, kitten, wezterm) answers in well under a second;
 /// one that doesn't (iTerm busy, a tmux server not answering) would otherwise hold a send for good.
-fn capped(cmd: &mut Command, secs: u64) -> std::io::Result<std::process::Output> {
+fn capped(cmd: &mut Command, cap: std::time::Duration) -> std::io::Result<std::process::Output> {
     use std::io::Read;
     let mut child = cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
     // Read as it runs: a full pipe would stop it before it could exit.
     let drain = |p: Option<Box<dyn Read + Send>>| std::thread::spawn(move || { let mut b = vec![]; if let Some(mut p) = p { let _ = p.read_to_end(&mut b); } b });
     let out = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let err = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let until = std::time::Instant::now() + cap;
     let status = loop {
         if let Some(st) = child.try_wait()? {
             break st;
@@ -45,7 +50,7 @@ fn capped(cmd: &mut Command, secs: u64) -> std::io::Result<std::process::Output>
             let _ = child.kill();
             let _ = child.wait();
             let name = cmd.get_program().to_string_lossy().rsplit('/').next().unwrap_or("").to_string();
-            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, format!("{name} didn't answer in {secs}s")));
+            return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, format!("{name} didn't answer in {}", if cap.subsec_millis() == 0 { format!("{}s", cap.as_secs()) } else { format!("{}ms", cap.as_millis()) })));
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
@@ -53,7 +58,20 @@ fn capped(cmd: &mut Command, secs: u64) -> std::io::Result<std::process::Output>
 }
 
 fn run(cmd: &str, args: &[&str]) -> bool {
-    capped(Command::new(bin(cmd)).args(args), 10).map(|o| o.status.success()).unwrap_or(false)
+    let cap = if cmd == "tmux" { tmux_cap() } else { CAP };
+    capped(Command::new(bin(cmd)).args(args), cap).map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// How long a command Cue runs to type into a terminal or read it may take before it's cut off.
+const CAP: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// tmux's cap: CAP, or in a test the one it put on its thread (test_tmux::cap_tmux).
+fn tmux_cap() -> std::time::Duration {
+    #[cfg(test)]
+    if let Some(cap) = crate::terminal::test_tmux::tmux_cap() {
+        return cap;
+    }
+    CAP
 }
 
 fn osa(s: &str) -> String {
@@ -61,7 +79,7 @@ fn osa(s: &str) -> String {
 }
 
 fn run_osascript(script: &str) -> Result<String, String> {
-    let out = capped(Command::new("osascript").arg("-e").arg(script), 20).map_err(|e| e.to_string())?;
+    let out = capped(Command::new("osascript").arg("-e").arg(script), 2 * CAP).map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -277,9 +295,9 @@ pub fn tmux_kill_pane(pane: &str) {
     let _ = run("tmux", &["kill-pane", "-t", pane]);
 }
 
-/// tmux's answer, trimmed; None if it failed.
-fn tmux_out(args: &[&str]) -> Option<String> {
-    let out = capped(Command::new(bin("tmux")).args(args), 10).ok()?;
+/// tmux's answer, trimmed; None if it failed or didn't answer in time.
+pub(crate) fn tmux_out(args: &[&str]) -> Option<String> {
+    let out = capped(Command::new(bin("tmux")).args(args), tmux_cap()).ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
@@ -294,7 +312,7 @@ pub(crate) fn pane_in_its_session(pane: &str, name: &str) -> bool {
 
 /// What a tmux pane shows right now, as plain text (wrapped lines joined), blank lines at the end dropped.
 pub fn tmux_screen(pane: &str) -> Result<String, String> {
-    let out = capped(Command::new(bin("tmux")).args(["capture-pane", "-p", "-J", "-t", pane]), 10).map_err(|e| e.to_string())?;
+    let out = capped(Command::new(bin("tmux")).args(["capture-pane", "-p", "-J", "-t", pane]), tmux_cap()).map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!("tmux pane {pane} is gone"));
     }
@@ -928,23 +946,61 @@ pub fn still_in_box(box_text: &str, text: &str) -> bool {
     (!tail.is_empty() && line.contains(&tail)) || (text.contains('\n') && line.contains("[Pastedtext#"))
 }
 
-/// The agent is gone from its terminal, so nothing typed there reaches one: a shell at its prompt has the
-/// screen, and (as `type_into` wants both signs) the process there is a shell (tmux says), or the agent's
-/// own process is nowhere to be found (iTerm, Terminal.app). None when Cue can't see the terminal.
+/// The agent is gone from its terminal, so nothing typed there reaches one: in tmux, a shell has the pane's
+/// foreground (`shell_in_front`); elsewhere a shell's prompt has the screen and the agent's own process is
+/// nowhere to be found (iTerm, Terminal.app). None when Cue can't see the terminal.
 pub fn agent_gone(o: &Origin) -> Option<bool> {
     if !o.tmux_pane.is_empty() {
-        let pane = o.tmux_pane.as_str();
-        let args = ["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane];
-        let out = if o.machine.is_empty() {
-            tmux_out(&args)?
-        } else {
-            crate::machines::tmux(&crate::machines::get(&o.machine)?.host, &args).ok()?
-        };
-        let (running, screen) = out.split_once('\n').unwrap_or((out.as_str(), ""));
-        return Some(is_shell(running.trim()) && at_shell_prompt(screen));
+        return pane_now(o, &o.tmux_pane).ok().map(|p| p.shell_in_front);
     }
     let screen = screen_of(o)?;
     Some(at_shell_prompt(&screen) && current_tty(o).is_none())
+}
+
+/// A tmux pane as one trip reads it: what tmux names running there, its screen, and whether a shell has it.
+struct PaneNow {
+    running: String,
+    screen: String,
+    shell_in_front: bool,
+}
+
+/// One trip to the pane (this Mac's or a machine's): its command, its terminal and its screen; then, when
+/// tmux names a shell, the processes in the foreground of that terminal.
+fn pane_now(o: &Origin, pane: &str) -> Result<PaneNow, String> {
+    let out = tmux_try_for(o, pane, &["display-message", "-p", "-t", pane, "#{pane_current_command}|#{pane_tty}", ";", "capture-pane", "-p", "-J", "-t", pane])?;
+    let (first, screen) = out.split_once('\n').unwrap_or((out.as_str(), ""));
+    let (running, tty) = first.rsplit_once('|').unwrap_or((first, ""));
+    let (running, tty) = (running.trim(), tty.trim());
+    let shell_in_front = is_shell(running) && match foreground(o, tty) {
+        Some(names) => names.iter().all(|n| is_shell(n)),
+        // Its foreground can't be listed (no ps answer, the machine's trip failed): the screen decides.
+        None => at_shell_prompt(screen),
+    };
+    Ok(PaneNow { running: running.to_string(), screen: screen.to_string(), shell_in_front })
+}
+
+/// The names of the processes in the foreground of terminal `tty` ("/dev/ttys004"), on this Mac or the
+/// session's machine: those `ps` marks `+`. A shell tmux names may only be what started the agent
+/// (`sh -c "claude …"` runs it in the shell's own process group), so the agent shows here too; with only
+/// shells here, the agent has exited back to one, whatever its prompt looks like. None when it can't be read.
+fn foreground(o: &Origin, tty: &str) -> Option<Vec<String>> {
+    let tty = tty.strip_prefix("/dev/")?;
+    if tty.is_empty() || !tty.chars().all(|c| c.is_ascii_alphanumeric() || c == '/') {
+        return None;
+    }
+    let listing = if o.machine.is_empty() {
+        let out = capped(Command::new(bin("ps")).args(["-o", "stat=,comm=", "-t", tty]), CAP).ok()?;
+        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())?
+    } else {
+        crate::machines::run(&crate::machines::get(&o.machine)?.host, &format!("ps -o stat=,comm= -t {tty}")).ok()?
+    };
+    let names: Vec<String> = listing
+        .lines()
+        .filter_map(|l| l.trim().split_once(char::is_whitespace))
+        .filter(|(stat, _)| stat.contains('+'))
+        .map(|(_, comm)| comm.trim().split_whitespace().next().unwrap_or("").rsplit('/').next().unwrap_or("").to_string())
+        .collect();
+    (!names.is_empty()).then_some(names)
 }
 
 /// A dialog open on the session's screen (its choices numbered), if Cue can see its terminal.
@@ -1040,15 +1096,13 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     let pause = || std::thread::sleep(std::time::Duration::from_secs_f64(enter_gap(text)));
     if !o.tmux_pane.is_empty() {
         let pane = o.tmux_pane.as_str();
-        // First trip: what's in the pane, and the screen as it is. The agent must be what's there: back
-        // at a shell prompt (the agent exited), the paste plus Enter would run the message as a command.
-        // Both signs are needed. On this Mac tmux names the pane's process group leader, which is the
-        // shell for anything started as `sh -c "…"`, so the shell's name alone isn't proof.
-        let out = tmux_try_for(o, pane, &["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane])?;
-        let (running, before) = out.split_once('\n').unwrap_or((out.as_str(), ""));
-        if is_shell(running.trim()) && at_shell_prompt(before) {
-            return Err(format!("its pane shows a shell prompt ({}), not the agent: nothing typed", running.trim()));
+        // First: what's in the pane, and the screen as it is. The agent must be what's there: back at its
+        // shell (the agent exited), the paste plus Enter would run the message as a command.
+        let now = pane_now(o, pane)?;
+        if now.shell_in_front {
+            return Err(format!("its pane shows a shell prompt ({}), not the agent: nothing typed", now.running));
         }
+        let before = now.screen;
         // Second trip: the paste (bracketed when the app asked for it, so a multi-line reply can't submit
         // early). "--": the text is the buffer even when it starts with "-"; a final ";" would end the
         // tmux command instead of being typed, so it goes escaped (tmux turns "\;" back into ";").
@@ -1103,8 +1157,8 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     Err("Cue can't type into this terminal (it works with iTerm, Terminal, tmux, WezTerm and kitty). Use Go to session".into())
 }
 
-/// The process in a tmux pane is a shell, not an agent: what `#{pane_current_command}` says for the
-/// usual shells (a login shell shows with a leading "-").
+/// A process named `command` is a shell, not an agent: the usual shells by the name tmux or ps gives them
+/// (a login shell shows with a leading "-").
 fn is_shell(command: &str) -> bool {
     matches!(command.trim_start_matches('-'), "zsh" | "bash" | "sh" | "fish" | "dash" | "ksh" | "tcsh" | "csh" | "nu" | "login")
 }
@@ -1378,12 +1432,12 @@ mod tests {
     #[test]
     fn a_command_that_hangs_is_cut_off() {
         let t = std::time::Instant::now();
-        let e = capped(Command::new("/bin/sleep").arg("30"), 1).unwrap_err();
+        let e = capped(Command::new("/bin/sleep").arg("30"), std::time::Duration::from_secs(1)).unwrap_err();
         assert!(t.elapsed() < std::time::Duration::from_secs(3), "{:?}", t.elapsed());
         assert_eq!(e.kind(), std::io::ErrorKind::TimedOut);
         assert!(e.to_string().contains("sleep didn't answer in 1s"), "{e}");
         // One that answers: all of its output, more than a pipe holds, and its status.
-        let o = capped(Command::new("/bin/sh").args(["-c", "head -c 200000 /dev/zero | tr '\\0' x; exit 3"]), 10).unwrap();
+        let o = capped(Command::new("/bin/sh").args(["-c", "head -c 200000 /dev/zero | tr '\\0' x; exit 3"]), CAP).unwrap();
         assert_eq!(o.stdout.len(), 200_000);
         assert_eq!(o.status.code(), Some(3));
     }
@@ -1442,3 +1496,6 @@ mod tests {
         assert!(!pane_in_its_session(&pane, &label), "a pane that's gone says so");
     }
 }
+
+#[cfg(test)]
+mod typing_tests;

@@ -258,3 +258,6 @@ pub(crate) mod tests {
         assert_eq!(got(&seen), typed.concat());
     }
 }
+
+#[cfg(test)]
+mod edges;

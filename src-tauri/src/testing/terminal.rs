@@ -21,6 +21,11 @@ pub enum Takes {
     Refuses(String),
     /// Typing doesn't return until `release` (a tmux server not answering), then takes it.
     Hangs(Arc<AtomicBool>),
+    /// Typing takes this long by the World's clock (a tmux trip answering late), then takes it.
+    Slow(u64),
+    /// The paste lands but its Enter doesn't take: the text sits in its box (seen there) until the
+    /// `n`th Enter pressed after it, which submits it (its prompt hook fires).
+    AtEnter(u32),
 }
 
 /// One thing Cue did to a session's terminal.
@@ -42,6 +47,8 @@ pub struct Pane {
     /// Its dialog closes with the first key pressed in it (the choice's number answers it).
     pub dialog_takes_a_key: bool,
     pub gone: Option<bool>,
+    /// Esc refused with this (the pane went between two keys).
+    pub no_escape: Option<String>,
 }
 
 type OnPrompt = Box<dyn Fn(&Origin, &str) + Send + Sync>;
@@ -54,6 +61,9 @@ pub struct FakeTerminal {
     on_prompt: Mutex<Option<Arc<OnPrompt>>>,
     /// Typings held up in a hung pane right now.
     hung: std::sync::atomic::AtomicUsize,
+    /// Typings in progress right now, and the most at once (two pastes into one box would make it 2).
+    typing: std::sync::atomic::AtomicUsize,
+    most_at_once: std::sync::atomic::AtomicUsize,
 }
 
 impl FakeTerminal {
@@ -86,6 +96,16 @@ impl FakeTerminal {
         }
     }
 
+    /// How many Enters Cue pressed in session `sid`'s terminal on their own (the retries after a paste).
+    pub fn enters(&self, sid: &str) -> usize {
+        self.keys(sid).iter().filter(|k| **k == Key::Enter).count()
+    }
+
+    /// The most typings that were ever in progress at once, across every pane.
+    pub fn most_at_once(&self) -> usize {
+        self.most_at_once.load(Ordering::SeqCst)
+    }
+
     fn of(&self, o: &Origin) -> Pane {
         crate::locking::lock(&self.panes, "fake panes").get(&o.session_id).cloned().unwrap_or_default()
     }
@@ -107,33 +127,29 @@ const HANG_MS: u64 = 20_000;
 
 impl Keys for FakeTerminal {
     fn type_into(&self, o: &Origin, text: &str) -> Result<String, String> {
-        let pane = self.of(o);
-        match pane.takes {
-            Takes::Refuses(why) => return Err(why),
-            Takes::Hangs(release) => {
-                self.hung.fetch_add(1, Ordering::SeqCst);
-                let t0 = std::time::Instant::now();
-                while !release.load(Ordering::SeqCst) {
-                    assert!(t0.elapsed().as_millis() < HANG_MS as u128, "a hung pane was never released");
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }
-                self.hung.fetch_sub(1, Ordering::SeqCst);
-            }
-            Takes::Prompt | Takes::Nothing => {}
-        }
-        self.note(o, Key::Typed(text.to_string()));
-        if matches!(self.of(o).takes, Takes::Prompt | Takes::Hangs(_)) {
-            self.prompt_hook(o, text);
-        }
-        Ok(format!("fake pane {}", o.session_id))
+        let now = self.typing.fetch_add(1, Ordering::SeqCst) + 1;
+        self.most_at_once.fetch_max(now, Ordering::SeqCst);
+        let r = self.type_now(o, text);
+        self.typing.fetch_sub(1, Ordering::SeqCst);
+        r
     }
 
     fn press_enter(&self, o: &Origin) -> Result<(), String> {
         self.note(o, Key::Enter);
+        if let Takes::AtEnter(n) = self.of(o).takes {
+            if self.enters(&o.session_id) == n as usize {
+                self.pane(&o.session_id, |p| p.in_box = Some(false));
+                let last = self.typed(&o.session_id).pop().unwrap_or_default();
+                self.prompt_hook(o, &last);
+            }
+        }
         Ok(())
     }
 
     fn press_escape(&self, o: &Origin) -> Result<String, String> {
+        if let Some(why) = self.of(o).no_escape {
+            return Err(why);
+        }
         self.note(o, Key::Escape);
         Ok(format!("fake pane {}", o.session_id))
     }
@@ -158,5 +174,33 @@ impl Keys for FakeTerminal {
 
     fn agent_gone(&self, o: &Origin) -> Option<bool> {
         self.of(o).gone
+    }
+}
+
+impl FakeTerminal {
+    /// One typing, as the pane is told to take it.
+    fn type_now(&self, o: &Origin, text: &str) -> Result<String, String> {
+        let pane = self.of(o);
+        match pane.takes {
+            Takes::Refuses(why) => return Err(why),
+            Takes::Hangs(release) => {
+                self.hung.fetch_add(1, Ordering::SeqCst);
+                let t0 = std::time::Instant::now();
+                while !release.load(Ordering::SeqCst) {
+                    assert!(t0.elapsed().as_millis() < HANG_MS as u128, "a hung pane was never released");
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                self.hung.fetch_sub(1, Ordering::SeqCst);
+            }
+            Takes::Slow(ms) => crate::clock::sleep_ms(ms),
+            Takes::Prompt | Takes::Nothing | Takes::AtEnter(_) => {}
+        }
+        self.note(o, Key::Typed(text.to_string()));
+        match self.of(o).takes {
+            Takes::Prompt | Takes::Hangs(_) | Takes::Slow(_) => self.prompt_hook(o, text),
+            Takes::AtEnter(_) => self.pane(&o.session_id, |p| p.in_box = Some(true)),
+            Takes::Nothing | Takes::Refuses(_) => {}
+        }
+        Ok(format!("fake pane {}", o.session_id))
     }
 }

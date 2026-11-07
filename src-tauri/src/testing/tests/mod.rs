@@ -25,5 +25,8 @@ mod store;
 mod tasks;
 mod transcripts;
 mod typing;
+mod typing_edges;
+mod typing_failures;
+mod typing_support;
 mod updater;
 mod uploads;

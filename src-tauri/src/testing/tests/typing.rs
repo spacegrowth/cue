@@ -1,23 +1,11 @@
 //! Typing into a session (stability plan §4, Typing): send, reply, kept while it works, ⌘↵, Stop, the
 //! typing gate, and what Cue concludes when the agent never says it took a message.
 
+use super::typing_support::{card_id, detail, waiting};
 use crate::testing::{Key, Takes, World};
-use serde_json::{json, Value};
+use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-
-/// Session `sid` at its prompt: one turn done, its card up.
-fn waiting(w: &World, sid: &str) {
-    w.session(sid).prompt("start").stop("Done.");
-}
-
-fn detail(v: &Value) -> String {
-    v["detail"].as_str().unwrap_or("").to_string()
-}
-
-fn card_id(w: &World, sid: &str) -> String {
-    w.snapshot().card(sid)["id"].as_str().unwrap().to_string()
-}
 
 #[test]
 fn a_message_to_a_session_at_its_prompt_is_typed_and_taken() {

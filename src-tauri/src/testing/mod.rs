@@ -38,4 +38,4 @@ pub use ssh::{until, FakeSsh, RUNS_IT};
 pub use stall::Stall;
 pub use terminal::{FakeTerminal, Key, Takes};
 pub use transcript::Transcript;
-pub use world::World;
+pub use world::{Client, World};
