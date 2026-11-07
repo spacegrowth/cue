@@ -1,4 +1,4 @@
-//! Relay's crews as relay's files would give them to Cue (leads::INDEX), for the World's tests: a lead and its
+//! Relay's crews as relay's files would give them to Cue (leads::index::INDEX), for the World's tests: a lead and its
 //! executors, each reported unless said otherwise, installed with `install`.
 
 use crate::leads::{install_index, reported_exec, Member};

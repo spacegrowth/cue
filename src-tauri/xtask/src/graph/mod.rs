@@ -60,7 +60,7 @@ pub struct Witness {
 /// A lock or once-cell declaration, with the names `locking::lock` calls give it.
 pub struct LockInfo {
     pub rel: String,
-    /// `leads.rs::INDEX`, `hub/mod.rs::Hub.store`.
+    /// `leads/index.rs::INDEX`, `hub/mod.rs::Hub.store`.
     pub item: String,
     pub line: usize,
     pub owner: String,

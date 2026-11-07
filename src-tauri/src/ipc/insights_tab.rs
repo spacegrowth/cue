@@ -77,7 +77,7 @@ pub(crate) struct Search {
 
 /// One session's turns, oldest first, and the context it started at (for its hand-off point).
 /// SHORTCUT: a relay executor's own session can be told "split" too: the turns history doesn't keep which
-/// sessions were executors (leads.rs knows only live ones). Upgrade path: keep a session's relay role with its turns.
+/// sessions were executors (leads/ knows only live ones). Upgrade path: keep a session's relay role with its turns.
 /// SHORTCUT: a turn's growth is its whole growth, what it wrote and ran too, not only what its looking read.
 /// Upgrade path: keep each tool result's size with the turn.
 pub(crate) fn delegate_of(turns: &[&db::StoredTurn], start: u64) -> Delegate {
