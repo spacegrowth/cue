@@ -5,6 +5,7 @@ mod caches;
 mod db_faults;
 mod db_history;
 mod insights;
+mod notifications;
 mod redraw;
 mod reviews;
 mod sessions;
