@@ -109,7 +109,7 @@ impl Walker<'_, '_, '_> {
     }
 
     fn crate_call(&mut self, ids: &[FnId], args: &Args, line: usize, offset: usize) {
-        self.facts.resolved += 1;
+        self.facts.followed += 1;
         if self.is_lock_fn(ids[0]) {
             self.args(args, ArgMode::Inline);
             let idents = args.first().map(idents_in).unwrap_or_default();
@@ -131,7 +131,7 @@ impl Walker<'_, '_, '_> {
     }
 
     fn outside_call(&mut self, path: &[String], args: &Args, line: usize) {
-        self.facts.resolved += 1;
+        self.facts.outside += 1;
         if let Some(label) = classify::spawn(path) {
             return self.spawn_call(label, args, line);
         }

@@ -2,9 +2,15 @@
 
 use std::path::PathBuf;
 
-/// A repo in a fresh temporary folder with `files` under `src-tauri/src` (plus the `locking` module every
-/// case uses) and `allow` as its lint-allow.toml; the check's failures and the inventory.
+/// The check's failures and the inventory of `outcome`.
 fn run(name: &str, files: &[(&str, &str)], allow: &str) -> (Vec<String>, String) {
+    let out = outcome(name, files, allow);
+    (out.check.failures, out.inventory)
+}
+
+/// A repo in a fresh temporary folder with `files` under `src-tauri/src` (plus the `locking` module every
+/// case uses) and `allow` as its lint-allow.toml, analysed.
+fn outcome(name: &str, files: &[(&str, &str)], allow: &str) -> xtask::Outcome {
     let repo = std::env::temp_dir().join(format!("xtask-fixture-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&repo);
     let src = repo.join("src-tauri/src");
@@ -20,7 +26,7 @@ fn run(name: &str, files: &[(&str, &str)], allow: &str) -> (Vec<String>, String)
     std::fs::write(&allow_path, format!("[store]\nlock = \"the hub's store\"\n{allow}")).unwrap();
     let out = xtask::run(&repo, &allow_path).unwrap();
     let _ = std::fs::remove_dir_all(&repo);
-    (out.check.failures, out.inventory)
+    out
 }
 
 const LOCKING: &str = r#"
@@ -161,7 +167,7 @@ mod tests { fn t() { let _ = super::M.lock(); } }
     assert_eq!(failures.len(), 2, "{failures:#?}");
     assert!(failures[0].starts_with("command new_one is sync"), "{}", failures[0]);
     assert!(failures[1].starts_with("a.rs:4: `M` locked another way"), "{}", failures[1]);
-    assert!(inventory.contains("| `new_one` | **sync** | a.rs:6 |"), "the inventory lists it too");
+    assert!(inventory.contains("| `new_one` | **sync** | `a.rs::new_one` |"), "the inventory lists it too, by item, not line");
 }
 
 #[test]
@@ -177,4 +183,30 @@ fn one_lock_name_in_two_files_fails_the_check() {
     let b = "static X: std::sync::Mutex<u8> = std::sync::Mutex::new(0);\npub fn b() { crate::locking::lock(&X, \"X\"); }\n";
     let (failures, _) = run("names", &[("lib.rs", "mod a;\nmod b;\nmod locking;\n"), ("a.rs", a), ("b.rs", b)], "");
     assert_eq!(failures, ["\"X\" names a lock in a.rs and b.rs"]);
+}
+
+/// Not followed and counted: a method whose name a crate type has, on a receiver of unknown type. Not
+/// counted: standard-library-only names on such receivers, and calls followed.
+#[test]
+fn only_calls_that_may_be_crate_calls_count_as_not_followed() {
+    let a = r#"
+pub struct One;
+pub struct Two;
+impl One { pub fn refresh(&self) {} pub fn go(&self) { self.refresh(); } }
+impl Two { pub fn refresh(&self) {} }
+pub fn calls(x: Vec<u8>, y: &dyn std::any::Any) -> usize {
+    let o = One;
+    o.go();
+    let unknown = make();
+    unknown.refresh();
+    x.iter().map(|b| *b as usize).sum::<usize>() + x.len()
+}
+fn make() -> One { One }
+"#;
+    let out = outcome("unresolved", &[("lib.rs", "mod a;\nmod locking;\n"), ("a.rs", a)], "");
+    // Followed: self.refresh (One's), make(), and o.go() (`go` is One's alone). Not followed: unknown.refresh
+    // (One's or Two's). iter/map/sum/len: standard-library names, not counted. Outside: the locking
+    // fixture's `Guard(..)` constructor.
+    let calls = out.check.calls;
+    assert_eq!((calls.followed, calls.not_followed, calls.outside), (3, 1, 1), "{}", out.check.render());
 }

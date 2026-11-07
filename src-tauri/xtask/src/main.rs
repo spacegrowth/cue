@@ -21,14 +21,17 @@ fn main() -> ExitCode {
         }
     };
     match command.as_str() {
-        "inventory" => write(&repo, &outcome),
+        "inventory" => {
+            println!("{}", outcome.check.calls);
+            write(&repo, &outcome)
+        }
         "check" => {
             print!("{}", outcome.check.render());
             if outcome.check.failures.is_empty() { ExitCode::SUCCESS } else { ExitCode::FAILURE }
         }
         "sizes" => {
             for f in &outcome.sizes.functions {
-                println!("{:>5}  {}  {}{}", f.lines, f.at, f.name, if f.test { " (test)" } else { "" });
+                println!("{:>5}  {}:{}  {}{}", f.lines, f.file, f.line, f.name, if f.test { " (test)" } else { "" });
             }
             for (path, lines) in &outcome.sizes.files {
                 println!("{lines:>5}  {path}");

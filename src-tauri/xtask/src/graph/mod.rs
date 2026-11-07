@@ -14,11 +14,37 @@ use summary::Summary;
 
 pub struct FnInfo {
     pub path: String,
+    /// The file and the item in it (`hub/mod.rs::Hub::snapshot`): how the inventory names it, with no
+    /// line number that every edit above it would change.
+    pub item: String,
     pub name: String,
     pub rel: String,
     pub line: usize,
     pub is_async: bool,
     pub is_command: bool,
+}
+
+/// How the crate's calls were read: crate functions followed, outside calls (and constructors) placed,
+/// and calls that may be crate calls but couldn't be followed: what the graph may be missing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CallStats {
+    pub followed: usize,
+    pub outside: usize,
+    pub not_followed: usize,
+}
+
+impl std::fmt::Display for CallStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "calls: {} crate calls followed, {} outside the crate (or constructors), {} that may be crate calls not followed (a method name some crate type has, on a receiver of unknown type; or a path that leads nowhere known)", self.followed, self.outside, self.not_followed)
+    }
+}
+
+/// Whether a path through the code shows line numbers: in a check's message, where they help; not in
+/// the inventory, where every edit above a line would change it.
+#[derive(Clone, Copy)]
+pub enum Lines {
+    Shown,
+    Left,
 }
 
 /// Where something was seen: in `holder` at `line`, directly or by calling `callee`; `lender`: the
@@ -34,6 +60,8 @@ pub struct Witness {
 /// A lock or once-cell declaration, with the names `locking::lock` calls give it.
 pub struct LockInfo {
     pub rel: String,
+    /// `leads.rs::INDEX`, `hub/mod.rs::Hub.store`.
+    pub item: String,
     pub line: usize,
     pub owner: String,
     pub ty: String,
@@ -79,7 +107,7 @@ pub fn analyze(ix: &Index, missing: &[String], bare_allowed: &[BareLock], store_
     let (edges, store_io) = (obs.edges, obs.store_io);
     let cyclic = cycles::cyclic_edges(edges.keys());
     let (locks, unmatched_names) = lock_infos(ix, &facts);
-    let fns = ix.fns.iter().enumerate().map(|(id, f)| FnInfo { path: f.path(), name: f.name.clone(), rel: ix.rel(id).to_string(), line: f.line, is_async: f.is_async, is_command: f.is_command }).collect();
+    let fns = ix.fns.iter().enumerate().map(|(id, f)| FnInfo { path: f.path(), item: format!("{}::{}", ix.rel(id), f.self_ty.iter().chain([&f.name]).cloned().collect::<Vec<_>>().join("::")), name: f.name.clone(), rel: ix.rel(id).to_string(), line: f.line, is_async: f.is_async, is_command: f.is_command }).collect();
     Model { fns, facts, sums, edges, cyclic, store_lock: store_lock.to_string(), store_io, locks, unmatched_names, missing_modules: missing.to_vec() }
 }
 
@@ -101,7 +129,7 @@ fn guard_fns(ix: &Index, bare_allowed: &[BareLock]) -> BTreeMap<FnId, String> {
 /// Declarations with the names their lock calls give them, matched by the identifier in the call's
 /// first argument (`&INDEX`, `&self.store`): one in the same file first, else the only one in the crate.
 fn lock_infos(ix: &Index, facts: &[Facts]) -> (Vec<LockInfo>, BTreeSet<String>) {
-    let mut locks: Vec<LockInfo> = ix.locks.iter().map(|d| LockInfo { rel: ix.files[d.file].rel.clone(), line: d.line, owner: d.owner.clone(), ty: d.ty.clone(), names: BTreeSet::new() }).collect();
+    let mut locks: Vec<LockInfo> = ix.locks.iter().map(|d| LockInfo { rel: ix.files[d.file].rel.clone(), item: format!("{}::{}", ix.files[d.file].rel, d.owner), line: d.line, owner: d.owner.clone(), ty: d.ty.clone(), names: BTreeSet::new() }).collect();
     let mut unmatched = BTreeSet::new();
     for (id, f) in facts.iter().enumerate() {
         for site in f.lock_sites.iter().filter(|s| !s.idents.is_empty()) {
@@ -124,17 +152,26 @@ fn lock_infos(ix: &Index, facts: &[Facts]) -> (Vec<LockInfo>, BTreeSet<String>) 
 
 impl Model {
     /// How `w` reaches `lock`: `a (file:line) → b (file:line) → … takes it (file:line)`.
-    pub fn lock_chain(&self, w: &Witness, lock: &str) -> String {
-        self.chain(w, |id| self.sums[id].locks.get(lock).copied(), "takes it")
+    pub fn lock_chain(&self, w: &Witness, lock: &str, lines: Lines) -> String {
+        self.chain(w, |id| self.sums[id].locks.get(lock).copied(), "takes it", lines)
     }
 
     /// How `w` reaches the effect `(effect, site)`.
-    pub fn effect_chain(&self, w: &Witness, effect: Effect, site: FnId) -> String {
-        self.chain(w, |id| self.sums[id].effects.get(&(effect, site)).map(|(_, s)| *s), "calls out")
+    pub fn effect_chain(&self, w: &Witness, effect: Effect, site: FnId, lines: Lines) -> String {
+        self.chain(w, |id| self.sums[id].effects.get(&(effect, site)).map(|(_, s)| *s), "calls out", lines)
     }
 
-    fn chain(&self, w: &Witness, step_of: impl Fn(FnId) -> Option<summary::Step>, end: &str) -> String {
-        let at = |id: FnId, line: usize| format!("{} ({}:{line})", self.fns[id].path, self.fns[id].rel);
+    /// How the calls in the crate were read (see `Facts`).
+    pub fn call_stats(&self) -> CallStats {
+        let sum = |f: fn(&Facts) -> usize| self.facts.iter().map(f).sum();
+        CallStats { followed: sum(|f| f.followed), outside: sum(|f| f.outside), not_followed: sum(|f| f.unresolved) }
+    }
+
+    fn chain(&self, w: &Witness, step_of: impl Fn(FnId) -> Option<summary::Step>, end: &str, lines: Lines) -> String {
+        let at = |id: FnId, line: usize| match lines {
+            Lines::Shown => format!("{} ({}:{line})", self.fns[id].path, self.fns[id].rel),
+            Lines::Left => format!("`{}`", self.fns[id].item),
+        };
         let mut out = vec![at(w.holder, w.line)];
         if let Some(l) = w.lender {
             out[0] = format!("{} in a closure {} runs holding the lock", out[0], self.fns[l].path);

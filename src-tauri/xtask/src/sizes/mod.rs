@@ -12,8 +12,9 @@ pub const LONG_FN: usize = 60;
 pub const LONG_FILE: usize = 1000;
 
 pub struct FnSize {
-    /// `src-tauri/src/hub/activity.rs:670` or `ui/app.js:233`.
-    pub at: String,
+    /// From the repo root: `src-tauri/src/hub/activity.rs`, `ui/app.js`.
+    pub file: String,
+    pub line: usize,
     pub name: String,
     pub lines: usize,
     pub test: bool,
@@ -37,7 +38,7 @@ pub fn measure(repo: &Path, rs: &[RustFile]) -> Result<Sizes, String> {
         functions.extend(js::functions(text).into_iter().map(|f| f.at(&format!("ui/{rel}"))));
     }
     functions.retain(|f| f.lines > LONG_FN);
-    functions.sort_by(|a, b| b.lines.cmp(&a.lines).then_with(|| a.at.cmp(&b.at)));
+    functions.sort_by(|a, b| b.lines.cmp(&a.lines).then_with(|| (&a.file, a.line).cmp(&(&b.file, b.line))));
     let all = rs.iter().map(|f| (format!("src-tauri/src/{}", f.rel), f.lines)).chain(ui.iter().map(|(rel, t)| (format!("ui/{rel}"), t.lines().count())));
     let mut files: Vec<(String, usize)> = all.filter(|(_, n)| *n > LONG_FILE).collect();
     files.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
@@ -54,6 +55,6 @@ struct Found {
 
 impl Found {
     fn at(self, file: &str) -> FnSize {
-        FnSize { at: format!("{file}:{}", self.line), name: self.name, lines: self.lines, test: self.test }
+        FnSize { file: file.to_string(), line: self.line, name: self.name, lines: self.lines, test: self.test }
     }
 }

@@ -77,8 +77,10 @@ pub struct Facts {
     /// closure called through an expression, or a method of unknown receiver whose name some crate type
     /// has (calls of standard-library-only method names aren't counted).
     pub unresolved: usize,
-    /// Calls resolved.
-    pub resolved: usize,
+    /// Calls of crate functions, followed.
+    pub followed: usize,
+    /// Calls of a path outside the crate (or a constructor named like one): classified, not followed.
+    pub outside: usize,
 }
 
 pub struct LockSite {
