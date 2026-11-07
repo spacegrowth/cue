@@ -558,23 +558,23 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/queries.rs::set_window` | write | 1 |
 | `logs/steps/turn_rows.rs::whole_lines` | File::open | 1 |
 | `logs/steps/windows.rs::with_windows` | read | 1 |
-| `logs/transcript.rs::about` | metadata | 1 |
-| `logs/transcript.rs::activity` | metadata | 1 |
-| `logs/transcript.rs::codex_activity` | metadata | 1 |
-| `logs/transcript.rs::codex_queued` | metadata | 1 |
-| `logs/transcript.rs::compact_finished` | metadata | 1 |
-| `logs/transcript.rs::conversation_before` | File::open | 1 |
-| `logs/transcript.rs::find_claude` | Path::is_file | 1 |
-| `logs/transcript.rs::find_claude` | read_dir | 1 |
-| `logs/transcript.rs::interrupted_at` | metadata | 1 |
-| `logs/transcript.rs::prompt_since` | metadata | 1 |
-| `logs/transcript.rs::queued_state` | metadata | 1 |
-| `logs/transcript.rs::read_from` | File::open | 1 |
-| `logs/transcript.rs::read_from` | Path::metadata | 1 |
-| `logs/transcript.rs::status_asks` | metadata | 1 |
-| `logs/transcript.rs::tail_offset` | metadata | 1 |
-| `logs/transcript.rs::taken_mid_turn` | metadata | 1 |
-| `logs/transcript.rs::turn_ended_parts` | metadata | 1 |
+| `logs/transcript/activity.rs::activity` | metadata | 1 |
+| `logs/transcript/activity.rs::codex_activity` | metadata | 1 |
+| `logs/transcript/conversation.rs::conversation_before` | File::open | 1 |
+| `logs/transcript/conversation.rs::status_asks` | metadata | 1 |
+| `logs/transcript/mod.rs::find_claude` | Path::is_file | 1 |
+| `logs/transcript/mod.rs::find_claude` | read_dir | 1 |
+| `logs/transcript/mod.rs::read_from` | File::open | 1 |
+| `logs/transcript/mod.rs::read_from` | Path::metadata | 1 |
+| `logs/transcript/mod.rs::tail_offset` | metadata | 1 |
+| `logs/transcript/queue.rs::codex_queued` | metadata | 1 |
+| `logs/transcript/queue.rs::prompt_since` | metadata | 1 |
+| `logs/transcript/queue.rs::queued_state` | metadata | 1 |
+| `logs/transcript/queue.rs::taken_mid_turn` | metadata | 1 |
+| `logs/transcript/senders.rs::about` | metadata | 1 |
+| `logs/transcript/turns.rs::compact_finished` | metadata | 1 |
+| `logs/transcript/turns.rs::interrupted_at` | metadata | 1 |
+| `logs/transcript/turns.rs::turn_ended_parts` | metadata | 1 |
 | `logs/turns.rs::logs` | Path::is_dir | 5 |
 | `logs/turns.rs::logs` | read_dir | 8 |
 | `logs/turns.rs::read_log` | metadata | 1 |
@@ -903,7 +903,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/lib.rs::run` |  |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
-| `src-tauri/src/logs/transcript.rs::conversation_before` |  |  |
+| `src-tauri/src/logs/transcript/conversation.rs::conversation_before` |  |  |
 | `src-tauri/src/sessions.rs::mark` |  |  |
 | `src-tauri/src/talk.rs::run_loop` |  |  |
 | `src-tauri/src/terminal/focus.rs::type_into` |  |  |
@@ -917,7 +917,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `ui/sessions.js::lvAct` |  |  |
 | `ui/sessions.js::sessionsView` |  |  |
 
-Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/logs/transcript.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
+Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
 
 ## What this can't see
 
