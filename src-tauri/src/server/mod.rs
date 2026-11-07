@@ -1,10 +1,12 @@
 //! Unix-socket listener at <Cue's data folder>/cue.sock. Newline-delimited JSON, one connection per message
 //! (an Ask connection stays open until it's answered). See PROTOCOL.md.
 
+pub mod inbound;
+
 use crate::hub::{Hub, Reply};
 use crate::model::ClientMsg;
 use crate::logs::transcript;
-use crate::terminal::focus;
+use inbound::{Outcome, Prompt};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
@@ -87,52 +89,20 @@ async fn on_hub<R: Send + 'static>(hub: &Arc<Hub>, f: impl FnOnce(&Arc<Hub>) -> 
     crate::ipc::with_hub(hub, f).await.map_err(std::io::Error::other)
 }
 
-/// How a control message went (`r`: the hub call's outcome, or why it never ran), told to its client.
-async fn tell(w: &mut Writer, r: std::io::Result<Result<String, String>>) -> std::io::Result<()> {
-    let r = r.unwrap_or_else(|e| Err(e.to_string()));
-    send(w, json!({"ok": r.is_ok(), "detail": r.unwrap_or_else(|e| e)})).await
-}
-
 /// The hook fires before Claude writes the prompt to its transcript, and only the transcript says
-/// who sent it, so look for up to ~3s. Not found (or Codex, which sends no id): count it as yours.
-async fn settle_prompt(hub: Arc<Hub>, sid: String, path: String, prompt_id: String, text: String, voice: bool) {
-    use crate::logs::transcript::Sender;
-    // Claude Code's own notice of a finished background task is never yours, whatever the transcript
-    // says yet. (Handed over mid-turn, it carries the turn's promptId: that prompt is yours.)
-    if crate::logs::transcript::harness_text(&text) {
-        return;
-    }
-    let sender = prompt_sender(path, prompt_id, text.clone()).await;
-    let _ = on_hub(&hub, move |h| match sender {
-        Some(Sender::Harness) => {}
-        Some(Sender::Peer { name, pid, body }) => h.prompt_from_peer(&sid, &name, pid, &body),
-        Some(Sender::Human) | None => {
-            h.prompt_from_you(&sid, &text);
-            if voice {
-                h.said_by_voice(&sid, &text);
-            }
-        }
-    })
-    .await;
-}
-
-/// Who sent prompt `prompt_id`, once the transcript at `path` says: looked at every 200 ms (each look a file
-/// read, on the blocking pool), 15 times at most. None when it never said.
-async fn prompt_sender(path: String, prompt_id: String, text: String) -> Option<crate::logs::transcript::Sender> {
-    use crate::logs::transcript::{self, Sender};
-    if prompt_id.is_empty() || path.is_empty() {
-        return None;
-    }
+/// who sent it, so look for up to ~3s: every 200 ms (each look a file read, on the blocking pool), 15
+/// times at most. Not found (or Codex, which sends no id): count it as yours.
+async fn settle_prompt(hub: Arc<Hub>, p: Prompt) {
+    let mut said = None;
     for _ in 0..15 {
-        let (p, id, t) = (path.clone(), prompt_id.clone(), text.clone());
-        // Handed over from Claude Code's queue: only the attachment says so, so look there first.
-        let said = crate::ipc::blocking(move || if transcript::queued_from_harness(&p, &t) { Some(Sender::Harness) } else { transcript::prompt_sender(&p, &id) }).await.ok().flatten();
+        let look = p.clone();
+        said = crate::ipc::blocking(move || inbound::sender(&look)).await.ok().flatten();
         if said.is_some() {
-            return said;
+            break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    None
+    let _ = on_hub(&hub, move |h| inbound::settle(h, p, said)).await;
 }
 
 /// The most one connection may send, in all: a message is a few KB, a reply with images a few MB.
@@ -182,6 +152,7 @@ async fn sent_by_an_agent(hub: &Arc<Hub>, msg: &ClientMsg, peer: Option<i32>) ->
 type Lines = tokio::io::Lines<BufReader<tokio::io::Take<tokio::net::unix::OwnedReadHalf>>>;
 type Writer = tokio::net::unix::OwnedWriteHalf;
 
+/// One connection: its first line parsed and applied (inbound.rs), then whatever that leaves it to do.
 async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
     let peer = stream.peer_cred().ok().and_then(|c| c.pid());
     let (r, mut w) = stream.into_split();
@@ -195,67 +166,35 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
         eprintln!("cue: refused a {} from inside agent session {sid} (pid {})", first.split('"').nth(3).unwrap_or("control message"), peer.unwrap_or(0));
         return send(&mut w, json!({"ok": false, "error": format!("refused: sent from inside agent session {sid}; Cue takes this only from you")})).await;
     }
-    match msg {
-        ClientMsg::Ask { origin, kind, tool_name, tool_input, suggestions, context, agent_id } => {
-            let (id, rx) = on_hub(&hub, move |h| h.add_ask(origin, kind, tool_name, tool_input, suggestions, context, agent_id)).await?;
-            await_answer(hub, id, rx, &mut w, &mut lines).await?;
-        }
-        ClientMsg::Event { origin, event, message, turn, driven_by, prompt_id, error_type, voice } => {
-            if event == "failed" {
-                return on_hub(&hub, move |h| h.failed(origin, &error_type, &message)).await;
-            }
-            let id = prompt_id.clone();
-            let settle = on_hub(&hub, move |h| tell_event(h, origin, &event, message, turn, &driven_by, &id)).await?;
-            if let Some((sid, path, text)) = settle {
-                tokio::spawn(settle_prompt(hub, sid, path, prompt_id, text, voice));
-            }
-        }
-        ClientMsg::Usage { rate_limits, session_id, cost, window, machine } => {
-            on_hub(&hub, move |h| {
-                if let (false, Some(size)) = (session_id.is_empty(), window) {
-                    crate::logs::steps::set_window(&session_id, size, machine.is_empty());
-                }
-                // The plan's limits first: whether there are any decides if the session's cost is shown.
-                if rate_limits.is_object() {
-                    h.set_rates(&rate_limits);
-                }
-                if let (false, Some(c)) = (session_id.is_empty(), cost) {
-                    h.set_cost(&session_id, c);
-                }
-            })
-            .await?;
-        }
-        ClientMsg::List => {
-            let state = match hub.kept_state() {
-                Some(v) => v,
-                None => on_hub(&hub, |h| h.state()).await?,
-            };
-            send(&mut w, state).await?;
-        }
-        ClientMsg::Respond { id, decision } => {
-            let ok = on_hub(&hub, move |h| h.respond(&id, decision)).await?;
-            send(&mut w, json!({"ok": ok})).await?;
-        }
-        ClientMsg::Focus { id } => tell(&mut w, on_hub(&hub, move |h| focus::focus(&h.get(&id).ok_or("no such item")?.origin)).await).await?,
-        ClientMsg::Reply { id, text, images } => tell(&mut w, on_hub(&hub, move |h| h.reply(&id, &text, &images)).await).await?,
-        ClientMsg::SendTo { session_id, text, images, now } => tell(&mut w, on_hub(&hub, move |h| h.send_to_session(&session_id, &text, &images, now)).await).await?,
-        ClientMsg::Interrupt { session_id } => tell(&mut w, on_hub(&hub, move |h| h.interrupt(&session_id)).await).await?,
-        ClientMsg::Subscribe { origin, commands } => serve_subscription(hub, origin, commands, peer, &mut w, &mut lines).await?,
-        ClientMsg::Resolved { .. } | ClientMsg::Commands { .. } => {}
+    // The state as last built needs no store and no file: answered here, not behind the blocking pool.
+    if let (ClientMsg::List, Some(state)) = (&msg, hub.kept_state()) {
+        return send(&mut w, state).await;
     }
-    Ok(())
+    // A control message is told why its hub call never ran; anything else just ends.
+    let tells = matches!(msg, ClientMsg::Focus { .. } | ClientMsg::Reply { .. } | ClientMsg::SendTo { .. } | ClientMsg::Interrupt { .. });
+    let outcome = match on_hub(&hub, move |h| inbound::apply(h, msg, peer)).await {
+        Ok(o) => o,
+        Err(e) if tells => return send(&mut w, inbound::told(Err(e))).await,
+        Err(e) => return Err(e),
+    };
+    match outcome {
+        Outcome::Quiet => Ok(()),
+        Outcome::Say(v) => send(&mut w, v).await,
+        Outcome::Asked { id, answer } => await_answer(hub, id, answer, &mut w, &mut lines).await,
+        Outcome::Settle(p) => {
+            tokio::spawn(settle_prompt(hub, p));
+            Ok(())
+        }
+        Outcome::Subscribed { session_id, n, messages } => serve_subscription(hub, session_id, n, messages, &mut w, &mut lines).await,
+    }
 }
 
 /// An Ask, queued as `id`: its answer to the client, or the request finished when the client gives up or
 /// got its answer somewhere else.
 async fn await_answer(hub: Arc<Hub>, id: String, rx: tokio::sync::oneshot::Receiver<Reply>, w: &mut Writer, lines: &mut Lines) -> std::io::Result<()> {
-    let finish = |status: &'static str, why: String| {
-        let (h, id) = (hub.clone(), id.clone());
-        async move { on_hub(&h, move |h| h.finish(&id, status, &why)).await }
-    };
     // The agent can give up before it even hears back: then the request is gone, not pending forever.
     if send(w, json!({"type": "queued", "id": id})).await.is_err() {
-        return finish("gone", "agent stopped waiting".into()).await;
+        return on_hub(&hub, move |h| inbound::gone(h, &id)).await;
     }
     tokio::select! {
         reply = rx => match reply {
@@ -269,64 +208,16 @@ async fn await_answer(hub: Arc<Hub>, id: String, rx: tokio::sync::oneshot::Recei
         },
         line = lines.next_line() => {
             // The client spoke again (it got answered in its own terminal) or hung up.
-            match line.ok().flatten().and_then(|l| serde_json::from_str::<ClientMsg>(&l).ok()) {
-                Some(ClientMsg::Resolved { by, behavior }) => {
-                    let by = if by.is_empty() { "terminal".to_string() } else { by };
-                    finish("answered_elsewhere", format!("{behavior} in the {by}").trim().to_string()).await?;
-                }
-                _ => finish("gone", "agent stopped waiting".into()).await?,
-            }
+            let said = line.ok().flatten().and_then(|l| serde_json::from_str::<ClientMsg>(&l).ok());
+            on_hub(&hub, move |h| inbound::ask_ended(h, &id, said)).await?;
         }
     }
     Ok(())
 }
 
-/// A lifecycle event, told to the hub. An "active" event whose sender only the transcript can say comes
-/// back as (session, transcript, prompt), to be settled (`settle_prompt`) once it does.
-fn tell_event(h: &Hub, origin: crate::model::Origin, event: &str, message: String, turn: Vec<crate::model::TurnPart>, driven_by: &str, prompt_id: &str) -> Option<(String, String, String)> {
-    // A session on a machine keeps its transcript there: nothing to look up here, so it's yours
-    // straight away (waiting on a file that never shows let its reply land first).
-    let path = if origin.machine.is_empty() { origin.transcript_path.clone() } else { String::new() };
-    let prompt = (event == "active").then(|| (origin.session_id.clone(), path, message.clone()));
-    let driven_by = crate::leads::resolve_driver(&origin.session_id, driven_by);
-    match prompt {
-        // Nothing to look up (Pi, Codex, a session on a machine): the prompt is yours, noted with
-        // the event itself.
-        Some((_, path, ref text)) if (prompt_id.is_empty() || path.is_empty()) && !crate::logs::transcript::harness_text(text) => {
-            h.active_from_you(origin, message, turn, &driven_by);
-            None
-        }
-        Some((_, path, _)) if prompt_id.is_empty() || path.is_empty() => {
-            h.event(origin, event, message, turn, &driven_by);
-            None
-        }
-        Some(settle) => {
-            h.event(origin, event, message, turn, &driven_by);
-            Some(settle)
-        }
-        None => {
-            h.event(origin, event, message, turn, &driven_by);
-            None
-        }
-    }
-}
-
 /// A session that takes replies directly (Pi): Cue's messages for it go down this connection until either
 /// side hangs up; its commands, sent again on it, are kept.
-async fn serve_subscription(hub: Arc<Hub>, origin: crate::model::Origin, commands: Vec<crate::model::AgentCmd>, peer: Option<i32>, w: &mut Writer, lines: &mut Lines) -> std::io::Result<()> {
-    let sid = origin.session_id.clone();
-    if sid.is_empty() {
-        return Ok(());
-    }
-    let set_commands = |commands: Vec<crate::model::AgentCmd>| {
-        let (h, sid) = (hub.clone(), sid.clone());
-        async move { on_hub(&h, move |h| h.set_agent_commands(&sid, crate::commands::for_pi(&commands))).await }
-    };
-    let (n, mut rx) = match on_hub(&hub, move |h| h.subscribe(&origin, peer)).await? {
-        Ok(s) => s,
-        Err(e) => return send(w, json!({"type": "error", "error": e})).await,
-    };
-    set_commands(commands).await?;
+async fn serve_subscription(hub: Arc<Hub>, sid: String, n: u64, mut rx: tokio::sync::mpsc::UnboundedReceiver<Value>, w: &mut Writer, lines: &mut Lines) -> std::io::Result<()> {
     loop {
         tokio::select! {
             msg = rx.recv() => match msg {
@@ -336,7 +227,8 @@ async fn serve_subscription(hub: Arc<Hub>, origin: crate::model::Origin, command
             line = lines.next_line() => match line {
                 // The session's commands again (Refresh asked for them); anything else said here is ignored.
                 Ok(Some(l)) => if let Ok(ClientMsg::Commands { commands }) = serde_json::from_str::<ClientMsg>(&l) {
-                    set_commands(commands).await?;
+                    let sid = sid.clone();
+                    on_hub(&hub, move |h| inbound::set_commands(h, &sid, &commands)).await?;
                 },
                 _ => break,
             },
