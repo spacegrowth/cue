@@ -33,12 +33,10 @@ static LAST: Mutex<Option<(std::path::PathBuf, Option<SystemTime>, Value)>> = Mu
 pub fn read() -> Value {
     let p = path();
     let modified = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
-    let mut last = crate::locking::lock(&LAST, "LAST");
-    if let Some((lp, lm, v)) = last.as_ref() {
-        if *lp == p && *lm == modified {
-            return v.clone();
-        }
+    if let Some((_, _, v)) = crate::locking::lock(&LAST, "LAST").as_ref().filter(|(lp, lm, _)| *lp == p && *lm == modified) {
+        return v.clone();
     }
+    // Read with LAST let go: a slow disk holds up only this read.
     let shown = p.to_string_lossy().replace(&std::env::var("HOME").unwrap_or_default(), "~");
     let v = match (modified, std::fs::read_to_string(&p)) {
         (None, _) => json!({ "meters": [], "path": shown }),
@@ -51,7 +49,7 @@ pub fn read() -> Value {
         }
         (Some(_), Err(e)) => json!({ "meters": [], "error": format!("Can't read it: {e}"), "path": shown }),
     };
-    *last = Some((p, modified, v.clone()));
+    *crate::locking::lock(&LAST, "LAST") = Some((p, modified, v.clone()));
     v
 }
 

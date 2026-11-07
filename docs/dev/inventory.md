@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 136 (3 sync) |
 | Lock declarations (static or field) | 91 |
-| Lock acquisitions | 204 |
+| Lock acquisitions | 205 |
 | Lock-graph edges | 45 |
 | Spawn sites | 73 |
 | External calls: fs / db / process / notify / login / socket | 339 / 146 / 48 / 4 / 1 / 3 |
@@ -237,7 +237,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/steps/windows.rs::SAVED` | `Mutex<u64>` | "windows file" (1 sites) |
 | `logs/steps/windows.rs::SEEN` | `Mutex<Option<HashMap<String,(Instant,u64)>>>` | "AUTO_SEEN" (1 sites) |
 | `logs/turns.rs::CATCHING_UP` | `std::sync::Mutex<Option<(u64,u64)>>` | "turns CATCHING_UP" (2 sites) |
-| `logs/usage_file.rs::LAST` | `Mutex<Option<(std::path::PathBuf,Option<SystemTime>,Value)>>` | "LAST" (2 sites) |
+| `logs/usage_file.rs::LAST` | `Mutex<Option<(std::path::PathBuf,Option<SystemTime>,Value)>>` | "LAST" (3 sites) |
 | `machines/hooks/watch.rs::W` | `OnceLock<Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>>` | — |
 | `machines/hooks/watch.rs::ON_REACHED` | `OnceLock<Box<dynFn(&str)+Send+Sync>>` | — |
 | `machines/hooks/watch.rs::ON_NEW_SESSION` | `OnceLock<Box<dynFn(&str)+Send+Sync>>` | — |
