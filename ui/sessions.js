@@ -221,84 +221,96 @@ function openFind() {
   sheet = lightbox = null;
   lvAct("toggle", { spot: true });
 }
-async function lvAct(act, d) {
-  if (act === "toggle") {
-    // Open the other way (⌘K's middle, or under the chip) moves it there rather than closing it.
-    const spot = !!d.spot;
-    liveOpen = !(liveOpen && liveSpot === spot);
-    liveSpot = spot;
-    liveSel = 0;
-    newOpen = false;   // the live chip shows the sessions, never the New form
-    // Text left from last time: search it again, so what's found is as it is now.
-    if (liveOpen && draft("find-live").text.trim()) return runSearch(draft("find-live").text), document.querySelector('[data-text="find-live"]')?.focus();
-    renderMain();
-    // Open: ready to type a name straight away.
-    if (liveOpen) document.querySelector('[data-text="find-live"]')?.focus();
-    return;
-  }
-  if (act === "all") { liveOpen = newOpen = false; view = "sessions"; return renderMain(); }
-  if (act === "new") {
-    if (d.spot) { sheet = lightbox = null; liveSpot = true; }   // the header's + New: in the middle, like ⌘N
-    liveOpen = newOpen = true;
-    // On a project you made (one with no folder of its own), the new session goes in it, as Move to project would.
-    nfNewProj = projFilter && madeProject(projFilter) ? projFilter : "";
-    draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || machineFolders("")[0] || recentFolders()[0] || "");
-    if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
-    renderMain();
-    return document.querySelector('[data-text="new-msg"]')?.focus();
-  }
-  if (act === "agent") { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); return renderMain(); }
-  if (act === "where") { newWhere = d.tmux === "true"; remember("newWhere", String(newWhere)); return renderMain(); }
-  if (act === "machine-add") {
-    if (nfAdding) { nfAdding = false; return renderMain(); }
-    // Extensions with a window of their own are offered here too (a new container, say).
-    if (extAddsAny()) { extAddMenu = !extAddMenu; return renderMain(); }
-    nfAdding = true; renderMain(); return document.querySelector('[data-text="mc-host"]')?.focus();
-  }
-  if (act === "machine") { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); return renderMain(); }
-  if (act === "perm") { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); return renderMain(); }
-  if (act === "model-1m") { newModel1m = !newModel1m; remember("newModel1m", String(newModel1m)); return renderMain(); }
-  if (act === "models-reload") { readModels(true); return renderMain(); }
-  if (act === "folders") { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); return document.querySelector('[data-text="new-cwd"]')?.focus(); }
-  if (act === "folder") return pickFolder(d.cwd);
-  if (act === "proj-open") { nfProj.open = !nfProj.open; return renderMain(); }
+/** The live list opened or closed. Open the other way (⌘K's middle, or under the chip) moves it there rather than
+ *  closing it; it shows the sessions, never the New form. Text left from last time is searched again, so what's
+ *  found is as it is now; open, it's ready to type a name straight away. */
+function lvToggle(d) {
+  const spot = !!d.spot;
+  liveOpen = !(liveOpen && liveSpot === spot);
+  liveSpot = spot;
+  liveSel = 0;
+  newOpen = false;
+  if (liveOpen && draft("find-live").text.trim()) return runSearch(draft("find-live").text), document.querySelector('[data-text="find-live"]')?.focus();
+  renderMain();
+  if (liveOpen) document.querySelector('[data-text="find-live"]')?.focus();
+}
+/** + New opened (from the header: in the middle, like ⌘N). On a project you made (one with no folder of its own),
+ *  the new session goes in it, as Move to project would. */
+function lvNew(d) {
+  if (d.spot) { sheet = lightbox = null; liveSpot = true; }
+  liveOpen = newOpen = true;
+  nfNewProj = projFilter && madeProject(projFilter) ? projFilter : "";
+  draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || machineFolders("")[0] || recentFolders()[0] || "");
+  if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
+  renderMain();
+  return document.querySelector('[data-text="new-msg"]')?.focus();
+}
+/** + New → + Add machine: its field, or the extensions with a window of their own (a new container, say). */
+function lvMachineAdd() {
+  if (nfAdding) { nfAdding = false; return renderMain(); }
+  if (extAddsAny()) { extAddMenu = !extAddMenu; return renderMain(); }
+  nfAdding = true; renderMain(); return document.querySelector('[data-text="mc-host"]')?.focus();
+}
+/** After + New started a session: its project (a project you made: this session alone, and the window goes to
+ *  it; else a project picked on its Project line: its folder's from now on, every session there), the form
+ *  emptied but for what you set, and the session open here. Cue knows it already (it picked the id); its terminal
+ *  stays closed (the strip above the box) until you open it: the reply box comes first. */
+function afterNewSession(r) {
+  const i = nfProj.info;
+  if (nfNewProj && r.session_id) {
+    moveToProject(r.session_id, nfNewProj);
+    setProjFilter(nfNewProj);
+  } else if (i && nfProj.pick != null && nfProj.pick !== i.name) putFolder(i.key, nfProj.pick, i.own);
+  nfProj = { at: "", info: null, pick: null, open: false };
+  nfNewProj = "";
+  toast(r.detail);
+  draft("new-msg").text = draft("new-name").text = "";
+  draft("new-msg").images = [];
+  newOpen = liveOpen = false;
+  if (r.session_id) { setActive(null, r.session_id); return; }
+  renderMain();
+}
+/** + New's Start: a "!" line runs in the folder; else the session starts, with the MCP servers you picked for it
+ *  (only once you changed a box; else its folder's, unpinned). */
+async function lvStart() {
+  const cwd = draft("new-cwd").text.trim();
+  if (!cwd) return toast("Pick a folder first");
+  endDictation("new-msg");
+  if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
+  try {
+    const typed = draft("new-flags").text.trim();
+    const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
+    const mk = `f:${cwd}`;
+    const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images });
+    mcpPick.delete(mk);
+    rememberFolder(newMachine, cwd);
+    afterNewSession(r);
+  } catch (e) { toast(`Couldn't start it: ${e}`); }
+}
+/** The live list's and + New's buttons (data-lv), by name, each with the button's data. */
+const LV_ACTS = {
+  toggle: lvToggle,
+  all: () => { liveOpen = newOpen = false; view = "sessions"; renderMain(); },
+  new: lvNew,
+  agent: (d) => { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); renderMain(); },
+  where: (d) => { newWhere = d.tmux === "true"; remember("newWhere", String(newWhere)); renderMain(); },
+  "machine-add": lvMachineAdd,
+  machine: (d) => { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); renderMain(); },
+  perm: (d) => { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); renderMain(); },
+  "model-1m": () => { newModel1m = !newModel1m; remember("newModel1m", String(newModel1m)); renderMain(); },
+  "models-reload": () => { readModels(true); renderMain(); },
+  folders: () => { const was = nfFolderOpen && !nfFolderQ; closeFolders(); nfFolderOpen = !was; renderMain(); document.querySelector('[data-text="new-cwd"]')?.focus(); },
+  folder: (d) => pickFolder(d.cwd),
+  "proj-open": () => { nfProj.open = !nfProj.open; renderMain(); },
   // A project you made in the projects list: this session alone goes in it (a repository's: the whole folder).
-  if (act === "proj-pick") { if (madeList().includes(d.project)) nfNewProj = d.project; else nfProj.pick = d.project; nfProj.open = false; return renderMain(); }
-  if (act === "proj-new-off") { nfNewProj = ""; return renderMain(); }
-  if (act === "cancel") { endDictation("new-msg"); liveOpen = newOpen = false; nfNewProj = ""; closeFolders(); return renderMain(); }
-  if (act === "start") {
-    const cwd = draft("new-cwd").text.trim();
-    if (!cwd) return toast("Pick a folder first");
-    endDictation("new-msg");
-    if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
-    try {
-      const typed = draft("new-flags").text.trim();
-      const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
-      // The MCP servers you picked for it, only once you changed a box (else its folder's, unpinned).
-      const mk = `f:${cwd}`;
-      const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-      const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images });
-      mcpPick.delete(mk);
-      rememberFolder(newMachine, cwd);
-      // A project you made: this session alone, and the window goes to it. Else a project
-      // picked on its Project line: its folder's from now on (every session there).
-      const i = nfProj.info;
-      if (nfNewProj && r.session_id) {
-        moveToProject(r.session_id, nfNewProj);
-        setProjFilter(nfNewProj);
-      } else if (i && nfProj.pick != null && nfProj.pick !== i.name) putFolder(i.key, nfProj.pick, i.own);
-      nfProj = { at: "", info: null, pick: null, open: false };
-      nfNewProj = "";
-      toast(r.detail);
-      draft("new-msg").text = draft("new-name").text = "";   // the rest stays as you set it, for the next one
-      draft("new-msg").images = [];
-      newOpen = liveOpen = false;
-      // Cue knows the new session already (it picked the id): open it here. Its terminal stays closed
-      // (the strip above the box) until you open it — the reply box comes first.
-      if (r.session_id) { setActive(null, r.session_id); return; }
-      renderMain();
-    } catch (e) { toast(`Couldn't start it: ${e}`); }
-  }
+  "proj-pick": (d) => { if (madeList().includes(d.project)) nfNewProj = d.project; else nfProj.pick = d.project; nfProj.open = false; renderMain(); },
+  "proj-new-off": () => { nfNewProj = ""; renderMain(); },
+  cancel: () => { endDictation("new-msg"); liveOpen = newOpen = false; nfNewProj = ""; closeFolders(); renderMain(); },
+  start: lvStart,
+};
+async function lvAct(act, d) {
+  if (Object.hasOwn(LV_ACTS, act)) return LV_ACTS[act](d);
 }
 /** One entry per live session: the ones Cue knows, then the quiet ones (Claude's registry, Pi that only connected). */
 function liveRows() {
@@ -482,14 +494,18 @@ function showAllSvRest(btn) {
   const by = Math.min(toFirst, toEnd);
   if (by > 0) sc.scrollBy({ top: by, behavior: "smooth" });
 }
-function sessionsView() {
-  const all = liveRows().filter((r) => inProj(r.project));
-  const q = draft("find-sessions").text.trim().toLowerCase();
+/** The Sessions view's search: every word of `q` somewhere in a row's name, folder, branch, what it's doing,
+ *  its crew's names or its agent. */
+function svMatcher(q) {
   const hay = (r) => { const m = r.crew || crewOf(r.sid), ab = svAbout(r); return [r.name, r.cwd, homeless(r.cwd), state.branches?.[r.cwd], r.what, ab.about, ab.now, m?.lead_name, m?.name, r.harness].join(" ").toLowerCase(); };
-  const match = (r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w));
+  return (r) => !q || q.split(/\s+/).every((w) => hay(r).includes(w));
+}
+/** Live sessions in tiles by project (a repository and its worktrees). A crew lives in its lead's tile, whatever
+ *  folders its executors work in, with the lead it took over from while that one is still open. Executors whose
+ *  lead Cue can't see (not running, or not in Cue yet) make a crew line of their own, in their folder. Each
+ *  machine its own tiles: the same project on two machines is two tiles. */
+function svTiles(all) {
   const bySid = new Map(all.map((r) => [r.sid, r]));
-  // Tiles by project (a repository and its worktrees). A crew lives in its lead's tile, whatever folders its
-  // executors work in. Each machine its own tiles: the same project on two machines is two tiles.
   const tiles = new Map();
   const tile = (r) => { const p = r.project || projOf(r.cwd), k = `${r.machine || ""}\n${p}`; return tiles.get(k) || tiles.set(k, { project: p, cwd: r.cwd, machine: r.machine || "", solo: [], crews: [] }).get(k); };
   const placed = new Set();
@@ -501,12 +517,10 @@ function sessionsView() {
       return bySid.get(e.session_id) || { sid: e.session_id, harness: m.plugin === "pilead" ? "pi" : "claude", name: e.name, cwd: "", st: e.status === "busy" ? "working" : "idle", since: 0, what: "", ghost: true,
         crew: { ...e, role: "executor", plugin: e.plugin || m.plugin, lead: lead.sid, lead_name: m.name, lead_armed: true } };
     });
-    // The lead it took over from, while that one is still open: under this crew, not a tile of its own.
     const was = all.filter((r) => !placed.has(r.sid) && handoffOf(r.sid)?.to === lead.sid);
     was.forEach((r) => placed.add(r.sid));
     tile(lead).crews.push({ lead, m, execs, was });
   }
-  // Executors whose lead Cue can't see (not running, or not in Cue yet): a crew line of their own, in their folder.
   const orphans = new Map();
   for (const r of all.filter((r) => !placed.has(r.sid) && crewOf(r.sid)?.role === "executor")) {
     placed.add(r.sid);
@@ -515,56 +529,72 @@ function sessionsView() {
     orphans.get(key).execs.push(r);
   }
   for (const r of all.filter((r) => !placed.has(r.sid))) tile(r).solo.push(r);
-
-  const crewHtml = (c, t) => {
-    const execs = c.execs.filter(match), was = (c.was || []).filter(match);
-    const leadHit = c.lead && match(c.lead);
-    if (q && !leadHit && !execs.length && !was.length) return "";
-    const head = c.lead ? svItem(c.lead, { crew: c.m })
-      : `<div class="sx-crew-h ${c.m.lead_armed === false ? "gone" : ""}">${badge(c.execs[0].harness)}<span class="sx-lname">${esc(bareName(c.m.lead_name) || "a lead")}</span><span class="sx-crew-n">${c.m.lead_armed === false ? `lead not running${c.execs.length > 1 ? ` · ${c.execs.length} relay agents still open` : ""}` : "lead not in Cue yet"}</span>${leftActs(c, t)}</div>`;
-    return `<div class="sx-crew">${head}${execs.length ? `<div class="sx-execs">${svItems(execs, c.lead ? c.lead.harness : c.execs[0].harness)}</div>` : ""}${was.map((r) => svItem(r)).join("")}</div>`;
-  };
-  const cards = [...tiles.values()].map((t) => {
-    const members = [...t.solo, ...t.crews.flatMap((c) => [c.lead, ...c.execs, ...(c.was || [])].filter(Boolean))];
-    // One folder: its branch on the tile. Several (worktrees): each session says its own, and + starts in the main checkout.
-    const folders = new Set(members.filter((r) => r.cwd).map((r) => r.cwd)), many = folders.size > 1;
-    const cwd = many ? projRoot(t.cwd) : [...folders][0] || t.cwd, br = many ? "" : state.branches?.[cwd];
-    for (const r of members) r.where = many && r.cwd ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
-    const solo = t.solo.filter(match);
-    const crews = t.crews.map((c) => crewHtml(c, t)).filter(Boolean);
-    if (!solo.length && !crews.length) return null;
-    const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
-    const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
+  return [...tiles.values()];
+}
+/** A crew in its tile: its lead's row (or a line for a lead Cue can't see), its executors, the lead it took over
+ *  from. Empty when a search matches none of them. */
+function svCrewHtml(c, t, q, match) {
+  const execs = c.execs.filter(match), was = (c.was || []).filter(match);
+  const leadHit = c.lead && match(c.lead);
+  if (q && !leadHit && !execs.length && !was.length) return "";
+  const head = c.lead ? svItem(c.lead, { crew: c.m })
+    : `<div class="sx-crew-h ${c.m.lead_armed === false ? "gone" : ""}">${badge(c.execs[0].harness)}<span class="sx-lname">${esc(bareName(c.m.lead_name) || "a lead")}</span><span class="sx-crew-n">${c.m.lead_armed === false ? `lead not running${c.execs.length > 1 ? ` · ${c.execs.length} relay agents still open` : ""}` : "lead not in Cue yet"}</span>${leftActs(c, t)}</div>`;
+  return `<div class="sx-crew">${head}${execs.length ? `<div class="sx-execs">${svItems(execs, c.lead ? c.lead.harness : c.execs[0].harness)}</div>` : ""}${was.map((r) => svItem(r)).join("")}</div>`;
+}
+/** A project's tile, ranked by its most urgent session, then its newest; null when a search leaves nothing in it.
+ *  One folder: its branch on the tile. Several (worktrees): each session says its own, and + starts in the main
+ *  checkout. */
+function svTileCard(t, q, match) {
+  const members = [...t.solo, ...t.crews.flatMap((c) => [c.lead, ...c.execs, ...(c.was || [])].filter(Boolean))];
+  const folders = new Set(members.filter((r) => r.cwd).map((r) => r.cwd)), many = folders.size > 1;
+  const cwd = many ? projRoot(t.cwd) : [...folders][0] || t.cwd, br = many ? "" : state.branches?.[cwd];
+  for (const r of members) r.where = many && r.cwd ? state.branches?.[r.cwd] || baseName(r.cwd) : "";
+  const solo = t.solo.filter(match);
+  const crews = t.crews.map((c) => svCrewHtml(c, t, q, match)).filter(Boolean);
+  if (!solo.length && !crews.length) return null;
+  const rank = Math.min(...members.map(svRank)), latest = Math.max(0, ...members.map((r) => r.since || 0));
+  const html = `<div class="sx-tile ${members.some(svHot) ? "hot" : ""}">
       <div class="sx-thead">${projDot(t.project, members.some((m) => m.st === "working"))}<span class="sx-tname">${esc(t.project ? projLabel(t.project) : "(no folder)")}</span>${br ? `<span class="sx-branch">${esc(br)}</span>` : ""}<span class="sx-tcount">${members.length} session${members.length === 1 ? "" : "s"}</span><button class="sx-plus" data-lv="new" data-cwd="${esc(cwd)}" title="New session in ${esc(homeless(cwd))}">+</button></div>
       ${solo.length ? `<div class="sx-solo">${svItems(solo)}</div>` : ""}${crews.join("")}</div>`;
-    return { machine: t.machine, rank, latest, html };
-  }).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);
-  const liveSids = new Set(all.map((r) => r.sid));
-  const rest = [...(state.parked || []).map((p) => ({ ...p, kind: "parked", at: p.parked_ms })),
-    ...closedAll().filter((c) => !(state.parked || []).some((p) => p.session_id === c.session_id)).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }))]
-    .filter((p) => !liveSids.has(p.session_id) && inProj(p.project) && match({ name: p.name || p.project, cwd: p.cwd, harness: p.harness }));
-  if (!closedLoading && (!closedList || now() - closedAt > 60000)) queueMicrotask(loadClosed);   // what ended since, once a minute
-  // Sections, each under a heading: This Mac, then each other machine (its live tiles), then Parked
-  // and Closed (one slim line each, machine tag on the ones from elsewhere; Closed folds).
-  const newest = (a, b) => b.at - a.at;
-  const ps = rest.filter((p) => p.kind === "parked").sort(newest), cs = rest.filter((p) => p.kind === "closed").sort(newest), on = (sid) => sid === active?.sid;
-  // Each heading folds its section (kept); a search shows everything.
-  const sec = (key, label, n, body, cls = "") => {
-    const open = !!q || !svFolded.has(key);
-    return `<div class="sx-sec ${cls} ${open ? "" : "shut"}"><div class="sx-sec-h"><button class="sx-sec-fold" data-sv-fold="${esc(key)}" aria-expanded="${open}"><span class="sx-arrow">${open ? "▾" : "▸"}</span>${label}</button><span>${n}</span></div>${open ? body : ""}</div>`;
-  };
+  return { machine: t.machine, rank, latest, html };
+}
+/** A section under its heading, which folds it (kept); a search shows everything. */
+function svSection(q, key, label, n, body, cls = "") {
+  const open = !!q || !svFolded.has(key);
+  return `<div class="sx-sec ${cls} ${open ? "" : "shut"}"><div class="sx-sec-h"><button class="sx-sec-fold" data-sv-fold="${esc(key)}" aria-expanded="${open}"><span class="sx-arrow">${open ? "▾" : "▸"}</span>${label}</button><span>${n}</span></div>${open ? body : ""}</div>`;
+}
+/** The live sections: This Mac, then each other machine, its tiles and what they add up to. */
+function svLiveSections(all, cards, q) {
   const machines = [...new Set(["", ...cards.map((c) => c.machine)])].sort((a, b) => (a !== "") - (b !== "") || machShort(a).localeCompare(machShort(b)));
-  const liveSecs = machines.map((m) => {
+  return machines.map((m) => {
     const mine = cards.filter((c) => c.machine === m), rs = all.filter((r) => r.machine === m);
     if (!mine.length && m) return "";
     const asks = rs.filter((r) => r.st === "asks").length, yours = rs.filter((r) => r.st === "yours").length;
     const n = [`${rs.length} live`, asks && `${asks} asks you`, yours && `${yours} your turn`].filter(Boolean).join(" · ");
-    return sec(`m:${m}`, m ? esc(machShort(m)) : "This Mac", n, mine.length ? `<div class="sx-tiles">${mine.map((c) => c.html).join("")}</div>` : `<div class="quiet-line">${q ? `Nothing here matches “${esc(q)}”.` : "No live sessions on this Mac."}</div>`);
+    return svSection(q, `m:${m}`, m ? esc(machShort(m)) : "This Mac", n, mine.length ? `<div class="sx-tiles">${mine.map((c) => c.html).join("")}</div>` : `<div class="quiet-line">${q ? `Nothing here matches “${esc(q)}”.` : "No live sessions on this Mac."}</div>`);
   }).join("");
+}
+/** Parked and Closed: one slim line each, newest first, a machine tag on the ones from elsewhere; Closed folds.
+ *  What ended since is read again once a minute. */
+function svRestSections(all, q, match) {
+  const liveSids = new Set(all.map((r) => r.sid));
+  const rest = [...(state.parked || []).map((p) => ({ ...p, kind: "parked", at: p.parked_ms })),
+    ...closedAll().filter((c) => !(state.parked || []).some((p) => p.session_id === c.session_id)).map((c) => ({ ...c, kind: "closed", at: c.ended_ms }))]
+    .filter((p) => !liveSids.has(p.session_id) && inProj(p.project) && match({ name: p.name || p.project, cwd: p.cwd, harness: p.harness }));
+  if (!closedLoading && (!closedList || now() - closedAt > 60000)) queueMicrotask(loadClosed);
+  const newest = (a, b) => b.at - a.at;
+  const ps = rest.filter((p) => p.kind === "parked").sort(newest), cs = rest.filter((p) => p.kind === "closed").sort(newest), on = (sid) => sid === active?.sid;
   const restList = (key, rows) => `<div class="sx-rest" ${q ? "" : `data-fit="${key}"`}>${rows.map((r) => parkedRow(r, on(r.session_id))).join("")}</div>`;
-  const restSecs = (ps.length ? sec("parked", "Parked", ps.length, restList("parked", ps), "sx-rest-sec") : "")
-    + (cs.length ? sec("closed", "Closed", `${cs.length} · last 30 days`, restList("closed", cs), "sx-rest-sec") : "");
-
+  return (ps.length ? svSection(q, "parked", "Parked", ps.length, restList("parked", ps), "sx-rest-sec") : "")
+    + (cs.length ? svSection(q, "closed", "Closed", `${cs.length} · last 30 days`, restList("closed", cs), "sx-rest-sec") : "");
+}
+function sessionsView() {
+  const all = liveRows().filter((r) => inProj(r.project));
+  const q = draft("find-sessions").text.trim().toLowerCase();
+  const match = svMatcher(q);
+  const cards = svTiles(all).map((t) => svTileCard(t, q, match)).filter(Boolean).sort((a, b) => a.rank - b.rank || b.latest - a.latest);
+  const liveSecs = svLiveSections(all, cards, q);
+  const restSecs = svRestSections(all, q, match);
   const n = (st) => all.filter((r) => r.st === st).length, quiet = all.filter((r) => r.quiet).length;
   const counts = [`<b>${all.length} live</b>`, n("asks") && `${n("asks")} asks you`, n("yours") && `${n("yours")} your turn`, n("working") && `${n("working")} working`, quiet && `${quiet} quiet`].filter(Boolean).join(" · ");
   return `<div class="sv">
