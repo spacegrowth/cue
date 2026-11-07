@@ -1,8 +1,10 @@
 //! What the hub reaches outside itself through a seam a test can stand in for: the terminals it types into
-//! (terminal::keys), Notification Center (`Notes`), and where its follow-up work runs (`Later`: a watch on a typed message, a kept message
-//! sent once a turn ends, a queued review). The app's are `Ports::real`; testing::World brings its own.
+//! (terminal::keys), where it starts a session's agent (terminal::launch), Notification Center (`Notes`), and
+//! where its follow-up work runs (`Later`: a watch on a typed message, a kept message sent once a turn ends, a
+//! queued review). The app's are `Ports::real`; testing::World brings its own.
 
 use crate::terminal::keys::{Keys, Terminals};
+use crate::terminal::launch::{Launcher, Tabs};
 use std::sync::Arc;
 
 /// Work the hub hands off the caller's thread, run with the hub as the app holds it.
@@ -50,6 +52,7 @@ impl Notes for Nowhere {
 
 pub struct Ports {
     pub keys: Arc<dyn Keys>,
+    pub launcher: Arc<dyn Launcher>,
     pub notes: Arc<dyn Notes>,
     pub later: Later,
 }
@@ -61,6 +64,6 @@ impl Ports {
             Some(a) => Arc::new(Center(a.clone())),
             None => Arc::new(Nowhere),
         };
-        Self { keys: Arc::new(Terminals), notes, later: Later::Threads }
+        Self { keys: Arc::new(Terminals), launcher: Arc::new(Tabs), notes, later: Later::Threads }
     }
 }

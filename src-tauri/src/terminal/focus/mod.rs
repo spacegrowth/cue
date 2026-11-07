@@ -18,7 +18,9 @@ pub use lines::{claude_trusts, fork_line, model_args, new_session_id, resume_lin
 #[cfg(test)]
 pub(crate) use exec::find_bin;
 pub use screen::{agent_gone, box_empty, dialog_on, text_in_box};
-pub use tmux::{open_in_tmux, open_in_tmux_tab, session_screen, tmux_bin, tmux_installed, tmux_keys, tmux_kill_pane, tmux_screen, tmux_type_line, TMUX_SESSION};
+pub use tmux::{open_in_tmux, open_in_tmux_tab, session_screen, tmux_bin, tmux_installed, tmux_keys, tmux_kill_pane, tmux_type_line, TMUX_SESSION};
+#[cfg(test)]
+pub(crate) use tmux::tmux_screen;
 pub(crate) use tmux::{pane_in_its_session, tmux_out};
 pub use typing::{press_enter, press_escape, type_into};
 

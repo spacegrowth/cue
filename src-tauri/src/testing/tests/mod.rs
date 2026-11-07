@@ -7,6 +7,7 @@ mod db_faults;
 mod db_history;
 mod handoffs;
 mod insights;
+mod launching;
 mod machine_stream;
 mod machines;
 mod notifications;

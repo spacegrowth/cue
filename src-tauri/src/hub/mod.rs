@@ -192,6 +192,11 @@ impl Hub {
         &*self.ports.keys
     }
 
+    /// Where it starts a session's agent.
+    pub(crate) fn launcher(&self) -> &dyn crate::terminal::launch::Launcher {
+        &*self.ports.launcher
+    }
+
     /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later). A hub with no
     /// app (a test's) has nothing to hand it: dropped, unless the test holds it (testing::Deferred).
     fn later(&self, after_ms: u64, job: impl FnOnce(&Arc<Hub>) + Send + 'static) {

@@ -1,8 +1,8 @@
-//! The World: one hub on a private CUE_HOME, driven as the socket drives it, with its terminals, its
-//! follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
+//! The World: one hub on a private CUE_HOME, driven as the socket drives it, with its terminals, the
+//! agents it starts (`FakeLauncher`), its follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
 //! agent index are process-wide): it holds the database's and the index's test locks for its life.
 
-use super::{Agent, Deferred, FakeNotes, FakeTerminal, Snap};
+use super::{Agent, Deferred, FakeLauncher, FakeNotes, FakeTerminal, Snap};
 use crate::clock::fake::Fake;
 use crate::hub::ports::{Later, Ports};
 use crate::hub::Hub;
@@ -64,6 +64,7 @@ impl Client {
 pub struct World {
     client: Client,
     pub terminal: Arc<FakeTerminal>,
+    pub launcher: Arc<FakeLauncher>,
     pub notes: Arc<FakeNotes>,
     later: Arc<Deferred>,
     home: PathBuf,
@@ -99,9 +100,9 @@ impl World {
         crate::live::set_claude(vec![]);
         crate::leads::install_index(Default::default());
         clock.install();
-        let (terminal, notes, later) = (Arc::new(FakeTerminal::default()), Arc::new(FakeNotes::default()), Arc::new(Deferred::default()));
-        let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), notes: notes.clone(), later: Later::Deferred(later.clone()) }));
-        let w = Self { client: Client { hub, clock }, terminal, notes, later, home, thinking_ms: Default::default(), _index: index, _db: db };
+        let (terminal, launcher, notes, later) = (Arc::default(), Arc::default(), Arc::default(), Arc::default());
+        let hub = Arc::new(Hub::with_ports(None, ports(&terminal, &launcher, &notes, &later)));
+        let w = Self { client: Client { hub, clock }, terminal, launcher, notes, later, home, thinking_ms: Default::default(), _index: index, _db: db };
         w.agents_take_what_is_typed();
         w
     }
@@ -114,8 +115,7 @@ impl World {
         self.settle();
         self.client.hub.save_live();
         let later = Arc::new(Deferred::default());
-        let ports = Ports { keys: self.terminal.clone(), notes: self.notes.clone(), later: Later::Deferred(later.clone()) };
-        self.client.hub = Arc::new(Hub::with_ports(None, ports));
+        self.client.hub = Arc::new(Hub::with_ports(None, ports(&self.terminal, &self.launcher, &self.notes, &later)));
         self.later = later;
         self.agents_take_what_is_typed();
     }
@@ -249,6 +249,12 @@ impl World {
     pub fn waiting_work(&self) -> usize {
         self.later.len()
     }
+}
+
+/// The hub's ports as a World stands them in: its terminal, launcher and Notification Center, and its
+/// follow-up work held for the World to run.
+fn ports(terminal: &Arc<FakeTerminal>, launcher: &Arc<FakeLauncher>, notes: &Arc<FakeNotes>, later: &Arc<Deferred>) -> Ports {
+    Ports { keys: terminal.clone(), launcher: launcher.clone(), notes: notes.clone(), later: Later::Deferred(later.clone()) }
 }
 
 impl Default for World {
