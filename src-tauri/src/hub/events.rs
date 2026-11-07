@@ -16,13 +16,25 @@ impl Hub {
     }
 
     fn event_in(&self, origin: Origin, event: &str, message: String, turn: Vec<TurnPart>, driven_by: &str, from_you: bool) {
-        // Its turn is over: the message you kept for it (sent while it worked) goes now.
         let sid = origin.session_id.clone();
+        // Each hook is a process of its own, and a Stop hook reads its transcript before it says anything: one
+        // can land after its session's SessionEnd. Late, it doesn't bring the session back. (A session resumed
+        // since is live again by then: its prompt comes first.)
+        if event != "active" && self.ended_just_now(&sid) {
+            return;
+        }
+        // Its turn is over: the message you kept for it (sent while it worked) goes now.
         let held = event == "stopped" && self.read(|st| st.sessions.held(&sid).is_some());
         self.on_event(origin, event, message, turn, driven_by, from_you);
         if held {
             self.send_held_soon(&sid, 0);
         }
+    }
+
+    /// Not live, and ended less than JUST_ENDED_MS ago.
+    fn ended_just_now(&self, sid: &str) -> bool {
+        let now = now_ms();
+        self.read(|st| st.sessions.origin(sid).is_none() && st.just_ended.get(sid).is_some_and(|at| now.saturating_sub(*at) < sessions::JUST_ENDED_MS))
     }
 
     /// Each event to its handler.
