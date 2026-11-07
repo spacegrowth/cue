@@ -49,11 +49,6 @@ to = "folder facts"
 reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
 
 [[lock_order]]
-from = "FEEDS"
-to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::windows::with_windows), a leaf"
-
-[[lock_order]]
 from = "INDEX"
 to = "REMOTE"
 reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
