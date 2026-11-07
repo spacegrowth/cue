@@ -103,7 +103,13 @@
     const it = itemFor(sid);
     const all = sessionOf(sid)?.thread || it?.thread || [];
     const msgs = all.length ? all : it ? [{ role: "agent", text: finishedText(it) }] : [];
-    return msgs.map(msg).join("") || `<div class="m-quiet">Nothing said yet.</div>`;
+    return (msgs.map(msg).join("") || `<div class="m-quiet">Nothing said yet.</div>`) + nowHtml(sid);
+  }
+  /** At work: what it's doing now, last in the chat, so its last reply isn't read as the answer to you. */
+  function nowHtml(sid) {
+    const s = sessionOf(sid);
+    if (s?.state !== "working") return "";
+    return `<div class="m-now"><i class="m-dot work"></i><span class="m-now-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></div>`;
   }
   function askHtml(sid) {
     const it = itemFor(sid);
@@ -138,7 +144,8 @@
     document.documentElement.style.setProperty("--list-cap", `${Math.round(screen.height * 0.7)}px`);
     const empty = !NOTCH && m.shape === "quiet" && !anything();
     const w = empty ? 6 : WIDTH[m.shape] || WIDTH.quiet;   // nothing running at all: the rail is a thin strip
-    const h = empty ? 200 : Math.min(p ? Math.ceil(p.getBoundingClientRect().height) : 30, m.shape === "chat" ? cap : 4000);
+    // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
+    const h = empty ? 200 : m.shape === "chat" ? cap : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
     const args = { w, h, show: true };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
