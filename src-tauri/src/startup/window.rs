@@ -86,8 +86,14 @@ pub(super) fn on_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEven
     }
 }
 
-/// Closing the window keeps Cue running (it must stay up to receive requests).
+/// Closing the window keeps Cue running (it must stay up to receive requests). The mini window steps aside
+/// while Cue's own window is in front.
 pub(super) fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
+    if let WindowEvent::Focused(focused) = event {
+        if window.label() == "main" {
+            crate::mini::main_focused(window.app_handle(), *focused);
+        }
+    }
     if let WindowEvent::CloseRequested { api, .. } = event {
         if window.label() != "main" {
             return;

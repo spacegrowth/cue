@@ -104,6 +104,8 @@ const machLead = (m) => m ? `<span class="mach lead">${esc(machName(m))}</span>`
 // ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
 // A session that has stopped (parked or closed) keeps its name: its record as it was.
 const recordOf = (sid) => sessionOf(sid) || parkedOf(sid) || closedOf(sid);
+/** A folder's last part ("…/cue-mini" → "cue-mini"). */
+const baseName = (p) => String(p || "").split("/").filter(Boolean).pop() || "";
 const nameOf = (sid, project) => String(recordOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || baseName(recordOf(sid)?.cwd) || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || state.history.find((i) => i.id === id);
 const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);

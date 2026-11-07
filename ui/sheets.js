@@ -486,6 +486,7 @@ function settingsSheet() {
     ${setRow("Before a cache runs out", "10 minutes before a session waiting on you would have to write its whole conversation again.", toggle("notify.cold", st.notify?.cold ?? true))}
     ${setRow("Sound", "What every notification plays. Click one to hear it.", seg("notify.sound", st.notify?.sound ?? "pluck", SOUNDS))}
     <div class="set-group">Mac</div>
+    ${setRow("Mini window", "Cue at the edge of your screen while you work in another app: what needs you, newest first, and its whole chat with a box to answer it. It steps aside while this window is in front.", seg("mini.mode", st.mini?.mode ?? "off", [["off", "Off"], ["rail", "Right edge"], ["notch", "Notch"]]))}
     ${setRow("Open at login", "Start Cue when you log in to your Mac. It's listed under System Settings → General → Login Items.", toggle("login.open", st.login?.open ?? false))}
     <div class="set-group">Projects</div>
     ${projResetRows()}`,

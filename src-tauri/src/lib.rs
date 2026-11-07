@@ -34,6 +34,7 @@ mod terminal;
 #[cfg(test)]
 mod testing;
 mod machines;
+mod mini;
 mod remote_poll;
 
 // The old crate-root paths of the moved modules, kept for what still names them there: the hub (its own

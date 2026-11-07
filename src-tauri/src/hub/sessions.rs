@@ -497,6 +497,11 @@ impl Hub {
             let history = crate::db::history(crate::config::history_keep());
             self.write(|st| st.history = history);
         }
+        if key == "mini.mode" {
+            if let Some(app) = &self.app {
+                crate::mini::apply(app);
+            }
+        }
         if key == "appearance.zoom" {
             if let Some(app) = &self.app {
                 crate::apply_zoom(app);
