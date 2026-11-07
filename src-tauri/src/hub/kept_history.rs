@@ -30,10 +30,14 @@ impl History {
         self.items.iter()
     }
 
-    /// The cards to change in place: their brief rows are made again on the next ask.
-    pub(super) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> {
-        self.brief = None;
-        self.items.iter_mut()
+    /// Each card changed in place by `change` (which says whether it changed it): whether any did. The brief
+    /// rows are made again on the next ask only then.
+    pub(super) fn change_each(&mut self, mut change: impl FnMut(&mut Item) -> bool) -> bool {
+        let changed = self.items.iter_mut().fold(false, |any, it| change(it) | any);
+        if changed {
+            self.brief = None;
+        }
+        changed
     }
 
     #[cfg(test)]
@@ -142,9 +146,13 @@ mod tests {
         assert_eq!(first.len(), 1, "a list already handed out is never changed under its holder");
         h.retain(|i| i.id != "c");
         assert_eq!(ids(&mut h), ["b"]);
-        for it in h.iter_mut() {
+        let kept = h.brief();
+        assert!(!h.change_each(|_| false));
+        assert!(Arc::ptr_eq(&kept, &h.brief()), "a pass that changed nothing keeps the rows made");
+        assert!(h.change_each(|it| {
             it.outcome = "denied".into();
-        }
+            true
+        }));
         assert_eq!(h.brief()[0]["outcome"], "denied", "a card changed in place is made again");
     }
 }
