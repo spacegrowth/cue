@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 197 |
 | Lock-graph edges | 41 |
 | Spawn sites | 66 |
-| External calls: fs / db / process / notify / login / socket | 339 / 135 / 47 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 339 / 135 / 46 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -807,7 +807,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_log` | db::turns_read | 1 |
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 
-### process (47)
+### process (46)
 
 | In | Call | Times |
 |---|---|---|
@@ -834,7 +834,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/live.rs::tty_of` | /bin/ps | 1 |
 | `machines/mod.rs::end_streams` | /bin/ps | 1 |
 | `machines/mod.rs::ssh` | (program computed) | 1 |
-| `machines/mod.rs::ssh` | /usr/bin/ssh | 1 |
 | `safe_git.rs::run` | (program computed) | 1 |
 | `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |

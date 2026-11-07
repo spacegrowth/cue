@@ -282,19 +282,8 @@ fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, 
         }
         // On a machine: the same client, through ssh (with a terminal of its own).
         Some(h) => {
-            let mut c = CommandBuilder::new("/usr/bin/ssh");
-            for a in crate::machines::shared() {
-                c.arg(a);
-            }
-            for a in ["-o", "BatchMode=yes", "-tt", h] {
-                c.arg(a);
-            }
-            // tmux by its full path when Cue knows it (no login shell to wait for), else through your shell.
-            let args = chain.iter().map(|a| crate::machines::shq(a)).collect::<Vec<_>>().join(" ");
-            c.arg(match crate::machines::tmux_path(h) {
-                Some(p) => format!("exec /bin/sh -c {}", crate::machines::shq(&format!("exec {} {args}", crate::machines::shq(&p)))),
-                None => crate::machines::remote_command(&format!("exec tmux {args}")),
-            });
+            let mut c = CommandBuilder::new(crate::machines::ssh_program());
+            c.args(crate::machines::tmux_client_args(h, &chain));
             c
         }
     };
@@ -454,6 +443,8 @@ pub fn close_if(sid: &str, gen: u64) {
 mod support;
 #[cfg(test)]
 mod edges;
+#[cfg(test)]
+mod remote;
 
 #[cfg(test)]
 mod tests {
