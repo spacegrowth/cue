@@ -1,7 +1,8 @@
 #!/bin/bash
 # scripts/release.sh's gates and checks, against stand-ins: a throwaway repo holding a copy of the release
-# scripts, a tests/run.sh that passes or fails as a case says, and cargo, swift, swiftc and gh on PATH that
-# only record what they were asked. Nothing is built, nothing reaches GitHub, nothing touches your Cue.
+# scripts, a tests/run.sh that passes or fails as a case says, and stand-ins on PATH for everything that builds,
+# signs, notarizes or reaches GitHub (STUBBED below), which only record what they were asked. Nothing is built,
+# nothing reaches GitHub or Apple, no keychain is read, nothing touches your Cue.
 #   tests/release/gates.test.sh      (tests/run.sh unit runs it)
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -13,39 +14,45 @@ CASE_FAILED=0  # this case failed
 CASE=""
 
 # ---- the stand-ins ----------------------------------------------------------------------------------------
-# Each stand-in appends its arguments to $CALLS; what it answers is set per case through STUB_* variables.
+# Every command the script could reach that signs, notarizes, builds or talks to GitHub has a stand-in here, first
+# on PATH, so no case can reach the real one. Each appends its arguments to $CALLS; what it answers is set per
+# case through STUB_* variables. HOME is a folder of the test's own, holding a stand-in update key.
+STUBBED="cargo gh swift swiftc security xcrun npx rustup codesign hdiutil spctl ditto lipo dwarfdump strings tar"
+
 make_stubs() {
-  mkdir -p "$WORK/bin"
-  cat >"$WORK/bin/cargo" <<'STUB'
+  mkdir -p "$WORK/bin" "$WORK/home/.tauri"
+  echo "not a key" >"$WORK/home/.tauri/cue.key"
+  cat >"$WORK/bin/stub" <<'STUB'
 #!/bin/bash
-echo "cargo $*" >>"$CALLS"
-case "$*" in
-  *"xtask -- inventory"*) [ -n "${STUB_INVENTORY:-}" ] && printf '%s\n' "$STUB_INVENTORY" >../docs/dev/inventory.md; exit 0 ;;
-  *"xtask -- check"*) [ -z "${STUB_XTASK_FAILS:-}" ] ;;
-esac
-STUB
-  cat >"$WORK/bin/gh" <<'STUB'
-#!/bin/bash
-echo "gh $*" >>"$CALLS"
+name="$(basename "$0")"
+echo "$name $*" >>"$CALLS"
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-case "$1 $2" in
-  "release list")
+case "$name $1 $2" in
+  "cargo "*)
+    case "$*" in
+      *"xtask -- inventory"*) [ -n "${STUB_INVENTORY:-}" ] && printf '%s\n' "$STUB_INVENTORY" >../docs/dev/inventory.md; exit 0 ;;
+      *"xtask -- check"*) [ -z "${STUB_XTASK_FAILS:-}" ] ;;
+    esac ;;
+  "gh release list")
     if [ -n "${STUB_SHIPPED_TODAY:-}" ]; then echo "[{\"tagName\":\"$STUB_SHIPPED_TODAY\",\"publishedAt\":\"$now\"}]"
     else echo '[{"tagName":"v0.1.80","publishedAt":"2026-01-02T03:04:05Z"}]'; fi ;;
-  "release view")
+  "gh release view")
     case "$*" in *isPrerelease*) echo true ;; *) echo v0.1.86 ;; esac ;;
-  "release download")
+  "gh release download")
     dir="$(printf '%s\n' "$@" | sed -n '/^--dir$/{n;p;}')"
     case "$*" in
       *update.json*) printf '{"version":"%s","notes":"n","pub_date":"%s","platforms":{}}' "${STUB_BETA_VERSION:-0.2.0}" "${STUB_BETA_PUBLISHED:-$now}" >"$dir/update.json" ;;
       *) exit 1 ;;
     esac ;;
-  *) exit 0 ;;
+  "security find-identity "*) echo '  1) ABC "Developer ID Application: Test (TEAM)"' ;;
+  "security "*) echo "a password" ;;
+  "xcrun notarytool history") [ -z "${STUB_NO_NOTARY:-}" ] ;;
+  "npx "*) [ -z "${STUB_BUILD_FAILS:-}" ] || { echo "error: the build failed"; exit 1; } ;;
 esac
 STUB
-  printf '#!/bin/bash\necho "$(basename "$0") $*" >>"$CALLS"\n' >"$WORK/bin/swift"
-  cp "$WORK/bin/swift" "$WORK/bin/swiftc"
-  chmod +x "$WORK/bin/"*
+  chmod +x "$WORK/bin/stub"
+  local name
+  for name in $STUBBED; do ln -s stub "$WORK/bin/$name"; done
 }
 
 # A repo with the release scripts as they are now, the inventory committed, and a tests/run.sh whose suites pass
@@ -57,6 +64,9 @@ make_repo() {
   echo "inventory" >"$repo/docs/dev/inventory.md"
   echo "lock graph" >"$repo/docs/dev/lock-graph.dot"
   echo "# a lock file" >"$repo/src-tauri/Cargo.lock"
+  echo '{ "version": "0.1.86" }' >"$repo/package.json"
+  echo '{ "version": "0.1.86" }' >"$repo/src-tauri/tauri.conf.json"
+  printf '[package]\nname = "cue"\nversion = "0.1.86"\n' >"$repo/src-tauri/Cargo.toml"
   printf 'dist/\n' >"$repo/.gitignore"
   cat >"$repo/tests/run.sh" <<'STUB'
 #!/bin/bash
@@ -74,13 +84,14 @@ STUB
 # A case starts from a fresh repo and no stand-in answers; `release` runs the script there, keeping its output.
 start() {
   CASE="$1"; CASE_FAILED=0
-  unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED
+  unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
+    STUB_NO_NOTARY STUB_BUILD_FAILS
   REPO="$(make_repo)"
   export CALLS="$WORK/calls"; : >"$CALLS"
 }
 
 release() {
-  OUT="$(cd "$REPO" && PATH="$WORK/bin:$PATH" scripts/release.sh "$@" 2>&1)"
+  OUT="$(cd "$REPO" && HOME="$WORK/home" PATH="$WORK/bin:$PATH" scripts/release.sh "$@" 2>&1)"
   STATUS=$?
 }
 
@@ -197,6 +208,14 @@ start "a promote whose update file is another version's is refused"
 export STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z STUB_BETA_VERSION=0.1.9
 release --promote 0.2.0 --dry-run
 refused; says "offers another version"
+done_case
+
+start "a real build reaches signing and the build only through the stand-ins"
+export STUB_BUILD_FAILS=1 STUB_NO_NOTARY=1
+release 0.2.0 "Notes."
+refused; says "error: the build failed"
+called "security find-identity -v -p codesigning"; called "xcrun notarytool history"; called "npx tauri build"
+not_called "gh release create"
 done_case
 
 if [ "$FAILED" = 0 ]; then echo "release gates: all cases passed"; else echo "release gates: FAILED"; exit 1; fi
