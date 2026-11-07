@@ -790,6 +790,8 @@ pub fn rewrite_paths(old: &str, new: &str) {
         tx.execute("UPDATE items SET data = replace(data, ?1, ?2)", params![old, new])?;
         tx.execute("UPDATE sessions SET data = replace(data, ?1, ?2)", params![old, new])?;
         tx.execute("UPDATE exchanges SET images = replace(images, ?1, ?2), text = replace(text, ?1, ?2)", params![old, new])?;
+        tx.execute("UPDATE parked SET data = replace(data, ?1, ?2)", params![old, new])?;
+        tx.execute("UPDATE drafts SET images = replace(images, ?1, ?2)", params![old, new])?;
         tx.commit()
     });
 }
