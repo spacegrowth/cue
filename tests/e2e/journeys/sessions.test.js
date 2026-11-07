@@ -13,8 +13,9 @@ journey("a reply written on a finished turn's card is typed into its tmux pane, 
   const sid = "e2e-reply";
   const out = path.join(world.root, "reply");
   // A stand-in Claude Code: takes one line from its terminal, keeps it, and starts its next turn the way
-  // Claude's UserPromptSubmit hook reports it.
-  const agent = `read line; printf %s "$line" > ${out}; echo '{"session_id":"${sid}","cwd":"${CWD}"}' | "$CUE_HOME/bin/cue-hook" prompt; exec sleep 600`;
+  // Claude's UserPromptSubmit hook reports it. It reads with `head`, a process other than a shell in its
+  // pane's foreground, as an agent is: Cue never types where only a shell is (focus::pane_now).
+  const agent = `line=$(head -n 1); printf %s "$line" > ${out}; echo '{"session_id":"${sid}","cwd":"${CWD}"}' | "$CUE_HOME/bin/cue-hook" prompt; exec sleep 600`;
   const { card } = await agentInTmux(world, sid, agent, { message: "All done. Ship it?" });
   const text = 'ship it, then run "make test"';
   await (await world.ui.find(`textarea[data-text="s:${sid}"]`)).setValue(text);

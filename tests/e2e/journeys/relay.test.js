@@ -19,7 +19,7 @@ async function reviewWhileAnotherWaits(world) {
   const typed = path.join(world.root, "lead-typed");
   // A stand-in lead: takes the line typed into it, then runs a turn on it as Claude Code's hooks report one.
   const hook = (event, extra = "") => `echo '{"session_id":"${LEAD}","cwd":"/tmp/cue-e2e-project"${extra}}' | "$CUE_HOME/bin/cue-hook" ${event}`;
-  const { pane } = await agentInTmux(world, LEAD, `read line; printf %s "$line" > ${typed}; ${hook("prompt")}; ${hook("stop", ',"last_assistant_message":"Reviewed."')}; exec sleep 600`);
+  const { pane } = await agentInTmux(world, LEAD, `line=$(head -n 1); printf %s "$line" > ${typed}; ${hook("prompt")}; ${hook("stop", ',"last_assistant_message":"Reviewed."')}; exec sleep 600`);
   const pid = Number(world.tmux.run("display-message", "-p", "-t", pane, "#{pane_pid}"));
   relayCrew(world, { lead: LEAD, pid, executors: [{ id: "ex-a", session: "e2e-exec-a", topic: "finder" }, { id: "ex-b", session: "e2e-exec-b", topic: "parser" }] });
   // Both reports waited past relay's wake-up: each card says the lead hasn't picked it up.
