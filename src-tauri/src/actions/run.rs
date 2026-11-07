@@ -551,8 +551,27 @@ fn plain_log(name: &str) -> Option<String> {
         let all = crate::locking::lock(&PLAIN, "PLAIN");
         all.as_ref()?.get(name)?.out.clone()
     };
-    let b = std::fs::read(path).ok()?;
-    Some(String::from_utf8_lossy(&b[b.len().saturating_sub(512 * 1024)..]).to_string())
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    tail(&mut f, len, LOG_TAIL)
+}
+
+/// The most of an output file a log read takes: its end.
+const LOG_TAIL: u64 = 512 * 1024;
+
+/// The last `max` bytes of `f`, which was `len` long when looked at. It may have grown since (the action
+/// still writing: what's past `len` is left for the next read) or been cut shorter (read from its start).
+fn tail(f: &mut std::fs::File, len: u64, max: u64) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let start = len.saturating_sub(max);
+    f.seek(SeekFrom::Start(start)).ok()?;
+    let mut b = Vec::new();
+    f.take(len - start).read_to_end(&mut b).ok()?;
+    if b.is_empty() && start > 0 {
+        f.seek(SeekFrom::Start(0)).ok()?;
+        f.take(max).read_to_end(&mut b).ok()?;
+    }
+    Some(String::from_utf8_lossy(&b).to_string())
 }
 
 fn plain_set_port(name: &str, port: u16) -> bool {

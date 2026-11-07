@@ -138,7 +138,16 @@ fn agent_pid(harness: &str) -> i32 {
 /// The terminal device of tmux pane `pane` (on the server in TMUX): "" when it's gone, None when tmux
 /// can't be asked.
 fn pane_tty(pane: &str) -> Option<String> {
-    let out = std::process::Command::new(crate::focus::tmux_bin()).args(["display-message", "-p", "-t", pane, "#{pane_tty}"]).output().ok()?;
+    tty_of_pane(&crate::focus::tmux_bin(), pane)
+}
+
+/// How long the hook asks tmux for a pane's tty: a tmux that doesn't answer (a hung server) mustn't hold up
+/// the hook, and with it the agent's turn or permission ask.
+const PANE_TTY_CAP: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// `pane_tty`, asking `tmux` (the binary).
+fn tty_of_pane(tmux: &str, pane: &str) -> Option<String> {
+    let out = crate::terminal::focus::capped(std::process::Command::new(tmux).args(["display-message", "-p", "-t", pane, "#{pane_tty}"]), PANE_TTY_CAP).ok()?;
     Some(if out.status.success() { String::from_utf8_lossy(&out.stdout).trim().to_string() } else { String::new() })
 }
 
@@ -486,6 +495,21 @@ fn put_script(name: &str, body: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tmux that doesn't answer holds the hook up for the cap at most, and counts as "can't be asked".
+    #[test]
+    fn a_tmux_that_hangs_holds_the_hook_up_only_briefly() {
+        use std::os::unix::fs::PermissionsExt;
+        let hung = std::env::temp_dir().join(format!("cue-hung-tmux-{}", std::process::id()));
+        std::fs::write(&hung, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&hung, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let t0 = std::time::Instant::now();
+        let tty = tty_of_pane(&hung.to_string_lossy(), "%1");
+        let took = t0.elapsed();
+        let _ = std::fs::remove_file(&hung);
+        assert_eq!(tty, None, "tmux can't be asked");
+        assert!(took < PANE_TTY_CAP + std::time::Duration::from_secs(1), "held up {took:?}");
+    }
 
     #[test]
     fn a_tmux_pane_counts_only_when_the_agent_is_in_it() {

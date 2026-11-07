@@ -17,6 +17,8 @@ mod insights;
 mod items;
 mod live;
 mod schema;
+#[cfg(test)]
+pub use self::schema::tests_seam;
 mod search;
 
 pub use self::commands::{commands, set_commands, all_commands, stale_commands};
@@ -26,7 +28,9 @@ pub use self::insights::{insight_event, insight_counts, turns_read, TurnsOf, sav
 #[cfg(test)]
 pub use self::insights::insight_events_of;
 pub use self::items::{save_answered, history, DAY_MS, answers_since};
-pub use self::live::{sync_live, save_ended, live, park, parked, unpark, closed, ended_session, delete_session};
+#[cfg(test)]
+pub use self::live::sync_live;
+pub use self::live::{sync_live_with, save_ended, live, park, parked, unpark, closed, ended_session, delete_session};
 pub use self::search::{search, known_session_ids, session_log, session_log_page};
 
 #[cfg(test)]

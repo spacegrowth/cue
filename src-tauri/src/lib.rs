@@ -1,6 +1,7 @@
 mod clock;
 mod config;
 mod actions;
+mod awake;
 mod btw;
 mod db;
 mod hook;
@@ -152,6 +153,7 @@ pub fn run() {
             std::env::remove_var(&k);
         }
     }
+    awake::stay_responsive();
     startup::build().run(startup::window::on_run_event);
 }
 

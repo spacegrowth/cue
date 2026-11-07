@@ -10,7 +10,7 @@ pub mod login;
 pub mod mac;
 mod save;
 
-pub use save::update_with;
+pub use save::{update_with, update_yours};
 
 pub const HISTORY_DEFAULT: u64 = 300;
 
@@ -325,9 +325,9 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "login.open" => {
             let on = value.as_bool().ok_or("must be true or false")?;
             mac::switch_login(on)?;
-            remember(key, json!(on))
+            yours(key, json!(on))
         }
-        _ => remember(key, checked(key, value)?),
+        _ => yours(key, checked(key, value)?),
     }
 }
 
@@ -465,6 +465,12 @@ fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
 /// Write one dotted key as-is (no checks): for values Cue sets itself. One save at a time (save.rs).
 pub fn remember(key: &str, value: Value) -> Result<(), String> {
     update_with(key, |_| Ok((Some(value), ())))
+}
+
+/// Write one dotted key you set in the window (`set`): saved even over a config.json that isn't settings (kept
+/// aside first, save.rs).
+fn yours(key: &str, value: Value) -> Result<(), String> {
+    update_yours(key, |_| Ok((Some(value), ())))
 }
 
 /// Is Cue actually connected? Checked live so the Settings screen can say why nothing shows up.
