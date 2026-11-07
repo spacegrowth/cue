@@ -1,10 +1,11 @@
 //! The live sessions, answered cards, ended sessions and deletions, written to cue.db by one writer, in the
 //! order they're handed in. A draw (redraw.rs) hands in what it took from the store and goes on: it never
 //! waits on the database, and neither does an answer, whose card rides along with the next draw's save. With
-//! the app running the writer is a thread of its own, and work handed in while it writes waits in one job:
-//! the newest live sessions replace older ones not yet written (each save writes the store as it is, so the
-//! latest is all that counts), the rest is kept in order. Without the app (tests, the World) the writing is
-//! done where it's handed in, so each test reads the database right after.
+//! the app running the writer is a thread of its own, and work handed in while it writes waits its turn, in
+//! the order handed in: the newest live sessions replace older ones not yet written (each save writes the
+//! store as it is, so the latest is all that counts), and the rest stays where it was handed in, so a session
+//! deleted then resumed is saved again, and one saved then deleted stays deleted. Without the app (tests, the
+//! World) the writing is done where it's handed in, so each test reads the database right after.
 //!
 //! The writer keeps what the last save wrote (`LiveMarks`) and writes only the sessions that changed since,
 //! and which sessions were deleted, so nothing of theirs from before then (an answered card, the record of
@@ -13,6 +14,7 @@
 use super::saves::LiveMarks;
 use crate::model::Item;
 use crate::sessions::Session;
+use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 /// What's to be written, as one job.
@@ -33,16 +35,6 @@ impl Job {
     fn is_empty(&self) -> bool {
         self.live.is_none() && self.answered.is_empty() && self.ended.is_empty() && self.deletes.is_empty()
     }
-
-    /// `later` folded in: its live sessions are the newer, everything else follows what's here.
-    fn then(&mut self, later: Job) {
-        if later.live.is_some() {
-            self.live = later.live;
-        }
-        self.answered.extend(later.answered);
-        self.ended.extend(later.ended);
-        self.deletes.extend(later.deletes);
-    }
 }
 
 /// What the last save wrote, and the sessions deleted (by id, when).
@@ -52,11 +44,23 @@ struct Written {
     deleted: std::collections::HashMap<String, u64>,
 }
 
+/// The jobs not written yet, in the order handed in.
 #[derive(Default)]
 struct Queue {
-    job: Job,
-    /// The writer is writing a job taken from here.
+    jobs: VecDeque<Job>,
+    /// The writer is writing jobs taken from here.
     writing: bool,
+}
+
+impl Queue {
+    /// `job` after the others; its live sessions, when it has them, replace the older ones not yet written.
+    fn push(&mut self, job: Job) {
+        if job.live.is_some() {
+            self.jobs.iter_mut().for_each(|j| j.live = None);
+            self.jobs.retain(|j| !j.is_empty());
+        }
+        self.jobs.push_back(job);
+    }
 }
 
 #[derive(Default)]
@@ -82,30 +86,30 @@ impl LiveWrites {
             let me = self.clone();
             let _ = std::thread::Builder::new().name("cue-db-writer".into()).spawn(move || me.run());
         });
-        crate::locking::lock(&self.queue, "db writes").job.then(job);
+        crate::locking::lock(&self.queue, "db writes").push(job);
         self.wake.notify_all();
     }
 
     /// Returns once everything handed in so far is written (quitting: nothing changed is lost).
     pub(super) fn flush(&self) {
         let mut q = crate::locking::lock(&self.queue, "db writes");
-        while q.writing || !q.job.is_empty() {
+        while q.writing || !q.jobs.is_empty() {
             q = crate::locking::Guard::wait(q, &self.wake);
         }
     }
 
-    /// The writer: each job as it comes, until the app goes.
+    /// The writer: the jobs waiting, in order, as they come, until the app goes.
     fn run(&self) {
         loop {
-            let job = {
+            let jobs = {
                 let mut q = crate::locking::lock(&self.queue, "db writes");
-                while q.job.is_empty() {
+                while q.jobs.is_empty() {
                     q = crate::locking::Guard::wait(q, &self.wake);
                 }
                 q.writing = true;
-                std::mem::take(&mut q.job)
+                std::mem::take(&mut q.jobs)
             };
-            self.write(job);
+            jobs.into_iter().for_each(|job| self.write(job));
             crate::locking::lock(&self.queue, "db writes").writing = false;
             self.wake.notify_all();
         }
@@ -130,6 +134,8 @@ impl LiveWrites {
         crate::db::save_ended(&ended);
         for (sid, at) in deletes {
             crate::db::delete_session(&sid);
+            // Its row is gone: live again (resumed), it's written whole, not judged unchanged.
+            w.marks.forget(&sid);
             w.deleted.insert(sid, at);
         }
     }
@@ -189,6 +195,10 @@ mod tests {
         }
     }
 
+    fn live(sids: &[&str]) -> Job {
+        Job { live: Some((sids.iter().map(|s| session(s)).collect(), vec![])), ..Default::default() }
+    }
+
     fn deletes(sid: &str, at: u64) -> Job {
         Job { deletes: vec![(sid.into(), at)], ..Default::default() }
     }
@@ -209,6 +219,27 @@ mod tests {
         assert!(!ids.contains(&"a".to_string()) && !ids.contains(&"late".to_string()), "{ids:?}");
     }
 
+    /// Handed in while the writer is busy: a session deleted, then live again (resumed, its record unchanged),
+    /// is saved live, as the order says, not deleted after it.
+    #[test]
+    fn a_session_deleted_then_live_again_while_the_writer_waits_is_saved_live() {
+        let _db = Db::new("resumed");
+        let w = Arc::new(LiveWrites::default());
+        w.hand(live(&["s"]), true);
+        w.flush();
+        let (held_tx, held) = std::sync::mpsc::channel();
+        let (release_tx, release) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || crate::db::hold(held_tx, release));
+        held.recv().unwrap();
+        w.hand(Job { answered: vec![answered("x", "other", 5)], ..Default::default() }, true);
+        w.hand(deletes("s", 10), true);
+        w.hand(live(&["s"]), true);
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        w.flush();
+        assert_eq!(crate::db::live().0.iter().map(|s| s.origin.session_id.as_str()).collect::<Vec<_>>(), ["s"]);
+    }
+
     /// A session that ended before it was deleted, its end handed in after the deletion: not saved as ended.
     #[test]
     fn an_end_handed_in_after_its_sessions_deletion_isnt_saved() {
@@ -220,14 +251,17 @@ mod tests {
         assert!(crate::db::ended_session("t").is_some());
     }
 
+    /// Work waiting for the writer: in the order handed in, the newest live sessions replacing older ones.
     #[test]
-    fn work_handed_in_meanwhile_is_one_job_with_the_newest_live_sessions() {
-        let mut j = Job { live: Some((vec![], vec![answered("w1", "s", 1)])), answered: vec![answered("a", "s", 1)], ..Default::default() };
-        j.then(Job { live: Some((vec![], vec![])), answered: vec![answered("b", "s", 2)], ..Default::default() });
-        j.then(Job { deletes: vec![("s".into(), 3)], ..Default::default() });
-        assert_eq!(j.live.as_ref().map(|(_, w)| w.len()), Some(0), "the newer live sessions");
-        assert_eq!(j.answered.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
-        assert_eq!(j.deletes.len(), 1);
-        assert!(!j.is_empty() && Job::default().is_empty());
+    fn work_waiting_keeps_its_order_with_only_the_newest_live_sessions() {
+        let mut q = Queue::default();
+        q.push(Job { live: Some((vec![], vec![answered("w1", "s", 1)])), answered: vec![answered("a", "s", 1)], ..Default::default() });
+        q.push(deletes("s", 3));
+        q.push(live(&["s"]));
+        let shape: Vec<(bool, usize, usize)> = q.jobs.iter().map(|j| (j.live.is_some(), j.answered.len(), j.deletes.len())).collect();
+        assert_eq!(shape, [(false, 1, 0), (false, 0, 1), (true, 0, 0)], "the older live sessions dropped, the delete before the newer");
+        q.push(live(&[]));
+        assert_eq!(q.jobs.len(), 3, "a job left with nothing goes");
+        assert!(Job::default().is_empty());
     }
 }

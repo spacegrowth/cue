@@ -44,6 +44,11 @@ impl LiveMarks {
         let waiting_changed = self.waiting != next.waiting;
         (write, waiting_changed, next)
     }
+
+    /// `session_id`'s saved row is gone (deleted): it's written in full the next time it's live.
+    pub(super) fn forget(&mut self, session_id: &str) {
+        self.sessions.remove(session_id);
+    }
 }
 
 /// A hash of what `v` saves as.
