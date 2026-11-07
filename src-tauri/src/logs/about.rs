@@ -24,7 +24,7 @@ static READING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// A read since the tick last asked found another prompt.
 static NEWS: AtomicBool = AtomicBool::new(false);
 
-/// Your latest request to a Claude session, as last read ("" before its transcript was):
+/// Your latest request to a Claude session, as last read ("" before its transcript was, or once it's gone):
 /// nothing is read here.
 pub fn about(transcript: &str) -> String {
     crate::locking::lock(&ABOUT, "ABOUT").as_ref().and_then(|a| a.get(transcript)).map(|k| k.prompt.clone()).unwrap_or_default()
@@ -59,11 +59,12 @@ pub fn about_news() -> bool {
     NEWS.swap(false, Ordering::SeqCst)
 }
 
-/// Look at one transcript again: read when it changed. A failure (a file that can't be read just now) keeps
-/// what was last read.
+/// Look at one transcript again: read when it changed. Gone (not found): no prompt. Any other failure (a
+/// file that can't be read just now) keeps what was last read.
 fn read_one(transcript: &str, now: u64) {
     let mtime = match std::fs::metadata(transcript) {
         Ok(m) => m.modified().ok(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return keep(transcript, now, None, Some(String::new())),
         Err(_) => return,
     };
     let unchanged = crate::locking::lock(&ABOUT, "ABOUT").as_ref().and_then(|a| a.get(transcript)).is_some_and(|k| k.mtime.is_some() && k.mtime == mtime);
@@ -128,6 +129,29 @@ mod tests {
             until("the stalled read to end once answered", || !crate::locking::lock(&READING, "about READING").as_ref().is_some_and(|r| r.contains(&s)));
             done.store(true, Ordering::SeqCst);
         });
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A transcript that's gone says no prompt; one that can't be read just now keeps the last one read.
+    #[test]
+    fn a_gone_transcript_says_nothing_and_an_unreadable_one_keeps_its_prompt() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = dir("gone");
+        let (gone, locked) = (d.join("gone.jsonl"), d.join("locked.jsonl"));
+        std::fs::write(&gone, asked("tidy up")).unwrap();
+        std::fs::write(&locked, asked("ship it")).unwrap();
+        let (g, l) = (gone.to_string_lossy().into_owned(), locked.to_string_lossy().into_owned());
+        read_one(&g, 1);
+        read_one(&l, 1);
+        assert_eq!((about(&g), about(&l)), ("tidy up".to_string(), "ship it".to_string()));
+        std::fs::remove_file(&gone).unwrap();
+        std::fs::write(&locked, asked("ship it now")).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        read_one(&g, 10_000);
+        read_one(&l, 10_000);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(about(&g), "", "its transcript is gone");
+        assert_eq!(about(&l), "ship it", "couldn't be read just now: the last one read");
         let _ = std::fs::remove_dir_all(&d);
     }
 }
