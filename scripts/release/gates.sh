@@ -40,21 +40,6 @@ gate_swift_helpers() {
   return "$failed"
 }
 
-# The soak run. Until its harness lands, tests/run.sh soak says "not yet" and succeeds: that is no soak at all.
-gate_soak() {
-  local out
-  out="$(mktemp "${TMPDIR:-/tmp}/cue-release-soak.XXXX")" || return 1
-  tests/run.sh soak "$SOAK_MINUTES" >"$out" 2>&1
-  local status=$?
-  cat "$out"
-  if grep -q '^soak: not yet' "$out"; then
-    echo "no soak harness yet: no release without one (or --skip-gates \"why\")"
-    status=1
-  fi
-  rm -f "$out"
-  return "$status"
-}
-
 # One gate: `name`, then the command. Passes quietly into its log, or stops the release with the log's end.
 run_gate() {
   local name="$1" start=$SECONDS log
@@ -70,21 +55,22 @@ run_gate() {
   fi
 }
 
-# Every gate, cheapest first, with their logs in $1. --skip-gates runs none of them (its reason is recorded).
+# Every gate, cheapest first, with their logs in $1. --skip-gates runs only the clean tree (its reason is
+# recorded): a build is always of a commit, and a run that fails puts the version files back from it.
 run_gates() {
   GATE_LOGS="$1"
   mkdir -p "$GATE_LOGS"
+  run_gate "clean tree" gate_clean_tree
   if [ -n "$SKIP_GATES" ]; then
-    say "gates skipped: $SKIP_GATES"
+    say "the other gates skipped: $SKIP_GATES"
     return 0
   fi
   say "gates (logs in $GATE_LOGS)"
-  run_gate "clean tree" gate_clean_tree
   run_gate "xtask check" gate_xtask_check
   run_gate "inventory current" gate_inventory_current
   run_gate "swift helpers" gate_swift_helpers
   run_gate "unit tests" tests/run.sh unit
   run_gate "ui tests" tests/run.sh ui
   run_gate "e2e tests" tests/run.sh e2e
-  run_gate "soak $SOAK_MINUTES min" gate_soak
+  run_gate "soak $SOAK_MINUTES min" tests/run.sh soak "$SOAK_MINUTES"
 }

@@ -3,14 +3,15 @@
 # latest stable release. Every release also carries its own update.json, which a promote copies from.
 # latest-beta.json is never older than latest.json: a beta user always gets stable releases too.
 
-# The latest stable release's tag.
-latest_stable_tag() {
-  gh release view --repo "$REPO" --json tagName --jq .tagName
-}
-
-# The beta file as published now, into folder $1 (nothing there before the first beta).
+# The beta file as published now, into folder $1. Only "no such asset" (before the first beta) leaves it empty:
+# any other failure stops the release, since reading it as missing could put an older beta file in its place.
 fetch_beta_file() {
-  gh release download --repo "$REPO" --pattern latest-beta.json --dir "$1" --clobber 2>/dev/null || true
+  local said
+  said="$(gh release download --repo "$REPO" --pattern latest-beta.json --dir "$1" --clobber 2>&1 >/dev/null)" && return 0
+  case "$said" in
+    *"no assets match the file pattern"*) return 0 ;;
+    *) die "couldn't read the beta file on GitHub: $said" ;;
+  esac
 }
 
 # A stable release: everyone's update, and beta's too unless a newer beta is out.
@@ -39,8 +40,7 @@ publish_beta() {
 # A beta a day old (or a --hotfix) becomes stable: its own update.json, the same signed build, nothing rebuilt.
 promote() {
   local dir age
-  # (A global for the trap: it runs after this function's locals are gone.)
-  PROMOTE_WORK="$(mktemp -d)"; trap 'rm -rf "$PROMOTE_WORK"' EXIT
+  PROMOTE_WORK="$(mktemp -d)"   # (removed by release.sh's on_exit)
   dir="$PROMOTE_WORK"
   [ "$(gh release view "v$VERSION" --repo "$REPO" --json isPrerelease --jq .isPrerelease)" = true ] ||
     die "v$VERSION isn't a beta on GitHub (already stable, or not released)"

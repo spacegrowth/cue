@@ -10,9 +10,10 @@ channel_name() {
 write_record() {  # $1 = the file
   {
     printf 'Cue %s (%s), %s\n' "$VERSION" "$(channel_name)" "$(date '+%Y-%m-%d %H:%M %Z')"
-    printf 'commit: %s\n' "$(git rev-parse HEAD)"
+    # (The build is that commit with the version written in VERSION_FILES; release-next.sh commits that after.)
+    printf 'commit: %s, plus the version set to %s\n' "$(git rev-parse HEAD)" "$VERSION"
     if [ -n "$SKIP_GATES" ]; then
-      printf 'gates: SKIPPED, %s\n' "$SKIP_GATES"
+      printf 'gates: SKIPPED (all but the clean tree), %s\n' "$SKIP_GATES"
     else
       printf 'gates passed: %s\ngate logs: %s\n' "$GATES_PASSED" "$GATE_LOGS"
     fi

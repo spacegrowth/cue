@@ -41,15 +41,24 @@ fn configured_endpoints<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Vec<Url
     listed.into_iter().flatten().filter_map(|e| e.as_str()).filter_map(|e| Url::parse(e).ok()).collect()
 }
 
-/// Updates: is a newer Cue out on your channel? Always says which version this is.
+/// Updates: is a newer Cue out on your channel? Always says which version this is, and when a beta check had no
+/// beta to read and answered from stable instead.
 #[tauri::command]
 pub(crate) async fn update_check(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let current = app.package_info().version.to_string();
-    Ok(match find_update(&app).await? {
+    let found = check_within(&app, CHECK_FOR, Channel::chosen()).await?;
+    let mut answer = match found.update {
         Some(u) => serde_json::json!({ "current": current, "version": u.version, "notes": u.body }),
         None => serde_json::json!({ "current": current }),
-    })
+    };
+    if found.no_beta {
+        answer["note"] = serde_json::json!(NO_BETA);
+    }
+    Ok(answer)
 }
+
+/// What Settings says when a beta check answered from stable.
+pub(crate) const NO_BETA: &str = "No beta is out right now, so this is the version everyone gets.";
 
 /// Download the newer Cue, check its signature, put it in place of this one, and restart into it.
 #[tauri::command]
@@ -76,22 +85,60 @@ pub(crate) fn offer_update(app: &tauri::AppHandle, u: &tauri_plugin_updater::Upd
 /// "Check for updates" and every later check in the background.
 const CHECK_FOR: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// What a check found. `no_beta`: a beta check found no beta file published and answered from stable instead.
+pub(crate) struct Found {
+    pub(crate) update: Option<tauri_plugin_updater::Update>,
+    pub(crate) no_beta: bool,
+}
+
 /// A Cue built with the add-on never offers a release: releases are built without it, so installing
 /// one would drop the add-on. That Cue is updated by building it again.
 pub(crate) async fn find_update<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Option<tauri_plugin_updater::Update>, String> {
-    check_within(app, CHECK_FOR, Channel::chosen()).await
+    Ok(check_within(app, CHECK_FOR, Channel::chosen()).await?.update)
 }
 
-/// `find_update` on `channel`, waiting `wait` at most for the release server.
-pub(crate) async fn check_within<R: tauri::Runtime>(app: &tauri::AppHandle<R>, wait: std::time::Duration, channel: Channel) -> Result<Option<tauri_plugin_updater::Update>, String> {
+/// `find_update` on `channel`, waiting `wait` at most for the release server. A beta check whose file isn't
+/// published (as before the first beta, on a release made before the beta channel existed) asks stable instead,
+/// so turning beta on never stops stable updates. Only that falls back: a network that's down still can't check.
+pub(crate) async fn check_within<R: tauri::Runtime>(app: &tauri::AppHandle<R>, wait: std::time::Duration, channel: Channel) -> Result<Found, String> {
     if cfg!(feature = "ext") {
-        return Ok(None);
+        return Ok(Found { update: None, no_beta: false });
     }
+    let stable = configured_endpoints(app);
+    match check_endpoints(app, wait, endpoints_for(&stable, channel)).await {
+        Err(Checked::NotPublished) if channel == Channel::Beta => {
+            let update = check_endpoints(app, wait, stable).await.map_err(Checked::said)?;
+            Ok(Found { update, no_beta: true })
+        }
+        other => other.map(|update| Found { update, no_beta: false }).map_err(Checked::said),
+    }
+}
+
+/// Why a check couldn't say.
+enum Checked {
+    /// No endpoint answered with a release file. (The updater says this for any status that isn't a success,
+    /// so it can't tell a 404 from a 500; either way that channel's file can't be read and the other is asked.)
+    NotPublished,
+    Failed(String),
+}
+
+impl Checked {
+    fn said(self) -> String {
+        match self {
+            Checked::NotPublished => format!("Couldn't check for updates: {}", tauri_plugin_updater::Error::ReleaseNotFound),
+            Checked::Failed(e) => format!("Couldn't check for updates: {e}"),
+        }
+    }
+}
+
+async fn check_endpoints<R: tauri::Runtime>(app: &tauri::AppHandle<R>, wait: std::time::Duration, endpoints: Vec<Url>) -> Result<Option<tauri_plugin_updater::Update>, Checked> {
     use tauri_plugin_updater::UpdaterExt;
-    let endpoints = endpoints_for(&configured_endpoints(app), channel);
-    let builder = app.updater_builder().endpoints(endpoints).map_err(|e| e.to_string())?;
-    let updater = builder.timeout(wait).build().map_err(|e| e.to_string())?;
-    updater.check().await.map_err(|e| format!("Couldn't check for updates: {e}"))
+    let builder = app.updater_builder().endpoints(endpoints).map_err(|e| Checked::Failed(e.to_string()))?;
+    let updater = builder.timeout(wait).build().map_err(|e| Checked::Failed(e.to_string()))?;
+    updater.check().await.map_err(|e| match e {
+        tauri_plugin_updater::Error::ReleaseNotFound => Checked::NotPublished,
+        e => Checked::Failed(e.to_string()),
+    })
 }
 
 #[cfg(test)]
