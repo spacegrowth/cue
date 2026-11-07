@@ -17,9 +17,42 @@ use tokio::net::{UnixListener, UnixStream};
 /// ~/Library/Application Support/dev.spacegrowth.cue. CUE_HOME overrides it (tests use that).
 pub fn cue_dir() -> std::path::PathBuf {
     match std::env::var("CUE_HOME") {
-        Ok(dir) => dir.into(),
-        Err(_) => std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("Library/Application Support/dev.spacegrowth.cue"),
+        Ok(dir) => own_folder_kept_out(dir.into()),
+        Err(_) => unset_home(),
     }
+}
+
+/// Where Cue keeps its data on this Mac, under the home folder `home`, when CUE_HOME doesn't say otherwise.
+fn installed_dir_in(home: &std::path::Path) -> std::path::PathBuf {
+    home.join("Library/Application Support/dev.spacegrowth.cue")
+}
+
+#[cfg(not(test))]
+fn unset_home() -> std::path::PathBuf {
+    installed_dir_in(std::path::Path::new(&std::env::var("HOME").unwrap_or_default()))
+}
+
+/// Tests: never your Cue's folder. CUE_HOME is process-wide and many tests set and unset it, so a test can find it
+/// unset; it then gets a folder of this test process's own, not the one your running Cue listens and saves in.
+#[cfg(test)]
+fn unset_home() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("cue-test-home-{}", std::process::id()))
+}
+
+#[cfg(not(test))]
+fn own_folder_kept_out(dir: std::path::PathBuf) -> std::path::PathBuf {
+    dir
+}
+
+/// Tests: a CUE_HOME that is your Cue's own folder (by any path to it) is refused outright.
+#[cfg(test)]
+fn own_folder_kept_out(dir: std::path::PathBuf) -> std::path::PathBuf {
+    let real = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let home = crate::testing::sandbox::real_home();
+    for own in [installed_dir_in(home), home.join(".cue")] {
+        assert!(real(&dir) != real(&own), "a test's CUE_HOME is your own Cue's folder ({}): tests never use it", own.display());
+    }
+    dir
 }
 
 /// Before it moved to Application Support, Cue kept everything in ~/.cue. The first launch of a
