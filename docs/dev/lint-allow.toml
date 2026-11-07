@@ -81,6 +81,21 @@ to = "WINDOWS"
 reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
 
 [[lock_order]]
+from = "answered saves"
+to = "DB"
+reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
+
+[[lock_order]]
+from = "answered saves"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the save that opened it; folder facts is a leaf"
+
+[[lock_order]]
+from = "answered saves"
+to = "the hub's store"
+reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
+
+[[lock_order]]
 from = "config file"
 to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
@@ -169,6 +184,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 from = "typing gate"
 to = "VERIFY"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "answered saves"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, its answered card's save included"
 
 [[lock_order]]
 from = "typing gate"

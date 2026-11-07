@@ -453,8 +453,9 @@ impl Hub {
             st.answers.retain(|a| a.session_id != session_id);
             st.parked.retain(|p| p.session.origin.session_id != session_id);
             st.missing.remove(session_id);
+            st.purged.insert(session_id.to_string(), now_ms());
         });
-        crate::db::delete_session(session_id);
+        self.delete_saved_session(session_id);
         self.changed();
     }
 

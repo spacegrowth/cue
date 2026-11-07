@@ -4,7 +4,8 @@
 //! last runs after every change before it, so the database ends as the store is: never an older state
 //! written over a newer one. Lock order: a save lock, then the store (a look), then the database.
 //!
-//! Answered cards need none of this: each is saved once, under its own id, and never changed after.
+//! An answered card is saved once, under its own id, and never changed after; what it can race is its session
+//! being deleted (purge), so the two share a lock and the save skips a session deleted since it was answered.
 
 use super::*;
 
@@ -13,6 +14,7 @@ use super::*;
 pub(super) struct SaveLocks {
     review_queue: Mutex<()>,
     parked: Mutex<()>,
+    answered: Mutex<()>,
 }
 
 impl Hub {
@@ -23,6 +25,19 @@ impl Hub {
             Some(q) => crate::db::queue_review(&q.exec, &q.lead, &q.text, q.at_ms),
             None => crate::db::unqueue_review(exec),
         }
+    }
+
+    /// An answered card saved, unless its session was deleted since.
+    pub(super) fn save_answered(&self, answered: super::history::Answered) {
+        let _saving = crate::locking::lock(&self.saves.answered, "answered saves");
+        let purged = self.read(|st| st.purged.get(answered.session_id()).copied());
+        answered.save_unless_purged(purged);
+    }
+
+    /// Everything saved of a session deleted (its record, chat, answers), after any save of it on its way.
+    pub(super) fn delete_saved_session(&self, session_id: &str) {
+        let _saving = crate::locking::lock(&self.saves.answered, "answered saves");
+        crate::db::delete_session(session_id);
     }
 
     /// `session_id`'s parked record saved as the store has it now: parked (as it is, star and all), or not.

@@ -55,6 +55,9 @@ struct Store {
     escaped: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
+    /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to
+    /// the database (saves.rs), isn't saved.
+    purged: HashMap<String, u64>,
     /// Sessions you parked (stopped, kept to resume), the latest parked first.
     parked: Vec<crate::sessions::Parked>,
     /// Cards with a notification in Notification Center — taken back once the card is gone. Only cards: other

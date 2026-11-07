@@ -12,6 +12,9 @@ digraph locks {
   "actions STORE" -> "folder facts";
   "actions WATCH" -> "folder facts";
   "actions log" -> "WINDOWS";
+  "answered saves" -> "DB";
+  "answered saves" -> "folder facts";
+  "answered saves" -> "the hub's store";
   "config file" -> "config in memory";
   "copies" -> "WINDOWS";
   "extensions log" -> "WINDOWS";
@@ -30,6 +33,7 @@ digraph locks {
   "typing gate" -> "INDEX";
   "typing gate" -> "LEDGER";
   "typing gate" -> "VERIFY";
+  "typing gate" -> "answered saves";
   "typing gate" -> "caches";
   "typing gate" -> "config in memory";
   "typing gate" -> "folder facts";

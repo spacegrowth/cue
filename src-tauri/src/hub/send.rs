@@ -243,7 +243,7 @@ impl Hub {
                 st.sessions.hold(&sid, text, paths);
                 push_history(st, h)
             });
-            answered.save();
+            self.save_answered(answered);
             self.changed();
             return Ok("kept in Cue: it goes when this turn ends".into());
         }
@@ -272,7 +272,8 @@ impl Hub {
         h.status = "answered".into();
         h.outcome = outcome;
         h.resolved_ms = Some(now_ms());
-        self.write(|st| push_history(st, h)).save();
+        let answered = self.write(|st| push_history(st, h));
+        self.save_answered(answered);
         self.changed();
         Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
     }

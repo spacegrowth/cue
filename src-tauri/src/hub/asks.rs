@@ -239,7 +239,7 @@ impl Hub {
             Some(push_history(st, it))
         });
         let Some(answered) = answered else { return };
-        answered.save();
+        self.save_answered(answered);
         self.changed();
     }
 

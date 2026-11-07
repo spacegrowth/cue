@@ -152,3 +152,30 @@ fn a_queue_and_a_drain_saved_in_either_order_leave_no_stale_row() {
         assert!(crate::db::review_queue().iter().all(|(e, ..)| e != exec), "{exec}: sent, yet still saved as queued");
     }
 }
+
+/// A card answered just before its session is deleted, the answer's save and the delete racing for the
+/// database (held so both wait on it): the deleted session's answer never comes back from the database.
+#[test]
+fn an_answer_saved_as_its_session_is_deleted_stays_deleted() {
+    let w = World::new();
+    for i in 0..10 {
+        let sid = format!("d{i}");
+        let a = w.session(&sid);
+        a.prompt("clean up");
+        let ask = a.ask_permission("Bash", json!({"command": "rm -rf build"}));
+        let hub = w.hub().clone();
+        let release = hold_db();
+        let id = ask.id.clone();
+        let answering = w.client().spawn(move |c| c.ask(json!({"type": "respond", "id": id, "decision": {"behavior": "allow"}})));
+        assert!(soon(|| hub.get(&ask.id).is_some_and(|i| i.status == "answered")), "{sid} answered in the store");
+        let purging = {
+            let (hub, sid) = (hub.clone(), sid.clone());
+            std::thread::spawn(move || hub.purge(&sid))
+        };
+        assert!(soon(|| hub.get(&ask.id).is_none()), "{sid} deleted in the store");
+        release.send(()).unwrap();
+        answering.join().unwrap();
+        purging.join().unwrap();
+        assert!(crate::db::history(500).iter().all(|i| i.id != ask.id), "{sid}: its answer came back after it was deleted");
+    }
+}
