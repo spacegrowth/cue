@@ -41,6 +41,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("insights.snooze", json!(1_800_000_000_000u64)),
         same("insights.skills", json!({"|claude": "handoff"})),
         same("tips.on", json!(false)),
+        same("updates.beta", json!(true)),
         same("actions.prompt", json!("Set my actions up.")),
         same("voice.pick", json!("af_heart")),
         same("tasks.on", json!(true)),
@@ -100,7 +101,8 @@ fn a_wrong_value_is_refused_and_nothing_is_written() {
         ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 12})),
         ("project.hue", json!({"h": 400, "k": 0.5})), ("project.folders", json!({"relative/dir": "x"})),
         ("insights.skills", json!({"no-bar": "handoff"})), ("status.sessions", json!("s1")),
-        ("voice.pick", json!("Not A Voice")), ("tips.on", json!("yes")), ("made.up", json!(true)),
+        ("voice.pick", json!("Not A Voice")), ("tips.on", json!("yes")), ("updates.beta", json!("yes")),
+        ("made.up", json!(true)),
     ] {
         assert!(crate::config::set(key, bad.clone()).is_err(), "{key} = {bad} was taken");
     }
