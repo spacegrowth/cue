@@ -67,18 +67,23 @@ pub fn all() -> Vec<String> {
 }
 
 /// The record of one lock held by this thread, kept while its guard lives. Dropped before the lock
-/// itself is let go, so the next holder's record never gets cleared by this one's.
+/// itself is let go, so the next holder's record never gets cleared by this one's. How long it was held,
+/// and where it was taken, are counted as it goes (`stats::held`).
 pub(super) struct Held {
     what: &'static str,
     at: usize,
+    site: &'static std::panic::Location<'static>,
+    since: Instant,
 }
 
 impl Held {
+    #[track_caller]
     pub(super) fn new(what: &'static str, at: usize) -> Held {
         let _ = MINE.try_with(|m| m.borrow_mut().push(at));
         let thread = std::thread::current();
-        table(&HOLDERS, |h| h.insert((at, thread.id()), Holder { what, thread, since: Instant::now() }));
-        Held { what, at }
+        let since = Instant::now();
+        table(&HOLDERS, |h| h.insert((at, thread.id()), Holder { what, thread, since }));
+        Held { what, at, site: std::panic::Location::caller(), since }
     }
 
     /// The lock this is the record of: its name and address.
@@ -97,6 +102,7 @@ impl Drop for Held {
         });
         // On the thread that took it: a guard can't move to another.
         table(&HOLDERS, |h| h.remove(&(self.at, std::thread::current().id())));
+        super::stats::held(self.what, self.site, self.since.elapsed());
     }
 }
 

@@ -51,7 +51,9 @@ pub(crate) fn path() -> std::path::PathBuf {
 }
 
 /// Run `f` on the open database. A database that can't be opened is logged once and every call
-/// becomes a no-op: Cue keeps working from memory rather than refusing to start.
+/// becomes a no-op: Cue keeps working from memory rather than refusing to start. A long hold is counted
+/// by the line that asked (`track_caller`, locking::stats).
+#[track_caller]
 fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
     let mut guard = crate::locking::lock(&DB, "DB");
     if guard.is_none() {

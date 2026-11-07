@@ -1,7 +1,8 @@
 //! What a long run is judged by (the soak harness, `cue-ctl probe`): how long the main thread took to
-//! answer each of the probe's pings, every wait for a lock that was busy (by the lock's name), how many
-//! times a lock was taken again on the thread that held it, and the app's resident memory. Kept in every
-//! build: a ping a second and a busy lock are rare enough that counting them costs nothing you'd notice.
+//! answer each of the probe's pings, every wait for a lock that was busy (by the lock's name), the places
+//! that held a lock a millisecond or more (by lock and line: who the waiters waited on), how many times a
+//! lock was taken again on the thread that held it, and the app's resident memory. Kept in every build: a
+//! ping a second, a busy lock and a hold that long are rare enough that counting them costs nothing you'd notice.
 
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, VecDeque};
@@ -49,6 +50,45 @@ fn bucket_name(i: usize) -> String {
 static WAITS: Mutex<BTreeMap<&'static str, Waits>> = Mutex::new(BTreeMap::new());
 static PINGS: Mutex<VecDeque<u64>> = Mutex::new(VecDeque::new());
 static REENTRIES: AtomicU64 = AtomicU64::new(0);
+static HOLDS: Mutex<BTreeMap<(&'static str, &'static str, u32), Holds>> = Mutex::new(BTreeMap::new());
+
+/// A hold shorter than this isn't counted: holds that short are the norm, and counting each would cost a
+/// lock of its own on every release.
+const HOLD_COUNTED: Duration = Duration::from_millis(1);
+/// How many of the longest holders `probe` lists.
+const HOLDERS_LISTED: usize = 12;
+
+/// One place's holds of one lock, from HOLD_COUNTED up: how many, the longest, and all of them together.
+#[derive(Clone, Default)]
+struct Holds {
+    count: u64,
+    max_us: u64,
+    total_us: u64,
+}
+
+/// Lock `what`, taken at `site`, was held for `took`.
+pub(super) fn held(what: &'static str, site: &'static std::panic::Location<'static>, took: Duration) {
+    if took < HOLD_COUNTED {
+        return;
+    }
+    let us = took.as_micros() as u64;
+    let mut holds = HOLDS.lock().unwrap_or_else(|e| e.into_inner());
+    let h = holds.entry((what, site.file(), site.line())).or_default();
+    h.count += 1;
+    h.max_us = h.max_us.max(us);
+    h.total_us += us;
+}
+
+/// The places that held a lock longest (by their longest hold), each with its lock, its count and its total.
+fn holders() -> Value {
+    let holds = HOLDS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let mut v: Vec<_> = holds.into_iter().collect();
+    v.sort_by(|a, b| b.1.max_us.cmp(&a.1.max_us));
+    let row = |((what, file, line), h): ((&str, &str, u32), Holds)| {
+        json!({"lock": what, "at": format!("{}:{line}", file.trim_start_matches("src/")), "holds": h.count, "max_ms": h.max_us as f64 / 1000.0, "total_ms": h.total_us as f64 / 1000.0})
+    };
+    Value::Array(v.into_iter().take(HOLDERS_LISTED).map(row).collect())
+}
 
 /// A thread waited `waited` for lock `what`, which was busy when it asked.
 pub(super) fn waited(what: &'static str, waited: Duration) {
@@ -92,14 +132,15 @@ pub fn resident_bytes() -> u64 {
     if got == size { info.pti_resident_size } else { 0 }
 }
 
-/// Everything counted so far: the main thread's answer times, each busy lock's waits, the reentries,
-/// and resident memory now.
+/// Everything counted so far: the main thread's answer times, each busy lock's waits, the places that held
+/// a lock longest, the reentries, and resident memory now.
 pub fn probe() -> Value {
     let locks: Map<String, Value> = WAITS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(k, w)| (k.to_string(), w.json())).collect();
     json!({
         "pid": std::process::id(),
         "main_thread": main_thread(),
         "locks": locks,
+        "holds": holders(),
         "reentries": REENTRIES.load(Ordering::Relaxed),
         "resident_bytes": resident_bytes(),
     })

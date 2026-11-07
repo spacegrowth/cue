@@ -39,21 +39,26 @@ const PATIENCE: Patience = Patience {
     panic_after: if cfg!(debug_assertions) { Some(Duration::from_secs(5)) } else { None },
 };
 
-/// `m` locked. `what`: the lock's name, for the log and the panic; each lock has its own.
+/// `m` locked. `what`: the lock's name, for the log and the panic; each lock has its own. Where it's taken
+/// (the caller) is what `stats` names a long hold by.
+#[track_caller]
 pub fn lock<'a, T>(m: &'a Mutex<T>, what: &'static str) -> Guard<'a, T> {
     lock_with(m, what, PATIENCE)
 }
 
 /// `rw` read, as `lock`.
+#[track_caller]
 pub fn read<'a, T>(rw: &'a RwLock<T>, what: &'static str) -> ReadGuard<'a, T> {
     take(what, address(rw), PATIENCE, || taken(rw.try_read()), || rw.read().unwrap_or_else(|e| e.into_inner()))
 }
 
 /// `rw` written, as `lock`.
+#[track_caller]
 pub fn write<'a, T>(rw: &'a RwLock<T>, what: &'static str) -> WriteGuard<'a, T> {
     take(what, address(rw), PATIENCE, || taken(rw.try_write()), || rw.write().unwrap_or_else(|e| e.into_inner()))
 }
 
+#[track_caller]
 fn lock_with<'a, T>(m: &'a Mutex<T>, what: &'static str, patience: Patience) -> Guard<'a, T> {
     take(what, address(m), patience, || taken(m.try_lock()), || m.lock().unwrap_or_else(|e| e.into_inner()))
 }
@@ -72,6 +77,7 @@ fn taken<G>(r: TryLockResult<G>) -> Option<G> {
 }
 
 /// The lock at `at`, refused first when this thread holds it already, and recorded as held.
+#[track_caller]
 fn take<G>(what: &'static str, at: usize, patience: Patience, try_take: impl Fn() -> Option<G>, wait: impl FnOnce() -> G) -> Locked<G> {
     if held::by_this_thread(at) {
         report::reentry(what);

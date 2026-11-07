@@ -23,8 +23,10 @@ fn section(out: &mut String, r: &Run) {
     let chaos = chaos(&r.0["chaos"]);
     let _ = writeln!(out, "== {} soak: {minutes:.1} min, {} sessions, chaos: {chaos} — {}", r.name(), r.num("/sessions"), if failures.is_empty() { "PASS" } else { "FAIL" });
     answers(out, r);
+    draws(out, r);
     rates(out, r);
     locks(out, r);
+    holds(out, r);
     curve(out, "memory (MB)", &r.curve("/memory"), 1e6);
     curve(out, "window state (KB)", &r.curve("/snapshot"), 1e3);
     parts(out, r);
@@ -61,6 +63,13 @@ fn answers(out: &mut String, r: &Run) {
     if pings > 0.0 {
         let p = |k: &str| r.num(&format!("/probe/main_thread/{k}"));
         let _ = writeln!(out, "  main-thread probe pings: n={pings} p50 {:.1} ms, p99 {:.1} ms, max {:.1} ms", p("p50_ms"), p("p99_ms"), p("max_ms"));
+    }
+}
+
+/// How long the window took to take in each state it was sent (the e2e run times it in the page).
+fn draws(out: &mut String, r: &Run) {
+    if r.0.get("draws_ms").is_some() {
+        let _ = writeln!(out, "  the window taking in a state (setState, its draw included): {}", spread(&r.samples("/draws_ms")));
     }
 }
 
@@ -106,6 +115,17 @@ fn locks(out: &mut String, r: &Run) {
     }
 }
 
+/// The places that held a lock longest (the probe counts holds of a millisecond or more): who the waits
+/// above waited on.
+fn holds(out: &mut String, r: &Run) {
+    let Some(holds) = r.0.pointer("/probe/holds").and_then(Value::as_array).filter(|h| !h.is_empty()) else { return };
+    let _ = writeln!(out, "  longest holds (1 ms or more, by where the lock was taken):");
+    for h in holds.iter().take(8) {
+        let (lock, at) = (h["lock"].as_str().unwrap_or("?"), h["at"].as_str().unwrap_or("?"));
+        let _ = writeln!(out, "    {lock:<20} {at:<34} max {:>8.1} ms  {:>6} holds  {:>9.0} ms in all", h["max_ms"].as_f64().unwrap_or(0.0), h["holds"].as_u64().unwrap_or(0), h["total_ms"].as_f64().unwrap_or(0.0));
+    }
+}
+
 /// A curve as a few points: its start, then every tenth of the run.
 fn curve(out: &mut String, what: &str, c: &[(f64, f64)], unit: f64) {
     if c.is_empty() {
@@ -137,9 +157,11 @@ mod tests {
     fn the_page_shows_each_run_and_the_verdict() {
         let r = Run(json!({"run": "rust", "seconds": 600, "sessions": 40, "chaos": {"CUE_CHAOS_TMUX_DELAY_MS": 200}, "answer_what": "list over the socket",
             "answer_ms": [1, 2, 3, 900], "events": {"sent": 6000, "failed": 0}, "probe": {"locks": {"store": {"waits": 3, "max_ms": 12.5, "spread": {"<50ms": 3}}}},
-            "memory": [[0, 40e6], [600, 45e6]]}));
+            "memory": [[0, 40e6], [600, 45e6]], "draws_ms": [20, 40]}));
+        let mut r = r;
+        r.0["probe"]["holds"] = json!([{"lock": "the hub's store", "at": "hub/mod.rs:379", "holds": 7, "max_ms": 42.0, "total_ms": 90.0}]);
         let p = page(&[r]);
-        for part in ["== rust soak: 10.0 min, 40 sessions, chaos: TMUX_DELAY_MS=200 — FAIL", "list over the socket: n=4 p50 3.0 ms", "hook events 10.0", "store", "<50ms:3", "memory (MB): 0:00 40.0", "Verdict: FAIL"] {
+        for part in ["== rust soak: 10.0 min, 40 sessions, chaos: TMUX_DELAY_MS=200 — FAIL", "list over the socket: n=4 p50 3.0 ms", "hook events 10.0", "store", "<50ms:3", "memory (MB): 0:00 40.0", "Verdict: FAIL", "setState, its draw included): n=2", "hub/mod.rs:379", "max     42.0 ms"] {
             assert!(p.contains(part), "{part} in:\n{p}");
         }
     }

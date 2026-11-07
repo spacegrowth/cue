@@ -90,7 +90,25 @@ export async function typist(soak, sessions, n) {
   }
 }
 
-/** The window's poll of Cue's state, five times a second, timed; memory and the state's size every 10 s. */
+/** The window's own time to take in each state it's sent (setState, its draw included), counted in the page:
+ *  setState wrapped once, each call's time kept in the page until `drainDraws` takes them. */
+export function timeDraws(ui) {
+  return ui.runDirect(() => {
+    const kept = (window.__soakDraws = []);
+    const take = setState;
+    setState = (s) => { const t = performance.now(); try { take(s); } finally { kept.push(performance.now() - t); } };
+    return "timed";
+  });
+}
+
+/** The draws counted since the last time, taken out of the page (a plain list of numbers). */
+async function drainDraws(soak) {
+  const ms = await soak.world.ui.runDirect(() => (window.__soakDraws || []).splice(0).map(Number));
+  soak.tally.drawsMs.push(...ms);
+}
+
+/** The window's poll of Cue's state, five times a second, timed; memory, the state's size and the window's
+ *  draws every 10 s. */
 export async function poller(soak) {
   let sampled = -Infinity;
   while (soak.going()) {
@@ -102,6 +120,7 @@ export async function poller(soak) {
       if (performance.now() - sampled >= 10_000) {
         const probe = await call(soak.world.sock, { type: "probe" });
         soak.tally.sample(probe.resident_bytes, JSON.stringify(state).length + 1);
+        await drainDraws(soak);
         sampled = performance.now();
       }
     } else soak.tally.counts.eventsFailed++;
@@ -125,11 +144,11 @@ export async function terminals(soak, sessions) {
   while (soak.going()) {
     await pause(15_000);
     const s = sessions[roll(sessions.length)];
-    await soak.world.ui.run((id) => { setActive(null, id); openTerm(id); return true; }, s.sid);
+    await soak.world.ui.runDirect((id) => { setActive(null, id); openTerm(id); return true; }, s.sid);
     if (!(await soak.until(() => clients() > 0, 10_000))) continue;
     soak.tally.counts.opened++;
     await pause(3000);
-    await soak.world.ui.run(() => { closeTerm(); return true; });
+    await soak.world.ui.runDirect(() => { closeTerm(); return true; });
     if (await soak.until(() => clients() === 0, 10_000)) soak.tally.counts.closed++;
   }
 }
