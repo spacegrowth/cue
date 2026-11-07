@@ -7,6 +7,7 @@ mod db_history;
 mod redraw;
 mod reviews;
 mod sessions;
+mod settings;
 mod store;
 mod transcripts;
 mod typing;
