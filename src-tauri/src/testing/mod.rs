@@ -12,6 +12,7 @@
 
 mod agent;
 mod crew;
+mod fake_claude;
 mod launcher;
 mod later;
 mod notes;
@@ -32,6 +33,7 @@ mod tests;
 
 pub use agent::{Agent, Ask};
 pub use crew::{relay_calls, Crew};
+pub use fake_claude::FakeClaude;
 pub use launcher::FakeLauncher;
 pub use later::Deferred;
 pub use notes::FakeNotes;

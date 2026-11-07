@@ -58,6 +58,12 @@ pub fn main(args: &[String]) {
             return;
         }
     }
+    // A session Cue started itself (hosted/): Cue hears all of this from the session directly, its asks
+    // included, so telling it here too would show everything twice. What's above (the status list, a voice
+    // message's context) is added to the session's own prompts, so it still runs.
+    if std::env::var_os(crate::hosted::HOSTED_ENV).is_some() {
+        return;
+    }
     let _ = match event {
         "permission" => ask(&p, harness),
         // A finished turn carries its last exchange and who drives it; the rest are just the event.
@@ -366,23 +372,30 @@ fn read_tail(path: &str) -> Vec<Value> {
 
 /// Cue's harness-neutral decision -> the PermissionRequest output (Claude and Codex share it).
 pub(crate) fn to_claude(d: &Value, p: &Value) -> Value {
-    let out = if d.get("behavior").and_then(Value::as_str) == Some("deny") {
-        let m = d.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or("Denied in Cue.");
-        json!({ "behavior": "deny", "message": m })
-    } else if let Some(answers) = d.get("answers").filter(|a| !a.is_null()) {
-        let mut input = p.get("tool_input").and_then(Value::as_object).cloned().unwrap_or_default();
-        input.insert("answers".into(), answers.clone());
-        json!({ "behavior": "allow", "updatedInput": input })
-    } else {
-        let mut o = json!({ "behavior": "allow" });
-        if d.get("behavior").and_then(Value::as_str) == Some("allow_always") {
-            if let Some(perm) = d.get("permission").filter(|v| !v.is_null()) {
-                o["updatedPermissions"] = json!([perm]);
-            }
-        }
-        o
-    };
+    let out = decision(d, p.get("tool_input").unwrap_or(&Value::Null));
     json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": out } })
+}
+
+/// Cue's decision as Claude Code takes it, for the tool call whose input was `tool_input`: allow (a question's
+/// answers go back inside its input), deny with why, or allow always with the rule you picked. The hook wraps it
+/// in its output; a session Cue hosts gets it as the answer to its request (hosted::wire).
+pub(crate) fn decision(d: &Value, tool_input: &Value) -> Value {
+    if d.get("behavior").and_then(Value::as_str) == Some("deny") {
+        let m = d.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or("Denied in Cue.");
+        return json!({ "behavior": "deny", "message": m });
+    }
+    if let Some(answers) = d.get("answers").filter(|a| !a.is_null()) {
+        let mut input = tool_input.as_object().cloned().unwrap_or_default();
+        input.insert("answers".into(), answers.clone());
+        return json!({ "behavior": "allow", "updatedInput": input });
+    }
+    let mut o = json!({ "behavior": "allow" });
+    if d.get("behavior").and_then(Value::as_str) == Some("allow_always") {
+        if let Some(perm) = d.get("permission").filter(|v| !v.is_null()) {
+            o["updatedPermissions"] = json!([perm]);
+        }
+    }
+    o
 }
 
 /// Ask Cue and wait for your answer. If Cue restarts mid-wait, ask again when it's back (for up

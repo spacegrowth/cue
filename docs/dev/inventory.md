@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 141 (3 sync) |
-| Lock declarations (static or field) | 92 |
-| Lock acquisitions | 212 |
+| Lock declarations (static or field) | 95 |
+| Lock acquisitions | 219 |
 | Lock-graph edges | 45 |
-| Spawn sites | 75 |
-| External calls: fs / db / process / notify / login / socket | 342 / 146 / 48 / 4 / 1 / 3 |
+| Spawn sites | 78 |
+| External calls: fs / db / process / notify / login / socket | 342 / 146 / 50 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -195,6 +195,9 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `db/handoffs.rs::Kept.kept` | `Mutex<Option<(u64,std::time::Instant,T)>>` | "a kept db answer" (2 sites) |
 | `db/mod.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
+| `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
+| `hosted/session.rs::Shared.pending` | `Mutex<HashMap<String,Value>>` | "hosted session: pending asks" (3 sites) |
+| `hosted/session.rs::Shared.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |
@@ -345,6 +348,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `config.rs::watch` | thread::spawn | 1 |
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
+| `hosted/session.rs::Session::start` | thread::spawn | 1 |
+| `hosted/session.rs::keep_last_words` | thread::spawn | 1 |
+| `hosted/session.rs::wait_for_exit` | thread::spawn | 1 |
 | `hub/cache_tick.rs::Hub::hand_off_due` | thread::spawn | 1 |
 | `hub/live_writes.rs::spawn_writer` | Builder::spawn | 1 |
 | `hub/mod.rs::Hub::later` | thread::spawn | 1 |
@@ -852,7 +858,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (48)
+### process (50)
 
 | In | Call | Times |
 |---|---|---|
@@ -869,6 +875,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `extensions.rs::run_program` | /bin/kill | 1 |
 | `hook.rs::ps` | /bin/ps | 1 |
 | `hook.rs::tty_of_pane` | (program computed) | 1 |
+| `hosted/launch.rs::command` | (program computed) | 2 |
 | `ipc/chat.rs::run_crew_action` | /usr/bin/open | 1 |
 | `ipc/chat.rs::run_crew_action` | open | 1 |
 | `ipc/settings.rs::copy_text` | /usr/bin/pbcopy | 1 |

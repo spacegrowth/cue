@@ -6,6 +6,10 @@ mod awake;
 mod btw;
 mod db;
 mod hook;
+// SHORTCUT: only its tests start hosted sessions until the hub's Hosted port does (docs/dev/cue-hosted-sessions.md,
+// M2); this allow goes with that wiring.
+#[cfg_attr(not(test), allow(dead_code, unused_imports))]
+mod hosted;
 mod changes;
 mod safe_git;
 mod commands;

@@ -27,17 +27,18 @@ pub fn start_line(agent: &str, cwd: &str, session_id: &str, message: &str, name:
 /// How much a new session may do without asking you (+ New session → Permissions), per agent, as its
 /// flags. "ask": as it normally does. Pi asks through Cue's own gate (Settings → Pi), so "skip" turns
 /// that off for this session alone.
-fn permission_flags(agent: &str, perm: &str) -> Result<(&'static str, &'static str), String> {
-    // (environment before the program, flags after it)
+/// (A session Cue hosts takes the same flags: hosted::launch.)
+pub fn permission_flags(agent: &str, perm: &str) -> Result<(Option<(&'static str, &'static str)>, &'static [&'static str]), String> {
+    // (a variable set for the program, flags after it)
     Ok(match (agent, perm) {
-        (_, "ask" | "") => ("", ""),
-        ("claude", "auto") => ("", " --permission-mode auto"),
-        ("claude", "edits") => ("", " --permission-mode acceptEdits"),
-        ("claude", "plan") => ("", " --permission-mode plan"),
-        ("claude", "skip") => ("", " --dangerously-skip-permissions"),
-        ("codex", "edits") => ("", " --sandbox workspace-write"),
-        ("codex", "skip") => ("", " --dangerously-bypass-approvals-and-sandbox"),
-        ("pi", "skip") => ("CUE_PI_GATE=off ", ""),
+        (_, "ask" | "") => (None, &[]),
+        ("claude", "auto") => (None, &["--permission-mode", "auto"]),
+        ("claude", "edits") => (None, &["--permission-mode", "acceptEdits"]),
+        ("claude", "plan") => (None, &["--permission-mode", "plan"]),
+        ("claude", "skip") => (None, &["--dangerously-skip-permissions"]),
+        ("codex", "edits") => (None, &["--sandbox", "workspace-write"]),
+        ("codex", "skip") => (None, &["--dangerously-bypass-approvals-and-sandbox"]),
+        ("pi", "skip") => (Some(("CUE_PI_GATE", "off")), &[]),
         _ => return Err(format!("{agent} has no “{perm}” permission mode")),
     })
 }
@@ -59,6 +60,8 @@ pub fn start_line_args(agent: &str, cwd: &str, session_id: &str, message: &str, 
         other => return Err(format!("unknown agent {other}")),
     };
     let (env, flags) = permission_flags(agent, perm)?;
+    let env = env.map(|(k, v)| format!("{k}={v} ")).unwrap_or_default();
+    let flags: String = flags.iter().map(|f| format!(" {f}")).collect();
     let mut line = format!("cd {} && {env}{program}{flags}", shq(cwd));
     for a in args {
         line += &format!(" {}", shq(a));
