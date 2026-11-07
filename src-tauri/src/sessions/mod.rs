@@ -205,27 +205,10 @@ impl Parked {
     }
 }
 
-
-#[derive(Default)]
-pub struct Sessions(HashMap<String, Session>);
-
-/// "2 background agents" / "1 background agent"; "" for none.
-pub fn helpers_words(n: u64) -> String {
-    match n {
-        0 => String::new(),
-        1 => "1 background agent".into(),
-        n => format!("{n} background agents"),
-    }
-}
-
-impl Sessions {
-    /// Record that a session entered `state`. Opens a new bar segment when the kind changes.
-    pub fn mark(&mut self, origin: &Origin, state: &str, prompt: Option<&str>) {
-        if origin.session_id.is_empty() {
-            return;
-        }
-        let now = now_ms();
-        let s = self.0.entry(origin.session_id.clone()).or_insert_with(|| Session {
+impl Session {
+    /// A session's record as Cue first sees it: at `now`, with nothing known about it yet.
+    fn first_seen(origin: &Origin, now: u64) -> Session {
+        Session {
             origin: origin.clone(),
             project: crate::model::project_of_origin(origin),
             state: String::new(),
@@ -265,66 +248,109 @@ impl Sessions {
             teammates_read_ms: 0,
             stuck_ms: 0,
             held: None,
-        });
+        }
+    }
+
+    /// An event came from it: take what that tells about where it runs and how far it has started.
+    fn heard_from(&mut self, origin: &Origin) {
         // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
         if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
-            s.origin = origin.clone();
+            self.origin = origin.clone();
         }
         // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
         // question is answered, so it's through it, whatever ~/.claude.json says about the folder.
         if !origin.transcript_path.is_empty() {
-            s.trust_ms = 0;
-            s.enter_ms = 0;
+            self.trust_ms = 0;
+            self.enter_ms = 0;
         }
-        if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
-            s.prompt = p.trim().to_string();
-            taken(s, p, "its prompt hook");
-        }
-        if state == "working" {
-            s.compacting_ms = 0;
-            s.compacted_ms = 0;
-            s.told_ms = 0;
-            s.changes = None;
-            // Back at work: no longer waiting on its background agents (their own list, from its log, says
-            // which still run). Counted again if its turn ends with some still at work.
-            if s.helpers > 0 {
-                if s.driven_by == helpers_words(s.helpers) {
-                    s.driven_by.clear();
-                }
-                s.helpers = 0;
+    }
+
+    /// It started working: what belonged to its last turn, and waiting on its background work, are over.
+    fn back_at_work(&mut self) {
+        self.compacting_ms = 0;
+        self.compacted_ms = 0;
+        self.told_ms = 0;
+        self.changes = None;
+        // Back at work: no longer waiting on its background agents (their own list, from its log, says
+        // which still run). Counted again if its turn ends with some still at work.
+        if self.helpers > 0 {
+            if self.driven_by == helpers_words(self.helpers) {
+                self.driven_by.clear();
             }
-            s.background = 0;
+            self.helpers = 0;
         }
-        if s.state != state {
-            s.stuck_ms = 0;
-            s.task_failed_ms = 0;
-            s.task_failed.clear();
-            s.task_failed_line.clear();
+        self.background = 0;
+    }
+
+    /// It entered `state` at `now`: a new state drops what only held for the old one.
+    fn enter_state(&mut self, state: &str, now: u64) {
+        if self.state != state {
+            self.stuck_ms = 0;
+            self.task_failed_ms = 0;
+            self.task_failed.clear();
+            self.task_failed_line.clear();
         }
-        if s.state != state {
-            s.state = state.to_string();
-            s.doing.clear();
-            s.retry = None;
-            s.since_ms = now;
+        if self.state != state {
+            self.state = state.to_string();
+            self.doing.clear();
+            self.retry = None;
+            self.since_ms = now;
         }
         if state != "limited" {
-            s.limit = None;
+            self.limit = None;
         }
+    }
+
+    /// The activity bar follows `state`: a new segment when its kind changes, old ones dropped.
+    fn extend_bar(&mut self, state: &str, now: u64) {
         // Bar segments: solid = working, striped = waiting on you, faint = waiting on another agent.
         let kind = match state {
             "working" => "working",
             "agent" | "stopped" | "limited" => "idle",
             _ => "waiting",
         };
-        match s.segments.last_mut() {
+        match self.segments.last_mut() {
             Some(last) if last.end_ms.is_none() && last.kind == kind => {}
             Some(last) if last.end_ms.is_none() => {
                 last.end_ms = Some(now);
-                s.segments.push(Segment { kind: kind.into(), start_ms: now, end_ms: None });
+                self.segments.push(Segment { kind: kind.into(), start_ms: now, end_ms: None });
             }
-            _ => s.segments.push(Segment { kind: kind.into(), start_ms: now, end_ms: None }),
+            _ => self.segments.push(Segment { kind: kind.into(), start_ms: now, end_ms: None }),
         }
-        s.segments.retain(|g| g.end_ms.map_or(true, |e| now.saturating_sub(e) < KEEP_MS));
+        self.segments.retain(|g| g.end_ms.map_or(true, |e| now.saturating_sub(e) < KEEP_MS));
+    }
+}
+
+#[derive(Default)]
+pub struct Sessions(HashMap<String, Session>);
+
+/// "2 background agents" / "1 background agent"; "" for none.
+pub fn helpers_words(n: u64) -> String {
+    match n {
+        0 => String::new(),
+        1 => "1 background agent".into(),
+        n => format!("{n} background agents"),
+    }
+}
+
+impl Sessions {
+    /// Record that a session entered `state`. Opens a new bar segment when the kind changes.
+    pub fn mark(&mut self, origin: &Origin, state: &str, prompt: Option<&str>) {
+        if origin.session_id.is_empty() {
+            return;
+        }
+        let now = now_ms();
+        let s = self.0.entry(origin.session_id.clone()).or_insert_with(|| Session::first_seen(origin, now));
+        s.heard_from(origin);
+        if let Some(p) = prompt.filter(|p| !p.trim().is_empty()) {
+            s.prompt = p.trim().to_string();
+            taken(s, p, "its prompt hook");
+        }
+        if state == "working" {
+            s.back_at_work();
+        }
+        s.enter_state(state, now);
+        s.extend_bar(state, now);
     }
 
     /// Each session's project derived again from its folder (hub/projects.rs); true when one changed.
