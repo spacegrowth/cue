@@ -208,3 +208,18 @@ fn a_deleted_config_reads_as_defaults_and_a_save_makes_it_again() {
     crate::config::set("notify.cold", json!(false)).unwrap();
     assert_eq!(on_disk(&w), json!({"notify": {"cold": false}}));
 }
+
+/// "Hide for a day" holds off the hand-off asked ahead until the day is over, by Cue's clock: the World's,
+/// run a day on, brings it back without anything else changing.
+#[test]
+fn insights_hidden_for_a_day_come_back_when_the_day_is_over() {
+    let w = World::at(1_800_000_000_000);
+    let ahead = || crate::config::effective()["insights"]["ahead"].clone();
+    crate::config::set("insights.on", json!(true)).unwrap();
+    crate::config::set("insights.snooze", json!(1_800_000_000_000u64 + 86_400_000)).unwrap();
+    assert_eq!(ahead(), false, "hidden for the day");
+    w.advance(86_400_000 - 1);
+    assert_eq!(ahead(), false, "a moment before it's over");
+    w.advance(1);
+    assert_eq!(ahead(), true, "back once it is");
+}

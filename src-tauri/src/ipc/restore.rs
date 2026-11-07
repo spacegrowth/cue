@@ -6,6 +6,7 @@ use crate::model;
 use crate::machines;
 use crate::logs::live;
 use crate::terminal::focus;
+use crate::terminal::launch::{Place, Started};
 use crate::hub::Hub;
 use std::sync::Arc;
 
@@ -34,7 +35,7 @@ pub(crate) fn with_timeout<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'st
 /// the new pane recorded (its old one died with the reboot). Failures skip it, quietly.
 pub(crate) fn rebuild(hub: &Arc<Hub>, o: &model::Origin, label: &str) {
     let Ok(line) = focus::resume_line_local(&o.cwd, &o.session_id, &o.transcript_path) else { return };
-    let Ok(tab) = focus::open_in_tmux(&line, &o.cwd, label) else { return };
+    let Ok(tab) = hub.launcher().here(&line, &o.cwd, label, Place::Tmux) else { return };
     let fresh = model::Origin {
         session_id: o.session_id.clone(),
         harness: "claude".into(),
@@ -68,7 +69,7 @@ pub(crate) fn remote_restores(hub: &Arc<Hub>, sessions: Vec<(String, model::Orig
             }
             let Ok(line) = focus::resume_line_with(&o.cwd, &o.session_id, &focus::model_args(&o.transcript_path, &machine)) else { return };
             let label = if !name.is_empty() { name.clone() } else { model::folder_of(&o.cwd) };
-            let (pane, tty, dir) = match machines::open_in_tmux(&m, &line, &o.cwd, &label) {
+            let Started { pane, tty, dir } = match h.launcher().there(&m, &line, &o.cwd, &label) {
                 Ok(t) => t,
                 Err(e) => { machines::hooks::log_raw(&machine, &format!("rebuild {} failed: {e}", o.session_id)); return; }
             };

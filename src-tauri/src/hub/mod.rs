@@ -193,8 +193,13 @@ impl Hub {
     }
 
     /// The session terminals, to type into and look at.
-    fn keys(&self) -> &dyn crate::terminal::keys::Keys {
+    pub(crate) fn keys(&self) -> &dyn crate::terminal::keys::Keys {
         &*self.ports.keys
+    }
+
+    /// Where it starts a session's agent.
+    pub(crate) fn launcher(&self) -> &dyn crate::terminal::launch::Launcher {
+        &*self.ports.launcher
     }
 
     /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later). A hub with no

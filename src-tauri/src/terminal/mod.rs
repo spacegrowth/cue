@@ -9,6 +9,7 @@ pub(crate) mod shell;
 pub(crate) mod shells;
 pub(crate) mod input;
 pub(crate) mod keys;
+pub(crate) mod launch;
 pub(crate) mod term;
 #[cfg(test)]
 pub(crate) mod fake_tmux;

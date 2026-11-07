@@ -1,8 +1,10 @@
 //! What the hub reaches outside itself through a seam a test can stand in for: the terminals it types into
-//! (terminal::keys), Notification Center (`Notes`), and where its follow-up work runs (`Later`: a watch on a typed message, a kept message
-//! sent once a turn ends, a queued review). The app's are `Ports::real`; testing::World brings its own.
+//! (terminal::keys), where it starts a session's agent (terminal::launch), Notification Center (`Notes`), the
+//! window's events beside its redraws (`Window`), and where its follow-up work runs (`Later`: a watch on a typed message, a kept message sent once a turn ends, a
+//! queued review). The app's are `Ports::real`; testing::World brings its own.
 
 use crate::terminal::keys::{Keys, Terminals};
+use crate::terminal::launch::{Launcher, Tabs};
 use std::sync::Arc;
 
 /// Work the hub hands off the caller's thread, run with the hub as the app holds it.
@@ -40,6 +42,28 @@ impl Notes for Center {
     }
 }
 
+/// The window, for what the hub tells it beside the state it redraws: an image copy's progress ("upload").
+pub trait Window: Send + Sync {
+    fn tell(&self, event: &str, payload: serde_json::Value);
+}
+
+/// The app's window: a Tauri event.
+struct AppWindow(tauri::AppHandle);
+
+impl Window for AppWindow {
+    fn tell(&self, event: &str, payload: serde_json::Value) {
+        use tauri::Emitter;
+        let _ = self.0.emit(event, payload);
+    }
+}
+
+/// No window (a hub with no app): nobody to tell.
+struct NoWindow;
+
+impl Window for NoWindow {
+    fn tell(&self, _: &str, _: serde_json::Value) {}
+}
+
 /// No Notification Center (a hub with no app): nothing is posted.
 struct Nowhere;
 
@@ -50,17 +74,19 @@ impl Notes for Nowhere {
 
 pub struct Ports {
     pub keys: Arc<dyn Keys>,
+    pub launcher: Arc<dyn Launcher>,
     pub notes: Arc<dyn Notes>,
+    pub window: Arc<dyn Window>,
     pub later: Later,
 }
 
 impl Ports {
-    /// The real ones; notifications only with an app to post them from.
+    /// The real ones; notifications and window events only with an app to send them from.
     pub fn real(app: Option<&tauri::AppHandle>) -> Self {
-        let notes: Arc<dyn Notes> = match app {
-            Some(a) => Arc::new(Center(a.clone())),
-            None => Arc::new(Nowhere),
+        let (notes, window): (Arc<dyn Notes>, Arc<dyn Window>) = match app {
+            Some(a) => (Arc::new(Center(a.clone())), Arc::new(AppWindow(a.clone()))),
+            None => (Arc::new(Nowhere), Arc::new(NoWindow)),
         };
-        Self { keys: Arc::new(Terminals), notes, later: Later::Threads }
+        Self { keys: Arc::new(Terminals), launcher: Arc::new(Tabs), notes, window, later: Later::Threads }
     }
 }

@@ -17,9 +17,9 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | `#[tauri::command]` | 135 (3 sync) |
 | Lock declarations (static or field) | 82 |
 | Lock acquisitions | 198 |
-| Lock-graph edges | 40 |
+| Lock-graph edges | 41 |
 | Spawn sites | 69 |
-| External calls: fs / db / process / notify / login / socket | 340 / 142 / 49 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 340 / 142 / 46 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -245,7 +245,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `tasks.rs::TRACKS` | `Mutex<Option<HashMap<String,Track>>>` | "what each session is about" (1 sites) |
 | `tasks.rs::TOTAL` | `Mutex<Option<Total>>` | "what About has cost" (2 sites) |
 | `terminal/dictation.rs::Dictation.0` | `Mutex<Option<ChildStdin>>` | "dictation" (3 sites) |
-| `terminal/focus.rs::FOUND` | `std::sync::OnceLock<Vec<String>>` | — |
+| `terminal/focus/agents.rs::FOUND` | `std::sync::OnceLock<Vec<String>>` | — |
 | `terminal/input.rs::START` | `OnceLock<Instant>` | — |
 | `terminal/shells.rs::KEPT` | `std::sync::Mutex<BTreeSet<String>>` | "KEPT" (5 sites) |
 | `terminal/shells.rs::ON` | `OnceLock<()>` | — |
@@ -286,13 +286,14 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "the hub's store" | "INDEX" |  | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_view` → `hub/reviews.rs::Hub::reviews_view` → `leads/index.rs::is_reviewed`, takes it |
 | "the hub's store" | "config in memory" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load` → `config/cache.rs::current`, takes it |
 | "the hub's store" | "folder facts" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::new_item` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
-| "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus.rs::type_into` → `terminal/focus.rs::press_enter` → `terminal/focus.rs::iterm_session_do` → `terminal/focus.rs::current_tty` → `logs/live.rs::claude`, takes it |
+| "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus/typing.rs::type_into` → `terminal/focus/typing.rs::type_into_tmux` → `terminal/focus/typing.rs::press_enter` → `terminal/focus/apps.rs::iterm_session_do` → `terminal/focus/apps.rs::current_tty` → `logs/live.rs::claude`, takes it |
 | "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with`, takes it |
 | "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads/index.rs::view`, takes it |
 | "typing gate" | "LEDGER" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads/index.rs::handoffs` → `leads/ledger.rs::ledger_handoffs` → `leads/ledger.rs::read_ledger`, takes it |
 | "typing gate" | "VERIFY" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads/index.rs::view` → `leads/verify.rs::verdict_of`, takes it |
 | "typing gate" | "answered saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_handed_answers`, takes it |
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/send.rs::Hub::images_there` → `uploads.rs::on_machine` → `machines/mod.rs::run_with_bytes` → `machines/mod.rs::ssh_command` → `machines/mod.rs::env_file`, takes it |
+| "typing gate" | "config file" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::settle_projects` → `config.rs::update` → `config/save.rs::update_with` → `config/save.rs::save` → `config/cache.rs::hold_file`, takes it |
 | "typing gate" | "config in memory" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `config.rs::folders_put` → `config.rs::load` → `config/cache.rs::current`, takes it |
 | "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked`, takes it |
@@ -370,7 +371,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `tasks.rs::start` | thread::spawn | 1 |
 | `tasks.rs::turn_ended` | thread::spawn | 1 |
 | `terminal/dictation.rs::start` | thread::spawn | 1 |
-| `terminal/focus.rs::capped` | thread::spawn | 2 |
+| `terminal/focus/exec.rs::capped` | thread::spawn | 2 |
 | `terminal/input.rs::Input::new` | Builder::spawn | 1 |
 | `terminal/shell.rs::wait_capped` | thread::spawn | 1 |
 | `terminal/shells.rs::watch` | thread::spawn | 1 |
@@ -662,14 +663,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `tasks.rs::with` | read_dir | 1 |
 | `tasks.rs::with` | read_to_string | 1 |
 | `terminal/dictation.rs::helper` | Path::exists | 1 |
-| `terminal/focus.rs::attach_in_new_window` | Path::exists | 1 |
-| `terminal/focus.rs::claude_trusts` | read_to_string | 1 |
-| `terminal/focus.rs::find_bin` | Path::exists | 1 |
-| `terminal/focus.rs::new_session_id` | File::open | 1 |
-| `terminal/focus.rs::open_tab_with` | Path::exists | 1 |
-| `terminal/focus.rs::run_in_new_window` | Path::exists | 1 |
-| `terminal/focus.rs::terminal_name` | Path::exists | 1 |
-| `terminal/focus.rs::trusted_in` | canonicalize | 1 |
+| `terminal/focus/apps.rs::attach_in_new_window` | Path::exists | 1 |
+| `terminal/focus/apps.rs::open_tab_with` | Path::exists | 1 |
+| `terminal/focus/apps.rs::run_in_new_window` | Path::exists | 1 |
+| `terminal/focus/apps.rs::terminal_name` | Path::exists | 1 |
+| `terminal/focus/exec.rs::find_bin` | Path::exists | 1 |
+| `terminal/focus/lines.rs::claude_trusts` | read_to_string | 1 |
+| `terminal/focus/lines.rs::new_session_id` | File::open | 1 |
+| `terminal/focus/lines.rs::trusted_in` | canonicalize | 1 |
 | `terminal/shell.rs::run` | Path::is_dir | 1 |
 | `terminal/shells.rs::command_for` | create_dir_all | 2 |
 | `terminal/shells.rs::command_for` | write | 2 |
@@ -820,7 +821,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (49)
+### process (46)
 
 | In | Call | Times |
 |---|---|---|
@@ -847,22 +848,20 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/live.rs::tty_of` | /bin/ps | 1 |
 | `machines/mod.rs::end_streams` | /bin/ps | 1 |
 | `machines/mod.rs::ssh` | (program computed) | 1 |
-| `machines/mod.rs::ssh` | /usr/bin/ssh | 1 |
 | `safe_git.rs::run` | (program computed) | 1 |
 | `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |
 | `talk.rs::dictation` | (program computed) | 1 |
 | `talk.rs::start` | (program computed) | 1 |
 | `terminal/dictation.rs::start` | (program computed) | 1 |
-| `terminal/focus.rs::activate_app` | open | 1 |
-| `terminal/focus.rs::agents_installed` | (program computed) | 1 |
-| `terminal/focus.rs::app_running` | pgrep | 1 |
-| `terminal/focus.rs::focus` | (program computed) | 2 |
-| `terminal/focus.rs::foreground` | (program computed) | 1 |
-| `terminal/focus.rs::run` | (program computed) | 1 |
-| `terminal/focus.rs::run_osascript` | osascript | 1 |
-| `terminal/focus.rs::tmux_out` | (program computed) | 1 |
-| `terminal/focus.rs::tmux_screen` | (program computed) | 1 |
+| `terminal/focus/agents.rs::agents_installed` | (program computed) | 1 |
+| `terminal/focus/apps.rs::activate_app` | open | 1 |
+| `terminal/focus/exec.rs::app_running` | pgrep | 1 |
+| `terminal/focus/exec.rs::run` | (program computed) | 1 |
+| `terminal/focus/exec.rs::run_osascript` | osascript | 1 |
+| `terminal/focus/tmux.rs::foreground` | (program computed) | 1 |
+| `terminal/focus/tmux.rs::tmux_out` | (program computed) | 1 |
+| `terminal/focus/tmux.rs::tmux_screen` | (program computed) | 1 |
 | `terminal/shell.rs::run` | (program computed) | 1 |
 | `terminal/shell.rs::wait_capped` | /bin/kill | 1 |
 | `terminal/shells.rs::kept_foreground` | /bin/ps | 1 |
@@ -908,7 +907,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
-| `src-tauri/src/terminal/focus.rs::type_into` |  |  |
 | `ui/app.js::(anonymous)` |  | 2 of them |
 | `ui/app.js::bindMain` |  |  |
 | `ui/app.js::renderMain` |  |  |
@@ -919,7 +917,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `ui/sessions.js::lvAct` |  |  |
 | `ui/sessions.js::sessionsView` |  |  |
 
-Files over 1000 lines: `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
+Files over 1000 lines: `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
 
 ## What this can't see
 

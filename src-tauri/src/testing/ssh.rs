@@ -1,4 +1,4 @@
-//! Machines over SSH, stood in for: while a `FakeSsh` lives, every `ssh` Cue runs (machines::ssh) is a script
+//! Machines over SSH, stood in for: while a `FakeSsh` lives, every `ssh` Cue runs (machines::ssh_program) is a script
 //! that plays the machine it's pointed at. A host is what the test says it is (`host`): a few lines of sh
 //! given the command Cue runs there, its input on stdin, and a home of its own ($FAKE_HOME). A host the
 //! test didn't name can't be reached: ssh's own refusal, exit 255. Nothing reaches a real machine, and
@@ -13,10 +13,11 @@ use std::sync::{Mutex, MutexGuard};
 /// /bin/sh. What Cue's scripts do there (a file written, a watcher's events) happens in $FAKE_HOME.
 pub const RUNS_IT: &str = r#"mkdir -p "$FAKE_HOME" && HOME="$FAKE_HOME" SHELL=/bin/sh exec /bin/sh -c "$1""#;
 
-/// The ssh every call runs: the host is the word after -T, the command the one after it.
+/// The ssh every call runs: the host is the word after -T (or -tt, the built-in terminal's), the command the
+/// one after it.
 const SHIM: &str = r#"#!/bin/sh
 fake="$(dirname "$0")"
-while [ $# -gt 0 ] && [ "$1" != -T ]; do shift; done
+while [ $# -gt 0 ] && [ "$1" != -T ] && [ "$1" != -tt ]; do shift; done
 host=$2
 cmd=$3
 printf '%s\t%s\n' "$host" "$(printf '%s' "$cmd" | tr '\n\t' '  ' | cut -c1-2000)" >>"$fake/calls.log"

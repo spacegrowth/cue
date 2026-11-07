@@ -44,7 +44,7 @@ impl Index<'_> {
         let expanded = match first.as_str() {
             "crate" | "self" | "super" => absolute(scope.module, segs),
             _ => match module.and_then(|m| m.uses.get(first)) {
-                Some(full) => full.iter().chain(&segs[1..]).cloned().collect(),
+                Some(full) => self.rooted(scope.module, full).into_iter().chain(segs[1..].iter().cloned()).collect(),
                 None if module.is_some_and(|m| m.children.contains(first)) => absolute(scope.module, &[&["self".to_string()], segs].concat()),
                 None if segs.len() == 2 && self.is_type(first) => return self.method_on(first, &segs[1]),
                 None if segs.len() == 1 => return self.through_globs(scope.module, first),
@@ -93,9 +93,10 @@ impl Index<'_> {
         }
         let Some(info) = self.modules.get(module) else { return Resolved::Unknown };
         if let Some(full) = info.uses.get(name) {
+            let full = self.rooted(module, full);
             return match full.first().map(String::as_str) {
                 Some("crate") => self.walk_crate_path(&full[1..], depth + 1),
-                _ => Resolved::Outside(full.clone()),
+                _ => Resolved::Outside(full),
             };
         }
         for glob in info.globs.iter().filter(|g| g.first().is_some_and(|f| f == "crate")) {
@@ -106,6 +107,13 @@ impl Index<'_> {
             }
         }
         Resolved::Unknown
+    }
+
+    /// A `use` path as `module` wrote it, under the crate root when it starts at one of the module's own
+    /// children (`pub use typing::type_into;`, with no `self::`); anything else as it is.
+    fn rooted(&self, module: &[String], full: &[String]) -> Vec<String> {
+        let child = full.first().is_some_and(|f| self.modules.get(module).is_some_and(|m| m.children.contains(f)));
+        if child { absolute(module, &[&["self".to_string()], full].concat()) } else { full.to_vec() }
     }
 
     /// A bare name not defined here: through the module's globs, else an outside name (`drop`, `Some`).

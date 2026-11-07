@@ -1,6 +1,13 @@
 //! The time as the hub reads it, and its waits. In tests a `testing::World` can run this clock ahead of the
 //! wall's (`fake`), for the threads it drives: a wait of minutes (a typing gate, a confirmation watch) then
 //! takes moments. Everywhere else it is the wall clock and a real sleep.
+//!
+//! Read through here: the hub's time and waits, the settings' (config::effective), typing's pause and paste
+//! watch, ending an agent, and Move to Cue's waits. Left on the wall on purpose: a bound on a real process or
+//! thread (focus's `capped`, the built-in terminal's join and write bounds, the quit grace), the app's own
+//! tokio tickers (a World ticks the hub itself), and the redraw timer thread (hub/shown.rs, which takes its
+//! due time from this clock). Not yet: file ages read through `elapsed()` in machines/hooks.rs and
+//! logs/steps.rs, and the action runner's waits (actions/run.rs).
 
 /// Milliseconds since 1970, by this clock.
 pub fn now_ms() -> u64 {

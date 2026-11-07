@@ -60,11 +60,7 @@ impl Hub {
             return Ok(saved.to_vec());
         }
         let last = std::cell::Cell::new(0u64);
-        let tell = |v: Value| {
-            if let Some(app) = &self.app {
-                let _ = app.emit("upload", v);
-            }
-        };
+        let tell = |v: Value| self.ports.window.tell("upload", v);
         let r = crate::uploads::on_machine(&origin.machine, saved, &|sent, total| {
             // A few times a second is enough to see it move.
             let t = now_ms();

@@ -49,6 +49,8 @@ pub struct Pane {
     pub gone: Option<bool>,
     /// Esc refused with this (the pane went between two keys).
     pub no_escape: Option<String>,
+    /// What its screen shows (None: its pane is gone).
+    pub screen: Option<String>,
 }
 
 type OnPrompt = Box<dyn Fn(&Origin, &str) + Send + Sync>;
@@ -174,6 +176,10 @@ impl Keys for FakeTerminal {
 
     fn agent_gone(&self, o: &Origin) -> Option<bool> {
         self.of(o).gone
+    }
+
+    fn screen(&self, o: &Origin) -> Result<String, String> {
+        self.of(o).screen.ok_or_else(|| format!("fake pane {} is gone", o.session_id))
     }
 }
 

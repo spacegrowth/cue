@@ -142,3 +142,24 @@ fn a_message_with_an_image_to_a_machines_session_types_the_path_there_escaped() 
     let there = ssh.home("typed-img").join("my home/.cue/uploads").to_string_lossy().replace(' ', "\\ ");
     assert!(typed.last().is_some_and(|t| t.starts_with(&format!("look {there}/"))), "{typed:?}");
 }
+
+/// What the window hears while a message's images go to a machine: a start with the whole size, steps a few
+/// times a second at most, the whole size reached, then that it's over. A session on this Mac hears nothing.
+#[test]
+fn the_window_hears_how_far_a_messages_images_are_along_on_their_way_to_the_machine() {
+    let (w, _ssh) = machine("prog-box");
+    w.session("m1").on_machine("prog-box").in_tmux("%1").prompt("hi").stop("Done.");
+    w.session("here").in_tmux("%2").prompt("hi").stop("Done.");
+    let image = |n: usize| json!([{"name": "a.png", "mime": "image/png", "data": base64::engine::general_purpose::STANDARD.encode(bytes(n))}]);
+    let told = w.ask(json!({"type": "send_to", "session_id": "m1", "text": "look", "images": image(3 << 20), "now": false}));
+    assert_eq!(told["ok"], true, "{told}");
+    let heard = w.window.heard("upload");
+    let total = heard[0]["total"].as_u64().unwrap();
+    assert_eq!((heard[0]["session_id"].as_str(), heard[0]["sent"].as_u64(), heard[0]["machine"].as_str(), heard[0]["count"].as_u64()), (Some("m1"), Some(0), Some("prog-box"), Some(1)));
+    assert!(total >= 3 << 20, "the image's whole size: {total}");
+    let steps: Vec<u64> = heard.iter().filter_map(|v| v["sent"].as_u64()).collect();
+    assert!(steps.windows(2).all(|s| s[0] <= s[1]) && steps.last() == Some(&total), "never back, and all the way: {steps:?}");
+    assert_eq!(heard.last().unwrap(), &json!({"session_id": "m1", "done": true}));
+    w.ask(json!({"type": "send_to", "session_id": "here", "text": "look", "images": image(10), "now": false}));
+    assert_eq!(w.window.heard("upload").len(), heard.len(), "a session on this Mac opens the image where it's saved");
+}
