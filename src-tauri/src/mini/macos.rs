@@ -111,3 +111,17 @@ pub(super) fn frame(w: &tauri::WebviewWindow, (x, y, wd, ht): (f64, f64, f64, f6
         let _: () = msg_send![&*target, setFrame: rect, display: true];
     });
 }
+
+/// In front of other windows without becoming the key window or activating Cue (`orderFrontRegardless`), and
+/// only when it isn't already: the app you're in, or Cue's own window, keeps the keyboard.
+pub(super) fn show_quietly(w: &tauri::WebviewWindow) {
+    let Ok(ns) = w.ns_window() else { return };
+    let win = Win(ns as *mut AnyObject);
+    let _ = w.run_on_main_thread(move || unsafe {
+        let win = &*win.ptr();
+        let visible: bool = msg_send![win, isVisible];
+        if !visible {
+            let _: () = msg_send![win, orderFrontRegardless];
+        }
+    });
+}

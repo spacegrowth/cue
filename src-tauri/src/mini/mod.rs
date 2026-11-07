@@ -151,8 +151,14 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
         win.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
         win.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     }
-    // Always shown, Cue's own window in front or not: it's where you look for Cue without going there.
-    win.show().map_err(|e| e.to_string())
+    // Always shown, Cue's own window in front or not: it's where you look for Cue without going there. Shown
+    // without ever taking the keyboard: Tauri's show() makes it the key window, and when that ran each time
+    // Cue's window came forward, the two took focus from each other and you couldn't type in Cue.
+    #[cfg(target_os = "macos")]
+    macos::show_quietly(&win);
+    #[cfg(not(target_os = "macos"))]
+    win.show().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// The mini window takes the keyboard (you clicked into its box) or hands it back to the app you were in.
@@ -214,6 +220,30 @@ mod tests {
     fn on_a_display_left_of_or_above_another_it_still_takes_that_displays_own_right_edge() {
         let external = (1800.0, -567.0, 3008.0, 1692.0);
         assert_eq!(place(Mode::Rail, external, 28.0, 130.0), (1800.0 + 3008.0 - 28.0, -567.0 + 1692.0 / 3.0));
+    }
+
+    /// Placing or showing the mini window never takes the keyboard (Cue's own window lost it at once, every
+    /// time it came forward): no show() (Tao's is makeKeyAndOrderFront) and no focus anywhere here, and the one
+    /// makeKeyAndOrderFront is in `key`, which runs only on a click into its box.
+    #[test]
+    fn placing_the_mini_window_never_takes_the_keyboard() {
+        let here = include_str!("mod.rs");
+        let mac = include_str!("macos.rs");
+        let code = |src: &'static str| src.split("#[cfg(test)]").next().unwrap();
+        for (name, src) in [("mod.rs", code(here)), ("macos.rs", code(mac))] {
+            for banned in ["set_focus(", "makeKeyWindow", "activateIgnoringOtherApps"] {
+                assert!(!src.contains(banned), "{name} has {banned}");
+            }
+        }
+        let shows: Vec<_> = code(here).lines().filter(|l| l.contains(".show()") && !l.trim_start().starts_with("//")).collect();
+        assert!(shows.iter().all(|l| l.trim_start().starts_with("win.show().map_err")), "{shows:?}");
+        assert_eq!(code(here).matches("win.show()").count(), 1, "show() only off macOS");
+        let lines: Vec<&str> = code(here).lines().collect();
+        let at = lines.iter().position(|l| l.contains("win.show()")).unwrap();
+        assert!(lines[at - 1].contains(r#"#[cfg(not(target_os = "macos"))]"#), "the one show() is the non-macOS path: {}", lines[at - 1]);
+        let key_fn = mac.split("pub(super) fn key(").nth(1).unwrap().split("\n}\n").next().unwrap();
+        assert_eq!(code(mac).matches("makeKeyAndOrderFront").count(), 1);
+        assert!(key_fn.contains("makeKeyAndOrderFront"), "only `key` makes it the key window");
     }
 
     #[test]
