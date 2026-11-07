@@ -5,7 +5,7 @@
 #         notifications, no windows (CUE_QUIET). Your real Cue keeps running untouched.
 #   ui    every node test (tests/*.test.js, tests/ui/*.test.js), then the real UI in headless Chromium on the fake
 #         bridge (tests/ui: screens against their baselines, and interactions). Needs `npm ci` once.
-#   e2e   the real app driven over WebDriver (tests/e2e/run.sh), once it's there.
+#   e2e   the real app driven over WebDriver, a private Cue per journey (tests/e2e/run.sh, docs/dev/e2e.md).
 #   soak  the long stress run (src-tauri/src/testing/soak.rs), once it's there.
 set -eo pipefail   # a failed step ends the run here
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,8 +30,7 @@ ui() {
 }
 
 e2e() {
-  if [ -x "$ROOT/tests/e2e/run.sh" ]; then "$ROOT/tests/e2e/run.sh"
-  else echo "e2e: not yet (the real-app suite lands as tests/e2e/run.sh)"; fi
+  "$ROOT/tests/e2e/run.sh"
 }
 
 soak() {
