@@ -26,16 +26,17 @@ extern "C" fn isolate() {
 #[cfg_attr(target_os = "linux", link_section = ".init_array")]
 static ISOLATE: extern "C" fn() = isolate;
 
-/// Before a test's tmux command: still isolated (a panic naming why, not a command on your server), and,
-/// the first time, this process's folder made and the servers of earlier test runs that have exited
-/// taken down. A run still going (another `cargo test` at the same time) keeps its own.
+/// Before a test's tmux command: still isolated (a panic naming why, not a command on your server), and
+/// this process's folder there (made again if a test run of an older Cue, which removed every run's
+/// folder but its own, took it). The first time, the servers of earlier test runs that have exited are
+/// taken down; a run still going (another `cargo test` at the same time) keeps its own.
 pub fn check() {
     let dir = mine();
     assert!(std::env::var_os("TMUX").is_none(), "a test would run tmux on the server in $TMUX (yours): the test binary's isolation didn't run");
     assert_eq!(std::env::var_os("TMUX_TMPDIR").map(PathBuf::from), Some(dir.clone()), "a test would run tmux outside its own folder");
+    let _ = std::fs::create_dir_all(&dir);
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let _ = std::fs::create_dir_all(&dir);
         for e in std::fs::read_dir("/tmp").into_iter().flatten().flatten() {
             let pid = e.file_name().to_string_lossy().strip_prefix("cue-test-tmux-").and_then(|p| p.parse::<i32>().ok());
             if pid.is_some_and(|p| p != std::process::id() as i32 && !crate::server::alive(p)) {
