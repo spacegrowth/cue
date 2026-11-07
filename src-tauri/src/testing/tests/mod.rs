@@ -5,6 +5,7 @@ mod asks_edges;
 mod caches;
 mod db_faults;
 mod db_history;
+mod db_open;
 mod handoffs;
 mod insights;
 mod machine_stream;

@@ -218,17 +218,44 @@ fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
     }
 }
 
-/// The database, opened; one that isn't a database (or is damaged where opening reads) is set aside
-/// (`keep_aside`) and a new one started, so Cue keeps what it does from here on instead of nothing at all.
+/// The database, opened. One whose first read fails as not a database (or damaged there) is tried once more a
+/// moment later (a synced folder replacing the file mid-copy); still so, it's set aside (`keep_aside`) and a new
+/// one started, so Cue keeps what it does from here on instead of nothing at all. Past that first read, a
+/// failure while it's set up (a damaged page a migration meets) is said and the database used as it is: one bad
+/// page never costs everything else it holds.
 fn open() -> rusqlite::Result<Connection> {
     let _ = std::fs::create_dir_all(crate::server::cue_dir());
-    match open_at(&path()) {
+    let c = match first_read(&path()) {
         Err(e) if unreadable(&e) => {
-            let kept = keep_aside(&path());
-            eprintln!("cue: {} can't be read ({e}): kept as {}, starting a new one", path().display(), kept.display());
-            open_at(&path())
+            #[cfg(test)]
+            tests_seam::BEFORE_RETRY.with(|then| then.take().map(|f| f()));
+            crate::clock::sleep_ms(RETRY_MS);
+            match first_read(&path()) {
+                Err(e) if unreadable(&e) => {
+                    let kept = keep_aside(&path());
+                    eprintln!("cue: {} can't be read ({e}): kept as {}, starting a new one", path().display(), kept.display());
+                    first_read(&path())?
+                }
+                r => r?,
+            }
         }
-        r => r,
+        r => r?,
+    };
+    if let Err(e) = set_up(&c) {
+        eprintln!("cue: {} isn't all readable ({e}): using it as it is", path().display());
+    }
+    Ok(c)
+}
+
+/// How long `open` waits before it tries a database that couldn't be read once more.
+const RETRY_MS: u64 = 500;
+
+/// Tests: what happens between `open`'s first try and its retry (once, on this thread).
+#[cfg(test)]
+pub mod tests_seam {
+    use std::cell::Cell;
+    thread_local! {
+        pub static BEFORE_RETRY: Cell<Option<Box<dyn FnOnce()>>> = const { Cell::new(None) };
     }
 }
 
@@ -248,11 +275,18 @@ fn keep_aside(db: &std::path::Path) -> std::path::PathBuf {
     kept
 }
 
-fn open_at(path: &std::path::Path) -> rusqlite::Result<Connection> {
+/// The database at `path`, opened and its header read (where a file that isn't a database says so).
+fn first_read(path: &std::path::Path) -> rusqlite::Result<Connection> {
     let c = Connection::open(path)?;
     // Another connection writing (a test Cue, sqlite3 in a terminal) makes a write wait its turn, for up to
     // BUSY_WAIT and no longer: DB stays locked for every other caller in Cue while it waits.
     c.busy_timeout(BUSY_WAIT)?;
+    c.pragma_query_value(None, "schema_version", |r| r.get::<_, i64>(0))?;
+    Ok(c)
+}
+
+/// The database set up: its journal, its tables, what older Cues kept in files, and its migrations.
+fn set_up(c: &Connection) -> rusqlite::Result<()> {
     // WAL: a crash mid-write never corrupts what was already saved.
     c.pragma_update(None, "journal_mode", "WAL")?;
     c.pragma_update(None, "synchronous", "NORMAL")?;
@@ -307,7 +341,7 @@ fn open_at(path: &std::path::Path) -> rusqlite::Result<Connection> {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN status_ask TEXT NOT NULL DEFAULT ''", []);
         c.pragma_update(None, "user_version", 8)?;
     }
-    Ok(c)
+    Ok(())
 }
 
 /// Once: a project used to be its folder's name; now it's the folder's git repository, so a worktree's
