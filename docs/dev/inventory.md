@@ -327,7 +327,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `extensions.rs::run_program` | thread::spawn | 1 |
 | `hub/cache_tick.rs::Hub::hand_off_due` | thread::spawn | 1 |
 | `hub/mod.rs::Hub::later` | thread::spawn | 1 |
-| `hub/redraw.rs::Hub::start_drawing` | Builder::spawn | 1 |
+| `hub/redraw.rs::Hub::draw_on_worker` | Builder::spawn | 1 |
 | `hub/shown.rs::Shown::rebuild_at` | Builder::spawn | 1 |
 | `ipc/chat.rs::restart_ends_when_running` | thread::spawn | 1 |
 | `ipc/mod.rs::blocking` | async_runtime::spawn_blocking | 1 |

@@ -47,12 +47,22 @@ fn replace(path: &std::path::Path, text: &str) -> Result<Option<super::cache::St
     drop(f);
     let stamp = super::cache::stamp_of(&next);
     std::fs::rename(&next, &path).map_err(|e| e.to_string())?;
+    #[cfg(test)]
+    tests::PLACED.with(|then| then.take().map(|f| f(&path)));
     Ok(stamp)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::os::unix::fs::PermissionsExt;
+
+    type Then = Box<dyn FnOnce(&std::path::Path)>;
+
+    thread_local! {
+        /// What happens to the file the moment a save on this thread has put it in place (once).
+        pub(super) static PLACED: Cell<Option<Then>> = const { Cell::new(None) };
+    }
 
     #[test]
     fn a_linked_config_has_its_target_replaced_and_the_file_keeps_its_permissions() {
@@ -88,5 +98,26 @@ mod tests {
         std::fs::write(&path, "{\"a\": 22}\n").unwrap();
         assert_ne!(wrote, super::super::cache::stamp_of(&path), "an edit after it is another stamp");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A hand edit that lands between a save putting its file in place and the save noting what it wrote is
+    /// read by the next refresh, not taken for the save.
+    #[test]
+    fn a_hand_edit_right_after_a_save_is_read_by_the_next_refresh() {
+        let _g = crate::db::test_turn();
+        let dir = std::env::temp_dir().join(format!("cue-cfg-placed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        std::fs::write(dir.join("config.json"), "{}\n").unwrap();
+        crate::config::refresh();
+        PLACED.set(Some(Box::new(|path| std::fs::write(path, "{\"hand\": {\"edited\": true}}\n").unwrap())));
+        crate::config::remember("tips.on", serde_json::json!(false)).unwrap();
+        let changed = crate::config::refresh();
+        let c = crate::config::load();
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(changed, "the refresh saw the edit");
+        assert_eq!(c["hand"]["edited"], true, "what's on disk now: {c}");
     }
 }

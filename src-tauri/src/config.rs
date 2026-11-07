@@ -324,12 +324,7 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "actions.prompt" => crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
         "login.open" => {
             let on = value.as_bool().ok_or("must be true or false")?;
-            let set = login::set(on);
-            if set.is_ok() {
-                mac::login_set(on);
-            }
-            mac::refresh_soon();
-            set?;
+            mac::switch_login(on)?;
             remember(key, json!(on))
         }
         _ => remember(key, checked(key, value)?),
