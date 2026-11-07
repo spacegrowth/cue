@@ -94,44 +94,58 @@ fn open_window(app: &AppHandle, mode: Mode) -> tauri::Result<()> {
     Ok(())
 }
 
-/// The screen the mini window goes on (your main display), in points: its left, top, width and height.
-fn screen(w: &tauri::WebviewWindow) -> Option<(f64, f64, f64, f64)> {
-    let m = w.primary_monitor().ok().flatten()?;
+/// A display's left, top, width and height, in points.
+fn points(m: &tauri::Monitor) -> (f64, f64, f64, f64) {
     let s = m.scale_factor();
     let (p, z) = (m.position(), m.size());
-    Some((p.x as f64 / s, p.y as f64 / s, z.width as f64 / s, z.height as f64 / s))
+    (p.x as f64 / s, p.y as f64 / s, z.width as f64 / s, z.height as f64 / s)
+}
+
+/// The display the mini window goes on: the notch's island on the main display (the built-in one, with the
+/// notch); the rail on the display furthest right, so its edge is an outer one and never the seam between two.
+fn screen(w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64, f64, f64, f64)> {
+    let main = w.primary_monitor().ok().flatten().map(|m| points(&m));
+    if mode == Mode::Notch {
+        return main;
+    }
+    let all: Vec<_> = w.available_monitors().ok().unwrap_or_default().iter().map(points).collect();
+    rightmost(&all).or(main)
+}
+
+/// The display whose right edge is furthest right.
+fn rightmost(all: &[(f64, f64, f64, f64)]) -> Option<(f64, f64, f64, f64)> {
+    all.iter().copied().max_by(|a, b| (a.0 + a.2).total_cmp(&(b.0 + b.2)))
 }
 
 /// Room kept free above and below the rail's panels: the menu bar, then a margin.
 const RAIL_TOP: f64 = 37.0 + 24.0;
 const RAIL_BOTTOM: f64 = 24.0;
 
-/// Where a mini window of this size goes: the rail against the right edge, centred on `at` (a height on
-/// the screen, the dot you opened) or the screen's middle, kept clear of the menu bar and the bottom; the
-/// notch's island centred at the top.
-fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64, at: Option<f64>) -> (f64, f64) {
+/// Where a mini window of this size goes. The rail: against the right edge, its top always on the same line
+/// (a third of the way down), whatever it shows, so it never moves: the dots, the list and the chat all grow
+/// down from there (up only if the chat wouldn't fit below). The notch's island: centred at the top.
+fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64) -> (f64, f64) {
     match mode {
         Mode::Notch => (x + (sw - w) / 2.0, y),
         _ => {
-            let mid = at.unwrap_or(sh / 2.0);
-            let top = (mid - h / 2.0).clamp(RAIL_TOP, (sh - RAIL_BOTTOM - h).max(RAIL_TOP));
+            let top = (sh / 3.0).min(sh - RAIL_BOTTOM - h).max(RAIL_TOP);
             (x + sw - w, y + top)
         }
     }
 }
 
-/// The page's size for what it shows now (a hairline, the dots, the list, the drawer), in points, and where
-/// its middle should sit (`at`, the rail only). `show` false hides it (nothing to show).
+/// The page's size for what it shows now (a hairline, the dots, the list, the drawer), in points. `show`
+/// false hides it (nothing to show).
 #[tauri::command]
-pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, at: Option<f64>, show: bool) -> Result<(), String> {
+pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Result<(), String> {
     let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
     if !show {
         return win.hide().map_err(|e| e.to_string());
     }
     let mode = if OPEN.load(Ordering::SeqCst) == Mode::Notch as u8 { Mode::Notch } else { Mode::Rail };
-    let scr = screen(&win).ok_or("no screen")?;
+    let scr = screen(&win, mode).ok_or("no screen")?;
     let (w, h) = (w.clamp(1.0, scr.2), h.clamp(1.0, scr.3));
-    let (x, y) = place(mode, scr, w, h, at);
+    let (x, y) = place(mode, scr, w, h);
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
     win.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
@@ -187,18 +201,31 @@ mod tests {
     }
 
     #[test]
-    fn the_rail_sits_on_the_right_edge_centred_on_its_dot() {
-        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 442.0, Some(500.0)), (1092.0, 279.0));
+    fn the_rail_keeps_one_top_whatever_it_shows() {
+        let top = |w, h| place(Mode::Rail, SCREEN, w, h).1;
+        assert_eq!(top(4.0, 200.0), 982.0 / 3.0);
+        assert_eq!(top(28.0, 130.0), 982.0 / 3.0, "dots");
+        assert_eq!(top(320.0, 300.0), 982.0 / 3.0, "the list");
+        assert_eq!(top(448.0, 442.0), 982.0 / 3.0, "the chat, at its cap");
+        assert_eq!(place(Mode::Rail, SCREEN, 28.0, 130.0).0, 1512.0 - 28.0, "against the right edge");
     }
 
     #[test]
-    fn the_rail_stays_clear_of_the_menu_bar_and_the_bottom() {
-        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 442.0, Some(40.0)).1, RAIL_TOP);
-        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 442.0, Some(980.0)).1, 982.0 - RAIL_BOTTOM - 442.0);
+    fn the_rail_goes_up_only_when_it_wouldnt_fit_below_and_never_under_the_menu_bar() {
+        assert_eq!(place(Mode::Rail, SCREEN, 448.0, 800.0).1, 982.0 - RAIL_BOTTOM - 800.0);
+        assert_eq!(place(Mode::Rail, SCREEN, 448.0, 982.0).1, RAIL_TOP);
+    }
+
+    #[test]
+    fn the_rail_takes_the_outer_edge_of_the_display_furthest_right() {
+        let built_in = (0.0, 0.0, 1800.0, 1125.0);
+        let external = (1800.0, -567.0, 3008.0, 1692.0);
+        assert_eq!(rightmost(&[built_in, external]), Some(external));
+        assert_eq!(place(Mode::Rail, external, 28.0, 130.0).0, 1800.0 + 3008.0 - 28.0);
     }
 
     #[test]
     fn the_notch_island_is_centred_at_the_top() {
-        assert_eq!(place(Mode::Notch, SCREEN, 560.0, 324.0, Some(500.0)), (476.0, 0.0));
+        assert_eq!(place(Mode::Notch, SCREEN, 560.0, 324.0), (476.0, 0.0));
     }
 }
