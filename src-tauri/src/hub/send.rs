@@ -237,40 +237,51 @@ impl Hub {
         // mid-turn and could be lost. Kept in Cue instead, as the box does, and sent when the turn ends.
         let busy = self.read(|st| (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid));
         if busy {
-            let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-            let mut h = it;
-            h.images = paths.clone();
-            h.status = "answered".into();
-            h.outcome = format!("replied: “{}” (kept in Cue until its turn ends)", first_line(text, 200));
-            h.resolved_ms = Some(now_ms());
-            let answered = self.write(|st| {
-                st.items.retain(|i| i.id != id);
-                st.sessions.hold(&sid, text, paths);
-                push_history(st, h)
-            });
-            self.save_answered(answered);
-            self.changed();
-            return Ok("kept in Cue: it goes when this turn ends".into());
+            return Ok(self.keep_reply(it, id, &sid, text, &saved));
         }
+        self.type_reply(it, id, &sid, text, &saved, t0)
+    }
+
+    /// A reply to a stale card, kept in Cue as the box keeps a message: the card is answered now, the
+    /// message held for the session and sent when its turn ends.
+    fn keep_reply(&self, mut h: Item, id: &str, sid: &str, text: &str, saved: &[crate::uploads::Saved]) -> String {
+        let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
+        h.images = paths.clone();
+        h.status = "answered".into();
+        h.outcome = format!("replied: “{}” (kept in Cue until its turn ends)", first_line(text, 200));
+        h.resolved_ms = Some(now_ms());
+        let answered = self.write(|st| {
+            st.items.retain(|i| i.id != id);
+            st.sessions.hold(sid, text, paths);
+            push_history(st, h)
+        });
+        self.save_answered(answered);
+        self.changed();
+        "kept in Cue: it goes when this turn ends".into()
+    }
+
+    /// A reply typed into the session's terminal (or handed over directly), then the card answered with
+    /// whether the agent was seen to take it.
+    fn type_reply(&self, it: Item, id: &str, sid: &str, text: &str, saved: &[crate::uploads::Saved], t0: u64) -> Result<String, String> {
         let cmd_before = command_before(&it.origin, text);
         // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
-        let direct = self.send_direct(&sid, text, &saved, false);
-        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(&sid, &it.origin, &saved)?))? };
+        let direct = self.send_direct(sid, text, saved, false);
+        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(sid, &it.origin, saved)?))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
-        let mut submitted = self.took(&sid, &it.origin, text, cmd_before, t0);
+        let mut submitted = self.took(sid, &it.origin, text, cmd_before, t0);
         if !submitted && !direct && !text.starts_with('/') && self.retry_enter(&it.origin, text) {
-            submitted = self.wait_active(&sid, t0, 4000);
+            submitted = self.wait_active(sid, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         let pics = if saved.is_empty() { String::new() } else { format!(" + {} image{}", saved.len(), if saved.len() == 1 { "" } else { "s" }) };
         let outcome = format!("replied: “{}”{pics}{}", first_line(text, 200), if submitted { "" } else { " (typed; didn't see it submit)" });
         self.write(|st| {
             st.items.retain(|i| i.id != id);
-            st.sessions.note_sent(&sid, text, &paths, t0, crate::config::context_keep());
-            st.sessions.note_delivery(&sid, text, &delivery_step(&via, submitted));
+            st.sessions.note_sent(sid, text, &paths, t0, crate::config::context_keep());
+            st.sessions.note_delivery(sid, text, &delivery_step(&via, submitted));
         });
         if !submitted && !direct {
-            submitted = self.settle_typed(&sid, &it.origin, text, cmd_before, t0);
+            submitted = self.settle_typed(sid, &it.origin, text, cmd_before, t0);
         }
         let mut h = it;
         h.images = paths;

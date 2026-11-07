@@ -6,7 +6,7 @@ use crate::testing::World;
 use rusqlite::{params, Connection};
 use serde_json::json;
 
-/// The columns each version added (db.rs `open`), as (version, table, column).
+/// The columns each version added (db/schema.rs `migrate`), as (version, table, column).
 const ADDED: [(i64, &str, &str); 10] = [
     (3, "turns", "looks"),
     (3, "turns", "agents"),

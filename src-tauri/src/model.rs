@@ -31,7 +31,7 @@ pub struct Exchange {
     pub pending: bool,
     /// Yours, sent now (⌘↵) right after the one above, before it was answered: stopping its turn put that
     /// one back into Claude Code's box and this was typed after it, so the agent got both as one message.
-    /// The text is what you typed; the bubble says it went with the one above (sessions.rs note_with).
+    /// The text is what you typed; the bubble says it went with the one above (sessions/thread.rs note_with).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub joined: bool,
     /// How this message of yours got to the agent, step by step: typed where, Enter pressed again, who

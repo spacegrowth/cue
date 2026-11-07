@@ -252,39 +252,76 @@ fn send_usage(p: &Value) -> Option<()> {
 pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
     let last = s(p, "last_assistant_message").trim().to_string();
     let entries = read_tail(&s(p, "transcript_path"));
-    let user_text = |e: &Value| -> Option<String> {
-        match e.pointer("/message/content") {
-            Some(Value::String(t)) => Some(t.clone()),
-            Some(Value::Array(blocks)) if !blocks.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) => Some(
-                blocks
-                    .iter()
-                    .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
-                    .filter_map(|b| b.get("text").and_then(Value::as_str))
-                    .collect::<String>(),
-            ),
-            _ => None,
-        }
-    };
-    let flag = |e: &Value, k: &str| e.get(k).and_then(Value::as_bool).unwrap_or(false);
-    let kind = |e: &Value| e.get("type").and_then(Value::as_str).unwrap_or("").to_string();
-    // The turn starts after your last real prompt (not a tool result, a meta note or a subagent's).
+    let start = turn_start(&entries);
+    let (mut parts, hooked) = turn_parts(&entries[start.min(entries.len())..]);
+    // The transcript can trail the hook by a moment: make sure the final message is in.
+    if !last.is_empty() && parts.last().and_then(|x| x.get("text")).and_then(Value::as_str) != Some(last.as_str()) {
+        parts.push(json!({ "text": last, "hooked": hooked }));
+    }
+    parts
+}
+
+/// The text of a "user" entry; None when it carries tool results, not something said.
+fn user_text(e: &Value) -> Option<String> {
+    match e.pointer("/message/content") {
+        Some(Value::String(t)) => Some(t.clone()),
+        Some(Value::Array(blocks)) if !blocks.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) => Some(
+            blocks
+                .iter()
+                .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+                .filter_map(|b| b.get("text").and_then(Value::as_str))
+                .collect::<String>(),
+        ),
+        _ => None,
+    }
+}
+
+/// The text blocks of an "assistant" entry.
+fn assistant_texts(e: &Value) -> Vec<String> {
+    match e.pointer("/message/content") {
+        Some(Value::String(t)) => vec![t.clone()],
+        Some(Value::Array(blocks)) => blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+            .filter_map(|b| b.get("text").and_then(Value::as_str).map(String::from))
+            .collect(),
+        _ => vec![],
+    }
+}
+
+fn entry_flag(e: &Value, k: &str) -> bool {
+    e.get(k).and_then(Value::as_bool).unwrap_or(false)
+}
+
+fn entry_kind(e: &Value) -> &str {
+    e.get("type").and_then(Value::as_str).unwrap_or("")
+}
+
+/// Where the turn starts: after your last real prompt (not a tool result, a meta note or a subagent's).
+fn turn_start(entries: &[Value]) -> usize {
     let mut start = 0;
     for (i, e) in entries.iter().enumerate() {
-        if kind(e) == "user" {
+        if entry_kind(e) == "user" {
             if let Some(t) = user_text(e) {
-                if !flag(e, "isMeta") && !flag(e, "isSidechain") && !t.starts_with('<') && !crate::logs::transcript::peer_text(&t) {
+                if !entry_flag(e, "isMeta") && !entry_flag(e, "isSidechain") && !t.starts_with('<') && !crate::logs::transcript::peer_text(&t) {
                     start = i + 1;
                 }
             }
         }
     }
+    start
+}
+
+/// What the agent wrote in the turn's entries as [{text, hooked}], and whether a Stop hook's follow-up
+/// was still going at the end.
+fn turn_parts(entries: &[Value]) -> (Vec<Value>, bool) {
     let mut parts: Vec<Value> = vec![];
     let mut hooked = false;
-    for e in &entries[start.min(entries.len())..] {
-        if flag(e, "isSidechain") {
+    for e in entries {
+        if entry_flag(e, "isSidechain") {
             continue;
         }
-        match kind(e).as_str() {
+        match entry_kind(e) {
             "user" => {
                 let t = user_text(e).unwrap_or_default();
                 if crate::logs::transcript::is_stop_hook(e) {
@@ -295,27 +332,14 @@ pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
             }
             "attachment" if crate::logs::transcript::yours_mid_turn(e) => hooked = false,
             "assistant" => {
-                let texts: Vec<String> = match e.pointer("/message/content") {
-                    Some(Value::String(t)) => vec![t.clone()],
-                    Some(Value::Array(blocks)) => blocks
-                        .iter()
-                        .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
-                        .filter_map(|b| b.get("text").and_then(Value::as_str).map(String::from))
-                        .collect(),
-                    _ => vec![],
-                };
-                for t in texts.iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+                for t in assistant_texts(e).iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
                     parts.push(json!({ "text": t, "hooked": hooked }));
                 }
             }
             _ => {}
         }
     }
-    // The transcript can trail the hook by a moment: make sure the final message is in.
-    if !last.is_empty() && parts.last().and_then(|x| x.get("text")).and_then(Value::as_str) != Some(last.as_str()) {
-        parts.push(json!({ "text": last, "hooked": hooked }));
-    }
-    parts
+    (parts, hooked)
 }
 
 /// The last ~2 MB of a JSONL transcript, parsed (the first, possibly partial, line is dropped).

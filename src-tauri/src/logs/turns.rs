@@ -1,5 +1,5 @@
 //! The Insights tab's history: every session's turns, read from its own log into the `turns` table
-//! (db.rs). Claude Code's, Codex's and Pi's logs on this Mac, and the copies Cue keeps of machines' logs
+//! (db/insights.rs). Claude Code's, Codex's and Pi's logs on this Mac, and the copies Cue keeps of machines' logs
 //! (never a machine's own folders).
 //!
 //! On a background thread at low priority: at launch, then every 10 minutes. Each log is read from where

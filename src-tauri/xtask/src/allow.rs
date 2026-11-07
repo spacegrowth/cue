@@ -18,6 +18,8 @@ pub struct Allow {
     pub store_io: Vec<StoreIo>,
     #[serde(default)]
     pub tmux_seam: Vec<TmuxSeam>,
+    #[serde(default)]
+    pub size_exempt: Vec<SizeExempt>,
 }
 
 /// The lock no external call may happen under.
@@ -75,6 +77,15 @@ pub struct TmuxSeam {
     pub reason: String,
 }
 
+/// A file (from the repo root: `ui/app.js`, `src-tauri/src/terminal/focus.rs`) not yet held to the size limits,
+/// its own length and its functions' (see check/sizes.rs).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SizeExempt {
+    pub file: String,
+    pub reason: String,
+}
+
 impl Allow {
     pub fn load(path: &Path) -> Result<Allow, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -89,7 +100,8 @@ impl Allow {
             .chain(self.bare_lock.iter().map(|b| (&b.receiver, &b.reason)))
             .chain(self.lock_order.iter().map(|o| (&o.to, &o.reason)))
             .chain(self.store_io.iter().map(|v| (&v.site, &v.reason)))
-            .chain(self.tmux_seam.iter().map(|t| (&t.function, &t.reason)));
+            .chain(self.tmux_seam.iter().map(|t| (&t.function, &t.reason)))
+            .chain(self.size_exempt.iter().map(|j| (&j.file, &j.reason)));
         for (what, reason) in reasons {
             if reason.trim().is_empty() {
                 return Err(format!("the entry for {what} has no reason"));

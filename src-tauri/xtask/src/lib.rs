@@ -39,8 +39,8 @@ pub fn run(repo: &Path, allow: &Path) -> Result<Outcome, String> {
     let ix = parse::index::Index::build(&krate);
     let model = graph::analyze(&ix, &krate.missing, &allow.bare_locks(), &allow.store.lock);
     let tmux = check::tmux::literal_tmux(&rust, &allow.tmux_seam);
-    let check = check::check(&model, &allow, tmux);
     let sizes = sizes::measure(repo, &rust)?;
+    let check = check::check(&model, &allow, tmux, &sizes);
     let inventory = report::inventory(&model, &sizes, &check);
     let lock_graph = report::lock_graph_dot(&model);
     Ok(Outcome { check, inventory, lock_graph, sizes })

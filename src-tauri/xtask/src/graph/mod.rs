@@ -60,7 +60,7 @@ pub struct Witness {
 /// A lock or once-cell declaration, with the names `locking::lock` calls give it.
 pub struct LockInfo {
     pub rel: String,
-    /// `leads.rs::INDEX`, `hub/mod.rs::Hub.store`.
+    /// `leads/index.rs::INDEX`, `hub/mod.rs::Hub.store`.
     pub item: String,
     pub line: usize,
     pub owner: String,
@@ -97,7 +97,7 @@ pub fn analyze(ix: &Index, missing: &[String], bare_allowed: &[BareLock], store_
     let cx = Context { ix, guard_fns: &guard_fns, bare_allowed };
     let facts: Vec<Facts> = (0..ix.fns.len()).map(|id| walk::walk(&cx, id)).collect();
     let events: Vec<Vec<Ev>> = facts.iter().map(|f| f.events.clone()).collect();
-    let is_db = |id: FnId| ix.fns[id].module == ["db"];
+    let is_db = |id: FnId| ix.fns[id].in_db();
     let sums = summary::summarize(&events, &is_db);
     let mut obs = Graph { sums: &sums, store_lock, id: 0, is_db: &is_db, paths: ix.fns.iter().map(|f| f.path()).collect(), edges: BTreeMap::new(), store_io: BTreeMap::new() };
     for (id, ev) in events.iter().enumerate() {

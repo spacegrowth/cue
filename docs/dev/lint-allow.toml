@@ -28,12 +28,47 @@ file = "terminal/test_tmux.rs"
 function = "take_down"
 reason = "the tests' own tmux seam: takes down the servers of test runs that have exited, each by its own private socket (-S), never the default one"
 
+# Files not yet held to the size limits (a function over 60 lines outside tests, a file over 1,000), each as a
+# whole until it's split. An entry for a file within the limits fails the check, so each goes when its split lands.
+
+[[size_exempt]]
+file = "src-tauri/src/terminal/focus.rs"
+reason = "split into tmux / iTerm / dialog probe / type_into by the terminal track (Phase 4 track A)"
+
+[[size_exempt]]
+file = "ui/app.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
+[[size_exempt]]
+file = "ui/board.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
+[[size_exempt]]
+file = "ui/chat.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
+[[size_exempt]]
+file = "ui/core.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
+[[size_exempt]]
+file = "ui/insights.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
+[[size_exempt]]
+file = "ui/insights_tab.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
+[[size_exempt]]
+file = "ui/sessions.js"
+reason = "the window's script, split by the UI track (Phase 4 track C)"
+
 # Lock order today: B may be taken while A is held. A new edge fails the check until it's added here.
 
 [[lock_order]]
 from = "AUTO_SEEN"
 to = "DB"
-reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
+reason = "logs::steps::windows::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
 
 [[lock_order]]
 from = "AUTO_SEEN"
@@ -48,7 +83,7 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "FEEDS"
 to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::windows::with_windows), a leaf"
 
 [[lock_order]]
 from = "INDEX"

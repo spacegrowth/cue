@@ -52,10 +52,10 @@ for an external fact).
    (`server.rs:143`) calls `hub.event/add_ask/finish/respond/subscribe/set_cost` **directly in the async
    task** (lines ~160-230), i.e. a std `Mutex` + file I/O + `snapshot()` inside a tokio worker, not under
    `spawn_blocking` (only `reply`, `send_to_session`, `interrupt`, `set_rates`, `agent_behind` are). Tickers in
-   `lib.rs:294-361` (3 s leads/live refresh + `sweep` + `sync_live`; remote poll; usage file 3 s; updater 6 h)
-   and `server::watch` (`lib.rs:328`), `talk::start`, `actions::start`, `archive::start`, `turns::start`.
+   `startup/tickers.rs` (3 s leads/live refresh + `sweep` + `sync_live`; remote poll; usage file 3 s; updater 6 h)
+   and `server::watch` (`startup/mod.rs` `setup`), `talk::start`, `actions::start`, `archive::start`, `turns::start`.
 3. **Plain threads.** PTY reader/exit threads (`term.rs:424-479`), one SSH watcher per machine
-   (`machines/hooks.rs:225`), remote crew polls (`lib.rs:337`), `machines/logs.rs` copies, `talk.rs` voice
+   (`machines/hooks/watch.rs:31`), remote crew polls (`startup/tickers.rs` `read_machine`), `machines/logs.rs` copies, `talk.rs` voice
    loops, `tasks.rs`, `notify.rs:98/110` callbacks, `safe_git.rs:68`.
 4. **Separate process:** `cue hook <event>` (`hook.rs`) — reads `config.json` via `config::load`
    (`hook.rs:38`, `statuslist.rs:64,175`) and talks to the socket; never touches `cue.db`.
@@ -65,8 +65,8 @@ for an external fact).
 Coarse: `Hub.store: Mutex<Store>` (`hub/mod.rs:131`, 208 sites), `Hub.typing` + per-session typing gates
 (`hub/mod.rs:135,156`; held for seconds by design, `send.rs:13 wait_turn` 45 s), `term::open_terms`
 (`term.rs:68`), `db::DB` (`db.rs:17`, one connection, lazily opened, **no `busy_timeout`**), `leads::INDEX`
-plus 11 other leads statics (`leads.rs:125-678`), `logs/steps.rs` FEEDS/HISTORY/WINDOWS/SEEN, `logs/live.rs`
-CLAUDE/ABOUT/BRANCHES/REPOS/TOPS, `machines/mod.rs:358 caches`, `machines/hooks.rs` watchers/SEEN/WATCHERS,
+plus 11 other leads statics (`leads/`), `logs/steps/` FEEDS/HISTORY/WINDOWS/SEEN, `logs/live.rs`
+CLAUDE/ABOUT/BRANCHES/REPOS/TOPS, `machines/mod.rs:358 caches`, `machines/hooks/` watchers/SEEN/WATCHERS,
 `actions/mod.rs` STORE/ONE/BUSY/WATCH, `tasks.rs` TRACKS/TOTAL, `talk.rs` STATUS/RETELL/OWN, `notify::QUIET`,
 `sounds::PLAYING`, `commands.rs` LISTS/READING, `statuslist::SEEN`, `model::DECLARED`, `extensions::ONE`,
 `usage_file::LAST`, `turns::CATCHING_UP`, `archive::INDEX`, `shells::KEPT`, `ipc/restore.rs BUSY`,
@@ -81,7 +81,7 @@ Known edges while holding `store`:
 - `open_terms → PTY write` (`term.rs:353`) and `open_terms → child.kill/wait` via `Open::end` is *outside* the
   lock (`term.rs:181-189`, good).
 - Reverse edges (`INDEX → store`) none found; `leads::refresh` runs under `spawn_blocking` and the hub calls
-  `redraw` after. **Unverified:** nothing in `leads.rs`/`steps.rs` reaches a `Hub` method while holding its own
+  `redraw` after. **Unverified:** nothing in `leads/`/`steps.rs` reaches a `Hub` method while holding its own
   static (they don't have a `Hub` handle, which is the structural reason; keep it that way).
 
 What `locking.rs`' lint does *not* catch (and is the best remaining explanation of the "waits on a mutex owned
@@ -264,7 +264,7 @@ F = failure injection (listed per row; all run in Layer A unless marked E). Numb
 | Typing: send / reply / queue / hold / ⌘↵ | `hub/send.rs`, `terminal/focus.rs:1059 type_into` | U: `tmux_word`, `enter_gap`, `at_shell_prompt`. I: reply→typed→settle (`settle_typed`), held message released on turn end, queued review drain, concurrent sends to one session serialize on gate, 45 s gate timeout error, send to ended session. F: tmux `display-message` hangs (fake returns after 30 s), pane shows shell prompt, paste accepted but Enter not, transcript never confirms. E: type 200 chars fast into the built-in terminal with a stalled client. (~45) |
 | Permission asks / questions | `hub/asks.rs`, `server.rs`, `hook.rs`, `ui/board.js` | I (extend `test_protocol.py` into Rust): allow/deny/always/answer, answered in terminal clears card, hook reconnect after Cue restart (`RECONNECT_FOR`), duplicate ask ids, ask after session end. UI: A/D/1-4/R keys. F: hook disconnects mid-wait, 100 asks in 1 s. (~30) |
 | Terminal attach / write / resize / close | `terminal/term.rs`, `shells.rs`, `ui/shells.js` | U: `attach_args`, `pane_chain`. I (fake PTY): open joins in-flight open, replace old client, close during opening, write to closed, resize bounds. E: real tmux pane open/type/close, SSH-less. F: PTY writer blocks (pipe full), tmux binary missing, ssh exits 255. (~25) |
-| Relay leads / executors / review cards | `leads.rs`, `hub/reviews.rs`, `ui/reviewcard.js`, `ui/agents.js` | U already heavy (`leads.rs:1276+`); add I: review queue when lead busy, set-aside, handoff chain, remote executor attach. F: relay state folder half-written, 50 executors. (~20) |
+| Relay leads / executors / review cards | `leads/`, `hub/reviews.rs`, `ui/reviewcard.js`, `ui/agents.js` | U already heavy (`leads/tests/`); add I: review queue when lead busy, set-aside, handoff chain, remote executor attach. F: relay state folder half-written, 50 executors. (~20) |
 | Status list / background agents | `statuslist.rs`, `logs/steps.rs`, `ui/status*.js`, `ui/background.js` | U exists (node + Rust); add I: status follows into hand-off, background agent reports after finish. F: 5 MB status payload, malformed markdown. (~15) |
 | Tasks / About | `tasks.rs`, `ui/about.js` | I: track/turn_ended/stop; F: slow summarizer. (~8) |
 | Voice / speak | `talk.rs`, `terminal/speak.rs`, `dictation.rs` | U: `hook_context`, status parsing. I: fake `cue-voice` binary that prints scripted lines. Real mic/speaker: **not automatable, low value** — a 3-step manual checklist in the release gate instead. (~10) |
@@ -279,7 +279,7 @@ F = failure injection (listed per row; all run in Layer A unless marked E). Numb
 | Uploads / images | `uploads.rs`, `hub/send.rs images_there` | U: paths; I: remote copy progress events; F: 50 MB image, unreadable file. (~8) |
 | Project moves | `hub/mod.rs put_projects/move_projects` | U exists; add UI case. (~3) |
 | Extensions / actions | `extensions.rs`, `actions/*` | U: allow/run/stop; F: action prints 10 MB, never exits. (~12) |
-| Updater | `lib.rs find_update` | I: fake `latest.json` server; F: 404, bad signature. (~4) |
+| Updater | `ipc/settings.rs find_update` | I: fake `latest.json` server; F: 404, bad signature. (~4) |
 
 ~330 new cases; the existing 408 Rust tests stay. Priority order: Typing, Terminal, Asks, Sessions (the
 real-use bugs), then the rest.
@@ -338,7 +338,7 @@ Ordered, safe steps (tests land first in each):
    `cargo test` green between every one. (4 d)
 7. UI: `ui/app.js bindMain` 683 lines → per-view binders (`board_bind.js`, `chat_bind.js`, …) with one
    `delegate(root, selector, handler)` helper; `ui/chat.js` 2,646 → `chat/{render,compose,thread,tools}.js`.
-   `index.html` script order is load-bearing (`lib.rs:393` test) — keep the test, extend it to the split. (3 d)
+   `index.html` script order is load-bearing (`lib.rs` test `the_windows_scripts_declare_each_top_level_name_once`) — keep the test, extend it to the split. (3 d)
 
 ## 7. Release process
 

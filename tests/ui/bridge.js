@@ -1,6 +1,6 @@
 // The fake Tauri bridge the real UI runs on in a browser (tests/ui/app.html, tests/preview.html).
 // It puts a `window.__TAURI__` in place before ui/core.js reads it: `invoke` answers every command the app
-// registers (lib.rs generate_handler!) from the fakes in tests/ui/fakes/, one file per area, each registered
+// registers (startup/mod.rs generate_handler!) from the fakes in tests/ui/fakes/, one file per area, each registered
 // with CueBridge.area(). `emit` pushes the events the app sends (state, term, speak, upload, …), and every
 // invoke is recorded with its arguments in CueBridge.calls, for tests to assert on.
 //

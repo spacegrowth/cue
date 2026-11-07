@@ -28,6 +28,7 @@ mod ext;
 mod extensions;
 mod server;
 mod sessions;
+mod startup;
 mod uploads;
 mod terminal;
 #[cfg(test)]
@@ -42,37 +43,7 @@ pub(crate) use terminal::{dialog, focus};
 #[cfg(feature = "ext")]
 pub(crate) use terminal::shell;
 
-use hub::Hub;
-use ipc::*;
-use logs::archive;
-use terminal::dictation;
-use std::sync::Arc;
-use tauri::{Manager, RunEvent, WindowEvent};
-
-/// The menu bar's menus: Tauri's default ones, but Close (⌘W) is Cue's own: it goes to the window
-/// ("close-key"), where inside Cue's terminal it closes the tab you're in, elsewhere it hides the window
-/// as before. (Cue's terminal's shells run in tmux: quitting never asks, they carry on.)
-fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
-    use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem as P, Submenu};
-    let pkg = app.package_info();
-    let about = AboutMetadata { name: Some(pkg.name.clone()), version: Some(pkg.version.to_string()), ..Default::default() };
-    Menu::with_items(app, &[
-        &Submenu::with_items(app, pkg.name.clone(), true, &[
-            &P::about(app, None, Some(about))?,
-            &P::separator(app)?,
-            &P::services(app, None)?,
-            &P::separator(app)?,
-            &P::hide(app, None)?,
-            &P::hide_others(app, None)?,
-            &P::separator(app)?,
-            &MenuItem::with_id(app, "app-quit", "Quit Cue", true, Some("CmdOrCtrl+Q"))?,
-        ])?,
-        &Submenu::with_items(app, "File", true, &[&MenuItem::with_id(app, "app-close", "Close", true, Some("CmdOrCtrl+W"))?])?,
-        &Submenu::with_items(app, "Edit", true, &[&P::undo(app, None)?, &P::redo(app, None)?, &P::separator(app)?, &P::cut(app, None)?, &P::copy(app, None)?, &P::paste(app, None)?, &P::select_all(app, None)?])?,
-        &Submenu::with_items(app, "View", true, &[&P::fullscreen(app, None)?])?,
-        &Submenu::with_items(app, "Window", true, &[&P::minimize(app, None)?, &P::maximize(app, None)?])?,
-    ])
-}
+use tauri::Manager;
 
 /// Bring up the full window, optionally on one item (the menu bar, a notification) or, as "s:<session>", on a
 /// session's chat.
@@ -115,28 +86,6 @@ pub(crate) fn apply_zoom(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_zoom(config::zoom());
     }
-}
-
-/// Switch WebRTC off for this web view (WebKit's peer-connection preference), where WebKit has it.
-#[cfg(target_os = "macos")]
-fn no_webrtc(w: &tauri::WebviewWindow) {
-    let _ = w.with_webview(|wv| unsafe {
-        use objc2::runtime::AnyObject;
-        use objc2::{msg_send, sel};
-        let wk = wv.inner() as *mut AnyObject;
-        if wk.is_null() {
-            return;
-        }
-        let config: *mut AnyObject = msg_send![&*wk, configuration];
-        let prefs: *mut AnyObject = if config.is_null() { std::ptr::null_mut() } else { msg_send![&*config, preferences] };
-        if prefs.is_null() {
-            return;
-        }
-        let has: bool = msg_send![&*prefs, respondsToSelector: sel!(_setPeerConnectionEnabled:)];
-        if has {
-            let _: () = msg_send![&*prefs, _setPeerConnectionEnabled: false];
-        }
-    });
 }
 
 /// `cue connect <claude|codex|pi>…` from a terminal: the same as Settings → Connect. Prints what it
@@ -184,10 +133,7 @@ fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
         || terminal::shells::NOT_HERE.contains(&k)
 }
 
-// E2E_DEBUG_ONLY: a release build never carries the end-to-end tests' WebDriver server.
-#[cfg(all(feature = "e2e", not(debug_assertions)))]
-compile_error!("the `e2e` feature puts a WebDriver server in the app: debug builds only");
-
+/// Open Cue: settings read and a clean environment, then the app built and run (startup/).
 pub fn run() {
     // Settings into memory before anything reads one (the window's size and zoom, below).
     config::refresh();
@@ -208,249 +154,7 @@ pub fn run() {
         }
     }
     awake::stay_responsive();
-    let builder = tauri::Builder::default();
-    // The end-to-end tests (tests/e2e) drive this window through a WebDriver server inside the app, on
-    // 127.0.0.1 at TAURI_WEBDRIVER_PORT. Only a debug build with the `e2e` feature has it (see E2E_DEBUG_ONLY).
-    #[cfg(feature = "e2e")]
-    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
-    let app = builder
-        .manage(dictation::Dictation::default())
-        .manage(terminal::speak::Speak::default())
-        .plugin(tauri_plugin_notification::init())
-        // Cue reopens at the size and place you left it.
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
-        // Extension pages: cueext://localhost/<name>/…, from <Cue's folder>/extensions (extensions.rs).
-        .register_uri_scheme_protocol("cueext", |_ctx, req| extensions::serve(req))
-        .invoke_handler(tauri::generate_handler![move_to_cue, park_session, resume_parked, unpark_session, closed_sessions, resume_closed, park_closed, machines_list, machine_add, machine_remove, machine_rename, machine_check, machine_login, machine_setup, run_line, unhold_message, send_held_now, term_open, hide_window, set_fullscreen, is_fullscreen, term_write, term_resume, term_resize, term_close, shell_open, shell_list, shell_name, shell_clear, session_screen, session_keys, adopt_session, session_command, session_commands, models_list, set_later, set_watch, set_starred, btw, catch_up, tasks_start, tasks_refresh, tasks_stop, status_session, background_session, connect_agent, update_check, update_install, session_steps, step_detail, session_bg_history, session_bg_helper, insight_state, insight_log, insight_counts, insights_summary, insight_delegate, insight_host_skills, handoff_sent, handoff_cue, handoff_continue, handoff_fresh, handoff_keep, ahead_watch, mcp_for, mcp_set, mcp_restart, restart_session, mcp_apply, mcp_apply_clear, mcp_for_folder, mcp_set_folder, send_queued_now, ext_settings, ext_set, crew_action, focus_live, close_session, delete_session, new_session, fork_session, trust_folder, continue_start, agents_installed, search, session_log, session_log_page, transcript_page, resume_session, rename_session, rename_dismiss, dictate_start, dictate_stop, speak_send, interrupt_session, open_link, image_data, get_state, respond, dismiss, send_to_back, unqueue_review, forget_session, focus_session, focus_session_id, send_to_session, reply, answer_terminal, clipboard_image, copy_text, set_setting, get_drafts, set_draft, test_notification, extensions::ext_list, extensions::ext_log, extensions::ext_enable, extensions::ext_activity, extensions::ext_reveal, extensions::ext_git, extensions::ext_program, actions::actions_list, actions::actions_allow, actions::actions_run, actions::actions_restart, actions::actions_stop, actions::actions_log, actions::actions_attach_id, actions::actions_term_open, actions::actions_save, actions::actions_file, actions::actions_delete, actions::actions_running, actions::actions_prompt_set, actions::project_for_folder])
-        .setup(|app| {
-            // A main thread that stops answering (the beachball) is logged with the locks held at the time.
-            let main = app.handle().clone();
-            locking::probe::watch_main(Box::new(move |f| main.run_on_main_thread(f).is_ok()));
-            // No WebRTC in Cue's web view: Cue doesn't use it, and it's the one way out an extension's page
-            // would otherwise have (a STUN or TURN request to a server of its choosing, which no page policy
-            // stops). Extensions can read your code (git.read); nothing they read may leave this Mac.
-            #[cfg(target_os = "macos")]
-            if let Some(w) = app.get_webview_window("main") {
-                no_webrtc(&w);
-            }
-            apply_zoom(app.handle());
-            // Actions (actions/): the window hears when a project's change, and ones still running are watched.
-            actions::start(app.handle().clone());
-            // One-time move from ~/.cue to Application Support (skipped when CUE_HOME is set).
-            if std::env::var_os("CUE_HOME").is_none() {
-                let old = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cue");
-                if let Some(old) = server::move_from_old_folder(&old, &server::cue_dir()) {
-                    db::rewrite_paths(&format!("{old}/"), &format!("{}/", server::cue_dir().display()));
-                    // Its settings moved with it: read from where they are now.
-                    config::refresh();
-                }
-            }
-            // Point the hook shim at this copy of Cue (wherever the app lives now).
-            hook::write_shim();
-            // Connected with an older Cue: add the hooks this one needs (a test instance leaves yours alone).
-            if std::env::var_os("CUE_QUIET").is_none() && std::env::var_os("CUE_HOME").is_none() {
-                config::refresh_hooks();
-            }
-            let hub = Arc::new(Hub::new(Some(app.handle().clone())));
-            app.manage(hub.clone());
-            quit::on_signals(app.handle().clone());
-            // Settings kept current in memory (a hand edit of config.json, Login Items in System Settings): a
-            // change redraws the window.
-            let h = hub.clone();
-            config::watch(move || h.redraw());
-            // A reboot killed every tmux pane: open each live session again (before the watcher, so a
-            // stale pid can't drop it before its new pane is recorded).
-            restore_sessions(&hub);
-            // Waiting sessions always come back with their card (a rebuilt one gets it above; the
-            // rest, whose card vanished another way, get it here).
-            bring_back_cards(&hub);
-            // A message Cue was still unsure about when it last ran: its log may say by now, and what's
-            // still open is watched again (a restart used to leave its ring on for good).
-            hub.recheck_unsettled();
-            // Events from the agents on your machines (+ New → Machine), over SSH, and their sessions' logs.
-            // A test instance (CUE_HOME) watches its machines only when asked (CUE_TEST_MACHINES).
-            if std::env::var_os("CUE_HOME").is_none() || std::env::var_os("CUE_TEST_MACHINES").is_some() {
-                let h = hub.clone();
-                machines::hooks::on_reached(move |m| restore_machine(&h, m));
-                // A new session there (a relay executor just started): its crew read now, not at the next poll.
-                let h = hub.clone();
-                machines::hooks::on_new_session(move |m| {
-                    if let Some(mach) = machines::get(m) {
-                        if leads::refresh_remote(&mach.name, &mach.host).0 {
-                            h.redraw();
-                        }
-                    }
-                });
-                machines::hooks::watch_all();
-                let known: Vec<(String, String)> = hub.snapshot()["sessions"].as_array().into_iter().flatten()
-                    .filter_map(|s| Some((s["machine"].as_str().filter(|m| !m.is_empty())?.to_string(), s["transcript_path"].as_str()?.to_string())))
-                    .collect();
-                std::thread::spawn(move || machines::logs::resume(&known));
-            }
-            let h = hub.clone();
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = server::serve(h).await {
-                    eprintln!("cue: socket server stopped: {e}");
-                    use tauri::Emitter;
-                    let _ = handle.emit("server-error", e.to_string());
-                }
-            });
-            // Leads and executors (claude-relay, pi-lead): re-read their state folders every few seconds.
-            let h = hub.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut tick = tokio::time::interval(std::time::Duration::from_secs(3));
-                loop {
-                    tick.tick().await;
-                    // Also every live Claude session, for the Sessions view, and each folder's repository and branch
-                    // (non-short-circuit |: all run).
-                    let (others, folders) = tauri::async_runtime::spawn_blocking(|| (leads::refresh() | live::refresh(), logs::repos::refresh())).await.unwrap_or((false, false));
-                    // Folders' facts came in: the projects the hub keeps derived again (that redraws).
-                    if folders {
-                        let f = h.clone();
-                        let _ = tauri::async_runtime::spawn_blocking(move || f.folders_found()).await;
-                    } else if others {
-                        h.redraw();
-                    }
-                    // Claude sessions here whose agent is gone (no process Cue can watch: Cue's own terminal, a lost tab).
-                    let s = h.clone();
-                    let _ = tauri::async_runtime::spawn_blocking(move || s.sweep("", Some(&live::claude().into_iter().map(|q| q.session_id).collect()))).await;
-                    // ...and from that list: sessions Cue doesn't know yet, prompts in a terminal it has no card for.
-                    let a = h.clone();
-                    let _ = tauri::async_runtime::spawn_blocking(move || a.sync_live()).await;
-                }
-            });
-            // Leads and executors on your machines: relay's and pi-lead's listing there (one SSH call),
-            // on every machine, whether or not Cue has anything open there: every 10 s where it has a
-            // live session, every minute elsewhere, less and less often while one can't be reached
-            // (remote_poll). Each machine is read on its own, so one that hangs holds no other up.
-            let h = hub.clone();
-            tauri::async_runtime::spawn(async move {
-                let sched = Arc::new(std::sync::Mutex::new(remote_poll::Schedule::default()));
-                let mut tick = tokio::time::interval(remote_poll::NEAR);
-                loop {
-                    tick.tick().await;
-                    let a = h.clone();
-                    let s = sched.clone();
-                    let _ = tauri::async_runtime::spawn_blocking(move || {
-                        let busy: std::collections::HashSet<String> = a.saved_sessions().into_iter().map(|s| s.origin.machine).filter(|m| !m.is_empty()).collect();
-                        let list = machines::list();
-                        let names: Vec<String> = list.iter().map(|m| m.name.clone()).collect();
-                        if leads::retain_remote(&names) {
-                            a.redraw();
-                        }
-                        let marks: Vec<(String, bool)> = list.iter().map(|m| (m.name.clone(), busy.contains(&m.name))).collect();
-                        let due = crate::locking::lock(&s, "remote poll schedule").due(&marks, std::time::Instant::now());
-                        for m in list.into_iter().filter(|m| due.contains(&m.name)) {
-                            let (a, s, has_sessions) = (a.clone(), s.clone(), busy.contains(&m.name));
-                            std::thread::spawn(move || {
-                                let (changed, live) = leads::refresh_remote(&m.name, &m.host);
-                                let change = crate::locking::lock(&s, "remote poll schedule").done(&m.name, live.is_some());
-                                match change {
-                                    Some(false) => eprintln!("cue: can't reach {} for its crews; trying less often until it answers", m.name),
-                                    Some(true) => eprintln!("cue: reached {} again", m.name),
-                                    None => {}
-                                }
-                                // ...and its sessions that ended there while Cue wasn't looking.
-                                if has_sessions {
-                                    a.sweep(&m.name, live.as_ref());
-                                }
-                                if changed {
-                                    a.redraw();
-                                }
-                            });
-                        }
-                    })
-                    .await;
-                }
-            });
-            talk::start(app, hub.clone());
-            #[cfg(feature = "ext")]
-            ext::start(app, hub.clone());
-            let waiting = hub.clone();
-            tauri::async_runtime::spawn(server::watch(hub));
-            if std::env::var_os("CUE_QUIET").is_none() {
-                notify::init(app.handle());
-                archive::start(); // older Claude Code sessions, indexed by name in the background
-                logs::turns::start(); // every session's turns, for the Insights tab, in the background
-                // At launch: Cue turns on "Open at login" the first time (it's the default; Settings can undo it).
-                config::login::first_run();
-            }
-            // What was waiting before the restart: the Dock badge shows it now.
-            waiting.show_waiting();
-            // Your usage file: when it changes, the usage pill shows the new numbers (or what's wrong).
-            let h = waiting.clone();
-            tauri::async_runtime::spawn(async move {
-                let mut every = tokio::time::interval(std::time::Duration::from_secs(3));
-                loop {
-                    every.tick().await;
-                    if usage_file::changed() {
-                        h.redraw();
-                    }
-                }
-            });
-            // A newer Cue: looked for a minute after launch, then every 6 hours; the window offers it.
-            if std::env::var_os("CUE_QUIET").is_none() {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                    let mut every = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
-                    loop {
-                        every.tick().await;
-                        if let Ok(Some(u)) = find_update(&handle).await {
-                            offer_update(&handle, &u);
-                        }
-                    }
-                });
-            }
-            // A quiet test instance keeps its windows out of your way.
-            if std::env::var_os("CUE_QUIET").is_some() {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.hide();
-                }
-            }
-            Ok(())
-        })
-        .menu(app_menu)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "app-quit" => app.exit(0),
-            "app-close" => {
-                use tauri::Emitter;
-                let _ = app.emit_to("main", "close-key", ());
-            }
-            _ => {}
-        })
-        .on_window_event(|window, event| {
-            // Closing the window keeps Cue running (it must stay up to receive requests).
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() != "main" {
-                    return;
-                }
-                api.prevent_close();
-                let _ = window.hide();
-            }
-        })
-        .build(tauri::generate_context!())
-        .expect("error while building Cue");
-
-    app.run(|handle, event| match event {
-        // Actions run without tmux are Cue's own children: they end with it.
-        RunEvent::Exit => {
-            actions::end_plain();
-            // What changed since the last draw is saved before Cue goes.
-            if let Some(hub) = handle.try_state::<Arc<hub::Hub>>() {
-                hub.save_live();
-            }
-        }
-        RunEvent::Reopen { .. } => {
-            if let Some(w) = handle.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
-        }
-        _ => {}
-    });
+    startup::build().run(startup::window::on_run_event);
 }
 
 #[cfg(test)]

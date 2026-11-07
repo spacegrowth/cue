@@ -29,7 +29,7 @@ worked on this Mac in the spike, and gives real clicks and keys, not just evalua
 
 - Cargo feature `e2e` (off by default) is the only way the crate is compiled in; `tests/e2e/run.sh` builds
   with it into `src-tauri/target/e2e`, so the normal debug build and `tests/run.sh` don't carry it either.
-- `lib.rs` has `compile_error!` for `feature = "e2e"` without `debug_assertions`: a release build with the
+- `startup/mod.rs` has `compile_error!` for `feature = "e2e"` without `debug_assertions`: a release build with the
   feature doesn't compile.
 - Checked: `cargo tree -i tauri-plugin-wdio-webdriver` finds nothing without the feature; a release build's
   binary has no `wdio`/`webdriver`/`TAURI_WEBDRIVER_PORT` string or symbol; the e2e debug binary has them.
