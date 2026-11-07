@@ -39,7 +39,7 @@ mod remote_poll;
 
 // The old crate-root paths of the moved modules, kept for what still names them there: the hub (its own
 // packet) and the optional add-on.
-pub(crate) use logs::{live, steps, transcript, usage, usage_file};
+pub(crate) use logs::{about, live, steps, transcript, usage, usage_file};
 pub(crate) use terminal::{dialog, focus};
 #[cfg(feature = "ext")]
 pub(crate) use terminal::shell;

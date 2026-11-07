@@ -15,10 +15,10 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 136 (3 sync) |
-| Lock declarations (static or field) | 91 |
-| Lock acquisitions | 207 |
+| Lock declarations (static or field) | 92 |
+| Lock acquisitions | 211 |
 | Lock-graph edges | 45 |
-| Spawn sites | 73 |
+| Spawn sites | 74 |
 | External calls: fs / db / process / notify / login / socket | 339 / 146 / 48 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
@@ -224,9 +224,10 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `locking/stats.rs::PINGS` | `Mutex<VecDeque<u64>>` | — |
 | `locking/stats.rs::HOLDS` | `Mutex<BTreeMap<(&'staticstr,&'staticstr,u32),Holds>>` | — |
 | `locking/watchdog.rs::THREAD` | `OnceLock<Option<std::thread::Thread>>` | — |
+| `logs/about.rs::ABOUT` | `Mutex<Option<HashMap<String,Kept>>>` | "ABOUT" (4 sites) |
+| `logs/about.rs::READING` | `Mutex<Option<HashSet<String>>>` | "about READING" (3 sites) |
 | `logs/archive.rs::INDEX` | `Mutex<Option<HashMap<String,(u64,Entry)>>>` | "archive INDEX" (4 sites) |
 | `logs/live.rs::CLAUDE` | `Mutex<Vec<Quiet>>` | "CLAUDE" (2 sites) |
-| `logs/live.rs::ABOUT` | `Mutex<Option<HashMap<String,(u64,std::time::SystemTime,String)>>>` | "ABOUT" (3 sites) |
 | `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (4 sites) |
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
 | `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,(Arc<Mutex<Feed>>,Instant)>>>` | "HISTORY" (2 sites) |
@@ -350,6 +351,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `leads/verify.rs::verify_reported` | thread::spawn | 1 |
 | `locking/probe.rs::watch_main` | Builder::spawn | 1 |
 | `locking/watchdog.rs::wake` | Builder::spawn | 1 |
+| `logs/about.rs::read_about` | Builder::spawn | 1 |
 | `logs/archive.rs::start` | thread::spawn | 1 |
 | `logs/repos.rs::Folders::look_up` | thread::spawn | 1 |
 | `logs/steps/background.rs::Feed::close_scripts` | thread::spawn | 1 |
@@ -532,12 +534,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `locking/report.rs::append_capped` | create_dir_all | 1 |
 | `locking/report.rs::append_capped` | metadata | 1 |
 | `locking/report.rs::append_capped` | rename | 1 |
+| `logs/about.rs::read_one` | metadata | 1 |
 | `logs/archive.rs::read_entry` | File::open | 1 |
 | `logs/archive.rs::read_entry` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | read_dir | 2 |
 | `logs/live.rs::claude_transcript` | Path::is_file | 1 |
-| `logs/live.rs::read_one_about` | metadata | 1 |
 | `logs/live.rs::scan_claude` | read_dir | 1 |
 | `logs/live.rs::scan_claude` | read_to_string | 1 |
 | `logs/live.rs::started_ms` | read_to_string | 1 |

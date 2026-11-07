@@ -404,9 +404,9 @@ fn about_reads_the_last_prompt() {
         json!({"type":"last-prompt","lastPrompt":"see it looks odd on sides of keyboard top","sessionId":"s"}),
         json!({"type":"assistant","message":{"content":[{"type":"text","text":"\"type\":\"ai-title\" mentioned in prose"}]}}),
     ]);
-    assert_eq!(about(&t.0), "see it looks odd on sides of keyboard top");
+    assert_eq!(about(&t.0).as_deref(), Some("see it looks odd on sides of keyboard top"));
     let empty = write_transcript(&[json!({"type":"user","message":{"content":"hi"}})]);
-    assert_eq!(about(&empty.0), "");
+    assert_eq!(about(&empty.0).as_deref(), Some(""));
 }
 
 #[test]

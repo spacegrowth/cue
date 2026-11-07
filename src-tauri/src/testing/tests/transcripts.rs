@@ -2,7 +2,7 @@
 //! Sessions and Asks): a turn whose Stop never came, a compaction done, an ask answered in the terminal,
 //! the status list a prompt asked for, and your latest request.
 
-use crate::testing::{Snap, World};
+use crate::testing::{until, Snap, Stall, World};
 use std::time::Duration;
 use serde_json::json;
 
@@ -83,9 +83,9 @@ fn a_sessions_latest_request_is_read_from_its_transcript() {
     let a = w.session("a");
     a.prompt("go");
     a.transcript().last_prompt("make the login page faster");
-    // Read by the watcher's tick, not while the window's state is built.
+    // Read off the watcher's tick, not while the window's state is built.
     w.tick(false);
-    assert_eq!(w.snapshot().0["about"]["a"]["prompt"], "make the login page faster");
+    until("the tick's read of it", || w.snapshot().0["about"]["a"]["prompt"] == "make the login page faster");
 }
 
 #[test]
@@ -138,10 +138,10 @@ fn the_windows_state_is_built_without_reading_a_transcript() {
     let log = w.home().join("claude").join("a.jsonl");
     a.transcript().last_prompt("tidy up");
     w.tick(false);
-    assert_eq!(w.snapshot().0["about"]["a"]["prompt"], "tidy up", "the tick read it");
+    until("the tick's read of it", || w.snapshot().0["about"]["a"]["prompt"] == "tidy up");
     // Its transcript stops answering, and what was read of it is old.
     std::fs::remove_file(&log).unwrap();
-    let stalled = crate::testing::Stall::at(&log);
+    let stalled = Stall::at(&log);
     w.advance(10_000);
     // A change redraws the window, on a thread of its own that reads the World's clock.
     let (hub, clock) = (w.hub().clone(), w.clock());
@@ -158,5 +158,38 @@ fn the_windows_state_is_built_without_reading_a_transcript() {
         let snap = snap.as_ref().map(|s| s["about"]["a"]["prompt"].clone());
         done.store(true, std::sync::atomic::Ordering::SeqCst);
         assert_eq!(snap.ok(), Some(json!("tidy up")), "the window's state waited on a transcript");
+    });
+}
+
+/// A session's transcript that stops answering holds up none of the watcher's tick: another session gone quiet
+/// is still found stuck, and the tick ends (its latest-request reads run off it).
+#[test]
+fn a_stalled_transcript_doesnt_hold_up_the_tick_finding_a_stuck_session() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("tidy up").stop("Tidied.");
+    let b = w.session("b");
+    b.prompt("migrate the db");
+    b.transcript().prompt("migrate the db").assistant("Thinking it through");
+    // a's transcript stops answering; b has written nothing for longer than a thinking session may.
+    let log = w.home().join("claude").join("a.jsonl");
+    let _ = std::fs::remove_file(&log);
+    let stalled = Stall::at(&log);
+    w.advance(6 * 60_000);
+    let (hub, clock) = (w.hub().clone(), w.clock());
+    let (tx, ticked) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        clock.install();
+        crate::server::tick(&hub, false);
+        let _ = tx.send(());
+    });
+    let ended = ticked.recv_timeout(Duration::from_secs(2));
+    let done = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| stalled.answer_until(|| done.load(std::sync::atomic::Ordering::SeqCst)));
+        let stuck = w.hub().session_record("b").map_or(0, |r| r.stuck_ms);
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(ended.is_ok(), "the tick waited on a's transcript");
+        assert!(stuck > 0, "b found stuck");
     });
 }

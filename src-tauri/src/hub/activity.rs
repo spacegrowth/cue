@@ -58,12 +58,12 @@ impl Hub {
         self.read_about();
     }
 
-    /// Your latest request to each Claude session the window lists, read again from its transcript here (the
-    /// store let go), so building the window's state reads none (`folders_view` takes what's kept).
+    /// Your latest request to each Claude session the window lists, read again off the tick (`about`: each
+    /// transcript on a thread of its own); what came in since the last tick redraws the window.
     fn read_about(&self) {
         let (_, _, transcripts, _) = self.snapshot_sources();
-        let paths: Vec<String> = transcripts.into_iter().map(|(_, p)| p).collect();
-        if crate::live::read_about(&paths) {
+        crate::about::read_about(transcripts.into_iter().map(|(_, p)| p).collect(), now_ms());
+        if crate::about::about_news() {
             self.changed();
         }
     }

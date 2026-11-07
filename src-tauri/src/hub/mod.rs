@@ -493,7 +493,7 @@ impl Hub {
         let fresh = now_ms().saturating_sub(sessions::JUST_ENDED_MS);
         let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id) && !st.just_ended.get(&q.session_id).is_some_and(|at| *at > fresh)).collect();
         let transcripts: Vec<(String, String)> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
-            .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
+            .chain(live.iter().filter(|q| q.harness == "claude").map(|q| (q.session_id.clone(), crate::live::claude_transcript_path(&q.cwd, &q.session_id).to_string_lossy().into_owned())))
             .collect();
         // Folders on this Mac only. Another machine's folder read here would be a lookup of its path on
         // this disk: "/home/…" is macOS's automounter, which can stall a stat for good (it stalled a launch).
@@ -564,7 +564,7 @@ impl Hub {
 /// it from its transcript: none is read here).
 fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)>, cwds: Vec<String>, put: &HashMap<String, String>) -> serde_json::Map<String, Value> {
     let about: HashMap<String, Value> = transcripts.into_iter()
-        .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
+        .filter_map(|(sid, path)| { let prompt = crate::about::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
         .collect();
     let projects: HashMap<String, Value> = cwds.iter().map(|c| (c.clone(), folder_project(c, put))).collect();
     let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::logs::repos::branch(&c); (c, b) }).collect();

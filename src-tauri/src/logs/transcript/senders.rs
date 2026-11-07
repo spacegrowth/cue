@@ -37,16 +37,17 @@ pub fn prompt_sender(path: &str, prompt_id: &str) -> Option<Sender> {
 }
 
 /// Your latest request to a session (`last-prompt`), from its own transcript, no model. Claude
-/// re-writes it every turn, so the last 256 KB has it; only those lines are parsed.
-pub fn about(path: &str) -> String {
+/// re-writes it every turn, so the last 256 KB has it; only those lines are parsed. None when it couldn't
+/// be read.
+pub fn about(path: &str) -> Option<String> {
     let from = std::fs::metadata(path).map(|m| m.len().saturating_sub(256 * 1024)).unwrap_or(0);
-    let Some(tail) = read_from(path, from) else { return String::new() };
-    tail.lines()
+    let tail = read_from(path, from)?;
+    let prompt = tail.lines()
         .rev()
         .filter(|l| l.contains("\"type\":\"last-prompt\""))
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .find_map(|e| e.get("lastPrompt").and_then(Value::as_str).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()))
-        .unwrap_or_default()
+        .find_map(|e| e.get("lastPrompt").and_then(Value::as_str).map(|t| t.trim().to_string()).filter(|t| !t.is_empty()));
+    Some(prompt.unwrap_or_default())
 }
 
 /// Whether `text` reached the session from Claude Code's own queue, not from you. A background
