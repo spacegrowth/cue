@@ -11,7 +11,7 @@
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const TALK = 5 * 60000;             // in conversation: back within 5 minutes of your message (board.js TALK_MS)
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 12, chat: 432 };   // the rail's chat: 420 + its mark
+  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 18, chat: 438 };   // the rail's chat: 420 + its dot
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
@@ -59,21 +59,20 @@
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
 
   /** The rail: one small dot, the most urgent state's: red while something asks, striped while something waits
-   *  for your turn, breathing while sessions only work. */
+   *  for your turn, breathing while sessions only work, faint grey while nothing runs. */
   function markHtml() {
     const { shown } = needs();
-    const cls = shown.some(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "";
+    const cls = shown.some(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";   // idle: nothing runs
     return `<div class="m-panel m-mark"><i class="m-dot ${cls}"></i></div>`;
   }
-  /** Every session, one tab each across the chat's top: what needs you (Waiting's order), then the ones at work.
-   *  A click switches; each keeps what you typed in it. */
+  /** Five tabs across the chat's top at most: what needs you (Waiting's order: in conversation, then newest
+   *  first), then the ones at work if there's room. A click switches; each keeps what you typed in it. */
   function tabsHtml() {
     const tab = (sid, project, cls) => `<button class="m-tab ${sid === m.open ? "on" : ""}" data-open="${esc(sid)}"><i class="m-dot ${cls}"></i>${esc(nameOf(sid, project))}</button>`;
-    const waits = needs(Infinity).shown.map((it) => tab(it.session_id, it.project, dotCls(it)));
-    const works = working().map((s) => tab(s.session_id, s.project, "work"));
+    const waits = needs(MAX).shown.map((it) => tab(it.session_id, it.project, dotCls(it)));
+    const works = working().slice(0, Math.max(0, MAX - waits.length)).map((s) => tab(s.session_id, s.project, "work"));
     return [...waits, ...works].join("");
   }
-  const anything = () => needs().shown.length > 0 || working().length > 0;
   function islandHtml() {
     const { shown } = needs();
     const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
@@ -153,10 +152,9 @@
     const p = root.querySelector(".m-panel");
     const cap = Math.round(screen.height * CAP);
     document.documentElement.style.setProperty("--cap", `${cap}px`);
-    const empty = !NOTCH && m.shape === "quiet" && !anything();
-    const w = empty ? 6 : WIDTH[m.shape] || WIDTH.quiet;   // nothing running at all: the rail is a thin strip
+    const w = WIDTH[m.shape] || WIDTH.quiet;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
-    const h = empty ? 200 : m.shape === "chat" ? cap : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
+    const h = m.shape === "chat" ? cap : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
     const args = { w, h, show: true };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
@@ -167,7 +165,7 @@
     if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-pair">${chatHtml()}${markHtml()}</div>`;
     if (m.shape === "nod") return nodHtml();
     if (NOTCH) return islandHtml();
-    return anything() ? markHtml() : `<div class="m-panel m-hair"></div>`;
+    return markHtml();
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {

@@ -12,6 +12,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.turn { background: repeating-linear-gradient(45deg, var(--sel) 0 2px, transparent 2px 4px); box-shadow: 0 0 0 1.5px var(--sel); }
 .m-dot.ask { background: #E8907F; }
 .m-dot.work { background: var(--work); }
+.m-dot.idle { background: var(--line); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
 .m-mark .m-dot.work, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
@@ -28,7 +29,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-btn:disabled { opacity: .45; cursor: default; }
 
 /* ---------- the rail ---------- */
-.rail .m-hair { height: 200px; background: var(--bg); border-radius: 3px 0 0 3px; }
 .rail .m-pair { display: flex; align-items: flex-start; gap: 0; }   /* the mark stays at the top, where it was */
 .rail .m-pair > .m-chat { width: 420px; flex: none; }
 .m-age { font: 11px var(--mono); opacity: .7; }
@@ -90,8 +90,10 @@ body.mini { overflow: hidden; font-size: 13px; }
 
 
 /* The rail: one small dot at the edge, the most urgent state's. */
-.rail .m-mark { width: 12px; height: 28px; background: var(--bg); border-radius: 7px 0 0 7px; display: grid; place-items: center; }
-.rail .m-pair > .m-mark { width: 12px; flex: none; }
+.rail .m-mark { width: 18px; height: 18px; display: grid; place-items: center; }
+.rail .m-mark .m-dot { width: 12px; height: 12px; box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 1px 4px rgba(0,0,0,.35); }
+.rail .m-mark .m-dot.turn { box-shadow: 0 0 0 1.5px var(--sel), 0 0 0 3px rgba(255,255,255,.9), 0 1px 4px rgba(0,0,0,.35); background-color: var(--bg); }
+.rail .m-pair > .m-mark { width: 18px; flex: none; }
 /* Tabs across the chat's top: a session each, the open one on the panel. */
 .m-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
 .m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px 8px 0 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
