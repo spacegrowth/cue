@@ -109,3 +109,11 @@ test("the open status list keeps its switch and what it costs in full view, unde
   await page.locator(".active-pane .st-drawer").waitFor();
   expect(await layoutProblems(page, ".st-drawer", { inside: [[".st-toggle", ""], [".st-note", ""]] })).toEqual([]);
 });
+
+test("Settings → Agents: a command in a setting's note stays whole", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await page.keyboard.press(",");
+  await page.locator('[data-act="set-tab"][data-tab="agents"]').click();
+  await page.locator(".sheet .set-sub code").first().waitFor();
+  expect(await splitWords(page, ".sheet .set-sub")).toEqual([]);
+});
