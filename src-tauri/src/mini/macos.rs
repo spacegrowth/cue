@@ -122,3 +122,34 @@ pub(super) fn show_quietly(w: &tauri::WebviewWindow) {
         }
     });
 }
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CGPoint {
+    x: f64,
+    y: f64,
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGEventCreate(source: *const std::ffi::c_void) -> *mut std::ffi::c_void;
+    fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
+}
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFRelease(cf: *const std::ffi::c_void);
+}
+
+/// Where the pointer is now, in points from the main display's top left (CoreGraphics' own coordinates, as
+/// Cue's displays are given; any thread, no permission needed). (-1, -1) when it can't be read.
+pub(super) fn pointer() -> (f64, f64) {
+    unsafe {
+        let e = CGEventCreate(std::ptr::null());
+        if e.is_null() {
+            return (-1.0, -1.0);
+        }
+        let p = CGEventGetLocation(e);
+        CFRelease(e);
+        (p.x, p.y)
+    }
+}

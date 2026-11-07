@@ -11,7 +11,7 @@
 mod macos;
 
 use serde_json::Value;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// The mini window's label (its page asks for it by this name too).
@@ -30,6 +30,11 @@ static OPEN: AtomicU8 = AtomicU8::new(Mode::Off as u8);
 /// Cue's own window is in front: the mini window steps aside. Kept from that window's focus events (asked of
 /// the window just as it goes to the back, it can still say it's in front).
 static MAIN_FRONT: AtomicBool = AtomicBool::new(false);
+/// The display the rail is on, where your pointer settled last (its left, top, width, height as f64 bits;
+/// width 0: none yet, so Cue's window's display). Kept by `follow`.
+static ON: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+/// The pointer-watching thread is running (started once, with the first mini window).
+static FOLLOWING: AtomicBool = AtomicBool::new(false);
 
 impl Mode {
     fn from_setting(v: Option<&str>) -> Mode {
@@ -66,6 +71,58 @@ pub(crate) fn apply(app: &AppHandle) {
     match open_window(app, want) {
         Ok(()) => OPEN.store(want as u8, Ordering::SeqCst),
         Err(e) => eprintln!("[cue] mini window: {e}"),
+    }
+    #[cfg(target_os = "macos")]
+    if !FOLLOWING.swap(true, Ordering::SeqCst) {
+        let app = app.clone();
+        let _ = std::thread::Builder::new().name("cue-mini-follow".into()).spawn(move || follow(app));
+    }
+}
+
+/// How often the pointer's display is looked at, and how many looks in a row it must stay on a new one before
+/// the rail moves there (a pointer crossing a display on its way doesn't move it).
+const LOOK_EVERY: std::time::Duration = std::time::Duration::from_millis(700);
+const SETTLED_LOOKS: u32 = 2;
+
+/// The rail follows you: when your pointer has settled on another display, it moves to that display's right
+/// edge (its page places it again: mini-place). One look every 700 ms; nothing else runs.
+#[cfg(target_os = "macos")]
+fn follow(app: AppHandle) {
+    let (mut seen, mut looks) = (None, 0u32);
+    loop {
+        std::thread::sleep(LOOK_EVERY);
+        if OPEN.load(Ordering::SeqCst) != Mode::Rail as u8 {
+            continue;
+        }
+        let Some(win) = app.get_webview_window(LABEL) else { continue };
+        let all: Vec<_> = win.available_monitors().ok().unwrap_or_default().iter().map(points).collect();
+        let here = display_at(&all, macos::pointer());
+        if here != seen {
+            (seen, looks) = (here, 0);
+            continue;
+        }
+        looks += 1;
+        if let Some(d) = here.filter(|d| looks == SETTLED_LOOKS && Some(*d) != on()) {
+            set_on(d);
+            use tauri::Emitter;
+            let _ = app.emit_to(LABEL, "mini-place", ());
+        }
+    }
+}
+
+/// The display a point is on (all in points, from the main display's top left).
+fn display_at(all: &[(f64, f64, f64, f64)], (px, py): (f64, f64)) -> Option<(f64, f64, f64, f64)> {
+    all.iter().copied().find(|&(x, y, w, h)| px >= x && px < x + w && py >= y && py < y + h)
+}
+
+fn on() -> Option<(f64, f64, f64, f64)> {
+    let v: Vec<f64> = ON.iter().map(|a| f64::from_bits(a.load(Ordering::SeqCst))).collect();
+    (v[2] > 0.0).then_some((v[0], v[1], v[2], v[3]))
+}
+
+fn set_on((x, y, w, h): (f64, f64, f64, f64)) {
+    for (a, v) in ON.iter().zip([x, y, w, h]) {
+        a.store(v.to_bits(), Ordering::SeqCst);
     }
 }
 
@@ -105,14 +162,15 @@ fn points(m: &tauri::Monitor) -> (f64, f64, f64, f64) {
 }
 
 /// The display the mini window goes on: the notch's island on the main display (the built-in one, with the
-/// notch); the rail on the display Cue's own window is on (where you look for Cue), else the main display.
+/// notch); the rail on the display your pointer settled on last (`follow`), until then the one Cue's own window
+/// is on, else the main display.
 fn screen(app: &AppHandle, w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64, f64, f64, f64)> {
     let main = w.primary_monitor().ok().flatten().map(|m| points(&m));
     if mode == Mode::Notch {
         return main;
     }
     let cue = app.get_webview_window("main").and_then(|m| m.current_monitor().ok().flatten()).map(|m| points(&m));
-    cue.or(main)
+    on().or(cue).or(main)
 }
 
 /// Room kept free above and below the rail's panels: the menu bar, then a margin.
@@ -257,6 +315,17 @@ mod tests {
         let key_fn = mac.split("pub(super) fn key(").nth(1).unwrap().split("\n}\n").next().unwrap();
         assert_eq!(code(mac).matches("makeKeyAndOrderFront").count(), 1);
         assert!(key_fn.contains("makeKeyAndOrderFront"), "only `key` makes it the key window");
+    }
+
+    #[test]
+    fn the_pointer_is_found_on_its_display() {
+        let built_in = (0.0, 0.0, 1800.0, 1125.0);
+        let external = (1800.0, -567.0, 3008.0, 1692.0);
+        let all = [built_in, external];
+        assert_eq!(display_at(&all, (900.0, 500.0)), Some(built_in));
+        assert_eq!(display_at(&all, (3000.0, 100.0)), Some(external));
+        assert_eq!(display_at(&all, (3000.0, -400.0)), Some(external), "above the built-in one");
+        assert_eq!(display_at(&all, (-10.0, 10.0)), None);
     }
 
     #[test]
