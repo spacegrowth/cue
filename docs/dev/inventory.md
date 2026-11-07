@@ -14,7 +14,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 136 (3 sync) |
+| `#[tauri::command]` | 139 (3 sync) |
 | Lock declarations (static or field) | 92 |
 | Lock acquisitions | 212 |
 | Lock-graph edges | 45 |
@@ -166,6 +166,9 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `term_close` | async | `ipc/terminal.rs::term_close` | ipc::blocking |
 | `update_check` | async | `ipc/updates.rs::update_check` | — |
 | `update_install` | async | `ipc/updates.rs::update_install` | — |
+| `mini_shape` | async | `mini/mod.rs::mini_shape` | — |
+| `mini_key` | async | `mini/mod.rs::mini_key` | — |
+| `mini_open_in_cue` | async | `mini/mod.rs::mini_open_in_cue` | — |
 
 ## Locks
 

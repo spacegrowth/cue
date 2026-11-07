@@ -17,6 +17,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("notify.sound", json!("glass")),
         same("pi.gate", json!("all")),
         same("appearance.mode", json!("dark")),
+        same("mini.mode", json!("rail")),
         same("appearance.zoom", json!(1.15)),
         same("appearance.project", json!(true)),
         ("context.keep", json!(99), json!(50)),
@@ -96,7 +97,7 @@ fn a_wrong_value_is_refused_and_nothing_is_written() {
     config_file(&w, r#"{"mine": {"kept": true}}"#);
     let before = std::fs::read_to_string(w.home().join("config.json")).unwrap();
     for (key, bad) in [
-        ("history.keep", json!("lots")), ("pi.gate", json!("sometimes")), ("appearance.mode", json!(1)),
+        ("history.keep", json!("lots")), ("pi.gate", json!("sometimes")), ("appearance.mode", json!(1)), ("mini.mode", json!("left")),
         ("appearance.zoom", json!(2.0)), ("notify.sound", json!("klaxon")), ("context.keep", json!(-1)),
         ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 12})),
         ("project.hue", json!({"h": 400, "k": 0.5})), ("project.folders", json!({"relative/dir": "x"})),
@@ -224,4 +225,14 @@ fn insights_hidden_for_a_day_come_back_when_the_day_is_over() {
     assert_eq!(ahead(), false, "a moment before it's over");
     w.advance(1);
     assert_eq!(ahead(), true, "back once it is");
+}
+
+/// The mini window's setting reaches the window as saved (Settings shows the shape you picked), off by default.
+#[test]
+fn the_mini_window_setting_reaches_the_window() {
+    let w = World::new();
+    assert_eq!(crate::config::effective()["mini"]["mode"], json!("off"));
+    crate::config::set("mini.mode", json!("notch")).unwrap();
+    assert_eq!(crate::config::effective()["mini"]["mode"], json!("notch"));
+    drop(w);
 }
