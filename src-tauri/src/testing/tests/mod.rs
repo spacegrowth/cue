@@ -1,10 +1,12 @@
 //! Integration cases over the World (stability plan §4), by area.
 
 mod asks;
+mod asks_closing;
 mod asks_edges;
 mod caches;
 mod db_faults;
 mod db_history;
+mod db_open;
 mod handoffs;
 mod insights;
 mod machine_stream;
@@ -14,6 +16,7 @@ mod parking;
 mod redraw;
 mod relaunch;
 mod relay_edges;
+mod reply_saves;
 mod reviews;
 mod sessions;
 mod sessions_edges;

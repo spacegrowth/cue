@@ -228,14 +228,22 @@ impl Hub {
             let pos = st.items.iter().position(|i| i.id == id)?;
             let it = st.items.remove(pos);
             // An answered permission or question means the agent is back at work, unless another of its asks
-            // still waits on you (two tool calls asked at once). A command's dialog answered at its prompt
-            // starts no turn (no Stop would ever come): back to its prompt.
-            if it.kind != "waiting" && status != "gone" {
-                let still_asking = st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == it.origin.session_id);
-                if !still_asking {
+            // still waits on you (two tool calls asked at once): then once the last of them closes, answered or
+            // gone. A command's dialog answered at its prompt starts no turn (no Stop would ever come): back to
+            // its prompt.
+            if it.kind != "waiting" {
+                let sid = it.origin.session_id.clone();
+                let still_asking = st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid);
+                let answered = status != "gone";
+                if answered && still_asking {
+                    st.answered_meanwhile.insert(sid.clone());
+                }
+                if !still_asking && (st.answered_meanwhile.remove(&sid) || answered) {
                     st.sessions.mark(&it.origin, if it.at_prompt { "waiting" } else { "working" }, None);
                 }
-                st.sessions.note_decision(&it.origin.session_id, outcome, crate::config::context_keep());
+                if answered {
+                    st.sessions.note_decision(&sid, outcome, crate::config::context_keep());
+                }
             }
             Some(filed(st, it, status, outcome))
         });

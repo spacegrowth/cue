@@ -82,7 +82,12 @@ pub(super) enum File {
 
 /// The file, read from disk.
 pub(super) fn read(path: &Path) -> File {
-    let Ok(text) = std::fs::read_to_string(path) else { return File::Missing };
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return File::Missing,
+        // There, but not readable as text (a byte that isn't UTF-8, no permission): not "no settings".
+        Err(e) => return File::Unreadable(e.to_string()),
+    };
     match serde_json::from_str::<Value>(&text) {
         Ok(v) if v.is_object() => File::Settings(v),
         Ok(_) => File::Unreadable("it isn't a JSON object".into()),
