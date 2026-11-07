@@ -57,7 +57,8 @@ struct Store {
     sessions: crate::sessions::Sessions,
     /// Sessions you parked (stopped, kept to resume), the latest parked first.
     parked: Vec<crate::sessions::Parked>,
-    /// Cards with a notification in Notification Center — taken back once the card is gone.
+    /// Cards with a notification in Notification Center — taken back once the card is gone. Only cards: other
+    /// notifications (notify_about) are taken back by whoever posted them.
     notified: HashSet<String>,
     /// Sessions that take replies directly (Pi's extension): session id → (connection number, channel).
     subscribers: HashMap<String, (u64, tokio::sync::mpsc::UnboundedSender<Value>)>,
@@ -160,7 +161,8 @@ pub struct Hub {
 
 impl Hub {
     pub fn new(app: Option<AppHandle>) -> Self {
-        Self::with_ports(app, ports::Ports::real())
+        let ports = ports::Ports::real(app.as_ref());
+        Self::with_ports(app, ports)
     }
 
     pub(crate) fn with_ports(app: Option<AppHandle>, ports: ports::Ports) -> Self {
@@ -466,33 +468,31 @@ impl Hub {
         self.shown.forget(seq);
     }
 
-    /// `category`: "turn" puts Reply and the quick phrases on it; "turn-full" adds Compact.
+    /// A card's notification (`id`: the card's), taken back once the card is gone (redraw.rs). `category`:
+    /// "turn" puts Reply and the quick phrases on it; "turn-full" adds Compact.
     fn notify(&self, id: &str, title: &str, body: &str, category: &str) {
-        self.notify_with(id, title, body, category, false);
+        self.notify_card(id, title, body, category, false, true);
     }
 
     /// A turn you asked to be told about ("Tell me"): shown even with Cue in front, with its own sound.
     fn notify_watched(&self, id: &str, title: &str, body: &str, category: &str) {
-        self.notify_with(id, title, body, category, true);
+        self.notify_card(id, title, body, category, true, true);
     }
 
     /// Never muted by notify::quiet (a cache about to run out isn't something voice tells you).
     pub(super) fn notify_unmuted(&self, id: &str, title: &str, body: &str, category: &str) {
-        self.notify_full(id, title, body, category, false, false);
+        self.notify_card(id, title, body, category, false, false);
     }
 
-    fn notify_with(&self, id: &str, title: &str, body: &str, category: &str, watched: bool) {
-        self.notify_full(id, title, body, category, watched, true);
+    /// A notification about something that isn't a card (a session gone quiet, a failed task, a usage limit),
+    /// under `key`: never taken back with the cards; whoever posted it takes it back when that's over.
+    pub(super) fn notify_about(&self, key: &str, title: &str, body: &str) {
+        self.ports.notes.show(crate::notify::Note { id: key.to_string(), title: title.to_string(), body: body.to_string(), category: String::new(), watched: false });
     }
 
     /// Notification Center's part (is Cue in front, the post itself) runs on its own thread (notify::show):
     /// here only the checks against the store.
-    fn notify_full(&self, id: &str, title: &str, body: &str, category: &str, watched: bool, mutable: bool) {
-        let Some(app) = &self.app else { return };
-        // Test instances run with CUE_QUIET=1 so they never ping you.
-        if std::env::var_os("CUE_QUIET").is_some() {
-            return;
-        }
+    fn notify_card(&self, id: &str, title: &str, body: &str, category: &str, watched: bool, mutable: bool) {
         // A finished turn of a session something else is telling you about already (notify::quiet): not twice.
         // Anything that needs you (a permission, a question) and a turn you asked to be told about still come.
         if mutable && !watched && category.starts_with("turn") {
@@ -502,11 +502,11 @@ impl Hub {
             }
         }
         let note = crate::notify::Note { id: id.to_string(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
-        // Noted as notified with the post handed in, under one lock: `changed` either sees neither, or sees it
+        // Noted as notified with the post handed in, under one lock: a draw either sees neither, or sees it
         // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
         self.write(|st| {
             st.notified.insert(note.id.clone());
-            crate::notify::show(app.clone(), note);
+            self.ports.notes.show(note);
         });
     }
 }

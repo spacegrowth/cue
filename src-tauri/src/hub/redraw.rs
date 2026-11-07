@@ -98,19 +98,23 @@ impl Hub {
         self.redraws.draws.fetch_add(1, Ordering::SeqCst);
         self.save_live();
         // No window (the World's hub): nothing to send, and the next ask builds the state.
-        let Some(app) = &self.app else { return self.unshown() };
-        let _ = app.emit("state", &*self.snapshot());
+        match &self.app {
+            Some(app) => drop(app.emit("state", &*self.snapshot())),
+            None => self.unshown(),
+        }
         let (decisions, answered) = self.write(|st| {
             let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
-            // Answered anywhere (Cue, the terminal): take the notification back.
+            // A card answered anywhere (Cue, the terminal): its notification taken back.
             let answered: Vec<String> = st.notified.difference(&live).cloned().collect();
             for id in &answered {
                 st.notified.remove(id);
             }
             (st.items.iter().filter(|i| i.kind != "waiting").count(), answered)
         });
-        crate::notify::take_back(answered);
-        if let Some(w) = app.get_webview_window("main") {
+        if !answered.is_empty() {
+            self.ports.notes.take_back(answered);
+        }
+        if let Some(w) = self.app.as_ref().and_then(|a| a.get_webview_window("main")) {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
         }
     }

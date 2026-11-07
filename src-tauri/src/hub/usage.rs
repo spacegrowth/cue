@@ -48,7 +48,7 @@ impl Hub {
         } else {
             (format!("{} is used up{when}", limit.scope), "Other models still work: switch with /model.".to_string())
         };
-        self.notify("usage", &title, &body, "");
+        self.notify_about("usage", &title, &body);
     }
 
     /// A Claude Code turn finished normally, so the plan's limit is behind us: every session that
@@ -191,7 +191,7 @@ impl Hub {
         for (scope, n) in back {
             let who = if scope == "all" { "Claude Code".to_string() } else { scope };
             let paused = if n == 1 { "1 session didn't run: resend it from Cue.".to_string() } else { format!("{n} sessions didn't run: resend them from Cue.") };
-            self.notify("usage", &format!("{who} is back"), &paused, "");
+            self.notify_about("usage", &format!("{who} is back"), &paused);
         }
     }
 }

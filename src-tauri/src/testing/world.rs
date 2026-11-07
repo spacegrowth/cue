@@ -2,7 +2,7 @@
 //! follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
 //! agent index are process-wide): it holds the database's and the index's test locks for its life.
 
-use super::{Agent, Deferred, FakeTerminal, Snap};
+use super::{Agent, Deferred, FakeNotes, FakeTerminal, Snap};
 use crate::clock::fake::Fake;
 use crate::hub::ports::{Later, Ports};
 use crate::hub::Hub;
@@ -64,6 +64,7 @@ impl Client {
 pub struct World {
     client: Client,
     pub terminal: Arc<FakeTerminal>,
+    pub notes: Arc<FakeNotes>,
     later: Arc<Deferred>,
     home: PathBuf,
     // Dropped last, after `Drop` has put things back: the index's turn, then the database's.
@@ -96,9 +97,9 @@ impl World {
         crate::live::set_claude(vec![]);
         crate::leads::install_index(Default::default());
         clock.install();
-        let (terminal, later) = (Arc::new(FakeTerminal::default()), Arc::new(Deferred::default()));
-        let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), later: Later::Deferred(later.clone()) }));
-        let w = Self { client: Client { hub, clock }, terminal, later, home, _index: index, _db: db };
+        let (terminal, notes, later) = (Arc::new(FakeTerminal::default()), Arc::new(FakeNotes::default()), Arc::new(Deferred::default()));
+        let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), notes: notes.clone(), later: Later::Deferred(later.clone()) }));
+        let w = Self { client: Client { hub, clock }, terminal, notes, later, home, _index: index, _db: db };
         w.agents_take_what_is_typed();
         w
     }

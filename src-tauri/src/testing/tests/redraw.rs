@@ -30,3 +30,17 @@ fn a_change_after_a_draw_is_drawn_again() {
     assert_eq!(w.hub().draws() - before, 2, "each settled change drawn once");
     assert_eq!(w.snapshot().state("p"), "waiting");
 }
+
+/// A notification about something that isn't a card (a usage limit, a session gone quiet) stays up through
+/// the draw that follows it; a card's goes once the card does.
+#[test]
+fn a_draw_takes_back_only_answered_cards_notifications() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("do it all");
+    a.failed("rate_limit", "You've hit your session limit · resets 4:10am (America/Los_Angeles)");
+    assert_eq!(w.notes.shown(), ["usage"]);
+    let ask = w.session("b").prompt("clean").ask_permission("Bash", json!({"command": "rm -rf build"}));
+    w.answer(&ask.id, json!({"behavior": "allow"}));
+    assert_eq!(w.notes.taken_back(), [ask.id.clone()], "the answered card's, and nothing else");
+}
