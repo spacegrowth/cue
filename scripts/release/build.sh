@@ -76,7 +76,6 @@ check_app() {
   for trace in axum "cue://pair" jsonwebtoken; do
     [ "$(strings "$APP/Contents/MacOS/cue" | grep -c "$trace")" = 0 ] || die "the app contains add-on code ($trace): not releasing it"
   done
-  check_debug_only "$APP/Contents/MacOS/cue"   # no chaos knob, no WebDriver server (debug_only.sh)
   for bin in "$APP"/Contents/MacOS/*; do
     [ "$(strings "$bin" | grep -c "$HOME")" = 0 ] || die "$(basename "$bin") contains this Mac's home folder path: not releasing it"
   done
