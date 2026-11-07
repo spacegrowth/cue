@@ -199,14 +199,15 @@ fn send_event(p: &Value, harness: &str, event: &str, message: &str, turn: Option
 }
 
 fn send_failure(p: &Value, harness: &str) -> Option<()> {
-    let mut s = connect(Duration::from_millis(500))?;
-    let mut msg = origin(p, harness);
     let details = s_or(p, "error_details", "last_assistant_message");
+    let kind = Some(s(p, "error_type")).filter(|k| !k.trim().is_empty()).unwrap_or_else(|| "error".into());
+    let mut sock = connect(Duration::from_millis(500))?;
+    let mut msg = origin(p, harness);
     msg.insert("type".into(), json!("event"));
     msg.insert("event".into(), json!("failed"));
     msg.insert("message".into(), json!(details));
-    msg.insert("error_type".into(), json!(s_or(p, "error_type", "error")));
-    s.write_all(format!("{}\n", Value::Object(msg)).as_bytes()).ok()
+    msg.insert("error_type".into(), json!(kind));
+    sock.write_all(format!("{}\n", Value::Object(msg)).as_bytes()).ok()
 }
 
 fn s_or(p: &Value, a: &str, b: &str) -> String {
