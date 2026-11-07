@@ -92,3 +92,28 @@ when it wakes.
 
 A lock with a long tail (its `<500ms`/`<1000ms` buckets filling) is the next thing to fix before it crosses
 the line; the run's JSON has every sample for a closer look.
+
+The page also says who held each lock longest (`longest holds`: every hold of a millisecond or more is counted
+by the line that took the lock, `locking::stats`), and, for the e2e run, what the window's main thread spent
+its time on (`setState`, drawing, the built-in terminal's opening and closing, each timed in the page). A wait
+in the lock table is explained by a hold in the second; a late answer from the window by what its thread did.
+
+## The window's state: what keeps it bounded
+
+The state is built on every change and sent to the window up to five times a second, so its size must not
+depend on how long Cue has run. The first ten-minute soak found it growing from 16 KB to 2.1 MB (History's
+cards with their conversations, every answer of the day, every session's bar), built and serialised under the
+store's lock (waits of 1.9 s), and the window taking seconds to take it in. What keeps it bounded now:
+
+- **History's rows are brief** (hub/kept_history.rs): what a row shows (who, a line of what it wanted, what you
+  did, when), made once as each card is answered and shared, never copied under the lock. A row opened, in
+  History or in Active from Recently answered, asks for its card in full (`history_item`; ui/core.js
+  `fullItem`). Its size goes with Settings → History's count, not with the run.
+- **Today's numbers, not today's answers** (hub/today.rs): the line atop Insights is worked out by Cue; the
+  answers themselves (which grow all day) never ride along.
+- **A session's bar is at most a stretch per slot** (sessions/bar.rs): stretches shorter than the bar can draw
+  (0.6 % of its 30 minutes) are gathered, one per slot, as the kind that held most of it.
+- **Nothing heavy under the store's lock**: the store's part is copied out (`StoreParts`) and written out as JSON
+  with the lock let go.
+- **Saves off the path**: a draw hands what it took to one database writer (hub/live_writes.rs) and goes on;
+  the writer writes only the sessions that changed since its last save, and an answered card rides with it.

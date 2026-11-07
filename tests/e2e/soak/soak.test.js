@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { waitFor } from "../lib/poll.js";
 import { tell } from "../lib/socket.js";
 import { World } from "../lib/world.js";
-import { agent, bursts, makeSession, mainThread, poller, terminals, timeDraws, typist } from "./load.js";
+import { agent, bursts, makeSession, mainThread, poller, terminals, timePage, typist } from "./load.js";
 import { Tally } from "./tally.js";
 
 const MINUTES = Number(process.env.CUE_SOAK_MINUTES || 10);
@@ -73,7 +73,7 @@ test(`e2e soak: ${SESSIONS} sessions for ${MINUTES} min`, { timeout: (MINUTES + 
   let kept = true;
   try {
     await world.launch(chaos());
-    await timeDraws(world.ui);
+    await timePage(world.ui);
     const soak = new Soak(world, Date.now() + MINUTES * 60_000);
     const sessions = Array.from({ length: SESSIONS }, (_, n) => makeSession(soak, n));
     const guard = (what, work) => work.catch((e) => soak.tally.errors.push(`${what}: ${e.message.split("\n")[0]}`));

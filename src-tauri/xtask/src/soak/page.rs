@@ -66,10 +66,15 @@ fn answers(out: &mut String, r: &Run) {
     }
 }
 
-/// How long the window took to take in each state it was sent (the e2e run times it in the page).
+/// How long the window took to take in each state it was sent, and what else its main thread spent time on
+/// (the e2e run times these in the page).
 fn draws(out: &mut String, r: &Run) {
     if r.0.get("draws_ms").is_some() {
         let _ = writeln!(out, "  the window taking in a state (setState, its draw included): {}", spread(&r.samples("/draws_ms")));
+    }
+    let Some(page) = r.0.get("page_ms").and_then(Value::as_object) else { return };
+    for name in page.keys().filter(|k| *k != "setState") {
+        let _ = writeln!(out, "    in the page, {name}: {}", spread(&r.samples(&format!("/page_ms/{name}"))));
     }
 }
 
@@ -157,11 +162,11 @@ mod tests {
     fn the_page_shows_each_run_and_the_verdict() {
         let r = Run(json!({"run": "rust", "seconds": 600, "sessions": 40, "chaos": {"CUE_CHAOS_TMUX_DELAY_MS": 200}, "answer_what": "list over the socket",
             "answer_ms": [1, 2, 3, 900], "events": {"sent": 6000, "failed": 0}, "probe": {"locks": {"store": {"waits": 3, "max_ms": 12.5, "spread": {"<50ms": 3}}}},
-            "memory": [[0, 40e6], [600, 45e6]], "draws_ms": [20, 40]}));
+            "memory": [[0, 40e6], [600, 45e6]], "draws_ms": [20, 40], "page_ms": {"setState": [20, 40], "openTerm": [150]}}));
         let mut r = r;
         r.0["probe"]["holds"] = json!([{"lock": "the hub's store", "at": "hub/mod.rs:379", "holds": 7, "max_ms": 42.0, "total_ms": 90.0}]);
         let p = page(&[r]);
-        for part in ["== rust soak: 10.0 min, 40 sessions, chaos: TMUX_DELAY_MS=200 — FAIL", "list over the socket: n=4 p50 3.0 ms", "hook events 10.0", "store", "<50ms:3", "memory (MB): 0:00 40.0", "Verdict: FAIL", "setState, its draw included): n=2", "hub/mod.rs:379", "max     42.0 ms"] {
+        for part in ["== rust soak: 10.0 min, 40 sessions, chaos: TMUX_DELAY_MS=200 — FAIL", "list over the socket: n=4 p50 3.0 ms", "hook events 10.0", "store", "<50ms:3", "memory (MB): 0:00 40.0", "Verdict: FAIL", "setState, its draw included): n=2", "in the page, openTerm: n=1", "hub/mod.rs:379", "max     42.0 ms"] {
             assert!(p.contains(part), "{part} in:\n{p}");
         }
     }

@@ -90,25 +90,34 @@ export async function typist(soak, sessions, n) {
   }
 }
 
-/** The window's own time to take in each state it's sent (setState, its draw included), counted in the page:
- *  setState wrapped once, each call's time kept in the page until `drainDraws` takes them. */
-export function timeDraws(ui) {
-  return ui.runDirect(() => {
-    const kept = (window.__soakDraws = []);
-    const take = setState;
-    setState = (s) => { const t = performance.now(); try { take(s); } finally { kept.push(performance.now() - t); } };
+/** What the window's main thread spends its time on, counted in the page: each call of the functions named
+ *  (taking in a state, drawing, the built-in terminal's opening, placing, closing and writing) wrapped once,
+ *  its time kept by name until `drainPage` takes them. (Not a timer's lateness: the soak's window is hidden,
+ *  and WebKit throttles a hidden page's timers by seconds whatever the thread is doing.) */
+export const TIMED = ["setState", "renderMain", "openTerm", "closeTerm", "flushTerm", "placeTerm", "xterm", "onTermOutput"];
+export function timePage(ui) {
+  return ui.runDirect((names) => {
+    const kept = (window.__soakTimes = {});
+    for (const name of names) {
+      const fn = window[name];
+      kept[name] = [];
+      window[name] = function (...args) {
+        const t = performance.now();
+        try { return fn.apply(this, args); } finally { kept[name].push(performance.now() - t); }
+      };
+    }
     return "timed";
-  });
+  }, TIMED);
 }
 
-/** The draws counted since the last time, taken out of the page (a plain list of numbers). */
-async function drainDraws(soak) {
-  const ms = await soak.world.ui.runDirect(() => (window.__soakDraws || []).splice(0).map(Number));
-  soak.tally.drawsMs.push(...ms);
+/** The times counted since the last look, taken out of the page (plain lists of numbers, by name). */
+async function drainPage(soak) {
+  const got = await soak.world.ui.runDirect(() => Object.fromEntries(Object.entries(window.__soakTimes || {}).map(([k, v]) => [k, v.splice(0).map(Number)])));
+  for (const [name, ms] of Object.entries(got || {})) (soak.tally.pageMs[name] ||= []).push(...ms);
 }
 
 /** The window's poll of Cue's state, five times a second, timed; memory, the state's size and the window's
- *  draws every 10 s. */
+ *  main thread's times every 10 s. */
 export async function poller(soak) {
   let sampled = -Infinity;
   while (soak.going()) {
@@ -120,7 +129,7 @@ export async function poller(soak) {
       if (performance.now() - sampled >= 10_000) {
         const probe = await call(soak.world.sock, { type: "probe" });
         soak.tally.sample(probe.resident_bytes, JSON.stringify(state).length + 1);
-        await drainDraws(soak);
+        await drainPage(soak);
         sampled = performance.now();
       }
     } else soak.tally.counts.eventsFailed++;
