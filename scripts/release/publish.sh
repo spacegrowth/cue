@@ -3,11 +3,6 @@
 # latest stable release. Every release also carries its own update.json, which a promote copies from.
 # latest-beta.json is never older than latest.json: a beta user always gets stable releases too.
 
-# The latest stable release's tag.
-latest_stable_tag() {
-  gh release view --repo "$REPO" --json tagName --jq .tagName
-}
-
 # The beta file as published now, into folder $1. Only "no such asset" (before the first beta) leaves it empty:
 # any other failure stops the release, since reading it as missing could put an older beta file in its place.
 fetch_beta_file() {

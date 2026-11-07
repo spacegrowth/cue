@@ -25,7 +25,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-for part in common args gates ship_day record build publish; do
+for part in common args preflight gates record build publish; do
   # shellcheck disable=SC1090
   . "$ROOT/scripts/release/$part.sh"
 done
@@ -35,6 +35,7 @@ parse_args "$@"
 [ -f .release.env ] && . ./.release.env
 
 if [ "$PROMOTE" = 1 ]; then
+  run_preflight
   promote
   exit 0
 fi
@@ -43,7 +44,7 @@ fi
 if [ "$DRY_RUN" = 1 ]; then DIST="$ROOT/dist/dry-run-v$VERSION"; else DIST="$ROOT/dist/v$VERSION"; fi
 rm -rf "$DIST"; mkdir -p "$DIST"
 
-check_ship_day
+run_preflight
 [ "$DRY_RUN" = 1 ] || signing_prerequisites   # before the gates, so a missing key doesn't wait out a soak
 run_gates "$DIST/gates"
 write_record "$DIST/release-record.txt"

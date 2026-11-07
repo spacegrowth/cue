@@ -37,7 +37,7 @@ case "$name $1 $2" in
     if [ -n "${STUB_SHIPPED_TODAY:-}" ]; then echo "[{\"tagName\":\"$STUB_SHIPPED_TODAY\",\"publishedAt\":\"$now\"}]"
     else echo '[{"tagName":"v0.1.80","publishedAt":"2026-01-02T03:04:05Z"}]'; fi ;;
   "gh release view")
-    case "$*" in *isPrerelease*) echo true ;; *) echo v0.1.86 ;; esac ;;
+    case "$*" in *isPrerelease*) echo true ;; *) echo "${STUB_STABLE_TAG:-v0.1.86}" ;; esac ;;
   "gh release download")
     dir="$(printf '%s\n' "$@" | sed -n '/^--dir$/{n;p;}')"
     case "$*" in
@@ -88,7 +88,7 @@ STUB
 start() {
   CASE="$1"; CASE_FAILED=0
   unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
-    STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION
+    STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION STUB_STABLE_TAG
   REPO="$(make_repo)"
   export CALLS="$WORK/calls"; : >"$CALLS"
 }
@@ -217,6 +217,22 @@ start "a promote whose update file is another version's is refused"
 export STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z STUB_BETA_VERSION=0.1.9
 release --promote 0.2.0 --dry-run
 refused; says "offers another version"
+done_case
+
+start "a stable or beta release must come after the stable one"
+export STUB_STABLE_TAG=v0.2.0
+release 0.2.0 "Notes." --publish --dry-run
+refused; says "0.2.0 isn't newer than the stable release (v0.2.0)"; not_called "tests/run.sh"
+release 0.1.99 "Notes." --beta --dry-run
+refused; says "0.1.99 isn't newer than the stable release (v0.2.0)"
+release 0.10.0 "Notes." --beta --dry-run
+passed
+done_case
+
+start "a promote never takes stable back"
+export STUB_STABLE_TAG=v0.3.0 STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z
+release --promote 0.2.0 --dry-run
+refused; says "0.2.0 isn't newer than the stable release (v0.3.0)"; not_called "gh release upload"
 done_case
 
 start "a real build reaches signing and the build only through the stand-ins"

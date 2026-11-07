@@ -6,6 +6,7 @@ update.json is one build's signed update, kept on its own release; latest.json (
   channel.py entry <version> <notes> <signature> <url> <out>   write a build's update.json
   channel.py version <file>                                     the version a file offers
   channel.py newer <a> <b>                                      print the newer of two files (b may be missing)
+  channel.py is-newer <version> <version>                       succeeds when the first comes after the second
   channel.py age-hours <file>                                   whole hours since the file's build was published
   channel.py shipped-today                                      from `gh release list --json tagName,publishedAt`
                                                                 on stdin: the release tags published today, here
@@ -31,7 +32,11 @@ def read(path):
 
 
 def version_key(v):
-    return tuple(int(n) for n in v.split("."))
+    return tuple(int(n) for n in v.lstrip("v").split("."))
+
+
+def is_newer(a, b):
+    sys.exit(0 if version_key(a) > version_key(b) else 1)
 
 
 def newer(a, b):
@@ -64,6 +69,7 @@ def main(args):
         "entry": (5, entry),
         "version": (1, lambda p: print(read(p)["version"])),
         "newer": (2, newer),
+        "is-newer": (2, is_newer),
         "age-hours": (1, age_hours),
         "shipped-today": (0, shipped_today),
     }

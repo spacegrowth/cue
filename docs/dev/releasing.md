@@ -1,7 +1,7 @@
 # Releasing Cue
 
 `scripts/release.sh` builds, signs, notarizes and (when asked) publishes a release. It refuses to build
-until every gate below passes. The script's parts are in `scripts/release/` (`gates.sh`, `ship_day.sh`,
+until every gate below passes. The script's parts are in `scripts/release/` (`preflight.sh`, `gates.sh`,
 `build.sh`, `publish.sh`, `record.sh`, `channel.py`), and their tests are `tests/release/gates.test.sh`,
 which `tests/run.sh unit` runs.
 
@@ -34,7 +34,9 @@ Run in this order. The first one that fails stops the release, and its log is in
 6. **soak 10 min:** `tests/run.sh soak 10`. Until the soak harness lands, that prints "soak: not yet" and
    succeeds; the gate counts that as a failure.
 
-Before the gates, a run that publishes checks the one-ship rule (below). A real run (not a dry run) also
+Before the gates, a run that ships (`--publish`, `--beta`, `--promote`) checks that its version comes after
+the latest stable release (stable never goes back, and a beta older than stable would never be offered) and
+the one-ship rule (below). A real run (not a dry run) also
 checks the signing key, the update key and notarytool before the gates, so a missing key doesn't wait
 out a soak.
 
