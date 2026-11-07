@@ -163,13 +163,31 @@ fn sort_keys(v: &mut Value) {
     }
 }
 
+/// How long a scenario's agents take to answer: a card comes back a while after your message, as it does.
+const THINKS_MS: u64 = 20_000;
+
+/// The World `build` makes, its agents thinking THINKS_MS before each answer, and ending at AT_MS: it's built once
+/// to see how long it takes, then again from that long before AT_MS.
+fn scene(build: fn(&World)) -> World {
+    let took = {
+        let w = World::at(AT_MS);
+        w.agents_think(THINKS_MS);
+        build(&w);
+        crate::clock::now_ms() - AT_MS
+    };
+    let w = World::at(AT_MS - took);
+    w.agents_think(THINKS_MS);
+    build(&w);
+    assert_eq!(crate::clock::now_ms(), AT_MS, "the same scenario takes the same time");
+    w
+}
+
 #[test]
 #[ignore = "writes tests/ui/scenarios/world-*.json: run on demand"]
 fn write_ui_scenarios() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/ui/scenarios");
     for (name, build) in SCENARIOS {
-        let w = World::at(AT_MS);
-        build(&w);
+        let w = scene(*build);
         let mut state = w.snapshot().0;
         pin_machine_facts(&mut state);
         in_a_fixed_order(&mut state);

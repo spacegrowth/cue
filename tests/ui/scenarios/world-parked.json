@@ -65,7 +65,7 @@
       "cwd": "/work/backtester",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400001",
+      "id": "n1793984380001",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -83,7 +83,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Try the slower fill model"
         }
@@ -121,7 +121,7 @@
         {
           "end_ms": 1793984400000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         },
         {
           "end_ms": null,
@@ -135,12 +135,12 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Try the slower fill model"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984400000,
           "role": "agent",
           "text": "Done; it's 3% worse."
         }

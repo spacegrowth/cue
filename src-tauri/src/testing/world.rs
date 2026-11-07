@@ -67,6 +67,8 @@ pub struct World {
     pub notes: Arc<FakeNotes>,
     later: Arc<Deferred>,
     home: PathBuf,
+    /// How long an agent takes to answer, by this World's clock (`agents_think`): 0 unless said.
+    thinking_ms: std::cell::Cell<u64>,
     // Dropped last, after `Drop` has put things back: the index's turn, then the database's.
     _index: std::sync::MutexGuard<'static, ()>,
     _db: std::sync::MutexGuard<'static, ()>,
@@ -99,7 +101,7 @@ impl World {
         clock.install();
         let (terminal, notes, later) = (Arc::new(FakeTerminal::default()), Arc::new(FakeNotes::default()), Arc::new(Deferred::default()));
         let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), notes: notes.clone(), later: Later::Deferred(later.clone()) }));
-        let w = Self { client: Client { hub, clock }, terminal, notes, later, home, _index: index, _db: db };
+        let w = Self { client: Client { hub, clock }, terminal, notes, later, home, thinking_ms: Default::default(), _index: index, _db: db };
         w.agents_take_what_is_typed();
         w
     }
@@ -116,6 +118,20 @@ impl World {
         self.client.hub = Arc::new(Hub::with_ports(None, ports));
         self.later = later;
         self.agents_take_what_is_typed();
+    }
+
+    /// Agents take `ms` to answer from here on: each reply, ask or error an Agent reports comes that long after
+    /// what came before it, as a person sees them (the UI fixtures: a card "answered 40s after you", not 0s).
+    pub fn agents_think(&self, ms: u64) {
+        self.thinking_ms.set(ms);
+    }
+
+    /// An agent about to answer: the time it takes passes first.
+    pub(super) fn agent_thinks(&self) {
+        let ms = self.thinking_ms.get();
+        if ms > 0 {
+            self.advance(ms);
+        }
     }
 
     /// Typed into a session whose agent takes it, its prompt hook fires: an "active" event, as Claude

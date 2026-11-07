@@ -85,6 +85,11 @@ impl<'w> Agent<'w> {
         msg
     }
 
+    /// What the agent says next comes as long after as it takes to think (World::agents_think).
+    fn answer_after_thinking(&self) {
+        self.world.agent_thinks();
+    }
+
     fn event(&self, event: &str, fields: Value) -> &Self {
         let mut f = fields;
         f["type"] = json!("event");
@@ -114,11 +119,13 @@ impl<'w> Agent<'w> {
 
     /// Its Stop hook: the turn ended with `reply`.
     pub fn stop(&self, reply: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("stopped", json!({"message": reply}))
     }
 
     /// Its Stop hook, the session driven by another agent (`by`, CUE_DRIVEN_BY).
     pub fn stop_driven(&self, reply: &str, by: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("stopped", json!({"message": reply, "driven_by": by}))
     }
 
@@ -138,11 +145,13 @@ impl<'w> Agent<'w> {
 
     /// Its StopFailure hook: the turn ended on an API error.
     pub fn failed(&self, error_type: &str, details: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("failed", json!({"error_type": error_type, "message": details}))
     }
 
     /// A permission prompt showing in its terminal that never reached Cue.
     pub fn terminal_ask(&self, message: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("terminal_ask", json!({"message": message}))
     }
 
@@ -170,6 +179,7 @@ impl<'w> Agent<'w> {
     }
 
     fn open_ask(&self, fields: Value) -> Ask {
+        self.answer_after_thinking();
         match self.world.drive(self.message(fields)) {
             Outcome::Asked { id, answer } => Ask { id, answer: Mutex::new(answer) },
             _ => panic!("an ask's connection stays open for its answer"),

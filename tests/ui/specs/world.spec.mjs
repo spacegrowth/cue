@@ -4,9 +4,10 @@
 import { test, expect } from "./cue.mjs";
 import { layoutProblems, LINE, NARROWEST } from "./layout.mjs";
 
-/** The card id every one-card world gives its card (the World's frozen clock, plus one). */
-const ONLY = "n1793984400001";
 const card = (page, id) => page.locator(`.nrow[data-big="${id}"]`);
+/** The id of a one-card world's card. */
+const onlyCard = async (page) => page.locator(".nrow[data-big]").getAttribute("data-big");
+let ONLY;
 
 test("with no sessions the board says nothing waits and lists nothing", async ({ cue, page }) => {
   await cue.open("world-empty");
@@ -19,6 +20,11 @@ test.describe("one ask, answered by its keys", () => {
   test.beforeEach(async ({ cue, page }) => {
     await cue.open("world-one-ask");
     await expect(page.locator(".active-pane")).toContainText("rm -rf build && cargo build");
+    ONLY = await onlyCard(page);
+  });
+
+  test("its card says how long after your message it asked", async ({ page }) => {
+    await expect(card(page, ONLY).locator(".talk-why")).toHaveText("asked 20s after you");
   });
 
   test("A allows it and its card goes", async ({ cue, page }) => {
@@ -55,6 +61,7 @@ test.describe("a question with four choices", () => {
   test.beforeEach(async ({ cue, page }) => {
     await cue.open("world-four-choices");
     await expect(page.locator(".active-pane")).toContainText("Which source wins on a clash?");
+    ONLY = await onlyCard(page);
   });
 
   for (const [i, choice] of CHOICES.entries()) {
@@ -71,13 +78,17 @@ test.describe("a question with four choices", () => {
   });
 });
 
-test("fifty sessions: each listed once, the seventeen finished as cards and the rest at work", async ({ cue, page }) => {
+test("a finished turn's card says how long after your message it answered", async ({ cue, page }) => {
+  await cue.open("world-handoff-pending");
+  await expect(page.locator(".nrow[data-big] .talk-why")).toHaveText("answered 20s after you");
+});
+
+test("fifty sessions: the seventeen finished are cards, the thirty-three at work each listed once under Sessions", async ({ cue, page }) => {
   await cue.open("world-fifty-sessions");
-  await expect(page.locator(".sec-waiting .nrow")).toHaveCount(50);
   await expect(page.locator(".sec-waiting .nrow[data-big]")).toHaveCount(17);
-  await expect(page.locator(".sec-waiting .nrow.talk-work[data-session]")).toHaveCount(33);
-  const ids = await page.evaluate(() => [...document.querySelectorAll(".nrow[data-session]")].map((e) => e.dataset.session));
-  expect(new Set(ids).size, "no session twice").toBe(ids.length);
+  await expect(page.locator(".sec-sessions .working[data-session]")).toHaveCount(33);
+  const ids = await page.evaluate(() => [...document.querySelectorAll(".sec-sessions .working[data-session]")].map((e) => e.dataset.session));
+  expect(new Set(ids).size, "no session twice").toBe(33);
 });
 
 test("a turn its relay lead drove, and a session out of usage, aren't cards for you", async ({ cue, page }) => {
