@@ -101,3 +101,11 @@ test("a waiting stretch too short for its stripes is drawn solid, not as an outl
   expect(await page.locator(".ap-bar .bar i.z").count()).toBeGreaterThan(0);
   expect(slivers).toEqual([]);
 });
+
+test("the open status list keeps its switch and what it costs in full view, under steps that scroll", async ({ cue, page }) => {
+  await cue.open("status-list", { frozen: true });
+  await openCard(page, "n1");
+  await page.locator('.active-pane .st-bar[data-sid="relay"]').click();
+  await page.locator(".active-pane .st-drawer").waitFor();
+  expect(await layoutProblems(page, ".st-drawer", { inside: [[".st-toggle", ""], [".st-note", ""]] })).toEqual([]);
+});
