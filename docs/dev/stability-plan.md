@@ -52,10 +52,10 @@ for an external fact).
    (`server.rs:143`) calls `hub.event/add_ask/finish/respond/subscribe/set_cost` **directly in the async
    task** (lines ~160-230), i.e. a std `Mutex` + file I/O + `snapshot()` inside a tokio worker, not under
    `spawn_blocking` (only `reply`, `send_to_session`, `interrupt`, `set_rates`, `agent_behind` are). Tickers in
-   `lib.rs:294-361` (3 s leads/live refresh + `sweep` + `sync_live`; remote poll; usage file 3 s; updater 6 h)
-   and `server::watch` (`lib.rs:328`), `talk::start`, `actions::start`, `archive::start`, `turns::start`.
+   `startup/tickers.rs` (3 s leads/live refresh + `sweep` + `sync_live`; remote poll; usage file 3 s; updater 6 h)
+   and `server::watch` (`startup/mod.rs` `setup`), `talk::start`, `actions::start`, `archive::start`, `turns::start`.
 3. **Plain threads.** PTY reader/exit threads (`term.rs:424-479`), one SSH watcher per machine
-   (`machines/hooks/watch.rs:31`), remote crew polls (`lib.rs:337`), `machines/logs.rs` copies, `talk.rs` voice
+   (`machines/hooks/watch.rs:31`), remote crew polls (`startup/tickers.rs` `read_machine`), `machines/logs.rs` copies, `talk.rs` voice
    loops, `tasks.rs`, `notify.rs:98/110` callbacks, `safe_git.rs:68`.
 4. **Separate process:** `cue hook <event>` (`hook.rs`) — reads `config.json` via `config::load`
    (`hook.rs:38`, `statuslist.rs:64,175`) and talks to the socket; never touches `cue.db`.
@@ -279,7 +279,7 @@ F = failure injection (listed per row; all run in Layer A unless marked E). Numb
 | Uploads / images | `uploads.rs`, `hub/send.rs images_there` | U: paths; I: remote copy progress events; F: 50 MB image, unreadable file. (~8) |
 | Project moves | `hub/mod.rs put_projects/move_projects` | U exists; add UI case. (~3) |
 | Extensions / actions | `extensions.rs`, `actions/*` | U: allow/run/stop; F: action prints 10 MB, never exits. (~12) |
-| Updater | `lib.rs find_update` | I: fake `latest.json` server; F: 404, bad signature. (~4) |
+| Updater | `ipc/settings.rs find_update` | I: fake `latest.json` server; F: 404, bad signature. (~4) |
 
 ~330 new cases; the existing 408 Rust tests stay. Priority order: Typing, Terminal, Asks, Sessions (the
 real-use bugs), then the rest.
@@ -338,7 +338,7 @@ Ordered, safe steps (tests land first in each):
    `cargo test` green between every one. (4 d)
 7. UI: `ui/app.js bindMain` 683 lines → per-view binders (`board_bind.js`, `chat_bind.js`, …) with one
    `delegate(root, selector, handler)` helper; `ui/chat.js` 2,646 → `chat/{render,compose,thread,tools}.js`.
-   `index.html` script order is load-bearing (`lib.rs:393` test) — keep the test, extend it to the split. (3 d)
+   `index.html` script order is load-bearing (`lib.rs` test `the_windows_scripts_declare_each_top_level_name_once`) — keep the test, extend it to the split. (3 d)
 
 ## 7. Release process
 

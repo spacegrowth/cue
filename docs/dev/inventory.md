@@ -330,9 +330,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/mod.rs::blocking` | async_runtime::spawn_blocking | 1 |
 | `ipc/restore.rs::with_timeout` | thread::spawn | 1 |
 | `leads/verify.rs::verify_reported` | thread::spawn | 1 |
-| `lib.rs::run` | async_runtime::spawn | 6 |
-| `lib.rs::run` | async_runtime::spawn_blocking | 5 |
-| `lib.rs::run` | thread::spawn | 2 |
 | `locking/probe.rs::watch_main` | Builder::spawn | 1 |
 | `locking/watchdog.rs::wake` | Builder::spawn | 1 |
 | `logs/archive.rs::start` | thread::spawn | 1 |
@@ -354,6 +351,16 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `safe_git.rs::on_machine` | thread::spawn | 1 |
 | `server/mod.rs::handle` | tokio::spawn | 1 |
 | `server/mod.rs::serve` | tokio::spawn | 1 |
+| `startup/mod.rs::setup` | async_runtime::spawn | 1 |
+| `startup/tickers.rs::local_crews` | async_runtime::spawn | 1 |
+| `startup/tickers.rs::read_due_machines` | thread::spawn | 1 |
+| `startup/tickers.rs::refresh_local` | async_runtime::spawn_blocking | 4 |
+| `startup/tickers.rs::remote_crews` | async_runtime::spawn | 1 |
+| `startup/tickers.rs::remote_crews` | async_runtime::spawn_blocking | 1 |
+| `startup/tickers.rs::serve_socket` | async_runtime::spawn | 1 |
+| `startup/tickers.rs::updates` | async_runtime::spawn | 1 |
+| `startup/tickers.rs::usage_file` | async_runtime::spawn | 1 |
+| `startup/watchers.rs::machines` | thread::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
 | `talk.rs::start` | async_runtime::spawn | 1 |
 | `talk.rs::start` | thread::spawn | 1 |
@@ -801,11 +808,11 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/sessions.rs::closed_record` | db::ended_session | 1 |
 | `ipc/sessions.rs::delete` | db::ended_session | 1 |
 | `ipc/settings.rs::set_draft` | db::set_draft | 1 |
-| `lib.rs::run` | db::rewrite_paths | 1 |
 | `logs/steps/windows.rs::auto_compact_at` | db::auto_compacts | 1 |
 | `logs/turns.rs::read_log` | db::save_turns | 1 |
 | `logs/turns.rs::read_log` | db::turns_read | 1 |
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
+| `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
 ### process (49)
 
@@ -898,7 +905,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
 | `src-tauri/src/ipc/sessions.rs::move_session_to_cue` |  |  |
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
-| `src-tauri/src/lib.rs::run` |  |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
 | `src-tauri/src/talk.rs::run_loop` |  |  |
