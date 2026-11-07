@@ -1,7 +1,7 @@
 //! The main-thread probe: a thread of its own asks the main thread to answer every second; one that
 //! hasn't in three seconds is logged as stalled ("main thread stalled <ms>") with every lock held at
 //! that moment, then again when it answers. A stalled main thread is the beachball: this names what
-//! it was waiting for.
+//! it was waiting for. Every answer's time is counted (`stats`).
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -33,11 +33,13 @@ fn watch(post: &Post, timing: Timing) {
             return;
         }
         if rx.recv_timeout(timing.stalled_after).is_ok() {
+            super::stats::answered(t0.elapsed());
             continue;
         }
         super::report::stall(t0.elapsed(), &super::held::all());
         // Until it answers (or the ping is dropped unanswered: the app is going).
         if rx.recv().is_ok() {
+            super::stats::answered(t0.elapsed());
             super::report::stall_over(t0.elapsed());
         }
     }

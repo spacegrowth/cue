@@ -98,6 +98,7 @@ pub(super) fn said() -> Vec<String> {
 /// This thread is taking a lock it holds already: it would wait on itself for good. Logged with where it
 /// happened; in debug and test builds it's a panic, so a test or a dev run fails on the spot.
 pub(super) fn reentry(what: &str) {
+    super::stats::reentered();
     let line = format!("cue: LOCK REENTRY {what} on {}", super::held::describe(&std::thread::current()));
     write(&format!("reentry {what}"), &line, || Some(Backtrace::force_capture()));
     if cfg!(debug_assertions) {
