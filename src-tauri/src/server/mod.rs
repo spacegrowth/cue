@@ -245,20 +245,23 @@ pub(crate) fn alive(pid: i32) -> bool {
 /// Once a second: clear Claude requests answered in the terminal, and anything whose agent died. Each tick's
 /// work (the hub's store, transcripts, `kill -0`) on the blocking pool.
 pub async fn watch(hub: Arc<Hub>) {
-    let mut tick = tokio::time::interval(Duration::from_millis(1000));
+    let mut every = tokio::time::interval(Duration::from_millis(1000));
     let mut n: u64 = 0;
     loop {
-        tick.tick().await;
+        every.tick().await;
         n += 1;
         let usage = n % 10 == 0;
-        let _ = on_hub(&hub, move |h| {
-            h.refresh_activity();
-            settle_the_gone(h);
-            if usage {
-                h.usage_tick();
-            }
-        })
-        .await;
+        let _ = on_hub(&hub, move |h| tick(h, usage)).await;
+    }
+}
+
+/// One of the watcher's ticks: what each working session is doing, the gone and the answered cleared,
+/// and (`usage`, every tenth) the usage and the turns that ended without a word.
+pub(crate) fn tick(h: &Hub, usage: bool) {
+    h.refresh_activity();
+    settle_the_gone(h);
+    if usage {
+        h.usage_tick();
     }
 }
 

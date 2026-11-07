@@ -1079,6 +1079,12 @@ fn import_old_files(c: &Connection) {
 #[cfg(test)]
 pub static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+/// This test's turn at TEST_LOCK, held until the guard goes.
+#[cfg(test)]
+pub fn test_turn() -> std::sync::MutexGuard<'static, ()> {
+    TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// For tests: forget the open connection so the next call opens CUE_HOME's database afresh.
 #[cfg(test)]
 pub fn reset() {

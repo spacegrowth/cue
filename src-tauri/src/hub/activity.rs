@@ -912,13 +912,7 @@ fn took_words(ms: u64) -> String {
 mod tests {
     use super::*;
 
-    /// A transcript timestamp for `ms` ("2026-10-12T10:00:00.123Z").
-    fn iso(ms: u64) -> String {
-        let secs = (ms / 1000) as libc::time_t;
-        let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-        unsafe { libc::gmtime_r(&secs, &mut tm) };
-        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, ms % 1000)
-    }
+    use crate::testing::transcript::iso;
 
     /// The prompt hook's "active" is a witness whatever else it does: it settles a message Cue had said
     /// didn't go (the session marked working with no prompt, the text wrapped as a paste), it tells a
