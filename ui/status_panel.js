@@ -1,6 +1,6 @@
 // The status list above the chat: one line under a session's tabs (so it's in view on every tab: Chat, Actions,
 // Agents, About), in the theme's own color. A click on it slides the whole list down over the chat, hanging from the
-// line: the list, the session's switch and what the list costs. Relay's and the background agents' buttons
+// line: the list (it scrolls when it's long), then the session's switch and what the list costs, always in view at its foot. Relay's and the background agents' buttons
 // (Start relay or a lead's Stop relay; Start / Stop background agents) sit on the line itself, so they're always in view. A click on the line again, anywhere else, or Esc slides it back up. The
 // ring by the box (statusChipHtml) puts the line away or brings it back; that choice is kept per session.
 
@@ -55,12 +55,12 @@ function statusPanelHtml(status, sw, view) {
   const bar = `<button class="st-bar st-inv" data-act="status-open" data-sid="${sid}" aria-expanded="${open}" aria-label="${open ? "Close the status list" : "Open the status list"}">${ring}${statusOneLine(status, p.done)}</button>`;
   // ▾ / ▴ at the line's right edge, past relay's switch; it opens and closes the list too.
   const chev = `<button class="st-chev" data-act="status-open" data-sid="${sid}" tabindex="-1" aria-hidden="true">${open ? "▴" : "▾"}</button>`;
-  const drawer = open ? `<div class="st-drawer st-inv${view.slide ? " slide" : ""}" data-sid="${sid}" data-key="${esc(sw.key || "")}">${p.list}${p.toggle}${p.cost}</div>` : "";
+  const drawer = open ? `<div class="st-drawer st-inv${view.slide ? " slide" : ""}" data-sid="${sid}" data-key="${esc(sw.key || "")}"><div class="st-scroll">${p.list}</div>${p.toggle}${p.cost}</div>` : "";
   return `<div class="st-panel"><div class="st-head st-inv">${bar}${p.relay}${chev}</div>${drawer}</div>`;
 }
 
 /** An open list is at most half the chat's height and ends above its bottom (the box stays free; on a tab with the
- *  chat hidden, its pane stands in), less a margin; it scrolls past that. Opened, or a new list in it (a reply came),
+ *  chat hidden, its pane stands in), less a margin; its steps scroll past that, above the switch and the cost. Opened, or a new list in it (a reply came),
  *  it's scrolled to the step it's on (the done ones above it); otherwise it stays where you scroll it, across redraws. Measured after each redraw and on
  *  resize: the pane is a width container only, so CSS can't size it from the pane's height. */
 const STATUS_DRAWER_MARGIN = 12;
@@ -71,13 +71,13 @@ function statusPanelFit() {
     const area = chat?.height ? chat : pane.getBoundingClientRect();
     const room = Math.min(area.bottom - d.getBoundingClientRect().top - STATUS_DRAWER_MARGIN, area.height * STATUS_DRAWER_SHARE);
     d.style.maxHeight = `${Math.max(120, room)}px`;
-    const { sid, key } = d.dataset, at = statusDrawerScroll.get(sid);
-    if (at?.key === key) d.scrollTop = at.top;
+    const sc = d.querySelector(".st-scroll"), { sid, key } = d.dataset, at = statusDrawerScroll.get(sid);
+    if (at?.key === key) sc.scrollTop = at.top;
     else {
       // The step it's on a quarter of the way down, measured on screen (its offsets are against the list's own boxes).
-      const now = d.querySelector(".st-item.now, .st-item.left");
-      d.scrollTop = now ? Math.max(0, d.scrollTop + now.getBoundingClientRect().top - d.getBoundingClientRect().top - d.clientHeight / 4) : 0;
-      statusDrawerScroll.set(sid, { key, top: d.scrollTop });
+      const now = sc.querySelector(".st-item.now, .st-item.left");
+      sc.scrollTop = now ? Math.max(0, sc.scrollTop + now.getBoundingClientRect().top - sc.getBoundingClientRect().top - sc.clientHeight / 4) : 0;
+      statusDrawerScroll.set(sid, { key, top: sc.scrollTop });
     }
   });
 }
@@ -108,8 +108,8 @@ function statusPanelCloseAll() {
 if (typeof document !== "undefined") {
   window.addEventListener("resize", statusPanelFit);
   document.addEventListener("scroll", (e) => {
-    const d = e.target;
-    if (d.classList?.contains("st-drawer")) statusDrawerScroll.set(d.dataset.sid, { key: d.dataset.key, top: d.scrollTop });
+    const sc = e.target, d = sc.classList?.contains("st-scroll") && sc.closest(".st-drawer");
+    if (d) statusDrawerScroll.set(d.dataset.sid, { key: d.dataset.key, top: sc.scrollTop });
   }, true);
   document.addEventListener("mousedown", (e) => { statusSelecting = !!e.target.closest?.(".st-drawer"); }, true);
   document.addEventListener("click", (e) => {

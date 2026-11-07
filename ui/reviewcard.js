@@ -60,7 +60,7 @@ function reviewRows(lead) {
   const rows = Object.entries(state.reviews || {}).filter(([, r]) => r.lead === lead);
   if (!rows.length) return "";
   const menu = rows.find(([exec]) => exec === reviewMenu);
-  return `<div class="rv-wrap"><div class="rv-rows">${rows.map(([exec, r]) => reviewRow(exec, r, lead)).join("")}</div>${menu ? reviewMenuHtml(...menu) : ""}</div>`;
+  return `<div class="rv-wrap"><div class="rv-rows" data-scroll-key="${esc(lead)}">${rows.map(([exec, r]) => reviewRow(exec, r, lead)).join("")}</div>${menu ? reviewMenuHtml(...menu) : ""}</div>`;
 }
 
 /** The ⋯ menu under its button (over it when there isn't room below the rows): placed after each draw and as the
