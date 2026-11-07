@@ -160,3 +160,37 @@ fn the_windows_state_is_built_without_reading_a_transcript() {
         assert_eq!(snap.ok(), Some(json!("tidy up")), "the window's state waited on a transcript");
     });
 }
+
+/// A session's transcript that stops answering holds up none of the watcher's tick: another session gone quiet
+/// is still found stuck, and the tick ends (its latest-request reads run off it).
+#[test]
+#[ignore = "the tick still reads transcripts before stuck detection (agent counts, activity_of, settle_the_gone); see stability-plan follow-ups"]
+fn a_stalled_transcript_doesnt_hold_up_the_tick_finding_a_stuck_session() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("tidy up").stop("Tidied.");
+    let b = w.session("b");
+    b.prompt("migrate the db");
+    b.transcript().prompt("migrate the db").assistant("Thinking it through");
+    // a's transcript stops answering; b has written nothing for longer than a thinking session may.
+    let log = w.home().join("claude").join("a.jsonl");
+    let _ = std::fs::remove_file(&log);
+    let stalled = Stall::at(&log);
+    w.advance(6 * 60_000);
+    let (hub, clock) = (w.hub().clone(), w.clock());
+    let (tx, ticked) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        clock.install();
+        crate::server::tick(&hub, false);
+        let _ = tx.send(());
+    });
+    let ended = ticked.recv_timeout(Duration::from_secs(2));
+    let done = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| stalled.answer_until(|| done.load(std::sync::atomic::Ordering::SeqCst)));
+        let stuck = w.hub().session_record("b").map_or(0, |r| r.stuck_ms);
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(ended.is_ok(), "the tick waited on a's transcript");
+        assert!(stuck > 0, "b found stuck");
+    });
+}

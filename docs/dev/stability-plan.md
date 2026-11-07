@@ -421,3 +421,4 @@ Total ≈ 33 executor-days; with 3 parallel executors ≈ 3 weeks wall-clock, Ph
   active card's header chips crowd together ("li… ne 7 ag") when a lead has a listen chip and agents.
 - Terminal "stuck" detection: e2e spike saw a SIGSTOPped tmux client's pty accept ~8 MB before blocking,
   so 1,000 typed chars never show the bar — track D is investigating.
+- The tick still reads transcripts before stuck detection (agent counts, `activity_of`, `settle_the_gone`): see the ignored test in testing/tests/transcripts.rs.
