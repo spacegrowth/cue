@@ -59,7 +59,11 @@ impl<'w> Agent<'w> {
         self
     }
 
-
+    /// On machine `name` (+ New → Machine): Cue reaches it over SSH.
+    pub fn on_machine(mut self, name: &str) -> Self {
+        self.origin.machine = name.into();
+        self
+    }
 
     /// Its agent running as process `pid` (what Park and Close stop).
     pub fn running_as(mut self, pid: i32) -> Self {

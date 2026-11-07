@@ -40,6 +40,8 @@ tauri-plugin-wdio-webdriver = { version = "=1.5.1", optional = true }
 
 [dev-dependencies]
 xtask = { path = "xtask" }
+# A mock app (tauri::test) for the updater's tests: find_update against a fake release server.
+tauri = { version = "2", features = ["protocol-asset", "test"] }
 
 [profile.release]
 # File and line for every address, kept out of the app: rustc writes them to cue.dSYM next to the binary

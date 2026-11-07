@@ -141,6 +141,11 @@ impl World {
         self.client.clone()
     }
 
+    /// The clock this World runs on, for threads it doesn't start itself to read.
+    pub fn clock(&self) -> Fake {
+        self.client.clock.clone()
+    }
+
     /// This World's own folder (its CUE_HOME).
     pub fn home(&self) -> &std::path::Path {
         &self.home

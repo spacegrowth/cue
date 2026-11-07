@@ -23,6 +23,11 @@ use std::time::Duration;
 const RECONNECT_FOR_MS: u64 = 15 * 60_000;
 /// How long between tries to reach a restarting Cue.
 const RETRY_MS: u64 = 2_000;
+
+/// RECONNECT_FOR_MS, or CUE_HOOK_RECONNECT_FOR seconds when that's set (the hook's tests wait seconds, not minutes).
+fn reconnect_for_ms() -> u64 {
+    std::env::var("CUE_HOOK_RECONNECT_FOR").ok().and_then(|s| s.trim().parse::<u64>().ok()).map_or(RECONNECT_FOR_MS, |secs| secs * 1000)
+}
 /// Entry point for `cue hook …`. Always returns normally; the caller exits 0.
 pub fn main(args: &[String]) {
     let event = args.first().map(String::as_str).unwrap_or("permission");
@@ -201,14 +206,15 @@ fn send_event(p: &Value, harness: &str, event: &str, message: &str, turn: Option
 }
 
 fn send_failure(p: &Value, harness: &str) -> Option<()> {
-    let mut s = connect(Duration::from_millis(500))?;
-    let mut msg = origin(p, harness);
     let details = s_or(p, "error_details", "last_assistant_message");
+    let kind = Some(s(p, "error_type")).filter(|k| !k.trim().is_empty()).unwrap_or_else(|| "error".into());
+    let mut sock = connect(Duration::from_millis(500))?;
+    let mut msg = origin(p, harness);
     msg.insert("type".into(), json!("event"));
     msg.insert("event".into(), json!("failed"));
     msg.insert("message".into(), json!(details));
-    msg.insert("error_type".into(), json!(s_or(p, "error_type", "error")));
-    s.write_all(format!("{}\n", Value::Object(msg)).as_bytes()).ok()
+    msg.insert("error_type".into(), json!(kind));
+    sock.write_all(format!("{}\n", Value::Object(msg)).as_bytes()).ok()
 }
 
 fn s_or(p: &Value, a: &str, b: &str) -> String {
@@ -388,7 +394,7 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
 }
 
 /// Whether a pending ask keeps trying to reach Cue. Not running at the first try: stay out of the way (the
-/// agent shows its own prompt). Gone after it was reached (restarting): tried again for RECONNECT_FOR_MS
+/// agent shows its own prompt). Gone after it was reached (restarting): tried again for reconnect_for_ms()
 /// from when it went, by Cue's clock.
 #[derive(Default)]
 struct Reconnect {
@@ -410,7 +416,7 @@ impl Reconnect {
         }
         let now = crate::clock::now_ms();
         let since = *self.gone_since.get_or_insert(now);
-        now.saturating_sub(since) <= RECONNECT_FOR_MS
+        now.saturating_sub(since) <= reconnect_for_ms()
     }
 }
 

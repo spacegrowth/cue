@@ -1,15 +1,13 @@
 //! Slow facts read from memory (stability plan §2.4): the window's state builds while the disk under a
 //! session's folder doesn't answer.
 
-use crate::testing::World;
-use std::io::Write;
+use crate::testing::{Stall, World};
 use std::time::{Duration, Instant};
 
-/// A repository whose `.cue/actions.json` is a pipe nobody writes to yet: reading it waits, as a stat on an
-/// automounted /home that stopped answering does, until the test writes `{"project": …}` into it.
+/// A repository whose `.cue/actions.json` doesn't answer (`Stall`) until the test writes `{"project": …}` into it.
 struct StalledRepo {
     dir: std::path::PathBuf,
-    pipe: std::path::PathBuf,
+    actions: Stall,
 }
 
 impl StalledRepo {
@@ -18,15 +16,13 @@ impl StalledRepo {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".git")).unwrap();
         std::fs::create_dir_all(dir.join(".cue")).unwrap();
-        let pipe = dir.join(".cue/actions.json");
-        let c = std::ffi::CString::new(pipe.to_string_lossy().as_bytes()).unwrap();
-        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0, "made the pipe");
-        StalledRepo { dir, pipe }
+        let actions = Stall::at(&dir.join(".cue/actions.json"));
+        StalledRepo { dir, actions }
     }
 
     /// The disk answers: the lookup waiting on the pipe reads `text`.
     fn answer(&self, text: &str) {
-        std::fs::OpenOptions::new().write(true).open(&self.pipe).unwrap().write_all(text.as_bytes()).unwrap();
+        self.actions.answer(text);
     }
 }
 
