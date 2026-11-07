@@ -83,6 +83,8 @@ fn a_sessions_latest_request_is_read_from_its_transcript() {
     let a = w.session("a");
     a.prompt("go");
     a.transcript().last_prompt("make the login page faster");
+    // Read by the watcher's tick, not while the window's state is built.
+    w.tick(false);
     assert_eq!(w.snapshot().0["about"]["a"]["prompt"], "make the login page faster");
 }
 
@@ -124,4 +126,37 @@ fn a_slow_read_of_a_sessions_log_holds_up_neither_the_tick_nor_the_window() {
     let steps = chat.join().unwrap();
     let says: Vec<&str> = steps["turns"][0]["items"].as_array().unwrap().iter().filter_map(|i| i["text"].as_str()).collect();
     assert_eq!(says, ["Working on it", "Still at it"], "each line once, whichever read put it in");
+}
+
+/// Building the window's state reads no transcript: your latest request to each Claude session is what the
+/// watcher's tick last read, so a transcript that stops answering (a stalled disk) never holds up the window.
+#[test]
+fn the_windows_state_is_built_without_reading_a_transcript() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("tidy up");
+    let log = w.home().join("claude").join("a.jsonl");
+    a.transcript().last_prompt("tidy up");
+    w.tick(false);
+    assert_eq!(w.snapshot().0["about"]["a"]["prompt"], "tidy up", "the tick read it");
+    // Its transcript stops answering, and what was read of it is old.
+    std::fs::remove_file(&log).unwrap();
+    let stalled = crate::testing::Stall::at(&log);
+    w.advance(10_000);
+    // A change redraws the window, on a thread of its own that reads the World's clock.
+    let (hub, clock) = (w.hub().clone(), w.clock());
+    let (tx, built) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        clock.install();
+        hub.redraw();
+        let _ = tx.send(hub.state());
+    });
+    let snap = built.recv_timeout(Duration::from_secs(2));
+    let done = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| stalled.answer_until(|| done.load(std::sync::atomic::Ordering::SeqCst)));
+        let snap = snap.as_ref().map(|s| s["about"]["a"]["prompt"].clone());
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(snap.ok(), Some(json!("tidy up")), "the window's state waited on a transcript");
+    });
 }

@@ -55,6 +55,17 @@ impl Hub {
         self.read_setup_screens(now);
         self.watch_trust(now);
         self.put_reads(reads, now);
+        self.read_about();
+    }
+
+    /// Your latest request to each Claude session the window lists, read again from its transcript here (the
+    /// store let go), so building the window's state reads none (`folders_view` takes what's kept).
+    fn read_about(&self) {
+        let (_, _, transcripts, _) = self.snapshot_sources();
+        let paths: Vec<String> = transcripts.into_iter().map(|(_, p)| p).collect();
+        if crate::live::read_about(&paths) {
+            self.changed();
+        }
     }
 
     /// The working sessions' logs, read with the store let go. Agents are counted only while something reads a

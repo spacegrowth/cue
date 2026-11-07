@@ -400,8 +400,8 @@ impl Hub {
     /// The snapshot, its place in the order snapshots were taken from the store, and when it next changes
     /// with time alone.
     fn build_snapshot(&self) -> (u64, Value, shown::NextChange) {
-        // What the files say (each Claude session's transcript tail, each folder's git HEAD) and what other
-        // parts of Cue keep are read with the store let go: this runs on every change, and a slow disk mustn't
+        // What the files say (each folder's git HEAD; each Claude session's latest request, as the tick last read
+        // it) and what other parts of Cue keep are taken with the store let go: this runs on every change, and a slow disk mustn't
         // hold every hook and tick behind it.
         let (known, live, transcripts, cwds) = self.snapshot_sources();
         let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
@@ -560,7 +560,8 @@ impl Hub {
 }
 
 /// The snapshot's live sessions Cue hasn't heard from, and what their folders and transcripts say: each
-/// folder's branch and project, and your latest request to each Claude session (from its transcript: no model).
+/// folder's branch and project, and your latest request to each Claude session (as the watcher's tick last read
+/// it from its transcript: none is read here).
 fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)>, cwds: Vec<String>, put: &HashMap<String, String>) -> serde_json::Map<String, Value> {
     let about: HashMap<String, Value> = transcripts.into_iter()
         .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })

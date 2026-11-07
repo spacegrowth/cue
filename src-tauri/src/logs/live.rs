@@ -153,27 +153,35 @@ pub fn claude_transcript(cwd: &str, session_id: &str) -> Option<String> {
     p.is_file().then(|| p.to_string_lossy().into_owned())
 }
 
-/// Your latest request to each Claude session, by transcript. A busy
+/// Your latest request to each Claude session, by transcript, as last read (`read_about`). A busy
 /// session's transcript changes every second: it's read again only when it changed AND the last
 /// read is 5s old.
 static ABOUT: Mutex<Option<HashMap<String, (u64, std::time::SystemTime, String)>>> = Mutex::new(None);
 
+/// Your latest request to a Claude session, as last read ("" before its transcript was): nothing is read
+/// here, so the window's state is built without waiting on a disk.
 pub fn about(transcript: &str) -> String {
-    if transcript.is_empty() {
-        return String::new();
-    }
-    let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return String::new() };
+    crate::locking::lock(&ABOUT, "ABOUT").as_ref().and_then(|a| a.get(transcript)).map(|(_, _, v)| v.clone()).unwrap_or_default()
+}
+
+/// Read your latest request again from each of these transcripts that changed (the watcher's tick). True
+/// when one of them says something new.
+pub fn read_about(transcripts: &[String]) -> bool {
+    transcripts.iter().filter(|t| !t.is_empty()).fold(false, |news, t| read_one_about(t) || news)
+}
+
+fn read_one_about(transcript: &str) -> bool {
+    let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return false };
     let now = crate::model::now_ms();
     let kept = crate::locking::lock(&ABOUT, "ABOUT").get_or_insert_with(HashMap::new).get(transcript).cloned();
-    if let Some((at, seen, v)) = kept {
-        if seen == mtime || now.saturating_sub(at) < 5_000 {
-            return v;
-        }
+    if kept.as_ref().is_some_and(|(at, seen, _)| *seen == mtime || now.saturating_sub(*at) < 5_000) {
+        return false;
     }
-    // Read with ABOUT let go: a transcript slow to read holds up only what's asked about its own session.
+    // Read with ABOUT let go: a transcript slow to read holds up only its own session's.
     let v = crate::logs::transcript::about(transcript);
-    crate::locking::lock(&ABOUT, "ABOUT").get_or_insert_with(HashMap::new).insert(transcript.to_string(), (now, mtime, v.clone()));
-    v
+    let news = kept.is_none_or(|(_, _, old)| old != v);
+    crate::locking::lock(&ABOUT, "ABOUT").get_or_insert_with(HashMap::new).insert(transcript.to_string(), (now, mtime, v));
+    news
 }
 
 #[cfg(test)]
@@ -239,8 +247,8 @@ mod tests {
     }
 }
 
-/// A transcript that doesn't answer (a stalled disk: `Stall`) holds up what's asked about its own session,
-/// never another's: it's read with ABOUT let go, and only the answer is kept under it.
+/// A transcript that doesn't answer (a stalled disk: `Stall`) holds up the read of its own session's latest
+/// request, never another's: it's read with ABOUT let go, and only the answer is kept under it.
 #[cfg(test)]
 mod stalled {
     #[test]
@@ -256,13 +264,13 @@ mod stalled {
         let d = done.clone();
         let waiting = std::thread::spawn(move || {
             asked.0.send(()).unwrap();
-            let _ = super::about(&path);
+            let _ = super::read_about(&[path]);
             d.store(true, std::sync::atomic::Ordering::SeqCst);
         });
         asked.1.recv().unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
         let f = fine.to_str().unwrap().to_string();
-        std::thread::spawn(move || tx.send(super::about(&f)).unwrap());
+        std::thread::spawn(move || tx.send(super::read_about(&[f])).unwrap());
         let other = rx.recv_timeout(std::time::Duration::from_secs(3));
         stalled.answer_until(|| done.load(std::sync::atomic::Ordering::SeqCst));
         waiting.join().unwrap();

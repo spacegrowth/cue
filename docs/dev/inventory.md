@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 136 (3 sync) |
 | Lock declarations (static or field) | 91 |
-| Lock acquisitions | 205 |
+| Lock acquisitions | 206 |
 | Lock-graph edges | 45 |
 | Spawn sites | 73 |
 | External calls: fs / db / process / notify / login / socket | 339 / 146 / 48 / 4 / 1 / 3 |
@@ -226,7 +226,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `locking/watchdog.rs::THREAD` | `OnceLock<Option<std::thread::Thread>>` | — |
 | `logs/archive.rs::INDEX` | `Mutex<Option<HashMap<String,(u64,Entry)>>>` | "archive INDEX" (4 sites) |
 | `logs/live.rs::CLAUDE` | `Mutex<Vec<Quiet>>` | "CLAUDE" (2 sites) |
-| `logs/live.rs::ABOUT` | `Mutex<Option<HashMap<String,(u64,std::time::SystemTime,String)>>>` | "ABOUT" (2 sites) |
+| `logs/live.rs::ABOUT` | `Mutex<Option<HashMap<String,(u64,std::time::SystemTime,String)>>>` | "ABOUT" (3 sites) |
 | `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (4 sites) |
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
 | `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,(Arc<Mutex<Feed>>,Instant)>>>` | "HISTORY" (2 sites) |
@@ -536,8 +536,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/archive.rs::read_entry` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | read_dir | 2 |
-| `logs/live.rs::about` | metadata | 1 |
 | `logs/live.rs::claude_transcript` | Path::is_file | 1 |
+| `logs/live.rs::read_one_about` | metadata | 1 |
 | `logs/live.rs::scan_claude` | read_dir | 1 |
 | `logs/live.rs::scan_claude` | read_to_string | 1 |
 | `logs/live.rs::started_ms` | read_to_string | 1 |
