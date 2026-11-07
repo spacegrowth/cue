@@ -255,12 +255,12 @@ impl Hub {
     pub fn add_parked(&self, session: crate::sessions::Session) {
         let sid = session.origin.session_id.clone();
         let p = crate::sessions::Parked { parked_ms: now_ms(), session };
-        crate::db::park(&p);
         self.write(|st| {
             st.sessions.remove(&sid);
             st.parked.retain(|x| x.session.origin.session_id != sid);
             st.parked.insert(0, p);
         });
+        self.save_parked(&sid);
         self.changed();
     }
 
@@ -307,7 +307,7 @@ impl Hub {
             let at = st.parked.iter().position(|p| p.session.origin.session_id == session_id)?;
             Some(st.parked.remove(at))
         })?;
-        crate::db::unpark(session_id);
+        self.save_parked(session_id);
         self.changed();
         Some(p)
     }
@@ -359,7 +359,7 @@ impl Hub {
                 st.sessions.note(&s.origin.session_id, "you", message, crate::config::context_keep());
             }
         });
-        crate::db::unpark(&s.origin.session_id);
+        self.save_parked(&s.origin.session_id);
         self.changed();
     }
 

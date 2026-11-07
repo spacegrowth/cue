@@ -96,6 +96,36 @@ to = "pty master"
 reason = "term::foreground asks a terminal's PTY master for its foreground process with the terminal table held; the master lock is per terminal, a leaf"
 
 [[lock_order]]
+from = "parked saves"
+to = "DB"
+reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+
+[[lock_order]]
+from = "parked saves"
+to = "REPOS"
+reason = "db::open regroups projects by repo root (live::repo_root) the first time the db is opened, under the save that opened it; REPOS is a leaf"
+
+[[lock_order]]
+from = "parked saves"
+to = "the hub's store"
+reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+
+[[lock_order]]
+from = "review queue saves"
+to = "DB"
+reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+
+[[lock_order]]
+from = "review queue saves"
+to = "REPOS"
+reason = "db::open regroups projects by repo root (live::repo_root) the first time the db is opened, under the save that opened it; REPOS is a leaf"
+
+[[lock_order]]
+from = "review queue saves"
+to = "the hub's store"
+reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+
+[[lock_order]]
 from = "the hub's store"
 to = "INDEX"
 reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX never takes the store"
@@ -148,6 +178,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 [[lock_order]]
 from = "typing gate"
 to = "caches"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "parked saves"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 [[lock_order]]

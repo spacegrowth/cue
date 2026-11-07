@@ -16,7 +16,7 @@ enum Taken {
     /// Refused, or nothing to do: what to say.
     Answer(Result<String, String>),
     /// Behind its busy lead (why it's busy), to be saved with the queue.
-    Queued(QueuedReview, String),
+    Queued(String),
     /// Its lead is free: typed in now.
     Send,
 }
@@ -27,8 +27,8 @@ impl Hub {
     pub fn review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
         match self.write(|st| Self::take_review(st, lead, exec, text, now_ms())) {
             Taken::Answer(r) => r,
-            Taken::Queued(q, why) => {
-                crate::db::queue_review(&q.exec, &q.lead, &q.text, q.at_ms);
+            Taken::Queued(why) => {
+                self.save_queued_review(exec);
                 self.changed();
                 Ok(format!("Queued: its lead is {why}, Cue sends it when it's free"))
             }
@@ -56,8 +56,8 @@ impl Hub {
         let ahead = st.review_queue.iter().any(|q| q.lead == lead);
         if let Some(why) = Self::lead_busy(st, lead, now).or_else(|| ahead.then(|| "reviewing".to_string())) {
             let q = QueuedReview { exec: exec.into(), lead: lead.into(), text: text.into(), at_ms: now };
-            st.review_queue.push(q.clone());
-            return Taken::Queued(q, why);
+            st.review_queue.push(q);
+            return Taken::Queued(why);
         }
         st.review_sent.insert(exec.to_string(), (lead.to_string(), now));
         st.review_last.insert(lead.to_string(), now);
@@ -78,7 +78,7 @@ impl Hub {
     /// Take a queued review back (× on its line in the lead's chat).
     pub fn unqueue_review(&self, exec: &str) {
         self.write(|st| st.review_queue.retain(|q| q.exec != exec));
-        crate::db::unqueue_review(exec);
+        self.save_queued_review(exec);
         self.changed();
     }
 
@@ -92,7 +92,7 @@ impl Hub {
             return;
         }
         for exec in stale.iter().chain(due.iter().map(|q| &q.exec)) {
-            crate::db::unqueue_review(exec);
+            self.save_queued_review(exec);
         }
         self.changed();
         for q in due {

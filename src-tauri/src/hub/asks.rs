@@ -195,12 +195,12 @@ impl Hub {
             }
             let Some(p) = st.parked.iter_mut().find(|p| p.session.origin.session_id == session_id && (p.session.starred_ms > 0) != on) else { return Starred::Unchanged };
             p.session.starred_ms = if on { now_ms() } else { 0 };
-            Starred::Parked(p.clone())
+            Starred::Parked
         });
         match changed {
             Starred::Unchanged => return,
             Starred::Live => {}
-            Starred::Parked(p) => crate::db::park(&p),
+            Starred::Parked => self.save_parked(session_id),
         }
         self.changed();
     }
@@ -325,7 +325,7 @@ impl Hub {
 enum Starred {
     Unchanged,
     Live,
-    Parked(crate::sessions::Parked),
+    Parked,
 }
 
 /// What a session waits for in its terminal, in Claude Code's words ("approve Bash", "dialog open").

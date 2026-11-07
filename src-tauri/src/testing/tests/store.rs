@@ -120,3 +120,35 @@ fn a_moot_queued_review_is_dropped_from_the_saved_queue() {
     assert!(crate::db::review_queue().is_empty());
     assert!(w.terminal.typed("L").is_empty());
 }
+
+/// A review queued while its lead works, and drained the moment the lead is free, their saves racing for the
+/// database (held so both wait on it): whichever save lands last, the saved queue ends as the store has it,
+/// never with the sent review still on it (a restart would send it again). Ten leads, so either order comes up.
+#[test]
+fn a_queue_and_a_drain_saved_in_either_order_leave_no_stale_row() {
+    let w = World::new();
+    let execs: Vec<String> = (0..10).map(|i| format!("E{i}")).collect();
+    install_index(execs.iter().map(|e| (e.clone(), reported_exec())).collect());
+    for (i, exec) in execs.iter().enumerate() {
+        let lead = format!("L{i}");
+        w.session(&lead).prompt("lead");
+        let hub = w.hub().clone();
+        let release = hold_db();
+        let queueing = {
+            let (hub, lead, exec) = (hub.clone(), lead.clone(), exec.clone());
+            std::thread::spawn(move || hub.review(&lead, &exec, "/relay:review"))
+        };
+        assert!(soon(|| hub.queued_reviews().contains(exec)), "{exec} queued in the store");
+        // Its lead comes free and the queue drains, its save waiting on the database too.
+        hub.mark_state(&hub.session_origin(&lead).unwrap(), "waiting");
+        let draining = {
+            let hub = hub.clone();
+            std::thread::spawn(move || hub.drain_reviews())
+        };
+        assert!(soon(|| !hub.queued_reviews().contains(exec)), "{exec} taken off the queue in the store");
+        release.send(()).unwrap();
+        queueing.join().unwrap().unwrap();
+        draining.join().unwrap();
+        assert!(crate::db::review_queue().iter().all(|(e, ..)| e != exec), "{exec}: sent, yet still saved as queued");
+    }
+}

@@ -17,6 +17,7 @@ mod hand_off;
 mod history;
 pub(crate) mod ports;
 mod reviews;
+mod saves;
 mod send;
 mod sessions;
 mod shown;
@@ -150,6 +151,8 @@ pub struct Hub {
     shown: shown::Shown,
     /// The terminals it types into and where its follow-up work runs (ports.rs).
     ports: ports::Ports,
+    /// What keeps saves made after the store is let go in order (saves.rs).
+    saves: saves::SaveLocks,
 }
 
 impl Hub {
@@ -169,7 +172,7 @@ impl Hub {
         st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports }
+        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default() }
     }
 
     /// The session terminals, to type into and look at.
@@ -530,7 +533,7 @@ impl Hub {
         // The writes themselves with the store let go: it's every session and thread, and on this thread
         // (often the window's) nothing else must wait for them.
         for sid in &back {
-            crate::db::unpark(sid);
+            self.save_parked(sid);
         }
         crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
         let _ = app.emit("state", &*self.snapshot());

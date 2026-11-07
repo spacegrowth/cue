@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
-| Lock declarations (static or field) | 75 |
-| Lock acquisitions | 183 |
-| Lock-graph edges | 30 |
+| Lock declarations (static or field) | 77 |
+| Lock acquisitions | 185 |
+| Lock-graph edges | 37 |
 | Spawn sites | 59 |
-| External calls: fs / db / process / notify / login / socket | 338 / 123 / 53 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 338 / 119 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 30 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -184,6 +184,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `db.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
+| `hub/saves.rs::SaveLocks.review_queue` | `Mutex<()>` | "review queue saves" (1 sites) |
+| `hub/saves.rs::SaveLocks.parked` | `Mutex<()>` | "parked saves" (1 sites) |
 | `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
 | `hub/shown.rs::Shown.timer` | `OnceLock<Sender<Option<Instant>>>` | — |
 | `hub/store_access.rs::StoreCell.0` | `Mutex<Store>` | "the hub's store" (2 sites) |
@@ -269,17 +271,24 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "copies" | "WINDOWS" |  | `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `logs/steps.rs::Feed::open` → `logs/steps.rs::start_of` → `logs/steps.rs::Feed::observe` → `logs/steps.rs::known_window` → `logs/steps.rs::with_windows`, takes it |
 | "extensions log" | "WINDOWS" |  | `extensions.rs::log` → `logs/steps.rs::Feed::open` → `logs/steps.rs::start_of` → `logs/steps.rs::Feed::observe` → `logs/steps.rs::known_window` → `logs/steps.rs::with_windows`, takes it |
 | "open_terms" | "pty master" |  | `terminal/term.rs::foreground`, takes it |
+| "parked saves" | "DB" |  | `hub/saves.rs::Hub::save_parked` → `db.rs::park` → `db.rs::with`, takes it |
+| "parked saves" | "REPOS" |  | `hub/saves.rs::Hub::save_parked` → `db.rs::park` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
+| "parked saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_parked` → `hub/store_access.rs::Hub::read`, takes it |
+| "review queue saves" | "DB" |  | `hub/saves.rs::Hub::save_queued_review` → `db.rs::queue_review` → `db.rs::with`, takes it |
+| "review queue saves" | "REPOS" |  | `hub/saves.rs::Hub::save_queued_review` → `db.rs::queue_review` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
+| "review queue saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_queued_review` → `hub/store_access.rs::Hub::read`, takes it |
 | "the hub's store" | "INDEX" |  | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_view` → `hub/reviews.rs::Hub::reviews_view` → `leads.rs::is_reviewed`, takes it |
 | "the hub's store" | "REPOS" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root`, takes it |
 | "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus.rs::type_into` → `terminal/focus.rs::press_enter` → `terminal/focus.rs::iterm_session_do` → `terminal/focus.rs::current_tty` → `logs/live.rs::claude`, takes it |
-| "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `db.rs::unpark` → `db.rs::with`, takes it |
+| "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/saves.rs::Hub::save_parked` → `db.rs::park` → `db.rs::with`, takes it |
 | "typing gate" | "DECLARED" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `model.rs::declared`, takes it |
 | "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view`, takes it |
 | "typing gate" | "LEDGER" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::handoffs` → `leads.rs::ledger_handoffs` → `leads.rs::read_ledger`, takes it |
-| "typing gate" | "REPOS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `db.rs::unpark` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
+| "typing gate" | "REPOS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/saves.rs::Hub::save_parked` → `db.rs::park` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
 | "typing gate" | "TOPS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `logs/live.rs::checkout_top`, takes it |
 | "typing gate" | "VERIFY" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view` → `leads.rs::verdict_of`, takes it |
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::images_there` → `uploads.rs::on_machine` → `machines/mod.rs::run_with_bytes` → `machines/mod.rs::ssh_command` → `machines/mod.rs::env_file`, takes it |
+| "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/saves.rs::Hub::save_parked`, takes it |
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::settle_typed` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_with` → `hub/mod.rs::Hub::notify_full` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "shown snapshot" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
 | "typing gate" | "the hub's store" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/store_access.rs::Hub::write`, takes it |
@@ -683,7 +692,7 @@ What the store's holders reach while they hold it (30 allowed for now in `lint-a
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save` | write | 1 |
 
-### db (123)
+### db (119)
 
 | In | Call | Times |
 |---|---|---|
@@ -748,7 +757,6 @@ What the store's holders reach while they hold it (30 allowed for now in `lint-a
 | `db.rs::unqueue_review` | db::with | 1 |
 | `db.rs::with` | db::open | 1 |
 | `db.rs::with` | db::path | 1 |
-| `hub/asks.rs::Hub::set_starred` | db::park | 1 |
 | `hub/cache_tick.rs::ahead_wanted` | db::ahead_watched | 1 |
 | `hub/cache_tick.rs::ahead_wanted` | db::handoff | 1 |
 | `hub/cache_tick.rs::cold_soon` | db::handoff | 1 |
@@ -757,24 +765,21 @@ What the store's holders reach while they hold it (30 allowed for now in `lint-a
 | `hub/mod.rs::Hub::build_snapshot` | db::ahead_watched | 1 |
 | `hub/mod.rs::Hub::build_snapshot` | db::handoffs | 1 |
 | `hub/mod.rs::Hub::changed` | db::sync_live | 1 |
-| `hub/mod.rs::Hub::changed` | db::unpark | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::answers_since | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::history | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::live | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::parked | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::review_queue | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::set_aside | 1 |
-| `hub/reviews.rs::Hub::drain_reviews` | db::unqueue_review | 1 |
-| `hub/reviews.rs::Hub::review` | db::queue_review | 1 |
 | `hub/reviews.rs::Hub::set_aside` | db::add_set_aside | 1 |
-| `hub/reviews.rs::Hub::unqueue_review` | db::unqueue_review | 1 |
-| `hub/sessions.rs::Hub::add_parked` | db::park | 1 |
+| `hub/saves.rs::Hub::save_parked` | db::park | 1 |
+| `hub/saves.rs::Hub::save_parked` | db::unpark | 1 |
+| `hub/saves.rs::Hub::save_queued_review` | db::queue_review | 1 |
+| `hub/saves.rs::Hub::save_queued_review` | db::unqueue_review | 1 |
 | `hub/sessions.rs::Hub::chat_log` | db::session_log_page | 1 |
 | `hub/sessions.rs::Hub::closed` | db::closed | 1 |
 | `hub/sessions.rs::Hub::purge` | db::delete_session | 1 |
 | `hub/sessions.rs::Hub::setting_changed` | db::history | 1 |
-| `hub/sessions.rs::Hub::take_parked` | db::unpark | 1 |
-| `hub/sessions.rs::Hub::unparked` | db::unpark | 1 |
 | `hub/turn_end.rs::Hub::tell_turn_ended` | db::handoff | 1 |
 | `ipc/chat.rs::search_all` | db::known_session_ids | 1 |
 | `ipc/chat.rs::search_all` | db::search | 1 |
