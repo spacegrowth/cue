@@ -68,7 +68,7 @@ STUB
 }
 
 # A repo with the release scripts as they are now, the inventory committed, and a tests/run.sh whose suites pass
-# unless $STUB_FAILS names one; its soak says "not yet" while STUB_SOAK_NOT_YET is set, as tests/run.sh does now.
+# unless $STUB_FAILS names one (soak included).
 make_repo() {
   local repo="$WORK/repo"
   rm -rf "$repo"; mkdir -p "$repo/scripts" "$repo/tests" "$repo/docs/dev" "$repo/src-tauri"
@@ -83,7 +83,6 @@ make_repo() {
   cat >"$repo/tests/run.sh" <<'STUB'
 #!/bin/bash
 echo "tests/run.sh $*" >>"$CALLS"
-if [ "$1" = soak ] && [ -n "${STUB_SOAK_NOT_YET:-}" ]; then echo "soak: not yet (the soak harness lands as src-tauri/src/testing/soak.rs)"; exit 0; fi
 [ "$1" != "${STUB_FAILS:-}" ] || { echo "1 failed"; exit 1; }
 echo "$1: ok"
 STUB
@@ -96,7 +95,7 @@ STUB
 # A case starts from a fresh repo and no stand-in answers; `release` runs the script there, keeping its output.
 start() {
   CASE="$1"; CASE_FAILED=0
-  unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
+  unset STUB_FAILS STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
     STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION STUB_STABLE_TAG \
     STUB_PROMOTED_TODAY STUB_RELEASED STUB_VIEW_ERROR
   REPO="$(make_repo)"
@@ -154,12 +153,6 @@ start "a failing xtask check is refused"
 export STUB_XTASK_FAILS=1
 release 0.2.0 "Notes." --dry-run
 refused; says "the xtask check gate failed"
-done_case
-
-start "no soak harness yet is no soak: refused"
-export STUB_SOAK_NOT_YET=1
-release 0.2.0 "Notes." --dry-run
-refused; says "the soak 10 min gate failed"
 done_case
 
 start "a second release the same day is refused"

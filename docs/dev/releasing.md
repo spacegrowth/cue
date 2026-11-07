@@ -31,8 +31,7 @@ Run in this order. The first one that fails stops the release, and its log is in
 4. **swift helpers:** cue-listen (`swiftc`), and cue-speak and cue-voice (`swift build`), each built into a new
    scratch folder, so a half-purged build cache can't hide a broken build.
 5. **unit, ui, e2e tests:** `tests/run.sh unit`, `ui`, `e2e`, one gate each.
-6. **soak 10 min:** `tests/run.sh soak 10`. Until the soak harness lands, that prints "soak: not yet" and
-   succeeds; the gate counts that as a failure.
+6. **soak 10 min:** `tests/run.sh soak 10` (docs/dev/soak.md).
 
 Before the gates and before anything in `dist/` is removed, every build (dry or not, published or not)
 checks that its version isn't tagged here or released on GitHub: a released version's `dist/v<version>` holds
