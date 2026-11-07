@@ -21,6 +21,11 @@ use std::time::{Duration, Instant};
 
 /// How long to wait for a restarting Cue before giving up on a pending question.
 const RECONNECT_FOR: Duration = Duration::from_secs(15 * 60);
+
+/// RECONNECT_FOR, or CUE_HOOK_RECONNECT_FOR seconds when that's set (the hook's tests wait seconds, not minutes).
+fn reconnect_for() -> Duration {
+    std::env::var("CUE_HOOK_RECONNECT_FOR").ok().and_then(|s| s.trim().parse().ok()).map_or(RECONNECT_FOR, Duration::from_secs)
+}
 /// Entry point for `cue hook …`. Always returns normally; the caller exits 0.
 pub fn main(args: &[String]) {
     let event = args.first().map(String::as_str).unwrap_or("permission");
@@ -361,7 +366,7 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
             }
             // Cue is restarting: keep the request alive, but not forever.
             let since = *gone_since.get_or_insert_with(Instant::now);
-            if since.elapsed() > RECONNECT_FOR {
+            if since.elapsed() > reconnect_for() {
                 return None;
             }
             std::thread::sleep(Duration::from_secs(2));
