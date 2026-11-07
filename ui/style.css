@@ -1208,6 +1208,7 @@ button.rv-st:hover { color: var(--ink); }
 .tc-row:first-child { border-top: 0; }
 .tc-row > span:first-child { flex: 1; min-width: 0; }
 .tc-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+.tc-foot:first-child { margin-top: 0; padding-top: 0; border-top: 0; }   /* alone (only the plan): no rule over nothing */
 /* On the board: a lead's executors inside its card, as a small tree. */
 .team-tree { margin: 9px -2px -2px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
 .tn { position: relative; padding: 5px 0 5px 18px; font-size: 12.5px; border-radius: 6px; }

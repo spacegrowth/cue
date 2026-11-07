@@ -127,3 +127,11 @@ test("the board's column headings line up", async ({ cue, page }) => {
   }));
   expect(new Set(tops).size, `heading tops ${tops}`).toBe(1);
 });
+
+test("a lead's plan alone in its card has no rule above it", async ({ cue, page }) => {
+  await cue.open("relay-review", { frozen: true });
+  await openLead(page);
+  const foot = page.locator(".active-pane .team-card > .tc-foot:first-child");
+  await expect(foot).toHaveCount(1);
+  expect(await foot.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("none");
+});
