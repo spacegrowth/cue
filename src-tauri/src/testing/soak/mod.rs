@@ -137,6 +137,11 @@ fn keep_time(w: &World, ctx: &Ctx) {
     }
 }
 
+/// The bytes of each part of the window's state (what grew, when it grew).
+fn parts(state: &Value) -> Value {
+    state.as_object().map_or(json!({}), |o| o.iter().map(|(k, v)| (k.clone(), json!(v.to_string().len()))).collect::<serde_json::Map<_, _>>().into())
+}
+
 #[test]
 #[ignore = "the soak runs for minutes: tests/run.sh soak"]
 fn soak() {
@@ -154,7 +159,8 @@ fn soak() {
     }
     let probe = crate::server::inbound::probe();
     let about = json!({"run": "rust", "sessions": plan.sessions, "warmup_s": plan.warmup().as_secs_f64(), "answer_what": "the state over the socket (list)", "chaos": probe["chaos"]});
-    let run = ctx.tally.json(about, probe, tally::panics::seen());
+    let mut run = ctx.tally.json(about, probe, tally::panics::seen());
+    run["snapshot_parts"] = parts(&crate::locking::lock(&ctx.latest, "soak latest state"));
     drop(served);
     std::fs::write(&plan.out, serde_json::to_string(&run).unwrap()).unwrap();
     let run = xtask::soak::Run(run);

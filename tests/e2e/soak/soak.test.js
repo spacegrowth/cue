@@ -55,6 +55,11 @@ function chaos() {
   return Object.fromEntries(Object.entries(process.env).filter(([k, v]) => k.startsWith("CUE_CHAOS_") && Number(v) > 0).map(([k, v]) => [k, Number(v)]));
 }
 
+/** The bytes of each part of the window's state, as it was last polled. */
+function parts(state) {
+  return Object.fromEntries(Object.entries(state).map(([k, v]) => [k, JSON.stringify(v).length]));
+}
+
 /** What Cue logged that the detectors read: panics (cue.log) and lock reports (locks.log). */
 function logs(world) {
   const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n") : []);
@@ -70,16 +75,17 @@ test(`e2e soak: ${SESSIONS} sessions for ${MINUTES} min`, { timeout: (MINUTES + 
     await world.launch(chaos());
     const soak = new Soak(world, Date.now() + MINUTES * 60_000);
     const sessions = Array.from({ length: SESSIONS }, (_, n) => makeSession(soak, n));
+    const guard = (what, work) => work.catch((e) => soak.tally.errors.push(`${what}: ${e.message.split("\n")[0]}`));
     await Promise.all([
-      ...sessions.map((s, n) => agent(soak, s, n)),
-      ...Array.from({ length: 10 }, (_, n) => typist(soak, sessions, n)),
-      bursts(soak, sessions), poller(soak), mainThread(soak), terminals(soak, sessions),
+      ...sessions.map((s, n) => guard(s.sid, agent(soak, s, n))),
+      ...Array.from({ length: 10 }, (_, n) => guard(`typist ${n}`, typist(soak, sessions, n))),
+      guard("bursts", bursts(soak, sessions)), guard("poller", poller(soak)), guard("main thread", mainThread(soak)), guard("terminals", terminals(soak, sessions)),
     ]);
     const probe = await world.call({ type: "probe" });
     const { panics, log } = logs(world);
     const about = { run: "e2e", sessions: SESSIONS, warmup_s: Math.min(Math.max(MINUTES * 12, 60), MINUTES * 30), chaos: probe.chaos,
       answer_what: "the window's main thread (an evaluated script's round trip)" };
-    fs.writeFileSync(OUT, JSON.stringify(soak.tally.json(about, probe, panics, log)));
+    fs.writeFileSync(OUT, JSON.stringify({ ...soak.tally.json(about, probe, panics, log), snapshot_parts: parts(soak.latest) }));
     console.log(`measurements: ${OUT}`);
     kept = false;
   } finally {

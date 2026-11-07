@@ -61,7 +61,7 @@ impl Run {
 
     /// Every detector's failures, in words; none is a pass.
     pub fn failures(&self) -> Vec<String> {
-        let detectors: [fn(&Run) -> Vec<String>; 7] = [answers, locks, reentries, growth, decisions, panics, deliveries];
+        let detectors: [fn(&Run) -> Vec<String>; 8] = [answers, locks, reentries, growth, decisions, panics, deliveries, errors];
         detectors.iter().flat_map(|d| d(self)).collect()
     }
 }
@@ -134,6 +134,11 @@ fn deliveries(r: &Run) -> Vec<String> {
     if failed > 0 { vec![format!("{failed} hook events never reached Cue's socket")] } else { Vec::new() }
 }
 
+/// A part of the load stopped on an error of its own: the run didn't put Cue under what it says it did.
+fn errors(r: &Run) -> Vec<String> {
+    r.lines("/errors").into_iter().map(|e| format!("the soak's load stopped: {e}")).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,9 +159,9 @@ mod tests {
     fn each_detector_names_what_failed() {
         let r = run(json!({"run": "e2e", "warmup_s": 60, "answer_what": "executeScript", "answer_ms": [3, 700], "memory": [[0, 1], [60, 50], [600, 101]], "snapshot": [[60, 1000], [600, 1500]],
             "probe": {"locks": {"DB": {"waits": 2, "max_ms": 1500.0}}, "reentries": 1, "main_thread": {"max_ms": 900}}, "decisions_ms": [12_000], "undecided": 1,
-            "panics": ["thread 'x' panicked at hub/mod.rs"], "events": {"failed": 3}}));
+            "panics": ["thread 'x' panicked at hub/mod.rs"], "events": {"failed": 3}, "errors": ["terminals: no such window"]}));
         let f = r.failures().join("\n");
-        for part in ["executeScript answered late 1 times", "main thread took 900", "lock \"DB\"", "taken again", "resident memory grew 2.0×", "past 10000 ms", "1 hooks never", "panic: thread", "3 hook events"] {
+        for part in ["executeScript answered late 1 times", "main thread took 900", "lock \"DB\"", "taken again", "resident memory grew 2.0×", "past 10000 ms", "1 hooks never", "panic: thread", "3 hook events", "load stopped: terminals"] {
             assert!(f.contains(part), "{part} in:\n{f}");
         }
         assert!(!f.contains("window's state"), "the snapshot grew 1.5×, inside the limit:\n{f}");

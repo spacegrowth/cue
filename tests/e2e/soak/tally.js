@@ -11,6 +11,8 @@ export class Tally {
     this.memory = [];
     this.snapshot = [];
     this.refused = {};
+    /** A part of the load that stopped on an error of its own (the run goes on without it). */
+    this.errors = [];
   }
 
   /** Seconds since the run started. */
@@ -35,7 +37,7 @@ export class Tally {
       ...about, seconds: this.at(), answer_ms: this.answerMs, decisions_ms: this.decisionsMs, undecided: this.undecided,
       memory: this.memory, snapshot: this.snapshot,
       events: { sent: c.eventsSent, failed: c.eventsFailed }, typing: { sent: c.typingSent, failed: c.typingFailed, refused: this.refused },
-      polls: c.polls, asks: c.asks, terminals: { opened: c.opened, closed: c.closed }, probe, panics, log,
+      polls: c.polls, asks: c.asks, terminals: { opened: c.opened, closed: c.closed }, probe, panics, log, errors: this.errors,
     };
   }
 }

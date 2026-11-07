@@ -125,11 +125,11 @@ export async function terminals(soak, sessions) {
   while (soak.going()) {
     await pause(15_000);
     const s = sessions[roll(sessions.length)];
-    await soak.world.ui.run((id) => { setActive(null, id); return openTerm(id); }, s.sid);
+    await soak.world.ui.run((id) => { setActive(null, id); openTerm(id); return true; }, s.sid);
     if (!(await soak.until(() => clients() > 0, 10_000))) continue;
     soak.tally.counts.opened++;
     await pause(3000);
-    await soak.world.ui.run(() => closeTerm());
+    await soak.world.ui.run(() => { closeTerm(); return true; });
     if (await soak.until(() => clients() === 0, 10_000)) soak.tally.counts.closed++;
   }
 }

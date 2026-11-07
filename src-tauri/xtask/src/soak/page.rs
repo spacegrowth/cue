@@ -27,6 +27,7 @@ fn section(out: &mut String, r: &Run) {
     locks(out, r);
     curve(out, "memory (MB)", &r.curve("/memory"), 1e6);
     curve(out, "window state (KB)", &r.curve("/snapshot"), 1e3);
+    parts(out, r);
     decisions(out, r);
     let _ = writeln!(out, "  failures: {}", if failures.is_empty() { "none".to_string() } else { String::new() });
     for f in failures {
@@ -113,6 +114,14 @@ fn curve(out: &mut String, what: &str, c: &[(f64, f64)], unit: f64) {
     let step = (c.len() / 10).max(1);
     let points: Vec<String> = c.iter().step_by(step).chain(c.last()).map(|(t, v)| format!("{}:{:02} {:.1}", (*t as u64) / 60, (*t as u64) % 60, v / unit)).collect();
     let _ = writeln!(out, "  {what}: {}", points.join(" | "));
+}
+
+/// The largest parts of the window's state at the end: where its size is.
+fn parts(out: &mut String, r: &Run) {
+    let Some(p) = r.0.get("snapshot_parts").and_then(Value::as_object) else { return };
+    let mut p: Vec<(u64, &String)> = p.iter().map(|(k, v)| (v.as_u64().unwrap_or(0), k)).collect();
+    p.sort_by(|a, b| b.0.cmp(&a.0));
+    let _ = writeln!(out, "    largest at the end: {}", p.iter().take(4).map(|(n, k)| format!("{k} {:.0} KB", *n as f64 / 1e3)).collect::<Vec<_>>().join(", "));
 }
 
 fn decisions(out: &mut String, r: &Run) {

@@ -46,3 +46,15 @@ fn end_ssh_children() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_dropped_line_is_ssh_refusing_whatever_it_is_asked() {
+        let out = super::refused().args(["-o", "BatchMode=yes", "-T", "box", "echo hi"]).output().unwrap();
+        assert_eq!(out.status.code(), Some(255));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("Connection refused"), "what machines::not_taken reads as a trip never started");
+        assert!(out.stdout.is_empty());
+        assert!(!super::down(), "the line is up until the knob's thread drops it");
+    }
+}
