@@ -224,3 +224,13 @@ fn insights_hidden_for_a_day_come_back_when_the_day_is_over() {
     w.advance(1);
     assert_eq!(ahead(), true, "back once it is");
 }
+
+/// The mini window's setting reaches the window as saved (Settings shows the shape you picked), off by default.
+#[test]
+fn the_mini_window_setting_reaches_the_window() {
+    let w = World::new();
+    assert_eq!(crate::config::effective()["mini"]["mode"], json!("off"));
+    crate::config::set("mini.mode", json!("notch")).unwrap();
+    assert_eq!(crate::config::effective()["mini"]["mode"], json!("notch"));
+    drop(w);
+}

@@ -90,6 +90,8 @@ fn from_config(c: &Value) -> Value {
         "history": { "keep": history_keep() },
         "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "cold": b("/notify/cold", true), "sound": crate::sounds::choice() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
+        // Settings → Mini window (mini/mod.rs): "off", "rail" or "notch".
+        "mini": { "mode": c.pointer("/mini/mode").and_then(Value::as_str).unwrap_or("off") },
         // The voice Cue reads out in: "" the Mac's own, else a natural one ("af_heart"), downloaded in Settings → Voice.
         "voice": { "pick": c.pointer("/voice/pick").and_then(Value::as_str).unwrap_or("") },
         // Insights (ui/insights.js): one switch for all of them, off until you turn it on. `snooze`: hidden until
