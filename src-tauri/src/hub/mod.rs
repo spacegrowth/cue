@@ -400,9 +400,9 @@ impl Hub {
     /// The snapshot, its place in the order snapshots were taken from the store, and when it next changes
     /// with time alone.
     fn build_snapshot(&self) -> (u64, Value, shown::NextChange) {
-        // What the files say (each folder's git HEAD; each Claude session's latest request, as the tick last read
-        // it) and what other parts of Cue keep are taken with the store let go: this runs on every change, and a slow disk mustn't
-        // hold every hook and tick behind it.
+        // What the files say (each folder's git HEAD; each Claude session's latest request, as last read) and
+        // what other parts of Cue keep are taken with the store let go: this runs on every change, and a slow
+        // disk mustn't hold every hook and tick behind it.
         let (known, live, transcripts, cwds) = self.snapshot_sources();
         let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
         let put = crate::config::folders_put();

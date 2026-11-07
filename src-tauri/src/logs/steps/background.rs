@@ -131,7 +131,8 @@ impl Feed {
     }
 
     /// A script that ended (its notice came, or its output file ends on the exit line), seen to once its
-    /// output has been read (its last line says how a failure went): its copy from another machine stopped, and a failure after a while noted for the hub.
+    /// output has been read (its last line says how a failure went): its copy from another machine stopped,
+    /// and a failure after a while noted for the hub.
     pub(super) fn close_scripts(&mut self) {
         for h in self.helpers.iter_mut().filter(|h| h.script && h.seen && h.finished_ms > 0 && !h.closed) {
             h.closed = true;
