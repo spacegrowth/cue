@@ -182,3 +182,15 @@ fn an_answer_saved_as_its_session_is_deleted_stays_deleted() {
         assert!(crate::db::history(500).iter().all(|i| i.id != ask.id), "{sid}: its answer came back after it was deleted");
     }
 }
+
+/// A live session deleted: its end (which the deletion caused) is never saved by the draw after, so it doesn't
+/// come back under Closed, in the window or after a relaunch.
+#[test]
+fn a_live_session_deleted_doesnt_come_back_under_closed() {
+    let w = World::new();
+    w.session("a").prompt("fix it");
+    w.hub().purge("a");
+    w.settle();
+    assert!(crate::db::ended_session("a").is_none(), "saved as ended after it was deleted");
+    assert!(w.hub().closed(3_600_000, 50).iter().all(|s| s["session_id"] != "a"), "shown under Closed");
+}

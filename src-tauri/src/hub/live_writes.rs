@@ -7,7 +7,8 @@
 //! done where it's handed in, so each test reads the database right after.
 //!
 //! The writer keeps what the last save wrote (`LiveMarks`) and writes only the sessions that changed since,
-//! and which sessions were deleted, so no card of theirs answered before then is saved after.
+//! and which sessions were deleted, so nothing of theirs from before then (an answered card, the record of
+//! its end) is saved after.
 
 use super::saves::LiveMarks;
 use crate::model::Item;
@@ -111,7 +112,7 @@ impl LiveWrites {
     }
 
     /// One job to the database, in its order: the live sessions (what changed of them) and the answered cards
-    /// in one write, then the ended ones (not live again since), then the deletions.
+    /// in one write, then the ended ones (not live again, nor deleted, since), then the deletions.
     fn write(&self, job: Job) {
         let mut w = crate::locking::lock(&self.written, "db writer's marks");
         let Job { live, mut answered, ended, deletes } = job;
@@ -121,7 +122,11 @@ impl LiveWrites {
             Some((sessions, waiting)) => w.marks = save_live(&w.marks, sessions, waiting, &answered),
             None => answered.iter().for_each(crate::db::save_answered),
         }
-        let ended: Vec<(u64, Session)> = ended.into_iter().filter(|(_, s)| !live_ids.contains(&s.origin.session_id)).collect();
+        // Not live again since, and not deleted since it ended.
+        let ended: Vec<(u64, Session)> = ended
+            .into_iter()
+            .filter(|(at, s)| !live_ids.contains(&s.origin.session_id) && w.deleted.get(&s.origin.session_id).is_none_or(|del| at > del))
+            .collect();
         crate::db::save_ended(&ended);
         for (sid, at) in deletes {
             crate::db::delete_session(&sid);
@@ -154,15 +159,45 @@ mod tests {
         .unwrap()
     }
 
+    fn session(id: &str) -> Session {
+        serde_json::from_value(json!({
+            "session_id": id, "harness": "claude", "cwd": "/x/proj", "project": "proj", "state": "working",
+            "driven_by": "", "queued": null, "since_ms": 1, "prompt": "", "segments": [], "thread": []
+        }))
+        .unwrap()
+    }
+
+    /// A database of the test's own while it runs (CUE_HOME and the database's turn held).
+    struct Db(std::path::PathBuf, #[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+    impl Db {
+        fn new(name: &str) -> Self {
+            let guard = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let dir = std::env::temp_dir().join(format!("cue-writer-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::env::set_var("CUE_HOME", &dir);
+            crate::db::reset();
+            Db(dir, guard)
+        }
+    }
+
+    impl Drop for Db {
+        fn drop(&mut self) {
+            std::env::remove_var("CUE_HOME");
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    fn deletes(sid: &str, at: u64) -> Job {
+        Job { deletes: vec![(sid.into(), at)], ..Default::default() }
+    }
+
     /// On the writer's thread, in the order handed in: a deleted session's card answered before its deletion is
     /// never saved, even handed in after it; one answered after is; `flush` returns once it's all written.
     #[test]
     fn the_writer_writes_in_order_and_never_brings_back_a_deleted_sessions_answer() {
-        let dir = std::env::temp_dir().join(format!("cue-writer-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("CUE_HOME", &dir);
-        crate::db::reset();
+        let _db = Db::new("order");
         let w = Arc::new(LiveWrites::default());
         let job = |answered: Vec<Item>, deletes: Vec<(String, u64)>| Job { answered, deletes, ..Default::default() };
         w.hand(job(vec![answered("a", "s", 10), answered("k", "other", 10)], vec![]), true);
@@ -172,8 +207,17 @@ mod tests {
         let ids: Vec<String> = crate::db::history(50).into_iter().map(|i| i.id).collect();
         assert!(ids.contains(&"k".to_string()) && ids.contains(&"after".to_string()), "{ids:?}");
         assert!(!ids.contains(&"a".to_string()) && !ids.contains(&"late".to_string()), "{ids:?}");
-        std::env::remove_var("CUE_HOME");
-        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A session that ended before it was deleted, its end handed in after the deletion: not saved as ended.
+    #[test]
+    fn an_end_handed_in_after_its_sessions_deletion_isnt_saved() {
+        let _db = Db::new("ended");
+        let w = Arc::new(LiveWrites::default());
+        w.hand(deletes("s", 20), false);
+        w.hand(Job { ended: vec![(15, session("s")), (25, session("t"))], ..Default::default() }, false);
+        assert!(crate::db::ended_session("s").is_none(), "deleted after it ended");
+        assert!(crate::db::ended_session("t").is_some());
     }
 
     #[test]
