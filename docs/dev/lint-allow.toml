@@ -189,30 +189,6 @@ site = "config::load"
 reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
-holder = "hub::activity::Hub::failed"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::activity::Hub::on_event"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::activity::Hub::on_event"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::activity::Hub::refresh_activity"
-effect = "fs"
-site = "hub::activity::Hub::refresh_activity"
-reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
-
-[[store_io]]
 holder = "hub::asks::Hub::add_ask"
 effect = "fs"
 site = "config::load"
@@ -256,6 +232,18 @@ reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats f
 
 [[store_io]]
 holder = "hub::asks::Hub::waiting_card"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::events::Hub::on_active"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::events::Hub::on_active"
 effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
@@ -340,6 +328,36 @@ reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats f
 
 [[store_io]]
 holder = "hub::sessions::Hub::your_turn_since"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::turn_end::Hub::stopped_for_driver"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::turn_end::Hub::stopped_for_driver"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::turn_end::Hub::stopped_for_you"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::turn_end::Hub::stopped_for_you"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::usage::Hub::failed"
 effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"

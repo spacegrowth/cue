@@ -31,13 +31,6 @@ impl Hub {
     }
 }
 
-impl Hub {
-    /// The store, locked, for hub/activity.rs until it moves to `read`/`write`.
-    pub(super) fn st(&self) -> crate::locking::Guard<'_, Store> {
-        crate::locking::lock(&self.store.0, "the hub's store")
-    }
-}
-
 #[cfg(test)]
 impl Hub {
     /// Tests: the store held, as a slow or stuck hub call holds it: `held` hears once it is, and it's let go

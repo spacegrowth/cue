@@ -1,6 +1,7 @@
 //! The sessions themselves: started, resumed, adopted, parked, swept, renamed, closed, forgotten.
 
 use super::*;
+use super::activity::written_ms;
 use super::asks::waiting_words;
 
 /// A Claude session missing this long from Claude Code's running list (here, or on its machine),
@@ -580,12 +581,6 @@ impl Hub {
             }
         });
     }
-}
-
-/// When the file at `path` was last written (ms since 1970), if it's there.
-fn written_ms(path: &str) -> Option<u64> {
-    let at = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
-    at.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }
 
 /// A prompt open this long in a terminal before Cue makes a card for it: its own permission hook (which

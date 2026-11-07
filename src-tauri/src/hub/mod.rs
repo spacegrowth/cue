@@ -11,6 +11,9 @@ use tokio::sync::oneshot;
 
 mod activity;
 mod asks;
+mod cache_tick;
+mod events;
+mod hand_off;
 mod history;
 pub(crate) mod ports;
 mod reviews;
@@ -18,6 +21,8 @@ mod send;
 mod sessions;
 mod shown;
 mod store_access;
+mod turn_end;
+mod usage;
 
 pub use history::{split_turn, summary};
 
