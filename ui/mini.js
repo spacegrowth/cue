@@ -111,7 +111,7 @@
 
   // ---------- size and place ----------
   /** The window as big as what it shows: the panel's own size, the chat no taller than its share of the screen. */
-  function fit(force = false) {
+  function fit() {
     const p = root.querySelector(".m-panel");
     const cap = Math.round(screen.height * CAP);
     document.documentElement.style.setProperty("--cap", `${cap}px`);
@@ -120,7 +120,7 @@
     const h = empty ? 200 : Math.min(p ? Math.ceil(p.getBoundingClientRect().height) : 30, m.shape === "chat" ? cap : 4000);
     const args = { w, h, at: m.shape === "chat" ? m.at : null, show: true };
     const key = JSON.stringify(args);
-    if (key === m.sized && !force) return;   // the same size and place: nothing to move
+    if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
     invoke("mini_shape", args).catch(() => { m.sized = ""; });
   }
@@ -261,8 +261,6 @@
     bind();
     take(await invoke("get_state"));
     await T.event.listen("state", (e) => take(e.payload));
-    // Cue's window went to the back: the mini window comes back as it was.
-    await T.event.listen("mini-again", () => fit(true));
     // Ages move on with no new state: once a minute is enough for "4m".
     setInterval(() => { if (m.shape !== "chat") paint(); }, 60000);
   }

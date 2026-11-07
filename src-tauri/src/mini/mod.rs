@@ -11,7 +11,7 @@
 mod macos;
 
 use serde_json::Value;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// The mini window's label (its page asks for it by this name too).
@@ -27,6 +27,11 @@ pub(crate) enum Mode {
 
 /// The shape open now (Off: none).
 static OPEN: AtomicU8 = AtomicU8::new(Mode::Off as u8);
+/// Cue's own window is in front (its last focus event): the mini window waits, hidden. Kept from the events
+/// themselves: asked of the window just as it goes to the back, it can still say it's in front.
+static MAIN_FRONT: AtomicBool = AtomicBool::new(false);
+/// Its page has sized it at least once (a window never sized isn't shown: it would flash at 4 × 200).
+static SIZED: AtomicBool = AtomicBool::new(false);
 
 impl Mode {
     fn from_setting(v: Option<&str>) -> Mode {
@@ -57,6 +62,7 @@ pub(crate) fn apply(app: &AppHandle) {
         let _ = w.destroy();
     }
     OPEN.store(Mode::Off as u8, Ordering::SeqCst);
+    SIZED.store(false, Ordering::SeqCst);
     if want == Mode::Off || std::env::var_os("CUE_QUIET").is_some() {
         return;
     }
@@ -130,7 +136,8 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, at: Option<f64>, 
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
     win.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
     win.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
-    if !main_in_front(&app) {
+    SIZED.store(true, Ordering::SeqCst);
+    if !MAIN_FRONT.load(Ordering::SeqCst) {
         win.show().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -154,19 +161,14 @@ pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>)
     Ok(())
 }
 
-/// Cue's own window is shown and in front: the mini window would only repeat it.
-fn main_in_front(app: &AppHandle) -> bool {
-    app.get_webview_window("main").is_some_and(|m| m.is_visible().unwrap_or(false) && m.is_focused().unwrap_or(false))
-}
-
 /// Cue's window came forward (hide the mini window) or went back (show it again, as its page last sized it).
 pub(crate) fn main_focused(app: &AppHandle, focused: bool) {
+    MAIN_FRONT.store(focused, Ordering::SeqCst);
     let Some(win) = app.get_webview_window(LABEL) else { return };
     if focused {
         let _ = win.hide();
-    } else {
-        use tauri::Emitter;
-        let _ = app.emit_to(LABEL, "mini-again", ());
+    } else if SIZED.load(Ordering::SeqCst) {
+        let _ = win.show();
     }
 }
 
