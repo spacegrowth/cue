@@ -281,20 +281,20 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "the hub's store" | "REPOS" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root`, takes it |
 | "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus.rs::type_into` → `terminal/focus.rs::press_enter` → `terminal/focus.rs::iterm_session_do` → `terminal/focus.rs::current_tty` → `logs/live.rs::claude`, takes it |
 | "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/saves.rs::Hub::save_parked` → `db.rs::park` → `db.rs::with`, takes it |
-| "typing gate" | "DECLARED" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `model.rs::declared`, takes it |
-| "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view`, takes it |
-| "typing gate" | "LEDGER" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::handoffs` → `leads.rs::ledger_handoffs` → `leads.rs::read_ledger`, takes it |
+| "typing gate" | "DECLARED" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folders_view` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `model.rs::declared`, takes it |
+| "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads.rs::view`, takes it |
+| "typing gate" | "LEDGER" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads.rs::handoffs` → `leads.rs::ledger_handoffs` → `leads.rs::read_ledger`, takes it |
 | "typing gate" | "REPOS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/saves.rs::Hub::save_parked` → `db.rs::park` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
-| "typing gate" | "TOPS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `logs/live.rs::checkout_top`, takes it |
-| "typing gate" | "VERIFY" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view` → `leads.rs::verdict_of`, takes it |
+| "typing gate" | "TOPS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folders_view` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `logs/live.rs::checkout_top`, takes it |
+| "typing gate" | "VERIFY" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads.rs::view` → `leads.rs::verdict_of`, takes it |
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::images_there` → `uploads.rs::on_machine` → `machines/mod.rs::run_with_bytes` → `machines/mod.rs::ssh_command` → `machines/mod.rs::env_file`, takes it |
 | "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/saves.rs::Hub::save_parked`, takes it |
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::settle_typed` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_with` → `hub/mod.rs::Hub::notify_full` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "shown snapshot" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
 | "typing gate" | "the hub's store" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/store_access.rs::Hub::write`, takes it |
-| "typing gate" | "what About has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `tasks.rs::spent`, takes it |
-| "typing gate" | "what each session is about" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `tasks.rs::view` → `tasks.rs::with`, takes it |
-| "typing gate" | "what the status list has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `statuslist.rs::spent`, takes it |
+| "typing gate" | "what About has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `tasks.rs::spent`, takes it |
+| "typing gate" | "what each session is about" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `tasks.rs::view` → `tasks.rs::with`, takes it |
+| "typing gate" | "what the status list has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `statuslist.rs::spent`, takes it |
 
 ## External calls under the hub's store
 
@@ -762,8 +762,6 @@ What the store's holders reach while they hold it (30 allowed for now in `lint-a
 | `hub/cache_tick.rs::cold_soon` | db::handoff | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/history.rs::Answered::save` | db::save_answered | 1 |
-| `hub/mod.rs::Hub::build_snapshot` | db::ahead_watched | 1 |
-| `hub/mod.rs::Hub::build_snapshot` | db::handoffs | 1 |
 | `hub/mod.rs::Hub::changed` | db::sync_live | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::answers_since | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::history | 1 |
@@ -771,6 +769,8 @@ What the store's holders reach while they hold it (30 allowed for now in `lint-a
 | `hub/mod.rs::Hub::with_ports` | db::parked | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::review_queue | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::set_aside | 1 |
+| `hub/mod.rs::apart_view` | db::ahead_watched | 1 |
+| `hub/mod.rs::apart_view` | db::handoffs | 1 |
 | `hub/reviews.rs::Hub::set_aside` | db::add_set_aside | 1 |
 | `hub/saves.rs::Hub::save_parked` | db::park | 1 |
 | `hub/saves.rs::Hub::save_parked` | db::unpark | 1 |
@@ -903,8 +903,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/db.rs::open` |  |  |
 | `src-tauri/src/hook.rs::final_turn` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
-| `src-tauri/src/hub/mod.rs::build_snapshot` |  |  |
-| `src-tauri/src/hub/send.rs::send_saved` |  |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
 | `src-tauri/src/ipc/sessions.rs::move_session_to_cue` |  |  |

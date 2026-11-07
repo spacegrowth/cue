@@ -346,68 +346,19 @@ impl Hub {
     /// The snapshot, its place in the order snapshots were taken from the store, and when it next changes
     /// with time alone.
     fn build_snapshot(&self) -> (u64, Value, shown::NextChange) {
-        // What the files say (each Claude session's transcript tail, each folder's git HEAD) is read
-        // with the store unlocked: this runs on every change, and a slow disk mustn't hold every hook and
-        // tick behind it.
+        // What the files say (each Claude session's transcript tail, each folder's git HEAD) and what other
+        // parts of Cue keep are read with the store let go: this runs on every change, and a slow disk mustn't
+        // hold every hook and tick behind it.
         let (known, live, transcripts, cwds) = self.snapshot_sources();
-        // Your latest request to each Claude session, from its transcript: no model.
-        let about: HashMap<String, Value> = transcripts.into_iter()
-            .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
-            .collect();
-        // Each folder's project (model.rs project_at): its name, its own (the repository's or the folder's,
-        // for Move to project's "its folder's own"), its repository's main checkout (where + New starts), the
-        // top of its checkout (where its actions are) and where Move to project would put it.
-        let put = crate::config::folders_put();
-        let projects: HashMap<String, Value> = cwds.iter().map(|c| (c.clone(), folder_project(c, &put))).collect();
-        let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
         let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
-        let crew = crate::leads::view(&ids);
-        // A lead that handed off: which lead took over (relay's handoff), so its chat and row can say so.
-        let handoffs = crate::leads::handoffs(&ids);
-        // Hand-offs through a hand-off skill (insights.js): pending ones offer "Continue in a new session".
-        // Read before the hub's lock, not under it.
-        let skill_handoffs = crate::db::handoffs();
-        // Sessions with "Hand off if I don't come back" on (insights.js ahead).
-        let ahead_watch = crate::db::ahead_watched();
-        // What each followed session is about (tasks.rs), its own lock, taken before the hub's.
-        let tasks = crate::tasks::view();
-        let tasks_spent = crate::tasks::spent();
-        let status_spent = crate::statuslist::spent();
-        // Settings ask macOS (Login Items, a round trip to its service manager that can take seconds) and read
-        // files: before the hub's lock too, or typing into a session waits behind them.
-        let settings = crate::config::effective();
-        let connections = crate::config::connections();
-        let usage_file = crate::usage_file::read();
+        let put = crate::config::folders_put();
+        let mut outside = folders_view(live, transcripts, cwds, &put);
+        outside.extend(apart_view(&ids));
         let (seq, next, mut snap) = self.write(Self::store_view);
-        let outside = json!({
-            "crew": crew,
-            "handoffs": handoffs,
-            "skill_handoffs": skill_handoffs,
-            "ahead_watch": ahead_watch,
-            "tasks": tasks,
-            "tasks_spent": tasks_spent,
-            "status_spent": status_spent,
-            "live": live,
-            "branches": branches,
-            "projects": projects,
-            "about": about,
-            "window_ms": crate::sessions::WINDOW_MS,
-            "now_ms": now_ms(),
-            "settings": settings,
-            "connections": connections,
-            "usage_file": usage_file,
-        });
-        if let (Some(snap), Value::Object(outside)) = (snap.as_object_mut(), outside) {
+        if let Some(snap) = snap.as_object_mut() {
             snap.extend(outside);
         }
-        put_projects(&mut snap, &put);
-        let moved = crate::config::moved();
-        let taken = move_projects(&mut snap, &moved);
-        // Moves a new session took over (after /clear): saved, so they stay once the old session's gone. Added
-        // to the moves as they are when saved, not as read above: one saved meanwhile stays.
-        if !taken.is_empty() {
-            let _ = crate::config::update("project.moves", |c| Some(Value::Object(crate::config::moves_in(c).into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect())));
-        }
+        settle_projects(&mut snap, &put);
         (seq, snap, next)
     }
 
@@ -594,6 +545,46 @@ impl Hub {
             st.notified.insert(note.id.clone());
             crate::notify::show(app.clone(), note);
         });
+    }
+}
+
+/// The snapshot's live sessions Cue hasn't heard from, and what their folders and transcripts say: each
+/// folder's branch and project, and your latest request to each Claude session (from its transcript: no model).
+fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)>, cwds: Vec<String>, put: &HashMap<String, String>) -> serde_json::Map<String, Value> {
+    let about: HashMap<String, Value> = transcripts.into_iter()
+        .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
+        .collect();
+    let projects: HashMap<String, Value> = cwds.iter().map(|c| (c.clone(), folder_project(c, put))).collect();
+    let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
+    let view = json!({ "live": live, "branches": branches, "projects": projects, "about": about });
+    view.as_object().cloned().unwrap_or_default()
+}
+
+/// The snapshot's parts other parts of Cue keep, each behind its own lock (taken before the store's, never
+/// under it) for the sessions `ids`: the crew and its hand-offs (relay's, and a hand-off skill's pending ones
+/// that offer "Continue in a new session"), "Hand off if I don't come back", About and the status list's
+/// costs, and settings, which ask macOS (Login Items, a round trip that can take seconds) and read files.
+fn apart_view(ids: &HashSet<String>) -> serde_json::Map<String, Value> {
+    let (crew, handoffs, skill_handoffs, ahead_watch) = (crate::leads::view(ids), crate::leads::handoffs(ids), crate::db::handoffs(), crate::db::ahead_watched());
+    let (tasks, tasks_spent, status_spent) = (crate::tasks::view(), crate::tasks::spent(), crate::statuslist::spent());
+    let (settings, connections, usage_file) = (crate::config::effective(), crate::config::connections(), crate::usage_file::read());
+    let view = json!({
+        "crew": crew, "handoffs": handoffs, "skill_handoffs": skill_handoffs, "ahead_watch": ahead_watch,
+        "tasks": tasks, "tasks_spent": tasks_spent, "status_spent": status_spent,
+        "window_ms": crate::sessions::WINDOW_MS, "now_ms": now_ms(),
+        "settings": settings, "connections": connections, "usage_file": usage_file,
+    });
+    view.as_object().cloned().unwrap_or_default()
+}
+
+/// Every row in the snapshot under the project it shows in: a folder's (`put_projects`), then a session's own
+/// move (`move_projects`). Moves a new session took over (after /clear) are saved, so they stay once the old
+/// session's gone: added to the moves as they are when saved, not as read here, so one saved meanwhile stays.
+fn settle_projects(snap: &mut Value, put: &HashMap<String, String>) {
+    put_projects(snap, put);
+    let taken = move_projects(snap, &crate::config::moved());
+    if !taken.is_empty() {
+        let _ = crate::config::update("project.moves", |c| Some(Value::Object(crate::config::moves_in(c).into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect())));
     }
 }
 

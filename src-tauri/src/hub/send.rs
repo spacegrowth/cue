@@ -365,15 +365,12 @@ impl Hub {
             self.changed();
             return Ok("kept in Cue: it goes when this turn ends".into());
         }
+        // ⌘↵ while it works: its turn stopped first, so this goes now rather than queued.
         let stopped = now && busy && !direct;
-        let busy = if stopped {
-            self.write(|st| st.stopped_to_send.insert(session_id.to_string(), now_ms()));
-            self.keys().press_escape(origin.as_ref().ok_or("that session is gone")?)?;
-            crate::clock::sleep_ms(700);
-            false
-        } else {
-            busy && !now
-        };
+        if stopped {
+            self.stop_to_send(session_id, origin.as_ref().ok_or("that session is gone")?)?;
+        }
+        let busy = busy && !now;
         let origin = origin.ok_or("that session is gone")?;
         // Stopped before it answered, Claude Code hands the message it was on back to its box, and this one
         // is typed after it: the two go as one. A blank line first keeps them apart (an empty box drops it).
@@ -409,6 +406,15 @@ impl Hub {
             return Ok(format!("via {via}; Cue is watching for it to take it"));
         }
         Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
+    }
+
+    /// Stop a session's turn to send a message now: Esc, noted as Cue's own (not a turn you stopped), and a
+    /// moment for its terminal to settle.
+    fn stop_to_send(&self, session_id: &str, origin: &Origin) -> Result<(), String> {
+        self.write(|st| st.stopped_to_send.insert(session_id.to_string(), now_ms()));
+        self.keys().press_escape(origin)?;
+        crate::clock::sleep_ms(700);
+        Ok(())
     }
 
     /// Where a session is and whether it's busy (working or compacting: Claude Code holds what you type until
