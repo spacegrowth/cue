@@ -65,3 +65,23 @@ test("typing refused in the last session's terminal says nothing over the next o
   await page.waitForFunction(() => termSid === "det");
   await expect(page.locator(".term-stalled")).toHaveCount(0);
 });
+
+// Earlier messages come in a page at a time as you scroll up to the chat's top (ui/app/bind.js onChatScroll).
+// The chat also moves on its own (its terminal opening above the box shrinks it, a redraw): that loads none,
+// or a chat left open would page in its whole history, and every draw would lay all of it out again.
+const chatAtTop = (page) => page.evaluate(() => { const c = document.querySelector("[data-chat]"); c.scrollTop = 0; c.dispatchEvent(new Event("scroll")); });
+const pagesAsked = async (cue) => (await cue.calls("session_log_page")).length;
+
+test("the chat moving on its own as its terminal opens loads no earlier messages", async ({ cue, page }) => {
+  await openTerminal(page);
+  await chatAtTop(page);
+  expect(await pagesAsked(cue)).toBe(0);
+});
+
+test("scrolling up to the chat's top yourself loads earlier messages", async ({ cue, page }) => {
+  await openTerminal(page);
+  await page.locator("[data-chat]").hover();
+  await page.mouse.wheel(0, -400);
+  await chatAtTop(page);
+  await expect.poll(() => pagesAsked(cue)).toBeGreaterThan(0);
+});
