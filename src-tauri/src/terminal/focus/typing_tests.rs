@@ -112,10 +112,18 @@ fn a_paste_whose_enter_tmux_refuses_fails_the_typing() {
 #[test]
 fn a_tmux_that_doesnt_answer_is_cut_off_and_nothing_is_pasted() {
     let tmux = FakeTmux::answering("display-message) exec sleep 60 ;;");
+    let _cap = crate::terminal::test_tmux::cap_tmux(Duration::from_millis(200));
     let t0 = Instant::now();
     assert!(type_into(&pane(), "hello").is_err());
-    assert!(t0.elapsed() < Duration::from_secs(12), "cut off at its 10 s cap: {:?}", t0.elapsed());
+    assert!(t0.elapsed() < Duration::from_secs(2), "cut off at its cap: {:?}", t0.elapsed());
     assert!(tmux.calls_of("set-buffer").is_empty());
+}
+
+#[test]
+fn tmux_is_cut_off_after_ten_seconds_unless_a_test_says_otherwise() {
+    assert_eq!(tmux_cap(), Duration::from_secs(10));
+    let _cap = crate::terminal::test_tmux::cap_tmux(Duration::from_millis(5));
+    assert_eq!(tmux_cap(), Duration::from_millis(5));
 }
 
 #[test]

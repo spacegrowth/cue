@@ -15,28 +15,51 @@ fn mine() -> PathBuf {
 }
 
 thread_local! {
-    /// A tmux a test stands in on its own thread (`stand_in`): a script, or a name that isn't installed.
-    static STAND_IN: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    /// The programs a test stands in on its own thread (`stand_in`), by name: a script, or one not installed.
+    static STAND_INS: std::cell::RefCell<std::collections::HashMap<String, String>> = std::cell::RefCell::default();
+    /// How long a tmux command may take on this thread before it's cut off (`cap_tmux`).
+    static CAP: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
 }
 
-/// While this lives, tmux on this thread is `bin` (focus::bin), never a server: what a test stands in to
-/// make tmux hang, fail, answer as it says, or be missing. Other threads (other tests) are untouched.
-pub struct StandIn(());
+/// While this lives, program `name` (tmux, ps) on this thread is `bin` (focus::bin), never the real one:
+/// what a test stands in to make it hang, fail, answer as it says, or be missing. Other threads (other
+/// tests) are untouched.
+pub struct StandIn(String);
 
-pub fn stand_in(bin: &str) -> StandIn {
-    STAND_IN.with(|s| *s.borrow_mut() = Some(bin.to_string()));
-    StandIn(())
+pub fn stand_in(name: &str, bin: &str) -> StandIn {
+    STAND_INS.with(|s| s.borrow_mut().insert(name.to_string(), bin.to_string()));
+    StandIn(name.to_string())
 }
 
 impl Drop for StandIn {
     fn drop(&mut self) {
-        STAND_IN.with(|s| *s.borrow_mut() = None);
+        STAND_INS.with(|s| s.borrow_mut().remove(&self.0));
     }
 }
 
-/// The tmux this thread's test stands in, if it does.
-pub fn standing_in() -> Option<String> {
-    STAND_IN.with(|s| s.borrow().clone())
+/// The program this thread's test stands in for `name`, if it does.
+pub fn standing_in(name: &str) -> Option<String> {
+    STAND_INS.with(|s| s.borrow().get(name).cloned())
+}
+
+/// While this lives, a tmux command on this thread is cut off after `cap` instead of focus::TMUX_CAP: a tmux
+/// that never answers fails in moments.
+pub struct Cap(());
+
+pub fn cap_tmux(cap: std::time::Duration) -> Cap {
+    CAP.with(|c| c.set(Some(cap)));
+    Cap(())
+}
+
+impl Drop for Cap {
+    fn drop(&mut self) {
+        CAP.with(|c| c.set(None));
+    }
+}
+
+/// The cap this thread's test put on tmux, if it did.
+pub fn tmux_cap() -> Option<std::time::Duration> {
+    CAP.with(|c| c.get())
 }
 
 /// Run by the loader before `main`: tmux, from here on, has only this process's own folder to go by.

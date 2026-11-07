@@ -10,7 +10,7 @@ use std::path::PathBuf;
 /// and anything else succeeds saying nothing. `answering` puts the test's own answers first.
 pub(crate) struct FakeTmux {
     dir: PathBuf,
-    _on: StandIn,
+    stand_ins: Vec<StandIn>,
 }
 
 /// The answers an agent's pane gives, after the test's own (sh `case` arms on the tmux command).
@@ -37,16 +37,13 @@ impl FakeTmux {
             "#!/bin/sh\nDIR='{}'\nprintf '%s\\n' \"$*\" >> \"$DIR/calls\"\n[ \"$1\" = -u ] && shift\ncase \"$1\" in\n{arms}\n{AGENT}\n  *) ;;\nesac\n",
             dir.display()
         );
-        let bin = dir.join("tmux");
-        std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-        let on = stand_in(&bin.to_string_lossy());
-        Self { dir, _on: on }
+        let on = stand_in("tmux", &executable(&dir, "tmux", &script));
+        Self { dir, stand_ins: vec![on] }
     }
 
     /// No tmux on this Mac: a name the system can't find.
     pub(crate) fn missing() -> StandIn {
-        stand_in("cue-test-no-such-tmux")
+        stand_in("tmux", "cue-test-no-such-tmux")
     }
 
     /// Each call's arguments, joined by spaces, in order.
@@ -58,6 +55,14 @@ impl FakeTmux {
     pub(crate) fn calls_of(&self, cmd: &str) -> Vec<String> {
         self.calls().into_iter().filter(|c| c.trim_start_matches("-u ").starts_with(cmd)).collect()
     }
+}
+
+/// `script` as program `name` in `dir`, ready to run; its path.
+fn executable(dir: &std::path::Path, name: &str, script: &str) -> String {
+    let bin = dir.join(name);
+    std::fs::write(&bin, script).unwrap();
+    std::fs::set_permissions(&bin, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    bin.to_string_lossy().into_owned()
 }
 
 impl Drop for FakeTmux {

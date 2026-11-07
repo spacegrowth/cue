@@ -271,8 +271,9 @@ fn with_no_tmux_installed_opening_fails_and_leaves_nothing_in_flight() {
 fn a_tmux_that_never_answers_the_pane_lookup_fails_the_opening_in_time() {
     let t = sid("hungtmux");
     let t2 = t.clone();
-    let r = within(15_000, move || {
+    let r = within(3_000, move || {
         let _tmux = FakeTmux::answering("display-message) exec sleep 60 ;;");
+        let _cap = crate::terminal::test_tmux::cap_tmux(std::time::Duration::from_millis(200));
         open_with(&t2, "%5", None, 80, 12, |_| {})
     });
     assert!(matches!(r, Some(Err(_))), "an error within its cap, not an opening that never answers: {r:?}");
