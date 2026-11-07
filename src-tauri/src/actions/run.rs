@@ -660,3 +660,7 @@ mod tests {
         assert!(!stopped.running && stopped.stopped, "stopped");
     }
 }
+
+#[cfg(test)]
+#[path = "run_faults_tests.rs"]
+mod faults;
