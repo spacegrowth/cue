@@ -154,7 +154,14 @@
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {
-    document.body.className = `mini ${NOTCH ? "notch" : "rail"} s-${m.shape}`;
+    // A new shape slides in (mini.css .m-enter); a redraw of the same one doesn't move.
+    if (m.shape !== m.drawnShape && m.shape !== "quiet") {
+      m.entering = true;
+      clearTimeout(m.enterT);
+      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, 200);
+    }
+    m.drawnShape = m.shape;
+    document.body.className = `mini ${NOTCH ? "notch" : "rail"} s-${m.shape}${m.entering ? " m-enter" : ""}`;
     const box = root.querySelector("[data-box]");
     if (m.shape === "chat" && box && root.querySelector(".m-chat")) {
       const t = root.querySelector("[data-thread]");

@@ -96,19 +96,16 @@ unsafe fn give_back(pid: i32) {
     }
 }
 
-/// Move and size the window to `(x, y, w, h)` (points, from the top left of the main display), animated: it
-/// grows and shrinks smoothly in place. `main_h`: the main display's height (AppKit's frames count up from its
-/// bottom).
+/// Move and size the window to `(x, y, w, h)` (points, from the top left of the main display), at once: the
+/// window is see-through, and its page slides the panel in (mini.css), which is smooth where animating the
+/// window's own frame wasn't (the page redrew at its final size every frame). `main_h`: the main display's
+/// height (AppKit's frames count up from its bottom).
 pub(super) fn frame(w: &tauri::WebviewWindow, (x, y, wd, ht): (f64, f64, f64, f64), main_h: f64) {
     let Ok(ns) = w.ns_window() else { return };
     let win = Win(ns as *mut AnyObject);
     let rect = objc2_foundation::NSRect::new(objc2_foundation::NSPoint::new(x, main_h - y - ht), objc2_foundation::NSSize::new(wd, ht));
     let _ = w.run_on_main_thread(move || unsafe {
-        // Through the window's animator: the resize runs in Core Animation, not by holding the main thread for
-        // its length (`setFrame:display:animate:` would).
-        let anim: *mut AnyObject = msg_send![&*win.ptr(), animator];
-        let target = if anim.is_null() { win.ptr() } else { anim };
-        let _: () = msg_send![&*target, setFrame: rect, display: true];
+        let _: () = msg_send![&*win.ptr(), setFrame: rect, display: true];
     });
 }
 

@@ -27,7 +27,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .rail .m-dots { background: var(--bg); border-radius: 12px 0 0 12px; padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--on-bg); }
 .rail .m-dots .m-sep { width: 12px; margin: -4px 0; }
 .m-dotb { display: grid; place-items: center; width: 22px; height: 22px; margin: -6px 0; border-radius: 50%; }
-.m-dotb.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--on-bg); }
+.m-dotb.on .m-dot { width: 16px; height: 16px; }   /* the session whose chat is open: its dot, bigger */
 .rail .m-pair { display: flex; align-items: center; gap: 0; }
 .rail .m-pair > .m-chat { width: 420px; flex: none; }
 .rail .m-pair > .m-dots { width: 28px; flex: none; }
@@ -43,7 +43,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-rows { overflow-y: auto; min-height: 0; }
 .m-sub { padding: 8px 8px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; opacity: .7; }
 .m-foot-line { padding: 6px 8px 2px; font-size: 12px; color: var(--on-bg-muted); }
-.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: 0 0 0 1px var(--line); }
+.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; border: 1.5px solid var(--bg); }
 
 /* ---------- the chat (both shapes) ---------- */
 .m-chat { display: flex; flex-direction: column; max-height: var(--cap, 440px); overflow: hidden; }
@@ -90,3 +90,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 .notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
 .notch .m-box { background: var(--slab); box-shadow: none; }
 .notch .m-box:focus { box-shadow: 0 0 0 2px var(--sel); }
+
+/* A new shape (the list, the chat) slides in from the edge it grows out of; the window itself is already its new
+   size (see-through), so only the panel moves. Not for redraws of the same shape. */
+.m-enter .m-panel { animation: m-in .16s ease-out; }
+.rail.m-enter .m-panel { --from: translateX(14px); }
+.notch.m-enter .m-panel { --from: translateY(-10px); }
+@keyframes m-in { from { opacity: 0; transform: var(--from, none); } }
+@media (prefers-reduced-motion: reduce) { .m-enter .m-panel { animation: none; } }

@@ -146,7 +146,7 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
     let (x, y) = place(mode, scr, w, h);
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
-    // Grown or shrunk smoothly, in place (macOS animates the frame); elsewhere, at once.
+    // Moved and sized at once (its page animates what it shows).
     #[cfg(target_os = "macos")]
     macos::frame(&win, (x, y, w, h), primary_height(&win));
     #[cfg(not(target_os = "macos"))]
