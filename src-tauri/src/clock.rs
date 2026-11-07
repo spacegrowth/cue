@@ -6,7 +6,7 @@
 pub fn now_ms() -> u64 {
     let wall = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
     #[cfg(test)]
-    return wall + fake::ahead_ms();
+    return fake::now_ms(wall);
     #[cfg(not(test))]
     wall
 }
@@ -23,6 +23,8 @@ pub fn sleep_ms(ms: u64) {
 /// A clock a test runs ahead of the wall's, shared by the threads it's installed on (each thread that
 /// should see it installs it: `Fake::install`). Time only moves forward. A wait on it moves it on by the
 /// whole wait and waits a twentieth of that for real, so another thread still gets to run meanwhile.
+/// `Fake::frozen` starts at a given time and moves only when moved: what a fixture that must come out
+/// the same every time is built on.
 #[cfg(test)]
 pub mod fake {
     use std::cell::RefCell;
@@ -36,11 +38,19 @@ pub mod fake {
         static INSTALLED: RefCell<Option<Fake>> = const { RefCell::new(None) };
     }
 
-    /// The fake clock: how far ahead of the wall it is.
+    /// The fake clock: how far it has been moved on, from the wall's time or (frozen) from its start.
     #[derive(Clone, Default)]
-    pub struct Fake(Arc<AtomicU64>);
+    pub struct Fake {
+        ahead: Arc<AtomicU64>,
+        start: Option<u64>,
+    }
 
     impl Fake {
+        /// A clock at `start_ms` that moves only when moved.
+        pub fn frozen(start_ms: u64) -> Self {
+            Self { ahead: Arc::default(), start: Some(start_ms) }
+        }
+
         /// This thread reads the time from this clock from now on (until `uninstall`).
         pub fn install(&self) {
             INSTALLED.with(|c| *c.borrow_mut() = Some(self.clone()));
@@ -52,12 +62,13 @@ pub mod fake {
 
         /// Move the clock on by `ms`.
         pub fn advance(&self, ms: u64) {
-            self.0.fetch_add(ms, Ordering::SeqCst);
+            self.ahead.fetch_add(ms, Ordering::SeqCst);
         }
     }
 
-    pub(super) fn ahead_ms() -> u64 {
-        INSTALLED.with(|c| c.borrow().as_ref().map_or(0, |f| f.0.load(Ordering::SeqCst)))
+    /// The time on this thread's fake clock, or the wall's (`wall`) with none installed.
+    pub(super) fn now_ms(wall: u64) -> u64 {
+        INSTALLED.with(|c| c.borrow().as_ref().map_or(wall, |f| f.start.unwrap_or(wall) + f.ahead.load(Ordering::SeqCst)))
     }
 
     /// A wait on this thread's fake clock, if it has one: true when it was waited that way.

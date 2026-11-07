@@ -167,9 +167,20 @@ impl Hub {
         &*self.ports.keys
     }
 
-    /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later).
+    /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later). A hub with no
+    /// app (a test's) has nothing to hand it: dropped, unless the test holds it (testing::Deferred).
     fn later(&self, after_ms: u64, job: impl FnOnce(&Arc<Hub>) + Send + 'static) {
-        self.ports.later.run(self.shared(), after_ms, Box::new(job));
+        match &self.ports.later {
+            ports::Later::Threads => {
+                let Some(me) = self.shared() else { return };
+                std::thread::spawn(move || {
+                    crate::clock::sleep_ms(after_ms);
+                    job(&me);
+                });
+            }
+            #[cfg(test)]
+            ports::Later::Deferred(queue) => queue.hand_in(after_ms, Box::new(job)),
+        }
     }
 
     /// The session's typing gate (see `typing`). Held for seconds by design (typing, then waiting for its hook):

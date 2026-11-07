@@ -16,9 +16,9 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
 | Lock declarations (static or field) | 73 |
-| Lock acquisitions | 351 |
-| Lock-graph edges | 31 |
-| Spawn sites | 64 |
+| Lock acquisitions | 352 |
+| Lock-graph edges | 32 |
+| Spawn sites | 58 |
 | External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 34 |
 
@@ -183,7 +183,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `config/save.rs::SAVING` | `std::sync::Mutex<()>` | "config saves" (1 sites) |
 | `db.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
-| `hub/mod.rs::Hub.store` | `Mutex<Store>` | "the hub's store" (172 sites) |
+| `hub/mod.rs::Hub.store` | `Mutex<Store>` | "the hub's store" (173 sites) |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
 | `hub/shown.rs::Shown.0` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
 | `ipc/chat.rs::FOUND` | `std::sync::Mutex<Option<std::collections::HashMap<String,String>>>` | — |
@@ -271,6 +271,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "the hub's store" | "DB" |  | `hub/asks.rs::Hub::set_starred` → `db.rs::park` → `db.rs::with`, takes it |
 | "the hub's store" | "INDEX" |  | `hub/mod.rs::Hub::build_snapshot` → `hub/reviews.rs::Hub::reviews_view` → `leads.rs::is_reviewed`, takes it |
 | "the hub's store" | "REPOS" |  | `hub/activity.rs::Hub::on_event` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root`, takes it |
+| "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus.rs::type_into` → `terminal/focus.rs::press_enter` → `terminal/focus.rs::iterm_session_do` → `terminal/focus.rs::current_tty` → `logs/live.rs::claude`, takes it |
 | "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `db.rs::unpark` → `db.rs::with`, takes it |
 | "typing gate" | "DECLARED" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `model.rs::project_said` → `model.rs::said_how` → `model.rs::declared`, takes it |
 | "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view`, takes it |
@@ -322,7 +323,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `hub::sessions::Hub::resumed` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::resumed` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
 | `hub::sessions::Hub::started` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::started` → `config.rs::context_keep` → `config.rs::load`, calls out |
 | `hub::sessions::Hub::started` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::started` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::sessions::Hub::sweep` | fs | `hub::sessions::Hub::sweep` | metadata | `hub/sessions.rs::Hub::sweep`, calls out |
+| `hub::sessions::Hub::sweep` | fs | `hub::sessions::written_ms` | metadata | `hub/sessions.rs::Hub::sweep` → `hub/sessions.rs::written_ms`, calls out |
 | `hub::sessions::Hub::unparked` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::unparked` → `config.rs::context_keep` → `config.rs::load`, calls out |
 | `hub::sessions::Hub::unparked` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::unparked` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
 | `hub::sessions::Hub::your_turn_since` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::your_turn_since` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
@@ -337,13 +338,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `commands.rs::read_folder` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
 | `hub/activity.rs::Hub::cache_tick` | thread::spawn | 1 |
-| `hub/activity.rs::Hub::on_event` | thread::spawn | 1 |
-| `hub/activity.rs::Hub::refresh_activity` | thread::spawn | 1 |
-| `hub/activity.rs::Hub::turn_changes` | thread::spawn | 1 |
-| `hub/activity.rs::Hub::turn_started` | thread::spawn | 1 |
-| `hub/send.rs::Hub::confirm_later` | thread::spawn | 1 |
-| `hub/send.rs::Hub::send_held_soon` | thread::spawn | 1 |
-| `hub/sessions.rs::Hub::deliver_deferred_rename` | thread::spawn | 1 |
+| `hub/mod.rs::Hub::later` | thread::spawn | 1 |
 | `ipc/chat.rs::restart_ends_when_running` | thread::spawn | 1 |
 | `ipc/mod.rs::blocking` | async_runtime::spawn_blocking | 1 |
 | `ipc/restore.rs::with_timeout` | thread::spawn | 1 |
@@ -368,8 +363,8 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `notify.rs::later` | Builder::spawn | 1 |
 | `notify.rs::send` | thread::spawn | 1 |
 | `safe_git.rs::on_machine` | thread::spawn | 1 |
-| `server.rs::handle` | tokio::spawn | 1 |
-| `server.rs::serve` | tokio::spawn | 1 |
+| `server/mod.rs::handle` | tokio::spawn | 1 |
+| `server/mod.rs::serve` | tokio::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
 | `talk.rs::start` | async_runtime::spawn | 1 |
 | `talk.rs::start` | thread::spawn | 1 |
@@ -460,7 +455,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `hook.rs::read_tail` | File::open | 1 |
 | `hook.rs::read_tail` | Path::metadata | 1 |
 | `hub/activity.rs::Hub::refresh_activity` | metadata | 1 |
-| `hub/sessions.rs::Hub::sweep` | metadata | 1 |
+| `hub/sessions.rs::written_ms` | metadata | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | read_dir | 4 |
 | `ipc/chat.rs::mcp_apply_clear_for` | read | 1 |
@@ -624,16 +619,16 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `model.rs::declared` | read_to_string | 1 |
 | `notify.rs::log` | OpenOptions::new | 1 |
 | `safe_git.rs::git_bin` | Path::is_file | 1 |
-| `server.rs::move_from_old_folder` | Path::exists | 1 |
-| `server.rs::move_from_old_folder` | Path::is_dir | 2 |
-| `server.rs::move_from_old_folder` | create_dir_all | 1 |
-| `server.rs::move_from_old_folder` | read_dir | 1 |
-| `server.rs::move_from_old_folder` | remove_file | 1 |
-| `server.rs::move_from_old_folder` | rename | 1 |
-| `server.rs::serve` | Permissions::from_mode | 1 |
-| `server.rs::serve` | create_dir_all | 1 |
-| `server.rs::serve` | remove_file | 1 |
-| `server.rs::serve` | set_permissions | 1 |
+| `server/mod.rs::move_from_old_folder` | Path::exists | 1 |
+| `server/mod.rs::move_from_old_folder` | Path::is_dir | 2 |
+| `server/mod.rs::move_from_old_folder` | create_dir_all | 1 |
+| `server/mod.rs::move_from_old_folder` | read_dir | 1 |
+| `server/mod.rs::move_from_old_folder` | remove_file | 1 |
+| `server/mod.rs::move_from_old_folder` | rename | 1 |
+| `server/mod.rs::serve` | Permissions::from_mode | 1 |
+| `server/mod.rs::serve` | create_dir_all | 1 |
+| `server/mod.rs::serve` | remove_file | 1 |
+| `server/mod.rs::serve` | set_permissions | 1 |
 | `sounds.rs::install_in` | create_dir_all | 1 |
 | `sounds.rs::install_in` | read | 1 |
 | `sounds.rs::install_in` | read_dir | 1 |
@@ -665,8 +660,8 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `tasks.rs::with` | read_to_string | 1 |
 | `terminal/dictation.rs::helper` | Path::exists | 1 |
 | `terminal/focus.rs::attach_in_new_window` | Path::exists | 1 |
-| `terminal/focus.rs::bin` | Path::exists | 1 |
 | `terminal/focus.rs::claude_trusts` | read_to_string | 1 |
+| `terminal/focus.rs::find_bin` | Path::exists | 1 |
 | `terminal/focus.rs::new_session_id` | File::open | 1 |
 | `terminal/focus.rs::open_tab_with` | Path::exists | 1 |
 | `terminal/focus.rs::run_in_new_window` | Path::exists | 1 |
@@ -764,12 +759,12 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `hub/mod.rs::Hub::build_snapshot` | db::handoffs | 1 |
 | `hub/mod.rs::Hub::changed` | db::sync_live | 1 |
 | `hub/mod.rs::Hub::changed` | db::unpark | 1 |
-| `hub/mod.rs::Hub::new` | db::answers_since | 1 |
-| `hub/mod.rs::Hub::new` | db::history | 1 |
-| `hub/mod.rs::Hub::new` | db::live | 1 |
-| `hub/mod.rs::Hub::new` | db::parked | 1 |
-| `hub/mod.rs::Hub::new` | db::review_queue | 1 |
-| `hub/mod.rs::Hub::new` | db::set_aside | 1 |
+| `hub/mod.rs::Hub::with_ports` | db::answers_since | 1 |
+| `hub/mod.rs::Hub::with_ports` | db::history | 1 |
+| `hub/mod.rs::Hub::with_ports` | db::live | 1 |
+| `hub/mod.rs::Hub::with_ports` | db::parked | 1 |
+| `hub/mod.rs::Hub::with_ports` | db::review_queue | 1 |
+| `hub/mod.rs::Hub::with_ports` | db::set_aside | 1 |
 | `hub/reviews.rs::Hub::drain_reviews` | db::unqueue_review | 2 |
 | `hub/reviews.rs::Hub::review` | db::queue_review | 1 |
 | `hub/reviews.rs::Hub::set_aside` | db::add_set_aside | 1 |
@@ -843,7 +838,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `machines/mod.rs::ssh_login` | /usr/bin/ssh | 1 |
 | `machines/mod.rs::stream_command` | /usr/bin/ssh | 1 |
 | `safe_git.rs::run` | (program computed) | 1 |
-| `server.rs::agent_behind` | /bin/ps | 1 |
+| `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |
 | `talk.rs::dictation` | (program computed) | 1 |
 | `talk.rs::start` | (program computed) | 1 |
@@ -886,8 +881,8 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | In | Call | Times |
 |---|---|---|
 | `hook.rs::connect` | UnixStream::connect | 1 |
-| `server.rs::serve` | UnixListener::bind | 1 |
-| `server.rs::serve` | UnixStream::connect | 1 |
+| `server/mod.rs::serve` | UnixListener::bind | 1 |
+| `server/mod.rs::serve` | UnixStream::connect | 1 |
 
 
 ## Sizes
@@ -926,7 +921,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/logs/steps.rs::take` |  |  |
 | `src-tauri/src/logs/steps.rs::turn_rows` |  |  |
 | `src-tauri/src/logs/transcript.rs::conversation_before` |  |  |
-| `src-tauri/src/server.rs::handle` |  |  |
 | `src-tauri/src/sessions.rs::mark` |  |  |
 | `src-tauri/src/talk.rs::run_loop` |  |  |
 | `src-tauri/src/terminal/focus.rs::type_into` |  |  |

@@ -24,9 +24,9 @@ name = "typing gate"
 reason = "a session's typing gate is held for seconds by design and waited on with its own deadline and error (wait_turn), not locking::lock's 5 s limit"
 
 [[tmux_seam]]
-file = "terminal/focus.rs"
-function = "private_tmux"
-reason = "the seam itself: kills tmux servers left by earlier test runs, each by its own private socket (-S), never the default one"
+file = "terminal/test_tmux.rs"
+function = "take_down"
+reason = "the tests' own tmux seam: takes down the servers of test runs that have exited, each by its own private socket (-S), never the default one"
 
 # Lock order today: B may be taken while A is held. A new edge fails the check until it's added here.
 
@@ -114,6 +114,11 @@ reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX
 from = "the hub's store"
 to = "REPOS"
 reason = "Sessions::mark → model::project_of_origin → live::repo_root under the store; Phase 2 (§2.4) caches project lookups outside it"
+
+[[lock_order]]
+from = "typing gate"
+to = "CLAUDE"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus::current_tty). Seen since the hub types through terminal::keys, which the check follows"
 
 [[lock_order]]
 from = "typing gate"
@@ -370,7 +375,7 @@ reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats f
 [[store_io]]
 holder = "hub::sessions::Hub::sweep"
 effect = "fs"
-site = "hub::sessions::Hub::sweep"
+site = "hub::sessions::written_ms"
 reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
 
 [[store_io]]

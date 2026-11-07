@@ -4,7 +4,7 @@
 
 use super::{Agent, Deferred, FakeTerminal, Snap};
 use crate::clock::fake::Fake;
-use crate::hub::ports::Ports;
+use crate::hub::ports::{Later, Ports};
 use crate::hub::Hub;
 use crate::model::ClientMsg;
 use crate::server::inbound::{self, Outcome};
@@ -72,7 +72,18 @@ pub struct World {
 }
 
 impl World {
+    /// A World on a clock that runs ahead of the wall's.
     pub fn new() -> Self {
+        Self::with_clock(Fake::default())
+    }
+
+    /// A World whose clock starts at `start_ms` and moves only when it's moved: everything it builds comes
+    /// out the same each time (the UI fixtures).
+    pub fn at(start_ms: u64) -> Self {
+        Self::with_clock(Fake::frozen(start_ms))
+    }
+
+    fn with_clock(clock: Fake) -> Self {
         let index = crate::leads::test_turn();
         let db = crate::db::test_turn();
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -84,10 +95,9 @@ impl World {
         crate::db::reset();
         crate::live::set_claude(vec![]);
         crate::leads::install_index(Default::default());
-        let clock = Fake::default();
         clock.install();
         let (terminal, later) = (Arc::new(FakeTerminal::default()), Arc::new(Deferred::default()));
-        let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), later: later.clone() }));
+        let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), later: Later::Deferred(later.clone()) }));
         let w = Self { client: Client { hub, clock }, terminal, later, home, _index: index, _db: db };
         w.agents_take_what_is_typed();
         w

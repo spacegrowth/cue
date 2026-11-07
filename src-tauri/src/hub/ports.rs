@@ -2,38 +2,30 @@
 //! (terminal::keys) and where its follow-up work runs (`Later`: a watch on a typed message, a kept message
 //! sent once a turn ends, a queued review). The app's are `Ports::real`; testing::World brings its own.
 
-use super::Hub;
 use crate::terminal::keys::{Keys, Terminals};
 use std::sync::Arc;
 
 /// Work the hub hands off the caller's thread, run with the hub as the app holds it.
-pub type Job = Box<dyn FnOnce(&Arc<Hub>) + Send>;
+#[cfg(test)]
+pub type Job = Box<dyn FnOnce(&Arc<super::Hub>) + Send>;
 
-pub trait Later: Send + Sync {
-    /// Run `job` after `after_ms`, off this thread. `me`: the hub as the app holds it, None with no app.
-    fn run(&self, me: Option<Arc<Hub>>, after_ms: u64, job: Job);
-}
-
-/// A thread per job. A hub with no app (a test's) has nothing to hand the job: it's dropped.
-pub struct Threads;
-
-impl Later for Threads {
-    fn run(&self, me: Option<Arc<Hub>>, after_ms: u64, job: Job) {
-        let Some(me) = me else { return };
-        std::thread::spawn(move || {
-            crate::clock::sleep_ms(after_ms);
-            job(&me);
-        });
-    }
+/// Where follow-up work runs (Hub::later). An enum, not a trait object, so the spawn is in plain sight of
+/// the inventory's checks (xtask): the job runs on a thread of its own, never under the caller's locks.
+pub enum Later {
+    /// A thread per job. A hub with no app (a test's) has nothing to hand the job: it's dropped.
+    Threads,
+    /// Held until the test runs it (testing::Deferred).
+    #[cfg(test)]
+    Deferred(Arc<crate::testing::Deferred>),
 }
 
 pub struct Ports {
     pub keys: Arc<dyn Keys>,
-    pub later: Arc<dyn Later>,
+    pub later: Later,
 }
 
 impl Ports {
     pub fn real() -> Self {
-        Self { keys: Arc::new(Terminals), later: Arc::new(Threads) }
+        Self { keys: Arc::new(Terminals), later: Later::Threads }
     }
 }

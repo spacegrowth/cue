@@ -1,10 +1,9 @@
-//! The hub's follow-up work (hub::ports::Later), held until the World runs it: at once when it's due now
+//! The hub's follow-up work (hub::ports::Later::Deferred), held until the World runs it: at once when it's due now
 //! (`World::settle`), or as the World's clock reaches it (`World::advance`). Nothing runs on a thread of
 //! its own, so nothing outlives the test or races it.
 
-use crate::hub::ports::{Job, Later};
-use crate::hub::Hub;
-use std::sync::{Arc, Mutex};
+use crate::hub::ports::Job;
+use std::sync::Mutex;
 
 #[derive(Default)]
 pub struct Deferred {
@@ -13,14 +12,13 @@ pub struct Deferred {
     handed: std::sync::atomic::AtomicU64,
 }
 
-impl Later for Deferred {
-    fn run(&self, _me: Option<Arc<Hub>>, after_ms: u64, job: Job) {
+impl Deferred {
+    /// `job`, due `after_ms` from now by the World's clock.
+    pub fn hand_in(&self, after_ms: u64, job: Job) {
         let n = self.handed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         crate::locking::lock(&self.jobs, "deferred jobs").push((crate::clock::now_ms() + after_ms, n, job));
     }
-}
 
-impl Deferred {
     /// When the next job is due, if there is one.
     pub fn next_due(&self) -> Option<u64> {
         crate::locking::lock(&self.jobs, "deferred jobs").iter().map(|(due, ..)| *due).min()
