@@ -1085,6 +1085,15 @@ pub fn test_turn() -> std::sync::MutexGuard<'static, ()> {
     TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Tests: the database held, as a slow write holds it: `held` hears once it is, and it's let go when `release`
+/// hears (or hangs up).
+#[cfg(test)]
+pub fn hold(held: std::sync::mpsc::Sender<()>, release: std::sync::mpsc::Receiver<()>) {
+    let _db = crate::locking::lock(&DB, "DB");
+    let _ = held.send(());
+    let _ = release.recv();
+}
+
 /// For tests: forget the open connection so the next call opens CUE_HOME's database afresh.
 #[cfg(test)]
 pub fn reset() {

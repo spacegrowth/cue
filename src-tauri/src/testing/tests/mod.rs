@@ -3,5 +3,6 @@
 mod asks;
 mod reviews;
 mod sessions;
+mod store;
 mod transcripts;
 mod typing;

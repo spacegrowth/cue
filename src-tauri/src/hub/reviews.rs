@@ -228,6 +228,14 @@ impl Hub {
 }
 
 #[cfg(test)]
+impl Hub {
+    /// Tests: the executors whose reviews are queued, in order, as the store has them.
+    pub(crate) fn queued_reviews(&self) -> Vec<String> {
+        self.read(|st| st.review_queue.iter().map(|q| q.exec.clone()).collect())
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
