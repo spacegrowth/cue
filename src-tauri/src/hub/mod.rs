@@ -109,6 +109,9 @@ struct Store {
     /// the window shows for one from the moment its row goes (its name with it), before the saved copy is
     /// asked for. The saved copy (db) is what a relaunch shows; this is the same list, had sooner.
     ended: VecDeque<(u64, crate::sessions::Session)>,
+    /// The same, as each ended, until the next save (redraw.rs save_live) has written it: whatever changed
+    /// since the save before its end (a rename just as it ended) reaches Closed after a relaunch.
+    unsaved_ends: Vec<(u64, crate::sessions::Session)>,
     /// Your machines Cue couldn't reach on its last try: their sessions say so, and × removes them.
     unreachable: HashSet<String>,
     /// Sessions Cue is restarting (stopped and started again: after an MCP change, or ⋯ → Restart session): see `Restart`.

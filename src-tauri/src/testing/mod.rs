@@ -12,8 +12,10 @@
 //! and `now_ms`, not tokio's timers, `Instant` deadlines elsewhere, or file times read through `elapsed()`.
 
 mod agent;
+mod crew;
 mod later;
 mod notes;
+mod process;
 mod served;
 mod snap;
 mod ssh;
@@ -26,8 +28,10 @@ mod scenarios;
 mod tests;
 
 pub use agent::{Agent, Ask};
+pub use crew::Crew;
 pub use later::Deferred;
 pub use notes::FakeNotes;
+pub use process::AgentProcess;
 pub use served::Served;
 pub use snap::Snap;
 pub use ssh::{until, FakeSsh, RUNS_IT};

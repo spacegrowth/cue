@@ -52,11 +52,11 @@
           "text": "Task 0 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984080000,
       "cwd": "/work/project-0",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400001",
+      "id": "n1793984060001",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -74,7 +74,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984060000,
           "role": "you",
           "text": "Task 0"
         }
@@ -95,11 +95,11 @@
           "text": "Task 3 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984100000,
       "cwd": "/work/project-3",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400002",
+      "id": "n1793984060002",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -117,7 +117,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984080000,
           "role": "you",
           "text": "Task 3"
         }
@@ -138,11 +138,11 @@
           "text": "Task 6 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984120000,
       "cwd": "/work/project-6",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400003",
+      "id": "n1793984060003",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -160,7 +160,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984100000,
           "role": "you",
           "text": "Task 6"
         }
@@ -181,11 +181,11 @@
           "text": "Task 9 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984140000,
       "cwd": "/work/project-2",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400004",
+      "id": "n1793984060004",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -203,7 +203,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984120000,
           "role": "you",
           "text": "Task 9"
         }
@@ -224,11 +224,11 @@
           "text": "Task 12 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984160000,
       "cwd": "/work/project-5",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400005",
+      "id": "n1793984060005",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -246,7 +246,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984140000,
           "role": "you",
           "text": "Task 12"
         }
@@ -267,11 +267,11 @@
           "text": "Task 15 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984180000,
       "cwd": "/work/project-1",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400006",
+      "id": "n1793984060006",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -289,7 +289,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984160000,
           "role": "you",
           "text": "Task 15"
         }
@@ -310,11 +310,11 @@
           "text": "Task 18 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984200000,
       "cwd": "/work/project-4",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400007",
+      "id": "n1793984060007",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -332,7 +332,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984180000,
           "role": "you",
           "text": "Task 18"
         }
@@ -353,11 +353,11 @@
           "text": "Task 21 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984220000,
       "cwd": "/work/project-0",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400008",
+      "id": "n1793984060008",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -375,7 +375,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984200000,
           "role": "you",
           "text": "Task 21"
         }
@@ -396,11 +396,11 @@
           "text": "Task 24 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984240000,
       "cwd": "/work/project-3",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400009",
+      "id": "n1793984060009",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -418,7 +418,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984220000,
           "role": "you",
           "text": "Task 24"
         }
@@ -439,11 +439,11 @@
           "text": "Task 27 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984260000,
       "cwd": "/work/project-6",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400010",
+      "id": "n1793984060010",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -461,7 +461,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984240000,
           "role": "you",
           "text": "Task 27"
         }
@@ -482,11 +482,11 @@
           "text": "Task 30 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984280000,
       "cwd": "/work/project-2",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400011",
+      "id": "n1793984060011",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -504,7 +504,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984260000,
           "role": "you",
           "text": "Task 30"
         }
@@ -525,11 +525,11 @@
           "text": "Task 33 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984300000,
       "cwd": "/work/project-5",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400012",
+      "id": "n1793984060012",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -547,7 +547,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984280000,
           "role": "you",
           "text": "Task 33"
         }
@@ -568,11 +568,11 @@
           "text": "Task 36 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984320000,
       "cwd": "/work/project-1",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400013",
+      "id": "n1793984060013",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -590,7 +590,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984300000,
           "role": "you",
           "text": "Task 36"
         }
@@ -611,11 +611,11 @@
           "text": "Task 39 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984340000,
       "cwd": "/work/project-4",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400014",
+      "id": "n1793984060014",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -633,7 +633,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984320000,
           "role": "you",
           "text": "Task 39"
         }
@@ -654,11 +654,11 @@
           "text": "Task 42 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984360000,
       "cwd": "/work/project-0",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400015",
+      "id": "n1793984060015",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -676,7 +676,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984340000,
           "role": "you",
           "text": "Task 42"
         }
@@ -697,11 +697,11 @@
           "text": "Task 45 done."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984380000,
       "cwd": "/work/project-3",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400016",
+      "id": "n1793984060016",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -719,7 +719,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984360000,
           "role": "you",
           "text": "Task 45"
         }
@@ -744,7 +744,7 @@
       "cwd": "/work/project-6",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400017",
+      "id": "n1793984060017",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -762,7 +762,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Task 48"
         }
@@ -851,28 +851,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984080000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984060000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984080000
         }
       ],
       "session_id": "s00",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984080000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984060000,
           "role": "you",
           "text": "Task 0"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984080000,
           "role": "agent",
           "text": "Task 0 done."
         }
@@ -901,16 +901,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984080000
         }
       ],
       "session_id": "s01",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984080000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984080000,
           "role": "you",
           "text": "Task 1"
         }
@@ -939,16 +939,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984080000
         }
       ],
       "session_id": "s02",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984080000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984080000,
           "role": "you",
           "text": "Task 2"
         }
@@ -975,28 +975,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984100000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984080000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984100000
         }
       ],
       "session_id": "s03",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984100000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984080000,
           "role": "you",
           "text": "Task 3"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984100000,
           "role": "agent",
           "text": "Task 3 done."
         }
@@ -1025,16 +1025,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984100000
         }
       ],
       "session_id": "s04",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984100000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984100000,
           "role": "you",
           "text": "Task 4"
         }
@@ -1063,16 +1063,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984100000
         }
       ],
       "session_id": "s05",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984100000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984100000,
           "role": "you",
           "text": "Task 5"
         }
@@ -1099,28 +1099,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984120000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984100000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984120000
         }
       ],
       "session_id": "s06",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984120000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984100000,
           "role": "you",
           "text": "Task 6"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984120000,
           "role": "agent",
           "text": "Task 6 done."
         }
@@ -1149,16 +1149,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984120000
         }
       ],
       "session_id": "s07",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984120000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984120000,
           "role": "you",
           "text": "Task 7"
         }
@@ -1187,16 +1187,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984120000
         }
       ],
       "session_id": "s08",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984120000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984120000,
           "role": "you",
           "text": "Task 8"
         }
@@ -1223,28 +1223,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984140000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984120000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984140000
         }
       ],
       "session_id": "s09",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984140000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984120000,
           "role": "you",
           "text": "Task 9"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984140000,
           "role": "agent",
           "text": "Task 9 done."
         }
@@ -1273,16 +1273,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984140000
         }
       ],
       "session_id": "s10",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984140000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984140000,
           "role": "you",
           "text": "Task 10"
         }
@@ -1311,16 +1311,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984140000
         }
       ],
       "session_id": "s11",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984140000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984140000,
           "role": "you",
           "text": "Task 11"
         }
@@ -1347,28 +1347,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984160000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984140000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984160000
         }
       ],
       "session_id": "s12",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984160000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984140000,
           "role": "you",
           "text": "Task 12"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984160000,
           "role": "agent",
           "text": "Task 12 done."
         }
@@ -1397,16 +1397,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984160000
         }
       ],
       "session_id": "s13",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984160000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984160000,
           "role": "you",
           "text": "Task 13"
         }
@@ -1435,16 +1435,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984160000
         }
       ],
       "session_id": "s14",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984160000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984160000,
           "role": "you",
           "text": "Task 14"
         }
@@ -1471,28 +1471,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984180000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984160000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984180000
         }
       ],
       "session_id": "s15",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984180000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984160000,
           "role": "you",
           "text": "Task 15"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984180000,
           "role": "agent",
           "text": "Task 15 done."
         }
@@ -1521,16 +1521,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984180000
         }
       ],
       "session_id": "s16",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984180000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984180000,
           "role": "you",
           "text": "Task 16"
         }
@@ -1559,16 +1559,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984180000
         }
       ],
       "session_id": "s17",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984180000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984180000,
           "role": "you",
           "text": "Task 17"
         }
@@ -1595,28 +1595,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984200000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984180000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984200000
         }
       ],
       "session_id": "s18",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984200000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984180000,
           "role": "you",
           "text": "Task 18"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984200000,
           "role": "agent",
           "text": "Task 18 done."
         }
@@ -1645,16 +1645,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984200000
         }
       ],
       "session_id": "s19",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984200000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984200000,
           "role": "you",
           "text": "Task 19"
         }
@@ -1683,16 +1683,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984200000
         }
       ],
       "session_id": "s20",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984200000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984200000,
           "role": "you",
           "text": "Task 20"
         }
@@ -1719,28 +1719,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984220000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984200000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984220000
         }
       ],
       "session_id": "s21",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984220000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984200000,
           "role": "you",
           "text": "Task 21"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984220000,
           "role": "agent",
           "text": "Task 21 done."
         }
@@ -1769,16 +1769,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984220000
         }
       ],
       "session_id": "s22",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984220000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984220000,
           "role": "you",
           "text": "Task 22"
         }
@@ -1807,16 +1807,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984220000
         }
       ],
       "session_id": "s23",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984220000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984220000,
           "role": "you",
           "text": "Task 23"
         }
@@ -1843,28 +1843,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984240000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984220000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984240000
         }
       ],
       "session_id": "s24",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984240000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984220000,
           "role": "you",
           "text": "Task 24"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984240000,
           "role": "agent",
           "text": "Task 24 done."
         }
@@ -1893,16 +1893,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984240000
         }
       ],
       "session_id": "s25",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984240000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984240000,
           "role": "you",
           "text": "Task 25"
         }
@@ -1931,16 +1931,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984240000
         }
       ],
       "session_id": "s26",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984240000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984240000,
           "role": "you",
           "text": "Task 26"
         }
@@ -1967,28 +1967,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984260000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984240000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984260000
         }
       ],
       "session_id": "s27",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984260000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984240000,
           "role": "you",
           "text": "Task 27"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984260000,
           "role": "agent",
           "text": "Task 27 done."
         }
@@ -2017,16 +2017,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984260000
         }
       ],
       "session_id": "s28",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984260000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984260000,
           "role": "you",
           "text": "Task 28"
         }
@@ -2055,16 +2055,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984260000
         }
       ],
       "session_id": "s29",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984260000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984260000,
           "role": "you",
           "text": "Task 29"
         }
@@ -2091,28 +2091,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984280000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984260000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984280000
         }
       ],
       "session_id": "s30",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984280000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984260000,
           "role": "you",
           "text": "Task 30"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984280000,
           "role": "agent",
           "text": "Task 30 done."
         }
@@ -2141,16 +2141,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984280000
         }
       ],
       "session_id": "s31",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984280000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984280000,
           "role": "you",
           "text": "Task 31"
         }
@@ -2179,16 +2179,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984280000
         }
       ],
       "session_id": "s32",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984280000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984280000,
           "role": "you",
           "text": "Task 32"
         }
@@ -2215,28 +2215,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984300000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984280000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984300000
         }
       ],
       "session_id": "s33",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984300000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984280000,
           "role": "you",
           "text": "Task 33"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984300000,
           "role": "agent",
           "text": "Task 33 done."
         }
@@ -2265,16 +2265,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984300000
         }
       ],
       "session_id": "s34",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984300000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984300000,
           "role": "you",
           "text": "Task 34"
         }
@@ -2303,16 +2303,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984300000
         }
       ],
       "session_id": "s35",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984300000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984300000,
           "role": "you",
           "text": "Task 35"
         }
@@ -2339,28 +2339,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984320000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984300000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984320000
         }
       ],
       "session_id": "s36",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984320000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984300000,
           "role": "you",
           "text": "Task 36"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984320000,
           "role": "agent",
           "text": "Task 36 done."
         }
@@ -2389,16 +2389,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984320000
         }
       ],
       "session_id": "s37",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984320000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984320000,
           "role": "you",
           "text": "Task 37"
         }
@@ -2427,16 +2427,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984320000
         }
       ],
       "session_id": "s38",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984320000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984320000,
           "role": "you",
           "text": "Task 38"
         }
@@ -2463,28 +2463,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984340000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984320000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984340000
         }
       ],
       "session_id": "s39",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984340000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984320000,
           "role": "you",
           "text": "Task 39"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984340000,
           "role": "agent",
           "text": "Task 39 done."
         }
@@ -2513,16 +2513,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984340000
         }
       ],
       "session_id": "s40",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984340000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984340000,
           "role": "you",
           "text": "Task 40"
         }
@@ -2551,16 +2551,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984340000
         }
       ],
       "session_id": "s41",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984340000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984340000,
           "role": "you",
           "text": "Task 41"
         }
@@ -2587,28 +2587,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984360000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984340000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984360000
         }
       ],
       "session_id": "s42",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984360000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984340000,
           "role": "you",
           "text": "Task 42"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984360000,
           "role": "agent",
           "text": "Task 42 done."
         }
@@ -2637,16 +2637,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984360000
         }
       ],
       "session_id": "s43",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984360000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984360000,
           "role": "you",
           "text": "Task 43"
         }
@@ -2675,16 +2675,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984360000
         }
       ],
       "session_id": "s44",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984360000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984360000,
           "role": "you",
           "text": "Task 44"
         }
@@ -2711,28 +2711,28 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984380000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984360000
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         }
       ],
       "session_id": "s45",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984380000,
       "state": "waiting",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984360000,
           "role": "you",
           "text": "Task 45"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984380000,
           "role": "agent",
           "text": "Task 45 done."
         }
@@ -2761,16 +2761,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         }
       ],
       "session_id": "s46",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984380000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Task 46"
         }
@@ -2799,16 +2799,16 @@
         {
           "end_ms": null,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         }
       ],
       "session_id": "s47",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984380000,
       "state": "working",
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Task 47"
         }
@@ -2837,7 +2837,7 @@
         {
           "end_ms": 1793984400000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         },
         {
           "end_ms": null,
@@ -2851,12 +2851,12 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Task 48"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984400000,
           "role": "agent",
           "text": "Task 48 done."
         }

@@ -47,11 +47,11 @@
           "text": "Fetched."
         }
       ],
-      "created_ms": 1793984400000,
+      "created_ms": 1793984374900,
       "cwd": "/work/data-pipeline",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400001",
+      "id": "n1793984354901",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -69,7 +69,7 @@
       "term_program": "tmux",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984354900,
           "role": "you",
           "text": "Fetch the feed"
         }
@@ -89,7 +89,7 @@
       "cwd": "/work/web-app",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400002",
+      "id": "n1793984354902",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -107,7 +107,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Download the fixtures"
         }
@@ -163,7 +163,7 @@
         {
           "end_ms": 1793984400000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         },
         {
           "end_ms": null,
@@ -177,7 +177,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Download the fixtures"
         }
@@ -204,30 +204,46 @@
       "queued": null,
       "segments": [
         {
-          "end_ms": 1793984400000,
+          "end_ms": 1793984374900,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984354900
         },
         {
           "end_ms": null,
           "kind": "waiting",
-          "start_ms": 1793984400000
+          "start_ms": 1793984374900
         }
       ],
       "session_id": "stuck",
-      "since_ms": 1793984400000,
+      "since_ms": 1793984374900,
       "state": "waiting",
       "term_program": "tmux",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984354900,
           "role": "you",
           "text": "Fetch the feed"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984374900,
           "role": "agent",
           "text": "Fetched."
+        },
+        {
+          "at_ms": 1793984380000,
+          "delivery": [
+            {
+              "at_ms": 1793984380000,
+              "what": "typed via fake pane stuck"
+            },
+            {
+              "at_ms": 1793984380000,
+              "what": "no word from it yet: Cue keeps looking"
+            }
+          ],
+          "pending": true,
+          "role": "you",
+          "text": "now run the import"
         }
       ],
       "tmux_pane": "%7",

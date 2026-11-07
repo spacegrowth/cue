@@ -438,6 +438,7 @@ impl Hub {
                 st.just_ended.insert(session_id.to_string(), now);
                 st.ended.retain(|(_, e)| e.origin.session_id != session_id);
                 st.ended.push_front((now, s.clone()));
+                st.unsaved_ends.push((now, s.clone()));
                 st.ended.truncate(crate::ipc::CLOSED_MAX);
             }
             gone.is_some()
@@ -854,8 +855,8 @@ mod tests {
         let again = Hub::new(None);
         assert_eq!(name_in(&json!(again.closed(24 * 3600 * 1000, 30))).as_deref(), Some("cue-missing-messages"));
         assert!(again.snapshot()["ended"].as_array().unwrap().is_empty(), "the state's list is this run's; the saved one carries it on");
-        // Live again (resumed): off ended, on sessions, as itself.
-        hub.event(named, "stopped", "Back.".into(), vec![], "");
+        // Live again (resumed: its prompt is the first a resumed session sends): off ended, on sessions, as itself.
+        hub.event(named, "active", "Back.".into(), vec![], "");
         let snap = hub.snapshot();
         assert_eq!(name_in(&snap["ended"]), None);
         crate::db::reset();

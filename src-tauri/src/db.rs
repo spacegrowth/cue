@@ -462,6 +462,31 @@ pub fn sync_live_with(sessions: &[Session], waiting: &[&Item], answered: &[Item]
     });
 }
 
+/// Sessions that ended, each its record as it was when it ended and when that was: their saved rows say so,
+/// whatever changed since the last save before the end (a rename landing just as it ended), so Closed after a
+/// relaunch shows them as they were.
+pub fn save_ended(ended: &[(u64, Session)]) {
+    if ended.is_empty() {
+        return;
+    }
+    with(|c| {
+        let tx = c.unchecked_transaction()?;
+        for (at, s) in ended {
+            tx.execute(
+                "INSERT INTO sessions (id, harness, project, cwd, state, driven_by, started_ms, updated_ms, ended_ms, data)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7, ?8)
+                 ON CONFLICT(id) DO UPDATE SET harness = excluded.harness, project = excluded.project, cwd = excluded.cwd,
+                   state = excluded.state, driven_by = excluded.driven_by, ended_ms = excluded.ended_ms, data = excluded.data",
+                params![s.origin.session_id, s.origin.harness, s.project, s.origin.cwd, s.state, s.driven_by, *at as i64, serde_json::to_string(s).unwrap_or_default()],
+            )?;
+            for e in &s.thread {
+                put_exchange(&tx, &s.origin.session_id, e)?;
+            }
+        }
+        tx.commit()
+    });
+}
+
 fn put_exchange(c: &Connection, session_id: &str, e: &Exchange) -> rusqlite::Result<()> {
     // Same moment, same speaker: the same exchange (its images may have been filled in since).
     c.execute(

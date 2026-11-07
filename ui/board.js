@@ -378,11 +378,12 @@ const bgPill = (s, { count = crewOf(s?.session_id)?.role !== "lead", tree = fals
  *  under it, before the name would shorten to a few letters or a button be cut off. */
 const cardTop = (who, side) => `<div class="nrow-top"><span class="nrow-who">${who}</span><span class="nrow-side">${side}</span></div>`;
 const talkWorkRow = (s, open) => `<div class="nrow talk-work ${open ? "on" : ""}" data-session="${esc(s.session_id)}">${cardTop(`${projDot(s.project, true)}${badge(s.harness)}${nameSpan(s.session_id, s.project)}${machTag(s.machine)}<span class="dim">working</span>${bgPill(s)}`, `<span class="age">${ago(s.since_ms)}</span>`)}<div class="nrow-text">${esc(s.compacting_ms ? "Compacting…" : s.doing || "Thinking")}</div>${s.prompt ? `<div class="nrow-text talk-said">› ${esc(s.prompt)}</div>` : ""}</div>`;
-/** The grey line under a card's name: why it's in conversation, or that it just left it. */
+/** The grey line under a card's name: why it's in conversation (a finished turn answered you, anything else asks
+ *  you), or that it just left it. */
 function talkNote(it) {
   const gap = talkGap(it);
   if (gap === null) return "";
-  if (!talkStale(it)) return `<div class="talk-why">answered ${ago(now() - gap)} after you</div>`;
+  if (!talkStale(it)) return `<div class="talk-why">${it.kind === "waiting" ? "answered" : "asked"} ${ago(now() - gap)} after you</div>`;
   return now() - it.created_ms < 2 * TALK_MS ? `<div class="talk-why">no reply for ${TALK_MS / 60000}m · back to its place</div>` : "";
 }
 const isPending = (it) => !!it && state.items.some((i) => i.id === it.id);

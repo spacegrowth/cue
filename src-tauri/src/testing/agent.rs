@@ -65,6 +65,12 @@ impl<'w> Agent<'w> {
         self
     }
 
+    /// Its agent running as process `pid` (what Park and Close stop).
+    pub fn running_as(mut self, pid: i32) -> Self {
+        self.origin.agent_pid = Some(pid);
+        self
+    }
+
     /// Its transcript, to write what the agent logs.
     pub fn transcript(&self) -> Transcript {
         Transcript::at(&self.origin.transcript_path)
@@ -77,6 +83,11 @@ impl<'w> Agent<'w> {
             msg[k] = v.clone();
         }
         msg
+    }
+
+    /// What the agent says next comes as long after as it takes to think (World::agents_think).
+    fn answer_after_thinking(&self) {
+        self.world.agent_thinks();
     }
 
     fn event(&self, event: &str, fields: Value) -> &Self {
@@ -108,11 +119,13 @@ impl<'w> Agent<'w> {
 
     /// Its Stop hook: the turn ended with `reply`.
     pub fn stop(&self, reply: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("stopped", json!({"message": reply}))
     }
 
     /// Its Stop hook, the session driven by another agent (`by`, CUE_DRIVEN_BY).
     pub fn stop_driven(&self, reply: &str, by: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("stopped", json!({"message": reply, "driven_by": by}))
     }
 
@@ -132,11 +145,13 @@ impl<'w> Agent<'w> {
 
     /// Its StopFailure hook: the turn ended on an API error.
     pub fn failed(&self, error_type: &str, details: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("failed", json!({"error_type": error_type, "message": details}))
     }
 
     /// A permission prompt showing in its terminal that never reached Cue.
     pub fn terminal_ask(&self, message: &str) -> &Self {
+        self.answer_after_thinking();
         self.event("terminal_ask", json!({"message": message}))
     }
 
@@ -151,6 +166,11 @@ impl<'w> Agent<'w> {
         self.open_ask(json!({"type": "ask", "kind": "permission", "tool_name": tool, "tool_input": input}))
     }
 
+    /// Its permission hook for a Bash `command` (the commonest ask).
+    pub fn ask_bash(&self, command: &str) -> Ask {
+        self.ask_permission("Bash", json!({"command": command}))
+    }
+
     /// Its AskUserQuestion: `question` with its choices.
     pub fn ask_question(&self, question: &str, options: &[&str]) -> Ask {
         let options: Vec<Value> = options.iter().map(|o| json!({"label": o})).collect();
@@ -159,6 +179,7 @@ impl<'w> Agent<'w> {
     }
 
     fn open_ask(&self, fields: Value) -> Ask {
+        self.answer_after_thinking();
         match self.world.drive(self.message(fields)) {
             Outcome::Asked { id, answer } => Ask { id, answer: Mutex::new(answer) },
             _ => panic!("an ask's connection stays open for its answer"),
@@ -188,6 +209,12 @@ impl Ask {
             Reply::Decision(d) => serde_json::to_value(&d).unwrap(),
             Reply::Cancel(why) => json!({"cancel": why}),
         })
+    }
+
+    /// Its connection was cut with no word (Cue quit or restarted under it): what makes the hook ask again.
+    pub fn cut_off(&self) -> bool {
+        let r = crate::locking::lock(&self.answer, "an ask's answer").try_recv();
+        matches!(r, Err(oneshot::error::TryRecvError::Closed))
     }
 
     /// It got its answer in its own terminal (`behavior` by the `by`), and its hook said so on the connection.

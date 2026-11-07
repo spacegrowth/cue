@@ -50,7 +50,7 @@
       "cwd": "/work/agent-relay",
       "followup": "",
       "harness": "claude",
-      "id": "n1793984400001",
+      "id": "n1793984380001",
       "images": [],
       "interrupted": false,
       "iterm_session_id": "",
@@ -68,7 +68,7 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Ship the board"
         }
@@ -117,7 +117,7 @@
         {
           "end_ms": 1793984400000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         },
         {
           "end_ms": null,
@@ -131,13 +131,13 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "status_ask": "End this reply with the status list: **Where we are**",
           "text": "Ship the board"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984400000,
           "role": "agent",
           "text": "Board shipped.\n\n**Where we are**\n✓ Spend column\n→ Footer totals\n○ Docs\nWaiting on you: nothing"
         }
