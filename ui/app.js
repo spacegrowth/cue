@@ -569,7 +569,7 @@ function bindMain() {
     if (lv) return lvAct(lv.dataset.lv, lv.dataset);
     // A Review card's Commit / Send fixes: the words typed into the lead (it commits only; pushing stays yours).
     const rv = t.closest("[data-rv-say]");
-    if (rv) return invoke("send_to_session", { sessionId: rv.dataset.rvSay, text: rv.dataset.text, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't: ${x}`));
+    if (rv) return invoke("send_to_session", { sessionId: rv.dataset.rvSay, text: rv.dataset.rvText, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't: ${x}`));
     // A team button (auto, Diff, Review) inside a row that opens its session: the button, not the row.
     const ca = t.closest("[data-crew]");
     if (ca) return crewAct(ca.dataset.crewSid, ca.dataset.crew);
@@ -890,7 +890,8 @@ function bindMain() {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); tipUsed("find"); return openFind(); }   // like GitHub and Gmail (only when not typing)
     if (e.key === "h") { view = view === "history" ? "board" : "history"; return renderMain(); }
-    if (e.key === "l") return lvAct("toggle", {});
+    // The list focuses its search box: the key that opened it mustn't land there as typed text.
+    if (e.key === "l") { e.preventDefault(); return lvAct("toggle", {}); }
     if (e.key === ",") { sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
     if (sheet) return;
     if (e.key === "n") return goNext();

@@ -3,778 +3,170 @@
 <head>
   <meta charset="utf-8" />
   <title>Cue preview</title>
-  <link rel="stylesheet" href="../ui/vendor/xterm/xterm.css" />
-  <link rel="stylesheet" href="../ui/style.css" />
-  <!-- ?still=1: no animations, so offscreen snapshots catch the final frame -->
-  <script>if (/still=1/.test(location.search)) document.write("<style>*,*::before{animation:none!important;transition:none!important}</style>");</script>
 </head>
 <body>
   <div id="app"></div>
+  <!-- Design preview: the real UI on the fake bridge (tests/ui/bridge.js) with the sample world of
+       tests/ui/scenarios/preview.js. Serve the repo root (python3 -m http.server) and open /tests/preview.html
+         ?hist=1 History view · ?settings=1 sheet · ?theme=dark|light · ?still=1 no animations · and the flags
+       documented in preview.js and below. -->
+  <script>window.onerror = (m, src, l, c) => { document.body.insertAdjacentHTML("beforeend", `<pre style="position:fixed;top:0;left:0;z-index:99;color:red;background:#fff">${m} @${l}:${c}</pre>`); };</script>
+  <script src="ui/bridge.js"></script>
+  <script src="ui/load.js"></script>
+  <script src="ui/scenarios/preview.js"></script>
   <script>
-    // Design preview: the real UI code with a fake Tauri bridge and sample data.
-    // Serve the repo root (python3 -m http.server) and open /tests/preview.html
-    //   ?hist=1 History view · ?settings=1 sheet · ?theme=dark|light
-    window.onerror = (m, src, l, c) => { document.body.insertAdjacentHTML("beforeend", `<pre style="position:fixed;top:0;left:0;z-index:99;color:red;background:#fff">${m} @${l}:${c}</pre>`); };
     (() => {
-      const q = new URLSearchParams(location.search);
-      // ?parked=det,sec: those sessions start in Need to decide.
-      try { localStorage.setItem("cue.parked", JSON.stringify(q.get("parked") ? q.get("parked").split(",") : [])); } catch {}
-      // ?settab=<tab>: Settings opens on that tab.
-      if (q.get("settab")) try { localStorage.setItem("cue.setTab", q.get("settab")); } catch {}
-      // ?qdraft=1: something typed in the working order-engine's box (the queue note by Now, insights.js).
-      if (q.get("qdraft")) try { localStorage.setItem("preview.drafts", JSON.stringify({ "s:eng": { text: "also keep the old key valid for a day", images: [] } })); } catch {}
-      // ?later=1: Need to decide open (it starts folded).
-      try { localStorage.setItem("cue.laterOpen", q.get("later") === "1" ? "1" : "0"); } catch {}
-      const now = Date.now(), M = 60000;
-      const seg = (kind, a, b) => ({ kind, start_ms: now - a * M, end_ms: b == null ? null : now - b * M });
-      const sess = (sid, project, harness, st, since, segments, prompt = "") => ({ session_id: sid, project, harness, cwd: `/Users/me/code/${project}`, state: st, since_ms: now - since * M, prompt, segments });
-      const relayMsg = "Packet 3 is done and staged (not committed).\n\n**What changed**\n- The board now shows token spend per executor, summed from each session's usage log.\n- A new `spend` column sorts high to low; totals sit in the footer.\n- `relay:list` prints the same number.\n\nTested: unit tests pass, and I opened the board against your live sessions — the numbers match `/cost` in each tab.\n\nOne thing to decide: spend resets when an executor is retired. Keep it per session, or carry it over to the successor? I'd carry it over.";
-      const state = {
-        now_ms: now, window_ms: 30 * M,
-        settings: { history: { keep: 300 }, notify: { finished: true, decisions: true }, pi: { gate: "dangerous" }, appearance: { mode: q.get("theme") || "system" }, quick: { phrases: ["Commit", "Go ahead", "Think hard"] }, insights: { handoff: true, cache: true, queue: true, skills: /ins=1/.test(location.search) ? { "|claude": "relay:handoff", "build-box|codex": "handoff" } : {} } },
-        // ?ins=sent: agent-relay sent /handoff and hasn't continued (insights.js handoffNext); ?ins=sentcue: Cue's own;
-        // ?ins=continued: it continued in order-engine and is still open (handoffContinued).
-        // ?ahead=warm|cold|writing: agent-relay wrote a hand-off note before its cache ran out (insights.js aheadCard);
-        // ?ahead=watch|ticked|soon: its "Hand off if I don't come back" (untouched, ticked) and, with 4 minutes left, Write hand-off now.
-        // ?ahead=gone|goneticked: its cache ran out 12 hours ago (Start fresh), unticked or ticked.
-        ahead_watch: ["ticked", "goneticked"].includes(q.get("ahead")) ? ["relay"] : [],
-        skill_handoffs: ["warm", "cold", "writing"].includes(q.get("ahead")) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - (q.get("ahead") === "writing" ? 20000 : 70 * 60000), next: "", continued_ms: 0, resume: false, ahead: 2, note_ms: q.get("ahead") === "writing" ? 0 : Date.now() - 69 * 60000 } } : /ins=continued/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 300000, next: "eng", continued_ms: Date.now() - 240000, resume: true } } : /ins=sentcue/.test(location.search) ? { relay: { skill: "cue:handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: false } } : /ins=sent/.test(location.search) ? { relay: { skill: "handoff", sent_ms: Date.now() - 120000, next: "", continued_ms: 0, resume: true } } : {},
-        connections: { claude: { ok: true, events: ["PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"] }, pi: { ok: true } },
-        // ?setup=1: first launch, Claude Code and Codex installed but not connected (the setup screen).
-        sessions: [
-          sess("relay", "agent-relay", "claude", q.get("ahead") === "writing" ? "working" : "waiting", 11, [seg("working", 30, 11), seg("waiting", 11)]),
-          { ...sess("det", "backtester", "claude", "waiting", 4, [seg("working", 30, 4), seg("waiting", 4)]), background: 1 },
-          sess("sec", "filings-bot", "pi", "waiting", 1, [seg("working", 16, 1), seg("waiting", 1)]),
-          sess("pipe", "data-pipeline", "claude", "deciding", 3, [seg("working", 24, 3), seg("waiting", 3)]),
-          sess("web", "web-app", "pi", "deciding", 1, [seg("working", 30, 21), seg("waiting", 21, 18), seg("working", 18, 1), seg("waiting", 1)]),
-          sess("api", "api-server", "claude", "deciding", 0.2, [seg("working", 12, 0.2), seg("waiting", 0.2)]),
-          sess("eng", "order-engine", "claude", "working", 6, [seg("working", 6)], "Refactor the order router so partial fills reuse the same broker session"),
-          sess("alerts", "alerts", "pi", "working", 2, [seg("working", 2)], "Find why webhook retries double-fire"),
-          // At its prompt while two background agents work (Claude Code's Agent tool): waiting on them, not you.
-          { ...sess("names", "cue", "claude", "agent", 2, [seg("working", 5, 2), seg("idle", 2)], "Map every name a session has, backend and UI"), driven_by: "2 background agents", helpers: 2, background: 2,
-            thread: [{ role: "you", text: "Map every name a session has, backend and UI.", at_ms: now - 5 * M }, { role: "agent", text: "Two agents are mapping the names. I'll put the answer together when they report.", at_ms: now - 2 * M }] },
-        ],
-        items: [
-          { id: "n1", kind: "waiting", harness: "claude", session_id: "relay", cwd: "/Users/me/code/agent-relay", project: "agent-relay", message: relayMsg, context: [], created_ms: now - 11 * M, status: "pending", outcome: "" },
-          { id: "n2", kind: "waiting", harness: "claude", session_id: "det", cwd: "/x/backtester", project: "backtester", message: "The backtest for the breakout setup finished.\n\n- Fills now use the next bar's open, so entries no longer look ahead.\n- Fewer trades and a lower win rate than yesterday's run — that's the look-ahead coming out, not a regression.\n- The report is in `runs/breakout-0103.html`.\n\nNext I'd tune the stop distance. Go ahead, or review the report first?", context: [], created_ms: now - 4 * M, status: "pending", outcome: "" },
-          { id: "n3", kind: "waiting", harness: "pi", session_id: "sec", cwd: "/x/filings-bot", project: "filings-bot", message: "Pulled the latest annual report and extracted the KPIs into `kpis`.\n\nData-center revenue moved to a new segment this year, so I mapped it by hand — worth a glance before it feeds the dashboard.\n\nWant me to run the next company? It's about the same cost.", context: [], created_ms: now - 1 * M, status: "pending", outcome: "" },
-          { id: "n4", kind: "permission", harness: "claude", session_id: "pipe", cwd: "/x/data-pipeline", project: "data-pipeline", tool_name: "Bash", tool_input: { command: "uv run pytest tests/lines -q -x", description: "Run the chart_lines tests" },
-            suggestions: [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "uv run pytest:*" }], behavior: "allow", destination: "localSettings" }],
-            context: [{ role: "assistant", text: "Checking the fix didn't break other tests." }], created_ms: now - 3 * M, status: "pending", outcome: "" },
-          { id: "n5", kind: "permission", harness: "pi", session_id: "web", cwd: "/x/web-app", project: "web-app", tool_name: "edit", tool_input: { file_path: "/x/web-app/src/pages/Cart.tsx", old_string: "const MAX_ITEMS = 10;", new_string: "const MAX_ITEMS = 25; // allow bigger carts" }, suggestions: [], context: [{ role: "assistant", text: "Raising the cart limit." }], created_ms: now - 40000, status: "pending", outcome: "" },
-          { id: "n6", kind: "question", harness: "claude", session_id: "api", cwd: "/x/api-server", project: "api-server", tool_name: "AskUserQuestion",
-            tool_input: { questions: [{ question: "Which cache should the quotes endpoint use?", header: "Cache", multiSelect: false, options: [{ label: "Redis", description: "shared, 30s TTL" }, { label: "In-process LRU", description: "fastest" }, { label: "No cache" }] }] },
-            suggestions: [], context: [], created_ms: now - 12000, status: "pending", outcome: "" },
-        ],
-        history: [
-          { id: "h1", kind: "permission", harness: "claude", project: "data-pipeline", tool_name: "Bash", tool_input: { command: "git status" }, status: "answered", outcome: "allowed", created_ms: now - 15 * M, resolved_ms: now - 14 * M },
-          { id: "h2", kind: "permission", harness: "pi", project: "web-app", tool_name: "bash", tool_input: { command: "rm -rf node_modules" }, status: "answered", outcome: "denied — “use npm ci instead”", created_ms: now - 32 * M, resolved_ms: now - 30 * M },
-          { id: "h3", kind: "waiting", harness: "claude", project: "agent-relay", message: "Packet 2 done.", status: "answered", outcome: "replied — “ship it”", created_ms: now - 70 * M, resolved_ms: now - 65 * M },
-        ],
-      };
-      // ?usage=meter|out|fable|back&upop=1 — the usage pill and its panel.
-      // ?tasks=1: every session tracked, a list of what's left (tasks.js); ?tasks=busy: its first list being read;
-      // ?tasks=off: none tracked yet. The Tasks tab opens on the session shown.
-      state.tasks = {};
-      state.tasks_spent = q.get("tasks") === "1" ? { tokens: 412300, usd: 0.087, calls: 23, tracked: 2 } : {};
-      if (["1", "busy"].includes(q.get("tasks"))) {
-        const it = (id, group, text, st = "open", detail = "") => ({ id, group, text, state: st, at_ms: now - 30 * M, detail });
-        const list = q.get("tasks") === "busy" ? { items: [], busy: "listing", spent: { tokens: 0, usd: 0 } } : {
-          items: [
-            it("t1", "check", "Run the replay against yesterday's fills", "open", "The new router hasn't seen real traffic yet. Replaying yesterday's orders shows whether partial fills still land on the same broker session."),
-            it("t2", "check", "Watch one live partial fill in the log"),
-            it("t3", "build", "Drop the old session pool once nothing uses it"),
-            it("t4", "build", "A counter for reused sessions"),
-            it("t5", "decide", "Keep the old key valid for a day, or not", "open", "Brokers holding the old key keep working for a day if you say yes; say no and they reconnect at once."),
-            it("t6", "ok", "Retries stay at 3, as before"),
-            it("t7", "check", "The router reuses the broker session", "done"),
-            it("t8", "ok", "A second pool for slow brokers", "dropped"),
-          ],
-          next: 8, said: "1 done (you said the reuse works)", err: "", busy: "", spent: { tokens: 63120, usd: 0.0141 }, updated_ms: now - 2 * M,
-          about: "Order router: partial fills reuse one broker session",
-          now: "Tests pass on the new router. Waiting on you: keep the old key valid for a day?",
-          turns: [
-            { at_ms: now - 95 * M, line: "Reworked the router to reuse the session" },
-            { at_ms: now - 70 * M, line: "Ran the protocol tests: 41 passed" },
-            { at_ms: now - 28 * M, line: "Kept the old key valid behind a flag" },
-            { at_ms: now - 12 * M, line: "Listed what's left: 2 to check, 2 to build" },
-          ],
-        };
-        state.settings.tasks = { on: true, auto: false };
-        // Last looked at every session 40 minutes ago: "Since you looked" shows where that was.
-        try { localStorage.setItem("cue.looked", JSON.stringify(Object.fromEntries(state.sessions.map((x) => [x.session_id, now - 40 * M])))); } catch {}
-        for (const s of state.sessions) state.tasks[s.session_id] = JSON.parse(JSON.stringify(list));
-      }
-      if (q.has("usage")) {
-        const u = q.get("usage"), H = 3600000;
-        state.usage = { five_hour: { pct: u === "out" ? 100 : 62, resets_ms: now + 38 * M }, seven_day: { pct: 41, resets_ms: now + 4 * 24 * H }, models: [{ name: "Fable", pct: u === "fable" ? 100 : 88, resets_ms: now + 4 * 24 * H, fetched_ms: now - 3 * H }], at_ms: now - 20000 };
-        const lim = (scope, kind, resets, text) => ({ scope, kind, text, resets_ms: resets, since_ms: now - 2 * M });
-        const pause = (sid, l) => { const s = state.sessions.find((x) => x.session_id === sid); s.state = "limited"; s.limit = l; s.prompt = s.prompt || "ok do all"; s.since_ms = now - 2 * M; };
-        if (u === "out") { const l = lim("all", "session", now + 38 * M, "You've hit your session limit · resets 4:10am"); pause("eng", l); }
-        if (u === "fable") pause("eng", lim("Fable", "model", now + 4 * 24 * H, "You've reached your Fable limit. Run /usage-credits to continue or switch models with /model."));
-        if (u === "back") { const l = lim("all", "session", now - 1 * M, "You've hit your session limit · resets 4:10am"); pause("eng", l); }
-      }
-      if (q.has("multi")) state.items.push({ id: "n7", kind: "question", harness: "claude", session_id: "api", cwd: "/x/api-server", project: "api-server", tool_name: "AskUserQuestion",
-        tool_input: { questions: [
-          { question: "Which editor do you use most?", header: "Editor", multiSelect: false, options: [{ label: "VS Code", description: "Microsoft's popular extensible editor." }, { label: "JetBrains", description: "IntelliJ, PyCharm, GoLand, etc." }, { label: "Vim/Neovim", description: "Modal terminal-based editing." }] },
-          { question: "Which operating systems do you develop on?", header: "OS", multiSelect: true, options: [{ label: "macOS" }, { label: "Linux" }, { label: "Windows" }] },
-          { question: "How do you prefer code changes explained?", header: "Explain", multiSelect: false, options: [{ label: "Brief", description: "Just the key points." }, { label: "Detailed", description: "Full reasoning and trade-offs." }] },
-          { question: "Which test framework layout do you prefer?", header: "Tests", multiSelect: false, options: [{ label: "Next to the code" }, { label: "Separate tests/ folder" }] } ] },
-        suggestions: [], context: [], created_ms: now - 5000, status: "pending", outcome: "" });
-      // ?crew=1: claude-relay / pi-lead roles. agent-relay leads; data-pipeline and backtester work for it
-      // (backtester's lead isn't armed any more); web-app is a pi-lead executor whose lead Cue hasn't seen.
-      // ?live=1: the Sessions view's extras: quiet sessions Cue hasn't heard from, and folder branches.
-      if (q.has("live")) {
-        state.live = [
-          { session_id: "q1", harness: "claude", name: "line-tune", cwd: "/Users/me/code/data-pipeline", pid: 1, status: "idle", since_ms: now - 180 * M },
-          { session_id: "q2", harness: "claude", name: "", cwd: "/Users/me/code/order-engine", pid: 2, status: "busy", since_ms: now - 25 * M },
-          { session_id: "q3", harness: "pi", name: "", cwd: "/Users/me/code/filings-bot", pid: 3, status: "idle", since_ms: now - 2 * M },
-          // A worktree of data-pipeline: its project is the repository, so it shares data-pipeline's tile.
-          { session_id: "q4", harness: "claude", name: "", cwd: "/Users/me/code/data-pipeline-wt/fill-gaps", pid: 4, status: "busy", since_ms: now - 6 * M },
-        ];
-        state.projects = { "/Users/me/code/data-pipeline-wt/fill-gaps": { name: "data-pipeline", root: "/Users/me/code/data-pipeline" } };
-        state.about = {
-          relay: { title: "Relay board token spend", prompt: "go, and keep the footer total" },
-          pipe: { title: "Line detector data gaps", prompt: "make the line detector survive data gaps" },
-          det: { title: "Breakout backtest look-ahead", prompt: "rerun with next-bar fills" },
-          eng: { title: "Order router partial fills", prompt: "Refactor the order router so partial fills reuse the same broker session" },
-          api: { title: "Quotes endpoint caching", prompt: "add caching to quotes" },
-          q1: { title: "Chart-line finder tuning", prompt: "/line-tune" },
-          q2: { title: "Broker session reconnects", prompt: "why do reconnects drop fills?" },
-          q4: { title: "Fill data gaps", prompt: "backfill the missing bars" },
-        };
-        state.branches = Object.fromEntries(state.sessions.map((s) => [s.cwd, s.project === "web-app" ? "cart-limits" : "main"]).concat([["/Users/me/code/data-pipeline", "chart-lines"], ["/Users/me/code/data-pipeline-wt/fill-gaps", "fill-gaps"]]));
-      }
-      if (q.has("crew")) state.crew = {
-        relay: { role: "lead", plugin: "relay", name: "agent-relay", color: [132, 180, 180], model: "claude-opus-5-5", auto: true, plan_next: "docs + deck refresh", plan_queued: 3, executors: [
-          { session_id: "pipe", name: "lines-gaps", model: "claude-sonnet-5-5[1m]", status: "busy", packet: 3, goal: "find the gaps in the 5-minute series where the feed dropped bars, and fill them from the daily file" },
-          { session_id: "x-spend", name: "board-spend", model: "claude-sonnet-5-5", status: "reported", packet: 1, goal: "show token spend per executor on the board, summed from each usage log", outcome: "A spend column sorts high to low; totals in the footer; relay:list prints the same.", verify: { verdict: "COUNTS-MATCH" } },
-          { session_id: "x-docs", name: "readme-pass", model: "claude-haiku-4-5", status: "busy", packet: 2, goal: "bring the README up to date with the board and spend column" },
-          // Reported, but what it lists as changed is not all staged: MISMATCH in the warning color; a long outcome stays on one line.
-          { session_id: "x-mm", name: "tz-fix", model: "claude-sonnet-5-5", status: "reported", packet: 1, goal: "read another machine's report times in that machine's zone", outcome: "Times are read in the machine's own zone, and a machine that does not say its offset falls back to this Mac's, with a test for each of the two", verify: { verdict: "MISMATCH", note: "2 mismatches" } },
-          // Reported minutes ago, its lead listening and free, never seen: relay's wake-up didn't come.
-          { session_id: "x-miss", name: "export-csv", model: "claude-sonnet-5-5", status: "reported", packet: 1, goal: "add CSV export to the trades table", outcome: "Export button writes trades.csv; 4 tests added.", verify: { verdict: "COUNTS-MATCH" } },
-          // Its agent exited before it reported (stuck at Claude's folder-trust prompt): Close removes it.
-          { session_id: "relay:x-stall", name: "fix-tz", model: "claude-sonnet-5-5", status: "stalled", packet: 1, goal: "make the tz offset line optional" },
-          // Had a session, then its process died without reporting.
-          { session_id: "x-dead", name: "lint-sweep", model: "claude-haiku-4-5", status: "dead", packet: 2 } ] },
-        pipe: { role: "executor", plugin: "relay", name: "lines-gaps", color: [132, 180, 180], model: "claude-sonnet-5-5[1m]", status: "busy", packet: 3, lead: "relay", lead_name: "agent-relay", lead_armed: true },
-        det: { role: "executor", plugin: "relay", name: "breakout-bt", model: "claude-sonnet-5-5", status: "reported", packet: 1, lead: "gone-lead", lead_name: "backtests", lead_armed: false, verify: { verdict: "MISMATCH", note: "2 changes it reports are not staged" } },
-        eng: { role: "executor", plugin: "relay", name: "router-fills", color: [132, 180, 180], model: "claude-sonnet-5-5", status: "busy", packet: 1, lead: "relay", lead_name: "agent-relay", lead_armed: true },
-        web: { role: "executor", plugin: "pilead", name: "cart-limit", model: "deepseek/deepseek-flash", status: "busy", packet: 1, lead: "pi-lead-1", lead_name: "shop", lead_armed: true },
-      };
-      // A pi-lead crew on another machine (build-box), listed over SSH: same rows; no Diff (pilead has none Cue can fetch there).
-      if (q.has("crew")) {
-        state.sessions.push(sess("plr", "shop", "pi", "working", 6, [seg("working", 20, null)]));
-        state.crew.plr = { role: "lead", plugin: "pilead", name: "shop", machine: "build-box", model: "deepseek/deepseek-flash", executors: [
-          { session_id: "pe-1", name: "parser", model: "deepseek/deepseek-flash", status: "reported", packet: 2, plugin: "pilead", machine: "build-box", goal: "write the cart parser", outcome: "Parser handles nested lists and empty carts" },
-          { session_id: "pe-2", name: "wire-up", model: "deepseek/deepseek-flash", status: "busy", packet: 1, plugin: "pilead", machine: "build-box", goal: "wire the parser into the checkout page" } ] };
-      }
-      // ?crew=1&busy=1: a working lead (ledger) whose busy executor works in another repo (ledger-api, its own
-      // session in Cue): the executor sits in the lead's tree on its Sessions card, not on a card of its own.
-      if (q.has("crew") && q.has("busy")) {
-        state.sessions.push(sess("led", "ledger", "claude", "working", 4, [seg("working", 4)], "split the ledger import into packets"),
-          { ...sess("lex", "ledger-api", "claude", "working", 2, [seg("working", 2)], "packet 1"), doing: "Running: cargo test -q", doing_ms: now - 40000 });
-        state.crew.led = { role: "lead", plugin: "relay", name: "ledger", color: [176, 150, 210], model: "claude-opus-5-5", executors: [
-          { session_id: "lex", name: "import-split", model: "claude-sonnet-5-5", status: "busy", packet: 1, goal: "split the CSV import into one job per account" } ] };
-        state.crew.lex = { role: "executor", plugin: "relay", name: "import-split", color: [176, 150, 210], model: "claude-sonnet-5-5", status: "busy", packet: 1, lead: "led", lead_name: "ledger", lead_armed: true, goal: "split the CSV import into one job per account" };
-      }
-      // ?crew=1&remote=1: a relay lead on build-box (infra-ops) with two executors Cue doesn't hold there, each
-      // in a tmux session of its own; dns-cutover's row is clicked (twice: still one terminal), so its pane and
-      // its own terminal show. body[data-term-opens] counts the term_open calls per session.
-      if (q.has("crew") && q.has("remote")) {
-        state.sessions.push({ ...sess("rlead", "infra-ops", "claude", "working", 3, [seg("working", 3)], "move DNS to the new provider"), machine: "build-box", tmux_pane: "%7" });
-        state.crew.rlead = { role: "lead", plugin: "relay", name: "infra-ops", machine: "build-box", color: [120, 170, 200], model: "claude-opus-5-5", executors: [
-          { session_id: "rx-dns", name: "dns-cutover", model: "claude-sonnet-5-5", status: "busy", packet: 2, plugin: "relay", machine: "build-box", tmux_session: "relay-dns-cutover", goal: "move the zone records to the new DNS provider" },
-          { session_id: "rx-certs", name: "cert-renew", model: "claude-sonnet-5-5", status: "reported", packet: 1, plugin: "relay", machine: "build-box", tmux_session: "relay-cert-renew", goal: "renew the wildcard certificate", outcome: "Wildcard cert renewed, expires in 90 days", verify: { verdict: "COUNTS-MATCH" } } ] };
-        // &held=1: Cue holds dns-cutover too (its hooks reached Cue from the machine), with a crew record of its
-        // own: an executor started by a lead there, as a lead run from tmux on that machine starts one.
-        if (q.has("held")) {
-          state.sessions.push({ ...sess("rx-dns", "infra-ops", "claude", "agent", 2, [seg("working", 2)], "move the zone records to the new DNS provider"), machine: "build-box", tmux_pane: "%9", driven_by: "its relay lead (infra-ops)" });
-          state.crew["rx-dns"] = { role: "executor", plugin: "relay", name: "dns-cutover", model: "claude-sonnet-5-5", status: "busy", packet: 2, lead: "rlead", lead_name: "infra-ops", lead_armed: true, machine: "build-box", tmux_session: "relay-dns-cutover", goal: "move the zone records to the new DNS provider" };
-        }
-      }
-      // ?crew=1&handoff=1: agent-relay took over from relay-old (relay's handoff), which is still open and
-      // no longer leads; backtester's executors are left by a lead that's gone (Close all 2).
-      if (q.has("crew") && q.has("handoff")) {
-        state.sessions.push(sess("relay-old", "agent-relay", "claude", "waiting", 14, [seg("working", 30, 14), seg("waiting", 14)]));
-        state.crew.relay.predecessor = "relay-old";
-        state.crew.relay.started_ms = now - 12 * M;
-        state.handoffs = { "relay-old": { to: "relay", name: "agent-relay", at_ms: now - 12 * M, executors: 7 } };
-        state.sessions.push(sess("det2", "backtester", "claude", "working", 3, [seg("working", 3)]));
-        state.crew.det2 = { role: "executor", plugin: "relay", name: "stop-tune", model: "claude-sonnet-5-5", status: "busy", packet: 2, lead: "gone-lead", lead_name: "backtests", lead_armed: false };
-      }
-      if (q.has("crew")) state.reviews = { "x-miss": "not picked up" };
-      // ?crew=1&rq=1: two reviews queued for agent-relay (it was busy), shown in its chat.
-      if (q.has("crew") && q.has("rq")) { state.review_queue = { relay: [{ exec: "x-spend", name: "board-spend", at_ms: now - 2 * M }, { exec: "x-docs", name: "readme-pass", at_ms: now - M }] }; state.reviews = { ...state.reviews, "x-spend": "review queued", "x-docs": "review queued" }; }
-      // ?manyanswers=1: a long history, to see Recently answered scroll on its own.
-      if (q.has("manyanswers")) for (let n = 0; n < 25; n++) state.history.push({ id: `hx${n}`, kind: "permission", harness: n % 2 ? "pi" : "claude", project: ["data-pipeline", "web-app", "agent-relay"][n % 3], tool_name: "Bash", tool_input: { command: `make step-${n}` }, status: "answered", outcome: "allowed", created_ms: now - (80 + n * 7) * M, resolved_ms: now - (79 + n * 7) * M });
-      // Conversations, as the backend keeps them per session (the last agent entry is the finished message).
-      const longEarlier = "Here's the plan for packet 3.\n\n1. Read each executor's usage log.\n2. Sum tokens per session.\n3. Add a spend column to the board.\n4. Print the same in relay:list.\n\nI'll stage it, not commit. The usage log format changed in 1.4 so I'll handle both shapes, and skip sessions with no log yet.";
-      const code = "```\n" + Array.from({ length: 30 }, (_, n) => `line ${n + 1}: spend[${n}] = tokens * rate`).join("\n") + "\n```";
-      state.sessions[0].thread = [
-        { role: "agent", text: longEarlier, at_ms: now - 26 * M },
-        { role: "you", text: "go, and keep the footer total", at_ms: now - 25 * M, images: [] },
-        { role: "agent", text: "Done with the parser. Sample output:\n\n" + code, at_ms: now - 18 * M },
-        { role: "you", text: "looks right, finish it", at_ms: now - 17 * M, images: [] },
-        { role: "you", text: "and keep the CSV export's old column order", at_ms: now - 15.5 * M, images: [] },   // sent mid-turn
-        { role: "agent", text: relayMsg, at_ms: now - 11 * M },
-      ];
-      state.sessions[3].thread = [
-        { role: "you", text: "make the line detector survive data gaps", at_ms: now - 24 * M, images: [] },
-        { role: "agent", text: "Bash: uv run pytest tests/lines -q -x", at_ms: now - 3 * M },
-      ];
-      // ?starred=1: five sessions starred, their list open under the ★ chip.
-      if (q.has("starred")) state.sessions.slice(0, 5).forEach((x, n) => (x.starred_ms = now - (50 - n) * M));
-      // ?held=1: the working order-engine session has a message kept in Cue, open in Active.
-      if (q.has("held")) { const x = state.sessions.find((y) => y.project === "order-engine"); if (x) { x.held = { role: "you", text: "also keep the old broker session open while you test", at_ms: now - M, images: [] }; try { localStorage.setItem("cue.spot", JSON.stringify({ sid: x.session_id, view: "board" })); } catch {} } }
-      // Two sessions run on other machines (+ New → Machine): one name shortened, one short already.
-      for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", det2: "build-box", plr: "build-box", rlead: "build-box" }[x.session_id] || "";
-      if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };
-      // ?ufile=1: meters from your usage file beside Claude Code's; ?ufile=err: a file that doesn't match.
-      if (q.get("ufile") === "1") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [{ label: "Team", spent: 42.6, limit: 50, unit: "$", resets_ms: now + 3 * 24 * 3600000 }, { label: "Credits", spent: 1200, limit: null, unit: "credits", resets_ms: null }] };
-      if (q.get("ufile") === "err") state.usage_file = { path: "~/.cue/usage.csv", as_of_ms: now - 4 * M, meters: [], error: "Line 2: \"spent\" isn't a number (\"lots\")." };
-      // ?park=1: two parked sessions (stopped, kept to resume) under Sessions; Park, Resume and Unpark work.
-      state.parked = q.get("park") ? [
-        { ...sess("drift", "infra", "codex", "waiting", 26 * 60, []), machine: "build-box", parked_ms: now - 26 * 3600000, thread: [
-          { role: "you", text: "Which workspaces are on staging?", at_ms: now - 27 * 3600000 },
-          { role: "agent", text: "Two: `staging` and `staging-eu`.", at_ms: now - 27 * 3600000 + 40000 },
-          { role: "you", text: "Check Terraform drift on staging. Don't apply anything.", at_ms: now - 26.5 * 3600000 },
-          { role: "agent", text: "Three resources drifted: the two security groups on the staging load balancer and the logs bucket. The plan is saved to `drift.plan`; nothing was applied.", at_ms: now - 26.2 * 3600000 } ] },
-        { ...sess("guide", "docs-site", "claude", "waiting", 120, []), name: "auth guide", parked_ms: now - 2 * 3600000, thread: [
-          { role: "you", text: "Rewrite the auth guide around the new middleware.", at_ms: now - 2.2 * 3600000 },
-          { role: "agent", text: "The draft is in `docs/auth.md`. I held off on the code examples until the API settles.", at_ms: now - 2.1 * 3600000 } ] },
-      ] : [];
-      const closed = [
-        { ...sess("lost1", "billing", "claude", "waiting", 0, []), ended_ms: now - 3 * 3600000, thread: [{ role: "you", text: "Add the proration test.", at_ms: now - 3.2 * 3600000 }, { role: "agent", text: "Added `test_proration_midcycle`; it passes.", at_ms: now - 3.1 * 3600000 }] },
-        { ...sess("lost2", "notes", "pi", "waiting", 0, []), ended_ms: now - 4 * 86400000, thread: [{ role: "agent", text: "Summarised the meeting into notes/2026-10-06.md.", at_ms: now - 4 * 86400000 }] },
-      ];
-      // MCP servers a session's folder knows: one of each scope; `selected` = what it runs with, `pinned` = it
-      // has a selection of its own (⋯ → MCP servers…). &pinned=0: not pinned, selected follows enabled.
-      const mcpPinned = q.get("pinned") !== "0";
-      const mcpFixture = { calls: 113, pinned: mcpPinned, running: true, live_known: /restart=done/.test(q), servers: [
-        { name: "linear", scope: "user", transport: "http", target: "https://mcp.linear.app/mcp", from: "~/.claude.json", enabled: true, selected: !mcpPinned, toggle: false, used: 2, failed: 0, tools: [{ name: "list_issues", calls: 2, failed: 0 }], live: "on", loaded: ["get_issue", "list_comments", "list_issues", "list_projects", "list_teams", "save_comment", "save_issue", "search_documentation"] },
-        { name: "chrome-devtools", scope: "local", transport: "stdio", target: "npx chrome-devtools-mcp@latest", from: "~/.claude.json", enabled: true, selected: true, toggle: true, used: 14, failed: 0, tools: [{ name: "take_screenshot", calls: 14, failed: 0 }], live: "on" },
-        { name: "data-tools", scope: "project", transport: "stdio", target: "uv run data-mcp", from: ".mcp.json", enabled: false, selected: false, toggle: true, used: 0, failed: 0, tools: [] },
-        { name: "sentry", scope: "available", transport: "http", target: "https://mcp.sentry.dev/mcp", from: "/Users/me/code/billing (local)", enabled: false, selected: mcpPinned, toggle: true, used: 3, failed: 1, tools: [{ name: "search_issues", calls: 3, failed: 1 }], live: "sign-in" },
-        { name: "claude_ai_Claude_Docs", scope: "session", transport: "sse", target: "claude.ai", from: "Claude Code", enabled: true, selected: true, toggle: false, used: 113, failed: 2, tools: [{ name: "read", calls: 80, failed: 0 }, { name: "update", calls: 33, failed: 2 }] },
-      ] };
-      const listeners = (window.__listeners = {});
-      const emit = () => (listeners.state || []).forEach((f) => f({ payload: structuredClone(state) }));
-      // Actions (ui/actions.js): agent-relay has its repo's, yours and found ones, its API server running
-      // (&running=1: its Web one too); order-engine (working) has an Install that asks first.
-      const actFx = {}, actPrompt = { text: "" };
-      const actEmit = (folder) => (listeners.actions || []).forEach((f) => f({ payload: { folder, machine: "" } }));
-      const A = (id, name, run, source, o = {}) => ({ id, name, run, source, keep: false, ask: false, allowed: true, state: {}, ...o });
-      const actSuggestQ = /suggest=1/.test(location.search), actRunQ = /running=1/.test(location.search);
-      const actOf = (folder) => actFx[folder] ||= folder.endsWith("/agent-relay") ? { files: { shared: true, local: true, localIgnored: false }, actions: [
-        A("shared:Install", "Install", "npm ci", "shared", { ask: true, state: { exit: 0, secs: 14, at: now - 26 * 60 * M } }),
-        A("shared:Test", "Test", "npm test", "shared", { state: actSuggestQ ? { running: true, since: now - 8000 } : { exit: 1, secs: 41, at: now - 2 * 60 * M } }),
-        A("shared:API", "API", "npm run dev:api", "shared", { keep: true, state: { running: true, since: now - 42 * M, port: 4000 } }),
-        A("local:Web", "Web", "npm run dev -- --port 5173", "local", { keep: true, state: actRunQ ? { running: true, since: now - 9 * M, port: 5173 } : { exit: 0, secs: 3100, at: now - 20 * 60 * M } }),
-      ] } : folder.endsWith("/order-engine") ? { files: { shared: true, local: false, localIgnored: null }, actions: [
-        A("shared:Install", "Install", "uv sync", "shared", { ask: true }),
-        A("shared:Test", "Test", "uv run pytest -q", "shared", { suggest: ["router/**", "tests/**"], state: { exit: 0, secs: 22, at: now - 50 * M } }),
-      ] } : { files: { shared: false, local: false, localIgnored: null }, actions: [] };
-      const actList = (folder) => { const f = actOf(folder); return structuredClone({ actions: f.actions, files: f.files, pending: f.actions.filter((a) => !a.allowed).map((a) => ({ id: a.id, name: a.name, run: a.run, source: a.source, why: a.was ? "changed" : "new", ...(a.was ? { was: a.was } : {}) })), prompt: actPrompt.text || "Look at this project and set up its Cue actions in .cue/actions.json (shared with the repo) and .cue/actions.local.json (only for me). Read the \"about\" notes at the top of the file first and follow them (if the file doesn't exist yet, create it with those notes). Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why." }); };
-      const actLogText = (a) => a.name === "Test" ? "> agent-relay@1.4.0 test\n> vitest run\n\n ✓ src/board.test.ts (12)\n ✓ src/list.test.ts (8)\n ✗ src/spend.test.ts (3)\n   × sums each executor's usage\n     expected 1.32 to equal 1.31\n\n Test Files  1 failed | 2 passed (3)\n      Tests  1 failed | 22 passed (23)" : a.name === "Migrate db" ? "> npm run db:migrate\nApplying 0042_add_spend.sql…\nerror: column \"spend\" already exists\nMigration failed: nothing was applied." : a.keep ? `> ${a.run}\n\n  VITE v5.4.2  ready in 412 ms\n\n  ➜  Local:   http://localhost:${a.state.port || 5173}/\n  ➜  Network: use --host to expose\n${Array.from({ length: 30 }, (_, n) => `[${n}:0${n % 10}] GET /api/board 200 ${12 + n}ms`).join("\n")}` : `> ${a.run}\n\nadded 812 packages in 14s`;
-      function fakeActions(cmd, args) {
-        if (cmd === "actions_running") {
-          ["/Users/me/code/agent-relay", "/Users/me/code/order-engine"].forEach(actOf);
-          const rs = Object.entries(actFx).flatMap(([folder, f]) => f.actions.filter((a) => a.state.running && a.keep).map((a) => ({ folder, machine: "", project: folder.split("/").pop(), branch: "main", checkout: folder.split("/").pop(), id: a.id, name: a.name, port: a.state.port || null, since: a.state.since })));
-          // ?worktrees=1: a worktree of agent-relay runs its own dev server too.
-          if (q.has("worktrees")) rs.push({ folder: "/Users/me/code/agent-relay-fix", machine: "", project: "agent-relay", branch: "fix-spend", checkout: "agent-relay-fix", id: "local:Web", name: "Web", port: 5174, since: Date.now() - 6 * 60000 });
-          return rs;
-        }
-        if (cmd === "project_for_folder") {
-          const f = args.folder.replace(/\/+$/, ""), name = f.split("/").pop(), put = state.settings.project?.folders?.[f];
-          if (put) return { name: put, own: name, how: "put", key: f };
-          return /scratch|Downloads/.test(f) ? { name, own: name, how: "folder", key: f } : { name, own: name, how: "repo", key: f };
-        }
-        if (cmd === "actions_prompt_set") { actPrompt.text = args.text; return null; }
-        const f = actOf(args.folder), a = f.actions.find((x) => x.id === args.id);
-        switch (cmd) {
-          case "actions_list": return actList(args.folder);
-          case "actions_allow": for (const x of f.actions) if (args.ids.includes(x.id)) { x.allowed = true; delete x.was; } return actList(args.folder);
-          case "actions_run": case "actions_restart": {
-            if (!a.allowed) throw "Allow it first";
-            if (a.keep) { a.state = { running: true, since: Date.now(), port: a.name === "API" ? 4000 : 5173 }; setTimeout(() => actEmit(args.folder), 50); return a.state; }
-            a.state = { running: true, since: Date.now() };
-            setTimeout(() => { a.state = { exit: a.name === "Test" ? 1 : 0, secs: 3, at: Date.now() }; actEmit(args.folder); }, 3000);
-            return a.state;
-          }
-          case "actions_stop": a.state = { exit: 130, secs: Math.round((Date.now() - (a.state.since || Date.now())) / 1000), at: Date.now() }; setTimeout(() => actEmit(args.folder), 50); return a.state;
-          case "actions_log": return actLogText(a).split("\n").slice(-args.lines).join("\n");
-          case "actions_attach_id": throw "no tmux in the preview";
-          case "actions_save": {
-            const id = `${args.keep}:${args.action.name}`, old = f.actions.findIndex((x) => x.id === (args.oldId || id));
-            const x = A(id, args.action.name, args.action.run, args.keep, { keep: args.action.keep, ask: args.action.ask, suggest: args.action.suggest });
-            if (old >= 0) f.actions.splice(old, 1, x); else f.actions.push(x);
-            return actList(args.folder);
-          }
-          case "actions_delete": f.actions = f.actions.filter((x) => x.id !== args.id); return actList(args.folder);
-        }
-      }
-      // ?trust=1: once agent-relay's actions are read, its agent adds one and changes another (an "actions" event).
-      window.__actChange = () => { const f = actOf("/Users/me/code/agent-relay"); f.actions.push(A("shared:Seed db", "Seed db", "npm run db:seed -- --fresh", "shared", { allowed: false })); const t = f.actions.find((x) => x.id === "shared:Test"); t.was = t.run; t.run = "npm test -- --runInBand"; t.allowed = false; actEmit("/Users/me/code/agent-relay"); };
-      window.__TAURI__ = {
-        app: { getVersion: async () => "0.1.5" },
-        core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
-          console.log("[cue-preview]", cmd, JSON.stringify(args));
-          // Full screen: window.__fullscreen stands for the window's; a test flips it and sends "resize", as macOS would.
-          if (cmd === "is_fullscreen") return !!window.__fullscreen;
-          if (cmd === "set_fullscreen") { window.__fullscreen = args.on; dispatchEvent(new Event("resize")); return null; }
-          // Natural voices (cue-speak): ?voices=1 has the engine with Heart and Bella here; a voice downloads in a
-          // second; a sentence "plays" at about 55 ms a letter, saying where it is every 80 ms, as cue-speak does.
-          if (cmd === "speak_send") {
-            if (window.__speakBridge) return window.__speakBridge(args.line);   // a test's own (the real cue-speak)
-            const L = args.line, tell = (v) => setTimeout(() => (listeners.speak || []).forEach((f) => f({ payload: v })), 0);
-            const kv = (window.__voices ||= /voices=1/.test(q) ? ["af_heart", "af_bella"] : []);
-            if (L.status) tell({ status: { ready: kv.length > 0, have: kv, mb: kv.length ? 125 + kv.length : 0, risky: true } });
-            if (L.get) { [0.2, 0.5, 0.8, 1].forEach((p, i) => setTimeout(() => { if (p < 1) return tell({ progress: p }); kv.push(L.get); tell({ got: L.get }); }, 250 * (i + 1))); }
-            if (L.remove) tell({ removed: true });
-            const sp = window.__speak ||= { said: [] };
-            if (L.stop && sp.id != null) { clearInterval(sp.t); tell({ done: sp.id, end: false }); sp.id = null; }
-            if (L.say != null) {
-              clearInterval(sp.t); if (sp.id != null) tell({ done: sp.id, end: false });
-              const ms = Math.round(L.say.length * 55 / (L.speed || 1)), t0 = Date.now(), id = L.id;
-              sp.id = id; sp.said.push({ say: L.say, voice: L.voice, speed: L.speed });
-              tell({ playing: id, ms });
-              sp.t = setInterval(() => { const at = Date.now() - t0; if (at >= ms) { clearInterval(sp.t); sp.id = null; tell({ done: id, end: true }); } else tell({ at: id, ms: at }); }, 80);
-            }
-            return null;
-          }
-          // ?xt=1: Settings → Extensions with three: one on, one updated and asking for more, one off.
-          if (cmd === "ext_list" && /xt=1/.test(q)) return { root: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions", programs_allowed: false, list: [
-            { name: "boxes", title: "Containers", panel: "Containers", add: "A new container", version: "0.3.0", capabilities: ["sessions.read", "programs.run"], programs: ["docker", "mutagen"], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/boxes" },
-            { name: "diff", title: "Diff", tab: "Diff", version: "0.4.0", capabilities: ["sessions.read", "git.read"], programs: [], on: true, enabled: true, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/diff" },
-            { name: "notes", title: "Session notes", tab: "Notes", version: "0.3.0", capabilities: ["sessions.read", "cmd.run"], programs: ["git"], on: true, enabled: false, pending_capabilities: ["cmd.run"], pending_programs: ["git"], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/notes" },
-            { name: "digest", title: "Daily digest", version: "0.1.0", capabilities: ["sessions.read"], programs: [], on: false, enabled: false, pending_capabilities: [], pending_programs: [], folder: "/Users/me/Library/Application Support/dev.spacegrowth.cue/extensions/digest" },
-          ] };
-          if (cmd === "ext_activity" && /xt=1/.test(q)) { const t = Math.floor(Date.now() / 1000); return args.name === "diff" ? [`${t - 600} diff switched on in Settings`, `${t - 180} diff [~] git --no-optional-locks -C /Users/me/code/agent-relay diff 3f9a1c2 --no-color --no-ext-diff -> 0`, `${t - 180} diff [~] git --no-optional-locks -C /Users/me/code/agent-relay ls-files --others --exclude-standard -> 0`, `${t - 40} diff [build-box:~] git --no-optional-locks -C /srv/api diff HEAD --no-color -> 0`] : []; }
-          if (cmd === "get_state") { for (const sid of (q.get("parked") || "").split(",")) { const s = state.sessions.find((x) => x.session_id === sid); if (s && !s.later_ms) s.later_ms = now; } return structuredClone(state); }
-          if (cmd === "set_later") { const s = state.sessions.find((x) => x.session_id === args.sessionId); if (s) s.later_ms = args.on ? Date.now() : 0; return null; }
-          // + New → Machine: one connected, one that needs a login.
-          if (cmd === "machine_setup") return ["Set up Cue's hooks for Claude Code (~/.claude/settings.json, backed up first)"];
-          // ⌘F: one closed session matching (a Claude Code one, so it offers Resume).
-          if (cmd === "search") return [{ kind: "session", session_id: "old-1", name: "checkout-flow", project: "web-shop", harness: "claude", at_ms: Date.now() - 86400000, ended: true, last_role: "agent", last: "Merged the coupon fix." }];
-          if (cmd === "park_session") { const i = state.sessions.findIndex((x) => x.session_id === args.sessionId); if (i < 0) throw "Cue has no record of that session"; const [x] = state.sessions.splice(i, 1); for (const it of state.items.filter((it) => it.session_id === x.session_id)) state.history.unshift({ ...it, status: "gone", outcome: "parked", resolved_ms: Date.now() }); state.items = state.items.filter((it) => it.session_id !== x.session_id); state.parked.unshift({ ...x, parked_ms: Date.now() }); setTimeout(emit, 300); return "Parked"; }
-          if (cmd === "resume_parked") { await new Promise((r) => setTimeout(r, 1200)); const i = state.parked.findIndex((x) => x.session_id === args.sessionId); const [x] = state.parked.splice(i, 1); const back = { ...x, state: args.message ? "working" : "waiting", since_ms: Date.now(), prompt: args.message || "", thread: [...(x.thread || []), ...(args.message ? [{ role: "you", text: args.message, at_ms: Date.now() }] : [])] }; delete back.parked_ms; state.sessions.push(back); setTimeout(emit, 10); return x.machine ? `Resumed in tmux on ${x.machine}` : "Resumed in tmux"; }
-          // Closed: what ended in the last 30 days. Resume or Park takes one off the list.
-          if (cmd === "closed_sessions") return closed;
-          if (cmd === "park_closed") { const i = closed.findIndex((x) => x.session_id === args.sessionId); const [x] = closed.splice(i, 1); state.parked.unshift({ ...x, parked_ms: Date.now() }); setTimeout(emit, 10); return null; }
-          if (cmd === "resume_closed") { await new Promise((r) => setTimeout(r, 1200)); const i = closed.findIndex((x) => x.session_id === args.sessionId); const [x] = closed.splice(i, 1); state.sessions.push({ ...x, state: args.message ? "working" : "waiting", since_ms: Date.now() }); setTimeout(emit, 10); return "Resumed in tmux"; }
-          if (cmd === "unpark_session") { state.parked = state.parked.filter((x) => x.session_id !== args.sessionId); setTimeout(emit, 10); return null; }
-          if (cmd === "resume_session") return { session_id: args.sessionId, detail: "Resumed in Cue" };
-          if (cmd === "machine_rename") return { name: args.name, host: args.name === "build-box" ? "me@build-box" : args.name, label: args.label.trim() };
-          if (cmd === "machine_add") return { name: args.host.replace(/^[^@]*@/, ""), host: args.host };
-          if (cmd === "machines_list") return [{ name: "build-box", host: "me@build-box" }, { name: "gpu-1", host: "gpu-1" }];
-          if (cmd === "machine_check") return args.name === "build-box" ? { ok: true, os: "Linux", tools: { claude: true, codex: false, pi: false, tmux: true, node: true, npm: true }, help: { codex: "npm install -g @openai/codex", pi: "npm install -g @earendil-works/pi-coding-agent" } } : { ok: false, needs_login: true, error: "gpu-1: Permission denied (publickey,password)." };
-          // ?term=1: agent-relay runs in tmux; its built-in terminal shows a Claude Code permission menu.
-          if (cmd === "session_screen") return "  Do you want to proceed?\n  ❯ 1. Yes\n    2. Yes, and don't ask again\n    3. No (esc)";
-          if (cmd === "term_open") {
-            const opens = JSON.parse(document.body.dataset.termOpens || "{}");
-            opens[args.sessionId] = (opens[args.sessionId] || 0) + 1;
-            document.body.dataset.termOpens = JSON.stringify(opens);
-            if (args.sessionId.startsWith("rx-")) {
-              const exec = `\x1b[1m[relay-dns-cutover]\x1b[0m  claude · build-box\r\n\r\n\x1b[2m⏺\x1b[0m Update(zones/example.net.tf)\r\n  ⎿ Updated with 14 additions and 3 removals\r\n\x1b[2m⏺\x1b[0m Bash(terraform plan -out dns.plan)\r\n  ⎿ Plan: 12 to add, 0 to change, 3 to destroy.\r\n\r\n\x1b[33m✻ Checking the TTLs… (38s)\x1b[0m\r\n`;
-              const b = btoa(String.fromCharCode(...new TextEncoder().encode(exec)));
-              setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b } })), 150);
-              return 1;
-            }
-            const screen = "\x1b[2m╭──────────────────────────────────────────────────────────╮\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[33mBash command\x1b[0m\r\n\x1b[2m│\x1b[0m   rm -rf build && make release\r\n\x1b[2m│\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[1mDo you want to proceed?\x1b[0m\r\n\x1b[2m│\x1b[0m \x1b[32m❯ 1. Yes\x1b[0m\r\n\x1b[2m│\x1b[0m   2. Yes, and don't ask again for rm commands here\r\n\x1b[2m│\x1b[0m   3. No, and tell Claude what to do differently (esc)\r\n\x1b[2m╰──────────────────────────────────────────────────────────╯\x1b[0m\r\n";
-            const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(screen)));
-            setTimeout(() => (listeners.term || []).forEach((f) => f({ payload: { sid: args.sessionId, gen: 1, data: b64 } })), 150);
-            return 1;
-          }
-          // &stalled=1 (with ?term=1&open=term): its client stopped reading; what's typed into it isn't taken.
-          if (cmd === "term_write" && /stalled=1/.test(location.search) && !args.sessionId.startsWith("shell:")) throw "its terminal isn't responding: what you type isn't being sent until you resume it";
-          // Cue's own shells (the floating terminal): a prompt that echoes what's typed, Enter a new prompt.
-          if (cmd === "shell_open" || (cmd === "term_write" && args.sessionId.startsWith("shell:"))) {
-            const id = args.id || args.sessionId, say = (t) => (listeners.term || []).forEach((f) => f({ payload: { sid: id, gen: 1, data: btoa(String.fromCharCode(...new TextEncoder().encode(t))) } }));
-            const prompt = `\x1b[32mme@mac\x1b[0m \x1b[1;34m${(args.cwd || "~").replace(/^\/Users\/[^/]+/, "~")}\x1b[0m % `;
-            if (cmd === "shell_open") { setTimeout(() => say(prompt), 50); return { gen: 1, host: "mac" }; }
-            setTimeout(() => say(args.data === "\r" ? `\r\n${prompt}` : args.data === "\x7f" ? "\b \b" : args.data), 10);
-            return;
-          }
-          if (cmd === "update_check") return { current: "0.1.5" };
-          // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
-          if (cmd === "btw") { await new Promise((r) => setTimeout(r, 600)); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; }
-          // Drafts: the real app keeps them in ~/.cue/cue.db; the preview keeps them in this browser.
-          if (cmd === "get_drafts") { try { return JSON.parse(localStorage.getItem("preview.drafts") || "{}"); } catch { return {}; } }
-          if (cmd === "set_draft") { const all = JSON.parse(localStorage.getItem("preview.drafts") || "{}"); if (args.text.trim() || args.images.length) all[args.key] = { text: args.text, images: args.images }; else delete all[args.key]; localStorage.setItem("preview.drafts", JSON.stringify(all)); return; }
-          // ?slow=1: typing into a terminal takes a moment, like the real thing.
-          if ((cmd === "reply" || cmd === "send_to_session") && /slow=1/.test(location.search)) await new Promise((r) => setTimeout(r, 4000));
-          if (cmd === "respond" || cmd === "dismiss" || cmd === "reply") {
-            const i = state.items.findIndex((x) => x.id === args.id);
-            if (i < 0) return false;
-            const [it] = state.items.splice(i, 1);
-            const ss = state.sessions.find((x) => x.session_id === it.session_id);
-            if (ss && cmd !== "dismiss") { ss.state = "working"; ss.since_ms = Date.now(); if (cmd === "reply") ss.prompt = args.text; ss.thread = [...(ss.thread || []), { role: "you", text: cmd === "reply" ? args.text : args.decision.behavior === "allow" ? "allowed" : "denied", at_ms: Date.now(), images: [] }]; }
-            if (cmd !== "dismiss") state.history.unshift({ ...it, status: "answered", outcome: cmd === "reply" ? `replied — “${args.text}”` : args.decision.behavior, resolved_ms: Date.now() });
-            setTimeout(emit, 30);
-            return cmd === "reply" ? "sent via tmux pane %1" : true;
-          }
-          // Steps (from the transcript): two turns of agent-relay, between its messages.
-          if (cmd === "session_steps") {
-            // q2: a quiet session (running, never reported to Cue), mid-turn.
-            if (args.sessionId === "q2") return { version: 1, turns: [
-              { at_ms: now - 40 * M, prompt: "why do partial fills open a second broker session?", more: 0, items: [{ t: "say", text: "The router opens a session per fill. I'll reuse the order's session.", at_ms: now - 39 * M }, { t: "step", id: "q2a", kind: "read", verb: "Read", subject: "router.py", mono: true, result: "318 lines", bad: false, done: true, at_ms: now - 38 * M }, { t: "say", text: "Found it: `open_session()` is called inside the fill loop.", at_ms: now - 36 * M }] },
-              { at_ms: now - 25 * M, prompt: "fix it and run the tests", more: 0, items: [{ t: "step", id: "q2b", kind: "edit", verb: "Edited", subject: "router.py", mono: true, result: "+9 −4", bad: false, done: true, at_ms: now - 24 * M }, { t: "step", id: "q2c", kind: "run", verb: "Running", subject: "pytest tests/router -q", mono: true, result: "", bad: false, done: false, at_ms: now - 1 * M }] },
-            ] };
-            // names: a turn that started two background agents; one still at work, one finished.
-            if (args.sessionId === "names") {
-              const hs = (id, m, o = {}) => ({ t: "step", id, kind: "search", verb: "Searched", subject: "“custom-title|ai-title”", mono: true, result: "14 results", bad: false, done: true, at_ms: now - m * M, ...o });
-              return { version: 1, turns: [{ at_ms: now - 5 * M, prompt: "Map every name a session has, backend and UI.", more: 0, items: [
-                { t: "step", id: "n1", kind: "agent", verb: "Delegated", subject: "Backend: session name sources", mono: false, result: "in the background", bad: false, done: true, at_ms: now - 4.9 * M },
-                { t: "step", id: "n2", kind: "agent", verb: "Delegated", subject: "UI: every name shown", mono: false, result: "in the background", bad: false, done: true, at_ms: now - 4.9 * M },
-                ...(/scripts=1/.test(location.search) ? [
-                  { t: "step", id: "n5", kind: "run", verb: "Ran", subject: "cargo test --lib 2>&1 | tail -40", mono: true, result: "in the background", bad: false, done: true, at_ms: now - 4.5 * M },
-                  { t: "step", id: "n4", kind: "run", verb: "Ran", subject: "tests/run.sh", mono: true, result: "in the background", bad: false, done: true, at_ms: now - 4 * M },
-                  { t: "step", id: "n3", kind: "run", verb: "Ran", subject: "npx tauri build --bundles app --features ext 2>&1 | grep -E \"Cue.app \\(|error\\[\" | head -2 && ./install.sh --app 2>&1 | tail -1", mono: true, result: "in the background", bad: false, done: true, at_ms: now - 1.2 * M },
-                ] : []),
-                { t: "say", text: "Two agents are mapping the names. I'll put the answer together when they report.", at_ms: now - 2 * M } ] }],
-                helpers: [
-                  { id: "h1", step: "n1", desc: "Backend: session name sources", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: 0, last_ms: now - 0.3 * M, stuck: false, tokens: 18400, running: true, more: 3, items: [hs("h1a", 4), ...["model.rs", "db.rs", "leads.rs", "config.rs", "machines.rs", "notify.rs"].map((f, n) => ({ t: "step", id: `h1r${n}`, kind: "read", verb: "Read", subject: f, mono: true, result: `${120 + n * 37} lines`, bad: false, done: true, at_ms: now - (3.9 - n * 0.1) * M })), { t: "step", id: "h1b", kind: "read", verb: "Read", subject: "sessions.rs", mono: true, result: "882 lines", bad: false, done: true, at_ms: now - 3 * M }, { t: "step", id: "h1c", kind: "read", verb: "Reading", subject: "hub.rs", mono: true, result: "", bad: false, done: false, at_ms: now - 0.3 * M }] },
-                  { id: "h2", step: "n2", desc: "UI: every name shown", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 4.9 * M, finished_ms: now - 2.5 * M, last_ms: now - 2.5 * M, stuck: false, tokens: 7300, running: false, more: 0, items: [hs("h2a", 4.5, { subject: "“nameSpan|agentName”", result: "9 results" }), { t: "step", id: "h2b", kind: "read", verb: "Read", subject: "app.js", mono: true, result: "4193 lines", bad: false, done: true, at_ms: now - 3.5 * M }, { t: "say", text: "Every name the UI shows comes from `nameSpan` …", at_ms: now - 2.5 * M }] },
-                  // &many=1: a wider fan-out, three more at work and one more finished (the tray scrolls, "· 2 finished").
-                  ...(/many=1/.test(location.search) ? [
-                    { id: "h3", step: "n1", desc: "Docs: names in the README and site", kind: "general-purpose", model: "claude-sonnet-5-5", started_ms: now - 3.2 * M, finished_ms: 0, last_ms: now - 0.2 * M, stuck: false, tokens: 12100, running: true, more: 0, items: [hs("h3a", 3, { subject: "“session name”", result: "22 results" }), { t: "step", id: "h3b", kind: "read", verb: "Read", subject: "README.md", mono: true, result: "310 lines", bad: false, done: true, at_ms: now - 2.4 * M }, { t: "say", text: "The README calls it a title in two places and a name in five.", at_ms: now - 1.8 * M }, { t: "step", id: "h3c", kind: "run", verb: "Running", subject: "grep -rn title site/", mono: true, result: "", bad: false, done: false, at_ms: now - 0.2 * M }] },
-                    // h4 is stuck: running, but quiet since its one step 3½ minutes ago.
-                    { id: "h4", step: "n2", desc: "Tests: what the protocol suite asserts about names", kind: "Explore", model: "claude-haiku-5-5", started_ms: now - 4.2 * M, finished_ms: 0, last_ms: now - 3.6 * M, stuck: true, tokens: 2100, running: true, more: 0, items: [{ t: "step", id: "h4a", kind: "read", verb: "Reading", subject: "tests/test_protocol.py", mono: true, result: "", bad: false, done: false, at_ms: now - 3.6 * M }] },
-                    { id: "h5", step: "n1", desc: "Hooks: the name Claude Code sends", kind: "Explore", model: "claude-opus-5-5", started_ms: now - 0.4 * M, finished_ms: 0, last_ms: now - 0.4 * M, stuck: false, tokens: 0, running: true, more: 0, items: [] },
-                    { id: "h6", step: "n2", desc: "History: names kept per session", kind: "Explore", model: "claude-sonnet-5-5", started_ms: now - 4.8 * M, finished_ms: now - 3.9 * M, last_ms: now - 3.9 * M, stuck: false, tokens: 4900, running: false, more: 0, items: [hs("h6a", 4.6, { subject: "“custom_title”", result: "3 results" }), { t: "say", text: "History keeps `custom_title` and `ai_title`; the UI prefers the first.", at_ms: now - 3.9 * M }] },
-                  ] : []),
-                  // &scripts=1: shell commands in the background too, one running, one failed, one that finished.
-                  ...(/scripts=1/.test(location.search) ? [
-                    { id: "b1", step: "n3", desc: "Build Cue and install it", kind: "script", model: "", started_ms: now - 1.2 * M, finished_ms: 0, last_ms: now - 0.1 * M, stuck: false, tokens: 0, running: true, more: 0, items: [], script: true, command: "npx tauri build --bundles app --features ext 2>&1 | grep -E \"Cue.app \\(|error\\[\" | head -2 && ./install.sh --app 2>&1 | tail -1", lines: 218, failed: false,
-                      output: ["   Compiling serde_json v1.0.140", "   Compiling tauri v2.8.5", "   Compiling tauri-plugin-dialog v2.3.3", "   Compiling tauri-plugin-shell v2.3.1", "   Compiling tauri-plugin-process v2.3.0", "   Compiling tauri-plugin-updater v2.9.0", "   Compiling objc2-app-kit v0.3.1", "   Compiling portable-pty v0.9.0", "   Compiling notify v8.0.0", "   Compiling russh v0.52.1", "   Compiling cue v0.1.41 (src-tauri)", "   Compiling cue v0.1.41 (src-tauri) [lib]"] },
-                    { id: "b2", step: "n4", desc: "Protocol suite", kind: "script", model: "", started_ms: now - 4 * M, finished_ms: now - 3.2 * M, last_ms: now - 3.2 * M, stuck: false, tokens: 0, running: false, more: 0, items: [], script: true, command: "tests/run.sh", lines: 61, failed: true,
-                      output: ["test_protocol.py::test_hello PASSED", "test_protocol.py::test_list PASSED", "test_protocol.py::test_reply_roundtrip PASSED", "test_protocol.py::test_send_to_remote FAILED", "test_protocol.py::test_remote_focus FAILED", "test_protocol.py::test_history_keep PASSED", "", "=================================== FAILURES ===================================", "____________________________ test_send_to_remote _______________________________", "ConnectionRefusedError: [Errno 61] Connection refused", "========================= 2 failed, 27 passed in 41.80s ========================="] },
-                    { id: "b3", step: "n5", desc: "cargo test --lib", kind: "script", model: "", started_ms: now - 4.5 * M, finished_ms: now - 3.4 * M, last_ms: now - 3.4 * M, stuck: false, tokens: 0, running: false, more: 0, items: [], script: true, command: "cargo test --lib 2>&1 | tail -40", lines: 40, failed: false,
-                      output: ["test logs::steps::tests::helper_finishes_on_notice ... ok", "test logs::steps::tests::helper_reads_meta_type ... ok", "", "test result: ok. 239 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 68.88s"] },
-                  ] : []),
-                ] };
-            }
-            // ?ins=1: agent-relay's turns have grown expensive and its cache has 8 minutes left (insights.js);
-            // ins=noskill: the same, on a machine with no hand-off skill.
-            if (args.sessionId === "relay" && /ins=/.test(location.search)) {
-              const turns = Array.from({ length: 24 }, (_, i) => ({ at_ms: now - (90 - i * 3.5) * M, prompt: i ? "" : "add the tax column", more: 0, items: [{ t: "say", text: "Done.", at_ms: now - (89 - i * 3.5) * M }], tokens: Math.round(40000 + 18000 * Math.pow(i, 1.35)), context: Math.round(470000 + 130000 * Math.pow(i / 23, 1.3)) }));
-              return { version: 1, meta: { model: "claude-opus-5-5", context: 600000, window: 1000000, last_call_ms: now - 52 * M, cache_ttl_s: 3600, start_context: 45000, start_ms: now - 6 * 60 * M }, turns };
-            }
-            // ?ahead=…: a 320k session on an hour's cache, its last reply as each case needs.
-            if (args.sessionId === "relay" && q.get("ahead")) {
-              const ago = { watch: 10, ticked: 10, soon: 56, warm: 2, writing: 1, cold: 65, gone: 720, goneticked: 720 }[q.get("ahead")] || 10;
-              const turns = [{ at_ms: now - (ago + 1) * M, prompt: "carry on", more: 0, items: [{ t: "say", text: "Done: the spend column sorts high to low, tests pass.", at_ms: now - ago * M }], tokens: 320000, context: 320000 }];
-              return { version: 1, meta: { model: "claude-opus-5-5", context: 320000, window: 1000000, last_call_ms: now - ago * M, cache_ttl_s: 3600, start_context: 240000, start_ms: now - 3 * 60 * M, cold_x: 40, cold_cents: 256 }, turns };
-            }
-            if (args.sessionId !== "relay") return { version: 0, turns: [] };
-            const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: kind !== "search", result, bad: false, done: true, at_ms: now - m * M, ...o });
-            const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
-            return { version: 1, meta: { model: "claude-opus-5-5", context: 164000, window: 200000, cost: 1.32 }, turns: [
-              { at_ms: now - 25 * M, more: 0, items: [st("a1", "read", "Read", "usage.ts", "212 lines", 24.8), st("a2", "search", "Searched", "“tokens_used”", "6 files", 24.6), st("a3", "edit", "Edited", "board.ts", "+48 −3", 22), say("Done with the parser. Sample output:", 18)] },
-              // This one a Stop hook sent back to work after its answer (hooked_ms): a checklist, folded under "After a stop hook".
-              { at_ms: now - 17 * M, more: 0, hooked_ms: now - 10.8 * M, items: [say("Adding the footer total and the list output.", 16.9), st("b1", "edit", "Edited", "board.ts", "+12 −1", 16.5), st("b2", "edit", "Edited", "list.ts", "+9 −0", 16), st("b3", "run", "Ran", "npm test", "exit 1", 15, { bad: true }), say("One test expected the old column order. Updating it.", 14.8), st("b4", "read", "Read", "board.test.ts", "140 lines", 14.6), st("b5", "edit", "Edited", "board.test.ts", "+2 −2", 14), st("b6", "run", "Ran", "npm test", "Tests: 41 passed", 12.5), say(relayMsg, 11), st("c1", "read", "Read", "rules-check.md", "64 lines", 10.6), say("1 — Shape: stated before editing.\n2 — Assumptions: the spend column exists (checked).\n3 — Verified: tests pass.", 10.2)] },
-            ] };
-          }
-          // MCP servers for a session (chat.js ⋯ → MCP servers…), a folder (+ New session).
-          if (cmd === "mcp_for") return { ...mcpFixture, servers: mcpFixture.servers.map((m) => ({ ...m })) };
-          if (cmd === "mcp_for_folder") return { calls: 0, pinned: false, servers: mcpFixture.servers.filter((m) => m.scope !== "session").map((m) => ({ ...m, selected: m.enabled, used: 0, failed: 0, tools: [] })) };
-          if (cmd === "mcp_apply") { await new Promise((r) => setTimeout(r, 300)); for (const m of mcpFixture.servers) if (m.toggle) m.selected = args.names.includes(m.name); mcpFixture.pinned = true; return `Restarted with ${args.names.length} MCP server${args.names.length === 1 ? "" : "s"}`; }
-          if (cmd === "mcp_apply_clear") { await new Promise((r) => setTimeout(r, 300)); for (const m of mcpFixture.servers) m.selected = m.enabled; mcpFixture.pinned = false; return "Restarted with its folder's MCP servers"; }
-          if (cmd === "mcp_set") { const m = mcpFixture.servers.find((x) => x.name === args.name); if (m) m.enabled = args.on; return { ...mcpFixture, servers: mcpFixture.servers.map((m) => ({ ...m })) }; }
-          if (cmd === "mcp_restart") { await new Promise((r) => setTimeout(r, 300)); return "Restarted"; }
-          if (cmd === "step_detail") return Object.fromEntries(args.ids.map((id) => [id, id === "b3"
-            ? { full: "npm test", output: ["> relay@1.4.0 test", "> vitest run", "", " FAIL  test/board.test.ts > columns > spend sorts high to low", "   expected [ 'name', 'status', 'spend' ] to equal [ 'name', 'spend', 'status' ]", "", " Tests  1 failed | 40 passed (41)"], skipped: 0, gap_at: 40 }
-            : id.startsWith("b") && ["b1", "b2", "b5"].includes(id) ? { full: "/Users/me/code/agent-relay/src/board.ts", diff: [[" ", "  const cols = ['name', 'status'];"], ["-", "  const total = 0;"], ["+", "  const total = rows.reduce((s, r) => s + r.spend, 0);"], ["+", "  footer.push(fmt(total));"]], skipped: 0 }
-            : { full: "/Users/me/code/agent-relay/test/board.test.ts" }]));
-          if (cmd === "set_setting") { const [a, b] = args.key.split("."); (state.settings[a] ||= {})[b] = args.value; setTimeout(emit, 10); return; }
-          // Earlier messages, a page at a time: 75 made-up ones before the thread.
-          if (cmd === "session_log_page") { const all = Array.from({ length: 75 }, (_, n) => ({ at_ms: Date.now() - 3 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
-          if (cmd === "transcript_page") { const all = Array.from({ length: 40 }, (_, n) => ({ at_ms: Date.now() - 9 * 3600000 + n * 60000, role: n % 2 ? "agent" : "you", text: `From the transcript ${n + 1}`, images: [] })); return all.filter((e) => e.at_ms < args.beforeMs).slice(-args.limit); }
-          // The "/" menu: a few of a session's commands.
-          // A message kept in Cue while a session works (?held=1): Edit / Esc takes it back.
-          if (cmd === "unhold_message") { const x = state.sessions.find((y) => y.session_id === args.sessionId); const h = x?.held || null; if (x) delete x.held; emit(); return h; }
-          // ?cost=cold|warm|soon: every session asked about has 600k of context; its cache gone, or 8 or 3 minutes left.
-          if (cmd === "insight_state" && q.get("cost")) return Object.fromEntries(args.sessionIds.map((sid) => [sid, { until_ms: { warm: Date.now() + 8 * 60000, soon: Date.now() + 3 * 60000 }[q.get("cost")] || Date.now() - 3 * 3600000, tokens: 600000, start: 45000, last_ms: Date.now() - 4 * 3600000 }]));
-          if (cmd === "insight_state") return {};
-          // ?del=1: the board's sessions could have delegated (relay on): one looked around itself, one ran long across areas.
-          if (cmd === "insight_delegate") return /del=1/.test(location.search) ? { relay: true, sessions: {
-            det: { search: { looks: 46, growth: 132000, tokens: 1840000, usd: 0.92, later: 14 }, searches: 1, search_tokens: 1840000, search_usd: 0.92, split: [], agents: 0, relay: 0 },
-            sec: { search: null, searches: 0, search_tokens: 0, search_usd: 0, split: ["src", "tests", "scripts", "/x/shared/lib"], agents: 2, relay: 0 } } } : { relay: false, sessions: {} };
-          if (cmd === "insight_host_skills") return { hosts: { "": ["handoff", "relay:handoff"], "build-box": [], "gpu-1": null }, reading: false };
-          if (cmd === "insight_log") return;
-          if (cmd === "insights_summary") {
-            const days = args.days, D = 86400000, H = 3600000, rnd = (n) => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
-            const key = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-            if (/itab=empty/.test(location.search)) return { days, since_ms: Date.now() - days * D, totals: { turns: 0, sessions: 0, tokens: 0, usd: 0, priced: 1 }, by_day: [], waiting: { usd: 0, tokens: 0, turns: 0, share_of_writes: 0, sessions: [] }, long: { usd: 0, tokens: 0, sessions: [], handoffs: { sent: 0, continued: 0 } }, corrections: { count: 0, share: 0, examples: [], by_project: [] }, split: {}, models: [], insights: [] };
-            // About the owner's last 30 days: ~5,500 turns, ~250 late answers re-writing ~59M tokens (≈ $470).
-            const by_day = [];
-            for (let k = days - 1; k >= 0; k--) {
-              const t = Date.now() - k * D, wd = new Date(t).getDay();
-              if ((wd === 0 || wd === 6) && rnd(k) < 0.6) continue;
-              const turns = Math.round(130 + rnd(k + 1) * 140), tokens = Math.round(turns * (150000 + rnd(k + 2) * 180000));
-              const wait_tokens = Math.round(rnd(k + 8) * rnd(k + 9) * 8400000);
-              by_day.push({ day: key(t), turns, tokens, usd: +(tokens * 2.6e-6).toFixed(2), median_context: Math.round(60000 + rnd(k + 4) * 90000 + (days - k) * 400), errors: Math.round(rnd(k + 5) * 14), interrupted: Math.round(rnd(k + 6) * 5), corrected: Math.round(rnd(k + 7) * 12), wait_tokens, wait_usd: +(wait_tokens * 7.9e-6).toFixed(2), long_usd: +(rnd(k + 10) * 16).toFixed(2) });
-            }
-            const sum = (k) => by_day.reduce((a, r) => a + r[k], 0);
-            const turns = sum("turns"), corrected = sum("corrected");
-            const totals = { turns, tokens: sum("tokens"), sessions: Math.round(days * 3.4), usd: +sum("usd").toFixed(2), priced: 0.97 };
-            const at = (h) => Date.now() - h * H;
-            const ws = [["relay", "agent-relay", 9, 51840000, 0.21], ["c1", "cue", 7, 30 * H, 0.16], ["c2", "order-engine", 5, 2 * D + 5 * H, 0.11], ["q1", "data-pipeline", 6, 9 * H, 0.08], ["c3", "cue", 4, 14 * H, 0.06], ["c4", "web-app", 3, 3 * H + 20 * 60000, 0.04], ["c5", "filings-bot", 3, 70 * 60000, 0.03], ["c6", "backtester", 2, 26 * H, 0.02]];
-            const wUsd = sum("wait_usd"), wTok = sum("wait_tokens"), lUsd = sum("long_usd");
-            const waiting = { usd: +wUsd.toFixed(2), tokens: wTok, turns: Math.round(wTok / 236000), share_of_writes: 0.8,
-              sessions: ws.map(([sid, project, times, wait, sh], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", usd: +(wUsd * sh).toFixed(2), tokens: Math.round(wTok * sh), times, longest_wait_ms: wait, last_ms: at(5 + i * 19) })) };
-            const ls = [["c1", "cue", 45000, 610000, 212, 0.18], ["relay", "agent-relay", 38000, 480000, 164, 0.14], ["c7", "order-engine", 52000, 390000, 120, 0.09], ["c3", "cue", 30000, 340000, 96, 0.06], ["c8", "data-pipeline", 41000, 320000, 88, 0.04]];
-            const long = { usd: +lUsd.toFixed(2), tokens: Math.round(lUsd * 3.2e6),
-              sessions: ls.map(([sid, project, s0, peak, n, sh], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", usd: +(lUsd * sh).toFixed(2), start_context: s0, peak_context: peak, turns: n, last_ms: at(3 + i * 31) })),
-              handoffs: { sent: 7, continued: 5 } };
-            const ex = [
-              ["c1", "cue", "Make the Back row in the agent view stay put when the steps scroll", "No, the Back row should stay above the steps, not float over them. And Back must land at the chat's end."],
-              ["relay", "agent-relay", "Add a spend column to the board", "Sort it high to low, and keep the status column where it was. The test in board.test.ts checks the order."],
-              ["c2", "order-engine", "Fix the fill price on partial exits", "That changed entries too. Only exits: the entry price is right. Check it against yesterday's replay."],
-              ["q1", "data-pipeline", "Backfill the missing days", "Only the weekdays in September, not the whole year. Dry-run first and show me the count."],
-              ["c4", "web-app", "Tidy up the settings page", "I meant the spacing, not the copy. Leave every label as it was."],
-              ["c3", "cue", "Show the MCP servers in the session menu", "From the ⋯ menu, not the header. And list what it called through each."],
-            ];
-            const corrections = { count: corrected, share: +(corrected / turns).toFixed(3),
-              examples: ex.map(([sid, project, prompt, correction], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", at_ms: at(2 + i * 17), prompt, correction, usd: +(0.6 + rnd(i) * 3).toFixed(2) })) };
-            // Where it went: the late answers' re-writes and the long sessions' re-reads, the rest split by kind.
-            const rest = totals.usd - wUsd - lUsd;
-            const split = { fresh: +(rest * 0.04).toFixed(2), output: +(rest * 0.17).toFixed(2), read: +(rest * 0.43).toFixed(2), write: +(rest * 0.36).toFixed(2), rewrite: waiting.usd, long: long.usd };
-            const models = [["claude-opus-5-5", 0.71], ["claude-fable-5-1", 0.16], ["claude-sonnet-5-5", 0.09], ["claude-haiku-5-5", 0.01], ["gpt-5.2-codex", 0]].map(([model, sh]) => ({ model, usd: +(totals.usd * sh).toFixed(2), tokens: Math.round(totals.tokens * (sh || 0.03)) }));
-            // Late answers, mostly left overnight and over lunch on weekdays: when the wait began, how long, what it re-wrote.
-            waiting.answers = Array.from({ length: Math.min(400, waiting.turns) }, (_, i) => {
-              const r = ws[Math.floor(rnd(i + 30) * rnd(i + 31) * ws.length)], night = rnd(i + 32) < 0.55;
-              const waited = night ? (8 + rnd(i + 33) * 10) * H : rnd(i + 34) < 0.5 ? (6 + rnd(i + 35) * 54) * 60000 : (1 + rnd(i + 36) * 5) * H;
-              const tokens = Math.round(40000 + rnd(i + 37) * rnd(i + 38) * 560000);
-              return { session_id: r[0], project: r[1], cwd: `/x/${r[1]}`, machine: "", harness: "claude", at_ms: Date.now() - rnd(i + 39) * days * D, waited_ms: Math.round(waited), tokens, usd: +(tokens * (waited > H ? 7.8e-6 : 4.8e-6)).toFixed(2) };
-            }).sort((a, b) => b.usd - a.usd);
-            waiting.grid_usd = Array(168).fill(0); waiting.grid_turns = Array(168).fill(0);
-            waiting.answers.forEach((a, i) => {
-              const night = a.waited_ms >= 8 * H, wd = Math.floor(rnd(i + 40) * (rnd(i + 41) < 0.85 ? 5 : 7));
-              const h = night ? [17, 18, 19, 20, 21, 22, 23, 0][Math.floor(rnd(i + 42) * 8)] : [9, 10, 11, 12, 12, 13, 14, 15, 16][Math.floor(rnd(i + 43) * 9)];
-              waiting.grid_usd[wd * 24 + h] += a.usd; waiting.grid_turns[wd * 24 + h]++;
-            });
-            waiting.grid_usd = waiting.grid_usd.map((x) => +x.toFixed(2));
-            // Each long session's climb: slow, then steep past its hand-off point.
-            long.sessions.forEach((s, j) => {
-              const n = s.turns + 40 + j * 15, pts = [];
-              for (let i = 0; i < n; i++) pts.push([i, Math.round(s.start_context + (s.peak_context - s.start_context) * Math.pow(i / (n - 1), 1.1 + j * 0.15) * (0.94 + rnd(i + j * 99) * 0.06))]);
-              const step = Math.max(1, Math.ceil(n / 60));
-              s.climb = pts.filter((_, i) => i % step === 0 || i === n - 1);
-              s.climb_turns = n;
-              s.handoff_turn = pts.find(([, c]) => c >= 300000 && c >= 4 * s.start_context)?.[0] ?? null;
-              if (s.handoff_turn != null) s.turns = n - s.handoff_turn;
-            });
-            corrections.by_project = [["web-app", 31, 410], ["cue", 52, 1890], ["order-engine", 24, 720], ["agent-relay", 28, 1240], ["data-pipeline", 9, 530], ["backtester", 4, 260]].map(([project, count, turns]) => ({ project, count, turns }));
-            // Could have delegated: turns that looked around themselves, and long sessions across several areas.
-            const dlr = [["c1", "cue", 64, 188000, 21, 4.1], ["c2", "order-engine", 52, 141000, 30, 3.2], ["q1", "data-pipeline", 38, 97000, 12, 1.4], ["c4", "web-app", 33, 84000, 6, 0.4]];
-            const delegate = { usd: 12.6, tokens: 25200000, turns: 31, looks_min: 30, growth_min: 80000, areas_min: 3, agents: 412, agent_sessions: 96, relay_spawns: 188, relay: !/relay=off/.test(location.search), spread_count: 3,
-              sessions: dlr.map(([sid, project, looks, growth, later, usd], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", last_ms: at(4 + i * 22), at_ms: at(4 + i * 22), prompt: "", looks, growth, later, usd, tokens: Math.round(usd * 2e6), turns: 1 + (i % 2) })),
-              spread: [["c7", "order-engine", ["src", "tests", "scripts", "web", "/x/shared/lib"], 520000], ["c3", "cue", ["src-tauri", "ui", "tests"], 410000], ["c8", "data-pipeline", ["dags", "lib", "sql"], 330000]].map(([sid, project, areas, peak], i) => ({ session_id: sid, project, cwd: `/x/${project}`, machine: "", harness: "claude", last_ms: at(9 + i * 40), areas, usd: 0, peak_context: peak })) };
-            return { days, since_ms: Date.now() - days * D, totals, by_day, waiting, long, delegate, corrections, split, models,
-              insights: [{ rule: "cache", shown: 14, acted: 8, tokens: 2300000 }, { rule: "handoff", shown: 9, acted: 3, tokens: 0 }] };
-          }
-          if (cmd === "insight_counts") return [{ rule: "cache", shown: 14, acted: 8, tokens: 2300000 }, { rule: "handoff", shown: 9, acted: 3, tokens: 0 }];
-          // ?ins=cue: a host with no hand-off skill, so its insight offers Cue's own.
-          if (cmd === "session_commands" && /ins=cue/.test(location.search)) return { list: [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }], reading: false };
-          if (cmd === "session_commands" && /ins=1/.test(location.search)) return { list: [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }, { name: "relay:handoff", kind: "skill", desc: "Hand this lead off to a fresh successor: it writes its notes and opens the next one" }], reading: false };
-          if (cmd === "session_commands") return { list: [{ name: "compact", kind: "command", desc: "Summarize the conversation to free up context" }, { name: "clear", kind: "command", desc: "Start over: clear the conversation" }, { name: "context", kind: "command", desc: "How full the context is" }, { name: "model", kind: "command", desc: "Set the AI model for Claude Code", hint: "<model>", args: [{ value: "default", label: "Default (recommended)", desc: "Opus 5.5 · Best for everyday, complex tasks" }, { value: "opus", label: "Opus 5.5", desc: "For complex work and everyday tasks" }, { value: "sonnet", label: "Sonnet 5.5", desc: "Most efficient for simpler tasks" }, { value: "haiku", label: "Haiku 4.5", desc: "Fastest for quick answers" }] }, { name: "effort", kind: "command", desc: "Set effort level for model usage", hint: "<low|medium|high|xhigh|max|auto>", args: ["low", "medium", "high", "xhigh", "max", "auto"].map((v) => ({ value: v, label: v, desc: "" })) }, { name: "rename", kind: "command", desc: "Rename the current conversation", hint: "[name]", args: [] }, { name: "commit-push-merge", kind: "skill", desc: "Land in-flight work: commit, push, and merge" }, { name: "relay:spawn", kind: "skill", desc: "Start an executor on a packet" }, { name: "relay:verify", kind: "skill", desc: "Check an executor's report against what it staged" }], reading: false };
-          if (cmd === "focus_session") return "iTerm session";
-          if (cmd === "close_session") return "Closed its iTerm tab";
-          if (cmd === "agents_installed") return ["claude", "pi"];
-          if (cmd === "new_session") return { session_id: "", detail: `Started ${args.agent} in a new iTerm tab` };
-          if (cmd === "unqueue_review") { for (const l of Object.keys(state.review_queue || {})) state.review_queue[l] = state.review_queue[l].filter((r) => r.exec !== args.exec); return null; }
-          if (cmd.startsWith("actions_") || cmd === "project_for_folder") return fakeActions(cmd, args);
-          if (cmd === "crew_action") return args.action === "review" ? `Sent /relay:review ${args.sessionId}` : args.action === "close" ? "Closed" : args.action.startsWith("auto-") ? `Auto mode ${args.action.slice(5)}` : "Opened in your browser";
-        } },
-        event: { listen: async (name, f) => { (listeners[name] ||= []).push(f); }, emit: async () => {} },
-      };
+      const world = previewWorld(new URLSearchParams(location.search), Date.now());
+      for (const [k, v] of Object.entries(world.prefs)) try { localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v)); } catch {}
+      CueUI.load(() => CueBridge.start(() => world.state));
     })();
-  </script>
-  <script src="../ui/vendor/xterm/xterm.js"></script>
-  <script src="../ui/vendor/xterm/addon-fit.js"></script>
-  <script src="../ui/vendor/xterm/addon-webgl.js"></script>
-  <script src="../ui/invoke.js"></script>
-  <script src="../ui/core.js"></script>
-  <script src="../ui/reviewcard.js"></script>
-  <script src="../ui/status.js"></script>
-  <script src="../ui/status_panel.js"></script>
-  <script src="../ui/chat.js"></script>
-  <script src="../ui/agents.js"></script>
-  <script src="../ui/insights.js"></script>
-  <script src="../ui/tips.js"></script>
-  <script src="../ui/shells.js"></script>
-  <script src="../ui/board.js"></script>
-  <script src="../ui/sessions.js"></script>
-  <script src="../ui/history.js"></script>
-  <script src="../ui/insights_tab.js"></script>
-  <script src="../ui/extensions.js"></script>
-  <script src="../ui/sheets.js"></script>
-  <script src="../ui/actions.js"></script>
-  <script src="../ui/background.js"></script>
-  <script src="../ui/about.js"></script>
-  <script src="../ui/tasks.js"></script>
-  <script src="../ui/app.js"></script>
-  <script>
-    setTimeout(() => {
-      const q = location.search;
-      if (/hist=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
-      if (/settings=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
-      if (/open=1/.test(q)) document.querySelector("[data-toggle]")?.click();
-      // ?tasks=…: the open session's Tasks tab.
-      if (/tasks=/.test(q) && !/chat=1/.test(q)) setTimeout(() => document.querySelector("[data-tasks-tab]")?.click(), 600);
-      // ?more=1: open the chat header's ⋯ menu.
-      if (/more=1/.test(q)) setTimeout(() => document.querySelector("[data-more]")?.click(), 500);
-      // ?live=1&quiet=1: open the quiet session q2 (Sessions view → its tile).
-      if (/quiet=1/.test(q)) setTimeout(() => { document.querySelector('[data-view="sessions"]')?.click(); setTimeout(() => document.querySelector('[data-sv="quiet"][data-sid="q2"]')?.click(), 300); }, 300);
-      // ?steps=open: open the failed test run and an edit in the Active chat.
-      if (/steps=open/.test(q)) setTimeout(() => ["b3", "b5"].forEach((id) => document.querySelector(`[data-step="relay|${id}"]`)?.click()), 2500);
-      const rowQ = new URLSearchParams(q).get("row");
-      if (rowQ) { document.querySelector(`[data-row="${rowQ}"]`)?.click(); const second = new URLSearchParams(q).get("row2"); if (second) setTimeout(() => document.querySelector(`[data-row="${second}"]`)?.click(), 50); }
-      // ?view=sessions: the Sessions view.
-      if (/view=sessions/.test(q)) document.querySelector('[data-view="sessions"]')?.click();
-      // ?tab=insights: the Insights view (&itab=empty: no turns read yet).
-      if (/tab=insights/.test(q)) document.querySelector('[data-view="insights"]')?.click();
-      // ?keys=l,ArrowDown,…: press these keys in order, on whatever has focus (to check shortcuts).
-      const keysQ = new URLSearchParams(q).get("keys");
-      if (keysQ) keysQ.split(",").forEach((k, i) => setTimeout(() => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: k.replace(/^Meta\+/, ""), metaKey: k.startsWith("Meta+"), bubbles: true })), 100 + i * 60));
-      // ?live=1&drop=1[&new=1]: the header's live drop-down, optionally with the New session form.
-      if (/drop=1/.test(q)) { document.querySelector('[data-lv="toggle"]')?.click(); if (/new=1/.test(q)) setTimeout(() => document.querySelector('.lv-pop [data-lv="new"]')?.click(), 50); }
-      const sessQ = new URLSearchParams(q).get("sess");
-      if (sessQ) document.querySelector(`[data-session="${sessQ}"]`)?.click();
-      if (/upop=1/.test(q)) document.querySelector("[data-usage=meter], [data-usage=model], [data-usage=out]")?.dataset.usage === "meter" && document.querySelector("[data-usage=meter]").click();
-      // ?upd=1: the card for a newer Cue.
-      if (/upd=1/.test(q)) (window.__listeners["update-ready"] || []).forEach((f) => f({ payload: { version: "0.1.4", notes: "" } }));
-      // ?detail=<id>: open that entry from Recently answered.
-      const detailQ = new URLSearchParams(q).get("detail");
-      if (detailQ) document.querySelector(`.tl[data-detail="${detailQ}"]`)?.click();
-      const pickId = new URLSearchParams(q).get("pick");
-      if (pickId) document.querySelector(`[data-big="${pickId}"]`)?.click();
-      const chipQ = new URLSearchParams(q).get("chip");
-      if (chipQ) setTimeout(() => { document.querySelector(`[data-chip="${chipQ}"]`)?.click(); if (/twice=1/.test(q)) setTimeout(() => document.querySelector(`[data-chip="${chipQ}"]`)?.click(), 50); }, 60);
-      // ?typedans=1: type your own answer to the question on screen (multi-question ask).
-      if (/typedans=1/.test(q)) setTimeout(() => {
-        document.querySelector('.active-pane [data-act="redirect"]')?.click();
-        setTimeout(() => {
-          const ta = document.querySelector(".active-pane .act-card textarea");
-          ta.value = "what is this ?"; ta.dispatchEvent(new Event("input", { bubbles: true }));
-          ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        }, 50);
-      }, 80);
-      if (/choose=1/.test(q)) setTimeout(() => document.querySelector('.active-pane [data-pick="0:1"]')?.click(), 80);
-      if (/typelong=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.focus(); ta.value = "line one\nline two\nline three\nline four\nline five"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
-      // ?click=<selector>: click that element once the window is drawn (e.g. a card at the bottom of a column).
-      const clickQ = new URLSearchParams(q).get("click");
-      if (clickQ) setTimeout(() => document.querySelector(clickQ)?.click(), 700);
-      if (/starred=1/.test(q)) setTimeout(() => document.querySelector("[data-star-chip]")?.click(), 600);
-      // ?slash=re: type "/re" into the Active chat's box (the "/" menu); ?slash=reomte%20x: an unknown command.
-      const slashQ = new URLSearchParams(q).get("slash");
-      if (slashQ) setTimeout(() => { const ta = document.querySelector(".active-pane .foot textarea"); ta.focus(); ta.value = `/${slashQ}`; ta.dispatchEvent(new Event("input", { bubbles: true })); if (/down=1/.test(q)) ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); }, 600);
-      if (/type=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.value = "half-written reply, kept across restarts"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
-      if (/send=1/.test(q)) setTimeout(() => { const ta = document.querySelector(".active-pane textarea"); ta.value = "carry it over to the successor"; ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".active-pane .btn.send").click(); }, 100);
-      if (/allow=1/.test(q)) setTimeout(() => document.querySelector(".active-pane [data-act=allow]")?.click(), 100);
-      // ?term=1: agent-relay is in tmux (&open=term: its terminal open; &wait=1: waiting in it).
-      if (/term=1/.test(q)) {
-        const r = state.sessions.find((x) => x.session_id === "relay");
-        if (r) r.tmux_pane = "%1";
-        if (/wait=1/.test(q)) state.items.unshift({ id: "tw", kind: "terminal", harness: "claude", session_id: "relay", cwd: r.cwd, project: "agent-relay", message: "Waiting in its terminal: approve Bash", context: [], created_ms: Date.now() - 60000, status: "pending", outcome: "" });
-        termLast.set("relay", /wait=1/.test(q) ? "❯ 1. Yes   2. Yes, and don't ask again   3. No (esc)" : "✻ Baking… (12s) · Bash(make release)");
-        setActive(null, "relay");
-        if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
-        if (/stalled=1/.test(q)) setTimeout(() => ["l", "s"].forEach((k) => termObj?.input(k)), 700);
-      }
-      // &inspick=1 (with ?ins=1&open=relay): its hand-off insight's skill drop-up open.
-      if (/inspick=1/.test(q)) setTimeout(() => insAct("ins-choose", { sid: "relay" }), 600);
-      // ?open=<session id>: that session's chat in Active (e.g. names: at its prompt while background agents work).
-      const openQ = new URLSearchParams(q).get("open");
-      if (openQ && openQ !== "term") setTimeout(() => setActive(null, openQ), 80);
-      // &restart=done|failed: the line a finished (or failed) restart leaves in that session's chat.
-      const rsDone = new URLSearchParams(q).get("restart");
-      if (openQ && /^(done|failed)$/.test(rsDone || "")) setTimeout(() => { state.restarted = { [openQ]: [{ at_ms: Date.now() - 60000, secs: 6, servers: ["linear", "chrome-devtools", "sentry"], error: rsDone === "failed" ? "it's mid-turn; try when it's idle" : null }] }; (window.__listeners.state || []).forEach((f) => f({ payload: structuredClone(state) })); }, 200);
-      // &restart=stop|start|load: that session restarting (after an MCP change; &restartkind=plain: ⋯ → Restart session), on that step.
-      const rsQ = new URLSearchParams(q).get("restart");
-      if (openQ && rsQ && !/^(done|failed)$/.test(rsQ)) setTimeout(() => { state.restarting = { [openQ]: { step: rsQ, since_ms: Date.now(), servers: 3, mcp: !/restartkind=plain/.test(location.search) } }; (window.__listeners.state || []).forEach((f) => f({ payload: structuredClone(state) })); }, 200);
-      // &mcp=menu: its ⋯ menu open (the MCP servers item); &mcp=1: ⋯ → MCP servers…, the picker open;
-      // &mcp=tools: that, with linear's tools unfolded.
-      const mcpQ = new URLSearchParams(q).get("mcp");
-      if (openQ && mcpQ) setTimeout(() => { document.querySelector(".active-pane [data-more]")?.click(); if (mcpQ !== "menu") setTimeout(() => { document.querySelector("[data-mcp-ask]")?.click(); if (mcpQ === "tools") setTimeout(() => document.querySelector(".mcp-tfold")?.click(), 300); }, 300); }, 500);
-      // &bg=<agent id>: that background agent of the open session in full (chat.js helperPane), e.g. open=names&bg=h1 (running) or h2 (finished).
-      // &tmux=<session id>: that session runs in tmux (its terminal dock shows, closed), e.g. with open=names&bg=h3.
-      const tmuxQ = new URLSearchParams(q).get("tmux");
-      if (tmuxQ) { const x = state.sessions.find((y) => y.session_id === tmuxQ); if (x) x.tmux_pane = "%9"; }
-      // &fold=1: the open session's tray of background work starts folded to its head row.
-      if (openQ && /fold=1/.test(q)) trayFolded.add(openQ);
-      const bgQ = new URLSearchParams(q).get("bg");
-      if (openQ && bgQ) setTimeout(() => { helperView = { sid: openQ, id: bgQ }; renderMain(); }, 400);
-      // (&view=sessions: the Sessions view, dns-cutover marked as the one open, no click to leave the view.)
-      // &held=1&via=tree|chip|live: dns-cutover opened from its row in its lead's tree, its row in its lead's Agents
-      // tab (via=chip: what the title line's "N agents ›" opens), or its row in the "N live" list. Each way, its own terminal opens (body[data-term-opens])
-      // beside its chat (body[data-open]): tests/exec_attach.sh checks all three, and via=lead below.
-      const via = new URLSearchParams(q).get("via");
-      if (/remote=1/.test(q) && /held=1/.test(q) && via) setTimeout(() => {
-        const done = () => { document.body.dataset.open = active?.sid || ""; };
-        if (via === "tree") { view = "board"; renderMain(); document.querySelector('.team-tree [data-exec-term="rx-dns"], .team-tree [data-session="rx-dns"]')?.click(); }
-        if (via === "chip") { bgTabOn.set("rlead", "agents"); setActive(null, "rlead"); document.querySelector('.bg-page [data-exec-term="rx-dns"], .bg-page [data-session="rx-dns"]')?.click(); }
-        if (via === "live") { lvAct("toggle", {}); document.querySelector('.lv-row[data-sid="rx-dns"]')?.click(); }
-        // (via=lead: its lead's own row, on the same machine but no executor: its chat only, no terminal.)
-        if (via === "lead") { view = "board"; renderMain(); document.querySelector('.team-top[data-session="rlead"], .working[data-session="rlead"]')?.click(); }
-        setTimeout(done, 300);
-      }, 200);
-      else if (/remote=1/.test(q) && /view=sessions/.test(q)) setTimeout(() => { quietOpen = "rx-dns"; renderMain(); }, 200);
-      else if (/remote=1/.test(q)) setTimeout(() => { document.querySelector('[data-exec-term="rx-dns"]')?.click(); setTimeout(() => document.querySelector('[data-exec-term="rx-dns"]')?.click(), 1200); }, 200);
-      // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
-      if (/new=1/.test(q)) setTimeout(() => {
-        state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };
-        agentsAvail = ["claude", "codex", "pi"];
-        const p = new URLSearchParams(q);
-        if (p.get("agent")) newAgent = p.get("agent");
-        if (p.get("perm")) newPerm = p.get("perm");
-        liveSpot = true;
-        lvAct("new", {});
-      }, 100);
-      // ?reader=1: the open chat's first long reply opens in the reader (chat.js readerPane).
-      if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
-      // ?bg=1: the "2 bg" on the names card is clicked, opening that session onto its newest running agent.
-      if (/bg=1/.test(q)) setTimeout(() => document.querySelector('[data-bg-open="names"]')?.click(), 600);
-      // Actions (ui/actions.js), on agent-relay: ?actions=1 its Actions tab; ?palette=1 ⌘E; ?trust=1 the tab, then its
-      // agent changes the file (the trust sheet opens on its own); ?editAction=1 ✎ on Install; ?actlog=1 Test's output;
-      // ?suggest=1 a finished turn that changed package.json, a migration and src (suggestions under the reply: one to
-      // run, one failed, one running); ?running=1 agent-relay pinned with two servers, its dots' popover open;
-      // ?ask=1 order-engine (working): ⌘E, ↵ on Install, which asks Run now / After this turn.
-      if (/suggest=1/.test(q)) { const r = state.sessions.find((x) => x.session_id === "relay"); r.changes = { files: [{ path: "package.json", add: 2, del: 1 }, { path: "migrations/0042_add_spend.sql", add: 14, del: 0 }, { path: "src/board.ts", add: 48, del: 3 }], add: 64, del: 4 }; }
-      if (/running=1/.test(q)) state.settings.project = { ...(state.settings.project || {}), pins: ["agent-relay"] };
-      if (/[?&](actions|palette|trust|editAction|actlog|suggest)=1/.test(q)) setTimeout(() => {
-        setActive(null, "relay");
-        if (/palette=1/.test(q)) return setTimeout(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })), 200);
-        if (/suggest=1/.test(q)) return;
-        setTimeout(() => {
-          document.querySelector('[data-ac="tab"]')?.click();
-          if (/trust=1/.test(q)) setTimeout(() => window.__actChange(), 700);
-          if (/editAction=1/.test(q)) setTimeout(() => document.querySelector('[data-ac="edit"][data-id="shared:Install"]')?.click(), 400);
-          if (/actlog=1/.test(q)) setTimeout(() => document.querySelector('.ac-row [data-ac="log"][data-id="shared:Test"]')?.click(), 400);
-        }, 200);
-      }, 120);
-      // ?newproj=1 + New in a plain folder: its Project line, its list open (Put in a project…).
-      if (/newproj=1/.test(q)) setTimeout(() => {
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true }));
-        setTimeout(() => { draft("new-cwd").text = "~/scratch/notes"; renderMain(); setTimeout(() => { document.querySelector('[data-lv="proj-open"]')?.click(); }, 200); }, 200);
-      }, 120);
-      if (/running=1/.test(q)) setTimeout(() => { setActive(null, "relay"); setTimeout(() => document.querySelector('.ac-dots[data-where="pin"]')?.click(), 500); }, 120);
-      if (/ask=1/.test(q)) setTimeout(() => {
-        setActive(null, "eng");
-        setTimeout(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })); setTimeout(() => document.querySelector('[data-text="ac-find"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 500); }, 200);
-      }, 120);
-      // With ?ins=1: &inss=open opens agent-relay's fresh-session plan (its chip by the box), =busy is its button
-      // just tapped (insights.js handoffChip).
-      const inss = new URLSearchParams(q).get("inss");
-      if (inss) setTimeout(() => {
-        if (inss === "open") insPlan.add("relay");
-        if (inss === "busy") { insPlan.add("relay"); insBusy.set("relay", "Handing off…"); }
-        renderMain();
-      }, 150);
-    }, 300);
+    // Once the UI is up, the flags that open something in it. (`state` here is the window's own, ui/core.js.)
+    CueUI.ready.then(() => {
+      setTimeout(() => {
+        const q = location.search;
+        if (/hist=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "h" }));
+        if (/settings=1/.test(q)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "," }));
+        if (/open=1/.test(q)) document.querySelector("[data-toggle]")?.click();
+        // ?tasks=…: the open session's Tasks tab.
+        if (/tasks=/.test(q) && !/chat=1/.test(q)) setTimeout(() => document.querySelector("[data-tasks-tab]")?.click(), 600);
+        // ?more=1: open the chat header's ⋯ menu.
+        if (/more=1/.test(q)) setTimeout(() => document.querySelector("[data-more]")?.click(), 500);
+        // ?live=1&quiet=1: open the quiet session q2 (Sessions view → its tile).
+        if (/quiet=1/.test(q)) setTimeout(() => { document.querySelector('[data-view="sessions"]')?.click(); setTimeout(() => document.querySelector('[data-sv="quiet"][data-sid="q2"]')?.click(), 300); }, 300);
+        // ?steps=open: open the failed test run and an edit in the Active chat.
+        if (/steps=open/.test(q)) setTimeout(() => ["b3", "b5"].forEach((id) => document.querySelector(`[data-step="relay|${id}"]`)?.click()), 2500);
+        const rowQ = new URLSearchParams(q).get("row");
+        if (rowQ) { document.querySelector(`[data-row="${rowQ}"]`)?.click(); const second = new URLSearchParams(q).get("row2"); if (second) setTimeout(() => document.querySelector(`[data-row="${second}"]`)?.click(), 50); }
+        // ?view=sessions: the Sessions view.
+        if (/view=sessions/.test(q)) document.querySelector('[data-view="sessions"]')?.click();
+        // ?tab=insights: the Insights view (&itab=empty: no turns read yet).
+        if (/tab=insights/.test(q)) document.querySelector('[data-view="insights"]')?.click();
+        // ?keys=l,ArrowDown,…: press these keys in order, on whatever has focus (to check shortcuts).
+        const keysQ = new URLSearchParams(q).get("keys");
+        if (keysQ) keysQ.split(",").forEach((k, i) => setTimeout(() => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key: k.replace(/^Meta\+/, ""), metaKey: k.startsWith("Meta+"), bubbles: true })), 100 + i * 60));
+        // ?live=1&drop=1[&new=1]: the header's live drop-down, optionally with the New session form.
+        if (/drop=1/.test(q)) { document.querySelector('[data-lv="toggle"]')?.click(); if (/new=1/.test(q)) setTimeout(() => document.querySelector('.lv-pop [data-lv="new"]')?.click(), 50); }
+        const sessQ = new URLSearchParams(q).get("sess");
+        if (sessQ) document.querySelector(`[data-session="${sessQ}"]`)?.click();
+        if (/upop=1/.test(q)) document.querySelector("[data-usage=meter], [data-usage=model], [data-usage=out]")?.dataset.usage === "meter" && document.querySelector("[data-usage=meter]").click();
+        // ?upd=1: the card for a newer Cue.
+        if (/upd=1/.test(q)) CueBridge.emit("update-ready", { version: "0.1.4", notes: "" });
+        // ?detail=<id>: open that entry from Recently answered.
+        const detailQ = new URLSearchParams(q).get("detail");
+        if (detailQ) document.querySelector(`.tl[data-detail="${detailQ}"]`)?.click();
+        const pickId = new URLSearchParams(q).get("pick");
+        if (pickId) document.querySelector(`[data-big="${pickId}"]`)?.click();
+        const chipQ = new URLSearchParams(q).get("chip");
+        if (chipQ) setTimeout(() => { document.querySelector(`[data-chip="${chipQ}"]`)?.click(); if (/twice=1/.test(q)) setTimeout(() => document.querySelector(`[data-chip="${chipQ}"]`)?.click(), 50); }, 60);
+        // ?typedans=1: type your own answer to the question on screen (multi-question ask).
+        if (/typedans=1/.test(q)) setTimeout(() => {
+          document.querySelector('.active-pane [data-act="redirect"]')?.click();
+          setTimeout(() => {
+            const ta = document.querySelector(".active-pane .act-card textarea");
+            ta.value = "what is this ?"; ta.dispatchEvent(new Event("input", { bubbles: true }));
+            ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+          }, 50);
+        }, 80);
+        if (/choose=1/.test(q)) setTimeout(() => document.querySelector('.active-pane [data-pick="0:1"]')?.click(), 80);
+        if (/typelong=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.focus(); ta.value = "line one\nline two\nline three\nline four\nline five"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+        // ?click=<selector>: click that element once the window is drawn (e.g. a card at the bottom of a column).
+        const clickQ = new URLSearchParams(q).get("click");
+        if (clickQ) setTimeout(() => document.querySelector(clickQ)?.click(), 700);
+        if (/starred=1/.test(q)) setTimeout(() => document.querySelector("[data-star-chip]")?.click(), 600);
+        // ?slash=re: type "/re" into the Active chat's box (the "/" menu); ?slash=reomte%20x: an unknown command.
+        const slashQ = new URLSearchParams(q).get("slash");
+        if (slashQ) setTimeout(() => { const ta = document.querySelector(".active-pane .foot textarea"); ta.focus(); ta.value = `/${slashQ}`; ta.dispatchEvent(new Event("input", { bubbles: true })); if (/down=1/.test(q)) ta.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); }, 600);
+        if (/type=1/.test(q)) { const ta = document.querySelector(".active-pane textarea"); ta.value = "half-written reply, kept across restarts"; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+        if (/send=1/.test(q)) setTimeout(() => { const ta = document.querySelector(".active-pane textarea"); ta.value = "carry it over to the successor"; ta.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".active-pane .btn.send").click(); }, 100);
+        if (/allow=1/.test(q)) setTimeout(() => document.querySelector(".active-pane [data-act=allow]")?.click(), 100);
+        // ?term=1: agent-relay is in tmux (&open=term: its terminal open; &wait=1: waiting in it).
+        if (/term=1/.test(q)) {
+          const r = state.sessions.find((x) => x.session_id === "relay");
+          if (r) r.tmux_pane = "%1";
+          if (/wait=1/.test(q)) state.items.unshift({ id: "tw", kind: "terminal", harness: "claude", session_id: "relay", cwd: r.cwd, project: "agent-relay", message: "Waiting in its terminal: approve Bash", context: [], created_ms: Date.now() - 60000, status: "pending", outcome: "" });
+          termLast.set("relay", /wait=1/.test(q) ? "❯ 1. Yes   2. Yes, and don't ask again   3. No (esc)" : "✻ Baking… (12s) · Bash(make release)");
+          setActive(null, "relay");
+          if (/open=term/.test(q)) setTimeout(() => openTerm("relay"), 200);
+          if (/stalled=1/.test(q)) setTimeout(() => ["l", "s"].forEach((k) => termObj?.input(k)), 700);
+        }
+        // &inspick=1 (with ?ins=1&open=relay): its hand-off insight's skill drop-up open.
+        if (/inspick=1/.test(q)) setTimeout(() => insAct("ins-choose", { sid: "relay" }), 600);
+        // ?open=<session id>: that session's chat in Active (e.g. names: at its prompt while background agents work).
+        const openQ = new URLSearchParams(q).get("open");
+        if (openQ && openQ !== "term") setTimeout(() => setActive(null, openQ), 80);
+        // &restart=done|failed: the line a finished (or failed) restart leaves in that session's chat.
+        const rsDone = new URLSearchParams(q).get("restart");
+        if (openQ && /^(done|failed)$/.test(rsDone || "")) setTimeout(() => { state.restarted = { [openQ]: [{ at_ms: Date.now() - 60000, secs: 6, servers: ["linear", "chrome-devtools", "sentry"], error: rsDone === "failed" ? "it's mid-turn; try when it's idle" : null }] }; CueBridge.emit("state", structuredClone(state)); }, 200);
+        // &restart=stop|start|load: that session restarting (after an MCP change; &restartkind=plain: ⋯ → Restart session), on that step.
+        const rsQ = new URLSearchParams(q).get("restart");
+        if (openQ && rsQ && !/^(done|failed)$/.test(rsQ)) setTimeout(() => { state.restarting = { [openQ]: { step: rsQ, since_ms: Date.now(), servers: 3, mcp: !/restartkind=plain/.test(location.search) } }; CueBridge.emit("state", structuredClone(state)); }, 200);
+        // &mcp=menu: its ⋯ menu open (the MCP servers item); &mcp=1: ⋯ → MCP servers…, the picker open;
+        // &mcp=tools: that, with linear's tools unfolded.
+        const mcpQ = new URLSearchParams(q).get("mcp");
+        if (openQ && mcpQ) setTimeout(() => { document.querySelector(".active-pane [data-more]")?.click(); if (mcpQ !== "menu") setTimeout(() => { document.querySelector("[data-mcp-ask]")?.click(); if (mcpQ === "tools") setTimeout(() => document.querySelector(".mcp-tfold")?.click(), 300); }, 300); }, 500);
+        // &bg=<agent id>: that background agent of the open session in full (chat.js helperPane), e.g. open=names&bg=h1 (running) or h2 (finished).
+        // &tmux=<session id>: that session runs in tmux (its terminal dock shows, closed), e.g. with open=names&bg=h3.
+        const tmuxQ = new URLSearchParams(q).get("tmux");
+        if (tmuxQ) { const x = state.sessions.find((y) => y.session_id === tmuxQ); if (x) x.tmux_pane = "%9"; }
+        // &fold=1: the open session's tray of background work starts folded to its head row.
+        if (openQ && /fold=1/.test(q)) trayFolded.add(openQ);
+        const bgQ = new URLSearchParams(q).get("bg");
+        if (openQ && bgQ) setTimeout(() => { helperView = { sid: openQ, id: bgQ }; renderMain(); }, 400);
+        // ?crew=1&remote=1: dns-cutover's row is clicked twice (still one terminal); &view=sessions: it's the one open there.
+        if (/remote=1/.test(q) && /view=sessions/.test(q)) setTimeout(() => { quietOpen = "rx-dns"; renderMain(); }, 200);
+        else if (/remote=1/.test(q)) setTimeout(() => { document.querySelector('[data-exec-term="rx-dns"]')?.click(); setTimeout(() => document.querySelector('[data-exec-term="rx-dns"]')?.click(), 1200); }, 200);
+        // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
+        if (/new=1/.test(q)) setTimeout(() => {
+          state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };
+          agentsAvail = ["claude", "codex", "pi"];
+          const p = new URLSearchParams(q);
+          if (p.get("agent")) newAgent = p.get("agent");
+          if (p.get("perm")) newPerm = p.get("perm");
+          liveSpot = true;
+          lvAct("new", {});
+        }, 100);
+        // ?reader=1: the open chat's first long reply opens in the reader (chat.js readerPane).
+        if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
+        // ?bg=1: the "2 bg" on the names card is clicked, opening that session onto its newest running agent.
+        if (/bg=1/.test(q)) setTimeout(() => document.querySelector('[data-bg-open="names"]')?.click(), 600);
+        // Actions (ui/actions.js), on agent-relay: ?actions=1 its Actions tab; ?palette=1 ⌘E; ?trust=1 the tab, then its
+        // agent changes the file (the trust sheet opens on its own); ?editAction=1 ✎ on Install; ?actlog=1 Test's output;
+        // ?suggest=1 a finished turn that changed package.json, a migration and src (suggestions under the reply: one to
+        // run, one failed, one running); ?running=1 agent-relay pinned with two servers, its dots' popover open;
+        // ?ask=1 order-engine (working): ⌘E, ↵ on Install, which asks Run now / After this turn.
+        if (/suggest=1/.test(q)) { const r = state.sessions.find((x) => x.session_id === "relay"); r.changes = { files: [{ path: "package.json", add: 2, del: 1 }, { path: "migrations/0042_add_spend.sql", add: 14, del: 0 }, { path: "src/board.ts", add: 48, del: 3 }], add: 64, del: 4 }; }
+        if (/running=1/.test(q)) state.settings.project = { ...(state.settings.project || {}), pins: ["agent-relay"] };
+        if (/[?&](actions|palette|trust|editAction|actlog|suggest)=1/.test(q)) setTimeout(() => {
+          setActive(null, "relay");
+          if (/palette=1/.test(q)) return setTimeout(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })), 200);
+          if (/suggest=1/.test(q)) return;
+          setTimeout(() => {
+            document.querySelector('[data-ac="tab"]')?.click();
+            if (/trust=1/.test(q)) setTimeout(() => CueBridge.world.agentChangesActions(), 700);
+            if (/editAction=1/.test(q)) setTimeout(() => document.querySelector('[data-ac="edit"][data-id="shared:Install"]')?.click(), 400);
+            if (/actlog=1/.test(q)) setTimeout(() => document.querySelector('.ac-row [data-ac="log"][data-id="shared:Test"]')?.click(), 400);
+          }, 200);
+        }, 120);
+        // ?newproj=1 + New in a plain folder: its Project line, its list open (Put in a project…).
+        if (/newproj=1/.test(q)) setTimeout(() => {
+          document.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true }));
+          setTimeout(() => { draft("new-cwd").text = "~/scratch/notes"; renderMain(); setTimeout(() => { document.querySelector('[data-lv="proj-open"]')?.click(); }, 200); }, 200);
+        }, 120);
+        if (/running=1/.test(q)) setTimeout(() => { setActive(null, "relay"); setTimeout(() => document.querySelector('.ac-dots[data-where="pin"]')?.click(), 500); }, 120);
+        if (/ask=1/.test(q)) setTimeout(() => {
+          setActive(null, "eng");
+          setTimeout(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "e", metaKey: true, bubbles: true })); setTimeout(() => document.querySelector('[data-text="ac-find"]')?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), 500); }, 200);
+        }, 120);
+        // With ?ins=1: &inss=open opens agent-relay's fresh-session plan (its chip by the box), =busy is its button
+        // just tapped (insights.js handoffChip).
+        const inss = new URLSearchParams(q).get("inss");
+        if (inss) setTimeout(() => {
+          if (inss === "open") insPlan.add("relay");
+          if (inss === "busy") { insPlan.add("relay"); insBusy.set("relay", "Handing off…"); }
+          renderMain();
+        }, 150);
+      }, 300);
+    });
   </script>
 </body>
 </html>
