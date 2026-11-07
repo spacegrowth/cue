@@ -109,6 +109,17 @@ test.describe("Settings", () => {
     await cue.called("set_setting", { key: "tasks.on", value: true });
   });
 
+  test("Get beta builds is off at first, saves its setting and looks again on beta", async ({ cue, page }) => {
+    const beta = page.locator('.sheet [data-set="updates.beta"]');
+    await expect(beta).toHaveAttribute("aria-checked", "false");
+    await expect(page.locator(".sheet")).toContainText("You have the latest version.");
+    await beta.click();
+    await cue.called("set_setting", { key: "updates.beta", value: true });
+    await expect(beta).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator(".sheet")).toContainText("Cue 0.1.87 is out. A beta build.");
+    expect(await cue.calls("update_check")).toHaveLength(2);
+  });
+
   test("Esc closes Settings", async ({ page }) => {
     await expect(page.locator(".sheet")).toBeVisible();
     await page.keyboard.press("Escape");
