@@ -55,7 +55,7 @@ for an external fact).
    `lib.rs:294-361` (3 s leads/live refresh + `sweep` + `sync_live`; remote poll; usage file 3 s; updater 6 h)
    and `server::watch` (`lib.rs:328`), `talk::start`, `actions::start`, `archive::start`, `turns::start`.
 3. **Plain threads.** PTY reader/exit threads (`term.rs:424-479`), one SSH watcher per machine
-   (`machines/hooks.rs:225`), remote crew polls (`lib.rs:337`), `machines/logs.rs` copies, `talk.rs` voice
+   (`machines/hooks/watch.rs:31`), remote crew polls (`lib.rs:337`), `machines/logs.rs` copies, `talk.rs` voice
    loops, `tasks.rs`, `notify.rs:98/110` callbacks, `safe_git.rs:68`.
 4. **Separate process:** `cue hook <event>` (`hook.rs`) — reads `config.json` via `config::load`
    (`hook.rs:38`, `statuslist.rs:64,175`) and talks to the socket; never touches `cue.db`.
@@ -65,8 +65,8 @@ for an external fact).
 Coarse: `Hub.store: Mutex<Store>` (`hub/mod.rs:131`, 208 sites), `Hub.typing` + per-session typing gates
 (`hub/mod.rs:135,156`; held for seconds by design, `send.rs:13 wait_turn` 45 s), `term::open_terms`
 (`term.rs:68`), `db::DB` (`db.rs:17`, one connection, lazily opened, **no `busy_timeout`**), `leads::INDEX`
-plus 11 other leads statics (`leads/`), `logs/steps.rs` FEEDS/HISTORY/WINDOWS/SEEN, `logs/live.rs`
-CLAUDE/ABOUT/BRANCHES/REPOS/TOPS, `machines/mod.rs:358 caches`, `machines/hooks.rs` watchers/SEEN/WATCHERS,
+plus 11 other leads statics (`leads/`), `logs/steps/` FEEDS/HISTORY/WINDOWS/SEEN, `logs/live.rs`
+CLAUDE/ABOUT/BRANCHES/REPOS/TOPS, `machines/mod.rs:358 caches`, `machines/hooks/` watchers/SEEN/WATCHERS,
 `actions/mod.rs` STORE/ONE/BUSY/WATCH, `tasks.rs` TRACKS/TOTAL, `talk.rs` STATUS/RETELL/OWN, `notify::QUIET`,
 `sounds::PLAYING`, `commands.rs` LISTS/READING, `statuslist::SEEN`, `model::DECLARED`, `extensions::ONE`,
 `usage_file::LAST`, `turns::CATCHING_UP`, `archive::INDEX`, `shells::KEPT`, `ipc/restore.rs BUSY`,

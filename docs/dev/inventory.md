@@ -228,10 +228,10 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/steps/windows.rs::SEEN` | `Mutex<Option<HashMap<String,(Instant,u64)>>>` | "AUTO_SEEN" (1 sites) |
 | `logs/turns.rs::CATCHING_UP` | `std::sync::Mutex<Option<(u64,u64)>>` | "turns CATCHING_UP" (2 sites) |
 | `logs/usage_file.rs::LAST` | `Mutex<Option<(std::path::PathBuf,Option<SystemTime>,Value)>>` | "LAST" (2 sites) |
-| `machines/hooks.rs::W` | `OnceLock<Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>>` | — |
-| `machines/hooks.rs::ON_REACHED` | `OnceLock<Box<dynFn(&str)+Send+Sync>>` | — |
-| `machines/hooks.rs::ON_NEW_SESSION` | `OnceLock<Box<dynFn(&str)+Send+Sync>>` | — |
-| `machines/hooks.rs::SEEN` | `Mutex<Option<(HashSet<String>,HashMap<String,Instant>)>>` | "seen sessions" (1 sites) |
+| `machines/hooks/watch.rs::W` | `OnceLock<Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>>` | — |
+| `machines/hooks/watch.rs::ON_REACHED` | `OnceLock<Box<dynFn(&str)+Send+Sync>>` | — |
+| `machines/hooks/watch.rs::ON_NEW_SESSION` | `OnceLock<Box<dynFn(&str)+Send+Sync>>` | — |
+| `machines/hooks/watch.rs::SEEN` | `Mutex<Option<(HashSet<String>,HashMap<String,Instant>)>>` | "seen sessions" (1 sites) |
 | `machines/logs.rs::C` | `OnceLock<Mutex<HashMap<String,Child>>>` | — |
 | `machines/mod.rs::C` | `std::sync::OnceLock<std::sync::Mutex<Caches>>` | — |
 | `notify.rs::QUIET` | `std::sync::Mutex<Vec<String>>` | "quiet sessions" (2 sites) |
@@ -340,11 +340,11 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/background.rs::Feed::close_scripts` | thread::spawn | 1 |
 | `logs/steps/background.rs::Feed::helper_finished` | thread::spawn | 1 |
 | `logs/turns.rs::start` | Builder::spawn | 1 |
-| `machines/hooks.rs::handle` | thread::spawn | 2 |
-| `machines/hooks.rs::new_session_seen` | thread::spawn | 1 |
-| `machines/hooks.rs::push_status_on` | thread::spawn | 1 |
-| `machines/hooks.rs::stream` | thread::spawn | 1 |
-| `machines/hooks.rs::watch` | thread::spawn | 1 |
+| `machines/hooks/events.rs::handle` | thread::spawn | 2 |
+| `machines/hooks/setup.rs::push_status_on` | thread::spawn | 1 |
+| `machines/hooks/watch.rs::new_session_seen` | thread::spawn | 1 |
+| `machines/hooks/watch.rs::stream` | thread::spawn | 1 |
+| `machines/hooks/watch.rs::watch` | thread::spawn | 1 |
 | `machines/logs.rs::copy_helper` | thread::spawn | 1 |
 | `machines/mod.rs::wait_capped` | thread::spawn | 1 |
 | `notify.rs::compact` | thread::spawn | 1 |
@@ -587,10 +587,10 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/usage_file.rs::changed` | metadata | 1 |
 | `logs/usage_file.rs::read` | metadata | 1 |
 | `logs/usage_file.rs::read` | read_to_string | 1 |
-| `machines/hooks.rs::log` | OpenOptions::new | 1 |
-| `machines/hooks.rs::log` | metadata | 1 |
-| `machines/hooks.rs::log` | rename | 1 |
-| `machines/hooks.rs::log_raw` | OpenOptions::new | 1 |
+| `machines/hooks/events.rs::log` | OpenOptions::new | 1 |
+| `machines/hooks/events.rs::log` | metadata | 1 |
+| `machines/hooks/events.rs::log` | rename | 1 |
+| `machines/hooks/events.rs::log_raw` | OpenOptions::new | 1 |
 | `machines/logs.rs::clean` | Path::is_dir | 1 |
 | `machines/logs.rs::clean` | metadata | 2 |
 | `machines/logs.rs::clean` | read_dir | 2 |
@@ -916,7 +916,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `ui/sessions.js::lvAct` |  |  |
 | `ui/sessions.js::sessionsView` |  |  |
 
-Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
+Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
 
 ## What this can't see
 
