@@ -36,6 +36,16 @@ to = "DB"
 reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
 
 [[lock_order]]
+from = "AUTO_SEEN"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened; folder facts is a leaf, read from memory (a new folder's lookup runs on its own thread, waited on at most 200 ms)"
+
+[[lock_order]]
+from = "DB"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
+
+[[lock_order]]
 from = "FEEDS"
 to = "WINDOWS"
 reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
@@ -56,9 +66,24 @@ to = "VERIFY"
 reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
 
 [[lock_order]]
+from = "actions STORE"
+to = "folder facts"
+reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
+
+[[lock_order]]
+from = "actions WATCH"
+to = "folder facts"
+reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
+
+[[lock_order]]
 from = "actions log"
 to = "WINDOWS"
 reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+
+[[lock_order]]
+from = "config file"
+to = "config in memory"
+reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
 
 [[lock_order]]
 from = "copies"
@@ -111,6 +136,16 @@ to = "INDEX"
 reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX never takes the store"
 
 [[lock_order]]
+from = "the hub's store"
+to = "config in memory"
+reason = "settings are read under the store (context_keep, flag, moved); config in memory is a leaf, held only to clone an Arc"
+
+[[lock_order]]
+from = "the hub's store"
+to = "folder facts"
+reason = "a session's project (Sessions::mark → project_of_origin → repos::repo_root) is found under the store; folder facts is a leaf, read from memory (a new folder waits on its own lookup thread at most 200 ms, then is unknown)"
+
+[[lock_order]]
 from = "typing gate"
 to = "CLAUDE"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus::current_tty). Seen since the hub types through terminal::keys, which the check follows"
@@ -142,6 +177,16 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
+to = "config in memory"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, settings read included"
+
+[[lock_order]]
+from = "typing gate"
+to = "folder facts"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, a folder's project included"
+
+[[lock_order]]
+from = "typing gate"
 to = "parked saves"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
@@ -149,6 +194,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 from = "typing gate"
 to = "quiet sessions"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "redraw wanted"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); a change under it marks the window for a redraw (hub/redraw.rs), a leaf"
 
 [[lock_order]]
 from = "typing gate"
@@ -174,50 +224,5 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 from = "typing gate"
 to = "what the status list has cost"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "AUTO_SEEN"
-to = "folder facts"
-reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened; folder facts is a leaf, read from memory (a new folder's lookup runs on its own thread, waited on at most 200 ms)"
-
-[[lock_order]]
-from = "DB"
-to = "folder facts"
-reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
-
-[[lock_order]]
-from = "actions STORE"
-to = "folder facts"
-reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
-
-[[lock_order]]
-from = "actions WATCH"
-to = "folder facts"
-reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
-
-[[lock_order]]
-from = "config file"
-to = "config in memory"
-reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
-
-[[lock_order]]
-from = "the hub's store"
-to = "config in memory"
-reason = "settings are read under the store (context_keep, flag, moved); config in memory is a leaf, held only to clone an Arc"
-
-[[lock_order]]
-from = "the hub's store"
-to = "folder facts"
-reason = "a session's project (Sessions::mark → project_of_origin → repos::repo_root) is found under the store; folder facts is a leaf, read from memory (a new folder waits on its own lookup thread at most 200 ms, then is unknown)"
-
-[[lock_order]]
-from = "typing gate"
-to = "config in memory"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, settings read included"
-
-[[lock_order]]
-from = "typing gate"
-to = "folder facts"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, a folder's project included"
 
 # External calls reachable while the hub's store is held ([[store_io]]): none. A new one fails the check.

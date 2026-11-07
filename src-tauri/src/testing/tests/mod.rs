@@ -2,6 +2,7 @@
 
 mod asks;
 mod caches;
+mod redraw;
 mod reviews;
 mod sessions;
 mod store;

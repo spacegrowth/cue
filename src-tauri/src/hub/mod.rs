@@ -1,5 +1,5 @@
-//! The in-memory queue. Everything that changes state goes through here, and every change
-//! pushes a fresh snapshot to the window, updates the dock badge, and (for new items) notifies.
+//! The in-memory queue. Everything that changes state goes through here; a change is drawn soon after
+//! (redraw.rs: the window's state, the dock badge), and new items notify.
 
 use crate::model::*;
 use crate::transcript;
@@ -16,6 +16,7 @@ mod events;
 mod hand_off;
 mod history;
 pub(crate) mod ports;
+mod redraw;
 mod reviews;
 mod saves;
 mod send;
@@ -153,6 +154,8 @@ pub struct Hub {
     ports: ports::Ports,
     /// What keeps saves made after the store is let go in order (saves.rs).
     saves: saves::SaveLocks,
+    /// Changes waiting to be drawn, and the worker that draws them (redraw.rs).
+    redraws: redraw::Redraws,
 }
 
 impl Hub {
@@ -172,7 +175,7 @@ impl Hub {
         st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default() }
+        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: redraw::Redraws::default() }
     }
 
     /// The session terminals, to type into and look at.
@@ -456,51 +459,10 @@ impl Hub {
         self.app.as_ref().map(|a| a.state::<Arc<Hub>>().inner().clone())
     }
 
-    /// Something outside the store changed what the window shows (who leads whom): redraw only.
-    pub fn redraw(&self) {
-        match &self.app {
-            Some(app) => {
-                let _ = app.emit("state", &*self.snapshot());
-            }
-            None => self.unshown(),
-        }
-    }
-
     /// No window to build the new state for (tests): the next ask for it builds it.
     fn unshown(&self) {
         let seq = self.read(|st| st.shown_seq);
         self.shown.forget(seq);
-    }
-
-    fn changed(&self) {
-        let Some(app) = &self.app else { return self.unshown() };
-        let (back, sessions, waiting) = self.write(|st| {
-            // A parked session that's live again (you resumed it yourself, in a terminal) isn't parked.
-            let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
-            st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
-            let waiting: Vec<Item> = st.items.iter().filter(|i| i.kind == "waiting").cloned().collect();
-            (back, st.sessions.all(), waiting)
-        });
-        // The writes themselves with the store let go: it's every session and thread, and on this thread
-        // (often the window's) nothing else must wait for them.
-        for sid in &back {
-            self.save_parked(sid);
-        }
-        crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
-        let _ = app.emit("state", &*self.snapshot());
-        let (decisions, answered) = self.write(|st| {
-            let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
-            // Answered anywhere (Cue, the terminal): take the notification back.
-            let answered: Vec<String> = st.notified.difference(&live).cloned().collect();
-            for id in &answered {
-                st.notified.remove(id);
-            }
-            (st.items.iter().filter(|i| i.kind != "waiting").count(), answered)
-        });
-        crate::notify::take_back(answered);
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
-        }
     }
 
     /// `category`: "turn" puts Reply and the quick phrases on it; "turn-full" adds Compact.

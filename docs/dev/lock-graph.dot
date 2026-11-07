@@ -35,6 +35,7 @@ digraph locks {
   "typing gate" -> "folder facts";
   "typing gate" -> "parked saves";
   "typing gate" -> "quiet sessions";
+  "typing gate" -> "redraw wanted";
   "typing gate" -> "shown snapshot";
   "typing gate" -> "the hub's store";
   "typing gate" -> "what About has cost";

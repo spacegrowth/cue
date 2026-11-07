@@ -1,6 +1,6 @@
 //! The window's state as last built: what `get_state` (and the socket's `list`) hand out without building
-//! one, so asking for the state never waits on the store, a transcript or git. Building it is the work
-//! of whoever changed something (`Hub::redraw`, `Hub::changed`), on that thread, never the window's.
+//! one, so asking for the state never waits on the store, a transcript or git. Building it is the redraw
+//! worker's (redraw.rs), never the window's thread.
 //!
 //! Some of what it shows changes with time alone (a lead busy for a few seconds after a review, a session
 //! that just ended kept off the live list): nothing in the store changes then, so nobody would build it

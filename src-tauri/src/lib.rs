@@ -425,7 +425,13 @@ pub fn run() {
 
     app.run(|handle, event| match event {
         // Actions run without tmux are Cue's own children: they end with it.
-        RunEvent::Exit => actions::end_plain(),
+        RunEvent::Exit => {
+            actions::end_plain();
+            // What changed since the last draw is saved before Cue goes.
+            if let Some(hub) = handle.try_state::<Arc<hub::Hub>>() {
+                hub.save_live();
+            }
+        }
         RunEvent::Reopen { .. } => {
             if let Some(w) = handle.get_webview_window("main") {
                 let _ = w.show();
