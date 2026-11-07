@@ -229,7 +229,7 @@ impl Hub {
         let mut seen: Vec<(String, Option<crate::dialog::Setup>)> = vec![];
         for o in before {
             let setup = if o.machine.is_empty() {
-                match crate::focus::tmux_screen(&o.tmux_pane) {
+                match self.keys().screen(&o) {
                     Ok(screen) => crate::dialog::setup_on(&screen),
                     Err(_) => continue,
                 }

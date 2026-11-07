@@ -188,7 +188,7 @@ impl Hub {
     }
 
     /// The session terminals, to type into and look at.
-    fn keys(&self) -> &dyn crate::terminal::keys::Keys {
+    pub(crate) fn keys(&self) -> &dyn crate::terminal::keys::Keys {
         &*self.ports.keys
     }
 

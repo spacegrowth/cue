@@ -563,20 +563,20 @@ pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -
         if origin.tmux_pane.is_empty() {
             return Err("Cue can't see its terminal".into());
         }
-        let screen = || focus::session_screen(&origin).ok().filter(|s| crate::terminal::dialog::setup_on(s) == Some(crate::terminal::dialog::Setup::Trust));
+        let screen = || h.keys().screen(&origin).ok().filter(|s| crate::terminal::dialog::setup_on(s) == Some(crate::terminal::dialog::Setup::Trust));
         let Some((cursor, yes)) = screen().as_deref().and_then(crate::terminal::dialog::trust_choices) else {
             h.trust_answered(&session_id);
             return Err("it isn't asking about the folder any more".into());
         };
         if cursor != yes {
             let key = if yes > cursor { "Down" } else { "Up" };
-            focus::tmux_keys(&origin, &vec![key.to_string(); cursor.abs_diff(yes)])?;
+            h.keys().press_keys(&origin, &vec![key.to_string(); cursor.abs_diff(yes)])?;
             std::thread::sleep(std::time::Duration::from_millis(250));
             if !screen().as_deref().and_then(crate::terminal::dialog::trust_choices).is_some_and(|(c, y)| c == y) {
                 return Err("its cursor didn't reach “Yes”".into());
             }
         }
-        focus::tmux_keys(&origin, &["Enter".to_string()])?;
+        h.keys().press_keys(&origin, &["Enter".to_string()])?;
         h.trust_answered(&session_id);
         Ok(())
     }).await?
@@ -591,12 +591,12 @@ pub(crate) async fn continue_start(hub: State<'_, Arc<Hub>>, session_id: String)
         if origin.tmux_pane.is_empty() {
             return Err("Cue can't see its terminal".into());
         }
-        let on = focus::session_screen(&origin).ok().and_then(|s| crate::terminal::dialog::setup_on(&s)) == Some(crate::terminal::dialog::Setup::Enter);
+        let on = h.keys().screen(&origin).ok().and_then(|s| crate::terminal::dialog::setup_on(&s)) == Some(crate::terminal::dialog::Setup::Enter);
         h.enter_pressed(&session_id);
         if !on {
             return Err("it isn't waiting for Enter any more".into());
         }
-        focus::tmux_keys(&origin, &["Enter".to_string()])
+        h.keys().press_keys(&origin, &["Enter".to_string()])
     }).await?
 }
 
