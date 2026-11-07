@@ -31,6 +31,7 @@ unit() {
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
   python3 "$ROOT/tests/test_protocol.py"
   "$ROOT/tests/release/gates.test.sh"
+  "$ROOT/tests/release/debug_only.test.sh"
 }
 
 # What the unit run started, and only that: its private Cue (by its pid), whatever else runs with its CUE_HOME
@@ -53,6 +54,13 @@ e2e() {
   "$ROOT/tests/e2e/run.sh"
 }
 
+# Process `$1` and everything it started, children first (so a parent's own trap still runs as it ends).
+kill_tree() {
+  local child
+  for child in $(pgrep -P "$1"); do kill_tree "$child"; done
+  kill "$1" 2>/dev/null || true
+}
+
 soak() {
   export CUE_SOAK_MINUTES="${1:-10}"
   local dir="${CUE_SOAK_DIR:-$(mktemp -d /tmp/cue-soak.XXXX)}" failed=0
@@ -62,8 +70,14 @@ soak() {
   # Side by side: the gate takes the run's length, not twice it. Each one's output goes to its own log.
   (cd "$ROOT/src-tauri" && CUE_SOAK_OUT="$dir/rust.json" cargo test -q --lib -- --ignored testing::soak::soak --nocapture) >"$dir/rust.log" 2>&1 &
   local rust=$!
-  CUE_SOAK_OUT="$dir/e2e.json" "$ROOT/tests/e2e/run.sh" soak/soak.test.js >"$dir/e2e.log" 2>&1 || failed=1
+  CUE_SOAK_OUT="$dir/e2e.json" "$ROOT/tests/e2e/run.sh" soak/soak.test.js >"$dir/e2e.log" 2>&1 &
+  local e2e=$!
+  # Interrupted: both runs end with it, each by its pid with everything it started (the e2e run's own trap
+  # then ends its Cue and tmux server), never left soaking in the background.
+  trap 'kill_tree $rust; kill_tree $e2e; exit 130' INT TERM HUP
+  wait $e2e || failed=1
   wait $rust || failed=1
+  trap - INT TERM HUP
   local runs=()
   for run in rust e2e; do
     if [ -f "$dir/$run.json" ]; then runs+=("$dir/$run.json"); else echo "soak: the $run soak measured nothing (see $dir/$run.log)" >&2; failed=1; fi

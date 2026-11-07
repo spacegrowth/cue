@@ -115,16 +115,22 @@ fn the_window_claude_code_reports_sets_the_context_share() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Your prompt `text`, as a log line.
+fn user(text: &str) -> String {
+    format!("{{\"type\":\"user\",\"timestamp\":\"2026-10-04T10:00:00.000Z\",\"message\":{{\"content\":\"{text}\"}}}}\n")
+}
+
+/// A reply from `model`, as a log line.
+fn line(model: &str) -> String {
+    format!(
+        "{{\"type\":\"assistant\",\"timestamp\":\"2026-10-04T10:00:02.000Z\",\"message\":{{\"model\":\"{model}\",\"content\":[{{\"type\":\"text\",\"text\":\"Hello.\"}}],\"usage\":{{\"input_tokens\":10,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}}}}\n"
+    )
+}
+
 #[test]
 fn a_fresh_feed_answers_in_full_even_when_its_count_matches() {
     let dir = std::env::temp_dir().join(format!("cue-steps-fresh-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let user = |text: &str| format!("{{\"type\":\"user\",\"timestamp\":\"2026-10-04T10:00:00.000Z\",\"message\":{{\"content\":\"{text}\"}}}}\n");
-    let line = |model: &str| {
-        format!(
-            "{{\"type\":\"assistant\",\"timestamp\":\"2026-10-04T10:00:02.000Z\",\"message\":{{\"model\":\"{model}\",\"content\":[{{\"type\":\"text\",\"text\":\"Hello.\"}}],\"usage\":{{\"input_tokens\":10,\"cache_read_input_tokens\":0,\"cache_creation_input_tokens\":0}}}}}}\n"
-        )
-    };
     let append = |path: &std::path::Path| {
         let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
         std::io::Write::write_all(&mut file, format!("{}", user("switch")).as_bytes()).unwrap();
@@ -147,7 +153,7 @@ fn a_fresh_feed_answers_in_full_even_when_its_count_matches() {
     let r1 = steps(p, 0);
     assert_eq!(r1["version"].as_u64(), Some(2));
     append(&path);
-    crate::locking::lock(&FEEDS, "FEEDS").get_or_insert_with(HashMap::new).remove(p);
+    forget(p);
     let r2 = steps(p, r1["version"].as_u64().unwrap());
     assert_eq!(r2["version"].as_u64(), r1["version"].as_u64());
     assert_eq!(r2["meta"]["model"], "claude-opus-5-5", "a fresh feed answers with what's there now, whatever its count");
@@ -156,4 +162,42 @@ fn a_fresh_feed_answers_in_full_even_when_its_count_matches() {
     let r3 = steps(p, r2["version"].as_u64().unwrap());
     assert!(r3.get("turns").is_none() && r3.get("meta").is_none(), "only the version comes back when nothing changed");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A log that doesn't answer (a stalled disk, an automount gone quiet: `Stall`) holds up the queries about
+/// its own session, never another session's: each feed is read under a lock of its own, and the table of
+/// feeds is held only to find one. The soak found every session waiting on one slow read.
+#[test]
+fn a_log_that_doesnt_answer_holds_up_only_its_own_session() {
+    let dir = std::env::temp_dir().join(format!("cue-steps-stall-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let stalled = crate::testing::Stall::at(&dir.join("stalled.jsonl"));
+    let fine = dir.join("fine.jsonl");
+    std::fs::write(&fine, format!("{}{}", user("hi"), line("claude-opus-5-5"))).unwrap();
+    let path = stalled.path().to_str().unwrap().to_string();
+    let (asked, done) = (std::sync::mpsc::channel(), std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let d = done.clone();
+    let waiting = std::thread::spawn(move || {
+        asked.0.send(()).unwrap();
+        let _ = model_of(&path);
+        d.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    asked.1.recv().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let f = fine.to_str().unwrap().to_string();
+    std::thread::spawn(move || tx.send(model_of(&f)).unwrap());
+    let other = rx.recv_timeout(std::time::Duration::from_secs(3));
+    // The stalled log answers (empty) to every open until its query is over.
+    while !done.load(std::sync::atomic::Ordering::SeqCst) {
+        let c = std::ffi::CString::new(stalled.path().to_str().unwrap()).unwrap();
+        let fd = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
+        if fd >= 0 {
+            unsafe { libc::close(fd) };
+        }
+        std::thread::yield_now();
+    }
+    waiting.join().unwrap();
+    assert_eq!(other.expect("another session's query answered while one log stalled"), Some("claude-opus-5-5".to_string()));
+    let _ = std::fs::remove_dir_all(&dir);
 }

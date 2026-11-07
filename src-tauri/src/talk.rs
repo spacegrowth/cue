@@ -176,6 +176,8 @@ struct Turn {
 struct Follow {
     sid: String,
     seen: u64,
+    /// By the time of day, not the forward-only clock: it's saved with the follows and read back by the next
+    /// Cue (a restart, an update), and a forward-only clock starts over with each.
     until: u64,
 }
 const FOLLOW_MS: u64 = 30 * 60 * 1000;

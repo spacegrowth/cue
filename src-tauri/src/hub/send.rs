@@ -332,7 +332,7 @@ impl Hub {
                 st.sessions.mark(&o, "stopped", None);
             }
             if !direct {
-                st.escaped.insert(session_id.to_string(), now_ms());
+                st.escaped.insert(session_id.to_string(), mono_ms());
             }
             st.sessions.set_queued(session_id, None);
             st.sessions.note(session_id, "you", "⏹ stopped it", crate::config::context_keep());
@@ -391,7 +391,7 @@ impl Hub {
         // Stopped before it answered, Claude Code hands the message it was on back to its box, and this one
         // is typed after it: the two go as one. A blank line first keeps them apart (an empty box drops it).
         // Its Stop button, a moment ago, does the same: the kept message sent right after goes apart too.
-        let escaped = self.read(|st| st.escaped.get(session_id).is_some_and(|t| now_ms().saturating_sub(*t) < 30_000));
+        let escaped = self.read(|st| st.escaped.get(session_id).is_some_and(|t| mono_ms().saturating_sub(*t) < 30_000));
         let apart = if (stopped || escaped) && origin.harness == "claude" { "\n\n" } else { "" };
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();

@@ -104,7 +104,7 @@ fn a_background_script_ends_on_any_form_of_its_notice_or_on_its_exit_line() {
     assert_eq!(f.failures.len(), 2, "it failed long after it started (the file was written just now): noted too");
     assert_eq!(f.failures[1].line, "error: no rule");
     // The hub takes the failures of every open feed, once.
-    crate::locking::lock(&FEEDS, "FEEDS").get_or_insert_with(HashMap::new).insert(p.to_string(), f);
+    put(p, f);
     let taken = take_task_failures();
     assert_eq!(taken.iter().filter(|t| t.path == p).count(), 2);
     assert!(take_task_failures().iter().all(|t| t.path != p));
