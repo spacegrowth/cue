@@ -24,4 +24,17 @@ impl Stall {
     pub fn answer(&self, text: &str) {
         std::fs::OpenOptions::new().write(true).open(&self.path).unwrap().write_all(text.as_bytes()).unwrap();
     }
+
+    /// The disk answers (with nothing) every open of the pipe, until `over`: for a reader that opens it
+    /// more than once.
+    pub fn answer_until(&self, over: impl Fn() -> bool) {
+        let c = std::ffi::CString::new(self.path.to_string_lossy().as_bytes()).unwrap();
+        while !over() {
+            let fd = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
+            if fd >= 0 {
+                unsafe { libc::close(fd) };
+            }
+            std::thread::yield_now();
+        }
+    }
 }

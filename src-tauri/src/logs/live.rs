@@ -164,15 +164,15 @@ pub fn about(transcript: &str) -> String {
     }
     let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return String::new() };
     let now = crate::model::now_ms();
-    let mut cache = crate::locking::lock(&ABOUT, "ABOUT");
-    let cache = cache.get_or_insert_with(HashMap::new);
-    if let Some((at, seen, v)) = cache.get(transcript) {
-        if *seen == mtime || now.saturating_sub(*at) < 5_000 {
-            return v.clone();
+    let kept = crate::locking::lock(&ABOUT, "ABOUT").get_or_insert_with(HashMap::new).get(transcript).cloned();
+    if let Some((at, seen, v)) = kept {
+        if seen == mtime || now.saturating_sub(at) < 5_000 {
+            return v;
         }
     }
+    // Read with ABOUT let go: a transcript slow to read holds up only what's asked about its own session.
     let v = crate::logs::transcript::about(transcript);
-    cache.insert(transcript.to_string(), (now, mtime, v.clone()));
+    crate::locking::lock(&ABOUT, "ABOUT").get_or_insert_with(HashMap::new).insert(transcript.to_string(), (now, mtime, v.clone()));
     v
 }
 
@@ -236,5 +236,37 @@ mod tests {
         assert!(found.is_some_and(|p| p.ends_with("-Users-me-code--agent-workspaces-data-provider/S1.jsonl")));
         assert_eq!(missing, None);
         let _ = std::fs::remove_dir_all(&d);
+    }
+}
+
+/// A transcript that doesn't answer (a stalled disk: `Stall`) holds up what's asked about its own session,
+/// never another's: it's read with ABOUT let go, and only the answer is kept under it.
+#[cfg(test)]
+mod stalled {
+    #[test]
+    fn a_transcript_that_doesnt_answer_holds_up_only_its_own_session() {
+        let dir = std::env::temp_dir().join(format!("cue-about-stall-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let stalled = crate::testing::Stall::at(&dir.join("stalled.jsonl"));
+        let fine = dir.join("fine.jsonl");
+        std::fs::write(&fine, "{\"type\":\"user\",\"message\":{\"content\":\"fix the login page\"}}\n").unwrap();
+        let path = stalled.path().to_str().unwrap().to_string();
+        let (asked, done) = (std::sync::mpsc::channel(), std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let d = done.clone();
+        let waiting = std::thread::spawn(move || {
+            asked.0.send(()).unwrap();
+            let _ = super::about(&path);
+            d.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        asked.1.recv().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let f = fine.to_str().unwrap().to_string();
+        std::thread::spawn(move || tx.send(super::about(&f)).unwrap());
+        let other = rx.recv_timeout(std::time::Duration::from_secs(3));
+        stalled.answer_until(|| done.load(std::sync::atomic::Ordering::SeqCst));
+        waiting.join().unwrap();
+        assert!(other.is_ok(), "another session's transcript was read while one stalled");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

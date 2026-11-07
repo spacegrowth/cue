@@ -188,15 +188,7 @@ fn a_log_that_doesnt_answer_holds_up_only_its_own_session() {
     let f = fine.to_str().unwrap().to_string();
     std::thread::spawn(move || tx.send(model_of(&f)).unwrap());
     let other = rx.recv_timeout(std::time::Duration::from_secs(3));
-    // The stalled log answers (empty) to every open until its query is over.
-    while !done.load(std::sync::atomic::Ordering::SeqCst) {
-        let c = std::ffi::CString::new(stalled.path().to_str().unwrap()).unwrap();
-        let fd = unsafe { libc::open(c.as_ptr(), libc::O_WRONLY | libc::O_NONBLOCK) };
-        if fd >= 0 {
-            unsafe { libc::close(fd) };
-        }
-        std::thread::yield_now();
-    }
+    stalled.answer_until(|| done.load(std::sync::atomic::Ordering::SeqCst));
     waiting.join().unwrap();
     assert_eq!(other.expect("another session's query answered while one log stalled"), Some("claude-opus-5-5".to_string()));
     let _ = std::fs::remove_dir_all(&dir);
