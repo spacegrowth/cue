@@ -15,6 +15,8 @@ mod cache_tick;
 mod events;
 mod hand_off;
 mod history;
+mod kept_history;
+mod live_writes;
 pub(crate) mod ports;
 mod projects;
 mod redraw;
@@ -24,6 +26,7 @@ mod send;
 mod sessions;
 mod shown;
 mod store_access;
+mod today;
 mod turn_end;
 mod usage;
 
@@ -41,7 +44,7 @@ struct Store {
     /// Each Claude Code session's cost so far, from its status line (shown in the chat's tab).
     costs: HashMap<String, f64>,
     items: Vec<Item>,
-    history: VecDeque<Item>,
+    history: kept_history::History,
     /// Every answer of the last day, newest first (History's today numbers; the list above is capped).
     answers: Vec<Answer>,
     waiters: HashMap<String, oneshot::Sender<Reply>>,
@@ -53,6 +56,7 @@ struct Store {
     stopped_to_send: HashMap<String, u64>,
     /// When Cue last pressed Esc in a session for you (its Stop button): Claude Code hands the stopped prompt
     /// back to its box, so a message typed in soon after needs a blank line before it, or the two go as one.
+    /// By the forward-only clock (clock::now_mono_ms).
     escaped: HashMap<String, u64>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
@@ -127,6 +131,33 @@ struct Store {
     shown_seq: u64,
 }
 
+/// The store's part of the window's state, copied out under its lock: the cards and sessions as they are,
+/// History's brief rows (shared, not copied), and the small parts already as JSON. Made into the state's
+/// JSON (`view`) with the store let go.
+struct StoreParts {
+    items: Vec<Item>,
+    history: Arc<Vec<Value>>,
+    sessions: Vec<crate::sessions::Session>,
+    parked: Vec<crate::sessions::Parked>,
+    small: Value,
+}
+
+impl StoreParts {
+    fn view(self) -> Value {
+        let mut view = json!({
+            "items": self.items,
+            // History's rows in brief (kept_history.rs): a row opened asks for its card in full.
+            "history": Value::Array(self.history.as_ref().clone()),
+            "sessions": self.sessions,
+            "parked": self.parked,
+        });
+        if let (Some(view), Value::Object(small)) = (view.as_object_mut(), self.small) {
+            view.extend(small);
+        }
+        view
+    }
+}
+
 /// What `snapshot` reads files for, from the store: the session ids Cue knows, the live sessions it hasn't
 /// heard from yet, each Claude session's transcript, and every folder in play.
 type Sources = (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>);
@@ -179,7 +210,7 @@ impl Hub {
 
     pub(crate) fn with_ports(app: Option<AppHandle>, ports: ports::Ports) -> Self {
         let mut st = Store::default();
-        st.history = crate::db::history(crate::config::history_keep());
+        st.history = kept_history::History::new(crate::db::history(crate::config::history_keep()));
         st.answers = crate::db::answers_since(now_ms().saturating_sub(crate::db::DAY_MS));
         let (sessions, waiting) = crate::db::live();
         st.sessions.restore(sessions);
@@ -193,8 +224,13 @@ impl Hub {
     }
 
     /// The session terminals, to type into and look at.
-    fn keys(&self) -> &dyn crate::terminal::keys::Keys {
+    pub(crate) fn keys(&self) -> &dyn crate::terminal::keys::Keys {
         &*self.ports.keys
+    }
+
+    /// Where it starts a session's agent.
+    pub(crate) fn launcher(&self) -> &dyn crate::terminal::launch::Launcher {
+        &*self.ports.launcher
     }
 
     /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later). A hub with no
@@ -357,21 +393,25 @@ impl Hub {
         for at in st.just_ended.values() {
             next.at(at + sessions::JUST_ENDED_MS, now);
         }
+        next.at(today::next_change(now), now);
         next
     }
 
     /// The snapshot, its place in the order snapshots were taken from the store, and when it next changes
     /// with time alone.
     fn build_snapshot(&self) -> (u64, Value, shown::NextChange) {
-        // What the files say (each Claude session's transcript tail, each folder's git HEAD) and what other
-        // parts of Cue keep are read with the store let go: this runs on every change, and a slow disk mustn't
-        // hold every hook and tick behind it.
+        // What the files say (each folder's git HEAD; each Claude session's latest request, as last read) and
+        // what other parts of Cue keep are taken with the store let go: this runs on every change, and a slow
+        // disk mustn't hold every hook and tick behind it.
         let (known, live, transcripts, cwds) = self.snapshot_sources();
         let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
         let put = crate::config::folders_put();
         let mut outside = folders_view(live, transcripts, cwds, &put);
         outside.extend(apart_view(&ids));
-        let (seq, next, mut snap) = self.write(Self::store_view);
+        // The store's part is taken as copies under its lock and made into the window's JSON after: the big
+        // lists (sessions, cards, History) are written out with the store let go.
+        let (seq, next, parts) = self.write(Self::store_parts);
+        let mut snap = parts.view();
         if let Some(snap) = snap.as_object_mut() {
             snap.extend(outside);
         }
@@ -379,13 +419,13 @@ impl Hub {
         (seq, snap, next)
     }
 
-    /// The snapshot's part that is the store's, taken as the next in the order snapshots are taken, and when
-    /// it next changes with time alone.
-    fn store_view(st: &mut Store) -> (u64, shown::NextChange, Value) {
+    /// The snapshot's part that is the store's, as copies (see `StoreParts`), taken as the next in the order
+    /// snapshots are taken, and when it next changes with time alone.
+    fn store_parts(st: &mut Store) -> (u64, shown::NextChange, StoreParts) {
         st.shown_seq += 1;
         let seq = st.shown_seq;
-        let reviews = Self::reviews_view(st);
-        let next = Self::next_change(st, now_ms());
+        let now = now_ms();
+        let next = Self::next_change(st, now);
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.
         let mut sessions = st.sessions.snapshot();
@@ -394,26 +434,22 @@ impl Hub {
                 sessions.push(s.clone());
             }
         }
-        let parked: Vec<&crate::sessions::Parked> = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).collect();
+        let parked = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).cloned().collect();
         let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len), "mcp": r.mcp }))).collect();
-        let view = json!({
-            "items": st.items,
-            "history": st.history,
-            // Every answer of the last day, in brief: today's numbers count these, not the History list.
-            "answers": st.answers,
-            "sessions": sessions,
-            "parked": parked,
+        let small = json!({
             "ended": Self::ended_view(st),
             "restarting": restarting,
             "restarted": st.restarted,
-            "reviews": reviews,
+            "reviews": Self::reviews_view(st),
             "review_queue": Self::review_queue_view(st),
             "unreachable": st.unreachable,
             // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
             "insight": st.insight,
             "usage": st.rates,
+            // Today's numbers (today.rs), not every answer of the day: those grow all day.
+            "today": today::today(&st.answers, now),
         });
-        (seq, next, view)
+        (seq, next, StoreParts { items: st.items.clone(), history: st.history.brief(), sessions, parked, small })
     }
 
     /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each
@@ -457,7 +493,7 @@ impl Hub {
         let fresh = now_ms().saturating_sub(sessions::JUST_ENDED_MS);
         let live: Vec<crate::live::Quiet> = crate::live::claude().into_iter().chain(pi).filter(|q| !known.contains(&q.session_id) && !st.just_ended.get(&q.session_id).is_some_and(|at| *at > fresh)).collect();
         let transcripts: Vec<(String, String)> = st.sessions.all().iter().filter(|s| s.origin.harness == "claude").map(|s| (s.origin.session_id.clone(), s.origin.transcript_path.clone()))
-            .chain(live.iter().filter(|q| q.harness == "claude").filter_map(|q| crate::live::claude_transcript(&q.cwd, &q.session_id).map(|p| (q.session_id.clone(), p))))
+            .chain(live.iter().filter(|q| q.harness == "claude").map(|q| (q.session_id.clone(), crate::live::claude_transcript_path(&q.cwd, &q.session_id).to_string_lossy().into_owned())))
             .collect();
         // Folders on this Mac only. Another machine's folder read here would be a lookup of its path on
         // this disk: "/home/…" is macOS's automounter, which can stall a stat for good (it stalled a launch).
@@ -524,10 +560,11 @@ impl Hub {
 }
 
 /// The snapshot's live sessions Cue hasn't heard from, and what their folders and transcripts say: each
-/// folder's branch and project, and your latest request to each Claude session (from its transcript: no model).
+/// folder's branch and project, and your latest request to each Claude session (as the watcher's tick last read
+/// it from its transcript: none is read here).
 fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)>, cwds: Vec<String>, put: &HashMap<String, String>) -> serde_json::Map<String, Value> {
     let about: HashMap<String, Value> = transcripts.into_iter()
-        .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
+        .filter_map(|(sid, path)| { let prompt = crate::about::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
         .collect();
     let projects: HashMap<String, Value> = cwds.iter().map(|c| (c.clone(), folder_project(c, put))).collect();
     let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::logs::repos::branch(&c); (c, b) }).collect();

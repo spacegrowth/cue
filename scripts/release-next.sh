@@ -3,9 +3,22 @@
 # repo root (git-ignored; a few plain sentences for Cue's update card), then scripts/release.sh … --publish,
 # and the version committed and pushed as "Cue <version>: <notes>". The notes file is emptied once it's
 # published. With no notes written, they're the commits since the last release, each to its first clause.
+#   scripts/release-next.sh [--beta] [--dry-run] [--hotfix "<why>"] [--skip-gates "<why>"]
+# --beta publishes it as a beta instead (promoted later with scripts/release.sh --promote <version>); the
+# other options go to scripts/release.sh as they are. A dry run commits and pushes nothing.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+CHANNEL="--publish"; DRY_RUN=0; PASS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --beta) CHANNEL="--beta" ;;
+    --dry-run) DRY_RUN=1; PASS+=("$1") ;;
+    --hotfix|--skip-gates) PASS+=("$1" "${2:-}"); shift ;;
+    *) echo "release-next: unknown option $1"; exit 2 ;;
+  esac
+  shift
+done
 # After the last published one (its tag), so a run that failed half way tries the same version again.
 git fetch -q --tags
 LAST="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)"
@@ -18,8 +31,9 @@ if [ -z "$(printf '%s' "$NOTES" | tr -d '[:space:]')" ]; then
 fi
 NOTES="$(printf '%s' "$NOTES" | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')"
 VERSION="$(python3 -c 'import sys; a, b, c = sys.argv[1].lstrip("v").split("."); print(f"{a}.{b}.{int(c) + 1}")' "$LAST")"
-echo "  releasing $VERSION: $NOTES"
-scripts/release.sh "$VERSION" "$NOTES" --publish
+echo "  releasing $VERSION ($CHANNEL): $NOTES"
+scripts/release.sh "$VERSION" "$NOTES" "$CHANNEL" ${PASS[@]+"${PASS[@]}"}
+[ "$DRY_RUN" = 0 ] || exit 0
 git commit -q -m "Cue $VERSION: $NOTES" -- package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 git pull -q --rebase --autostash
 git push -q

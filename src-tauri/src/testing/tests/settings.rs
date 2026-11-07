@@ -17,6 +17,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("notify.sound", json!("glass")),
         same("pi.gate", json!("all")),
         same("appearance.mode", json!("dark")),
+        same("mini.mode", json!("rail")),
         same("appearance.zoom", json!(1.15)),
         same("appearance.project", json!(true)),
         ("context.keep", json!(99), json!(50)),
@@ -41,6 +42,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("insights.snooze", json!(1_800_000_000_000u64)),
         same("insights.skills", json!({"|claude": "handoff"})),
         same("tips.on", json!(false)),
+        same("updates.beta", json!(true)),
         same("actions.prompt", json!("Set my actions up.")),
         same("voice.pick", json!("af_heart")),
         same("tasks.on", json!(true)),
@@ -95,12 +97,13 @@ fn a_wrong_value_is_refused_and_nothing_is_written() {
     config_file(&w, r#"{"mine": {"kept": true}}"#);
     let before = std::fs::read_to_string(w.home().join("config.json")).unwrap();
     for (key, bad) in [
-        ("history.keep", json!("lots")), ("pi.gate", json!("sometimes")), ("appearance.mode", json!(1)),
+        ("history.keep", json!("lots")), ("pi.gate", json!("sometimes")), ("appearance.mode", json!(1)), ("mini.mode", json!("left")),
         ("appearance.zoom", json!(2.0)), ("notify.sound", json!("klaxon")), ("context.keep", json!(-1)),
         ("quick.phrases", json!(["a", "b", "c", "d", "e"])), ("project.colors", json!({"web": 12})),
         ("project.hue", json!({"h": 400, "k": 0.5})), ("project.folders", json!({"relative/dir": "x"})),
         ("insights.skills", json!({"no-bar": "handoff"})), ("status.sessions", json!("s1")),
-        ("voice.pick", json!("Not A Voice")), ("tips.on", json!("yes")), ("made.up", json!(true)),
+        ("voice.pick", json!("Not A Voice")), ("tips.on", json!("yes")), ("updates.beta", json!("yes")),
+        ("made.up", json!(true)),
     ] {
         assert!(crate::config::set(key, bad.clone()).is_err(), "{key} = {bad} was taken");
     }
@@ -207,4 +210,29 @@ fn a_deleted_config_reads_as_defaults_and_a_save_makes_it_again() {
     assert_eq!(crate::config::history_keep(), crate::config::HISTORY_DEFAULT as usize);
     crate::config::set("notify.cold", json!(false)).unwrap();
     assert_eq!(on_disk(&w), json!({"notify": {"cold": false}}));
+}
+
+/// "Hide for a day" holds off the hand-off asked ahead until the day is over, by Cue's clock: the World's,
+/// run a day on, brings it back without anything else changing.
+#[test]
+fn insights_hidden_for_a_day_come_back_when_the_day_is_over() {
+    let w = World::at(1_800_000_000_000);
+    let ahead = || crate::config::effective()["insights"]["ahead"].clone();
+    crate::config::set("insights.on", json!(true)).unwrap();
+    crate::config::set("insights.snooze", json!(1_800_000_000_000u64 + 86_400_000)).unwrap();
+    assert_eq!(ahead(), false, "hidden for the day");
+    w.advance(86_400_000 - 1);
+    assert_eq!(ahead(), false, "a moment before it's over");
+    w.advance(1);
+    assert_eq!(ahead(), true, "back once it is");
+}
+
+/// The mini window's setting reaches the window as saved (Settings shows the shape you picked), off by default.
+#[test]
+fn the_mini_window_setting_reaches_the_window() {
+    let w = World::new();
+    assert_eq!(crate::config::effective()["mini"]["mode"], json!("off"));
+    crate::config::set("mini.mode", json!("notch")).unwrap();
+    assert_eq!(crate::config::effective()["mini"]["mode"], json!("notch"));
+    drop(w);
 }

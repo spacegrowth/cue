@@ -60,11 +60,12 @@ export class World {
     return proc;
   }
 
-  /** Start Cue and wait until its socket answers and its window has drawn its first state. */
-  async launch() {
+  /** Start Cue, with `extra` in its environment (the soak's chaos knobs), and wait until its socket answers
+   *  and its window has drawn its first state. */
+  async launch(extra = {}) {
     const port = await freePort();
     const log = fs.openSync(path.join(this.root, "cue.log"), "a");
-    this.app = spawn(BIN, [], { env: this.env({ TAURI_WEBDRIVER_PORT: String(port) }), stdio: ["ignore", log, log] });
+    this.app = spawn(BIN, [], { env: this.env({ ...extra, TAURI_WEBDRIVER_PORT: String(port) }), stdio: ["ignore", log, log] });
     fs.closeSync(log);
     const app = this.app;
     this.exited = new Promise((resolve) => app.on("exit", resolve));

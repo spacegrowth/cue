@@ -1,6 +1,6 @@
 //! Cue's source inventory and lints: `xtask inventory` writes docs/dev/inventory.md and
 //! docs/dev/lock-graph.dot, `xtask check` runs the rules in docs/dev/lint-allow.toml, `xtask sizes`
-//! prints the long functions and files. `cargo test` in src-tauri runs the check and the inventory's
+//! prints the long functions and files, `xtask soak-report` judges soak runs (soak/). `cargo test` in src-tauri runs the check and the inventory's
 //! drift test (src/locking/lint.rs).
 //!
 //! parse (files → module tree → index → resolution) → walk (each function's events, with the locks it
@@ -12,6 +12,7 @@ pub mod graph;
 pub mod parse;
 pub mod report;
 pub mod sizes;
+pub mod soak;
 pub mod walk;
 
 use std::path::Path;
@@ -39,8 +40,8 @@ pub fn run(repo: &Path, allow: &Path) -> Result<Outcome, String> {
     let ix = parse::index::Index::build(&krate);
     let model = graph::analyze(&ix, &krate.missing, &allow.bare_locks(), &allow.store.lock);
     let tmux = check::tmux::literal_tmux(&rust, &allow.tmux_seam);
-    let check = check::check(&model, &allow, tmux);
     let sizes = sizes::measure(repo, &rust)?;
+    let check = check::check(&model, &allow, tmux, &sizes);
     let inventory = report::inventory(&model, &sizes, &check);
     let lock_graph = report::lock_graph_dot(&model);
     Ok(Outcome { check, inventory, lock_graph, sizes })

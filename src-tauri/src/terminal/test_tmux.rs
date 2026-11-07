@@ -5,7 +5,7 @@
 //! tmux picks its server from $TMUX before $TMUX_TMPDIR, and a test run started inside tmux (an agent's
 //! terminal) inherits your $TMUX. So the test binary drops it before `main`, before any test thread can
 //! run tmux (`ISOLATE`), and every tmux command a test runs checks that it's still so (`check`, from
-//! focus::bin), failing loudly instead of reaching your server.
+//! focus::exec::bin), failing loudly instead of reaching your server.
 //!
 //! That server is started with a config of its own (`CONFIG`), not your ~/.tmux.conf, and its windows run
 //! /bin/sh, not your login shell: a test that types into a new window waits on a shell that starts in
@@ -25,7 +25,7 @@ thread_local! {
     static CAP: std::cell::Cell<Option<std::time::Duration>> = const { std::cell::Cell::new(None) };
 }
 
-/// While this lives, program `name` (tmux, ps) on this thread is `bin` (focus::bin), never the real one:
+/// While this lives, program `name` (tmux, ps) on this thread is `bin` (focus::exec::bin), never the real one:
 /// what a test stands in to make it hang, fail, answer as it says, or be missing. Other threads (other
 /// tests) are untouched.
 pub struct StandIn(String);
@@ -46,7 +46,7 @@ pub fn standing_in(name: &str) -> Option<String> {
     STAND_INS.with(|s| s.borrow().get(name).cloned())
 }
 
-/// While this lives, a tmux command on this thread is cut off after `cap` instead of focus::TMUX_CAP: a tmux
+/// While this lives, a tmux command on this thread is cut off after `cap` instead of focus::exec::CAP: a tmux
 /// that never answers fails in moments.
 pub struct Cap(());
 

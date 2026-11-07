@@ -55,6 +55,17 @@ impl Hub {
         self.read_setup_screens(now);
         self.watch_trust(now);
         self.put_reads(reads, now);
+        self.read_about();
+    }
+
+    /// Your latest request to each Claude session the window lists, read again off the tick (`about`: each
+    /// transcript on a thread of its own); what came in since the last tick redraws the window.
+    fn read_about(&self) {
+        let (_, _, transcripts, _) = self.snapshot_sources();
+        crate::about::read_about(transcripts.into_iter().map(|(_, p)| p).collect(), now_ms());
+        if crate::about::about_news() {
+            self.changed();
+        }
     }
 
     /// The working sessions' logs, read with the store let go. Agents are counted only while something reads a
@@ -229,7 +240,7 @@ impl Hub {
         let mut seen: Vec<(String, Option<crate::dialog::Setup>)> = vec![];
         for o in before {
             let setup = if o.machine.is_empty() {
-                match crate::focus::tmux_screen(&o.tmux_pane) {
+                match self.keys().screen(&o) {
                     Ok(screen) => crate::dialog::setup_on(&screen),
                     Err(_) => continue,
                 }

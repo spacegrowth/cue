@@ -1,12 +1,13 @@
-//! What the hub does to a session's terminal when it types into it: type a message, press Enter or Esc, press
-//! keys in its pane, and look at its screen (is the text still in the box, a dialog open, a shell back at its
-//! prompt). One trait, so tests can stand in a terminal that records what was typed and answers as told
-//! (testing::FakeTerminal). `Terminals` is the real one: focus.rs, which reaches tmux, iTerm, Terminal.app,
-//! WezTerm and kitty.
+//! What Cue does to a session's terminal: type a message, press Enter or Esc, press keys in its pane, and look
+//! at its screen (the screen itself, is the text still in the box, a dialog open, a shell back at its prompt).
+//! One trait, so tests can stand in a terminal that records what was typed and answers as told
+//! (testing::FakeTerminal). `Terminals` is the real one: terminal::focus, which reaches tmux, iTerm,
+//! Terminal.app, WezTerm and kitty. The hub holds it (hub::ports), and the window's commands that read a
+//! session's screen or press its keys reach it through the hub.
 //!
-//! SHORTCUT: only the hub's typing goes through here. The pane reads of hub/activity.rs (session_screen,
-//! tmux_screen) and the built-in terminal (term.rs) still call focus.rs and the PTY directly; the full
-//! `Terminal` port of the stability plan (§6 step 5) folds those in.
+//! The built-in terminal (term.rs) is not behind this trait: its client is a process in a pty that the
+//! window, not the hub, drives, and it has seams of its own (the launch it's handed, input.rs's writer,
+//! and machines::ssh_program for a machine's client).
 
 use crate::model::Origin;
 use crate::terminal::dialog::Dialog;
@@ -26,9 +27,11 @@ pub trait Keys: Send + Sync {
     fn dialog_on(&self, o: &Origin) -> Option<Dialog>;
     /// Is a shell back at its prompt where the agent was? None when its screen can't be read.
     fn agent_gone(&self, o: &Origin) -> Option<bool>;
+    /// What its tmux pane shows right now (this Mac's or a machine's).
+    fn screen(&self, o: &Origin) -> Result<String, String>;
 }
 
-/// The terminals on this Mac and your machines, as focus.rs reaches them.
+/// The terminals on this Mac and your machines, as terminal::focus reaches them.
 pub struct Terminals;
 
 impl Keys for Terminals {
@@ -52,5 +55,8 @@ impl Keys for Terminals {
     }
     fn agent_gone(&self, o: &Origin) -> Option<bool> {
         focus::agent_gone(o)
+    }
+    fn screen(&self, o: &Origin) -> Result<String, String> {
+        focus::session_screen(o)
     }
 }

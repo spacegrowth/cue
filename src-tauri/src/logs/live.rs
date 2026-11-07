@@ -148,32 +148,14 @@ fn parse_env(ps: &str) -> HashMap<String, String> {
 /// A Claude session's transcript when Cue never got its path from a hook (a quiet session):
 /// `~/.claude/projects/<its folder, every character but letters and digits as "-">/<session id>.jsonl`.
 pub fn claude_transcript(cwd: &str, session_id: &str) -> Option<String> {
-    let dir: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
-    let p = claude_sessions_dir().with_file_name("projects").join(dir).join(format!("{session_id}.jsonl"));
+    let p = claude_transcript_path(cwd, session_id);
     p.is_file().then(|| p.to_string_lossy().into_owned())
 }
 
-/// Your latest request to each Claude session, by transcript. A busy
-/// session's transcript changes every second: it's read again only when it changed AND the last
-/// read is 5s old.
-static ABOUT: Mutex<Option<HashMap<String, (u64, std::time::SystemTime, String)>>> = Mutex::new(None);
-
-pub fn about(transcript: &str) -> String {
-    if transcript.is_empty() {
-        return String::new();
-    }
-    let Ok(mtime) = std::fs::metadata(transcript).and_then(|m| m.modified()) else { return String::new() };
-    let now = crate::model::now_ms();
-    let mut cache = crate::locking::lock(&ABOUT, "ABOUT");
-    let cache = cache.get_or_insert_with(HashMap::new);
-    if let Some((at, seen, v)) = cache.get(transcript) {
-        if *seen == mtime || now.saturating_sub(*at) < 5_000 {
-            return v.clone();
-        }
-    }
-    let v = crate::logs::transcript::about(transcript);
-    cache.insert(transcript.to_string(), (now, mtime, v.clone()));
-    v
+/// Where Claude Code writes a session's transcript, whether or not it's there (nothing is looked up).
+pub fn claude_transcript_path(cwd: &str, session_id: &str) -> PathBuf {
+    let dir: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    claude_sessions_dir().with_file_name("projects").join(dir).join(format!("{session_id}.jsonl"))
 }
 
 #[cfg(test)]

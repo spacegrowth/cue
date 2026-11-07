@@ -1,4 +1,4 @@
-// Cue UI board — the Board view: cards, decision cards, header chips, drawers, usage, and the animations that move rows.
+// Cue UI board — the Board view: cards, decision cards, drawers, usage, renames, and the update card.
 /** Every project with something live, waiting or parked (in History, also those with past answers): name, sessions, how many need you. */
 function projectsKnown() {
   const m = new Map();
@@ -370,7 +370,7 @@ const needsYou = () => { const all = [...groups().decide, ...groups().yours]; re
  *  (a card like the others, saying "working"; its card stays under Working too); once it's worked longer, it's a job, and only in Working. */
 const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
 /** "3 agents": a session's agents, any kind (agents.js agentPill), beside its state, on any of its cards; a relay
- *  agent that needs you names itself instead. A click opens the session on its Agents tab (app.js). A lead's crew
+ *  agent that needs you names itself instead. A click opens the session on its Agents tab (app/clicks_chat.js). A lead's crew
  *  line (cardCrew) has its count, so its card's pill only names one that needs you. `tree`: the card holds its tree. */
 const bgPill = (s, { count = crewOf(s?.session_id)?.role !== "lead", tree = false } = {}) => agentPill(s?.session_id, { count, tree });
 /** A Waiting card's top line: who it is (dot, mark, name, machine, state, agents) and, at its right end, its time and
@@ -716,6 +716,123 @@ function dragColGrip(e) {
 }
 let lastGripPress = {};
 document.addEventListener("pointerdown", dragColGrip);
+/** A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one for a
+ *  team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever their own
+ *  project is, busy ones too, not on cards of their own. An executor's card goes into its lead's tree (when Cue has
+ *  the lead); a lead with nothing of its own waiting still gets a card (`heads`), where its executor's would have
+ *  been. Only while the lead still lists it: an executor that left its team (closed, or handed to another lead) can
+ *  still name the old lead, whose card would then hold an empty tree and its own card none. */
+function boardTeams(needs, working) {
+  const listed = (sid, lead) => (crewOf(lead)?.executors || []).some((e) => e.session_id === sid);
+  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) && listed(i.session_id, m.lead) ? m.lead : null; };
+  const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
+  const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
+    .map((l) => ({ _team: l, created_ms: Math.max(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
+  const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
+  const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
+  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && listed(sid, m.lead); };
+  return { leadOf, heads, sessTree, inTree };
+}
+
+/** Waiting's rows. Conversations first (when there are any, under their own heading): the cards that came back,
+ *  then the sessions still working on your message (5 minutes on, under Sessions only). Then newest first. A card
+ *  you just answered fades out in the group it was in, unless its session is back at work there. `count` is
+ *  everything under WAITING, as drawn: In conversation, Newest first, and Need to decide (a parked one asking you
+ *  is in Waiting already: once). */
+function waitingRows(b) {
+  const { needs, later, working, teams, isOpen } = b;
+  const live = new Set(needs.map((i) => i.id));
+  // A ghost fades in once: every later render (they come often while sessions work) draws it still.
+  const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
+  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !teams.inTree(s.session_id) && !teams.sessTree.has(s.session_id) && workingOnYours(s));
+  const talkSids = new Set(talkWork.map((x) => x.session_id));
+  const rows = [...needs.filter((i) => !teams.leadOf(i)), ...teams.heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
+  const inTalk = (i) => !i._team && talking(i);
+  const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
+  const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
+  const restRows = rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest)}</button>${newestShut() ? "" : draw(rest)}` : "";
+  const html = (talks.length || talkWork.length
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
+    : "") + restRows;
+  return { html, count: count(talks) + talkWork.length + count(rest) + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
+}
+
+/** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
+function sessionNote(s) {
+  const i = state.items.find((x) => x.session_id === s.session_id);
+  return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s);
+}
+/** A session's card under Sessions. A lead's card holds its tree (`tree`): only its top part opens the lead (a
+ *  row opens that executor, and the tree's buttons are their own). */
+function sessionCard(s, open, tree) {
+  const go = `data-session="${esc(s.session_id)}"`;
+  const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
+  return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
+      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s, { count: true, tree: !!tree })}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
+      ${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
+      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
+      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`;
+}
+/** Sessions' cards: working, then out of usage, then idle, each under its heading. */
+function workColumn(shown, isOpen, sessTree) {
+  const card = (s) => sessionCard(s, isOpen(s.session_id), sessTree.has(s.session_id) ? teamTree(s.session_id) : "");
+  const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
+  return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
+    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
+    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
+    || `<div class="quiet-line">No other sessions.</div>`;
+}
+
+/** A drawer under Sessions or Waiting: its heading folds it; `body()` is drawn only while it's open. */
+function drawerHtml(name, title, count, body) {
+  const open = drawerOpen(name);
+  return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`;
+}
+/** A folded section's label on the rail; it bubbles a moment when its count goes up. */
+function railLabel(name, count) {
+  const prev = railLast[name];
+  if (prev !== undefined && count > prev) railBubble[name] = Date.now() + 900;
+  railLast[name] = count;
+  return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name.toUpperCase()} · ${count}</span></button>`;
+}
+
+/** The Waiting column: its cards, a line for what's waiting in other projects while one is picked (never out of
+ *  mind: an agent blocked on you with nothing on screen was the bug), and Need to decide. */
+function waitingColumn(b, wait) {
+  const { needs, later } = b;
+  const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
+  return `<div class="col split col-waiting">
+      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${wait.count}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}</span><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${wait.html || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
+      ${later.length ? drawerHtml("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
+    </div>`;
+}
+/** Recently answered: one entry per session, its latest answer (the rest are in History). */
+function recentDrawer() {
+  const seen = new Set();
+  const recent = state.history.filter((i) => inProj(i.project) && !seen.has(i.session_id || i.id) && seen.add(i.session_id || i.id)).slice(0, RECENT);
+  const recentList = () => recent.length
+    ? `<div class="card recent">${recent.map(recentEntry).join("")}
+        ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
+    : `<div class="empty-col">Your answers show up here.</div>`;
+  return drawerHtml("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList);
+}
+/** Starred, in the order you starred them (so they don't shuffle as they work). A starred one you parked stays
+ *  here too, as parked. */
+function starredDrawer(isOpen) {
+  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, c) => (a.starred_ms || Infinity) - (c.starred_ms || Infinity));
+  const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
+  return drawerHtml("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`);
+}
+/** The Sessions column: its cards (`workCol`; `count`: they and the executors in its leads' trees), then the drawers. */
+function sessionsColumn(b, workCol, count) {
+  return `<div class="col split col-sessions ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
+      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${count}</span><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
+      ${starredDrawer(b.isOpen)}
+      ${recentDrawer()}
+      ${shelfDrawer(b.isOpen)}
+    </div>`;
+}
+
 function boardView() {
   if (!quietOpen) current();   // settles what Active shows before the lists mark it
   const { working, later } = groups();
@@ -724,96 +841,18 @@ function boardView() {
   // something never moves a row, so the lists don't shift under your pointer.
   const openSid = quietOpen || active?.sid || null;
   const isOpen = (sid) => !!openSid && sid === openSid;
-  const live = new Set(needs.map((i) => i.id));
-  // A ghost fades in once: every later render (they come often while sessions work) draws it still.
-  const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
-  // A team is one card: an executor's card goes into its lead's tree (when Cue has the lead). A lead with
-  // nothing of its own waiting still gets a card, where its executor's would have been.
-  // Only while the lead still lists it: an executor that left its team (closed, or handed to another lead)
-  // can still name the old lead, whose card would then hold an empty tree and its own card none.
-  const listed = (sid, lead) => (crewOf(lead)?.executors || []).some((e) => e.session_id === sid);
-  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) && listed(i.session_id, m.lead) ? m.lead : null; };
-  const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
-  const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
-    .map((l) => ({ _team: l, created_ms: Math.max(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
-
-  // A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one
-  // for a team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever
-  // their own project is, busy ones too, not on cards of their own.
-  const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
-  const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
-  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && listed(sid, m.lead); };
-  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !inTree(s.session_id) && !sessTree.has(s.session_id) && workingOnYours(s));
-  // Conversations first (when there are any, under their own heading): the cards that came back, then the
-  // sessions still working on your message. Then newest first. A card you just answered fades out in the
-  // group it was in, unless its session is back at work there.
-  const talkSids = new Set(talkWork.map((x) => x.session_id));
-  // A session working on your message shows under In conversation and under Sessions; 5 minutes on, Sessions only.
-  const shown = working.filter((s) => !inTree(s.session_id));
-  const rows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
-  const inTalk = (i) => !i._team && talking(i);
-  const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
-  // With a project picked, what's waiting in the others is off the Board, never out of mind: a line says
-  // how many, and shows all of them. (An agent blocked on you with nothing on screen was the bug.)
-  const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
-  const talks = rows.filter(inTalk).sort((a, b) => a.created_ms - b.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
-  const restRows = rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest)}</button>${newestShut() ? "" : draw(rest)}` : "";
-  const needRows = (talks.length || talkWork.length
-    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
-    : "") + restRows;
-  // WAITING counts everything under it, as drawn: In conversation (its cards and the ones working on your
-  // message), Newest first, and Need to decide (a parked one asking you is in Waiting already: once).
-  const waitCount = count(talks) + talkWork.length + count(rest) + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length;
-  // Sessions counts what it shows: its cards, and the executors in its leads' trees.
-  const treed = working.filter((s) => inTree(s.session_id) && sessTree.has(crewOf(s.session_id).lead)).length;
-  const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s); };
-  // A lead's card in Sessions holds its tree: only its top part opens the lead (a row opens that executor,
-  // and the tree's buttons are their own).
-  const card = (s, open = false) => { const tree = sessTree.has(s.session_id) ? teamTree(s.session_id) : "", go = `data-session="${esc(s.session_id)}"`;
-    const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
-    return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
-      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s, { count: true, tree: !!tree })}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
-      ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
-      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`; };
-  const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
-  const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    || `<div class="quiet-line">No other sessions.</div>`;
-
-  // One entry per session, its latest answer (the rest are in History).
-  const seen = new Set();
-  const recent = state.history.filter((i) => inProj(i.project) && !seen.has(i.session_id || i.id) && seen.add(i.session_id || i.id)).slice(0, RECENT);
-  const recentList = () => recent.length
-    ? `<div class="card recent">${recent.map(recentEntry).join("")}
-        ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
-    : `<div class="empty-col">Your answers show up here.</div>`;
-  // Starred, in the order you starred them (so they don't shuffle as they work).
-  // A starred one you parked stays here too, as parked.
-  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
-  const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
-  const drawer = (name, title, count, body) => { const open = drawerOpen(name); return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`; };
+  const teams = boardTeams(needs, working);
+  const b = { needs, later, working, teams, isOpen };
+  const wait = waitingRows(b);
+  const shown = working.filter((s) => !teams.inTree(s.session_id));
+  const sessCount = shown.length + working.filter((s) => teams.inTree(s.session_id) && teams.sessTree.has(crewOf(s.session_id).lead)).length;
+  // Drawn in this order: Waiting's cards, Sessions' cards, Need to decide, then Sessions' drawers.
+  const workCol = workColumn(shown, isOpen, teams.sessTree);
+  const waitingCol = waitingColumn(b, wait), sessionsCol = sessionsColumn(b, workCol, sessCount);
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   const coll = (name) => (focus ? !focusShown.has(name) : collapsed.has(name));
   const wColl = coll("waiting"), sColl = coll("sessions");
-  const railLabel = (name, count) => {
-    const prev = railLast[name];
-    if (prev !== undefined && count > prev) railBubble[name] = Date.now() + 900;
-    railLast[name] = count;
-    return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name.toUpperCase()} · ${count}</span></button>`;
-  };
-  const waitingCol = `<div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${waitCount}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}</span><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
-      ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
-    </div>`;
-  const sessionsCol = `<div class="col split col-sessions ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
-      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${shown.length + treed}</span><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
-      ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
-      ${drawer("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList)}
-      ${shelfDrawer(isOpen)}
-    </div>`;
-  const railCol = (wColl || sColl) ? `<div class="col rail-col"><div class="rail">${wColl ? railLabel("waiting", waitCount) : ""}${sColl ? railLabel("sessions", shown.length + treed) : ""}</div></div>` : "";
+  const railCol = (wColl || sColl) ? `<div class="col rail-col"><div class="rail">${wColl ? railLabel("waiting", wait.count) : ""}${sColl ? railLabel("sessions", sessCount) : ""}</div></div>` : "";
   // main's columns (1.9 : 1 : 0.85 of the board after its two 14px gaps, or as you dragged them); a section
   // that stays open keeps its width when the other folds, and Active takes the room.
   const lay = colLayout(wColl, sColl);
@@ -876,214 +915,3 @@ function liveChip() {
 const updateCard = () => !upd.offer ? "" : `<div class="upd-card"><div><b>Cue ${esc(upd.version)} is out</b>${upd.status === "installing" ? `<div class="dim">Installing… Cue restarts by itself.</div>` : upd.status.startsWith("error:") ? `<div class="dim">${esc(upd.status.slice(6))}</div>` : ""}</div>
   <button class="btn primary small" data-upd="install" ${upd.status === "installing" ? "disabled" : ""}>Update and restart</button><button class="btn small" data-upd="later">Later</button></div>`;
 
-/** Cards that move between redraws (back into Waiting, into Need to decide, or up to
- *  close a gap) glide from where they were instead of jumping, so you can follow where they went.
- *  Keyed by what they show: an ask or turn by its id, a session card by its session. */
-const FLIP_SEL = ".board .col:not(.main) .nrow[data-big], .board .col:not(.main) .nrow[data-session]:not(.talk-work), .board .col:not(.main) .working[data-session]";
-const flipKey = (el) => (el.dataset.big ? `i:${el.dataset.big}` : `s:${el.dataset.session}`);
-const COL_SEL = ".board > .col";
-const colKey = (el) => "col:" + (el.classList.contains("main") ? "main" : el.classList.contains("rail-col") ? "rail" : el.classList.contains("col-waiting") ? "waiting" : "sessions");
-function flipRects() {
-  const m = new Map();
-  for (const el of document.querySelectorAll(FLIP_SEL)) m.set(flipKey(el), el.getBoundingClientRect());
-  for (const el of document.querySelectorAll(COL_SEL)) m.set(colKey(el), el.getBoundingClientRect());
-  return m;
-}
-function flipPlay(from) {
-  if (!from.size || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  for (const el of document.querySelectorAll(FLIP_SEL)) {
-    const was = from.get(flipKey(el));
-    if (!was) continue;
-    const now = el.getBoundingClientRect(), dx = was.left - now.left, dy = was.top - now.top;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-    el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
-  }
-  // Columns glide when the board reflows (a section folds to the rail, or opens back out); a column
-  // that just appeared (the rail, or a section re-opened) slides in from the right.
-  for (const el of document.querySelectorAll(COL_SEL)) {
-    const was = from.get(colKey(el));
-    if (!was) { el.animate([{ opacity: 0, transform: "translateX(24px)" }, { opacity: 1, transform: "none" }], { duration: 240, easing: "ease-out" }); continue; }
-    const now = el.getBoundingClientRect(), dx = was.left - now.left, dy = was.top - now.top;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-    el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
-  }
-}
-/** The top bar never pushes Settings off the edge (a usage file adds meters; chips come and go): when it
- *  doesn't fit, it gives up room step by step: the chips' extras ("· oldest 4m"), the meters' bars, the
- *  meters' labels, then the chips' words (the number and dot stay; the tooltip still says what they are). */
-const TOP_STEPS = ["tfit1", "tfit2", "tfit3", "tfit4"];
-function fitTop() {
-  const h = document.querySelector(".app > .top");
-  if (!h) return;
-  h.classList.remove(...TOP_STEPS);
-  // Fits: Settings (the last button) ends inside the bar. Measured by it, so an open drop-down doesn't count.
-  const fits = () => !h.lastElementChild || h.lastElementChild.getBoundingClientRect().right <= h.getBoundingClientRect().right + 1;
-  for (const step of TOP_STEPS) {
-    if (fits()) return;
-    h.classList.add(step);
-  }
-}
-/** A project's swatches never get cut off: near the foot of the projects list (or the window), they open
- *  upward instead. */
-function placeColors() {
-  const pop = document.querySelector(".pc-pop");
-  if (!pop) return;
-  const box = pop.closest(".pj-pop")?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight };
-  const r = pop.getBoundingClientRect(), btn = pop.previousElementSibling.getBoundingClientRect();
-  pop.classList.toggle("up", r.bottom > box.bottom && btn.top - r.height - 6 >= box.top);
-}
-/** The chat header's buttons never get cut off and its chips never run into each other: when they don't fit, it
- *  gives up room step by step (short labels, then the agent and model, then the "your turn" pill, then the
- *  "N agents" chip, then the role tag, then the other chips, and the name shortens). The CSS widths can't know how
- *  many buttons and chips a session has. */
-const FIT_STEPS = ["fit1", "fit2", "fit3", "fit4", "fit5", "fit6"];
-function fitHead() {
-  const h = document.querySelector(".ap-head");
-  if (!h) return;
-  h.classList.remove(...FIT_STEPS);
-  // Fits: the last button ends inside the header's right padding.
-  const fits = () => {
-    const last = [...h.children].filter((k) => k.offsetParent).at(-1);
-    return !last || last.getBoundingClientRect().right <= h.getBoundingClientRect().right - parseFloat(getComputedStyle(h).paddingRight) + 1;
-  };
-  for (const step of FIT_STEPS) {
-    if (fits()) return;
-    h.classList.add(step);
-  }
-}
-
-/** A list cut off at the bottom says so, quietly: "3 more" on its last card's bottom edge, counting
- *  the cards not in view below, and a click takes the list to its end. And no card shows half: the list
- *  ends on the last card that fits whole. The lists that scroll in the third column: Sessions, Starred,
- *  Recently answered, Parked (not Waiting and Need to decide: their column scrolls as one, every card in
- *  it, nothing cut short). `trim` re-fits the lists (a redraw, a resize); scrolling only recounts. The
- *  pill shows itself when it appears or its count changes, then fades after a few seconds so a still list
- *  stays clean; scrolling the list (`woke`) brings it back. */
-const MORE_LISTS = ".sec-sessions .sec-body, .sec-starred .card.recent, .sec-recent .card.recent, .sec-parked .sec-body";
-const moreCards = (sc) => [...sc.children].filter((c) => !c.matches(".col-sub, button"));
-// Where a card ends inside its list, by layout (the list is its offsetParent), not by what's on screen:
-// cards that moved slide to their new place after a redraw, and mid-slide they're elsewhere.
-const cardEnd = (c) => c.offsetTop + c.offsetHeight;
-function markMore(trim = true, woke = moreWoke) {
-  const lists = [...document.querySelectorAll(MORE_LISTS)].map((sc) => ({ sc, host: sc.closest(".sec") }));
-  if (trim) {
-    // Lists share their column: trimming one gives the next more room, and a section can spill past
-    // the column's bottom. So: from scratch, then a few passes until nothing changes, each list ending
-    // on its last whole card above its own edge and the column's (less room for "N more").
-    for (const { sc } of lists) sc.style.maxHeight = "";
-    for (let pass = 0; pass < 4; pass++) {
-      let changed = false;
-      for (const { sc, host } of lists) {
-        const r = sc.getBoundingClientRect(), colBottom = sc.closest(".col").getBoundingClientRect().bottom;
-        if (sc.scrollHeight - sc.clientHeight <= 4 && r.bottom <= colBottom + 1) continue;
-        const room = Math.min(r.bottom, colBottom) - r.top;   // the list's own height it can use
-        const whole = moreCards(sc).filter((c) => cardEnd(c) - sc.scrollTop <= room + 1).at(-1);
-        const h = whole ? cardEnd(whole) - sc.scrollTop + 2 : 0;
-        if (h > 40 && (!sc.style.maxHeight || h < parseFloat(sc.style.maxHeight) - 0.5)) { sc.style.maxHeight = `${h}px`; changed = true; }
-      }
-      if (!changed) break;
-    }
-  }
-  for (const { sc, host } of lists) {
-    let pill = host.querySelector(":scope > .more-below");
-    const bottom = sc.getBoundingClientRect().bottom;
-    const n = sc.scrollHeight - sc.scrollTop - sc.clientHeight > 4 ? moreCards(sc).filter((c) => cardEnd(c) > sc.scrollTop + sc.clientHeight + 1).length : 0;
-    // A redraw makes a new pill each time: when it was shown is kept by list, not by element.
-    const key = [...host.classList].find((c) => c.startsWith("sec-")) || host.className;
-    if (!n) { pill?.remove(); clearTimeout(moreShown.get(key)?.timer); moreShown.delete(key); continue; }
-    if (!pill) {
-      pill = document.createElement("button");
-      pill.className = "more-below";
-      host.append(pill);
-    }
-    pill.list = sc;
-    const label = `${n} more ↓`;
-    let shown = moreShown.get(key);
-    // Scrolled: by you, to somewhere else. A redraw puts the list back where it was, which fires a scroll
-    // too; that one isn't a move, or the pill would never fade while sessions work (a redraw a second).
-    const moved = woke.has(sc) && Math.abs(sc.scrollTop - (shown?.top ?? sc.scrollTop)) > 1;
-    if (!shown || shown.label !== label || moved) {
-      clearTimeout(shown?.timer);
-      shown = { label, until: Date.now() + MORE_SHOWN_MS, timer: setTimeout(() => markMore(false), MORE_SHOWN_MS + 20) };
-      moreShown.set(key, shown);
-    }
-    shown.top = sc.scrollTop;
-    pill.classList.toggle("quiet", Date.now() >= shown.until);
-    pill.textContent = label;
-    pill.style.top = `${bottom - host.getBoundingClientRect().top - 10}px`;   // on the last card's bottom edge
-  }
-  woke.clear();
-}
-// Each list's pill: what it said, until when it shows (then it fades, until the list scrolls or the count
-// changes), and where its list was scrolled to when last looked at (`top`).
-const MORE_SHOWN_MS = 4000;
-const moreShown = new Map();
-// Scrolling a list changes what's below it: once a frame at most, for the lists that scrolled (`moreWoke`).
-let moreFrame = 0;
-const moreWoke = new Set();
-
-// ---------- header chips: what's waiting, what's asking, what's going cold; click to open the oldest ----------
-/** Each chip's list, oldest first (going cold: soonest first): what a click steps through. */
-function chipList(kind) {
-  const { yours, decide } = groups();
-  if (kind === "waiting") return yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
-  if (kind === "asking") return decide.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
-  // Waiting on you with its cache counting down on its card (insights.js cacheWarn): the soonest to run out first.
-  return [...yours, ...decide].map((i) => ({ id: i.id, sid: i.session_id, project: i.project, w: cacheWarn(i.session_id) }))
-    .filter((x) => x.w && x.w.left > 0)
-    .map((x) => ({ id: x.id, sid: x.sid, project: x.project, since: x.w.c.until_ms })).sort((a, b) => a.since - b.since);
-}
-function headerChips() {
-  const chip = (kind, label, extra, cls, dot) => {
-    const list = chipList(kind);
-    if (!list.length) return "";
-    // The chip you're stepping through: ‹ 2 of 3 waiting › (← → do the same).
-    const at = chipNav === kind ? chipAt(list) : -1;
-    if (at >= 0 && list.length > 1) return `<span class="hchip nav ${cls}"><button class="hstep" data-chip-step="${kind}:-1" title="Previous (←)" aria-label="Previous">‹</button><button class="hnav" data-chip="${kind}"><span class="hdot ${dot}"></span>${at + 1} of ${list.length}<span class="hlbl"> ${label}</span></button><button class="hstep" data-chip-step="${kind}:1" title="Next (→)" aria-label="Next">›</button></span>`;
-    return `<button class="hchip ${cls}" data-chip="${kind}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
-  };
-  const waiting = chipList("waiting"), cold = chipList("cold");
-  const oldest = waiting[0] ? now() - waiting[0].since : 0;
-  // Stronger the longer the oldest has waited: soft under 5 minutes, then half, then solid at 15.
-  const heat = oldest >= 15 * 60000 ? "hot" : oldest >= 5 * 60000 ? "warm" : "";
-  const html = chip("waiting", "waiting", waiting[0] ? `oldest ${ago(waiting[0].since)}` : "", heat, "z")
-    + chip("cold", "going cold", cold[0] ? `<span data-cold-in="${cold[0].since}">${coldIn(cold[0].since)}</span>` : "", "cold", "c")
-    + chip("asking", "asking you", "", "", "ask");
-  return html || `<span class="hall" data-tauri-drag-region>all clear</span>`;
-}
-/** Where the Active pane sits in a chip's list (-1 when it's showing something else). */
-const chipAt = (list) => list.findIndex((x) => (x.id ? x.id === active?.id : x.sid === active?.sid && !isPending(findItem(active?.id))));
-/** A chip click opens the oldest of its kind; clicking again (or ›, →) steps to the next, ‹ or ← back; both wrap. */
-function openFromChip(kind, dir = 1) {
-  const list = chipList(kind);
-  if (!list.length) return;
-  const at = chipAt(list);
-  const next = list[at < 0 ? (dir > 0 ? 0 : list.length - 1) : (at + dir + list.length) % list.length];
-  chipNav = kind;
-  slideDir = dir;
-  setActive(next.id, next.sid);
-}
-
-// ---------- boot ----------
-const LINGER_MS = 1500;
-/** A "✓ answered" card's time is up: it fades and folds away, and the cards below close the gap. */
-function leaveGhosts() {
-  const gone = [...ghosts].filter(([, g]) => Date.now() - g.at >= LINGER_MS).map(([id]) => id);
-  if (!gone.length) return;
-  const finish = () => { folding = false; heldDraw = false; gone.forEach((id) => ghosts.delete(id)); render(); };
-  const els = gone.map((id) => document.querySelector(`.nrow.ghost[data-detail="${CSS.escape(id)}"]`)).filter(Boolean);
-  if (!els.length || matchMedia("(prefers-reduced-motion: reduce)").matches) return finish();
-  // Fades out first, then closes up, eating the column's 10px gap too, so nothing below jumps at the end.
-  // Redraws wait meanwhile (sessions at work redraw often): one mid-fold would pop the row back.
-  folding = true;
-  for (const el of els) {
-    const cs = getComputedStyle(el), h = `${el.offsetHeight}px`;
-    el.style.overflow = "hidden";
-    el.animate([
-      { height: h, opacity: 0.6, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: "0px", offset: 0 },
-      { height: h, opacity: 0, paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: "0px", offset: 0.4 },
-      { height: "0px", opacity: 0, paddingTop: "0px", paddingBottom: "0px", marginBottom: "-10px", offset: 1 },
-    ], { duration: 420, easing: "ease-in-out", fill: "forwards" });
-  }
-  setTimeout(finish, 430);
-}

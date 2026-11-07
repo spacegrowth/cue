@@ -25,7 +25,7 @@ impl Hub {
         if o.tmux_pane.is_empty() {
             return held("unseen");
         }
-        match crate::focus::session_screen(o).ok().as_deref().and_then(crate::focus::box_empty) {
+        match self.keys().screen(o).ok().as_deref().and_then(crate::focus::box_empty) {
             Some(true) => {}
             Some(false) => return held("typed"),
             None => return held("unseen"),

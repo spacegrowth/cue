@@ -21,9 +21,10 @@ impl Hub {
 /// Every project the store keeps, derived again: whether any changed, and the parked sessions whose did.
 fn reproject(st: &mut Store) -> (bool, Vec<String>) {
     let mut changed = false;
-    for it in st.items.iter_mut().chain(st.history.iter_mut()) {
+    for it in st.items.iter_mut() {
         changed |= set(&mut it.project, crate::model::project_of_origin(&it.origin));
     }
+    changed |= st.history.change_each(|it| set(&mut it.project, crate::model::project_of_origin(&it.origin)));
     changed |= st.sessions.reproject();
     for (_, s) in st.ended.iter_mut() {
         changed |= set(&mut s.project, crate::model::project_of_origin(&s.origin));

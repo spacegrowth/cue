@@ -19,12 +19,15 @@ impl Hub {
     /// `f` with the store held, to look. A panic on another thread while it held the store poisons the
     /// lock; what's in it is still whole (each change is made under one lock), so Cue goes on with it rather
     /// than panicking at every look from then on (locking::lock).
+    #[track_caller]
     pub(super) fn read<R>(&self, f: impl FnOnce(&Store) -> R) -> R {
         let st = crate::locking::lock(&self.store.0, "the hub's store");
         f(&st)
     }
 
-    /// `f` with the store held, to change it.
+    /// `f` with the store held, to change it. (Both are `track_caller`: a long hold is counted by the line
+    /// that asked for it, locking::stats.)
+    #[track_caller]
     pub(super) fn write<R>(&self, f: impl FnOnce(&mut Store) -> R) -> R {
         let mut st = crate::locking::lock(&self.store.0, "the hub's store");
         f(&mut st)

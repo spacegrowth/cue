@@ -17,6 +17,13 @@ pub(crate) async fn get_state(hub: State<'_, Arc<Hub>>) -> Result<serde_json::Va
     }
 }
 
+/// A card in full, waiting or in History: the state's History rows are brief (hub/kept_history.rs), and a
+/// row opened (in History, or in Active from Recently answered) asks for the rest. None once it's gone.
+#[tauri::command]
+pub(crate) async fn history_item(hub: State<'_, Arc<Hub>>, id: String) -> Result<Option<model::Item>, String> {
+    with_hub(&hub, move |h| h.get(&id)).await
+}
+
 #[tauri::command]
 pub(crate) async fn respond(hub: State<'_, Arc<Hub>>, id: String, decision: Decision) -> Result<bool, String> {
     with_hub(&hub, move |h| h.respond(&id, decision)).await

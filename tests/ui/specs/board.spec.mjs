@@ -1,6 +1,7 @@
 // The rest of the board: relay's review cards, parking and resuming, stars, the project switcher, search, and
 // Settings switches. Each checks the call the window made and what it shows once Cue's state comes back.
 import { test, expect } from "./cue.mjs";
+import { compareShot } from "./shots.mjs";
 
 const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
 
@@ -86,6 +87,23 @@ test.describe("the board", () => {
     await cue.called("search", { q: "coupon" });
     await expect(page.getByText("checkout-flow").first()).toBeVisible();
   });
+
+  // The window is drawn whole on every change: a bar an element a stretch made a busy board's bars most of
+  // each draw (core.js bar). Its stretches are one masked layer a kind, and the one still going.
+  test("a session's bar is a few elements however many stretches it had", async ({ cue, page }) => {
+    await cue.change((st) => {
+      const s = st.sessions.find((x) => x.session_id === "relay"), t = Date.now() - 1_800_000;
+      s.segments = Array.from({ length: 300 }, (_, k) => ({ kind: k % 2 ? "working" : "waiting", start_ms: t + k * 5_990, end_ms: t + (k + 1) * 5_990 }));
+      s.segments.push({ kind: "waiting", start_ms: t + 300 * 5_990, end_ms: null });
+    });
+    await openCard(page, "n1");
+    const bar = page.locator(".ap-bar .bar");
+    await expect(bar.locator("i")).toHaveCount(3);
+    await expect(bar.locator("i.live")).toHaveCount(1);
+    const spans = (cls) => bar.locator(`i.layer.${cls}`).evaluate((el) => ((el.style.maskImage || el.style.webkitMaskImage).match(/#000|rgb\(0, 0, 0\)/g) || []).length);
+    expect(await spans("w")).toBe(300);   // each stretch is two opaque stops
+    expect(await spans("z")).toBe(300);
+  });
 });
 
 test.describe("Settings", () => {
@@ -109,9 +127,49 @@ test.describe("Settings", () => {
     await cue.called("set_setting", { key: "tasks.on", value: true });
   });
 
+  test("Get beta builds is off at first, saves its setting and looks again on beta", async ({ cue, page }) => {
+    const beta = page.locator('.sheet [data-set="updates.beta"]');
+    await expect(beta).toHaveAttribute("aria-checked", "false");
+    await expect(page.locator(".sheet")).toContainText("You have the latest version.");
+    await beta.click();
+    await cue.called("set_setting", { key: "updates.beta", value: true });
+    await expect(beta).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator(".sheet")).toContainText("Cue 0.1.87 is out. A beta build.");
+    expect(await cue.calls("update_check")).toHaveLength(2);
+  });
+
+  test("Get beta builds with no beta out says the answer is stable's", async ({ cue, page }) => {
+    await cue.open("board-waiting", { flags: "nobeta=1" });
+    await page.keyboard.press(",");
+    await page.locator('.sheet [data-set="updates.beta"]').click();
+    await expect(page.locator(".sheet")).toContainText("You have the latest version. No beta is out right now, so this is the version everyone gets.");
+  });
+
   test("Esc closes Settings", async ({ page }) => {
     await expect(page.locator(".sheet")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator(".sheet")).toHaveCount(0);
   });
+});
+
+// A waiting stretch wide enough for its stripes: striped, each one outlined at both its ends (core.js barLayerStyle's
+// `--ends` over the layer's own top and bottom), as drawn.
+test("a wide waiting stretch is striped and outlined at both its ends", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "relay"), t = Date.now() - 1_800_000, m = 60_000;
+    const at = (kind, a, b) => ({ kind, start_ms: t + a * m, end_ms: b == null ? null : t + b * m });
+    s.segments = [at("working", 0, 4), at("waiting", 4, 11), at("working", 11, 14), at("waiting", 14, 24), at("working", 24, 26), at("waiting", 26, 26.3), at("working", 26.3, null)];
+  });
+  await openCard(page, "n1");
+  const striped = page.locator(".ap-bar .bar i.layer.z:not(.thin)");
+  await expect(striped).toHaveCount(1);
+  await expect(page.locator(".ap-bar .bar i.layer.z.thin")).toHaveCount(1);
+  // Two stretches, each end a 1 px line of two stops.
+  expect(((await striped.evaluate((el) => el.style.getPropertyValue("--ends"))).match(/var\(--accent\)/g) || []).length).toBe(8);
+  expect(await striped.evaluate((el) => getComputedStyle(el).backgroundImage), "the ends drawn over the stripes").toMatch(/^linear-gradient\(.*repeating-linear-gradient/);
+  await page.mouse.move(0, 0);
+  const r = compareShot("bar-wide-waiting", await page.locator(".ap-bar").screenshot({ animations: "disabled" }));
+  expect(r.baseline, "baseline for bar-wide-waiting").not.toBe("missing");
+  expect(r.differ, "bar-wide-waiting: pixels that differ from tests/ui/baseline/bar-wide-waiting.png").toBe(0);
 });

@@ -3,15 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <title>Cue chat patch check</title>
-  <link rel="stylesheet" href="../ui/vendor/xterm/xterm.css" />
-  <link rel="stylesheet" href="../ui/style.css" />
 </head>
 <body>
   <div id="app"></div>
   <script>
     // The chat updates in place: the real UI code with a fake Tauri bridge, one working session whose
     // steps feed this script changes between draws, and assertions on the chat's DOM. Headless:
-    //   chrome --headless=new --dump-dom file://…/tests/chat_patch.html 2> log.txt; grep CHECK log.txt
+    //   chrome --headless=new --allow-file-access-from-files --dump-dom file://…/tests/chat_patch.html 2> log.txt; grep CHECK log.txt
     window.onerror = (m, src, l, c) => console.log(`CHECK no-error fail ${m} @${l}:${c}`);
     (() => {
       const now = (window.NOW = Date.now()), M = (window.MIN = 60000);
@@ -44,26 +42,7 @@
       };
     })();
   </script>
-  <script src="../ui/vendor/xterm/xterm.js"></script>
-  <script src="../ui/vendor/xterm/addon-fit.js"></script>
-  <script src="../ui/vendor/xterm/addon-webgl.js"></script>
-  <script src="../ui/invoke.js"></script>
-  <script src="../ui/core.js"></script>
-  <script src="../ui/chat.js"></script>
-  <script src="../ui/agents.js"></script>
-  <script src="../ui/insights.js"></script>
-  <script src="../ui/tips.js"></script>
-  <script src="../ui/shells.js"></script>
-  <script src="../ui/board.js"></script>
-  <script src="../ui/sessions.js"></script>
-  <script src="../ui/history.js"></script>
-  <script src="../ui/insights_tab.js"></script>
-  <script src="../ui/sheets.js"></script>
-  <script src="../ui/extensions.js"></script>
-  <script src="../ui/actions.js"></script>
-  <script src="../ui/background.js"></script>
-  <script src="../ui/about.js"></script>
-  <script src="../ui/app.js"></script>
+  <script src="index_tags.js"></script>
   <script>
     const check = (name, ok, why = "") => console.log(`CHECK ${name} ${ok ? "pass" : "fail"}${ok || !why ? "" : ` (${why})`}`);
     const say = (text, m) => ({ t: "say", text, at_ms: NOW - m * MIN });

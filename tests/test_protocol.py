@@ -93,6 +93,12 @@ def finish(proc):
 
 # ---------------------------------------------------------------- tests
 
+def test_probe_answers_with_how_cue_is_holding_up():
+    p = call({"type": "probe"})
+    assert p["resident_bytes"] > 0 and isinstance(p["locks"], dict) and p["reentries"] == 0, p
+    assert p["chaos"] == {}, "no chaos knob is set for the protocol tests"
+
+
 def test_allow():
     proc, it = ask_and_get(payload())
     assert it["kind"] == "permission" and it["tool_input"]["command"] == "touch x"

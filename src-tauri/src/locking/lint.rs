@@ -1,7 +1,8 @@
 //! Cue's source against the xtask analysis (src-tauri/xtask; docs/dev/inventory.md says what it reads and
 //! what it can't see): every lock taken through `locking::lock` with a name of its own, no lock cycle, lock
 //! orders and external calls under the hub's store only as docs/dev/lint-allow.toml allows, no sync command
-//! but the AppKit ones, no tmux started past the test seam; and the inventory kept current.
+//! but the AppKit ones, no tmux started past the test seam, no function or file over the size limits; and the
+//! inventory kept current.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

@@ -31,6 +31,7 @@ pub fn later(job: impl FnOnce() + Send + 'static) {
         let (tx, rx) = std::sync::mpsc::channel::<Job>();
         let run = move || {
             for job in rx {
+                crate::chaos::pause(crate::chaos::Knob::XpcDelayMs);
                 // One that panics doesn't take the thread, and every later notification, with it.
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
             }

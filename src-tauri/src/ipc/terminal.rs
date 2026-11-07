@@ -3,7 +3,6 @@
 use super::{blocking, with_hub};
 use crate::leads;
 use crate::model;
-use crate::terminal::focus;
 use crate::terminal::shells;
 use crate::terminal::term;
 use crate::terminal::dictation;
@@ -32,13 +31,13 @@ pub(crate) async fn speak_send(app: tauri::AppHandle, line: serde_json::Value) -
 /// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
 #[tauri::command]
 pub(crate) async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    with_hub(&hub, move |h| focus::session_screen(&tmux_origin_of(h, &session_id)?)).await?
+    with_hub(&hub, move |h| h.keys().screen(&tmux_origin_of(h, &session_id)?)).await?
 }
 
 /// Keys pressed in that view (↑ ↓ Enter Esc 1 2 3…). Only from your click.
 #[tauri::command]
 pub(crate) async fn session_keys(hub: State<'_, Arc<Hub>>, session_id: String, keys: Vec<String>) -> Result<(), String> {
-    with_hub(&hub, move |h| focus::tmux_keys(&tmux_origin_of(h, &session_id)?, &keys)).await?
+    with_hub(&hub, move |h| h.keys().press_keys(&tmux_origin_of(h, &session_id)?, &keys)).await?
 }
 
 /// Where a session is, for the commands that only work in tmux (on this Mac or a machine).

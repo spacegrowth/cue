@@ -3,6 +3,10 @@
 //! (terminal::fake_tmux) that hangs, refuses Enter, shows a shell, or isn't installed; and whether the agent
 //! has exited back to its shell, read from the processes in the pane's foreground (a stand-in `ps`).
 
+use super::exec::{run, tmux_cap};
+use super::screen::{at_shell_prompt, is_shell};
+use super::tmux::tmux_word;
+use super::typing::enter_gap;
 use super::*;
 use crate::terminal::fake_tmux::FakeTmux;
 use std::time::{Duration, Instant};

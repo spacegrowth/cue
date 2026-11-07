@@ -58,12 +58,26 @@ test("at the narrowest window a command on its card wraps between its words, nev
 
 test("a waiting stretch too short for its stripes is drawn solid, not as an outlined sliver", async ({ cue, page }) => {
   await cue.open("board-waiting", { frozen: true });
-  // One stripe of the pattern runs 6 / sin 45° ≈ 8.5 px along the bar.
-  const slivers = await page.evaluate(() => [...document.querySelectorAll(".bar i.z")]
-    .filter((el) => el.getBoundingClientRect().width < 8.5 && getComputedStyle(el).backgroundImage !== "none")
-    .map((el) => el.getBoundingClientRect().width));
-  expect(await page.locator(".ap-bar .bar i.z").count()).toBeGreaterThan(0);
-  expect(slivers).toEqual([]);
+  // Every session's last half hour: waiting stretches of 20 s to 5 min between stretches of work.
+  await cue.change((st) => {
+    const t = Date.now() - 1_800_000, s = 1000, m = 60 * s;
+    const waits = [20 * s, 40 * s, 60 * s, 2 * m, 5 * m];
+    for (const x of st.sessions) {
+      let at = t;
+      x.segments = waits.flatMap((w) => { const g = [{ kind: "working", start_ms: at, end_ms: at + 3 * m }, { kind: "waiting", start_ms: at + 3 * m, end_ms: at + 3 * m + w }]; at += 3 * m + w; return g; });
+    }
+  });
+  // Each striped layer spans its whole bar, masked to its stretches: their widths are the mask's opaque spans.
+  // One stripe of the pattern runs 6 / sin 45° ≈ 8.5 px along the bar; a stretch narrower than that is drawn solid
+  // (its layer `z thin`), never striped.
+  const striped = await page.evaluate(() => [...document.querySelectorAll(".bar i.z.layer:not(.thin)")].flatMap((el) => {
+    const width = el.getBoundingClientRect().width;
+    const at = [...(el.style.maskImage || el.style.webkitMaskImage).matchAll(/(?:#000|rgb\(0, 0, 0\)) ([\d.]+)%/g)].map((m) => +m[1]);
+    return at.filter((_, i) => i % 2 === 0).map((a, i) => ((at[2 * i + 1] - a) / 100) * width);
+  }));
+  expect(await page.locator(".bar i.z.layer.thin").count(), "the short waiting stretches, drawn solid").toBeGreaterThan(0);
+  expect(striped.length, "and its wide ones, striped").toBeGreaterThan(0);
+  expect(striped.filter((px) => px < 8.5)).toEqual([]);
 });
 
 test("the open status list keeps its switch and what it costs in full view, under steps that scroll", async ({ cue, page }) => {

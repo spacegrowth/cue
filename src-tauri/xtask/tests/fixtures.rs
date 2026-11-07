@@ -11,6 +11,11 @@ fn run(name: &str, files: &[(&str, &str)], allow: &str) -> (Vec<String>, String)
 /// A repo in a fresh temporary folder with `files` under `src-tauri/src` (plus the `locking` module every
 /// case uses) and `allow` as its lint-allow.toml, analysed.
 fn outcome(name: &str, files: &[(&str, &str)], allow: &str) -> xtask::Outcome {
+    outcome_with_ui(name, files, &[], allow)
+}
+
+/// `outcome`, with `ui` written under `ui/` too.
+fn outcome_with_ui(name: &str, files: &[(&str, &str)], ui: &[(&str, &str)], allow: &str) -> xtask::Outcome {
     let repo = std::env::temp_dir().join(format!("xtask-fixture-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&repo);
     let src = repo.join("src-tauri/src");
@@ -21,6 +26,9 @@ fn outcome(name: &str, files: &[(&str, &str)], allow: &str) -> xtask::Outcome {
         let p: PathBuf = src.join(path);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
+    }
+    for (path, text) in ui {
+        std::fs::write(repo.join("ui").join(path), text).unwrap();
     }
     let allow_path = repo.join("lint-allow.toml");
     std::fs::write(&allow_path, format!("[store]\nlock = \"the hub's store\"\n{allow}")).unwrap();
@@ -258,4 +266,31 @@ pub fn feed(p: &str) -> Feed {
     let (failures, _) = run("std-open", &[("lib.rs", "mod a;\nmod locking;\n"), ("a.rs", a)], "");
     assert_eq!(failures.len(), 1, "{failures:#?}");
     assert!(failures[0].starts_with("new lock order A → FEEDS: a::feed"), "only the crate's own Feed::open: {}", failures[0]);
+}
+
+/// `n` statement lines.
+fn body(n: usize) -> String {
+    "    x();\n".repeat(n)
+}
+
+#[test]
+fn a_long_function_or_file_fails_the_check_and_test_code_is_exempt() {
+    let long = format!("fn x() {{}}\npub fn long() {{\n{}}}\n#[cfg(test)]\nmod tests {{\n    #[test]\n    fn long_test() {{\n{}    }}\n}}\n", body(59), body(80));
+    let file = format!("fn x() {{}}\n{}", (0..18).map(|i| format!("pub fn short_{i}() {{\n{}}}\n", body(56))).collect::<String>());
+    let (failures, _) = run("sizes", &[("lib.rs", "mod a;\nmod big;\nmod locking;\n"), ("a.rs", &long), ("big.rs", &file)], "");
+    assert_eq!(failures.len(), 2, "{failures:#?}");
+    assert_eq!(failures[0], "src-tauri/src/a.rs:2 long is 61 lines, over 60: split it into a short function that reads as steps and helpers of their own");
+    assert_eq!(failures[1], "src-tauri/src/big.rs is 1045 lines, over 1000: split it into modules along its seams");
+}
+
+#[test]
+fn a_listed_file_is_exempt_until_it_fits_and_then_its_entry_is_stale() {
+    let long_js = format!("function bind() {{\n{}}}\n", body(70));
+    let short_js = "function ok() {\n  x();\n}\n";
+    let ui = [("app.js", long_js.as_str()), ("chat.js", long_js.as_str()), ("core.js", short_js)];
+    let allow = "[[size_exempt]]\nfile = \"ui/app.js\"\nreason = \"split by the UI track\"\n[[size_exempt]]\nfile = \"ui/core.js\"\nreason = \"split by the UI track\"\n";
+    let failures = outcome_with_ui("js-sizes", &[("lib.rs", "mod locking;\n")], &ui, allow).check.failures;
+    assert_eq!(failures.len(), 2, "{failures:#?}");
+    assert!(failures[0].starts_with("ui/chat.js:1 bind is "), "{}", failures[0]);
+    assert_eq!(failures[1], "[[size_exempt]] ui/core.js is within the size limits now: remove it from docs/dev/lint-allow.toml");
 }

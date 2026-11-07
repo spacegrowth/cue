@@ -1,8 +1,8 @@
-//! The World: one hub on a private CUE_HOME, driven as the socket drives it, with its terminals, its
-//! follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
+//! The World: one hub on a private CUE_HOME, driven as the socket drives it, with its terminals, the
+//! agents it starts (`FakeLauncher`), its follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
 //! agent index are process-wide): it holds the database's and the index's test locks for its life.
 
-use super::{Agent, Deferred, FakeNotes, FakeTerminal, Snap};
+use super::{Agent, Deferred, FakeLauncher, FakeNotes, FakeTerminal, FakeWindow, Snap};
 use crate::clock::fake::Fake;
 use crate::hub::ports::{Later, Ports};
 use crate::hub::Hub;
@@ -64,7 +64,9 @@ impl Client {
 pub struct World {
     client: Client,
     pub terminal: Arc<FakeTerminal>,
+    pub launcher: Arc<FakeLauncher>,
     pub notes: Arc<FakeNotes>,
+    pub window: Arc<FakeWindow>,
     later: Arc<Deferred>,
     home: PathBuf,
     /// How long an agent takes to answer, by this World's clock (`agents_think`): 0 unless said.
@@ -99,23 +101,25 @@ impl World {
         crate::live::set_claude(vec![]);
         crate::leads::install_index(Default::default());
         clock.install();
-        let (terminal, notes, later) = (Arc::new(FakeTerminal::default()), Arc::new(FakeNotes::default()), Arc::new(Deferred::default()));
-        let hub = Arc::new(Hub::with_ports(None, Ports { keys: terminal.clone(), notes: notes.clone(), later: Later::Deferred(later.clone()) }));
-        let w = Self { client: Client { hub, clock }, terminal, notes, later, home, thinking_ms: Default::default(), _index: index, _db: db };
+        let fakes = Fakes::default();
+        let later = Arc::default();
+        let hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
+        let Fakes { terminal, launcher, notes, window } = fakes;
+        let w = Self { client: Client { hub, clock }, terminal, launcher, notes, window, later, home, thinking_ms: Default::default(), _index: index, _db: db };
         w.agents_take_what_is_typed();
         w
     }
 
     /// Cue quit and opened again on the same folder (a restart, or the Mac rebooted): what it saved as it
     /// quit (sessions, their finished-turn cards, Parked, the review queue) is all the new hub has. Its
-    /// terminals and Notification Center are the same; the old hub's follow-up work dies with it, and an ask
+    /// terminals, launcher, window and Notification Center are the same; the old hub's follow-up work dies with it, and an ask
     /// still open on it is cut off, as the restart cuts its connection.
     pub fn relaunch(&mut self) {
         self.settle();
         self.client.hub.save_live();
         let later = Arc::new(Deferred::default());
-        let ports = Ports { keys: self.terminal.clone(), notes: self.notes.clone(), later: Later::Deferred(later.clone()) };
-        self.client.hub = Arc::new(Hub::with_ports(None, ports));
+        let fakes = Fakes { terminal: self.terminal.clone(), launcher: self.launcher.clone(), notes: self.notes.clone(), window: self.window.clone() };
+        self.client.hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
         self.later = later;
         self.agents_take_what_is_typed();
     }
@@ -248,6 +252,22 @@ impl World {
     /// How many pieces of follow-up work wait for their time.
     pub fn waiting_work(&self) -> usize {
         self.later.len()
+    }
+}
+
+/// What a World stands in for the hub's ports; a relaunched hub gets the same ones.
+#[derive(Default)]
+struct Fakes {
+    terminal: Arc<FakeTerminal>,
+    launcher: Arc<FakeLauncher>,
+    notes: Arc<FakeNotes>,
+    window: Arc<FakeWindow>,
+}
+
+impl Fakes {
+    /// The hub's ports: these, and its follow-up work held for the World to run.
+    fn ports(&self, later: &Arc<Deferred>) -> Ports {
+        Ports { keys: self.terminal.clone(), launcher: self.launcher.clone(), notes: self.notes.clone(), window: self.window.clone(), later: Later::Deferred(later.clone()) }
     }
 }
 

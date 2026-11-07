@@ -104,7 +104,7 @@
         // &mcp=tools: that, with linear's tools unfolded.
         const mcpQ = new URLSearchParams(q).get("mcp");
         if (openQ && mcpQ) setTimeout(() => { document.querySelector(".active-pane [data-more]")?.click(); if (mcpQ !== "menu") setTimeout(() => { document.querySelector("[data-mcp-ask]")?.click(); if (mcpQ === "tools") setTimeout(() => document.querySelector(".mcp-tfold")?.click(), 300); }, 300); }, 500);
-        // &bg=<agent id>: that background agent of the open session in full (chat.js helperPane), e.g. open=names&bg=h1 (running) or h2 (finished).
+        // &bg=<agent id>: that background agent of the open session in full (chat/helpers.js helperPane), e.g. open=names&bg=h1 (running) or h2 (finished).
         // &tmux=<session id>: that session runs in tmux (its terminal dock shows, closed), e.g. with open=names&bg=h3.
         const tmuxQ = new URLSearchParams(q).get("tmux");
         if (tmuxQ) { const x = state.sessions.find((y) => y.session_id === tmuxQ); if (x) x.tmux_pane = "%9"; }
@@ -125,7 +125,7 @@
           liveSpot = true;
           lvAct("new", {});
         }, 100);
-        // ?reader=1: the open chat's first long reply opens in the reader (chat.js readerPane).
+        // ?reader=1: the open chat's first long reply opens in the reader (chat/reader.js readerPane).
         if (/reader=1/.test(q)) setTimeout(() => document.querySelector("[data-read]")?.click(), 600);
         // ?bg=1: the "2 bg" on the names card is clicked, opening that session onto its newest running agent.
         if (/bg=1/.test(q)) setTimeout(() => document.querySelector('[data-bg-open="names"]')?.click(), 600);

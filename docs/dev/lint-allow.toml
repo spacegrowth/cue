@@ -28,12 +28,15 @@ file = "terminal/test_tmux.rs"
 function = "take_down"
 reason = "the tests' own tmux seam: takes down the servers of test runs that have exited, each by its own private socket (-S), never the default one"
 
+# Files not yet held to the size limits (a function over 60 lines outside tests, a file over 1,000), each as a
+# whole until it's split. An entry for a file within the limits fails the check, so each goes when its split lands.
+
 # Lock order today: B may be taken while A is held. A new edge fails the check until it's added here.
 
 [[lock_order]]
 from = "AUTO_SEEN"
 to = "DB"
-reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
+reason = "logs::steps::windows::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
 
 [[lock_order]]
 from = "AUTO_SEEN"
@@ -44,11 +47,6 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 from = "DB"
 to = "folder facts"
 reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
-
-[[lock_order]]
-from = "FEEDS"
-to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
 
 [[lock_order]]
 from = "INDEX"
@@ -76,24 +74,24 @@ to = "folder facts"
 reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
 
 [[lock_order]]
-from = "answered saves"
-to = "DB"
-reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
-
-[[lock_order]]
-from = "answered saves"
-to = "folder facts"
-reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the save that opened it; folder facts is a leaf"
-
-[[lock_order]]
-from = "answered saves"
-to = "the hub's store"
-reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
-
-[[lock_order]]
 from = "config file"
 to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
+
+[[lock_order]]
+from = "a session's feed"
+to = "WINDOWS"
+reason = "logs/steps: a feed taking a read's lines in asks the window Claude Code's status line said for its session (known_window), under its lock, which only looks up what's loaded; WINDOWS is a leaf, held only to look up or note a number. Its file is loaded in a feed's read step (load_windows, no lock held) and written with WINDOWS let go"
+
+[[lock_order]]
+from = "a session's feed"
+to = "config in memory"
+reason = "logs/steps background.rs add_agent: a feed taking in an agent's launch looks up the session's machine (machines::list) to copy the agent's log over; config in memory is a leaf, held only to clone an Arc"
+
+[[lock_order]]
+from = "a session's feed"
+to = "copies"
+reason = "logs/steps background.rs add_agent/add_script: a background task launched in a machine's session starts its log's copy (machines::logs) as the feed takes the launch in; copies is a leaf (it spawns the copy, waits on nothing)"
 
 [[lock_order]]
 from = "open_terms"
@@ -103,7 +101,17 @@ reason = "term::foreground asks a terminal's PTY master for its foreground proce
 [[lock_order]]
 from = "parked saves"
 to = "DB"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
+
+[[lock_order]]
+from = "parked saves"
+to = "db writer's marks"
+reason = "saves.rs hand_in_parked_turn: a parked save is handed to the database writer under its save lock, so saves of one record are handed in the order the store changed; without a writer thread (tests, or one that couldn't start) the writing is done there, under it. The writer never takes a save lock"
+
+[[lock_order]]
+from = "parked saves"
+to = "db writes"
+reason = "saves.rs hand_in_parked_turn: a parked save is queued for the database writer under its save lock (so saves of one record are queued in the order the store changed); the queue is a leaf"
 
 [[lock_order]]
 from = "parked saves"
@@ -113,12 +121,12 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "parked saves"
 to = "the hub's store"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "review queue saves"
 to = "DB"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "review queue saves"
@@ -128,7 +136,7 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "review queue saves"
 to = "the hub's store"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "the hub's store"
@@ -148,7 +156,12 @@ reason = "a session's project (Sessions::mark → project_of_origin → repos::r
 [[lock_order]]
 from = "typing gate"
 to = "CLAUDE"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus::current_tty). Seen since the hub types through terminal::keys, which the check follows"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus/apps.rs current_tty). Seen since the hub types through terminal::keys, which the check follows"
+
+[[lock_order]]
+from = "typing gate"
+to = "config file"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); a reply that redraws with no window (a test's hub) builds the snapshot on its own thread, which settles projects into the config file. Seen since the check follows a module's `use child::item` re-exports"
 
 [[lock_order]]
 from = "typing gate"
@@ -169,11 +182,6 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 from = "typing gate"
 to = "VERIFY"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "answered saves"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, its answered card's save included"
 
 [[lock_order]]
 from = "typing gate"
@@ -231,3 +239,23 @@ to = "what the status list has cost"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 # External calls reachable while the hub's store is held ([[store_io]]): none. A new one fails the check.
+
+[[lock_order]]
+from = "db writer's marks"
+to = "DB"
+reason = "hub/live_writes.rs: the writer keeps what it last saved under its own lock while it writes; only the writer takes it (or, in a hub without the app, whoever writes), so nothing waits on it"
+
+[[lock_order]]
+from = "db writer's marks"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the write that opened it; folder facts is a leaf"
+
+[[lock_order]]
+from = "typing gate"
+to = "db writer's marks"
+reason = "the typing gate is held while a message is typed, by design (hub/send.rs wait_turn); in a hub without the app the draw a reply asks for writes where it runs. With the app the writer is its own thread"
+
+[[lock_order]]
+from = "typing gate"
+to = "db writes"
+reason = "the typing gate is held while a message is typed, by design (hub/send.rs wait_turn); the draw a reply asks for hands its save to the writer's queue: a lock held for a push"

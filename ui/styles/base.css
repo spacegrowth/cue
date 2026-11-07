@@ -1,0 +1,144 @@
+/* Cue — Moss. One hue: the window is drenched in it, cards sit on top, actions use it.
+   Light by default; dark follows macOS (or Settings → Appearance). One project picked in the header,
+   the window takes that project's hue instead (`.proj-theme`, after these). */
+:root {
+  --bg: #3F4A22;
+  --on-bg: #FFFFFF;
+  --on-bg-muted: #CDD3B4;
+  --panel: #FFFFFF;
+  --panel-2: #F1F3EA;
+  --line: #DCE0CB;
+  --ink: #1E2410;
+  --muted: #5A6340;
+  --accent: #3F4A22;
+  --voice: #2F5F5D;   /* what you said by voice: the mic and the line Cue added (the same in every project) */
+  --on-accent: #FFFFFF;
+  --sel: #D2DE96; --on-sel: #1E2410;   /* the selected card: lime, never the background's green */
+  --slab: #1E2410;
+  --on-slab: #ECEFDF;
+  --work: #A3AD82;
+  --deny: #9B2C1F;
+  --amber: #B07812;   /* attention, not an error: a near-full context, a cache going cold, what was avoidable */
+  --star: #C99A1E;   /* a starred session's star: the one other hue, kept to the star */
+  /* A project's dot, ten swatches (core.js SWATCHES): Moss (0, Cue's own), then soft, greyed colors, each
+     also the hue and strength its window takes when it's the one picked. On white, the color as picked; on the
+     window's color (--pcb), a lighter one of the same hue. Saved as 0–9. */
+  --pcp0: #3F4A22; --pcp1: #7a7a66; --pcp2: #9b8eb4; --pcp3: #a8925e; --pcp4: #b7a38f; --pcp5: #6d8375; --pcp6: #5f8b8a; --pcp7: #6b739c; --pcp8: #a3828f; --pcp9: #6e7076;
+  --pcb0: #D2DE96; --pcb1: oklch(0.82 0.033 107); --pcb2: oklch(0.82 0.063 301); --pcb3: oklch(0.82 0.083 87); --pcb4: oklch(0.82 0.041 67); --pcb5: oklch(0.82 0.036 157); --pcb6: oklch(0.82 0.053 194); --pcb7: oklch(0.82 0.07 276); --pcb8: oklch(0.82 0.048 353); --pcb9: oklch(0.82 0.011 271);
+  --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9);
+  /* 10: your own Color (core.js OWN), any hue (--oh) and strength (--ok), set on the window by core.js projTheme. */
+  --pcp10: oklch(0.66 calc(0.105 * var(--ok, 0)) var(--oh, 0)); --pcb10: oklch(0.82 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pc10: var(--pcp10);
+  --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
+    --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
+    --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --amber: #E0A84A; --star: #E0B84A;
+    --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
+    --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14170D; --on-bg: #ECEEE3; --on-bg-muted: #A3AA8A; --panel: #1D2113; --panel-2: #232818;
+  --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --voice: #8FC7C2; --sel: #B5C27A; --on-sel: #151A08;
+  --slab: #0D0F08; --on-slab: #E0E5CC; --work: #4E5733; --deny: #E8907F; --star: #E0B84A;
+  --pcp0: #B5C27A; --pcp1: oklch(0.8 0.033 107); --pcp2: oklch(0.8 0.063 301); --pcp3: oklch(0.8 0.083 87); --pcp4: oklch(0.8 0.041 67); --pcp5: oklch(0.8 0.036 157); --pcp6: oklch(0.8 0.053 194); --pcp7: oklch(0.8 0.07 276); --pcp8: oklch(0.8 0.048 353); --pcp9: oklch(0.8 0.011 271); --pcb0: var(--pcp0); --pcb1: var(--pcp1); --pcb2: var(--pcp2); --pcb3: var(--pcp3); --pcb4: var(--pcp4); --pcb5: var(--pcp5); --pcb6: var(--pcp6); --pcb7: var(--pcp7); --pcb8: var(--pcp8); --pcb9: var(--pcp9); --pcp10: oklch(0.8 calc(0.11 * var(--ok, 0)) var(--oh, 0)); --pcb10: var(--pcp10);
+  --shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.8); color-scheme: dark;
+}
+
+/* One project picked: every color of the window from its hue (--ph) and strength (--pk: 0 for Graphite),
+   at Moss's own lightness and depth, so each is as calm as Moss. Dark gets a deeper, more colored ground
+   than Moss's near-black, or the projects would look alike. Red, amber, the star and the white cards (light)
+   stay as they are: they mean the same in every project. The slab (terminals, the usage chip) takes the hue
+   at Moss's own near-black. */
+:root.proj-theme {
+  --bg: oklch(0.385 calc(0.072 * var(--pk)) var(--ph));
+  --on-bg-muted: oklch(0.86 calc(0.045 * var(--pk)) var(--ph));
+  --panel-2: oklch(0.965 calc(0.014 * var(--pk)) var(--ph));
+  --line: oklch(0.9 calc(0.026 * var(--pk)) var(--ph));
+  --ink: oklch(0.25 calc(0.04 * var(--pk)) var(--ph));
+  --muted: oklch(0.48 calc(0.05 * var(--pk)) var(--ph));
+  --accent: var(--bg);
+  --sel: oklch(0.875 calc(0.098 * var(--pk)) var(--ph)); --on-sel: oklch(0.25 calc(0.04 * var(--pk)) var(--ph));
+  --work: oklch(0.72 calc(0.06 * var(--pk)) var(--ph));
+  --slab: oklch(0.245 calc(0.035 * var(--pk)) var(--ph)); --on-slab: oklch(0.93 calc(0.02 * var(--pk)) var(--ph));
+}
+@media (prefers-color-scheme: dark) {
+  :root.proj-theme:not([data-theme="light"]) {
+    --bg: oklch(0.25 calc(0.05 * var(--pk)) var(--ph)); --on-bg: oklch(0.94 calc(0.012 * var(--pk)) var(--ph)); --on-bg-muted: oklch(0.76 calc(0.04 * var(--pk)) var(--ph));
+    --panel: oklch(0.29 calc(0.042 * var(--pk)) var(--ph)); --panel-2: oklch(0.325 calc(0.045 * var(--pk)) var(--ph)); --line: oklch(0.38 calc(0.045 * var(--pk)) var(--ph));
+    --ink: oklch(0.94 calc(0.015 * var(--pk)) var(--ph)); --muted: oklch(0.76 calc(0.035 * var(--pk)) var(--ph));
+    --accent: oklch(0.8 calc(0.1 * var(--pk)) var(--ph)); --on-accent: oklch(0.2 calc(0.04 * var(--pk)) var(--ph)); --sel: var(--accent); --on-sel: var(--on-accent);
+    --work: oklch(0.42 calc(0.06 * var(--pk)) var(--ph));
+  --slab: oklch(0.16 calc(0.02 * var(--pk)) var(--ph)); --on-slab: oklch(0.9 calc(0.02 * var(--pk)) var(--ph));
+  }
+}
+:root.proj-theme[data-theme="dark"] {
+  --bg: oklch(0.25 calc(0.05 * var(--pk)) var(--ph)); --on-bg: oklch(0.94 calc(0.012 * var(--pk)) var(--ph)); --on-bg-muted: oklch(0.76 calc(0.04 * var(--pk)) var(--ph));
+  --panel: oklch(0.29 calc(0.042 * var(--pk)) var(--ph)); --panel-2: oklch(0.325 calc(0.045 * var(--pk)) var(--ph)); --line: oklch(0.38 calc(0.045 * var(--pk)) var(--ph));
+  --ink: oklch(0.94 calc(0.015 * var(--pk)) var(--ph)); --muted: oklch(0.76 calc(0.035 * var(--pk)) var(--ph));
+  --accent: oklch(0.8 calc(0.1 * var(--pk)) var(--ph)); --on-accent: oklch(0.2 calc(0.04 * var(--pk)) var(--ph)); --sel: var(--accent); --on-sel: var(--on-accent);
+  --work: oklch(0.42 calc(0.06 * var(--pk)) var(--ph));
+  --slab: oklch(0.16 calc(0.02 * var(--pk)) var(--ph)); --on-slab: oklch(0.9 calc(0.02 * var(--pk)) var(--ph));
+}
+
+* { box-sizing: border-box; scrollbar-width: none; }
+/* No scrollbars anywhere: everything still scrolls with the trackpad or wheel. */
+::-webkit-scrollbar { display: none; width: 0; height: 0; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 13.5px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; -webkit-user-select: none; transition: background-color .3s ease; }
+@media (prefers-reduced-motion: reduce) { body { transition: none; } }
+.sel, .msg, pre, code, input, textarea { user-select: text; -webkit-user-select: text; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+.mono { font-family: var(--mono); }
+
+/* ---------- shell ---------- */
+.app { height: 100vh; display: flex; flex-direction: column; padding: 34px 20px 16px; }
+/* The band under the traffic lights: grab anywhere here to move the window. */
+.dragbar { position: fixed; top: 0; left: 0; right: 0; height: 30px; z-index: 30; }
+.quiet-line { color: var(--on-bg-muted); font-size: 12.5px; padding: 2px 2px 6px; }
+.top { display: flex; align-items: center; gap: 12px; color: var(--on-bg); }
+.wordmark { display: grid; place-items: center; color: var(--on-bg); }
+.wordmark svg { display: block; pointer-events: none; }
+/* Header chips: click to open the oldest of each kind (again for the next). */
+.hchips { display: flex; gap: 8px; align-items: center; }
+.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
+.hchip:hover { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
+/* Stronger = closer to the header's own text color, in either theme. */
+.hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }
+.hchip.hot { background: var(--on-bg); color: var(--bg); }
+/* A session waiting on you whose cache is in its last minutes (insights.js cacheWarn): amber, attention, not an error. */
+.hchip.cold { background: var(--amber); color: #1E2410; }
+.hchip.cold:hover { background: color-mix(in srgb, var(--amber) 85%, #fff); }
+.hdot.c { background: #1E2410; }
+.hchip.cold .hsub { opacity: 0.8; font-variant-numeric: tabular-nums; }
+.hchip .hsub { font-weight: 500; opacity: 0.7; }
+.hchip.new-chip { flex: none; }   /* "+ New" always reads in full, however tight the bar */
+/* The chip you're stepping through: ‹ 2 of 3 waiting ›. */
+.hchip.nav { padding: 0 3px; gap: 2px; }
+.hchip.nav .hnav { display: inline-flex; align-items: center; gap: 7px; height: 100%; padding: 0 6px; color: inherit; font: inherit; }
+.hstep { width: 24px; height: 24px; border-radius: 50%; font-size: 17px; line-height: 1; color: inherit; display: grid; place-items: center; }
+.hstep:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
+.hdot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.hdot.z { background: repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 4px); box-shadow: 0 0 0 1px currentColor; }
+.hdot.ask { background: var(--deny); }
+.hall { font-size: 13px; color: var(--on-bg-muted); }
+.grow { flex: 1; }
+.top-btn { height: 32px; padding: 0 12px; border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 600; }
+.top-btn:hover { filter: brightness(0.97); }
+/* Board | History */
+.switch-view { display: flex; gap: 3px; padding: 3px; background: var(--panel); border-radius: 9px; }
+.switch-view button { height: 26px; padding: 0 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.switch-view button.on { background: var(--accent); color: var(--on-accent); }
+/* Settings: just the gear, in the header's own colour (no box) until you point at it. */
+.top-btn.icon { width: 32px; padding: 0; display: grid; place-items: center; background: transparent; color: var(--on-bg); opacity: 0.75; }
+.top-btn.icon:hover { opacity: 1; filter: none; background: color-mix(in srgb, var(--on-bg) 12%, transparent); }
+
+.col-head { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg); display: flex; gap: 8px; align-items: baseline; }
+.col-head span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
+.empty-col { border: 1px dashed var(--on-bg-muted); border-radius: 14px; padding: 16px; color: var(--on-bg-muted); font-size: 12.5px; text-align: center; }
+

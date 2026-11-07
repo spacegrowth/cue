@@ -5,23 +5,16 @@ use super::*;
 // ---------- history: saved to cue.db the moment it's answered ----------
 
 /// An answered card put in History, still to be saved to cue.db: saved once the store is let go
-/// (Hub::save_answered).
+/// (Hub::save_answered, or with the next draw's save).
 #[must_use = "an answered card is saved to cue.db (Hub::save_answered), after the store is let go"]
 pub(super) struct Answered(Item);
 
 impl Answered {
-    /// Saved, unless its session was deleted since it was answered (`purged`: when, if it was).
-    pub(super) fn save_unless_purged(self, purged: Option<u64>) {
-        if purged.is_none_or(|at| self.0.resolved_ms.unwrap_or(0) > at) {
-            crate::db::save_answered(&self.0);
-        }
-    }
-
     pub(super) fn session_id(&self) -> &str {
         &self.0.origin.session_id
     }
 
-    /// The card to save, unless its session was deleted since it was answered (as `save_unless_purged`).
+    /// The card to save, unless its session was deleted since it was answered (`purged`: when, if it was).
     pub(super) fn unless_purged(self, purged: Option<u64>) -> Option<Item> {
         purged.is_none_or(|at| self.0.resolved_ms.unwrap_or(0) > at).then_some(self.0)
     }
@@ -31,8 +24,7 @@ pub(super) fn push_history(st: &mut Store, it: Item) -> Answered {
     let day_ago = now_ms().saturating_sub(crate::db::DAY_MS);
     st.answers.retain(|a| a.resolved_ms >= day_ago);
     st.answers.insert(0, Answer::of(&it));
-    st.history.push_front(it.clone());
-    st.history.truncate(crate::config::history_keep());
+    st.history.push_front(it.clone(), crate::config::history_keep());
     Answered(it)
 }
 
@@ -117,9 +109,9 @@ mod tests {
             created_ms: at - 1000, status: "answered".into(), outcome: "replied".into(), resolved_ms: Some(at), thread: vec![], tool_use_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), followup: String::new(), interrupted: false, back_ms: None, images: vec![],
         };
         let mut st = Store::default();
-        push_history(&mut st, item(0, now - crate::db::DAY_MS - 60_000)).save_unless_purged(None); // yesterday, beyond the cap: goes
+        push_history(&mut st, item(0, now - crate::db::DAY_MS - 60_000)).unless_purged(None).iter().for_each(crate::db::save_answered); // yesterday, beyond the cap: goes
         for n in 1..=15 {
-            push_history(&mut st, item(n, now - 60_000 + n)).save_unless_purged(None);
+            push_history(&mut st, item(n, now - 60_000 + n)).unless_purged(None).iter().for_each(crate::db::save_answered);
         }
         assert_eq!(st.history.len(), 10, "the History list keeps its setting");
         assert_eq!(st.answers.len(), 15, "but every answer of the last day is counted");
@@ -146,7 +138,7 @@ mod tests {
         };
         let mut st = Store::default();
         for n in 1..=15 {
-            push_history(&mut st, item(n)).save_unless_purged(None);
+            push_history(&mut st, item(n)).unless_purged(None).iter().for_each(crate::db::save_answered);
         }
         assert_eq!(crate::config::history_keep(), crate::config::HISTORY_DEFAULT as usize);
         crate::config::set("history.keep", json!(10)).unwrap();

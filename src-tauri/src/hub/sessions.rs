@@ -457,6 +457,9 @@ impl Hub {
             st.answers.retain(|a| a.session_id != session_id);
             st.parked.retain(|p| p.session.origin.session_id != session_id);
             st.missing.remove(session_id);
+            // Ended by `forget` just now (or before): not under Closed, and not saved as ended by the next draw.
+            st.ended.retain(|(_, s)| s.origin.session_id != session_id);
+            st.unsaved_ends.retain(|(_, s)| s.origin.session_id != session_id);
             st.purged.insert(session_id.to_string(), now_ms());
         });
         self.delete_saved_session(session_id);
@@ -495,7 +498,12 @@ impl Hub {
         }
         if key == "history.keep" {
             let history = crate::db::history(crate::config::history_keep());
-            self.write(|st| st.history = history);
+            self.write(|st| st.history = super::kept_history::History::new(history));
+        }
+        if key == "mini.mode" {
+            if let Some(app) = &self.app {
+                crate::mini::apply(app);
+            }
         }
         if key == "appearance.zoom" {
             if let Some(app) = &self.app {

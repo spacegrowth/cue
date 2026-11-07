@@ -102,14 +102,34 @@ pub fn shared() -> [&'static str; 10] {
     ["-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/cue-%C", "-o", "ControlPersist=15m", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"]
 }
 
-/// `ssh`, to be given its arguments: the system's own, never one found on PATH (an app launched from the Dock
-/// has none of yours). A test stands a fake one in for it (testing::FakeSsh).
-fn ssh() -> Command {
+/// The ssh Cue runs: the system's own, never one found on PATH (an app launched from the Dock has none of
+/// yours). A test stands a fake one in for it (testing::FakeSsh), for every trip and the built-in terminal alike.
+pub(crate) fn ssh_program() -> std::path::PathBuf {
     #[cfg(test)]
     if let Some(fake) = crate::testing::FakeSsh::program() {
-        return Command::new(fake);
+        return fake;
     }
-    Command::new("/usr/bin/ssh")
+    std::path::PathBuf::from("/usr/bin/ssh")
+}
+
+/// `ssh`, to be given its arguments; ssh's refusal while chaos has the line down (chaos/ssh.rs).
+fn ssh() -> Command {
+    if crate::chaos::ssh::down() {
+        return crate::chaos::ssh::refused();
+    }
+    Command::new(ssh_program())
+}
+
+/// ssh's arguments for a terminal client on `host`: tmux there with `args` (each quoted), in a terminal of
+/// its own (`-tt`), over the shared connection. tmux by its full path when Cue knows it (no login shell to
+/// wait for), else through your shell. For the built-in terminal (term.rs), which runs it in a pty.
+pub(crate) fn tmux_client_args(host: &str, args: &[String]) -> Vec<String> {
+    let args = args.iter().map(|a| shq(a)).collect::<Vec<_>>().join(" ");
+    let remote = match tmux_path(host) {
+        Some(p) => format!("exec /bin/sh -c {}", shq(&format!("exec {} {args}", shq(&p)))),
+        None => remote_command(&format!("exec tmux {args}")),
+    };
+    shared().iter().map(|a| a.to_string()).chain(["-o", "BatchMode=yes", "-tt", host].map(String::from)).chain([remote]).collect()
 }
 
 /// Single-quoted for a POSIX shell (the one helper Cue has for it).
@@ -148,7 +168,7 @@ pub fn end_streams(mark: &str) {
 }
 
 /// A line of `ps -o pid=,ppid=,command=`: pid, parent, command.
-fn ps_line(line: &str) -> Option<(i32, i32, String)> {
+pub(crate) fn ps_line(line: &str) -> Option<(i32, i32, String)> {
     let mut f = line.split_whitespace();
     let pid = f.next()?.parse().ok()?;
     let ppid = f.next()?.parse().ok()?;

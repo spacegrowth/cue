@@ -1,0 +1,97 @@
+/* Cue mini window (mini.html): the rail on the right edge, or the island at the notch. The window is exactly
+   the size of what it shows (mini.js fit), so the page itself is see-through and each shape draws its own panel.
+   The rail wears Cue's colors (moss list, the chat on panel); the notch is dark all the way, as the notch is. */
+html, body.mini { background: transparent; height: auto; }
+body.mini { overflow: hidden; font-size: 13px; }
+#mini { display: flex; }
+.mini .g { flex-grow: 1; }
+.m-panel { width: 100%; }
+
+/* ---------- shared bits ---------- */
+.m-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.m-dot.turn { background: repeating-linear-gradient(45deg, var(--sel) 0 2px, transparent 2px 4px); box-shadow: 0 0 0 1.5px var(--sel); }
+.m-dot.ask { background: #E8907F; }
+.m-dot.work { background: var(--work); }
+/* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
+.m-dotb .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
+@keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
+@media (prefers-reduced-motion: reduce) { .m-dotb .m-dot.work { animation: none; } }
+.m-queued { opacity: .85; box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
+.m-queued .m-quiet { margin-top: 3px; font-size: 11px; }
+.m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+.m-tag.turn { background: var(--sel); color: var(--on-sel); }
+.m-tag.ask { background: var(--deny); color: #fff; }
+.m-tag.work { background: var(--panel-2); color: var(--muted); }
+.m-link { font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; }
+.m-btn { font-size: 12px; font-weight: 650; border-radius: 8px; padding: 5px 12px; background: var(--accent); color: var(--on-accent); }
+.m-btn.deny { background: transparent; color: var(--deny); box-shadow: inset 0 0 0 1px var(--line); }
+.m-btn:disabled { opacity: .45; cursor: default; }
+.m-sep { height: 1px; margin: 4px 8px; background: currentColor; opacity: .18; }
+
+/* ---------- the rail ---------- */
+.rail .m-hair { height: 200px; background: var(--bg); border-radius: 3px 0 0 3px; }
+.rail .m-dots { background: var(--bg); border-radius: 12px 0 0 12px; padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--on-bg); }
+.rail .m-dots .m-sep { width: 12px; margin: -4px 0; }
+.m-dotb { display: grid; place-items: center; width: 22px; height: 22px; margin: -6px 0; border-radius: 50%; }
+.m-dotb .m-dot { transition: transform .09s ease-out, width .12s ease-out, height .12s ease-out; }   /* the Dock's magnifying, smoothed */
+.m-dotb.on .m-dot { width: 12px; height: 12px; }   /* the session whose chat is open: its dot, bigger */
+.rail .m-pair { display: flex; align-items: flex-start; gap: 0; }   /* the dots stay at the top, where they were */
+.rail .m-pair > .m-chat { width: 420px; flex: none; }
+.rail .m-pair > .m-dots { width: 28px; flex: none; }
+.m-age { font: 11px var(--mono); opacity: .7; }
+.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; border: 1.5px solid var(--bg); }
+
+/* ---------- the chat (both shapes) ---------- */
+.m-chat { display: flex; flex-direction: column; height: var(--cap, 440px); overflow: hidden; box-sizing: border-box; }
+.m-now { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
+.m-now-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-chat-head { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; flex: none; border-bottom: 1px solid var(--line); }
+.m-chat-head .m-link { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.m-ask { margin: 10px 12px 0; padding: 9px 11px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--deny); display: flex; flex-direction: column; gap: 7px; flex: none; }
+.m-cmd { font: 12px/1.45 var(--mono); background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 7px 10px; white-space: pre-wrap; word-break: break-word; max-height: 96px; overflow: auto; user-select: text; -webkit-user-select: text; }
+.m-acts { display: flex; gap: 8px; }
+.m-thread { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 10px 16px; display: flex; flex-direction: column; gap: 9px; user-select: text; -webkit-user-select: text; }
+.m-you { align-self: flex-end; max-width: 85%; background: var(--panel-2); border-radius: 10px; padding: 7px 10px; white-space: pre-wrap; }
+.m-agent p, .m-agent ul, .m-agent ol, .m-agent .md-table, .m-agent .code-wrap { margin: 0 0 8px; }
+.m-agent ul, .m-agent ol { padding-left: 18px; }
+.m-agent h4 { margin: 6px 0 4px; font-size: 13px; }
+.m-agent pre { margin: 0; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.5 var(--mono); overflow-x: auto; }
+.m-agent pre.long { max-height: 220px; overflow: auto; }
+.m-agent .code-more { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.m-agent code { font: 12px var(--mono); }
+.m-agent table { border-collapse: collapse; font-size: 12px; }
+.m-agent th, .m-agent td { border-bottom: 1px solid var(--line); padding: 3px 10px 3px 0; text-align: left; }
+.m-agent blockquote { margin: 0 0 8px; padding-left: 10px; color: var(--muted); box-shadow: inset 2px 0 0 var(--line); }
+.m-agent a { color: inherit; }
+.m-foot { flex: none; border-top: 1px solid var(--line); padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.m-box { width: 100%; resize: none; border: 0; border-radius: 10px; padding: 7px 10px; font: inherit; line-height: 19.5px; color: inherit; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); outline: none; overflow-y: auto; }
+.m-box:focus { box-shadow: 0 0 0 2px var(--sel), inset 0 0 0 1px var(--accent); }
+.m-foot-row { display: flex; align-items: center; gap: 8px; }
+.m-quiet { font-size: 12px; color: var(--muted); }
+
+/* ---------- the notch: dark all the way ---------- */
+.notch { --panel: #0D0F08; --panel-2: #232818; --line: #343B24; --ink: #E9ECDF; --muted: #A8AF90; --accent: #B5C27A; --on-accent: #151A08; --sel: #B5C27A; --on-sel: #151A08; --slab: #1D2113; --on-slab: #E0E5CC; --deny: #E8907F; --work: #4E5733; }
+.notch #mini { justify-content: center; }
+.notch .m-panel { background: var(--panel); color: var(--ink); border-radius: 0 0 22px 22px; }
+.notch .m-island { height: 32px; display: flex; align-items: center; padding: 0 14px; font: 600 11.5px var(--mono); }
+.m-wing { display: inline-flex; align-items: center; gap: 10px; }
+.m-n { display: inline-flex; align-items: center; gap: 5px; }
+.notch .m-island .m-dot { width: 8px; height: 8px; }
+.notch .m-nod { padding: 12px 18px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.m-nod-top { display: flex; align-items: center; gap: 8px; }
+.notch .m-chat { border-radius: 0 0 26px 26px; padding-top: 6px; }
+.notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
+.notch .m-box { background: var(--slab); box-shadow: none; }
+.notch .m-box:focus { box-shadow: 0 0 0 2px var(--sel); }
+
+/* A new shape (the list, the chat) slides in from the edge it grows out of; the window itself is already its new
+   size (see-through), so only the panel moves. Not for redraws of the same shape. */
+.m-enter .m-panel { animation: m-in .16s ease-out; }
+.rail.m-enter .m-panel { --from: translateX(14px); }
+.notch.m-enter .m-panel { --from: translateY(-10px); }
+@keyframes m-in { from { opacity: 0; transform: var(--from, none); } }
+@media (prefers-reduced-motion: reduce) { .m-enter .m-panel { animation: none; } }
+
+/* At the notch the dots sit in the chat's head, in a row: they switch between sessions. */
+.notch .m-chat-head .m-dots { display: flex; flex-direction: row; align-items: center; gap: 6px; width: auto; padding: 0 4px; background: none; border-radius: 0; }
+.notch .m-chat-head .m-dotb { margin: 0; }

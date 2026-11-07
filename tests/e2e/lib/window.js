@@ -16,10 +16,26 @@ export class Window {
     return this.b.execute(fn, ...args);
   }
 
+  /** Evaluate `fn(...args)` in the window over the driver's direct channel (`/wdio/eval`): one dispatch, its
+   *  result posted back as plain JSON. The W3C `execute` path polls for its result in further evaluations, and
+   *  under a long run's load WebKit intermittently fails one of those ("a result of an unsupported type",
+   *  code 5) and the call with it; this path is the driver's own for WebKit and recovers a lost completion.
+   *  `args` and the result must be plain JSON. */
+  async runDirect(fn, ...args) {
+    const { hostname, port } = this.b.options;
+    const script = `const done = arguments[0]; Promise.resolve().then(() => (${fn}).apply(null, ${JSON.stringify(args)}))
+      .then((value) => done({ ok: true, value: value === undefined ? null : value }), (e) => done({ ok: false, error: String(e && e.stack || e) }));`;
+    const res = await fetch(`http://${hostname}:${port}/wdio/eval`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ script }) });
+    const said = await res.json();
+    if (!res.ok) throw new Error(`the window's script failed: ${said.error}`);
+    return said.value;
+  }
+
   /** How long one evaluation takes to come back (ms): the window's main thread has to answer it. */
   async latency() {
     const t = performance.now();
-    await this.b.execute(() => 1);
+    const said = await this.runDirect(() => "ok");
+    if (said !== "ok") throw new Error(`the window answered ${JSON.stringify(said)} to a timing probe`);
     return performance.now() - t;
   }
 

@@ -13,8 +13,8 @@ const sorted = (xs) => [...new Set(xs)].sort();
 
 // Every function marked #[tauri::command] (its name: the first `fn` after the attribute).
 const declared = sorted(rustFiles("src-tauri/src").flatMap((f) => [...read(f).matchAll(/#\[tauri::command[^\]]*\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z_0-9]+)/g)].map((m) => m[1])));
-// What lib.rs registers with the window.
-const registered = sorted(read("src-tauri/src/lib.rs").match(/generate_handler!\[([^\]]*)\]/)[1].split(",").map((s) => s.trim().split("::").pop()).filter(Boolean));
+// What startup/mod.rs registers with the window.
+const registered = sorted(read("src-tauri/src/startup/mod.rs").match(/generate_handler!\[([^\]]*)\]/)[1].split(",").map((s) => s.trim().split("::").pop()).filter(Boolean));
 
 // The fakes, loaded as the pages load them (load.js's list, in its order) into a window of their own.
 const fakesList = JSON.parse(read("tests/ui/load.js").match(/const FAKES = (\[[^\]]*\])/)[1]);
@@ -25,8 +25,9 @@ for (const f of ["tests/ui/bridge.js", ...fakesList.map((n) => `tests/ui/fakes/$
 win.CueBridge.start(() => ({ sessions: [], items: [], history: [], settings: {} }));
 const faked = sorted(win.CueBridge.commands());
 
-// Every command the window calls by name.
-const called = sorted(fs.readdirSync(path.join(root, "ui")).filter((f) => f.endsWith(".js")).flatMap((f) => [...read(`ui/${f}`).matchAll(/\binvoke\("([a-z_0-9]+)"/g)].map((m) => m[1])));
+// Every command the window calls by name, in the scripts ui/index.html loads.
+const scripts = [...read("ui/index.html").matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]).filter((s) => !s.startsWith("vendor/"));
+const called = sorted(scripts.flatMap((f) => [...read(`ui/${f}`).matchAll(/\binvoke\("([a-z_0-9]+)"/g)].map((m) => m[1])));
 
 const missing = (a, b) => a.filter((x) => !b.includes(x));
 assert.deepStrictEqual(missing(declared, registered), [], "commands declared but not registered in generate_handler!");

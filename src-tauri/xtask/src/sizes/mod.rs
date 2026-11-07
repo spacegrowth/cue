@@ -27,9 +27,10 @@ pub struct Sizes {
     pub files: Vec<(String, usize)>,
 }
 
-/// Measured over `rs`, every file under `src-tauri/src` (tests included, marked), and `ui/*.{js,css,html}`.
+/// Measured over `rs`, every file under `src-tauri/src` (tests included, marked), and Cue's own `ui/**/*.{js,css,html}`
+/// (not `ui/vendor`, which is other people's code).
 pub fn measure(repo: &Path, rs: &[RustFile]) -> Result<Sizes, String> {
-    let ui: Vec<(String, String)> = crate::parse::files::under(&repo.join("ui"), &["js", "css", "html"])?.into_iter().filter(|(rel, _)| !rel.contains('/')).collect();
+    let ui: Vec<(String, String)> = crate::parse::files::under(&repo.join("ui"), &["js", "css", "html"])?.into_iter().filter(|(rel, _)| !rel.starts_with("vendor/")).collect();
     let mut functions = vec![];
     for f in rs {
         functions.extend(rust::functions(&f.ast).into_iter().map(|found| found.at(&format!("src-tauri/src/{}", f.rel))));

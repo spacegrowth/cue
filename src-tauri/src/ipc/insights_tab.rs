@@ -1,5 +1,5 @@
 //! The Insights tab: how sessions went over the last days, summed from the turns logs/turns.rs keeps
-//! (db.rs `turns`), and how hand-offs and insights went.
+//! (db/insights.rs, the `turns` table), and how hand-offs and insights went.
 
 use super::blocking;
 use crate::db;
@@ -46,7 +46,7 @@ const HANDOFF_CONTEXT: u64 = 300_000;
 const LOOKS: u64 = 30;
 const LOOK_GROWTH: u64 = 80_000;
 const SUMMARY: u64 = 5_000;
-/// A session that passed its hand-off point while editing in this many areas of its project (logs/steps.rs
+/// A session that passed its hand-off point while editing in this many areas of its project (logs/steps/model.rs
 /// area_of) was several pieces of work in one context: each could have had a session (relay) or an agent of its own.
 const AREAS: usize = 3;
 
@@ -77,7 +77,7 @@ pub(crate) struct Search {
 
 /// One session's turns, oldest first, and the context it started at (for its hand-off point).
 /// SHORTCUT: a relay executor's own session can be told "split" too: the turns history doesn't keep which
-/// sessions were executors (leads.rs knows only live ones). Upgrade path: keep a session's relay role with its turns.
+/// sessions were executors (leads/ knows only live ones). Upgrade path: keep a session's relay role with its turns.
 /// SHORTCUT: a turn's growth is its whole growth, what it wrote and ran too, not only what its looking read.
 /// Upgrade path: keep each tool result's size with the turn.
 pub(crate) fn delegate_of(turns: &[&db::StoredTurn], start: u64) -> Delegate {
@@ -144,7 +144,6 @@ pub(crate) fn delegate_states(session_ids: &[String]) -> Value {
 }
 
 fn delegate_json(d: &Delegate) -> Value {
-    let usd2 = |x: f64| (x * 100.0).round() / 100.0;
     json!({
         "search": d.search.as_ref().map(|s| json!({ "looks": s.looks, "growth": s.growth, "tokens": s.tokens, "usd": usd2(s.usd), "later": s.later })),
         "searches": d.searches, "search_tokens": d.search_tokens, "search_usd": usd2(d.search_usd),
@@ -252,84 +251,219 @@ fn climb(ctx: &[u64], max: usize) -> Vec<(usize, u64)> {
     }).collect()
 }
 
-/// The numbers insights_summary answers with (reads the database and folders: off the main thread).
-fn summary(days: u32) -> Value {
-    let now = crate::model::now_ms();
-    let since = now.saturating_sub(u64::from(days) * 24 * 3600 * 1000);
-    let turns = db::turns_since(since);
-    let sids: Vec<&str> = turns.iter().map(|t| t.session_id.as_str()).collect::<HashSet<_>>().into_iter().collect();
-    let starts = db::start_contexts(&sids);
-    let mut all = Sum::default();
-    let (mut priced, mut writes) = (0u64, 0u64);
-    let mut by_day: BTreeMap<String, Sum> = BTreeMap::new();
-    let (mut waiting, mut long): (HashMap<&str, Hit>, HashMap<&str, Hit>) = Default::default();
-    let (mut wait_turns, mut wait_tokens, mut wait_usd, mut long_tokens, mut long_usd) = (0u64, 0u64, 0f64, 0u64, 0f64);
-    let mut corrections: Vec<usize> = Vec::new();
-    // Where the dollars went (fresh, output, reads, writes, re-writes after a wait, re-reads past a hand-off),
-    // and by model; the late answers one by one, and by when in the week their session was left waiting.
-    let mut split = [0f64; 6];
-    let mut models: HashMap<&str, (f64, u64)> = HashMap::new();
-    let mut answers: Vec<(usize, u64, f64)> = Vec::new();
-    let (mut grid_usd, mut grid_n) = (vec![0f64; 168], vec![0u64; 168]);
-    // Each session's context turn by turn, and the turn it passed its hand-off point.
-    let mut contexts: HashMap<&str, Vec<u64>> = HashMap::new();
-    let mut passed: HashMap<&str, usize> = HashMap::new();
-    let mut corrected_by: HashMap<String, (u64, u64)> = HashMap::new();
-    // A folder's project, looked up once: its repository on this Mac, its folder's name on a machine.
-    let mut projects: HashMap<(String, String), String> = HashMap::new();
-    let mut project = |t: &db::StoredTurn| projects.entry((t.machine.clone(), t.cwd.clone())).or_insert_with(|| if t.machine.is_empty() { crate::model::project_of(&t.cwd) } else { crate::model::folder_of(&t.cwd) }).clone();
-    for (i, t) in turns.iter().enumerate() {
+/// Dollars, to the cent.
+fn usd2(x: f64) -> f64 {
+    (x * 100.0).round() / 100.0
+}
+
+/// `a` as a share of `b`, to a tenth of a percent (0 of nothing).
+fn share(a: u64, b: u64) -> f64 {
+    if b == 0 { 0.0 } else { ((a as f64 / b as f64) * 1000.0).round() / 1000.0 }
+}
+
+/// The range's turns, what a finding's rows are made of, with each folder's project looked up once: its
+/// repository on this Mac, its folder's name on a machine.
+struct Rows<'a> {
+    turns: &'a [db::StoredTurn],
+    projects: HashMap<(String, String), String>,
+}
+
+impl Rows<'_> {
+    fn project(&mut self, t: &db::StoredTurn) -> String {
+        self.projects.entry((t.machine.clone(), t.cwd.clone())).or_insert_with(|| if t.machine.is_empty() { crate::model::project_of(&t.cwd) } else { crate::model::folder_of(&t.cwd) }).clone()
+    }
+
+    /// The `i`th turn's session, as a finding lists it.
+    fn at(&mut self, i: usize) -> Value {
+        let turns = self.turns;
+        let t = &turns[i];
+        json!({ "session_id": t.session_id, "project": self.project(t), "cwd": t.cwd, "machine": t.machine, "harness": t.harness, "last_ms": t.at_ms })
+    }
+}
+
+/// The range's turns summed, one at a time: totals, per day and per model, where the dollars went (fresh,
+/// output, reads, writes, re-writes after a wait, re-reads past a hand-off), the late answers one by one and
+/// by when in the week their session was left waiting, each session's context turn by turn and the turn it
+/// passed its hand-off point, and the turns corrected, by project too.
+#[derive(Default)]
+struct Tally<'a> {
+    all: Sum,
+    priced: u64,
+    writes: u64,
+    by_day: BTreeMap<String, Sum>,
+    waiting: HashMap<&'a str, Hit>,
+    long: HashMap<&'a str, Hit>,
+    wait_turns: u64,
+    wait_tokens: u64,
+    wait_usd: f64,
+    long_tokens: u64,
+    long_usd: f64,
+    corrections: Vec<usize>,
+    split: [f64; 6],
+    models: HashMap<&'a str, (f64, u64)>,
+    answers: Vec<(usize, u64, f64)>,
+    grid_usd: Vec<f64>,
+    grid_n: Vec<u64>,
+    contexts: HashMap<&'a str, Vec<u64>>,
+    passed: HashMap<&'a str, usize>,
+    corrected_by: HashMap<String, (u64, u64)>,
+}
+
+impl<'a> Tally<'a> {
+    fn new() -> Self {
+        Tally { grid_usd: vec![0f64; 168], grid_n: vec![0u64; 168], ..Default::default() }
+    }
+
+    /// The `i`th turn of the range counted in: its folder's `project`, and the context its session started at.
+    fn add(&mut self, i: usize, t: &'a db::StoredTurn, project: String, start: u64) {
         let usd = prices::cost(&t.model, &t.usage);
         if usd.is_some() {
-            priced += t.tokens;
+            self.priced += t.tokens;
         }
         let usd = usd.unwrap_or(0.0);
-        writes += t.usage.write_5m + t.usage.write_1h;
+        self.writes += t.usage.write_5m + t.usage.write_1h;
         if let Some(k) = kinds(t) {
-            for (s, v) in split.iter_mut().zip(k) {
+            for (s, v) in self.split.iter_mut().zip(k) {
                 *s += v;
             }
         }
-        let m = models.entry(t.model.as_str()).or_default();
+        let m = self.models.entry(t.model.as_str()).or_default();
         (m.0, m.1) = (m.0 + usd, m.1 + t.tokens);
-        let ctx = contexts.entry(&t.session_id).or_default();
+        let ctx = self.contexts.entry(&t.session_id).or_default();
         if t.context > 0 {
             ctx.push(t.context);
         }
-        let p = corrected_by.entry(project(t)).or_default();
+        let p = self.corrected_by.entry(project).or_default();
         (p.0, p.1) = (p.0 + u64::from(t.corrected), p.1 + 1);
-        all.add(t, usd);
-        let day = by_day.entry(t.day.clone()).or_default();
+        self.all.add(t, usd);
+        let (rewrite, long) = (rewrite_cost(t), long_cost(t, start));
+        let day = self.by_day.entry(t.day.clone()).or_default();
         day.add(t, usd);
-        if let Some((tokens, cost)) = rewrite_cost(t) {
-            (wait_turns, wait_tokens, wait_usd) = (wait_turns + 1, wait_tokens + tokens, wait_usd + cost);
-            (split[3], split[4]) = (split[3] - cost, split[4] + cost);
-            answers.push((i, tokens, cost));
-            let at = local_slot(t.at_ms.saturating_sub(t.waited_ms));
-            (grid_usd[at], grid_n[at]) = (grid_usd[at] + cost, grid_n[at] + 1);
+        if let Some((tokens, cost)) = rewrite {
             (day.wait_tokens, day.wait_usd) = (day.wait_tokens + tokens, day.wait_usd + cost);
-            let h = waiting.entry(&t.session_id).or_default();
-            (h.usd, h.tokens, h.times, h.longest_wait_ms, h.last) = (h.usd + cost, h.tokens + tokens, h.times + 1, h.longest_wait_ms.max(t.waited_ms), Some(i));
         }
-        if let Some((tokens, cost)) = long_cost(t, starts.get(&t.session_id).copied().unwrap_or(0)) {
-            (long_tokens, long_usd) = (long_tokens + tokens, long_usd + cost);
-            (split[2], split[5]) = (split[2] - cost, split[5] + cost);
-            let n = contexts.get(t.session_id.as_str()).map_or(0, |c| c.len().saturating_sub(1));
-            passed.entry(&t.session_id).or_insert(n);
+        if let Some((_, cost)) = long {
             day.long_usd += cost;
-            let h = long.entry(&t.session_id).or_default();
-            (h.usd, h.tokens, h.times, h.peak_context, h.last) = (h.usd + cost, h.tokens + tokens, h.times + 1, h.peak_context.max(t.context), Some(i));
+        }
+        if let Some((tokens, cost)) = rewrite {
+            self.add_wait(i, t, tokens, cost);
+        }
+        if let Some((tokens, cost)) = long {
+            self.add_long(i, t, tokens, cost);
         }
         if t.corrected {
-            corrections.push(i);
+            self.corrections.push(i);
         }
     }
-    // What each session could have delegated, from its turns in the range (its start from before it, when it began earlier).
+
+    /// A late answer: what it re-wrote, when in the week its session was left waiting, and its session's tally.
+    fn add_wait(&mut self, i: usize, t: &'a db::StoredTurn, tokens: u64, cost: f64) {
+        (self.wait_turns, self.wait_tokens, self.wait_usd) = (self.wait_turns + 1, self.wait_tokens + tokens, self.wait_usd + cost);
+        (self.split[3], self.split[4]) = (self.split[3] - cost, self.split[4] + cost);
+        self.answers.push((i, tokens, cost));
+        let at = local_slot(t.at_ms.saturating_sub(t.waited_ms));
+        (self.grid_usd[at], self.grid_n[at]) = (self.grid_usd[at] + cost, self.grid_n[at] + 1);
+        let h = self.waiting.entry(&t.session_id).or_default();
+        (h.usd, h.tokens, h.times, h.longest_wait_ms, h.last) = (h.usd + cost, h.tokens + tokens, h.times + 1, h.longest_wait_ms.max(t.waited_ms), Some(i));
+    }
+
+    /// A turn past its session's hand-off point: what it re-read, the turn it passed that point, its session's tally.
+    fn add_long(&mut self, i: usize, t: &'a db::StoredTurn, tokens: u64, cost: f64) {
+        (self.long_tokens, self.long_usd) = (self.long_tokens + tokens, self.long_usd + cost);
+        (self.split[2], self.split[5]) = (self.split[2] - cost, self.split[5] + cost);
+        let n = self.contexts.get(t.session_id.as_str()).map_or(0, |c| c.len().saturating_sub(1));
+        self.passed.entry(&t.session_id).or_insert(n);
+        let h = self.long.entry(&t.session_id).or_default();
+        (h.usd, h.tokens, h.times, h.peak_context, h.last) = (h.usd + cost, h.tokens + tokens, h.times + 1, h.peak_context.max(t.context), Some(i));
+    }
+
+    /// The 8 sessions a finding (`hits`) counted most in, by dollars (tokens where nothing was priced). A long
+    /// session's row carries its climb, for a small chart: (turn, context) points, and the turn it passed its
+    /// hand-off point.
+    fn top(&self, hits: HashMap<&str, Hit>, long: bool, starts: &HashMap<String, u64>, rows: &mut Rows) -> Vec<Value> {
+        let mut ranked: Vec<(&str, Hit)> = hits.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.usd.total_cmp(&a.1.usd).then(b.1.tokens.cmp(&a.1.tokens)));
+        ranked.into_iter().take(8).filter_map(|(sid, h)| {
+            let mut v = rows.at(h.last?);
+            v["usd"] = json!(usd2(h.usd));
+            v["tokens"] = json!(h.tokens);
+            if long {
+                v["start_context"] = json!(starts.get(sid).copied().unwrap_or(0));
+                v["peak_context"] = json!(h.peak_context);
+                v["turns"] = json!(h.times);
+                let c = self.contexts.get(sid).map_or(&[][..], |c| c.as_slice());
+                v["climb"] = json!(climb(c, 60).into_iter().map(|(i, x)| [i as u64, x]).collect::<Vec<_>>());
+                v["climb_turns"] = json!(c.len());
+                v["handoff_turn"] = json!(self.passed.get(sid));
+            } else {
+                v["times"] = json!(h.times);
+                v["longest_wait_ms"] = json!(h.longest_wait_ms);
+            }
+            Some(v)
+        }).collect()
+    }
+
+    /// The range's totals, where the dollars went, and the costliest models.
+    fn totals_json(&self) -> (Value, Value, Value) {
+        let (all, split) = (&self.all, &self.split);
+        let mut models: Vec<(&&str, &(f64, u64))> = self.models.iter().collect();
+        models.sort_by(|a, b| b.1 .0.total_cmp(&a.1 .0).then(b.1 .1.cmp(&a.1 .1)));
+        (
+            json!({ "turns": all.turns, "sessions": all.sessions.len(), "tokens": all.tokens, "usd": usd2(all.usd), "priced": share(self.priced, all.tokens) }),
+            json!({ "fresh": usd2(split[0]), "output": usd2(split[1]), "read": usd2(split[2].max(0.0)), "write": usd2(split[3].max(0.0)), "rewrite": usd2(split[4]), "long": usd2(split[5]) }),
+            json!(models.iter().take(6).map(|(m, (usd, tokens))| json!({ "model": m, "usd": usd2(*usd), "tokens": tokens })).collect::<Vec<_>>()),
+        )
+    }
+
+    /// Each day's sums.
+    fn by_day_json(&mut self) -> Value {
+        json!(std::mem::take(&mut self.by_day).into_iter().map(|(day, mut s)| json!({
+            "day": day, "turns": s.turns, "tokens": s.tokens, "usd": usd2(s.usd), "median_context": median(&mut s.contexts),
+            "corrected": s.corrected, "interrupted": s.interrupted, "errors": s.errors,
+            "wait_usd": usd2(s.wait_usd), "wait_tokens": s.wait_tokens, "long_usd": usd2(s.long_usd),
+        })).collect::<Vec<_>>())
+    }
+
+    /// Late answers: their totals, the sessions they cost most in (`sessions`), the 400 costliest one by one
+    /// (each a dot: how long it waited, what it re-wrote, what that cost), and the week's grid.
+    fn waiting_json(&mut self, sessions: Vec<Value>, rows: &mut Rows) -> Value {
+        self.answers.sort_by(|a, b| b.2.total_cmp(&a.2));
+        let answers: Vec<Value> = self.answers.iter().take(400).map(|&(i, tokens, cost)| {
+            let mut v = rows.at(i);
+            let t = &rows.turns[i];
+            (v["at_ms"], v["waited_ms"], v["tokens"], v["usd"]) = (json!(t.at_ms), json!(t.waited_ms), json!(tokens), json!(usd2(cost)));
+            v
+        }).collect();
+        json!({ "usd": usd2(self.wait_usd), "tokens": self.wait_tokens, "turns": self.wait_turns, "share_of_writes": share(self.wait_tokens, self.writes), "sessions": sessions,
+            "answers": answers, "grid_usd": self.grid_usd.iter().map(|&x| usd2(x)).collect::<Vec<_>>(), "grid_turns": self.grid_n })
+    }
+
+    /// Corrected turns: how many, the latest 12, and the projects whose turns were corrected most (at least 20
+    /// turns, so one slip isn't a rate).
+    fn corrections_json(&self, rows: &mut Rows) -> Value {
+        let turns = rows.turns;
+        let examples: Vec<Value> = self.corrections.iter().rev().take(12).map(|&i| {
+            let t = &turns[i];
+            let mut v = rows.at(i);
+            (v["at_ms"], v["prompt"], v["correction"]) = (json!(t.at_ms), json!(t.prompt), json!(t.correction));
+            v["usd"] = json!(usd2(prices::cost(&t.model, &t.usage).unwrap_or(0.0)));
+            v
+        }).collect();
+        let mut by: Vec<(&String, &(u64, u64))> = self.corrected_by.iter().filter(|(_, (n, all))| *n > 0 && *all >= 20).collect();
+        by.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(a.0.cmp(b.0)));
+        json!({ "count": self.all.corrected, "share": share(self.all.corrected, self.all.turns), "examples": examples,
+            "by_project": by.iter().take(6).map(|(p, (n, all))| json!({ "project": p, "count": n, "turns": all })).collect::<Vec<_>>() })
+    }
+}
+
+/// What each session could have delegated, from its turns in the range (its start from before it, when it
+/// began earlier), with its last turn's index in the range.
+fn delegates_of(turns: &[db::StoredTurn], starts: &HashMap<String, u64>) -> Vec<(usize, Delegate)> {
     let mut of_session: HashMap<&str, Vec<usize>> = HashMap::new();
     for (i, t) in turns.iter().enumerate() {
         of_session.entry(&t.session_id).or_default().push(i);
     }
-    let mut delegates: Vec<(usize, Delegate)> = of_session.iter().map(|(sid, ix)| {
+    of_session.iter().map(|(sid, ix)| {
         let ts: Vec<&db::StoredTurn> = ix.iter().map(|&i| &turns[i]).collect();
         (*ix.last().unwrap_or(&0), delegate_of(&ts, starts.get(*sid).copied().unwrap_or(0)), ix)
     }).map(|(last, mut d, ix)| {
@@ -338,106 +472,84 @@ fn summary(days: u32) -> Value {
             s.turn = ix[s.turn];
         }
         (last, d)
-    }).collect();
-    let usd2 = |x: f64| (x * 100.0).round() / 100.0;
-    let at = |i: usize, project: &mut dyn FnMut(&db::StoredTurn) -> String| {
-        let t = &turns[i];
-        json!({ "session_id": t.session_id, "project": project(t), "cwd": t.cwd, "machine": t.machine, "harness": t.harness, "last_ms": t.at_ms })
-    };
-    // The 8 sessions a finding counted most in, by dollars (tokens where nothing was priced).
-    let top = |m: HashMap<&str, Hit>, long: bool, project: &mut dyn FnMut(&db::StoredTurn) -> String| -> Vec<Value> {
-        let mut rows: Vec<(&str, Hit)> = m.into_iter().collect();
-        rows.sort_by(|a, b| b.1.usd.total_cmp(&a.1.usd).then(b.1.tokens.cmp(&a.1.tokens)));
-        rows.into_iter().take(8).filter_map(|(sid, h)| {
-            let mut v = at(h.last?, project);
-            v["usd"] = json!(usd2(h.usd));
-            v["tokens"] = json!(h.tokens);
-            if long {
-                v["start_context"] = json!(starts.get(sid).copied().unwrap_or(0));
-                v["peak_context"] = json!(h.peak_context);
-                v["turns"] = json!(h.times);
-                // Its climb, for a small chart: (turn, context) points, and the turn it passed its hand-off point.
-                let c = contexts.get(sid).map_or(&[][..], |c| c.as_slice());
-                v["climb"] = json!(climb(c, 60).into_iter().map(|(i, x)| [i as u64, x]).collect::<Vec<_>>());
-                v["climb_turns"] = json!(c.len());
-                v["handoff_turn"] = json!(passed.get(sid));
-            } else {
-                v["times"] = json!(h.times);
-                v["longest_wait_ms"] = json!(h.longest_wait_ms);
-            }
-            Some(v)
-        }).collect()
-    };
-    let long_by: HashMap<String, f64> = long.iter().map(|(sid, h)| (sid.to_string(), h.usd)).collect();
-    let waiting_top = top(waiting, false, &mut project);
-    let long_top = top(long, true, &mut project);
-    let examples: Vec<Value> = corrections.iter().rev().take(12).map(|&i| {
-        let t = &turns[i];
-        let mut v = at(i, &mut project);
-        v["at_ms"] = json!(t.at_ms);
-        v["prompt"] = json!(t.prompt);
-        v["correction"] = json!(t.correction);
-        v["usd"] = json!(usd2(prices::cost(&t.model, &t.usage).unwrap_or(0.0)));
-        v
-    }).collect();
-    // The 400 costliest late answers, each a dot: how long it waited, what it re-wrote, what that cost.
-    answers.sort_by(|a, b| b.2.total_cmp(&a.2));
-    let answers: Vec<Value> = answers.iter().take(400).map(|&(i, tokens, cost)| {
-        let mut v = at(i, &mut project);
-        (v["at_ms"], v["waited_ms"], v["tokens"], v["usd"]) = (json!(turns[i].at_ms), json!(turns[i].waited_ms), json!(tokens), json!(usd2(cost)));
-        v
-    }).collect();
+    }).collect()
+}
+
+/// What sessions could have delegated: totals, the 8 costliest searches, and the sessions that ran long
+/// across several areas.
+fn delegate_section(mut delegates: Vec<(usize, Delegate)>, tally: &Tally, long_by: &HashMap<String, f64>, rows: &mut Rows) -> Value {
     let (mut d_tokens, mut d_usd, mut d_turns, mut d_agents, mut d_agent_sessions, mut d_relay) = (0u64, 0f64, 0u64, 0u64, 0u64, 0u64);
     for (_, d) in &delegates {
         (d_tokens, d_usd, d_turns) = (d_tokens + d.search_tokens, d_usd + d.search_usd, d_turns + d.searches);
         (d_agents, d_agent_sessions, d_relay) = (d_agents + d.agents, d_agent_sessions + u64::from(d.agents > 0), d_relay + d.relay);
     }
     delegates.sort_by(|a, b| b.1.search_usd.total_cmp(&a.1.search_usd).then(b.1.search_tokens.cmp(&a.1.search_tokens)));
+    let turns = rows.turns;
     let searched: Vec<Value> = delegates.iter().filter_map(|(_, d)| d.search.as_ref().map(|s| (s, d))).take(8).map(|(s, d)| {
         let t = &turns[s.turn];
-        let mut v = at(s.turn, &mut project);
+        let mut v = rows.at(s.turn);
         (v["at_ms"], v["prompt"]) = (json!(t.at_ms), json!(t.prompt));
         (v["looks"], v["growth"], v["later"], v["tokens"], v["usd"], v["turns"]) = (json!(s.looks), json!(s.growth), json!(s.later), json!(d.search_tokens), json!(usd2(d.search_usd)), json!(d.searches));
         v
     }).collect();
-    // The sessions that ran long across several areas, by how many, then their re-reads past the hand-off point.
+    let (spread, spread_n) = spread_rows(&delegates, tally, long_by, rows);
+    json!({ "usd": usd2(d_usd), "tokens": d_tokens, "turns": d_turns, "sessions": searched, "spread": spread, "spread_count": spread_n,
+        "agents": d_agents, "agent_sessions": d_agent_sessions, "relay_spawns": d_relay, "relay": relay_on(),
+        "looks_min": LOOKS, "growth_min": LOOK_GROWTH, "areas_min": AREAS })
+}
+
+/// The sessions that ran long across several areas, by how many, then their re-reads past the hand-off
+/// point: the first 8 as rows, and how many there were.
+fn spread_rows(delegates: &[(usize, Delegate)], tally: &Tally, long_by: &HashMap<String, f64>, rows: &mut Rows) -> (Vec<Value>, usize) {
+    let turns = rows.turns;
     let mut spread: Vec<&(usize, Delegate)> = delegates.iter().filter(|(_, d)| !d.split.is_empty()).collect();
     let long_usd_of = |sid: &str| long_by.get(sid).copied().unwrap_or(0.0);
     spread.sort_by(|a, b| b.1.split.len().cmp(&a.1.split.len()).then(long_usd_of(&turns[b.0].session_id).total_cmp(&long_usd_of(&turns[a.0].session_id))));
     let spread_n = spread.len();
-    let spread: Vec<Value> = spread.into_iter().take(8).map(|(last, d)| {
-        let mut v = at(*last, &mut project);
+    let spread = spread.into_iter().take(8).map(|(last, d)| {
+        let mut v = rows.at(*last);
         let sid = turns[*last].session_id.as_str();
-        (v["areas"], v["usd"], v["peak_context"]) = (json!(d.split), json!(usd2(long_usd_of(sid))), json!(contexts.get(sid).and_then(|c| c.iter().max()).copied().unwrap_or(0)));
+        (v["areas"], v["usd"], v["peak_context"]) = (json!(d.split), json!(usd2(long_usd_of(sid))), json!(tally.contexts.get(sid).and_then(|c| c.iter().max()).copied().unwrap_or(0)));
         v
     }).collect();
-    let mut models: Vec<(&str, (f64, u64))> = models.into_iter().collect();
-    models.sort_by(|a, b| b.1 .0.total_cmp(&a.1 .0).then(b.1 .1.cmp(&a.1 .1)));
-    // The projects whose turns were corrected most (at least 20 turns, so one slip isn't a rate).
-    let mut corrected_by: Vec<(String, (u64, u64))> = corrected_by.into_iter().filter(|(_, (n, all))| *n > 0 && *all >= 20).collect();
-    corrected_by.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(a.0.cmp(&b.0)));
+    (spread, spread_n)
+}
+
+/// The numbers insights_summary answers with (reads the database and folders: off the main thread).
+fn summary(days: u32) -> Value {
+    let now = crate::model::now_ms();
+    let since = now.saturating_sub(u64::from(days) * 24 * 3600 * 1000);
+    let turns = db::turns_since(since);
+    let sids: Vec<&str> = turns.iter().map(|t| t.session_id.as_str()).collect::<HashSet<_>>().into_iter().collect();
+    let starts = db::start_contexts(&sids);
+    let mut rows = Rows { turns: &turns, projects: HashMap::new() };
+    let mut tally = Tally::new();
+    for (i, t) in turns.iter().enumerate() {
+        let project = rows.project(t);
+        tally.add(i, t, project, starts.get(&t.session_id).copied().unwrap_or(0));
+    }
+    let delegates = delegates_of(&turns, &starts);
+    let long_by: HashMap<String, f64> = tally.long.iter().map(|(sid, h)| (sid.to_string(), h.usd)).collect();
+    let (waiting, long) = (std::mem::take(&mut tally.waiting), std::mem::take(&mut tally.long));
+    let waiting_top = tally.top(waiting, false, &starts, &mut rows);
+    let long_top = tally.top(long, true, &starts, &mut rows);
+    let corrections = tally.corrections_json(&mut rows);
+    let waiting = tally.waiting_json(waiting_top, &mut rows);
+    let delegate = delegate_section(delegates, &tally, &long_by, &mut rows);
+    let (totals, split, models) = tally.totals_json();
     let (sent, continued) = db::handoff_counts(since);
     let insights: Vec<Value> = db::insight_counts(since).into_iter().map(|(rule, shown, acted, tokens)| json!({ "rule": rule, "shown": shown, "acted": acted, "tokens": tokens })).collect();
-    let share = |a: u64, b: u64| if b == 0 { 0.0 } else { ((a as f64 / b as f64) * 1000.0).round() / 1000.0 };
     json!({
         "days": days,
         "since_ms": since,
-        "totals": { "turns": all.turns, "sessions": all.sessions.len(), "tokens": all.tokens, "usd": usd2(all.usd), "priced": share(priced, all.tokens) },
-        "split": { "fresh": usd2(split[0]), "output": usd2(split[1]), "read": usd2(split[2].max(0.0)), "write": usd2(split[3].max(0.0)), "rewrite": usd2(split[4]), "long": usd2(split[5]) },
-        "models": models.iter().take(6).map(|(m, (usd, tokens))| json!({ "model": m, "usd": usd2(*usd), "tokens": tokens })).collect::<Vec<_>>(),
-        "by_day": by_day.into_iter().map(|(day, mut s)| json!({
-            "day": day, "turns": s.turns, "tokens": s.tokens, "usd": usd2(s.usd), "median_context": median(&mut s.contexts),
-            "corrected": s.corrected, "interrupted": s.interrupted, "errors": s.errors,
-            "wait_usd": usd2(s.wait_usd), "wait_tokens": s.wait_tokens, "long_usd": usd2(s.long_usd),
-        })).collect::<Vec<_>>(),
-        "waiting": { "usd": usd2(wait_usd), "tokens": wait_tokens, "turns": wait_turns, "share_of_writes": share(wait_tokens, writes), "sessions": waiting_top,
-            "answers": answers, "grid_usd": grid_usd.iter().map(|&x| usd2(x)).collect::<Vec<_>>(), "grid_turns": grid_n },
-        "long": { "usd": usd2(long_usd), "tokens": long_tokens, "sessions": long_top, "handoffs": { "sent": sent, "continued": continued } },
-        "corrections": { "count": all.corrected, "share": share(all.corrected, all.turns), "examples": examples,
-            "by_project": corrected_by.iter().take(6).map(|(p, (n, all))| json!({ "project": p, "count": n, "turns": all })).collect::<Vec<_>>() },
-        "delegate": { "usd": usd2(d_usd), "tokens": d_tokens, "turns": d_turns, "sessions": searched, "spread": spread, "spread_count": spread_n,
-            "agents": d_agents, "agent_sessions": d_agent_sessions, "relay_spawns": d_relay, "relay": relay_on(),
-            "looks_min": LOOKS, "growth_min": LOOK_GROWTH, "areas_min": AREAS },
+        "totals": totals,
+        "split": split,
+        "models": models,
+        "by_day": tally.by_day_json(),
+        "waiting": waiting,
+        "long": { "usd": usd2(tally.long_usd), "tokens": tally.long_tokens, "sessions": long_top, "handoffs": { "sent": sent, "continued": continued } },
+        "corrections": corrections,
+        "delegate": delegate,
         "insights": insights,
     })
 }

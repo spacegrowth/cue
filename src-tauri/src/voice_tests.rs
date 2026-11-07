@@ -156,3 +156,44 @@ fn without_cue_voice_there_is_no_dictation_through_it() {
     std::fs::remove_file(script).unwrap();
     assert!(dictation().is_none());
 }
+
+/// A lead waiting on a background agent it started earlier is asked something by voice and answers: that reply
+/// is the answer (the agent still at work was there before you spoke), not a wait for that agent to report.
+#[test]
+fn a_spoken_question_to_a_lead_waiting_on_an_older_agent_is_answered() {
+    let w = crate::testing::World::new();
+    let lead = w.session("lead");
+    lead.prompt("fix the stalls");
+    lead.transcript().background_agent("ag1", "Fix the stalls");
+    lead.stop("Started an agent on the stalls.");
+    assert_eq!(w.snapshot().state("lead"), "agent", "at its prompt, waiting on its agent");
+    let snap = w.hub().state();
+    let t = Turn { sid: "lead".into(), after: newest(&snap, "lead"), helpers: helpers_at_work(w.hub(), "lead") };
+    assert_eq!(t.helpers, 1, "its agent at work as you speak");
+    let said = message("how long will it take", true).unwrap();
+    w.hub().said_by_voice("lead", &said);
+    lead.prompt(&said);
+    assert_eq!(outcome(&w.hub().state(), &t), None, "still at it");
+    lead.stop("About an hour.");
+    assert_eq!(outcome(&w.hub().state(), &t), Some(json!({ "answer": "About an hour." })), "its reply to what you said");
+}
+
+/// A spoken ask that the lead hands to a new background agent: its "started an agent" isn't the answer; the
+/// report it gives once that agent is done is.
+#[test]
+fn a_spoken_ask_handed_to_a_new_agent_waits_for_its_report() {
+    let w = crate::testing::World::new();
+    let lead = w.session("lead");
+    lead.prompt("hi").stop("Hello.");
+    let snap = w.hub().state();
+    let t = Turn { sid: "lead".into(), after: newest(&snap, "lead"), helpers: helpers_at_work(w.hub(), "lead") };
+    let said = message("run the tests", true).unwrap();
+    lead.prompt(&said);
+    lead.transcript().background_agent("ag1", "Run the tests");
+    lead.stop("Started an agent on the tests.");
+    assert_eq!(outcome(&w.hub().state(), &t), None, "waiting on the agent it just started");
+    let note = lead.transcript().task_done("ag1");
+    lead.prompt(&note);
+    lead.stop("All tests pass.");
+    assert_eq!(outcome(&w.hub().state(), &t), Some(json!({ "answer": "All tests pass." })));
+}

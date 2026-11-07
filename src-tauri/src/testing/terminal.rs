@@ -49,6 +49,8 @@ pub struct Pane {
     pub gone: Option<bool>,
     /// Esc refused with this (the pane went between two keys).
     pub no_escape: Option<String>,
+    /// What its screen shows (None: its pane is gone).
+    pub screen: Option<String>,
 }
 
 type OnPrompt = Box<dyn Fn(&Origin, &str) + Send + Sync>;
@@ -64,12 +66,27 @@ pub struct FakeTerminal {
     /// Typings in progress right now, and the most at once (two pastes into one box would make it 2).
     typing: std::sync::atomic::AtomicUsize,
     most_at_once: std::sync::atomic::AtomicUsize,
+    /// How late every trip to it answers (`lags`).
+    lag_ms: std::sync::atomic::AtomicU64,
 }
 
 impl FakeTerminal {
     /// What an agent that takes a message does: its prompt hook (the World sends it through the socket's path).
     pub fn on_prompt(&self, f: impl Fn(&Origin, &str) + Send + Sync + 'static) {
         *crate::locking::lock(&self.on_prompt, "fake terminal hook") = Some(Arc::new(Box::new(f)));
+    }
+
+    /// Every trip to it answers `ms` late from now on, as a slow tmux server does (CUE_CHAOS_TMUX_DELAY_MS
+    /// in the soak): a real wait, on the caller's thread, as a tmux command's is.
+    pub fn lags(&self, ms: u64) {
+        self.lag_ms.store(ms, Ordering::SeqCst);
+    }
+
+    fn lag(&self) {
+        let ms = self.lag_ms.load(Ordering::SeqCst);
+        if ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+        }
     }
 
     /// Change how session `sid`'s pane behaves.
@@ -127,6 +144,7 @@ const HANG_MS: u64 = 20_000;
 
 impl Keys for FakeTerminal {
     fn type_into(&self, o: &Origin, text: &str) -> Result<String, String> {
+        self.lag();
         let now = self.typing.fetch_add(1, Ordering::SeqCst) + 1;
         self.most_at_once.fetch_max(now, Ordering::SeqCst);
         let r = self.type_now(o, text);
@@ -135,6 +153,7 @@ impl Keys for FakeTerminal {
     }
 
     fn press_enter(&self, o: &Origin) -> Result<(), String> {
+        self.lag();
         self.note(o, Key::Enter);
         if let Takes::AtEnter(n) = self.of(o).takes {
             if self.enters(&o.session_id) == n as usize {
@@ -147,6 +166,7 @@ impl Keys for FakeTerminal {
     }
 
     fn press_escape(&self, o: &Origin) -> Result<String, String> {
+        self.lag();
         if let Some(why) = self.of(o).no_escape {
             return Err(why);
         }
@@ -155,6 +175,7 @@ impl Keys for FakeTerminal {
     }
 
     fn press_keys(&self, o: &Origin, keys: &[String]) -> Result<(), String> {
+        self.lag();
         self.note(o, Key::Keys(keys.to_vec()));
         self.pane(&o.session_id, |p| {
             if p.dialog_takes_a_key {
@@ -165,15 +186,23 @@ impl Keys for FakeTerminal {
     }
 
     fn text_in_box(&self, o: &Origin, _text: &str) -> Option<bool> {
+        self.lag();
         self.of(o).in_box
     }
 
     fn dialog_on(&self, o: &Origin) -> Option<Dialog> {
+        self.lag();
         self.of(o).dialog
     }
 
     fn agent_gone(&self, o: &Origin) -> Option<bool> {
+        self.lag();
         self.of(o).gone
+    }
+
+    fn screen(&self, o: &Origin) -> Result<String, String> {
+        self.lag();
+        self.of(o).screen.ok_or_else(|| format!("fake pane {} is gone", o.session_id))
     }
 }
 

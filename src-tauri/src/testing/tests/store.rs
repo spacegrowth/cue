@@ -29,6 +29,8 @@ fn soon(done: impl Fn() -> bool) -> bool {
     false
 }
 
+/// An answer never waits on the database at all: its card moves to History and the answer returns while the
+/// database is held, and its save goes with the draw that follows (saves.rs), once the database is free.
 #[test]
 fn an_answer_lets_the_store_go_before_it_is_saved() {
     let w = World::new();
@@ -38,15 +40,16 @@ fn an_answer_lets_the_store_go_before_it_is_saved() {
     let release = hold_db();
     let id = ask.id.clone();
     let answering = w.client().spawn(move |c| c.ask(json!({"type": "respond", "id": id, "decision": {"behavior": "allow"}})));
-    // The card moves to History in the store while its save waits on the database: the store is free to look at.
+    // The card moves to History in the store while the database is held: the store is free to look at.
     let hub = w.hub().clone();
     let moved = soon(|| hub.get(&ask.id).is_some_and(|i| i.status == "answered"));
-    let saving = !answering.is_finished();
+    let answered = soon(|| answering.is_finished());
     release.send(()).unwrap();
     assert!(moved, "the store was let go before the save");
-    assert!(saving, "the answer was still waiting on the database meanwhile");
+    assert!(answered, "the answer came back with the database still held");
     assert_eq!(answering.join().unwrap(), json!({"ok": true}));
-    assert!(crate::db::history(50).iter().any(|i| i.id == ask.id && i.status == "answered"), "saved once the database was free");
+    w.settle();
+    assert!(crate::db::history(50).iter().any(|i| i.id == ask.id && i.status == "answered"), "saved by the draw once the database was free");
 }
 
 #[test]
@@ -178,4 +181,16 @@ fn an_answer_saved_as_its_session_is_deleted_stays_deleted() {
         purging.join().unwrap();
         assert!(crate::db::history(500).iter().all(|i| i.id != ask.id), "{sid}: its answer came back after it was deleted");
     }
+}
+
+/// A live session deleted: its end (which the deletion caused) is never saved by the draw after, so it doesn't
+/// come back under Closed, in the window or after a relaunch.
+#[test]
+fn a_live_session_deleted_doesnt_come_back_under_closed() {
+    let w = World::new();
+    w.session("a").prompt("fix it");
+    w.hub().purge("a");
+    w.settle();
+    assert!(crate::db::ended_session("a").is_none(), "saved as ended after it was deleted");
+    assert!(w.hub().closed(3_600_000, 50).iter().all(|s| s["session_id"] != "a"), "shown under Closed");
 }

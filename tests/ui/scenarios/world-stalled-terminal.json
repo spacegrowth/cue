@@ -1,7 +1,6 @@
 {
   "about": {},
   "ahead_watch": [],
-  "answers": [],
   "branches": {
     "/work/data-pipeline": "",
     "/work/web-app": ""
@@ -358,6 +357,64 @@
     "tokens": 0,
     "tracked": 0,
     "usd": 0.0
+  },
+  "today": {
+    "allowed": 0,
+    "answered": 0,
+    "denied": 0,
+    "hours": [
+      {
+        "from_ms": 1793944800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793948400000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793952000000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793955600000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793959200000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793962800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793966400000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793970000000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793973600000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793977200000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793980800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793984400000,
+        "n": 0
+      }
+    ],
+    "longest": null,
+    "median_wait_ms": null,
+    "replied": 0
   },
   "unreachable": [],
   "usage": null,
