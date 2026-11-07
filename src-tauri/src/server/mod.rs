@@ -203,6 +203,10 @@ async fn handle(hub: Arc<Hub>, stream: UnixStream) -> std::io::Result<()> {
     if let (ClientMsg::List, Some(state)) = (&msg, hub.kept_state()) {
         return send(&mut w, state).await;
     }
+    // So is the probe: counters only.
+    if let ClientMsg::Probe = msg {
+        return send(&mut w, inbound::probe()).await;
+    }
     // A control message is told why its hub call never ran; anything else just ends.
     let tells = matches!(msg, ClientMsg::Focus { .. } | ClientMsg::Reply { .. } | ClientMsg::SendTo { .. } | ClientMsg::Interrupt { .. });
     let outcome = match on_hub(&hub, move |h| inbound::apply(h, msg, peer)).await {

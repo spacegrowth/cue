@@ -1,4 +1,5 @@
-//! `cargo run -p xtask -- <inventory|check|sizes> [--repo <path>]` (in src-tauri). See lib.rs.
+//! `cargo run -p xtask -- <inventory|check|sizes> [--repo <path>]`, or `soak-report <run.json>…` (in
+//! src-tauri). See lib.rs.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -13,6 +14,9 @@ fn main() -> ExitCode {
         None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
     };
     let Some(command) = args.first() else { return usage() };
+    if command == "soak-report" {
+        return soak_report(&args[1..]);
+    }
     let outcome = match xtask::run(&repo, &repo.join(xtask::ALLOW)) {
         Ok(o) => o,
         Err(e) => {
@@ -53,7 +57,22 @@ fn write(repo: &std::path::Path, outcome: &xtask::Outcome) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// The soak's page for the runs measured in `files`; a failure if any detector failed.
+fn soak_report(files: &[String]) -> ExitCode {
+    let runs: Result<Vec<_>, _> = files.iter().map(|f| xtask::soak::Run::read(std::path::Path::new(f))).collect();
+    let runs = match runs {
+        Ok(r) if !r.is_empty() => r,
+        Ok(_) => return usage(),
+        Err(e) => {
+            eprintln!("xtask: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    print!("{}", xtask::soak::page(&runs));
+    if runs.iter().all(|r| r.failures().is_empty()) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
 fn usage() -> ExitCode {
-    eprintln!("usage: cargo run -p xtask -- <inventory|check|sizes> [--repo <path>]");
+    eprintln!("usage: cargo run -p xtask -- <inventory|check|sizes> [--repo <path>] | soak-report <run.json>…");
     ExitCode::FAILURE
 }

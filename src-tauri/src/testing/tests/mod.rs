@@ -14,6 +14,7 @@ mod machine_stream;
 mod machines;
 mod notifications;
 mod parking;
+mod probe;
 mod redraw;
 mod relaunch;
 mod relay_edges;

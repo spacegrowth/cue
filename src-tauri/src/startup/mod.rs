@@ -51,6 +51,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Actions (actions/): the window hears when a project's change, and ones still running are watched.
     actions::start(app.handle().clone());
     settle_folder_and_hooks();
+    // The soak's chaos knobs that run on their own (debug builds, when set).
+    crate::chaos::start();
     let hub = Arc::new(Hub::new(Some(app.handle().clone())));
     app.manage(hub.clone());
     quit::on_signals(app.handle().clone());

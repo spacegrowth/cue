@@ -362,13 +362,11 @@ fn restart_with(h: &Arc<Hub>, session_id: &str, mcp: bool) -> Result<String, Str
 fn restart_ends_when_running(h: Arc<Hub>, session_id: String) {
     let here = h.session_origin(&session_id).is_some_and(|o| o.machine.is_empty() && o.harness == "claude");
     std::thread::spawn(move || {
-        let until = crate::model::now_ms() + 20_000;
-        while here && crate::model::now_ms() < until {
-            live::refresh();
-            if live::claude().iter().any(|q| q.session_id == session_id) {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(300));
+        if here {
+            crate::clock::within(20_000, 300, || {
+                live::refresh();
+                live::claude().iter().any(|q| q.session_id == session_id)
+            });
         }
         h.restart_end(&session_id, None);
     });

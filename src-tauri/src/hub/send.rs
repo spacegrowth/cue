@@ -3,6 +3,7 @@
 
 use super::*;
 use super::history::{first_line, push_history};
+use crate::clock::now_mono_ms as mono_ms;
 
 /// How long a message waits for the one before it to finish being typed into the same session. Typing one
 /// takes seconds (up to ~25 with its checks); longer means that one is stuck, and this fails instead of
@@ -11,12 +12,13 @@ const TURN_WAIT_MS: u64 = 45_000;
 
 /// This session's typing turn (see Hub::typing), or an error once the one before has held it for TURN_WAIT.
 fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
-    let until = now_ms() + TURN_WAIT_MS;
+    // A loop of its own rather than clock::within: the lock lint follows the gate out of a plain return.
+    let until = mono_ms() + TURN_WAIT_MS;
     loop {
         match gate.try_lock() {
             Ok(g) => return Ok(g),
             Err(std::sync::TryLockError::Poisoned(e)) => return Ok(e.into_inner()),
-            Err(std::sync::TryLockError::WouldBlock) if now_ms() < until => crate::clock::sleep_ms(100),
+            Err(std::sync::TryLockError::WouldBlock) if mono_ms() < until => crate::clock::sleep_ms(100),
             Err(std::sync::TryLockError::WouldBlock) => return Err("the message before this one is still being typed into its terminal (stuck?): try again in a moment".into()),
         }
     }
@@ -75,12 +77,12 @@ impl Hub {
 
     /// Keep looking, off this thread, for the pending message to be taken (`confirm`).
     pub(super) fn confirm_later(&self, sid: String, origin: Origin, text: String, cmd_before: Option<usize>, t0: u64) {
-        self.look_later(Watch { sid, origin, text, cmd_before, t0, start: now_ms(), late: false, enters: 0, last_enter: 0, seen_in_box: 0 });
+        self.look_later(Watch { sid, origin, text, cmd_before, t0, start: mono_ms(), late: false, enters: 0, last_enter: None, seen_in_box: 0 });
     }
 
     /// The watch's next look (`confirm`): every 2 s at first, every 10 s once it's late.
     fn look_later(&self, mut w: Watch) {
-        w.late = now_ms().saturating_sub(w.start) >= PENDING_MS;
+        w.late = mono_ms().saturating_sub(w.start) >= PENDING_MS;
         let after = if w.late { LATE_EVERY_MS } else { 2000 };
         self.later(after, move |h| h.confirm(w));
     }
@@ -112,7 +114,7 @@ impl Hub {
             self.write(|st| st.sessions.mark_unsent(&w.sid, &w.text, "its pane shows a shell prompt, not the agent"));
             return self.changed();
         }
-        if now_ms().saturating_sub(w.start) >= LATE_MS {
+        if mono_ms().saturating_sub(w.start) >= LATE_MS {
             self.write(|st| {
                 st.sessions.set_pending(&w.sid, &w.text, false);
                 st.sessions.note_delivery(&w.sid, &w.text, "no word from it: Cue stopped looking");
@@ -130,13 +132,14 @@ impl Hub {
             Some(true) => {
                 w.seen_in_box += 1;
                 if late && w.seen_in_box >= 2 {
-                    return Some(format!("still in its box after {}s", now_ms().saturating_sub(w.start) / 1000));
+                    return Some(format!("still in its box after {}s", mono_ms().saturating_sub(w.start) / 1000));
                 }
-                if w.enters < ENTER_AGAIN && now_ms().saturating_sub(w.last_enter) >= 3000 && self.keys().dialog_on(&w.origin).is_none() {
+                let enter_due = w.last_enter.is_none_or(|t| mono_ms().saturating_sub(t) >= 3000);
+                if w.enters < ENTER_AGAIN && enter_due && self.keys().dialog_on(&w.origin).is_none() {
                     let _ = self.keys().press_enter(&w.origin);
                     self.write(|st| st.sessions.note_delivery(&w.sid, &w.text, "Enter again: it was still in its box"));
                     w.enters += 1;
-                    w.last_enter = now_ms();
+                    w.last_enter = Some(mono_ms());
                 }
             }
             Some(false) => w.seen_in_box = 0,
@@ -529,14 +532,7 @@ impl Hub {
     }
 
     fn wait_active(&self, session_id: &str, since: u64, timeout_ms: u64) -> bool {
-        let end = now_ms() + timeout_ms;
-        while now_ms() < end {
-            if self.read(|st| st.active_at.get(session_id).is_some_and(|t| *t >= since)) {
-                return true;
-            }
-            crate::clock::sleep_ms(150);
-        }
-        false
+        crate::clock::within(timeout_ms, 150, || self.read(|st| st.active_at.get(session_id).is_some_and(|t| *t >= since)))
     }
 
     /// A Claude Code turn just ended: type the rename it missed while busy (after its Stop hooks settle).
@@ -650,12 +646,12 @@ struct Watch {
     cmd_before: Option<usize>,
     /// When it was typed.
     t0: u64,
-    /// When the watch started.
+    /// When the watch started, by the forward-only clock (as `last_enter`).
     start: u64,
     /// Past PENDING_MS when this look was scheduled: from then on only a verdict or LATE_MS ends the watch.
     late: bool,
     enters: u32,
-    last_enter: u64,
+    last_enter: Option<u64>,
     /// Looks in a row that saw it still in its box.
     seen_in_box: u32,
 }

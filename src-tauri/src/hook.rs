@@ -428,7 +428,7 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
 
 /// Whether a pending ask keeps trying to reach Cue. Not running at the first try: stay out of the way (the
 /// agent shows its own prompt). Gone after it was reached (restarting): tried again for reconnect_for_ms()
-/// from when it went, by Cue's clock.
+/// from when it went, by Cue's forward-only clock.
 #[derive(Default)]
 struct Reconnect {
     reached: bool,
@@ -447,7 +447,7 @@ impl Reconnect {
         if !self.reached {
             return false;
         }
-        let now = crate::clock::now_ms();
+        let now = crate::clock::now_mono_ms();
         let since = *self.gone_since.get_or_insert(now);
         now.saturating_sub(since) <= reconnect_for_ms()
     }

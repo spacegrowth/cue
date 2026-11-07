@@ -32,6 +32,7 @@ const TAIL_BYTES: u64 = 1024 * 1024;
 
 /// Read from `from` to EOF; drop a partial first line when starting mid-file.
 fn read_from(path: &str, from: u64) -> Option<String> {
+    crate::chaos::pause(crate::chaos::Knob::FsDelayMs);
     let mut f = File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
     let start = from.min(len);

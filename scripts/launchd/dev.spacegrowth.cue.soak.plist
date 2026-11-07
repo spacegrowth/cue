@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The nightly soak at 03:00 (docs/dev/soak.md). A template: __REPO__ and __HOME__ are filled in when it's
+     installed into ~/Library/LaunchAgents, which only you do (docs/dev/soak.md, "Turning the nightly run on"). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.spacegrowth.cue.soak</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/soak-nightly.sh</string>
+    <string>60</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd's PATH has none of these: cargo, node and tmux (Homebrew). -->
+    <key>PATH</key>
+    <string>__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/Cue/soak/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/Cue/soak/launchd.log</string>
+</dict>
+</plist>

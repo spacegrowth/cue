@@ -121,6 +121,7 @@ impl Feed {
 
     /// Read this log's new lines; true when anything shown changed.
     fn read_new(&mut self) -> bool {
+        crate::chaos::pause(crate::chaos::Knob::FsDelayMs);
         let Ok(mut file) = std::fs::File::open(&self.path) else { return false };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
         let mut changed = false;

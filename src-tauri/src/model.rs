@@ -167,6 +167,9 @@ pub enum ClientMsg {
     },
     /// Control: snapshot of everything.
     List,
+    /// Control: how Cue is holding up (locking::stats): the main thread's answer times, waits for busy
+    /// locks, reentries, resident memory. What the soak harness reads.
+    Probe,
     /// Control: answer an item (what the UI does; also used by tests and cue-ctl).
     Respond { id: String, decision: Decision },
     /// Control: jump to an item's terminal.

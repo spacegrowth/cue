@@ -23,6 +23,7 @@ fn service() -> Option<Retained<AnyObject>> {
 /// On, or waiting for you to allow it in System Settings (macOS counts both as "will open"). Asked of macOS
 /// now, an XPC round trip: Settings reads it from mac.rs.
 pub fn enabled() -> bool {
+    crate::chaos::pause(crate::chaos::Knob::XpcDelayMs);
     service().is_some_and(|s| matches!(unsafe { msg_send![&s, status] }, ENABLED | NEEDS_APPROVAL))
 }
 

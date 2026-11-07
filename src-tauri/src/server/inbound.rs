@@ -62,6 +62,7 @@ pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
             Outcome::Quiet
         }
         ClientMsg::List => Outcome::Say(hub.state()),
+        ClientMsg::Probe => Outcome::Say(probe()),
         ClientMsg::Respond { id, decision } => Outcome::Say(json!({"ok": hub.respond(&id, decision)})),
         ClientMsg::Focus { id } => Outcome::Say(told(Ok(go_to(hub, &id)))),
         ClientMsg::Reply { id, text, images } => Outcome::Say(told(Ok(hub.reply(&id, &text, &images)))),
@@ -70,6 +71,13 @@ pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
         ClientMsg::Subscribe { origin, commands } => subscribe(hub, origin, commands, peer),
         ClientMsg::Resolved { .. } | ClientMsg::Commands { .. } => Outcome::Quiet,
     }
+}
+
+/// A probe's answer: how Cue is holding up (locking::stats), and the chaos knobs it runs under.
+pub fn probe() -> Value {
+    let mut v = crate::locking::stats::probe();
+    v["chaos"] = crate::chaos::named().into_iter().map(|(k, n)| (k.to_string(), json!(n))).collect::<serde_json::Map<_, _>>().into();
+    v
 }
 
 /// How a control message went (`r`: the hub call's outcome, or why it never ran), as its client is told.

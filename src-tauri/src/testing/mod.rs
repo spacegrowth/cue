@@ -19,6 +19,7 @@ mod process;
 pub(crate) mod sandbox;
 mod served;
 mod snap;
+mod soak;
 mod ssh;
 mod stall;
 mod terminal;
