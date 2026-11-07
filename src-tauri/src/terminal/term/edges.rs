@@ -45,6 +45,11 @@ impl Seen {
     }
 }
 
+/// An open has joined `sid`'s opening in flight and waits on it.
+fn has_joiner(sid: &str) -> bool {
+    crate::locking::lock(open_terms(), "open_terms").opening.get(sid).is_some_and(|p| !crate::locking::lock(&p.0, "term opening").waiting.is_empty())
+}
+
 fn sh(script: &str) -> CommandBuilder {
     let mut c = CommandBuilder::new("/bin/sh");
     c.args(["-c", script]);
@@ -115,7 +120,7 @@ fn an_open_that_joined_one_in_flight_gets_its_own_size() {
     started.recv().unwrap();
     let b = t.clone();
     let joiner = std::thread::spawn(move || once(&b, 50, 7, || panic!("joined: never launches its own")));
-    assert!(until(|| crate::locking::lock(open_terms(), "open_terms").opening.get(&t).is_some_and(|p| !crate::locking::lock(&p.0, "term opening").waiting.is_empty())));
+    assert!(until(|| has_joiner(&t)));
     go.send(()).unwrap();
     assert_eq!(first.join().unwrap(), joiner.join().unwrap());
     assert_eq!(size(&t), (50, 7), "the later open's size, not the first's");
@@ -139,7 +144,7 @@ fn an_opening_that_fails_tells_the_open_waiting_on_it_and_the_next_open_starts_a
     started.recv().unwrap();
     let b = t.clone();
     let joiner = std::thread::spawn(move || once(&b, 20, 4, || panic!("joined: never launches its own")));
-    assert!(until(|| crate::locking::lock(open_terms(), "open_terms").opening.get(&t).is_some_and(|p| !crate::locking::lock(&p.0, "term opening").waiting.is_empty())));
+    assert!(until(|| has_joiner(&t)));
     go.send(()).unwrap();
     assert_eq!(first.join().unwrap(), Err("tmux pane %5 is gone".into()));
     assert_eq!(joiner.join().unwrap(), Err("tmux pane %5 is gone".into()), "the same answer");
@@ -282,4 +287,67 @@ fn a_pane_whose_client_exits_at_once_opens_and_then_ends() {
     let gen = open_with(&t, "%5", None, 80, 12, seen.out()).unwrap();
     assert!(until(|| seen.ended() == Some(gen)), "the window hears it ended: {:?}", seen.text());
     close(&t);
+}
+
+/// An opening of `sid` held mid-launch until the returned sender is dropped or sent to; its thread.
+fn held_opening(sid: &str) -> (std::sync::mpsc::Sender<()>, std::thread::JoinHandle<Result<u64, String>>) {
+    let (started_tx, started) = std::sync::mpsc::channel();
+    let (go, wait) = std::sync::mpsc::channel::<()>();
+    let a = sid.to_string();
+    let t = std::thread::spawn(move || {
+        once(&a, 20, 4, || {
+            started_tx.send(()).unwrap();
+            let _ = wait.recv();
+            fake(&Arc::new(M::new(vec![])), 0)
+        })
+    });
+    started.recv().unwrap();
+    (go, t)
+}
+
+#[test]
+fn typing_or_resizing_a_terminal_still_opening_is_refused_at_once() {
+    let t = sid("midopen");
+    let (go, opening) = held_opening(&t);
+    let (a, b) = (t.clone(), t.clone());
+    assert_eq!(within(500, move || type_in(&a, "x")), Some(Err("its terminal isn't open".into())));
+    assert_eq!(within(500, move || resize(&b, 80, 24)), Some(Err("its terminal isn't open".into())));
+    drop(go);
+    opening.join().unwrap().unwrap();
+    close(&t);
+}
+
+#[test]
+fn one_sessions_slow_opening_holds_up_no_other_sessions_open() {
+    let (slow, quick) = (sid("slowopen"), sid("quickopen"));
+    let (go, opening) = held_opening(&slow);
+    let q = quick.clone();
+    let starts = Arc::new(M::new(vec![]));
+    assert!(matches!(within(5_000, move || once(&q, 20, 4, || fake(&starts, 0))), Some(Ok(_))), "not behind the other's launch");
+    drop(go);
+    opening.join().unwrap().unwrap();
+    close(&slow);
+    close(&quick);
+}
+
+#[test]
+fn a_command_that_cant_start_fails_its_opening_and_leaves_nothing_in_flight() {
+    let t = sid("nocmd");
+    let err = spawn(&t, CommandBuilder::new("/no/such/shell"), 80, 12, |_| {}).unwrap_err();
+    assert!(!err.is_empty());
+    assert!(!crate::locking::lock(open_terms(), "open_terms").opening.contains_key(&t));
+    assert_eq!(type_in(&t, "x"), Err("its terminal isn't open".into()));
+}
+
+#[test]
+fn the_open_terminals_are_listed_by_their_ids_prefix_only() {
+    let base = sid("fg");
+    let (mine, other) = (format!("{base}-shell-1"), format!("{base}x-other"));
+    let pid = record(&mine, sleeper(), None);
+    record(&other, sleeper(), None);
+    let listed = foreground(&format!("{base}-shell-"));
+    assert_eq!(listed.len(), 1, "{listed:?}");
+    assert_eq!((listed[0].0.as_str(), listed[0].1), (mine.as_str(), Some(pid)));
+    close(&mine);
+    close(&other);
 }
