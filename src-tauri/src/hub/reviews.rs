@@ -11,47 +11,64 @@ const FINDING_LINES: usize = 10;
 /// "in review" stops showing after this long even if the executor still reads as done.
 const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
 
+/// What Review does with a review (`take_review`).
+enum Taken {
+    /// Refused, or nothing to do: what to say.
+    Answer(Result<String, String>),
+    /// Behind its busy lead (why it's busy), to be saved with the queue.
+    Queued(QueuedReview, String),
+    /// Its lead is free: typed in now.
+    Send,
+}
+
 impl Hub {
-    /// Review, tapped: type `text` into the lead now. Only one review at a time per lead (two typed into
-    /// a busy lead can run together as one message), so while it's busy this refuses and says with what;
-    /// you tap Review again once it's free. Cue never types a review you didn't just ask for.
     /// Review: typed into its lead now if the lead is free, else queued (in order, saved) and sent
     /// the moment it is (see `drain_reviews`). Never refused for being busy.
     pub fn review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
-        {
-            let mut st = self.st();
-            if st.review_sent.contains_key(exec) {
-                return Err("its lead is already reviewing it".into());
-            }
-            if st.review_queue.iter().any(|q| q.exec == exec) {
-                return Ok("Already queued: it goes when its lead is free".into());
-            }
-            // A review of this packet already ran (relay saved it or ledgered it): a second one is the same work twice.
-            if crate::leads::is_reviewed(exec) {
-                return Ok("Its lead already reviewed this report".into());
-            }
-            // Behind another queued review, or the lead is busy: queue it.
-            let ahead = st.review_queue.iter().any(|q| q.lead == lead);
-            if let Some(why) = Self::lead_busy(&st, lead, now_ms()).or_else(|| ahead.then(|| "reviewing".to_string())) {
-                let q = QueuedReview { exec: exec.into(), lead: lead.into(), text: text.into(), at_ms: now_ms() };
+        match self.write(|st| Self::take_review(st, lead, exec, text, now_ms())) {
+            Taken::Answer(r) => r,
+            Taken::Queued(q, why) => {
                 crate::db::queue_review(&q.exec, &q.lead, &q.text, q.at_ms);
-                st.review_queue.push(q);
-                drop(st);
                 self.changed();
-                return Ok(format!("Queued: its lead is {why}, Cue sends it when it's free"));
+                Ok(format!("Queued: its lead is {why}, Cue sends it when it's free"))
             }
-            st.review_sent.insert(exec.to_string(), (lead.to_string(), now_ms()));
-            st.review_last.insert(lead.to_string(), now_ms());
+            Taken::Send => {
+                self.changed(); // "in review" shows now; typing it in takes a moment
+                self.send_review(lead, exec, text)
+            }
         }
-        self.changed(); // "in review" shows now; typing it in takes a moment
-        self.send_review(lead, exec, text)
+    }
+
+    /// What Review does with `exec`'s review, decided and noted in the store: refused or already done, queued
+    /// behind its busy lead, or sent now.
+    fn take_review(st: &mut Store, lead: &str, exec: &str, text: &str, now: u64) -> Taken {
+        if st.review_sent.contains_key(exec) {
+            return Taken::Answer(Err("its lead is already reviewing it".into()));
+        }
+        if st.review_queue.iter().any(|q| q.exec == exec) {
+            return Taken::Answer(Ok("Already queued: it goes when its lead is free".into()));
+        }
+        // A review of this packet already ran (relay saved it or ledgered it): a second one is the same work twice.
+        if crate::leads::is_reviewed(exec) {
+            return Taken::Answer(Ok("Its lead already reviewed this report".into()));
+        }
+        // Behind another queued review, or the lead is busy: queue it.
+        let ahead = st.review_queue.iter().any(|q| q.lead == lead);
+        if let Some(why) = Self::lead_busy(st, lead, now).or_else(|| ahead.then(|| "reviewing".to_string())) {
+            let q = QueuedReview { exec: exec.into(), lead: lead.into(), text: text.into(), at_ms: now };
+            st.review_queue.push(q.clone());
+            return Taken::Queued(q, why);
+        }
+        st.review_sent.insert(exec.to_string(), (lead.to_string(), now));
+        st.review_last.insert(lead.to_string(), now);
+        Taken::Send
     }
 
     fn send_review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
         match self.send_to_session(lead, text, &[], false) {
             Ok(_) => Ok(format!("Sent {text}")),
             Err(e) => {
-                self.st().review_sent.remove(exec);
+                self.write(|st| st.review_sent.remove(exec));
                 self.changed();
                 Err(e)
             }
@@ -60,7 +77,7 @@ impl Hub {
 
     /// Take a queued review back (× on its line in the lead's chat).
     pub fn unqueue_review(&self, exec: &str) {
-        self.st().review_queue.retain(|q| q.exec != exec);
+        self.write(|st| st.review_queue.retain(|q| q.exec != exec));
         crate::db::unqueue_review(exec);
         self.changed();
     }
@@ -70,37 +87,38 @@ impl Hub {
     /// until that review is done. A review whose executor is no longer waiting for one (closed, or
     /// back at work) is dropped. Blocking (typing takes a moment): call off the UI thread.
     pub fn drain_reviews(&self) {
-        let due: Vec<QueuedReview> = {
-            let mut st = self.st();
-            // Moot: no longer waiting for a review, or a review of it already ran.
-            let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec)).map(|q| q.exec.clone()).collect();
-            for e in &stale {
-                crate::db::unqueue_review(e);
-            }
-            st.review_queue.retain(|q| !stale.contains(&q.exec));
-            let now = now_ms();
-            let mut due = vec![];
-            let leads: Vec<String> = st.review_queue.iter().map(|q| q.lead.clone()).collect();
-            for lead in leads {
-                if due.iter().any(|d: &QueuedReview| d.lead == lead) || st.sessions.held(&lead).is_some() || Self::lead_busy(&st, &lead, now).is_some() {
-                    continue;
-                }
-                let Some(i) = st.review_queue.iter().position(|q| q.lead == lead) else { continue };
-                let q = st.review_queue.remove(i);
-                crate::db::unqueue_review(&q.exec);
-                st.review_sent.insert(q.exec.clone(), (lead.clone(), now));
-                st.review_last.insert(lead.clone(), now);
-                due.push(q);
-            }
-            if due.is_empty() && stale.is_empty() {
-                return;
-            }
-            due
-        };
+        let (stale, due) = self.write(|st| Self::take_due_reviews(st, now_ms()));
+        if due.is_empty() && stale.is_empty() {
+            return;
+        }
+        for exec in stale.iter().chain(due.iter().map(|q| &q.exec)) {
+            crate::db::unqueue_review(exec);
+        }
         self.changed();
         for q in due {
             let _ = self.send_review(&q.lead, &q.exec, &q.text);
         }
+    }
+
+    /// The queue's moot reviews dropped (their executors), and each free lead's next review taken off it to
+    /// send now, noted as sent.
+    fn take_due_reviews(st: &mut Store, now: u64) -> (Vec<String>, Vec<QueuedReview>) {
+        // Moot: no longer waiting for a review, or a review of it already ran.
+        let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec)).map(|q| q.exec.clone()).collect();
+        st.review_queue.retain(|q| !stale.contains(&q.exec));
+        let mut due: Vec<QueuedReview> = vec![];
+        let leads: Vec<String> = st.review_queue.iter().map(|q| q.lead.clone()).collect();
+        for lead in leads {
+            if due.iter().any(|d| d.lead == lead) || st.sessions.held(&lead).is_some() || Self::lead_busy(st, &lead, now).is_some() {
+                continue;
+            }
+            let Some(i) = st.review_queue.iter().position(|q| q.lead == lead) else { continue };
+            let q = st.review_queue.remove(i);
+            st.review_sent.insert(q.exec.clone(), (lead.clone(), now));
+            st.review_last.insert(lead, now);
+            due.push(q);
+        }
+        (stale, due)
     }
 
     /// Why a lead can't take a review right now, or None when it's free: working (a review or anything
@@ -136,7 +154,7 @@ impl Hub {
     pub fn set_aside(&self, exec: &str) -> Result<String, String> {
         let (id, packet) = crate::leads::packet_of(exec).ok_or("Cue doesn't know this executor's packet")?;
         crate::db::add_set_aside(&id, packet);
-        self.st().set_aside.insert((id, packet));
+        self.write(|st| st.set_aside.insert((id, packet)));
         self.changed();
         Ok("Set aside".into())
     }
@@ -257,22 +275,22 @@ mod tests {
             let e = crate::leads::Member { woken, reviewed, ..crate::leads::reported_exec() };
             crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), e)].into());
         };
-        let state = |hub: &Hub| Hub::reviews_view(&mut hub.st())["E"]["state"].clone();
+        let state = |hub: &Hub| hub.write(Hub::reviews_view)["E"]["state"].clone();
         exec(true, false, false);
         assert_eq!(state(&hub), "waiting", "woken but unreviewed: it waits for you");
         exec(true, false, true);
         assert_eq!(state(&hub), "auto", "its lead is on auto mode and woken");
-        hub.st().review_queue.push(QueuedReview { exec: "E".into(), lead: "L".into(), text: "r".into(), at_ms: 1 });
+        hub.write(|st| st.review_queue.push(QueuedReview { exec: "E".into(), lead: "L".into(), text: "r".into(), at_ms: 1 }));
         assert_eq!(state(&hub), "queued");
-        hub.st().review_queue.clear();
-        hub.st().review_sent.insert("E".into(), ("L".into(), now_ms()));
+        hub.write(|st| st.review_queue.clear());
+        hub.write(|st| st.review_sent.insert("E".into(), ("L".into(), now_ms())));
         assert_eq!(state(&hub), "reviewing", "Review sent");
         exec(true, true, true);
         assert_eq!(state(&hub), "reviewed", "the review ran (a saved review or relay's ledger): the in-review note is dropped");
-        assert!(hub.st().review_sent.is_empty());
+        assert!(hub.read(|st| st.review_sent.is_empty()));
         hub.set_aside("E").unwrap();
-        assert!(Hub::reviews_view(&mut hub.st()).get("E").is_none(), "set aside: no longer waiting on you");
-        assert!(Hub::new(None).st().set_aside.contains(&("ex".to_string(), 1)), "kept across a restart");
+        assert!(hub.write(Hub::reviews_view).get("E").is_none(), "set aside: no longer waiting on you");
+        assert!(Hub::new(None).read(|st| st.set_aside.contains(&("ex".to_string(), 1))), "kept across a restart");
         crate::db::reset();
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -306,33 +324,29 @@ mod tests {
         crate::db::reset();
         let hub = Hub::new(None);
         // The lead was just handed a review (it takes a moment to show as working): busy.
-        {
-            let mut st = hub.st();
+        hub.write(|st| {
             st.review_sent.insert("E0".into(), ("L".into(), now_ms()));
             st.review_last.insert("L".into(), now_ms());
-        }
+        });
         let r = hub.review("L", "E1", "/relay:review e1").unwrap();
         assert!(r.starts_with("Queued: its lead is reviewing"), "{r}");
         assert!(hub.review("L", "E1", "/relay:review e1").unwrap().starts_with("Already queued"), "twice doesn't queue it twice");
         hub.review("L", "E2", "/relay:review e2").unwrap();
-        {
-            let mut st = hub.st();
-            let q = Hub::review_queue_view(&st);
-            let names: Vec<&str> = q["L"].as_array().unwrap().iter().map(|r| r["exec"].as_str().unwrap()).collect();
-            assert_eq!(names, ["E1", "E2"], "in the order you asked");
-            crate::leads::install_index(["E1", "E2"].map(|e| (e.to_string(), crate::leads::reported_exec())).into());
-            assert_eq!(Hub::reviews_view(&mut st)["E2"]["state"], "queued");
-        }
+        let q = hub.read(Hub::review_queue_view);
+        let names: Vec<&str> = q["L"].as_array().unwrap().iter().map(|r| r["exec"].as_str().unwrap()).collect();
+        assert_eq!(names, ["E1", "E2"], "in the order you asked");
+        crate::leads::install_index(["E1", "E2"].map(|e| (e.to_string(), crate::leads::reported_exec())).into());
+        assert_eq!(hub.write(Hub::reviews_view)["E2"]["state"], "queued");
         // Saved: a restart keeps them, in order.
         let again = Hub::new(None);
-        assert_eq!(again.store.lock().unwrap().review_queue.iter().map(|q| q.exec.as_str()).collect::<Vec<_>>(), ["E1", "E2"]);
+        assert_eq!(again.read(|st| st.review_queue.iter().map(|q| q.exec.clone()).collect::<Vec<_>>()), ["E1", "E2"]);
         // × takes one back, for good.
         again.unqueue_review("E1");
-        assert_eq!(Hub::new(None).store.lock().unwrap().review_queue.len(), 1);
+        assert_eq!(Hub::new(None).read(|st| st.review_queue.len()), 1);
         // An executor no longer waiting for a review (closed, unknown to relay) is dropped, not sent.
         crate::leads::install_index(HashMap::new());
         again.drain_reviews();
-        assert!(again.store.lock().unwrap().review_queue.is_empty());
-        assert!(Hub::new(None).store.lock().unwrap().review_queue.is_empty());
+        assert!(again.read(|st| st.review_queue.is_empty()));
+        assert!(Hub::new(None).read(|st| st.review_queue.is_empty()));
     }
 }

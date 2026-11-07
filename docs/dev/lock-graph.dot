@@ -15,7 +15,6 @@ digraph locks {
   "copies" -> "WINDOWS";
   "extensions log" -> "WINDOWS";
   "open_terms" -> "pty master";
-  "the hub's store" -> "DB";
   "the hub's store" -> "INDEX";
   "the hub's store" -> "REPOS";
   "typing gate" -> "CLAUDE";

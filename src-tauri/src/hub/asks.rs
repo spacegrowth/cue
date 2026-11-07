@@ -27,14 +27,13 @@ impl Hub {
         }
         let scan_from = if origin.transcript_path.is_empty() { 0 } else { transcript::tail_offset(&origin.transcript_path) };
         let (tx, rx) = oneshot::channel();
-        let (id, title) = {
-            let mut st = self.st();
+        let (id, title) = self.write(|st| {
             // A session asking for a decision is no longer "just waiting for you".
             let sid = origin.session_id.clone();
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
             st.sessions.mark(&origin, "deciding", None);
             let thread = st.sessions.thread(&sid);
-            let mut it = Self::new_item(&mut st, &kind, origin);
+            let mut it = Self::new_item(st, &kind, origin);
             it.thread = thread;
             it.tool_name = tool_name;
             it.tool_input = tool_input;
@@ -53,7 +52,7 @@ impl Hub {
             st.items.push(it);
             st.waiters.insert(id.clone(), tx);
             (id, title)
-        };
+        });
         self.changed();
         if crate::config::flag("/notify/decisions") {
             self.notify(&id, &title.0, &title.1, "");
@@ -83,11 +82,10 @@ impl Hub {
             _ => message,
         };
         let scan_from = if path.is_empty() { 0 } else { transcript::tail_offset(&path) };
-        let (id, title) = {
-            let mut st = self.st();
+        let card = self.write(|st| {
             // Cue already shows what it's asking.
             if st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid) {
-                return;
+                return None;
             }
             // The call you allowed in Cue moments ago, still running: Claude Code's "needs your permission"
             // notice comes about six seconds after a prompt appears whether or not Cue's hook holds it,
@@ -100,13 +98,13 @@ impl Hub {
                 _ => false,
             };
             if !sure && dialog.is_none() && st.history.iter().any(|i| i.kind != "waiting" && i.origin.session_id == sid && i.resolved_ms.is_some_and(|r| now.saturating_sub(r) < ANSWERED_HERE_MS) && same_call(i)) {
-                return;
+                return None;
             }
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
             let at_prompt = st.sessions.state(&sid).as_deref() == Some("waiting");
             st.sessions.mark(&origin, "deciding", None);
             let thread = st.sessions.thread(&sid);
-            let mut it = Self::new_item(&mut st, "terminal", origin);
+            let mut it = Self::new_item(st, "terminal", origin);
             it.thread = thread;
             it.at_prompt = at_prompt;
             it.message = message;
@@ -122,8 +120,9 @@ impl Hub {
             let body = if it.tool_name.is_empty() { what } else { format!("{}: {what}", it.message) };
             let id = it.id.clone();
             st.items.push(it);
-            (id, (head, body))
-        };
+            Some((id, (head, body)))
+        });
+        let Some((id, title)) = card else { return };
         self.changed();
         if notify && crate::config::flag("/notify/decisions") {
             self.notify(&id, &title.0, &title.1, "");
@@ -149,15 +148,21 @@ impl Hub {
         }
         self.finish(id, "answered", &format!("chose {n}. {label}"));
         // A command's dialog ("/model …"): answered, it's back at its prompt, not at work.
-        if it.tool_name.is_empty() && self.st().sessions.thread(&o.session_id).iter().rev().find(|e| e.role == "you").is_some_and(|e| e.text.starts_with('/')) {
-            self.st().sessions.mark(o, "waiting", None);
+        let at_prompt = it.tool_name.is_empty() && self.write(|st| {
+            let command = st.sessions.thread(&o.session_id).iter().rev().find(|e| e.role == "you").is_some_and(|e| e.text.starts_with('/'));
+            if command {
+                st.sessions.mark(o, "waiting", None);
+            }
+            command
+        });
+        if at_prompt {
             self.changed();
         }
         Ok(format!("chose {label}"))
     }
 
     pub(super) fn clear_terminal_asks(&self, session_id: &str) {
-        let ids: Vec<String> = self.st().items.iter().filter(|i| i.kind == "terminal" && i.origin.session_id == session_id).map(|i| i.id.clone()).collect();
+        let ids: Vec<String> = self.read(|st| st.items.iter().filter(|i| i.kind == "terminal" && i.origin.session_id == session_id).map(|i| i.id.clone()).collect());
         for id in ids {
             self.finish(&id, "answered_elsewhere", "answered in the terminal");
         }
@@ -166,7 +171,7 @@ impl Hub {
     /// "Later": put a session off, or back (`on` false). Kept with the session, so anything showing
     /// Cue's state sees it.
     pub fn set_later(&self, session_id: &str, on: bool) {
-        let changed = self.st().sessions.set_later(session_id, on);
+        let changed = self.write(|st| st.sessions.set_later(session_id, on));
         if changed {
             self.changed();
         }
@@ -175,10 +180,7 @@ impl Hub {
     /// "Tell me": be told when this turn is done, or not (`on` false). Only while it's at it (working, or
     /// waiting on its background agents).
     pub fn set_watch(&self, session_id: &str, on: bool) {
-        let changed = {
-            let mut st = self.st();
-            (!on || st.sessions.turn_started(session_id).is_some()) && st.sessions.set_watch(session_id, on)
-        };
+        let changed = self.write(|st| (!on || st.sessions.turn_started(session_id).is_some()) && st.sessions.set_watch(session_id, on));
         if changed {
             self.changed();
         }
@@ -187,27 +189,26 @@ impl Hub {
     /// Star a session (you're following it), or unstar it. Kept with the session, like Later; a parked
     /// one keeps it in its saved record, so it stays under Starred while parked and after it's resumed.
     pub fn set_starred(&self, session_id: &str, on: bool) {
-        let changed = {
-            let mut st = self.st();
+        let changed = self.write(|st| {
             if st.sessions.set_starred(session_id, on) {
-                true
-            } else if let Some(p) = st.parked.iter_mut().find(|p| p.session.origin.session_id == session_id && (p.session.starred_ms > 0) != on) {
-                p.session.starred_ms = if on { now_ms() } else { 0 };
-                crate::db::park(p);
-                true
-            } else {
-                false
+                return Starred::Live;
             }
-        };
-        if changed {
-            self.changed();
+            let Some(p) = st.parked.iter_mut().find(|p| p.session.origin.session_id == session_id && (p.session.starred_ms > 0) != on) else { return Starred::Unchanged };
+            p.session.starred_ms = if on { now_ms() } else { 0 };
+            Starred::Parked(p.clone())
+        });
+        match changed {
+            Starred::Unchanged => return,
+            Starred::Live => {}
+            Starred::Parked(p) => crate::db::park(&p),
         }
+        self.changed();
     }
 
     /// Answer from the window (or cue-ctl). False if the item is no longer pending.
     pub fn respond(&self, id: &str, d: Decision) -> bool {
         let outcome = describe(&d);
-        let tx = self.st().waiters.remove(id);
+        let tx = self.write(|st| st.waiters.remove(id));
         match tx {
             Some(tx) => {
                 let delivered = tx.send(Reply::Decision(d)).is_ok();
@@ -220,12 +221,11 @@ impl Hub {
 
     /// Move an item to history. Any still-open connection is told to stand down.
     pub fn finish(&self, id: &str, status: &str, outcome: &str) {
-        {
-            let mut st = self.st();
+        let answered = self.write(|st| {
             if let Some(tx) = st.waiters.remove(id) {
                 let _ = tx.send(Reply::Cancel(outcome.to_string()));
             }
-            let Some(pos) = st.items.iter().position(|i| i.id == id) else { return };
+            let pos = st.items.iter().position(|i| i.id == id)?;
             let mut it = st.items.remove(pos);
             // An answered permission or question means the agent is back at work. A command's dialog
             // answered at its prompt starts no turn (no Stop would ever come): back to its prompt.
@@ -236,14 +236,16 @@ impl Hub {
             it.status = status.into();
             it.outcome = outcome.into();
             it.resolved_ms = Some(now_ms());
-            push_history(&mut st, it);
-        }
+            Some(push_history(st, it))
+        });
+        let Some(answered) = answered else { return };
+        answered.save();
         self.changed();
     }
 
     /// Drop a "waiting" card (or give up on a stuck request) from the window.
     pub fn dismiss(&self, id: &str) {
-        let is_waiting = self.st().items.iter().any(|i| i.id == id && i.kind == "waiting");
+        let is_waiting = self.read(|st| st.items.iter().any(|i| i.id == id && i.kind == "waiting"));
         if is_waiting {
             self.remove_waiting(id);
         } else {
@@ -254,28 +256,28 @@ impl Hub {
     /// A waiting card goes to the end of the queue: from now on it sorts by back_ms, so every card
     /// still on its original order comes first. Its age stays when the turn finished.
     pub fn send_to_back(&self, id: &str) -> Result<(), String> {
-        let mut st = self.st();
-        let it = st.items.iter_mut().find(|i| i.id == id).ok_or("that card is gone")?;
-        if it.kind != "waiting" || it.status != "pending" {
-            return Err("that card isn't waiting".into());
-        }
-        it.back_ms = Some(now_ms());
-        drop(st);
+        self.write(|st| {
+            let it = st.items.iter_mut().find(|i| i.id == id).ok_or("that card is gone")?;
+            if it.kind != "waiting" || it.status != "pending" {
+                return Err("that card isn't waiting".to_string());
+            }
+            it.back_ms = Some(now_ms());
+            Ok(())
+        })?;
         self.changed();
         Ok(())
     }
 
     pub fn set_tool_use_id(&self, id: &str, tool_use_id: String) {
-        let mut st = self.st();
-        if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
-            it.tool_use_id = Some(tool_use_id);
-        }
+        self.write(|st| {
+            if let Some(it) = st.items.iter_mut().find(|i| i.id == id) {
+                it.tool_use_id = Some(tool_use_id);
+            }
+        });
     }
 
     pub fn remove_waiting(&self, id: &str) {
-        let mut st = self.st();
-        st.items.retain(|i| i.id != id);
-        drop(st);
+        self.write(|st| st.items.retain(|i| i.id != id));
         self.changed();
     }
 
@@ -283,12 +285,11 @@ impl Hub {
     /// lost it), built from the session's saved thread exactly as a fresh "stopped" would.
     pub fn waiting_card(&self, origin: &Origin) {
         let sid = origin.session_id.clone();
-        let (thread, message) = {
-            let st = self.st();
+        let (thread, message) = self.read(|st| {
             let thread = st.sessions.thread(&sid);
             let message = thread.iter().rev().find(|e| e.role == "agent").map(|e| e.text.clone()).unwrap_or_default();
             (thread, message)
-        };
+        });
         let context = if !message.trim().is_empty() {
             vec![Ctx { role: "assistant".into(), text: message.clone() }]
         } else if !origin.transcript_path.is_empty() {
@@ -296,14 +297,14 @@ impl Hub {
         } else {
             vec![]
         };
-        let mut st = self.st();
-        st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
-        let mut it = Self::new_item(&mut st, "waiting", origin.clone());
-        it.thread = thread;
-        it.context = context;
-        it.message = message;
-        st.items.push(it);
-        drop(st);
+        self.write(|st| {
+            st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
+            let mut it = Self::new_item(st, "waiting", origin.clone());
+            it.thread = thread;
+            it.context = context;
+            it.message = message;
+            st.items.push(it);
+        });
         self.changed();
     }
 
@@ -318,6 +319,13 @@ impl Hub {
     pub fn show_waiting(&self) {
         self.changed();
     }
+}
+
+/// What starring changed (`Hub::set_starred`): a live session, a parked one (to be saved), or nothing.
+enum Starred {
+    Unchanged,
+    Live,
+    Parked(crate::sessions::Parked),
 }
 
 /// What a session waits for in its terminal, in Claude Code's words ("approve Bash", "dialog open").
@@ -509,13 +517,13 @@ mod tests {
         hub.event(origin.clone(), "terminal_ask", "Waiting in its terminal: dialog open".into(), vec![], "");
         let id = hub.pending().into_iter().find(|i| i.kind == "terminal").unwrap().id;
         hub.finish(&id, "answered", "chose 1");
-        assert_eq!(hub.st().sessions.state("s1").as_deref(), Some("waiting"), "not Working: a message you send now goes straight in");
+        assert_eq!(hub.read(|st| st.sessions.state("s1")).as_deref(), Some("waiting"), "not Working: a message you send now goes straight in");
         // Mid-turn, a prompt answered means it's back at work.
         hub.event(origin.clone(), "active", "fix it".into(), vec![], "");
         hub.event(origin, "terminal_ask", "A sandboxed command needs network access".into(), vec![], "");
         let id = hub.pending().into_iter().find(|i| i.kind == "terminal").unwrap().id;
         hub.finish(&id, "answered", "allowed");
-        assert_eq!(hub.st().sessions.state("s1").as_deref(), Some("working"));
+        assert_eq!(hub.read(|st| st.sessions.state("s1")).as_deref(), Some("working"));
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -529,7 +537,7 @@ mod tests {
         crate::db::reset();
         let origin = Origin { session_id: "w1".into(), harness: "claude".into(), ..Default::default() };
         let hub = Hub::new(None);
-        let watch_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.watch_ms).unwrap();
+        let watch_ms = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.watch_ms).unwrap());
         hub.event(origin.clone(), "stopped", "Done.".into(), vec![], "");
         hub.set_watch("w1", true);
         assert_eq!(watch_ms(&hub), 0, "nothing to wait for: it isn't working");
@@ -540,7 +548,7 @@ mod tests {
         assert_eq!(watch_ms(&hub), 0, "Telling you, pressed again: off");
         hub.set_watch("w1", true);
         // Waiting on its background agents (it's driven by them, as their report wakes it): still this turn.
-        hub.st().sessions.mark(&origin, "agent", None);
+        hub.write(|st| st.sessions.mark(&origin, "agent", None));
         assert!(watch_ms(&hub) > 0, "waiting on its agents: not done yet");
         hub.set_watch("w1", false);
         hub.set_watch("w1", true);
@@ -548,7 +556,7 @@ mod tests {
         hub.event(origin.clone(), "active", "<task-notification>agents reported</task-notification>".into(), vec![], "");
         hub.event(origin.clone(), "stopped", "Backfill done.".into(), vec![], "");
         assert_eq!(watch_ms(&hub), 0, "the turn ended: the ask is spent");
-        let told_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.told_ms).unwrap();
+        let told_ms = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "w1").map(|s| s.told_ms).unwrap());
         assert!(told_ms(&hub) > 0, "its chat says you were told");
         assert_eq!(hub.pending().iter().filter(|i| i.kind == "waiting").count(), 1, "its card waits as any other");
         hub.event(origin, "active", "next".into(), vec![], "");
@@ -569,7 +577,7 @@ mod tests {
         let hub = Hub::new(None);
         hub.event(origin.clone(), "stopped", "First.".into(), vec![], "");
         hub.set_later("s2", true);
-        let later_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.later_ms).unwrap();
+        let later_ms = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.later_ms).unwrap());
         let at = later_ms(&hub);
         assert!(at > 0);
         hub.set_later("s2", true);
@@ -580,7 +588,7 @@ mod tests {
         assert_eq!(hub.pending().iter().filter(|i| i.kind == "waiting").count(), 1);
         hub.set_later("s2", false);
         assert_eq!(later_ms(&hub), 0);
-        let starred_ms = |h: &Hub| h.store.lock().unwrap().sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.starred_ms).unwrap();
+        let starred_ms = |h: &Hub| h.read(|st| st.sessions.all().iter().find(|s| s.origin.session_id == "s2").map(|s| s.starred_ms).unwrap());
         hub.set_starred("s2", true);
         let at = starred_ms(&hub);
         assert!(at > 0);

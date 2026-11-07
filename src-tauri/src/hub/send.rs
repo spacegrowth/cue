@@ -32,7 +32,7 @@ impl Hub {
     fn settle_typed(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> bool {
         if text.starts_with('/') {
             if let Some(d) = self.keys().dialog_on(origin) {
-                self.st().sessions.got_message(sid, text, "it opened a dialog");
+                self.write(|st| st.sessions.got_message(sid, text, "it opened a dialog"));
                 self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
                 return true;
             }
@@ -40,16 +40,15 @@ impl Hub {
         // Not into a dialog: a bare Enter there picks whatever is highlighted.
         if self.keys().text_in_box(origin, text) == Some(true) && self.keys().dialog_on(origin).is_none() {
             let _ = self.keys().press_enter(origin);
-            self.st().sessions.note_delivery(sid, text, "Enter again: it was still in its box");
+            self.write(|st| st.sessions.note_delivery(sid, text, "Enter again: it was still in its box"));
             if self.wait_active(sid, t0, 3000) {
                 return true;
             }
         }
-        {
-            let mut st = self.st();
+        self.write(|st| {
             st.sessions.set_pending(sid, text, true);
             st.sessions.note_delivery(sid, text, "no word from it yet: Cue keeps looking");
-        }
+        });
         self.confirm_later(sid.to_string(), origin.clone(), text.to_string(), cmd_before, t0);
         false
     }
@@ -102,26 +101,26 @@ impl Hub {
     /// Undecided, the next look is scheduled (`look_later`).
     fn confirm(&self, mut w: Watch) {
         let late = w.late;
-        if !self.st().sessions.is_pending(&w.sid, &w.text) {
+        if !self.read(|st| st.sessions.is_pending(&w.sid, &w.text)) {
             return; // a witness settled it (its hook came), or it was sent again
         }
         if let Some(why) = self.witness(&w.sid, &w.origin, &w.text, w.cmd_before, w.t0) {
-            self.st().sessions.got_message(&w.sid, &w.text, why);
+            self.write(|st| st.sessions.got_message(&w.sid, &w.text, why));
             return self.changed();
         }
         if let Some(why) = self.box_verdict(&mut w, late) {
-            self.st().sessions.mark_unsent(&w.sid, &w.text, &why);
+            self.write(|st| st.sessions.mark_unsent(&w.sid, &w.text, &why));
             return self.changed();
         }
         if late && self.keys().agent_gone(&w.origin) == Some(true) {
-            self.st().sessions.mark_unsent(&w.sid, &w.text, "its pane shows a shell prompt, not the agent");
+            self.write(|st| st.sessions.mark_unsent(&w.sid, &w.text, "its pane shows a shell prompt, not the agent"));
             return self.changed();
         }
         if now_ms().saturating_sub(w.start) >= LATE_MS {
-            let mut st = self.st();
-            st.sessions.set_pending(&w.sid, &w.text, false);
-            st.sessions.note_delivery(&w.sid, &w.text, "no word from it: Cue stopped looking");
-            drop(st);
+            self.write(|st| {
+                st.sessions.set_pending(&w.sid, &w.text, false);
+                st.sessions.note_delivery(&w.sid, &w.text, "no word from it: Cue stopped looking");
+            });
             return self.changed();
         }
         self.look_later(w);
@@ -139,7 +138,7 @@ impl Hub {
                 }
                 if w.enters < ENTER_AGAIN && now_ms().saturating_sub(w.last_enter) >= 3000 && self.keys().dialog_on(&w.origin).is_none() {
                     let _ = self.keys().press_enter(&w.origin);
-                    self.st().sessions.note_delivery(&w.sid, &w.text, "Enter again: it was still in its box");
+                    self.write(|st| st.sessions.note_delivery(&w.sid, &w.text, "Enter again: it was still in its box"));
                     w.enters += 1;
                     w.last_enter = now_ms();
                 }
@@ -154,7 +153,7 @@ impl Hub {
     /// logged as run, its log with the text as your turn, its queue log with the text taken in, or a
     /// dialog the command opened. One look; None when nobody has said so yet.
     fn witness(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> Option<&'static str> {
-        let hooked = self.st().active_at.get(sid).is_some_and(|t| *t >= t0);
+        let hooked = self.read(|st| st.active_at.get(sid).is_some_and(|t| *t >= t0));
         if hooked {
             return Some("its prompt hook");
         }
@@ -173,7 +172,7 @@ impl Hub {
                 const SAID: &str = "its log has it as your turn";
                 // Settled by the log before the turn is started for it: the "active" below settles what's
                 // still open as its prompt hook's word, and the record would credit the hook.
-                self.st().sessions.got_message(sid, text, SAID);
+                self.write(|st| st.sessions.got_message(sid, text, SAID));
                 let driver = crate::leads::resolve_driver(&origin.session_id, "");
                 self.event(origin.clone(), "active", text.to_string(), vec![], &driver);
                 // A quick turn may be over already (it ended before Cue looked): finish it now, as the
@@ -204,14 +203,14 @@ impl Hub {
     /// Launch: whatever Cue was still unsure about when it last ran is asked again. Its log may have the
     /// message by now (then it's taken, verdict or no verdict), and what's still open is watched again.
     pub fn recheck_unsettled(&self) {
-        let open = self.st().sessions.unsettled();
+        let open = self.read(|st| st.sessions.unsettled());
         for (origin, e) in open {
             let sid = origin.session_id.clone();
             let logged = log_here(&origin).is_some_and(|log| crate::transcript::prompt_since(log, &e.text, e.at_ms) || crate::transcript::taken_mid_turn(log, &e.text, e.at_ms));
             if logged {
-                self.st().sessions.got_message(&sid, &e.text, "its log, read when Cue started");
+                self.write(|st| st.sessions.got_message(&sid, &e.text, "its log, read when Cue started"));
             } else if e.pending {
-                self.st().sessions.note_delivery(&sid, &e.text, "Cue started: looking again");
+                self.write(|st| st.sessions.note_delivery(&sid, &e.text, "Cue started: looking again"));
                 self.confirm_later(sid, origin, e.text, None, e.at_ms);
             }
         }
@@ -231,22 +230,20 @@ impl Hub {
         let saved = crate::uploads::save(images)?;
         // The card is stale (the session went on to another turn since): typed now, the reply would land
         // mid-turn and could be lost. Kept in Cue instead, as the box does, and sent when the turn ends.
-        let busy = {
-            let st = self.st();
-            (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid)
-        };
+        let busy = self.read(|st| (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid));
         if busy {
             let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-            let mut st = self.st();
-            st.items.retain(|i| i.id != id);
-            st.sessions.hold(&sid, text, paths.clone());
             let mut h = it;
-            h.images = paths;
+            h.images = paths.clone();
             h.status = "answered".into();
             h.outcome = format!("replied: “{}” (kept in Cue until its turn ends)", first_line(text, 200));
             h.resolved_ms = Some(now_ms());
-            push_history(&mut st, h);
-            drop(st);
+            let answered = self.write(|st| {
+                st.items.retain(|i| i.id != id);
+                st.sessions.hold(&sid, text, paths);
+                push_history(st, h)
+            });
+            answered.save();
             self.changed();
             return Ok("kept in Cue: it goes when this turn ends".into());
         }
@@ -262,24 +259,20 @@ impl Hub {
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         let pics = if saved.is_empty() { String::new() } else { format!(" + {} image{}", saved.len(), if saved.len() == 1 { "" } else { "s" }) };
         let outcome = format!("replied: “{}”{pics}{}", first_line(text, 200), if submitted { "" } else { " (typed; didn't see it submit)" });
-        {
-            let mut st = self.st();
+        self.write(|st| {
             st.items.retain(|i| i.id != id);
             st.sessions.note_sent(&sid, text, &paths, t0, crate::config::context_keep());
             st.sessions.note_delivery(&sid, text, &delivery_step(&via, submitted));
-        }
+        });
         if !submitted && !direct {
             submitted = self.settle_typed(&sid, &it.origin, text, cmd_before, t0);
         }
-        {
-            let mut st = self.st();
-            let mut h = it;
-            h.images = paths;
-            h.status = "answered".into();
-            h.outcome = outcome;
-            h.resolved_ms = Some(now_ms());
-            push_history(&mut st, h);
-        }
+        let mut h = it;
+        h.images = paths;
+        h.status = "answered".into();
+        h.outcome = outcome;
+        h.resolved_ms = Some(now_ms());
+        self.write(|st| push_history(st, h)).save();
         self.changed();
         Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
     }
@@ -291,43 +284,34 @@ impl Hub {
     /// "Send now" on a queued message: the same Esc as Stop (the agent then reads the queued message
     /// straight away), but nobody stopped anything, so no "⏹ stopped it" line and no stopped state.
     pub fn send_queued_now(&self, session_id: &str) -> Result<String, String> {
-        let (origin, direct) = {
-            let st = self.st();
-            let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
-            (st.sessions.origin(session_id), direct)
-        };
+        let (origin, direct) = self.interrupt_direct(session_id);
         if !direct {
             let origin = origin.ok_or("that session is gone")?;
             // Claude Code may already have taken it into the running turn (between two steps): Esc
             // now would interrupt the turn that's working on it ("Interrupted · What should Claude
             // do instead?") and leave it idle. Esc only while it's still waiting in the queue.
             // Codex steers a message into its turn the same way: its own log says so.
-            let queued = self.st().sessions.queued(session_id);
+            let queued = self.read(|st| st.sessions.queued(session_id));
             let (text, at) = queued.map(|q| (q.text, q.at_ms)).unwrap_or_default();
             // (Codex's on this Mac only: a machine's own path is never read from here.)
             let log = if origin.harness == "claude" { log_here(&origin).map(str::to_string) } else { (origin.machine.is_empty() && !origin.transcript_path.is_empty()).then(|| origin.transcript_path.clone()) };
             let state = log.and_then(|log| transcript::read_state(&origin.harness, &log, &text, at));
             if matches!(state, Some(transcript::Queued::Absorbed | transcript::Queued::Taken(_))) {
-                self.st().sessions.set_queued(session_id, None);
+                self.write(|st| st.sessions.set_queued(session_id, None));
                 self.changed();
                 return Ok("it already has your message: it took it in between steps".into());
             }
             self.keys().press_escape(&origin)?;
         }
-        self.st().sessions.set_queued(session_id, None); // it's reading it now
+        self.write(|st| st.sessions.set_queued(session_id, None)); // it's reading it now
         self.changed();
         Ok("sent now".into())
     }
 
     pub fn interrupt(&self, session_id: &str) -> Result<String, String> {
-        let (origin, direct) = {
-            let st = self.st();
-            let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
-            (st.sessions.origin(session_id), direct)
-        };
+        let (origin, direct) = self.interrupt_direct(session_id);
         let via = if direct { "the session directly".to_string() } else { self.keys().press_escape(&origin.clone().ok_or("that session is gone")?)? };
-        {
-            let mut st = self.st();
+        self.write(|st| {
             if let Some(o) = origin {
                 st.sessions.mark(&o, "stopped", None);
             }
@@ -336,13 +320,22 @@ impl Hub {
             }
             st.sessions.set_queued(session_id, None);
             st.sessions.note(session_id, "you", "⏹ stopped it", crate::config::context_keep());
-        }
+        });
         self.changed();
         // A message you kept for it goes now, as Claude Code sends its queue once you stop it.
-        if self.st().sessions.held(session_id).is_some() {
+        if self.read(|st| st.sessions.held(session_id).is_some()) {
             self.send_held_soon(session_id, 700);
         }
         Ok(format!("stopped via {via}"))
+    }
+
+    /// Stop or send-now, told to a session that listens directly (Pi) if one does: whether it was, and where
+    /// the session's terminal is otherwise.
+    fn interrupt_direct(&self, session_id: &str) -> (Option<Origin>, bool) {
+        self.read(|st| {
+            let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
+            (st.sessions.origin(session_id), direct)
+        })
     }
 
     /// `now`: if it's mid-turn, interrupt it first so this is handled right away (Ctrl+Enter).
@@ -363,29 +356,26 @@ impl Hub {
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
         self.set_later(session_id, false); // you wrote to it: decided
-        let (origin, busy) = {
-            let st = self.st();
+        let (origin, busy, direct) = self.read(|st| {
             // Its terminal is showing a permission prompt or a question: typing now would answer it.
             if st.sessions.state(session_id).as_deref() == Some("deciding") {
-                return Err("it's asking you something first: answer that, then send".into());
+                return Err("it's asking you something first: answer that, then send".to_string());
             }
             // Compacting counts as busy: Claude Code holds what you type until it's done (that can take a minute).
             let busy = st.sessions.state(session_id).as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;
-            (st.sessions.origin(session_id), busy)
-        };
-        // Force-send to a terminal agent: Esc first, give it a moment to stop, then type.
-        let direct = self.st().subscribers.contains_key(session_id);
+            Ok((st.sessions.origin(session_id), busy, st.subscribers.contains_key(session_id)))
+        })?;
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.)
         if busy && !now && !direct && origin.is_some() {
-            self.st().sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect());
+            self.write(|st| st.sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect()));
             self.changed();
             return Ok("kept in Cue: it goes when this turn ends".into());
         }
         let stopped = now && busy && !direct;
         let busy = if stopped {
-            self.st().stopped_to_send.insert(session_id.to_string(), now_ms());
+            self.write(|st| st.stopped_to_send.insert(session_id.to_string(), now_ms()));
             self.keys().press_escape(origin.as_ref().ok_or("that session is gone")?)?;
             crate::clock::sleep_ms(700);
             false
@@ -396,7 +386,7 @@ impl Hub {
         // Stopped before it answered, Claude Code hands the message it was on back to its box, and this one
         // is typed after it: the two go as one. A blank line first keeps them apart (an empty box drops it).
         // Its Stop button, a moment ago, does the same: the kept message sent right after goes apart too.
-        let escaped = self.st().escaped.get(session_id).is_some_and(|t| now_ms().saturating_sub(*t) < 30_000);
+        let escaped = self.read(|st| st.escaped.get(session_id).is_some_and(|t| now_ms().saturating_sub(*t) < 30_000));
         let apart = if (stopped || escaped) && origin.harness == "claude" { "\n\n" } else { "" };
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
@@ -408,8 +398,7 @@ impl Hub {
             submitted = self.wait_active(session_id, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-        {
-            let mut st = self.st();
+        self.write(|st| {
             st.sessions.note_sent(session_id, text, &paths, t0, crate::config::context_keep());
             st.sessions.note_delivery(session_id, text, &delivery_step(&via, submitted));
             if busy {
@@ -423,7 +412,7 @@ impl Hub {
             if submitted && !busy && is_command(typed, "compact") {
                 st.sessions.set_compacting(session_id, now_ms());
             }
-        }
+        });
         if !submitted && self.settle_typed(session_id, &origin, typed, cmd_before, t0) {
             submitted = true;
         }
@@ -437,13 +426,13 @@ impl Hub {
     /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
     /// can't be sent it's kept again, so nothing you wrote is lost.
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
-        let h = self.st().sessions.take_held(session_id).ok_or("nothing kept for it")?;
+        let h = self.write(|st| st.sessions.take_held(session_id)).ok_or("nothing kept for it")?;
         let saved = h.images.iter().map(|p| crate::uploads::Saved { path: p.clone(), mime: crate::uploads::mime_of(p).into() }).collect();
         self.send_saved(session_id, &h.text, saved, now).inspect_err(|e| {
-            let mut st = self.st();
-            st.sessions.hold_back(session_id, &h.text, h.images.clone());
-            st.sessions.held_failed(session_id, e);
-            drop(st);
+            self.write(|st| {
+                st.sessions.hold_back(session_id, &h.text, h.images.clone());
+                st.sessions.held_failed(session_id, e);
+            });
             self.changed();
         })
     }
@@ -474,7 +463,7 @@ impl Hub {
 
     /// The kept message, back to you (into the box, to change it): Esc, or Edit.
     pub fn unhold(&self, session_id: &str) -> Option<Exchange> {
-        let h = self.st().sessions.take_held(session_id);
+        let h = self.write(|st| st.sessions.take_held(session_id));
         if h.is_some() {
             self.changed();
         }
@@ -483,27 +472,27 @@ impl Hub {
 
     /// Hand a message (and saved images) to a session that listens directly (Pi). False if none does.
     fn send_direct(&self, session_id: &str, text: &str, saved: &[crate::uploads::Saved], now: bool) -> bool {
-        let st = self.st();
         // now: Pi takes it as a "steer", read mid-turn, instead of a follow-up after the turn.
         let msg = json!({ "type": "reply", "text": text, "images": saved, "now": now });
-        st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false)
+        self.read(|st| st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false))
     }
 
     /// What a subscribed session said its commands are (see `session_commands`).
     pub fn set_agent_commands(&self, session_id: &str, list: Vec<crate::commands::Cmd>) {
-        self.st().agent_commands.insert(session_id.to_string(), list);
+        self.write(|st| st.agent_commands.insert(session_id.to_string(), list));
     }
 
     pub fn agent_commands(&self, session_id: &str) -> Option<Vec<crate::commands::Cmd>> {
-        self.st().agent_commands.get(session_id).cloned()
+        self.read(|st| st.agent_commands.get(session_id).cloned())
     }
 
     /// Refresh: forget what the session reported and ask it again down its connection. False when
     /// it isn't connected (then there's nothing to wait for).
     pub fn ask_agent_commands(&self, session_id: &str) -> bool {
-        let mut st = self.st();
-        st.agent_commands.remove(session_id);
-        st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "commands" })).is_ok()).unwrap_or(false)
+        self.write(|st| {
+            st.agent_commands.remove(session_id);
+            st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "commands" })).is_ok()).unwrap_or(false)
+        })
     }
 
     /// Did what you typed go through? A message: the agent started a turn with it. "/name …" in Claude Code:
@@ -523,7 +512,7 @@ impl Hub {
     fn wait_active(&self, session_id: &str, since: u64, timeout_ms: u64) -> bool {
         let end = now_ms() + timeout_ms;
         while now_ms() < end {
-            if self.st().active_at.get(session_id).is_some_and(|t| *t >= since) {
+            if self.read(|st| st.active_at.get(session_id).is_some_and(|t| *t >= since)) {
                 return true;
             }
             crate::clock::sleep_ms(150);
@@ -535,11 +524,7 @@ impl Hub {
     /// Type one of the agent's own commands into its session (Compact: `/compact`; a relay lead's Hand off:
     /// `/relay:handoff`). Not mid-turn: typed then, it would land in the middle of its work.
     pub fn session_command(&self, session_id: &str, action: &str) -> Result<String, String> {
-        let (origin, state) = {
-            let st = self.st();
-            let s = st.sessions.all().into_iter().find(|s| s.origin.session_id == session_id).ok_or("that session is gone")?;
-            (s.origin.clone(), s.state.clone())
-        };
+        let (origin, state) = self.read(|st| st.sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| (s.origin, s.state))).ok_or("that session is gone")?;
         if state == "working" {
             return Err("It's working: do this when its turn ends".into());
         }
@@ -568,7 +553,7 @@ impl Hub {
             }
         }
         if action == "compact" {
-            self.st().sessions.set_compacting(session_id, now_ms());
+            self.write(|st| st.sessions.set_compacting(session_id, now_ms()));
             self.changed();
         }
         Ok(match action {
@@ -585,21 +570,20 @@ impl Hub {
         if message.trim().is_empty() {
             return;
         }
-        {
-            let mut st = self.st();
+        self.write(|st| {
             let message = crate::sessions::unwrap_pasted(message);
             st.sessions.set_prompt(session_id, &message);
             st.sessions.note(session_id, "you", &message, crate::config::context_keep());
             // The agent has this text: a message of yours Cue was still unsure about is settled by it.
             st.sessions.got_message(session_id, &message, "its prompt hook");
-        }
+        });
         self.changed();
     }
 
     /// Your message `message` to it was said by voice (its prompt hook added the line asking for a short spoken
     /// answer): its bubble says so.
     pub fn said_by_voice(&self, session_id: &str, message: &str) {
-        self.st().sessions.mark_voice(session_id, &crate::sessions::unwrap_pasted(message));
+        self.write(|st| st.sessions.mark_voice(session_id, &crate::sessions::unwrap_pasted(message)));
         self.changed();
     }
 
@@ -607,10 +591,7 @@ impl Hub {
     /// go on those bubbles, as notes.
     pub fn status_asks_from(&self, session_id: &str, transcript_path: &str) {
         let asks = crate::logs::transcript::status_asks(transcript_path);
-        let changed = {
-            let mut st = self.st();
-            asks.iter().fold(false, |c, (text, ask)| st.sessions.mark_status_ask(session_id, &crate::sessions::unwrap_pasted(text), ask) || c)
-        };
+        let changed = self.write(|st| asks.iter().fold(false, |c, (text, ask)| st.sessions.mark_status_ask(session_id, &crate::sessions::unwrap_pasted(text), ask) || c));
         if changed {
             self.changed();
         }
@@ -621,12 +602,11 @@ impl Hub {
         if body.trim().is_empty() {
             return;
         }
-        {
-            let mut st = self.st();
+        self.write(|st| {
             // The project Cue shows for the sender, else Claude's own name for it.
             let who = pid.and_then(|p| st.sessions.project_by_pid(p)).unwrap_or_else(|| if name.is_empty() { "another agent".into() } else { name.to_string() });
             st.sessions.note_peer(session_id, &who, body, crate::config::context_keep());
-        }
+        });
         self.changed();
     }
 }
@@ -741,9 +721,9 @@ mod tests {
         hub.event(origin, "active", "refactor the router".into(), vec![], "");
         assert!(hub.send_to_session("s5", "also keep the old session", &[], false).unwrap().starts_with("kept in Cue"));
         hub.send_to_session("s5", "and run the tests", &[], false).unwrap();
-        let held = |h: &Hub| h.store.lock().unwrap().sessions.held("s5");
+        let held = |h: &Hub| h.read(|st| st.sessions.held("s5"));
         assert_eq!(held(&hub).map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()), "one kept message, the second after the first");
-        assert!(hub.st().sessions.thread("s5").iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
+        assert!(hub.read(|st| st.sessions.thread("s5")).iter().all(|e| e.role != "you" || e.text == "refactor the router"), "not in the chat as sent");
         // Esc / Edit: back to you, and nothing kept any more.
         assert_eq!(hub.unhold("s5").map(|e| e.text), Some("also keep the old session\n\nand run the tests".into()));
         assert!(held(&hub).is_none() && hub.unhold("s5").is_none());

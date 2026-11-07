@@ -97,11 +97,6 @@ reason = "term::foreground asks a terminal's PTY master for its foreground proce
 
 [[lock_order]]
 from = "the hub's store"
-to = "DB"
-reason = "db::park/unpark under the store (Hub::set_starred, Hub::changed); §2.5 forbids store → DB: Phase 2 moves these writes after the store is let go"
-
-[[lock_order]]
-from = "the hub's store"
 to = "INDEX"
 reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX never takes the store"
 
@@ -188,12 +183,6 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 # External calls reachable while the hub's store is held, today. Phase 2 burns this list down (§2.3, §2.4).
 
 [[store_io]]
-holder = "hub::Hub::changed"
-effect = "db"
-site = "hub::Hub::changed"
-reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
-
-[[store_io]]
 holder = "hub::Hub::notify_full"
 effect = "fs"
 site = "config::load"
@@ -254,18 +243,6 @@ site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
 
 [[store_io]]
-holder = "hub::asks::Hub::finish"
-effect = "db"
-site = "hub::history::push_history"
-reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
-
-[[store_io]]
-holder = "hub::asks::Hub::set_starred"
-effect = "db"
-site = "hub::asks::Hub::set_starred"
-reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
-
-[[store_io]]
 holder = "hub::asks::Hub::terminal_ask_with"
 effect = "fs"
 site = "config::load"
@@ -282,18 +259,6 @@ holder = "hub::asks::Hub::waiting_card"
 effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::reviews::Hub::drain_reviews"
-effect = "db"
-site = "hub::reviews::Hub::drain_reviews"
-reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
-
-[[store_io]]
-holder = "hub::reviews::Hub::review"
-effect = "db"
-site = "hub::reviews::Hub::review"
-reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
 holder = "hub::send::Hub::interrupt"
@@ -324,12 +289,6 @@ holder = "hub::send::Hub::reply"
 effect = "fs"
 site = "config::load"
 reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::send::Hub::reply"
-effect = "db"
-site = "hub::history::push_history"
-reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
 holder = "hub::send::Hub::send_saved"
@@ -366,12 +325,6 @@ holder = "hub::sessions::Hub::started"
 effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::sessions::Hub::sweep"
-effect = "fs"
-site = "hub::sessions::written_ms"
-reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
 
 [[store_io]]
 holder = "hub::sessions::Hub::unparked"

@@ -106,17 +106,6 @@ impl NextChange {
 }
 
 #[cfg(test)]
-impl super::Hub {
-    /// Tests: the store held, as a slow or stuck hub call holds it: `held` hears once it is, and it's let go
-    /// when `release` hears (or hangs up).
-    pub(crate) fn hold_store(&self, held: std::sync::mpsc::Sender<()>, release: std::sync::mpsc::Receiver<()>) {
-        let _st = self.st();
-        let _ = held.send(());
-        let _ = release.recv();
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;

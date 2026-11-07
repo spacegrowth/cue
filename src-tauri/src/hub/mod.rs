@@ -17,6 +17,7 @@ mod reviews;
 mod send;
 mod sessions;
 mod shown;
+mod store_access;
 
 pub use history::{split_turn, summary};
 
@@ -106,6 +107,10 @@ struct Store {
     shown_seq: u64,
 }
 
+/// What `snapshot` reads files for, from the store: the session ids Cue knows, the live sessions it hasn't
+/// heard from yet, each Claude session's transcript, and every folder in play.
+type Sources = (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>);
+
 /// A restart in progress. Underneath it's a park and a resume, but the window never sees those: the
 /// session stays where it is (its record as it was before, `held`, while its agent is down), never on
 /// Parked, and its pane is covered until it's back. `step`: "stop", "start", then "load" until its agent
@@ -131,7 +136,7 @@ struct QueuedReview {
 }
 
 pub struct Hub {
-    store: Mutex<Store>,
+    store: store_access::StoreCell,
     app: Option<AppHandle>,
     /// One gate per session for typing into it: a second message waits until the first has been typed and taken
     /// (or not), so two sent at once never mix in its box (pasted A, pasted B, Enter, Enter → one prompt "AB").
@@ -159,7 +164,7 @@ impl Hub {
         st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports }
+        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports }
     }
 
     /// The session terminals, to type into and look at.
@@ -227,8 +232,7 @@ impl Hub {
             }
         }
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let n = {
-            let mut st = self.st();
+        let n = self.write(|st| {
             let open = st.subscribers.get(&origin.session_id).is_some_and(|(_, tx)| !tx.is_closed());
             if open {
                 let was = st.subscribed.get(&origin.session_id).and_then(|(o, _)| o.agent_pid);
@@ -240,43 +244,47 @@ impl Hub {
             let n = st.next_sub;
             st.subscribers.insert(origin.session_id.clone(), (n, tx));
             st.subscribed.insert(origin.session_id.clone(), (origin.clone(), now_ms()));
-            n
-        };
+            Ok(n)
+        })?;
         self.redraw();
         Ok((n, rx))
     }
 
     /// Every agent process Cue knows, by session: the sessions' own, and the ones only subscribed so far.
     pub fn agent_pids(&self) -> Vec<(String, i32)> {
-        let st = self.st();
-        let mut v = st.sessions.pids();
-        v.extend(st.subscribed.values().filter_map(|(o, _)| o.agent_pid.map(|p| (o.session_id.clone(), p))));
-        v
+        self.read(|st| {
+            let mut v = st.sessions.pids();
+            v.extend(st.subscribed.values().filter_map(|(o, _)| o.agent_pid.map(|p| (o.session_id.clone(), p))));
+            v
+        })
     }
 
     /// Drop a listener — only if it's still the same connection (a reconnect may have replaced it).
     pub fn unsubscribe(&self, session_id: &str, n: u64) {
-        let mut st = self.st();
-        if st.subscribers.get(session_id).is_some_and(|(m, _)| *m == n) {
-            st.subscribers.remove(session_id);
-            st.subscribed.remove(session_id);
-            drop(st);
+        let dropped = self.write(|st| {
+            let same = st.subscribers.get(session_id).is_some_and(|(m, _)| *m == n);
+            if same {
+                st.subscribers.remove(session_id);
+                st.subscribed.remove(session_id);
+            }
+            same
+        });
+        if dropped {
             self.redraw();
         }
     }
 
     pub fn get(&self, id: &str) -> Option<Item> {
-        let st = self.st();
-        st.items.iter().chain(st.history.iter()).find(|i| i.id == id).cloned()
+        self.read(|st| st.items.iter().chain(st.history.iter()).find(|i| i.id == id).cloned())
     }
 
     pub fn pending(&self) -> Vec<Item> {
-        self.st().items.clone()
+        self.read(|st| st.items.clone())
     }
 
     /// (session id, agent pid) for every live session — the watcher drops the ones whose agent exited.
     pub fn session_pids(&self) -> Vec<(String, i32)> {
-        self.st().sessions.pids()
+        self.read(|st| st.sessions.pids())
     }
 
     /// The window's state as last built, or built now if nothing is current (the first ask, or after a change
@@ -342,15 +350,7 @@ impl Hub {
         // for Move to project's "its folder's own"), its repository's main checkout (where + New starts), the
         // top of its checkout (where its actions are) and where Move to project would put it.
         let put = crate::config::folders_put();
-        let projects: HashMap<String, Value> = cwds.iter()
-            .map(|c| {
-                let own = crate::model::own_project(c, "");
-                let name = crate::model::project_said(c, "", &put).unwrap_or_else(|| own.clone());
-                let root = crate::live::repo_root(c).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| c.clone());
-                let top = crate::live::checkout_top(c).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| c.clone());
-                (c.clone(), json!({ "name": name, "own": own, "root": root, "top": top, "key": crate::model::put_key(c, "") }))
-            })
-            .collect();
+        let projects: HashMap<String, Value> = cwds.iter().map(|c| (c.clone(), folder_project(c, &put))).collect();
         let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
         let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
         let crew = crate::leads::view(&ids);
@@ -370,38 +370,10 @@ impl Hub {
         let settings = crate::config::effective();
         let connections = crate::config::connections();
         let usage_file = crate::usage_file::read();
-        let mut st = self.st();
-        st.shown_seq += 1;
-        let seq = st.shown_seq;
-        let reviews = Self::reviews_view(&mut st);
-        let next = Self::next_change(&st, now_ms());
-        // A session restarting stays in its place: its record from before while its agent is down, and
-        // not on Parked on the way.
-        let mut sessions = st.sessions.snapshot();
-        for (sid, r) in &st.restarting {
-            if let Some(s) = r.held.as_ref().filter(|_| !sessions.iter().any(|x| x.origin.session_id == *sid)) {
-                sessions.push(s.clone());
-            }
-        }
-        let parked: Vec<&crate::sessions::Parked> = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).collect();
-        let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len), "mcp": r.mcp }))).collect();
-        let mut snap = json!({
-            "items": st.items,
-            "history": st.history,
-            // Every answer of the last day, in brief: today's numbers count these, not the History list.
-            "answers": st.answers,
-            "sessions": sessions,
-            "parked": parked,
-            "ended": Self::ended_view(&st),
-            "restarting": restarting,
-            "restarted": st.restarted,
-            "reviews": reviews,
-            "review_queue": Self::review_queue_view(&st),
-            "unreachable": st.unreachable,
+        let (seq, next, mut snap) = self.write(Self::store_view);
+        let outside = json!({
             "crew": crew,
             "handoffs": handoffs,
-            // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
-            "insight": st.insight,
             "skill_handoffs": skill_handoffs,
             "ahead_watch": ahead_watch,
             "tasks": tasks,
@@ -415,10 +387,11 @@ impl Hub {
             "now_ms": now_ms(),
             "settings": settings,
             "connections": connections,
-            "usage": st.rates,
             "usage_file": usage_file,
         });
-        drop(st);
+        if let (Some(snap), Value::Object(outside)) = (snap.as_object_mut(), outside) {
+            snap.extend(outside);
+        }
         put_projects(&mut snap, &put);
         let moved = crate::config::moved();
         let taken = move_projects(&mut snap, &moved);
@@ -428,6 +401,43 @@ impl Hub {
             let _ = crate::config::update("project.moves", |c| Some(Value::Object(crate::config::moves_in(c).into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect())));
         }
         (seq, snap, next)
+    }
+
+    /// The snapshot's part that is the store's, taken as the next in the order snapshots are taken, and when
+    /// it next changes with time alone.
+    fn store_view(st: &mut Store) -> (u64, shown::NextChange, Value) {
+        st.shown_seq += 1;
+        let seq = st.shown_seq;
+        let reviews = Self::reviews_view(st);
+        let next = Self::next_change(st, now_ms());
+        // A session restarting stays in its place: its record from before while its agent is down, and
+        // not on Parked on the way.
+        let mut sessions = st.sessions.snapshot();
+        for (sid, r) in &st.restarting {
+            if let Some(s) = r.held.as_ref().filter(|_| !sessions.iter().any(|x| x.origin.session_id == *sid)) {
+                sessions.push(s.clone());
+            }
+        }
+        let parked: Vec<&crate::sessions::Parked> = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).collect();
+        let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len), "mcp": r.mcp }))).collect();
+        let view = json!({
+            "items": st.items,
+            "history": st.history,
+            // Every answer of the last day, in brief: today's numbers count these, not the History list.
+            "answers": st.answers,
+            "sessions": sessions,
+            "parked": parked,
+            "ended": Self::ended_view(st),
+            "restarting": restarting,
+            "restarted": st.restarted,
+            "reviews": reviews,
+            "review_queue": Self::review_queue_view(st),
+            "unreachable": st.unreachable,
+            // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
+            "insight": st.insight,
+            "usage": st.rates,
+        });
+        (seq, next, view)
     }
 
     /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each
@@ -451,8 +461,11 @@ impl Hub {
     /// For `snapshot`, under one short lock: the session ids Cue knows, the live sessions it hasn't heard
     /// from yet (quiet Claude ones from its registry, Pi ones that only subscribed), each Claude session's
     /// transcript, and every folder in play.
-    fn snapshot_sources(&self) -> (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>) {
-        let st = self.st();
+    fn snapshot_sources(&self) -> Sources {
+        self.read(Self::sources_in)
+    }
+
+    fn sources_in(st: &Store) -> Sources {
         // A restarting session's new agent shows up in Claude Code's list before Cue has its record back.
         let known: HashSet<String> = st.sessions.all().iter().map(|s| s.origin.session_id.clone()).chain(st.items.iter().map(|i| i.origin.session_id.clone())).chain(st.restarting.keys().cloned()).collect();
         let pi = st.subscribed.values().map(|(o, at)| crate::live::Quiet {
@@ -480,13 +493,6 @@ impl Hub {
     }
 
     /// This hub as the app holds it, for work handed to another thread (none in tests: no app).
-    /// The store, locked. A panic on another thread while it held the lock poisons it; what's in it is
-    /// still whole (each change is made under one lock), so Cue goes on with it rather than panicking
-    /// at every lock from then on, which would leave the window up and nothing behind it.
-    fn st(&self) -> crate::locking::Guard<'_, Store> {
-        crate::locking::lock(&self.store, "the hub's store")
-    }
-
     fn shared(&self) -> Option<Arc<Hub>> {
         self.app.as_ref().map(|a| a.state::<Arc<Hub>>().inner().clone())
     }
@@ -503,32 +509,27 @@ impl Hub {
 
     /// No window to build the new state for (tests): the next ask for it builds it.
     fn unshown(&self) {
-        let seq = self.st().shown_seq;
+        let seq = self.read(|st| st.shown_seq);
         self.shown.forget(seq);
     }
 
     fn changed(&self) {
         let Some(app) = &self.app else { return self.unshown() };
-        {
-            let mut st = self.st();
+        let (back, sessions, waiting) = self.write(|st| {
             // A parked session that's live again (you resumed it yourself, in a terminal) isn't parked.
             let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
-            if !back.is_empty() {
-                st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
-                for sid in &back {
-                    crate::db::unpark(sid);
-                }
-            }
-            // The write itself with the store unlocked: it's every session and thread, and on this
-            // thread (often the window's) nothing else must wait for it.
-            let sessions = st.sessions.all();
+            st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
             let waiting: Vec<Item> = st.items.iter().filter(|i| i.kind == "waiting").cloned().collect();
-            drop(st);
-            crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
+            (back, st.sessions.all(), waiting)
+        });
+        // The writes themselves with the store let go: it's every session and thread, and on this thread
+        // (often the window's) nothing else must wait for them.
+        for sid in &back {
+            crate::db::unpark(sid);
         }
+        crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
         let _ = app.emit("state", &*self.snapshot());
-        let (decisions, answered) = {
-            let mut st = self.st();
+        let (decisions, answered) = self.write(|st| {
             let live: HashSet<String> = st.items.iter().map(|i| i.id.clone()).collect();
             // Answered anywhere (Cue, the terminal): take the notification back.
             let answered: Vec<String> = st.notified.difference(&live).cloned().collect();
@@ -536,7 +537,7 @@ impl Hub {
                 st.notified.remove(id);
             }
             (st.items.iter().filter(|i| i.kind != "waiting").count(), answered)
-        };
+        });
         crate::notify::take_back(answered);
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.set_badge_count(if decisions > 0 { Some(decisions as i64) } else { None });
@@ -573,10 +574,7 @@ impl Hub {
         // A finished turn of a session something else is telling you about already (notify::quiet): not twice.
         // Anything that needs you (a permission, a question) and a turn you asked to be told about still come.
         if mutable && !watched && category.starts_with("turn") {
-            let sid = {
-                let st = self.st();
-                st.items.iter().find(|i| i.id == id).map(|i| i.origin.session_id.clone())
-            };
+            let sid = self.read(|st| st.items.iter().find(|i| i.id == id).map(|i| i.origin.session_id.clone()));
             if sid.is_some_and(|s| crate::notify::is_quiet(&s)) {
                 return;
             }
@@ -584,10 +582,20 @@ impl Hub {
         let note = crate::notify::Note { id: id.to_string(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
         // Noted as notified with the post handed in, under one lock: `changed` either sees neither, or sees it
         // and hands in its taking back after the post. (Taking back one that never went up costs nothing.)
-        let mut st = self.st();
-        st.notified.insert(note.id.clone());
-        crate::notify::show(app.clone(), note);
+        self.write(|st| {
+            st.notified.insert(note.id.clone());
+            crate::notify::show(app.clone(), note);
+        });
     }
+}
+
+/// A folder's project, for the snapshot (see `build_snapshot`).
+fn folder_project(cwd: &str, put: &HashMap<String, String>) -> Value {
+    let own = crate::model::own_project(cwd, "");
+    let name = crate::model::project_said(cwd, "", put).unwrap_or_else(|| own.clone());
+    let root = crate::live::repo_root(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string());
+    let top = crate::live::checkout_top(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string());
+    json!({ "name": name, "own": own, "root": root, "top": top, "key": crate::model::put_key(cwd, "") })
 }
 
 /// Every card, row, answer, parked and live entry in a folder you put in a project, or whose repository

@@ -16,11 +16,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
 | Lock declarations (static or field) | 75 |
-| Lock acquisitions | 354 |
-| Lock-graph edges | 31 |
+| Lock acquisitions | 234 |
+| Lock-graph edges | 30 |
 | Spawn sites | 59 |
-| External calls: fs / db / process / notify / login / socket | 339 / 124 / 53 / 4 / 1 / 3 |
-| External calls reachable under the hub's store | 34 |
+| External calls: fs / db / process / notify / login / socket | 339 / 123 / 53 / 4 / 1 / 3 |
+| External calls reachable under the hub's store | 27 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
 
@@ -183,10 +183,10 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `config/save.rs::SAVING` | `std::sync::Mutex<()>` | "config saves" (1 sites) |
 | `db.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
-| `hub/mod.rs::Hub.store` | `Mutex<Store>` | "the hub's store" (173 sites) |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
 | `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
 | `hub/shown.rs::Shown.timer` | `OnceLock<Sender<Option<Instant>>>` | — |
+| `hub/store_access.rs::StoreCell.0` | `Mutex<Store>` | "the hub's store" (53 sites) |
 | `ipc/chat.rs::FOUND` | `std::sync::Mutex<Option<std::collections::HashMap<String,String>>>` | — |
 | `ipc/chat.rs::FOUND` | `std::sync::Mutex<Option<std::collections::HashMap<String,String>>>` | — |
 | `ipc/insights.rs::CONTINUING` | `Mutex<Option<HashSet<String>>>` | "CONTINUING" (2 sites) |
@@ -269,65 +269,57 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "copies" | "WINDOWS" |  | `machines/logs.rs::local_copy` → `machines/logs.rs::start_after` → `logs/steps.rs::Feed::open` → `logs/steps.rs::start_of` → `logs/steps.rs::Feed::observe` → `logs/steps.rs::known_window` → `logs/steps.rs::with_windows`, takes it |
 | "extensions log" | "WINDOWS" |  | `extensions.rs::log` → `logs/steps.rs::Feed::open` → `logs/steps.rs::start_of` → `logs/steps.rs::Feed::observe` → `logs/steps.rs::known_window` → `logs/steps.rs::with_windows`, takes it |
 | "open_terms" | "pty master" |  | `terminal/term.rs::foreground`, takes it |
-| "the hub's store" | "DB" |  | `hub/asks.rs::Hub::set_starred` → `db.rs::park` → `db.rs::with`, takes it |
-| "the hub's store" | "INDEX" |  | `hub/mod.rs::Hub::build_snapshot` → `hub/reviews.rs::Hub::reviews_view` → `leads.rs::is_reviewed`, takes it |
+| "the hub's store" | "INDEX" |  | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_view` → `hub/reviews.rs::Hub::reviews_view` → `leads.rs::is_reviewed`, takes it |
 | "the hub's store" | "REPOS" |  | `hub/activity.rs::Hub::on_event` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root`, takes it |
 | "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus.rs::type_into` → `terminal/focus.rs::press_enter` → `terminal/focus.rs::iterm_session_do` → `terminal/focus.rs::current_tty` → `logs/live.rs::claude`, takes it |
 | "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `db.rs::unpark` → `db.rs::with`, takes it |
-| "typing gate" | "DECLARED" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `model.rs::project_said` → `model.rs::said_how` → `model.rs::declared`, takes it |
+| "typing gate" | "DECLARED" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `model.rs::declared`, takes it |
 | "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view`, takes it |
 | "typing gate" | "LEDGER" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::handoffs` → `leads.rs::ledger_handoffs` → `leads.rs::read_ledger`, takes it |
 | "typing gate" | "REPOS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `db.rs::unpark` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
-| "typing gate" | "TOPS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `model.rs::project_said` → `model.rs::said_how` → `logs/live.rs::checkout_top`, takes it |
+| "typing gate" | "TOPS" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::folder_project` → `model.rs::project_said` → `model.rs::said_how` → `logs/live.rs::checkout_top`, takes it |
 | "typing gate" | "VERIFY" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `leads.rs::view` → `leads.rs::verdict_of`, takes it |
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::images_there` → `uploads.rs::on_machine` → `machines/mod.rs::run_with_bytes` → `machines/mod.rs::ssh_command` → `machines/mod.rs::env_file`, takes it |
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::settle_typed` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_with` → `hub/mod.rs::Hub::notify_full` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "shown snapshot" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
-| "typing gate" | "the hub's store" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::st`, takes it |
+| "typing gate" | "the hub's store" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/store_access.rs::Hub::write`, takes it |
 | "typing gate" | "what About has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `tasks.rs::spent`, takes it |
 | "typing gate" | "what each session is about" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `tasks.rs::view` → `tasks.rs::with`, takes it |
 | "typing gate" | "what the status list has cost" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/mod.rs::Hub::changed` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `statuslist.rs::spent`, takes it |
 
 ## External calls under the hub's store
 
-What the store's holders reach while they hold it (34 allowed for now in `lint-allow.toml`, for Phase 2 to burn down).
+What the store's holders reach while they hold it (27 allowed for now in `lint-allow.toml`, for Phase 2 to burn down).
 
 | Holder | Kind | Made in | Call | Path |
 |---|---|---|---|---|
-| `hub::Hub::changed` | db | `hub::Hub::changed` | db::unpark | `hub/mod.rs::Hub::changed`, calls out |
-| `hub::Hub::notify_full` | fs | `config::load` | read_to_string | `hub/mod.rs::Hub::notify_full` → `notify.rs::show` → `sounds.rs::choice` → `config.rs::load`, calls out |
+| `hub::Hub::notify_full` | fs | `config::load` | read_to_string | `hub/mod.rs::Hub::notify_full` in a closure hub::store_access::Hub::write runs holding the lock → `notify.rs::show` → `sounds.rs::choice` → `config.rs::load`, calls out |
 | `hub::activity::Hub::failed` | fs | `logs::live::find_root` | Path::is_dir | `hub/activity.rs::Hub::failed` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
 | `hub::activity::Hub::on_event` | fs | `config::load` | read_to_string | `hub/activity.rs::Hub::on_event` → `config.rs::context_keep` → `config.rs::load`, calls out |
 | `hub::activity::Hub::on_event` | fs | `logs::live::find_root` | Path::is_dir | `hub/activity.rs::Hub::on_event` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
 | `hub::activity::Hub::refresh_activity` | fs | `hub::activity::Hub::refresh_activity` | metadata | `hub/activity.rs::Hub::refresh_activity`, calls out |
-| `hub::asks::Hub::add_ask` | fs | `config::load` | read_to_string | `hub/asks.rs::Hub::add_ask` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::asks::Hub::add_ask` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::add_ask` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::asks::Hub::answer_terminal` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::answer_terminal` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::asks::Hub::finish` | fs | `config::load` | read_to_string | `hub/asks.rs::Hub::finish` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::asks::Hub::finish` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::finish` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::asks::Hub::finish` | db | `hub::history::push_history` | db::save_answered | `hub/asks.rs::Hub::finish` → `hub/history.rs::push_history`, calls out |
-| `hub::asks::Hub::set_starred` | db | `hub::asks::Hub::set_starred` | db::park | `hub/asks.rs::Hub::set_starred`, calls out |
-| `hub::asks::Hub::terminal_ask_with` | fs | `config::load` | read_to_string | `hub/asks.rs::Hub::terminal_ask_with` → `hub/asks.rs::notify_title` → `config.rs::moved` → `config.rs::load`, calls out |
-| `hub::asks::Hub::terminal_ask_with` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::terminal_ask_with` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::asks::Hub::waiting_card` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::waiting_card` → `hub/mod.rs::Hub::new_item` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::reviews::Hub::drain_reviews` | db | `hub::reviews::Hub::drain_reviews` | db::unqueue_review | `hub/reviews.rs::Hub::drain_reviews`, calls out |
-| `hub::reviews::Hub::review` | db | `hub::reviews::Hub::review` | db::queue_review | `hub/reviews.rs::Hub::review`, calls out |
-| `hub::send::Hub::interrupt` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::interrupt` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::send::Hub::interrupt` | fs | `logs::live::find_root` | Path::is_dir | `hub/send.rs::Hub::interrupt` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::send::Hub::prompt_from_peer` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::prompt_from_peer` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::send::Hub::prompt_from_you` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::prompt_from_you` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::send::Hub::reply` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::reply` → `hub/history.rs::push_history` → `config.rs::history_keep` → `config.rs::load`, calls out |
-| `hub::send::Hub::reply` | db | `hub::history::push_history` | db::save_answered | `hub/send.rs::Hub::reply` → `hub/history.rs::push_history`, calls out |
-| `hub::send::Hub::send_saved` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::send_saved` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::sessions::Hub::mark_state` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::mark_state` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::sessions::Hub::resumed` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::resumed` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::sessions::Hub::resumed` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::resumed` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::sessions::Hub::started` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::started` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::sessions::Hub::started` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::started` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::sessions::Hub::sweep` | fs | `hub::sessions::written_ms` | metadata | `hub/sessions.rs::Hub::sweep` → `hub/sessions.rs::written_ms`, calls out |
-| `hub::sessions::Hub::unparked` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::unparked` → `config.rs::context_keep` → `config.rs::load`, calls out |
-| `hub::sessions::Hub::unparked` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::unparked` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
-| `hub::sessions::Hub::your_turn_since` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::your_turn_since` → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::asks::Hub::add_ask` | fs | `config::load` | read_to_string | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::asks::Hub::add_ask` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::asks::Hub::answer_terminal` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::answer_terminal` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::asks::Hub::finish` | fs | `config::load` | read_to_string | `hub/asks.rs::Hub::finish` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::asks::Hub::finish` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::finish` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::asks::Hub::terminal_ask_with` | fs | `config::load` | read_to_string | `hub/asks.rs::Hub::terminal_ask_with` in a closure hub::store_access::Hub::write runs holding the lock → `hub/asks.rs::notify_title` → `config.rs::moved` → `config.rs::load`, calls out |
+| `hub::asks::Hub::terminal_ask_with` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::terminal_ask_with` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::asks::Hub::waiting_card` | fs | `logs::live::find_root` | Path::is_dir | `hub/asks.rs::Hub::waiting_card` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::new_item` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::send::Hub::interrupt` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::interrupt` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::send::Hub::interrupt` | fs | `logs::live::find_root` | Path::is_dir | `hub/send.rs::Hub::interrupt` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::send::Hub::prompt_from_peer` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::prompt_from_peer` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::send::Hub::prompt_from_you` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::prompt_from_you` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::send::Hub::reply` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::reply` in a closure hub::store_access::Hub::write runs holding the lock → `hub/history.rs::push_history` → `config.rs::history_keep` → `config.rs::load`, calls out |
+| `hub::send::Hub::send_saved` | fs | `config::load` | read_to_string | `hub/send.rs::Hub::send_saved` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::sessions::Hub::mark_state` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::mark_state` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::sessions::Hub::resumed` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::resumed` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::sessions::Hub::resumed` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::resumed` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::sessions::Hub::started` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::started` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::sessions::Hub::started` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::started` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::sessions::Hub::unparked` | fs | `config::load` | read_to_string | `hub/sessions.rs::Hub::unparked` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load`, calls out |
+| `hub::sessions::Hub::unparked` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::unparked` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
+| `hub::sessions::Hub::your_turn_since` | fs | `logs::live::find_root` | Path::is_dir | `hub/sessions.rs::Hub::your_turn_since` in a closure hub::store_access::Hub::write runs holding the lock → `sessions.rs::Sessions::mark` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/live.rs::repo_root` → `logs/live.rs::find_root`, calls out |
 
 ## Spawn sites
 
@@ -689,7 +681,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save` | write | 1 |
 
-### db (124)
+### db (123)
 
 | In | Call | Times |
 |---|---|---|
@@ -759,7 +751,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `hub/activity.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/activity.rs::Hub::on_event` | db::handoff | 1 |
 | `hub/asks.rs::Hub::set_starred` | db::park | 1 |
-| `hub/history.rs::push_history` | db::save_answered | 1 |
+| `hub/history.rs::Answered::save` | db::save_answered | 1 |
 | `hub/mod.rs::Hub::build_snapshot` | db::ahead_watched | 1 |
 | `hub/mod.rs::Hub::build_snapshot` | db::handoffs | 1 |
 | `hub/mod.rs::Hub::changed` | db::sync_live | 1 |
@@ -770,7 +762,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `hub/mod.rs::Hub::with_ports` | db::parked | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::review_queue | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::set_aside | 1 |
-| `hub/reviews.rs::Hub::drain_reviews` | db::unqueue_review | 2 |
+| `hub/reviews.rs::Hub::drain_reviews` | db::unqueue_review | 1 |
 | `hub/reviews.rs::Hub::review` | db::queue_review | 1 |
 | `hub/reviews.rs::Hub::set_aside` | db::add_set_aside | 1 |
 | `hub/reviews.rs::Hub::unqueue_review` | db::unqueue_review | 1 |
@@ -908,7 +900,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/activity.rs::refresh_activity` |  |  |
 | `src-tauri/src/hub/activity.rs::usage_tick` |  |  |
 | `src-tauri/src/hub/mod.rs::build_snapshot` |  |  |
-| `src-tauri/src/hub/send.rs::reply` |  |  |
 | `src-tauri/src/hub/send.rs::send_saved` |  |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
