@@ -110,6 +110,8 @@ function trimCaches() {
   for (const k of [...termLast.keys()]) if (!near.has(k)) termLast.delete(k);
   for (const k of [...ranLog.keys()]) if (k !== "new" && !near.has(k)) ranLog.delete(k);
   const cards = new Set(state.items.map((i) => i.id));
+  const rows = new Set(state.history.map((i) => i.id));
+  for (const id of [...fullItems.keys()]) if (!rows.has(id)) fullItems.delete(id);   // History's cards asked for in full: while their rows last
   for (const k of [...fwdMsgs.keys()]) { const who = k.slice(0, k.lastIndexOf(":")); if (!near.has(who) && !cards.has(who)) fwdMsgs.delete(k); }
   // The heavy parts: the open session's always; the rest newest first, while they fit.
   const heavy = [older, stepDetail];

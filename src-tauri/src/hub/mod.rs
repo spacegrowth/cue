@@ -15,6 +15,7 @@ mod cache_tick;
 mod events;
 mod hand_off;
 mod history;
+mod kept_history;
 pub(crate) mod ports;
 mod projects;
 mod redraw;
@@ -24,6 +25,7 @@ mod send;
 mod sessions;
 mod shown;
 mod store_access;
+mod today;
 mod turn_end;
 mod usage;
 
@@ -41,7 +43,7 @@ struct Store {
     /// Each Claude Code session's cost so far, from its status line (shown in the chat's tab).
     costs: HashMap<String, f64>,
     items: Vec<Item>,
-    history: VecDeque<Item>,
+    history: kept_history::History,
     /// Every answer of the last day, newest first (History's today numbers; the list above is capped).
     answers: Vec<Answer>,
     waiters: HashMap<String, oneshot::Sender<Reply>>,
@@ -128,6 +130,33 @@ struct Store {
     shown_seq: u64,
 }
 
+/// The store's part of the window's state, copied out under its lock: the cards and sessions as they are,
+/// History's brief rows (shared, not copied), and the small parts already as JSON. Made into the state's
+/// JSON (`view`) with the store let go.
+struct StoreParts {
+    items: Vec<Item>,
+    history: Arc<Vec<Value>>,
+    sessions: Vec<crate::sessions::Session>,
+    parked: Vec<crate::sessions::Parked>,
+    small: Value,
+}
+
+impl StoreParts {
+    fn view(self) -> Value {
+        let mut view = json!({
+            "items": self.items,
+            // History's rows in brief (kept_history.rs): a row opened asks for its card in full.
+            "history": Value::Array(self.history.as_ref().clone()),
+            "sessions": self.sessions,
+            "parked": self.parked,
+        });
+        if let (Some(view), Value::Object(small)) = (view.as_object_mut(), self.small) {
+            view.extend(small);
+        }
+        view
+    }
+}
+
 /// What `snapshot` reads files for, from the store: the session ids Cue knows, the live sessions it hasn't
 /// heard from yet, each Claude session's transcript, and every folder in play.
 type Sources = (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>);
@@ -180,7 +209,7 @@ impl Hub {
 
     pub(crate) fn with_ports(app: Option<AppHandle>, ports: ports::Ports) -> Self {
         let mut st = Store::default();
-        st.history = crate::db::history(crate::config::history_keep());
+        st.history = kept_history::History::new(crate::db::history(crate::config::history_keep()));
         st.answers = crate::db::answers_since(now_ms().saturating_sub(crate::db::DAY_MS));
         let (sessions, waiting) = crate::db::live();
         st.sessions.restore(sessions);
@@ -363,6 +392,7 @@ impl Hub {
         for at in st.just_ended.values() {
             next.at(at + sessions::JUST_ENDED_MS, now);
         }
+        next.at(today::next_change(now), now);
         next
     }
 
@@ -377,7 +407,10 @@ impl Hub {
         let put = crate::config::folders_put();
         let mut outside = folders_view(live, transcripts, cwds, &put);
         outside.extend(apart_view(&ids));
-        let (seq, next, mut snap) = self.write(Self::store_view);
+        // The store's part is taken as copies under its lock and made into the window's JSON after: the big
+        // lists (sessions, cards, History) are written out with the store let go.
+        let (seq, next, parts) = self.write(Self::store_parts);
+        let mut snap = parts.view();
         if let Some(snap) = snap.as_object_mut() {
             snap.extend(outside);
         }
@@ -385,13 +418,13 @@ impl Hub {
         (seq, snap, next)
     }
 
-    /// The snapshot's part that is the store's, taken as the next in the order snapshots are taken, and when
-    /// it next changes with time alone.
-    fn store_view(st: &mut Store) -> (u64, shown::NextChange, Value) {
+    /// The snapshot's part that is the store's, as copies (see `StoreParts`), taken as the next in the order
+    /// snapshots are taken, and when it next changes with time alone.
+    fn store_parts(st: &mut Store) -> (u64, shown::NextChange, StoreParts) {
         st.shown_seq += 1;
         let seq = st.shown_seq;
-        let reviews = Self::reviews_view(st);
-        let next = Self::next_change(st, now_ms());
+        let now = now_ms();
+        let next = Self::next_change(st, now);
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.
         let mut sessions = st.sessions.snapshot();
@@ -400,26 +433,22 @@ impl Hub {
                 sessions.push(s.clone());
             }
         }
-        let parked: Vec<&crate::sessions::Parked> = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).collect();
+        let parked = st.parked.iter().filter(|p| !st.restarting.contains_key(&p.session.origin.session_id)).cloned().collect();
         let restarting: serde_json::Map<String, Value> = st.restarting.iter().map(|(sid, r)| (sid.clone(), json!({ "step": r.step, "since_ms": r.since_ms, "servers": r.servers.as_ref().map(Vec::len), "mcp": r.mcp }))).collect();
-        let view = json!({
-            "items": st.items,
-            "history": st.history,
-            // Every answer of the last day, in brief: today's numbers count these, not the History list.
-            "answers": st.answers,
-            "sessions": sessions,
-            "parked": parked,
+        let small = json!({
             "ended": Self::ended_view(st),
             "restarting": restarting,
             "restarted": st.restarted,
-            "reviews": reviews,
+            "reviews": Self::reviews_view(st),
             "review_queue": Self::review_queue_view(st),
             "unreachable": st.unreachable,
             // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
             "insight": st.insight,
             "usage": st.rates,
+            // Today's numbers (today.rs), not every answer of the day: those grow all day.
+            "today": today::today(&st.answers, now),
         });
-        (seq, next, view)
+        (seq, next, StoreParts { items: st.items.clone(), history: st.history.brief(), sessions, parked, small })
     }
 
     /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each

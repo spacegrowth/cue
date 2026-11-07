@@ -495,7 +495,7 @@ impl Hub {
         }
         if key == "history.keep" {
             let history = crate::db::history(crate::config::history_keep());
-            self.write(|st| st.history = history);
+            self.write(|st| st.history = super::kept_history::History::new(history));
         }
         if key == "appearance.zoom" {
             if let Some(app) = &self.app {

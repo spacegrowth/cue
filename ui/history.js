@@ -16,33 +16,24 @@ function replyOf(i) {
   const e = (sessionOf(i.session_id)?.thread || []).find((x) => x.role === "you" && Math.abs(x.at_ms - i.resolved_ms) < 5000);
   return e?.text || (outcomeText(i).match(/^replied: “([\s\S]*)”/) || [])[1] || "";
 }
-/** Today at a glance, one line at the top of Insights: how many you answered, how long they
- *  typically waited and the longest wait, what you did, and answers per hour over the last 12 hours. */
+/** Today at a glance, one line at the top of Insights: how many you answered, how long they typically waited and
+ *  the longest wait, what you did, and answers per hour over the last 12 hours. Cue counts them (hub/today.rs):
+ *  every answer of the day, not the History list (that one is capped, Settings → History). */
 function histStats() {
-  const midnight = new Date(now()); midnight.setHours(0, 0, 0, 0);
-  // Every answer of the last day (state.answers), not the History list: that one is capped (Settings → History).
-  const all = state.answers || state.history;
-  const today = all.filter((i) => (i.resolved_ms || 0) >= midnight.getTime());
-  const waits = today.map((i) => ({ i, w: (i.resolved_ms || 0) - i.created_ms })).filter((x) => x.w >= 0).sort((a, b) => a.w - b.w);
+  const t = state.today || { answered: 0, hours: [] };
   const fmt = (ms) => { const m = Math.round(ms / 60000); return m < 1 ? "<1m" : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
-  const longest = waits.at(-1);
-  const n = (re) => today.filter((i) => re.test(i.outcome || "")).length;
-  const hour0 = new Date(now()); hour0.setMinutes(0, 0, 0);
-  const hours = Array.from({ length: 12 }, (_, k) => {
-    const from = hour0.getTime() - (11 - k) * 3600000, d = new Date(from);
-    return { label: `${d.getHours() % 12 || 12}${d.getHours() < 12 ? "am" : "pm"}`, n: all.filter((i) => (i.resolved_ms || 0) >= from && (i.resolved_ms || 0) < from + 3600000).length };
-  });
+  const hours = t.hours.map((h) => { const d = new Date(h.from_ms); return { label: `${d.getHours() % 12 || 12}${d.getHours() < 12 ? "am" : "pm"}`, n: h.n }; });
   const peak = Math.max(1, ...hours.map((h) => h.n));
   const fig = (value, label) => `<span class="hs-fig"><b>${esc(value)}</b> ${esc(label)}</span>`;
   return `<div class="hs-today"><span class="hs-head">Today</span>
-    ${fig(String(today.length), "answered")}
-    ${fig(waits.length ? fmt(waits[Math.floor(waits.length / 2)].w) : "–", "median wait")}
-    ${longest ? fig(fmt(longest.w), `longest, ${nameOf(longest.i.session_id, longest.i.project)}`) : ""}
-    ${fig(`${n(/^replied/)} · ${n(/^(allowed|answered)/)} · ${n(/^denied/)}`, "replied · allowed · denied")}
+    ${fig(String(t.answered), "answered")}
+    ${fig(t.median_wait_ms != null ? fmt(t.median_wait_ms) : "–", "median wait")}
+    ${t.longest ? fig(fmt(t.longest.wait_ms), `longest, ${nameOf(t.longest.session_id, t.longest.project)}`) : ""}
+    ${fig(`${t.replied} · ${t.allowed} · ${t.denied}`, "replied · allowed · denied")}
     <span class="grow"></span>
     <div class="hs-chart" role="img" aria-label="Answers by hour: ${esc(hours.map((h) => `${h.label} ${h.n}`).join(", "))}">
       <div class="hs-bars">${hours.map((h) => `<i class="${h.n ? "" : "zero"}" style="height:${h.n ? Math.max(8, (h.n / peak) * 100) : 6}%"></i>`).join("")}</div>
-      <div class="hs-axis"><span>${hours[0].label}</span><span>now</span></div>
+      <div class="hs-axis"><span>${hours[0]?.label ?? ""}</span><span>now</span></div>
     </div></div>`;
 }
 
@@ -71,7 +62,7 @@ function historyView() {
       <span class="hwho">${nested ? "" : `${projDot(i.project)}${badge(i.harness)}${nameSpan(i.session_id, i.project)}`}</span>
       <span class="hwhat ${isBash(i) ? "mono" : ""}">${esc(plain(summary(i)))}</span>
       <span class="hout ${outcomeClass(i)}">${esc(outcomeText(i))}</span>
-      <span class="age">${clock(at(i))}</span></div>${open ? `<div class="hexpand">${histDetail(i)}${/^replied: “/.test(outcomeText(i)) ? "" : resultLine(i)}</div>` : ""}`;
+      <span class="age">${clock(at(i))}</span></div>${open ? `<div class="hexpand">${histDetail(fullItem(i))}${/^replied: “/.test(outcomeText(i)) ? "" : resultLine(i)}</div>` : ""}`;
   };
   // Day, then session in order of its latest answer.
   const groups = [];

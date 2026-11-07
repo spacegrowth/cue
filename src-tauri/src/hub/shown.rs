@@ -136,18 +136,21 @@ mod tests {
         assert!(runs.recv_timeout(Duration::from_millis(400)).is_err(), "called off");
     }
 
-    /// The hub's rules together: a session that just ended shows as live again JUST_ENDED_MS after, and a
-    /// lead settling after a review is free REVIEW_SETTLE_MS after it; the earlier one is next.
+    /// The hub's rules together: a session that just ended shows as live again JUST_ENDED_MS after, a lead
+    /// settling after a review is free REVIEW_SETTLE_MS after it, and today's numbers change each hour; the
+    /// earliest is next.
     #[test]
     fn the_hub_says_its_next_time_based_change() {
         let mut st = super::super::Store::default();
         let t = 1_000_000;
-        assert_eq!(super::super::Hub::next_change(&st, t).when(), None, "nothing time-based");
+        // Today's numbers move to a new hour whatever else there is (today.rs).
+        let hour = |now| super::super::today::next_change(now);
+        assert_eq!(super::super::Hub::next_change(&st, t).when(), Some(hour(t)), "only the hour");
         st.just_ended.insert("S".into(), t);
-        assert_eq!(super::super::Hub::next_change(&st, t + 1).when(), Some(t + super::super::sessions::JUST_ENDED_MS));
+        assert_eq!(super::super::Hub::next_change(&st, t + 1).when(), Some((t + super::super::sessions::JUST_ENDED_MS).min(hour(t + 1))));
         st.review_last.insert("L".into(), t + 5_000);
         let both = super::super::Hub::next_change(&st, t + 6_000).when();
-        assert_eq!(both, Some((t + super::super::sessions::JUST_ENDED_MS).min(t + 5_000 + super::super::reviews::REVIEW_SETTLE_MS)));
+        assert_eq!(both, Some((t + super::super::sessions::JUST_ENDED_MS).min(t + 5_000 + super::super::reviews::REVIEW_SETTLE_MS).min(hour(t + 6_000))));
     }
 
     #[test]

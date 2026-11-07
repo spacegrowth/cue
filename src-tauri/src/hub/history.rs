@@ -31,8 +31,7 @@ pub(super) fn push_history(st: &mut Store, it: Item) -> Answered {
     let day_ago = now_ms().saturating_sub(crate::db::DAY_MS);
     st.answers.retain(|a| a.resolved_ms >= day_ago);
     st.answers.insert(0, Answer::of(&it));
-    st.history.push_front(it.clone());
-    st.history.truncate(crate::config::history_keep());
+    st.history.push_front(it.clone(), crate::config::history_keep());
     Answered(it)
 }
 

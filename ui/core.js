@@ -105,7 +105,17 @@ const machLead = (m) => m ? `<span class="mach lead">${esc(machName(m))}</span>`
 // A session that has stopped (parked or closed) keeps its name: its record as it was.
 const recordOf = (sid) => sessionOf(sid) || parkedOf(sid) || closedOf(sid);
 const nameOf = (sid, project) => String(recordOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || baseName(recordOf(sid)?.cwd) || project;
-const findItem = (id) => state.items.find((i) => i.id === id) || state.history.find((i) => i.id === id);
+const findItem = (id) => state.items.find((i) => i.id === id) || fullItem(state.history.find((i) => i.id === id));
+/** History's rows come brief (hub/kept_history.rs: no conversation, the request cut to a line): a row opened
+ *  asks Cue for its card in full, once, and is drawn again with it. Until then (and if it's gone) the row stands in. */
+const fullItems = new Map();
+function fullItem(it) {
+  if (!it?.brief) return it;
+  if (fullItems.has(it.id)) return fullItems.get(it.id) || it;
+  fullItems.set(it.id, null);
+  invoke("history_item", { id: it.id }).then((full) => { if (full) { fullItems.set(it.id, full); renderMain(); } }, () => fullItems.delete(it.id));
+  return it;
+}
 const sessionOf = (sid) => state.sessions.find((s) => s.session_id === sid);
 /** A session you parked (stopped, kept to resume): not live, so not in state.sessions. */
 const parkedOf = (sid) => (state.parked || []).find((p) => p.session_id === sid);
