@@ -61,6 +61,12 @@ impl<'w> Agent<'w> {
 
 
 
+    /// Its agent running as process `pid` (what Park and Close stop).
+    pub fn running_as(mut self, pid: i32) -> Self {
+        self.origin.agent_pid = Some(pid);
+        self
+    }
+
     /// Its transcript, to write what the agent logs.
     pub fn transcript(&self) -> Transcript {
         Transcript::at(&self.origin.transcript_path)
@@ -147,6 +153,11 @@ impl<'w> Agent<'w> {
         self.open_ask(json!({"type": "ask", "kind": "permission", "tool_name": tool, "tool_input": input}))
     }
 
+    /// Its permission hook for a Bash `command` (the commonest ask).
+    pub fn ask_bash(&self, command: &str) -> Ask {
+        self.ask_permission("Bash", json!({"command": command}))
+    }
+
     /// Its AskUserQuestion: `question` with its choices.
     pub fn ask_question(&self, question: &str, options: &[&str]) -> Ask {
         let options: Vec<Value> = options.iter().map(|o| json!({"label": o})).collect();
@@ -184,6 +195,12 @@ impl Ask {
             Reply::Decision(d) => serde_json::to_value(&d).unwrap(),
             Reply::Cancel(why) => json!({"cancel": why}),
         })
+    }
+
+    /// Its connection was cut with no word (Cue quit or restarted under it): what makes the hook ask again.
+    pub fn cut_off(&self) -> bool {
+        let r = crate::locking::lock(&self.answer, "an ask's answer").try_recv();
+        matches!(r, Err(oneshot::error::TryRecvError::Closed))
     }
 
     /// It got its answer in its own terminal (`behavior` by the `by`), and its hook said so on the connection.

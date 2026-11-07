@@ -22,13 +22,28 @@ impl Transcript {
 
     /// One entry, appended, stamped now; the file's modified time is now too, by the World's clock (Cue
     /// reads "written lately" off it).
-    pub fn entry(&self, mut e: Value) -> &Self {
-        let now = crate::clock::now_ms();
-        e["timestamp"] = json!(iso(now));
+    pub fn entry(&self, e: Value) -> &Self {
+        self.entry_at(e, crate::clock::now_ms())
+    }
+
+    /// One entry, appended, stamped `at_ms` (and the file's modified time with it).
+    fn entry_at(&self, mut e: Value, at_ms: u64) -> &Self {
+        e["timestamp"] = json!(iso(at_ms));
         let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).unwrap();
         writeln!(f, "{e}").unwrap();
-        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(now)).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(at_ms)).unwrap();
         self
+    }
+
+    /// A turn that ended `ago_ms` ago, its reply's prompt cache `context` tokens held for `ttl_s` (3600: an
+    /// hour's cache, else five minutes'), as Claude Code logs its usage: what a cache's countdown is read from.
+    pub fn cached_reply(&self, ago_ms: u64, context: u64, ttl_s: u64) -> &Self {
+        let at = crate::clock::now_ms() - ago_ms;
+        let (h1, m5) = if ttl_s >= 3600 { (1000, 0) } else { (0, 1000) };
+        let usage = json!({"input_tokens": 10, "cache_read_input_tokens": context - 1010, "cache_creation_input_tokens": 1000,
+            "cache_creation": {"ephemeral_1h_input_tokens": h1, "ephemeral_5m_input_tokens": m5}, "output_tokens": 50});
+        self.entry_at(json!({"type": "user", "message": {"content": "go on"}}), at - 5000);
+        self.entry_at(json!({"type": "assistant", "message": {"id": "m1", "model": "claude-opus-5-5", "content": [{"type": "text", "text": "Done."}], "usage": usage}}), at)
     }
 
     /// Your prompt, as Claude Code logs it.
@@ -53,6 +68,21 @@ impl Transcript {
     /// The tool call's result: it was answered (here or in its terminal).
     pub fn tool_result(&self, id: &str) -> &Self {
         self.entry(json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "ok"}]}}))
+    }
+
+    /// A background agent `id` started (the Agent tool, run in the background), as Claude Code logs its launch.
+    pub fn background_agent(&self, id: &str, description: &str) -> &Self {
+        let call = format!("call-{id}");
+        self.tool_use(&call, "Agent", json!({"description": description, "prompt": description, "run_in_background": true}));
+        self.entry(json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": call, "content": "Async agent launched"}]},
+            "toolUseResult": {"isAsync": true, "status": "async_launched", "agentId": id, "description": description}}))
+    }
+
+    /// Claude Code telling the session background task `id` is done (the prompt it wakes the session with).
+    pub fn task_done(&self, id: &str) -> String {
+        let text = format!("<task-notification>\n<task-id>{id}</task-id>\n<status>completed</status>\n</task-notification>");
+        self.prompt(&text);
+        text
     }
 
     /// Claude Code's mark that a compaction is done.

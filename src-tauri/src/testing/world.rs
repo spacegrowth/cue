@@ -104,6 +104,20 @@ impl World {
         w
     }
 
+    /// Cue quit and opened again on the same folder (a restart, or the Mac rebooted): what it saved as it
+    /// quit (sessions, their finished-turn cards, Parked, the review queue) is all the new hub has. Its
+    /// terminals and Notification Center are the same; the old hub's follow-up work dies with it, and an ask
+    /// still open on it is cut off, as the restart cuts its connection.
+    pub fn relaunch(&mut self) {
+        self.settle();
+        self.client.hub.save_live();
+        let later = Arc::new(Deferred::default());
+        let ports = Ports { keys: self.terminal.clone(), notes: self.notes.clone(), later: Later::Deferred(later.clone()) };
+        self.client.hub = Arc::new(Hub::with_ports(None, ports));
+        self.later = later;
+        self.agents_take_what_is_typed();
+    }
+
     /// Typed into a session whose agent takes it, its prompt hook fires: an "active" event, as Claude
     /// Code's UserPromptSubmit sends it (no prompt id: the prompt is yours).
     fn agents_take_what_is_typed(&self) {

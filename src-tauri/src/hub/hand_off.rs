@@ -39,15 +39,10 @@ impl Hub {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::transcript::iso;
 
     /// A Claude Code log whose last reply came `ago_ms` ago with `context` tokens, cached for `ttl_s`.
     fn cached_log(path: &std::path::Path, ago_ms: u64, context: u64, ttl_s: u64) {
-        let at = now_ms() - ago_ms;
-        let (h1, m5) = if ttl_s >= 3600 { (1000, 0) } else { (0, 1000) };
-        let reply = serde_json::json!({"type":"assistant","timestamp":iso(at),"message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}],
-            "usage":{"input_tokens":10,"cache_read_input_tokens":context - 1010,"cache_creation_input_tokens":1000,"cache_creation":{"ephemeral_1h_input_tokens":h1,"ephemeral_5m_input_tokens":m5},"output_tokens":50}}});
-        std::fs::write(path, format!("{}\n{reply}\n", serde_json::json!({"type":"user","timestamp":iso(at - 5000),"message":{"content":"go on"}}))).unwrap();
+        crate::testing::Transcript::at(path).cached_reply(ago_ms, context, ttl_s);
     }
 
     #[test]

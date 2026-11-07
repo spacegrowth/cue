@@ -209,6 +209,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// Claude Code writes `<pid>.json` in place: read mid-write, it's skipped this time and read whole the next.
+    #[test]
+    fn a_registry_file_read_half_written_is_skipped_until_it_is_whole() {
+        let d = tmp("half");
+        let me = std::process::id();
+        let whole = format!(r#"{{"pid":{me},"sessionId":"S1","cwd":"/x","status":"idle","kind":"interactive"}}"#);
+        std::fs::write(d.join(format!("{me}.json")), &whole[..whole.len() / 2]).unwrap();
+        std::fs::write(d.join(format!("{}.json", std::os::unix::process::parent_id())), r#"{"pid":"#).unwrap();
+        assert!(scan_claude(&d).is_empty(), "half a record names no session");
+        std::fs::write(d.join(format!("{me}.json")), &whole).unwrap();
+        assert_eq!(scan_claude(&d).iter().map(|q| q.session_id.as_str()).collect::<Vec<_>>(), ["S1"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn finds_a_quiet_sessions_transcript_from_its_folder() {
         let d = tmp("proj");
