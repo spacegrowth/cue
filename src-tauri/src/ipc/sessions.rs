@@ -74,14 +74,17 @@ pub(crate) fn park(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
         None => {}
     }
     h.closable(session_id)?;
-    // Its finished turn leaves Waiting as parked: before its end, which would call it "session ended".
-    // (Only a finished turn can be here: closable refuses one that asks you something.)
-    for id in h.pending().iter().filter(|i| i.origin.session_id == session_id).map(|i| i.id.clone()) {
-        h.finish(&id, "gone", "parked");
+    // Its finished turn leaves Waiting before its end, which would file it as "session ended", and comes back
+    // as it was if its agent can't be stopped after all. (Only a finished turn can be here: closable refuses
+    // one that asks you something.)
+    let cards = h.take_cards(session_id);
+    if let Err(e) = end_session(h, session_id) {
+        h.put_back(cards);
+        return Err(e);
     }
-    end_session(h, session_id)?;
     // Nothing late from it lands on the parked one.
     wait_for_end(h, session_id);
+    h.file_taken(cards, "gone", "parked");
     h.add_parked(s);
     Ok("Parked: its agent stopped and its terminal closed".into())
 }
@@ -93,7 +96,7 @@ fn wait_for_end(h: &Hub, session_id: &str) {
         if h.session_origin(session_id).is_none() {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        crate::clock::sleep_ms(100);
     }
 }
 

@@ -244,6 +244,39 @@ impl Hub {
         self.changed();
     }
 
+    /// A session's cards taken off Waiting while it's parked (its end would otherwise file them as "session
+    /// ended"): back as they were with `put_back` if it couldn't be stopped after all, else to History with
+    /// `file_taken`.
+    pub fn take_cards(&self, session_id: &str) -> Vec<Item> {
+        let taken: Vec<Item> = self.write(|st| {
+            let (taken, kept) = std::mem::take(&mut st.items).into_iter().partition(|i| i.origin.session_id == session_id);
+            st.items = kept;
+            taken
+        });
+        if !taken.is_empty() {
+            self.changed();
+        }
+        taken
+    }
+
+    /// Cards taken with `take_cards`, back on Waiting as they were (their ids and ages).
+    pub fn put_back(&self, items: Vec<Item>) {
+        if items.is_empty() {
+            return;
+        }
+        self.write(|st| st.items.extend(items));
+        self.changed();
+    }
+
+    /// Cards taken with `take_cards`, to History as `status` / `outcome`.
+    pub fn file_taken(&self, items: Vec<Item>, status: &str, outcome: &str) {
+        for it in items {
+            let answered = self.write(|st| filed(st, it, status, outcome));
+            self.save_answered(answered);
+        }
+        self.changed();
+    }
+
     /// Drop a "waiting" card (or give up on a stuck request) from the window.
     pub fn dismiss(&self, id: &str) {
         let is_waiting = self.read(|st| st.items.iter().any(|i| i.id == id && i.kind == "waiting"));
