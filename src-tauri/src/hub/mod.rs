@@ -59,6 +59,9 @@ struct Store {
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to
     /// the database (saves.rs), isn't saved.
     purged: HashMap<String, u64>,
+    /// Sessions with an ask answered while another of theirs still waited on you: back at work once the last
+    /// of them closes, however it closes (asks.rs `finish`).
+    answered_meanwhile: HashSet<String>,
     /// Answered cards whose save goes with the next draw's (saves.rs `save_answered_with_draw`).
     unsaved: Vec<history::Answered>,
     /// Sessions you parked (stopped, kept to resume), the latest parked first.
