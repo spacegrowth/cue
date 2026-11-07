@@ -67,6 +67,8 @@ impl Queue {
 
 /// How the writer's thread is started (a test's can refuse, as the system can).
 type Spawn = fn(Box<dyn FnOnce() + Send>) -> std::io::Result<()>;
+/// How a job is written on the writer's thread (a test's can panic, as a write can).
+type Writes = fn(&LiveWrites, Job);
 
 fn spawn_writer(run: Box<dyn FnOnce() + Send>) -> std::io::Result<()> {
     std::thread::Builder::new().name("cue-db-writer".into()).spawn(run).map(drop)
@@ -81,11 +83,12 @@ pub(super) struct LiveWrites {
     /// Whether the writer's thread runs: started at the first threaded hand-in, once.
     worker: OnceLock<bool>,
     spawn: Spawn,
+    writes: Writes,
 }
 
 impl Default for LiveWrites {
     fn default() -> Self {
-        Self { queue: Default::default(), wake: Default::default(), written: Default::default(), worker: Default::default(), spawn: spawn_writer }
+        Self { queue: Default::default(), wake: Default::default(), written: Default::default(), worker: Default::default(), spawn: spawn_writer, writes: LiveWrites::write }
     }
 }
 
@@ -134,9 +137,17 @@ impl LiveWrites {
                 q.writing = true;
                 std::mem::take(&mut q.jobs)
             };
-            jobs.into_iter().for_each(|job| self.write(job));
+            jobs.into_iter().for_each(|job| self.write_contained(job));
             crate::locking::lock(&self.queue, "db writes").writing = false;
             self.wake.notify_all();
+        }
+    }
+
+    /// One job written on the writer's thread. A write that panics loses only its job (said in the log): the
+    /// writer goes on serving, and `flush` still sees it done, so quitting never waits on a writer that died.
+    fn write_contained(&self, job: Job) {
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (self.writes)(self, job))).is_err() {
+            eprintln!("cue: a database write failed (it panicked): that save is lost, the writer goes on");
         }
     }
 
@@ -297,6 +308,33 @@ mod tests {
         });
         assert!(done.recv_timeout(std::time::Duration::from_secs(5)).is_ok(), "flush waited on a writer that never started");
         assert!(crate::db::history(50).iter().any(|i| i.id == "a"));
+    }
+
+    /// A write that panics on the writer's thread loses only its own job: the writer goes on with the next, and
+    /// `flush` (quitting) returns.
+    #[test]
+    fn a_write_that_panics_loses_only_its_job_and_flush_still_returns() {
+        let _db = Db::new("panics");
+        let writes: Writes = |w, job| {
+            if job.answered.iter().any(|i| i.id == "boom") {
+                panic!("the disk went away");
+            }
+            w.write(job)
+        };
+        let w = Arc::new(LiveWrites { writes, ..Default::default() });
+        w.hand(Job { answered: vec![answered("boom", "s", 10)], ..Default::default() }, true);
+        w.hand(Job { answered: vec![answered("after", "s", 11)], ..Default::default() }, true);
+        let (done_tx, done) = std::sync::mpsc::channel();
+        let flushing = w.clone();
+        std::thread::spawn(move || {
+            flushing.flush();
+            let _ = done_tx.send(());
+        });
+        assert!(done.recv_timeout(std::time::Duration::from_secs(5)).is_ok(), "flush waited on a writer that died");
+        w.hand(Job { answered: vec![answered("later", "s", 12)], ..Default::default() }, true);
+        w.flush();
+        let ids: Vec<String> = crate::db::history(50).into_iter().map(|i| i.id).collect();
+        assert!(ids.contains(&"after".to_string()) && ids.contains(&"later".to_string()), "{ids:?}");
     }
 
     /// Parked records are saved by the writer, not where they're handed in (a draw that takes a session off
