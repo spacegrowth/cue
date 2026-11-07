@@ -149,3 +149,22 @@ fn a_slow_history_read_holds_up_no_other_sessions_history() {
     std::fs::remove_dir_all(&dir_a).ok();
     std::fs::remove_dir_all(&dir_b).ok();
 }
+
+/// A read dropped because another went in first is tried again: the one that went in read before the log
+/// grew, and the dropped one saw more, so its asker answers with the newest lines, not a poll late.
+#[test]
+fn a_dropped_read_is_tried_again_so_its_asker_isnt_a_poll_late() {
+    let (dir, p) = log_at("retry");
+    append(&p, &turn(0));
+    assert_eq!(last_say(&p).as_deref(), Some("reply 0"));
+    // This asker's read is planned, then waits on the disk while another asker's read goes in first.
+    let (release, started) = slow_disk::hold_next(&p);
+    let late = { let p = p.clone(); std::thread::spawn(move || last_say(&p)) };
+    started.recv_timeout(Duration::from_secs(5)).expect("the held read reached the disk");
+    assert_eq!(last_say(&p).as_deref(), Some("reply 0"), "the other asker's read goes in first");
+    // The log grows, then the held read goes on: it sees reply 1, but its read is dropped.
+    append(&p, &turn(1));
+    release.send(()).unwrap();
+    assert_eq!(late.join().unwrap().as_deref(), Some("reply 1"));
+    std::fs::remove_dir_all(&dir).ok();
+}

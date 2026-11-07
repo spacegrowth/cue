@@ -60,13 +60,18 @@ fn caught_up<R>(path: &str, f: impl FnOnce(&mut Feed, bool) -> R) -> R {
     f(&mut feed, fresh)
 }
 
-/// Catch the shared feed up, its lock taken only to plan and to put in: never while a file is read.
+/// Catch the shared feed up, its lock taken only to plan and to put in: never while a file is read. A read
+/// dropped because another went in first is tried once more: the one that went in may have read less than
+/// this one saw, and the caller would answer a poll late.
 pub(super) fn catch_up_shared(feed: &Mutex<Feed>) {
-    for _ in 0..ROUNDS {
+    let mut retried = false;
+    for _ in 0..ROUNDS + 1 {
         let plan = crate::locking::lock(feed, "a session's feed").plan();
         let reads = plan.fetch();
-        if crate::locking::lock(feed, "a session's feed").apply(reads) != Applied::Again {
-            return;
+        match crate::locking::lock(feed, "a session's feed").apply(reads) {
+            Applied::Again => {}
+            Applied::Stale if !retried => retried = true,
+            Applied::Done | Applied::Stale => return,
         }
     }
 }
