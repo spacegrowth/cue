@@ -555,7 +555,7 @@ fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)
         .filter_map(|(sid, path)| { let prompt = crate::live::about(&path); (!prompt.is_empty()).then(|| (sid, json!({ "prompt": prompt }))) })
         .collect();
     let projects: HashMap<String, Value> = cwds.iter().map(|c| (c.clone(), folder_project(c, put))).collect();
-    let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::live::branch(&c); (c, b) }).collect();
+    let branches: HashMap<String, String> = cwds.into_iter().map(|c| { let b = crate::logs::repos::branch(&c); (c, b) }).collect();
     let view = json!({ "live": live, "branches": branches, "projects": projects, "about": about });
     view.as_object().cloned().unwrap_or_default()
 }
@@ -563,7 +563,7 @@ fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)
 /// The snapshot's parts other parts of Cue keep, each behind its own lock (taken before the store's, never
 /// under it) for the sessions `ids`: the crew and its hand-offs (relay's, and a hand-off skill's pending ones
 /// that offer "Continue in a new session"), "Hand off if I don't come back", About and the status list's
-/// costs, and settings, which ask macOS (Login Items, a round trip that can take seconds) and read files.
+/// costs, and settings (kept in memory: config.rs).
 fn apart_view(ids: &HashSet<String>) -> serde_json::Map<String, Value> {
     let (crew, handoffs, skill_handoffs, ahead_watch) = (crate::leads::view(ids), crate::leads::handoffs(ids), crate::db::handoffs(), crate::db::ahead_watched());
     let (tasks, tasks_spent, status_spent) = (crate::tasks::view(), crate::tasks::spent(), crate::statuslist::spent());
@@ -592,8 +592,8 @@ fn settle_projects(snap: &mut Value, put: &HashMap<String, String>) {
 fn folder_project(cwd: &str, put: &HashMap<String, String>) -> Value {
     let own = crate::model::own_project(cwd, "");
     let name = crate::model::project_said(cwd, "", put).unwrap_or_else(|| own.clone());
-    let root = crate::live::repo_root(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string());
-    let top = crate::live::checkout_top(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string());
+    let root = crate::logs::repos::repo_root(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string());
+    let top = crate::logs::repos::checkout_top(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string());
     json!({ "name": name, "own": own, "root": root, "top": top, "key": crate::model::put_key(cwd, "") })
 }
 

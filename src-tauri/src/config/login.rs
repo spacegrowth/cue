@@ -1,6 +1,6 @@
 //! "Open at login": Cue as a macOS login item (System Settings → General → Login Items), through
-//! SMAppService, the same API other menu bar apps use. The switch in Settings reads the real status,
-//! so it stays in step if you change it in System Settings instead.
+//! SMAppService, the same API other menu bar apps use. The switch in Settings shows the real status, as
+//! last asked (mac.rs asks it off-thread), so it stays in step if you change it in System Settings instead.
 
 use objc2::msg_send;
 use objc2::rc::Retained;
@@ -20,7 +20,8 @@ fn service() -> Option<Retained<AnyObject>> {
     unsafe { msg_send![cls, mainAppService] }
 }
 
-/// On, or waiting for you to allow it in System Settings (macOS counts both as "will open").
+/// On, or waiting for you to allow it in System Settings (macOS counts both as "will open"). Asked of macOS
+/// now, an XPC round trip: Settings reads it from mac.rs.
 pub fn enabled() -> bool {
     service().is_some_and(|s| matches!(unsafe { msg_send![&s, status] }, ENABLED | NEEDS_APPROVAL))
 }
