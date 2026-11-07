@@ -4,7 +4,7 @@
 
 use super::helper::{Helper, TaskFailure, MAX_HELPERS};
 use super::kind::{kind_of, translate, Kind};
-use super::model::{Item, Meta, Turn, Usage, Work};
+use super::model::{Item, Meta, Turn};
 use super::windows::auto_compact_at;
 use super::START_BYTES;
 use crate::logs::transcript::lines;
@@ -164,7 +164,7 @@ impl Feed {
         if self.turns.is_empty() {
             // Started mid-file, inside a turn whose prompt is further back.
             let at = match &item { Item::Say { at_ms, .. } | Item::Step { at_ms, .. } => *at_ms };
-            self.turns.push(Turn { at_ms: at, prompt: String::new(), items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() });
+            self.turns.push(Turn::starting(at, String::new()));
         }
         let turn = self.turns.last_mut().unwrap();
         turn.items.push(item);

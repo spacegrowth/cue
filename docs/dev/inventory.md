@@ -266,7 +266,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "AUTO_SEEN" | "DB" |  | `logs/steps/windows.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with`, takes it |
 | "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with` → `db.rs::open` → `db.rs::open_at` → `db.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "DB" | "folder facts" |  | `db.rs::with` → `db.rs::open` → `db.rs::open_at` → `db.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "FEEDS" | "WINDOWS" |  | `logs/steps/queries.rs::steps` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/windows.rs::known_window` → `logs/steps/windows.rs::with_windows`, takes it |
+| "FEEDS" | "WINDOWS" |  | `logs/steps/queries.rs::steps` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window` → `logs/steps/windows.rs::with_windows`, takes it |
 | "INDEX" | "REMOTE" |  | `leads.rs::close_plan` → `leads.rs::relay_close` → `leads.rs::relay_for`, takes it |
 | "INDEX" | "REMOTE_PILEAD" |  | `leads.rs::close_plan` → `leads.rs::pilead_for`, takes it |
 | "INDEX" | "VERIFY" |  | `leads.rs::view` → `leads.rs::verdict_of`, takes it |
@@ -556,7 +556,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/pi.rs::pi_window` | read_to_string | 1 |
 | `logs/steps/queries.rs::set_window` | rename | 1 |
 | `logs/steps/queries.rs::set_window` | write | 1 |
-| `logs/steps/turn_rows.rs::turn_rows` | File::open | 1 |
+| `logs/steps/turn_rows.rs::whole_lines` | File::open | 1 |
 | `logs/steps/windows.rs::with_windows` | read | 1 |
 | `logs/transcript.rs::about` | metadata | 1 |
 | `logs/transcript.rs::activity` | metadata | 1 |
@@ -904,13 +904,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/leads.rs::relay_and_pilead_leads_own_their_executors` | test |  |
 | `src-tauri/src/leads.rs::scan_relay` |  |  |
 | `src-tauri/src/lib.rs::run` |  |  |
-| `src-tauri/src/logs/steps/codex.rs::from_codex` |  |  |
-| `src-tauri/src/logs/steps/detail.rs::one_detail` |  |  |
-| `src-tauri/src/logs/steps/observe.rs::observe` |  |  |
-| `src-tauri/src/logs/steps/take.rs::take` |  |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
-| `src-tauri/src/logs/steps/turn_rows.rs::turn_rows` |  |  |
 | `src-tauri/src/logs/transcript.rs::conversation_before` |  |  |
 | `src-tauri/src/sessions.rs::mark` |  |  |
 | `src-tauri/src/talk.rs::run_loop` |  |  |

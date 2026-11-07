@@ -64,6 +64,13 @@ pub struct Turn {
     pub(super) work: Work,
 }
 
+impl Turn {
+    /// A turn starting at `at_ms` on `prompt` ("" when it isn't yours), nothing in it yet.
+    pub(super) fn starting(at_ms: u64, prompt: String) -> Turn {
+        Turn { at_ms, prompt, items: Vec::new(), more: 0, hooked_ms: 0, tokens: 0, context: 0, usage: Usage::default(), work: Work::default() }
+    }
+}
+
 /// A turn's own looking around and delegating, for Insights' "could have delegated": reads and searches
 /// it ran itself, the background agents and relay executors it started, and the files it edited.
 #[derive(Clone, Default)]

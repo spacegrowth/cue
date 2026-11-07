@@ -83,50 +83,57 @@ fn one_detail(tool: &str, input: &Value, block: &Value, extra: &Value) -> Value 
     // An edit (not a failed one): its diff, hunk by hunk.
     let edit = matches!(tool, "Edit" | "MultiEdit" | "Write" | "NotebookEdit") && !failed;
     if edit {
-        let mut diff: Vec<[String; 2]> = Vec::new();
-        let mut cut_lines = 0;
-        if extra.get("type").and_then(Value::as_str) == Some("create") {
-            let content = extra.get("content").and_then(Value::as_str).unwrap_or("");
-            cut_lines = content.lines().count().saturating_sub(OUT_TAIL);
-            for l in content.lines().take(OUT_TAIL) {
-                diff.push(["+".into(), cut(l, LINE_CHARS)]);
-            }
-        } else {
-            for (n, hunk) in extra.get("structuredPatch").and_then(Value::as_array).into_iter().flatten().enumerate() {
-                if n > 0 {
-                    diff.push(["…".into(), String::new()]);
-                }
-                for l in hunk.get("lines").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
-                    let (op, rest) = l.split_at(l.chars().next().map(char::len_utf8).unwrap_or(0));
-                    diff.push([if op == "+" || op == "-" { op.to_string() } else { " ".into() }, cut(rest, LINE_CHARS)]);
-                }
-            }
-        }
-        cut_lines += diff.len().saturating_sub(OUT_HEAD + OUT_TAIL);
-        diff.truncate(OUT_HEAD + OUT_TAIL);
-        // A long diff is cut at the end: `skipped` lines more.
-        return json!({ "full": full, "diff": diff, "skipped": cut_lines });
+        return edit_detail(full, extra);
     }
     // A read shows no file contents: the line already says how much it read.
     if tool == "Read" && !failed {
         return json!({ "full": full });
     }
-    let output = if tool == "Bash" && !failed {
-        let mut o = extra.get("stdout").and_then(Value::as_str).unwrap_or("").to_string();
-        let err = extra.get("stderr").and_then(Value::as_str).unwrap_or("").trim();
-        // The shell's own note about its folder isn't the command's output.
-        let err: String = err.lines().filter(|l| !l.starts_with("Shell cwd was reset")).collect::<Vec<_>>().join("\n");
-        if !err.trim().is_empty() {
-            if !o.is_empty() {
-                o.push('\n');
-            }
-            o.push_str(&err);
-        }
-        if o.trim().is_empty() { result_text(block) } else { o }
-    } else {
-        result_text(block)
-    };
+    let output = if tool == "Bash" && !failed { bash_output(block, extra) } else { result_text(block) };
     let (out, skipped) = clip_lines(&output);
     // `gap_at`: where the skipped lines were (after the first OUT_HEAD).
     json!({ "full": full, "output": out, "skipped": skipped, "gap_at": OUT_HEAD })
+}
+
+/// An edit's diff, hunk by hunk (a new file: its lines, all added), cut at the end when long.
+fn edit_detail(full: String, extra: &Value) -> Value {
+    let mut diff: Vec<[String; 2]> = Vec::new();
+    let mut cut_lines = 0;
+    if extra.get("type").and_then(Value::as_str) == Some("create") {
+        let content = extra.get("content").and_then(Value::as_str).unwrap_or("");
+        cut_lines = content.lines().count().saturating_sub(OUT_TAIL);
+        for l in content.lines().take(OUT_TAIL) {
+            diff.push(["+".into(), cut(l, LINE_CHARS)]);
+        }
+    } else {
+        for (n, hunk) in extra.get("structuredPatch").and_then(Value::as_array).into_iter().flatten().enumerate() {
+            if n > 0 {
+                diff.push(["…".into(), String::new()]);
+            }
+            for l in hunk.get("lines").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+                let (op, rest) = l.split_at(l.chars().next().map(char::len_utf8).unwrap_or(0));
+                diff.push([if op == "+" || op == "-" { op.to_string() } else { " ".into() }, cut(rest, LINE_CHARS)]);
+            }
+        }
+    }
+    cut_lines += diff.len().saturating_sub(OUT_HEAD + OUT_TAIL);
+    diff.truncate(OUT_HEAD + OUT_TAIL);
+    // A long diff is cut at the end: `skipped` lines more.
+    json!({ "full": full, "diff": diff, "skipped": cut_lines })
+}
+
+/// What a command printed: its output, then its errors (not the shell's own note about its folder);
+/// the result's text when it printed nothing.
+fn bash_output(block: &Value, extra: &Value) -> String {
+    let mut o = extra.get("stdout").and_then(Value::as_str).unwrap_or("").to_string();
+    let err = extra.get("stderr").and_then(Value::as_str).unwrap_or("").trim();
+    // The shell's own note about its folder isn't the command's output.
+    let err: String = err.lines().filter(|l| !l.starts_with("Shell cwd was reset")).collect::<Vec<_>>().join("\n");
+    if !err.trim().is_empty() {
+        if !o.is_empty() {
+            o.push('\n');
+        }
+        o.push_str(&err);
+    }
+    if o.trim().is_empty() { result_text(block) } else { o }
 }

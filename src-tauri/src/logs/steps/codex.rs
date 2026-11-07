@@ -26,60 +26,67 @@ pub(super) fn from_codex(e: &Value, patches: &mut HashMap<String, String>) -> Ve
             }
             vec![json!({ "type": "assistant", "timestamp": ts, "message": { "content": [{ "type": "text", "text": text }] } })]
         }
-        (Some("response_item"), "function_call" | "custom_tool_call") => {
-            let name = p.get("name").and_then(Value::as_str).unwrap_or("");
-            let id = p.get("call_id").cloned().unwrap_or(Value::Null);
-            let args: Value = p.get("arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or(Value::Null);
-            let raw = p.get("input").and_then(Value::as_str).unwrap_or("");
-            let (tool, input) = match name {
-                "write_stdin" => return vec![],
-                "exec_command" => ("Bash".to_string(), json!({ "command": args.get("cmd").cloned().unwrap_or(Value::Null) })),
-                "shell" | "local_shell" | "container.exec" => {
-                    let argv: Vec<&str> = args.get("command").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
-                    let cmd = if argv.len() >= 3 && argv[1] == "-lc" { argv[2].to_string() } else { argv.join(" ") };
-                    ("Bash".to_string(), json!({ "command": cmd }))
-                }
-                "apply_patch" => {
-                    if let Some(i) = id.as_str() {
-                        patches.insert(i.to_string(), raw.to_string());
-                    }
-                    let file = raw.lines().find_map(|l| ["*** Update File: ", "*** Add File: ", "*** Delete File: "].iter().find_map(|m| l.strip_prefix(m))).unwrap_or("").trim().to_string();
-                    ("Edit".to_string(), json!({ "file_path": file }))
-                }
-                // The Codex app's own tool: a script it runs (JavaScript). Often it only runs a shell
-                // command (`tools.exec_command({"cmd": "…"})`): then it reads as that command.
-                "exec" => match script_command(raw) {
-                    Some(cmd) => ("Bash".to_string(), json!({ "command": cmd })),
-                    None => ("CodexScript".to_string(), json!({ "script": raw })),
-                },
-                n => (n.to_string(), if args.is_null() { json!({ "input": raw }) } else { args }),
-            };
-            vec![json!({ "type": "assistant", "timestamp": ts, "message": { "content": [{ "type": "tool_use", "id": id, "name": tool, "input": input }] } })]
-        }
-        (Some("response_item"), "function_call_output" | "custom_tool_call_output") => {
-            let id = p.get("call_id").and_then(Value::as_str).unwrap_or("").to_string();
-            let text = match p.get("output") {
-                Some(Value::String(t)) => t.clone(),
-                Some(Value::Array(a)) => a.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"),
-                Some(Value::Object(o)) => o.get("output").and_then(Value::as_str).unwrap_or("").to_string(),
-                _ => String::new(),
-            };
-            // "Process exited with code 1" / "Exit code: 1" up top, then "Output:" and what it printed.
-            let code = ["exited with code ", "Exit code: "].iter().find_map(|m| text.split(m).nth(1).map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>())).and_then(|c| c.parse::<i64>().ok());
-            let body = text.split_once("Output:\n").map(|(_, b)| b.to_string()).unwrap_or_else(|| text.clone());
-            let failed = code.is_some_and(|c| c != 0);
-            let extra = match patches.get(&id) {
-                Some(patch) => json!({ "structuredPatch": codex_patch(patch) }),
-                None => json!({ "stdout": body }),
-            };
-            let shown = if failed { format!("Exit code {}\n{body}", code.unwrap_or(1)) } else { body };
-            vec![json!({
-                "type": "user", "timestamp": ts, "toolUseResult": extra,
-                "message": { "content": [{ "type": "tool_result", "tool_use_id": id, "content": shown, "is_error": failed }] },
-            })]
-        }
+        (Some("response_item"), "function_call" | "custom_tool_call") => codex_call(&p, ts, patches),
+        (Some("response_item"), "function_call_output" | "custom_tool_call_output") => codex_output(&p, ts, patches),
         _ => vec![],
     }
+}
+
+/// A Codex tool call as Claude Code's tool_use: its commands as Bash, its patches as Edit (kept by call
+/// id for their result), anything else by its own name.
+fn codex_call(p: &Value, ts: Value, patches: &mut HashMap<String, String>) -> Vec<Value> {
+    let name = p.get("name").and_then(Value::as_str).unwrap_or("");
+    let id = p.get("call_id").cloned().unwrap_or(Value::Null);
+    let args: Value = p.get("arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or(Value::Null);
+    let raw = p.get("input").and_then(Value::as_str).unwrap_or("");
+    let (tool, input) = match name {
+        "write_stdin" => return vec![],
+        "exec_command" => ("Bash".to_string(), json!({ "command": args.get("cmd").cloned().unwrap_or(Value::Null) })),
+        "shell" | "local_shell" | "container.exec" => {
+            let argv: Vec<&str> = args.get("command").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+            let cmd = if argv.len() >= 3 && argv[1] == "-lc" { argv[2].to_string() } else { argv.join(" ") };
+            ("Bash".to_string(), json!({ "command": cmd }))
+        }
+        "apply_patch" => {
+            if let Some(i) = id.as_str() {
+                patches.insert(i.to_string(), raw.to_string());
+            }
+            let file = raw.lines().find_map(|l| ["*** Update File: ", "*** Add File: ", "*** Delete File: "].iter().find_map(|m| l.strip_prefix(m))).unwrap_or("").trim().to_string();
+            ("Edit".to_string(), json!({ "file_path": file }))
+        }
+        // The Codex app's own tool: a script it runs (JavaScript). Often it only runs a shell
+        // command (`tools.exec_command({"cmd": "…"})`): then it reads as that command.
+        "exec" => match script_command(raw) {
+            Some(cmd) => ("Bash".to_string(), json!({ "command": cmd })),
+            None => ("CodexScript".to_string(), json!({ "script": raw })),
+        },
+        n => (n.to_string(), if args.is_null() { json!({ "input": raw }) } else { args }),
+    };
+    vec![json!({ "type": "assistant", "timestamp": ts, "message": { "content": [{ "type": "tool_use", "id": id, "name": tool, "input": input }] } })]
+}
+
+/// A Codex tool's output as Claude Code's tool_result: its exit code, what it printed, and a patch's diff.
+fn codex_output(p: &Value, ts: Value, patches: &HashMap<String, String>) -> Vec<Value> {
+    let id = p.get("call_id").and_then(Value::as_str).unwrap_or("").to_string();
+    let text = match p.get("output") {
+        Some(Value::String(t)) => t.clone(),
+        Some(Value::Array(a)) => a.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n"),
+        Some(Value::Object(o)) => o.get("output").and_then(Value::as_str).unwrap_or("").to_string(),
+        _ => String::new(),
+    };
+    // "Process exited with code 1" / "Exit code: 1" up top, then "Output:" and what it printed.
+    let code = ["exited with code ", "Exit code: "].iter().find_map(|m| text.split(m).nth(1).map(|r| r.chars().take_while(char::is_ascii_digit).collect::<String>())).and_then(|c| c.parse::<i64>().ok());
+    let body = text.split_once("Output:\n").map(|(_, b)| b.to_string()).unwrap_or_else(|| text.clone());
+    let failed = code.is_some_and(|c| c != 0);
+    let extra = match patches.get(&id) {
+        Some(patch) => json!({ "structuredPatch": codex_patch(patch) }),
+        None => json!({ "stdout": body }),
+    };
+    let shown = if failed { format!("Exit code {}\n{body}", code.unwrap_or(1)) } else { body };
+    vec![json!({
+        "type": "user", "timestamp": ts, "toolUseResult": extra,
+        "message": { "content": [{ "type": "tool_result", "tool_use_id": id, "content": shown, "is_error": failed }] },
+    })]
 }
 
 /// The shell command a Codex app script runs, when that's all it is: `exec_command({"cmd": "…"})`.

@@ -2,8 +2,8 @@
 //! log a stretch at a time.
 
 use super::feed::Feed;
-use super::kind::{kind_of, translate};
-use super::model::{area_of, Item, Usage};
+use super::kind::{kind_of, translate, Kind};
+use super::model::{area_of, Item, Turn, Usage};
 use crate::logs::transcript::content_blocks;
 use serde_json::Value;
 use std::io::{Read, Seek, SeekFrom};
@@ -65,93 +65,109 @@ pub(super) fn snippet(prompt: &str) -> String {
 /// Returns them with the byte where that open turn starts, so the next read begins there and finishes it.
 /// Reads at most `max` bytes, whole lines only.
 pub fn turn_rows(path: &str, from: u64, max: u64) -> (Vec<TurnRow>, u64) {
-    let Ok(file) = std::fs::File::open(path) else { return (Vec::new(), from) };
-    let mut file = file;
-    if file.seek(SeekFrom::Start(from)).is_err() {
-        return (Vec::new(), from);
-    }
-    let mut buf = Vec::new();
-    if file.take(max).read_to_end(&mut buf).is_err() {
-        return (Vec::new(), from);
-    }
-    let Some(end) = buf.iter().rposition(|&b| b == b'\n').map(|i| i + 1) else { return (Vec::new(), from) };
+    let Some((buf, end)) = whole_lines(path, from, max) else { return (Vec::new(), from) };
     let kind = kind_of(path);
     let mut feed = Feed::start(path, 0, 0);
     feed.kind = kind;
-    // Per turn, beside the feed's: when it started in the file, its model and folder, whether you stopped it.
-    let (mut starts, mut models, mut cwds, mut stopped): (Vec<u64>, Vec<String>, Vec<String>, Vec<bool>) = Default::default();
-    let mut autos: Vec<u64> = Vec::new();
+    let mut beside: Vec<Beside> = Vec::new();
     let mut cwd = String::new();
     let mut pos = 0usize;
     for line in buf[..end].split(|&b| b == b'\n') {
         let at = from + pos as u64;
         pos += line.len() + 1;
         let Ok(e) = serde_json::from_slice::<Value>(line) else { continue };
-        if let Some(c) = e.get("cwd").or_else(|| e.pointer("/payload/cwd")).and_then(Value::as_str).filter(|c| !c.is_empty()) {
-            cwd = c.to_string();
-        }
-        feed.observe(&e);
-        for c in translate(kind, &e, &mut feed.patches) {
-            if c.get("type").and_then(Value::as_str) == Some("user") {
-                let blocks = content_blocks(&c);
-                let text: String = blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
-                if text.trim_start().starts_with("[Request interrupted") {
-                    if let Some(s) = stopped.last_mut() {
-                        *s = true;
-                    }
+        read_entry(&mut feed, kind, &e, at, &mut cwd, &mut beside);
+    }
+    let rows = beside.iter().enumerate().map(|(i, b)| row(&feed.turns, i, b)).collect();
+    // The open turn starts the next read; none read: carry on after what was read.
+    let next = beside.last().map_or(from + end as u64, |b| b.start);
+    (rows, next)
+}
+
+/// Per turn, beside the feed's: when it started in the file, its model and folder, whether you stopped
+/// it, and the context Claude Code compacted it at on its own.
+struct Beside {
+    start: u64,
+    model: String,
+    cwd: String,
+    stopped: bool,
+    auto: u64,
+}
+
+/// The bytes of `path` from `from` on (at most `max`), and where its last whole line ends; None when
+/// there's no whole line.
+fn whole_lines(path: &str, from: u64, max: u64) -> Option<(Vec<u8>, usize)> {
+    let mut file = std::fs::File::open(path).ok()?;
+    file.seek(SeekFrom::Start(from)).ok()?;
+    let mut buf = Vec::new();
+    file.take(max).read_to_end(&mut buf).ok()?;
+    let end = buf.iter().rposition(|&b| b == b'\n').map(|i| i + 1)?;
+    Some((buf, end))
+}
+
+/// One log entry, read into the feed, with what each turn needs beside it. `at`: where the entry starts in the file.
+fn read_entry(feed: &mut Feed, kind: Kind, e: &Value, at: u64, cwd: &mut String, beside: &mut Vec<Beside>) {
+    if let Some(c) = e.get("cwd").or_else(|| e.pointer("/payload/cwd")).and_then(Value::as_str).filter(|c| !c.is_empty()) {
+        *cwd = c.to_string();
+    }
+    feed.observe(e);
+    for c in translate(kind, e, &mut feed.patches) {
+        if c.get("type").and_then(Value::as_str) == Some("user") {
+            let blocks = content_blocks(&c);
+            let text: String = blocks.iter().filter_map(|b| b.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n");
+            if text.trim_start().starts_with("[Request interrupted") {
+                if let Some(b) = beside.last_mut() {
+                    b.stopped = true;
                 }
             }
-            feed.take(&c);
         }
-        while starts.len() < feed.turns.len() {
-            starts.push(at);
-            models.push(String::new());
-            cwds.push(cwd.clone());
-            stopped.push(false);
-            autos.push(0);
-        }
-        // Claude Code compacted it on its own, at this much context: kept with the turn it happened in.
-        if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") && e.pointer("/compactMetadata/trigger").and_then(Value::as_str) == Some("auto") {
-            if let (Some(a), Some(pre)) = (autos.last_mut(), e.pointer("/compactMetadata/preTokens").and_then(Value::as_u64)) {
-                *a = pre;
-            }
-        }
-        if let Some(m) = models.last_mut() {
-            if !feed.meta.model.is_empty() {
-                m.clone_from(&feed.meta.model);
-            }
+        feed.take(&c);
+    }
+    while beside.len() < feed.turns.len() {
+        beside.push(Beside { start: at, model: String::new(), cwd: cwd.clone(), stopped: false, auto: 0 });
+    }
+    // Claude Code compacted it on its own, at this much context: kept with the turn it happened in.
+    if e.get("subtype").and_then(Value::as_str) == Some("compact_boundary") && e.pointer("/compactMetadata/trigger").and_then(Value::as_str) == Some("auto") {
+        if let (Some(b), Some(pre)) = (beside.last_mut(), e.pointer("/compactMetadata/preTokens").and_then(Value::as_u64)) {
+            b.auto = pre;
         }
     }
-    let n = feed.turns.len();
+    if let Some(b) = beside.last_mut() {
+        if !feed.meta.model.is_empty() {
+            b.model.clone_from(&feed.meta.model);
+        }
+    }
+}
+
+/// Turn `i` of `turns` as its row.
+fn row(turns: &[Turn], i: usize, b: &Beside) -> TurnRow {
+    let t = &turns[i];
     // A turn Claude Code started itself (a background task reporting back) has no prompt: it wasn't you
     // answering late, and the turn a correction corrects is the one before your next prompt.
-    let next_yours = |i: usize| feed.turns[i + 1..].iter().find(|t| !t.prompt.is_empty());
-    let rows = feed.turns.iter().enumerate().map(|(i, t)| TurnRow {
+    let next_yours = || turns[i + 1..].iter().find(|t| !t.prompt.is_empty());
+    TurnRow {
         at_ms: t.at_ms,
         tokens: t.tokens,
         context: t.context,
         prompt_chars: t.prompt.chars().count() as u64,
-        model: models[i].clone(),
-        cwd: cwds[i].clone(),
+        model: b.model.clone(),
+        cwd: b.cwd.clone(),
         errors: t.items.iter().filter(|x| matches!(x, Item::Step { bad: true, .. })).count() as u64,
-        interrupted: stopped[i],
-        corrected: next_yours(i).is_some_and(|next| reads_as_correction(&next.prompt)),
+        interrupted: b.stopped,
+        corrected: next_yours().is_some_and(|next| reads_as_correction(&next.prompt)),
         usage: t.usage,
-        waited_ms: i.checked_sub(1).filter(|_| !t.prompt.is_empty()).map(|p| feed.turns[p].usage.last_ms).filter(|&l| l > SANE_MS && t.at_ms > l).map_or(0, |l| t.at_ms - l),
+        waited_ms: i.checked_sub(1).filter(|_| !t.prompt.is_empty()).map(|p| turns[p].usage.last_ms).filter(|&l| l > SANE_MS && t.at_ms > l).map_or(0, |l| t.at_ms - l),
         prompt: snippet(&t.prompt),
-        correction: next_yours(i).filter(|next| reads_as_correction(&next.prompt)).map(|next| snippet(&next.prompt)).unwrap_or_default(),
+        correction: next_yours().filter(|next| reads_as_correction(&next.prompt)).map(|next| snippet(&next.prompt)).unwrap_or_default(),
         looks: t.work.looks,
         agents: t.work.agents,
         relay: t.work.relay,
         areas: {
-            let mut a: Vec<String> = t.work.edited.iter().filter_map(|f| area_of(&cwds[i], f)).collect();
+            let mut a: Vec<String> = t.work.edited.iter().filter_map(|f| area_of(&b.cwd, f)).collect();
             a.sort();
             a.dedup();
             a.join("\n")
         },
-        auto_compact: autos[i],
-    }).collect();
-    // The open turn starts the next read; none read: carry on after what was read.
-    let next = if n > 0 { starts[n - 1] } else { from + end as u64 };
-    (rows, next)
+        auto_compact: b.auto,
+    }
 }
