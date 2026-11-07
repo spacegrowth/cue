@@ -46,7 +46,7 @@ const HANDOFF_CONTEXT: u64 = 300_000;
 const LOOKS: u64 = 30;
 const LOOK_GROWTH: u64 = 80_000;
 const SUMMARY: u64 = 5_000;
-/// A session that passed its hand-off point while editing in this many areas of its project (logs/steps.rs
+/// A session that passed its hand-off point while editing in this many areas of its project (logs/steps/model.rs
 /// area_of) was several pieces of work in one context: each could have had a session (relay) or an agent of its own.
 const AREAS: usize = 3;
 

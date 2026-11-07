@@ -33,7 +33,7 @@ reason = "the tests' own tmux seam: takes down the servers of test runs that hav
 [[lock_order]]
 from = "AUTO_SEEN"
 to = "DB"
-reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
+reason = "logs::steps::windows::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
 
 [[lock_order]]
 from = "AUTO_SEEN"
@@ -48,7 +48,7 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "FEEDS"
 to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::windows::with_windows), a leaf"
 
 [[lock_order]]
 from = "INDEX"

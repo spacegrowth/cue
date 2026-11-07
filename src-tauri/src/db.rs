@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS turns (
   errors       INTEGER NOT NULL DEFAULT 0,
   interrupted  INTEGER NOT NULL DEFAULT 0,
   corrected    INTEGER NOT NULL DEFAULT 0,
-  fresh        INTEGER NOT NULL DEFAULT 0, -- tokens by kind (logs/steps.rs Usage)
+  fresh        INTEGER NOT NULL DEFAULT 0, -- tokens by kind (logs/steps/model.rs Usage)
   output       INTEGER NOT NULL DEFAULT 0,
   cache_read   INTEGER NOT NULL DEFAULT 0,
   write_5m     INTEGER NOT NULL DEFAULT 0,

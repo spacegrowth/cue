@@ -221,11 +221,11 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/live.rs::ABOUT` | `Mutex<Option<HashMap<String,(u64,std::time::SystemTime,String)>>>` | "ABOUT" (1 sites) |
 | `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (4 sites) |
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
-| `logs/steps.rs::FEEDS` | `Mutex<Option<HashMap<String,Feed>>>` | "FEEDS" (14 sites) |
-| `logs/steps.rs::HISTORY` | `Mutex<Option<HashMap<String,Feed>>>` | "HISTORY" (1 sites) |
-| `logs/steps.rs::WINDOWS` | `Mutex<Option<Windows>>` | "WINDOWS" (1 sites) |
-| `logs/steps.rs::SEEN` | `Mutex<Option<HashMap<String,(Instant,u64)>>>` | "AUTO_SEEN" (1 sites) |
-| `logs/steps.rs::STORE` | `std::sync::OnceLock<Value>` | — |
+| `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,Feed>>>` | "HISTORY" (1 sites) |
+| `logs/steps/pi.rs::STORE` | `std::sync::OnceLock<Value>` | — |
+| `logs/steps/queries.rs::FEEDS` | `Mutex<Option<HashMap<String,Feed>>>` | "FEEDS" (14 sites) |
+| `logs/steps/windows.rs::WINDOWS` | `Mutex<Option<Windows>>` | "WINDOWS" (1 sites) |
+| `logs/steps/windows.rs::SEEN` | `Mutex<Option<HashMap<String,(Instant,u64)>>>` | "AUTO_SEEN" (1 sites) |
 | `logs/turns.rs::CATCHING_UP` | `std::sync::Mutex<Option<(u64,u64)>>` | "turns CATCHING_UP" (2 sites) |
 | `logs/usage_file.rs::LAST` | `Mutex<Option<(std::path::PathBuf,Option<SystemTime>,Value)>>` | "LAST" (2 sites) |
 | `machines/hooks.rs::W` | `OnceLock<Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>>` | — |
@@ -263,10 +263,10 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 
 | Held | Taken |  | First seen |
 |---|---|---|---|
-| "AUTO_SEEN" | "DB" |  | `logs/steps.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with`, takes it |
-| "AUTO_SEEN" | "folder facts" |  | `logs/steps.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with` → `db.rs::open` → `db.rs::open_at` → `db.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "AUTO_SEEN" | "DB" |  | `logs/steps/windows.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with`, takes it |
+| "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with` → `db.rs::open` → `db.rs::open_at` → `db.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "DB" | "folder facts" |  | `db.rs::with` → `db.rs::open` → `db.rs::open_at` → `db.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "FEEDS" | "WINDOWS" |  | `logs/steps.rs::steps` → `logs/steps.rs::Feed::open` → `logs/steps.rs::start_of` → `logs/steps.rs::Feed::observe` → `logs/steps.rs::known_window` → `logs/steps.rs::with_windows`, takes it |
+| "FEEDS" | "WINDOWS" |  | `logs/steps/queries.rs::steps` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/windows.rs::known_window` → `logs/steps/windows.rs::with_windows`, takes it |
 | "INDEX" | "REMOTE" |  | `leads.rs::close_plan` → `leads.rs::relay_close` → `leads.rs::relay_for`, takes it |
 | "INDEX" | "REMOTE_PILEAD" |  | `leads.rs::close_plan` → `leads.rs::pilead_for`, takes it |
 | "INDEX" | "VERIFY" |  | `leads.rs::view` → `leads.rs::verdict_of`, takes it |
@@ -337,8 +337,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `locking/watchdog.rs::wake` | Builder::spawn | 1 |
 | `logs/archive.rs::start` | thread::spawn | 1 |
 | `logs/repos.rs::Folders::look_up` | thread::spawn | 1 |
-| `logs/steps.rs::Feed::close_scripts` | thread::spawn | 1 |
-| `logs/steps.rs::Feed::helper_finished` | thread::spawn | 1 |
+| `logs/steps/background.rs::Feed::close_scripts` | thread::spawn | 1 |
+| `logs/steps/background.rs::Feed::helper_finished` | thread::spawn | 1 |
 | `logs/turns.rs::start` | Builder::spawn | 1 |
 | `machines/hooks.rs::handle` | thread::spawn | 2 |
 | `machines/hooks.rs::new_session_seen` | thread::spawn | 1 |
@@ -538,26 +538,26 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/repos.rs::head_file` | Path::is_file | 1 |
 | `logs/repos.rs::linked_gitdir` | read_to_string | 1 |
 | `logs/repos.rs::look_on_disk` | Path::exists | 1 |
-| `logs/steps.rs::Feed::open` | metadata | 1 |
-| `logs/steps.rs::Feed::read_new` | File::open | 1 |
-| `logs/steps.rs::Feed::read_new` | Path::metadata | 1 |
-| `logs/steps.rs::Feed::resume_helper` | Path::exists | 1 |
-| `logs/steps.rs::Helper::read_output` | File::open | 1 |
-| `logs/steps.rs::Helper::read_output` | Path::metadata | 1 |
-| `logs/steps.rs::detail` | File::open | 1 |
-| `logs/steps.rs::detail` | metadata | 1 |
-| `logs/steps.rs::edited_files_by` | metadata | 1 |
-| `logs/steps.rs::edited_files_by` | read_dir | 1 |
-| `logs/steps.rs::edited_files_by` | read_to_string | 2 |
-| `logs/steps.rs::helper_meta` | read | 1 |
-| `logs/steps.rs::kind_of` | File::open | 1 |
-| `logs/steps.rs::mtime_ms` | metadata | 1 |
-| `logs/steps.rs::pi_window` | read_to_string | 1 |
-| `logs/steps.rs::set_window` | rename | 1 |
-| `logs/steps.rs::set_window` | write | 1 |
-| `logs/steps.rs::start_of` | File::open | 1 |
-| `logs/steps.rs::turn_rows` | File::open | 1 |
-| `logs/steps.rs::with_windows` | read | 1 |
+| `logs/steps/background.rs::Feed::resume_helper` | Path::exists | 1 |
+| `logs/steps/detail.rs::detail` | File::open | 1 |
+| `logs/steps/detail.rs::detail` | metadata | 1 |
+| `logs/steps/edits.rs::edited_files_by` | metadata | 1 |
+| `logs/steps/edits.rs::edited_files_by` | read_dir | 1 |
+| `logs/steps/edits.rs::edited_files_by` | read_to_string | 2 |
+| `logs/steps/feed.rs::Feed::open` | metadata | 1 |
+| `logs/steps/feed.rs::Feed::read_new` | File::open | 1 |
+| `logs/steps/feed.rs::Feed::read_new` | Path::metadata | 1 |
+| `logs/steps/feed.rs::start_of` | File::open | 1 |
+| `logs/steps/helper.rs::Helper::read_output` | File::open | 1 |
+| `logs/steps/helper.rs::Helper::read_output` | Path::metadata | 1 |
+| `logs/steps/helper.rs::helper_meta` | read | 1 |
+| `logs/steps/helper.rs::mtime_ms` | metadata | 1 |
+| `logs/steps/kind.rs::kind_of` | File::open | 1 |
+| `logs/steps/pi.rs::pi_window` | read_to_string | 1 |
+| `logs/steps/queries.rs::set_window` | rename | 1 |
+| `logs/steps/queries.rs::set_window` | write | 1 |
+| `logs/steps/turn_rows.rs::turn_rows` | File::open | 1 |
+| `logs/steps/windows.rs::with_windows` | read | 1 |
 | `logs/transcript.rs::about` | metadata | 1 |
 | `logs/transcript.rs::activity` | metadata | 1 |
 | `logs/transcript.rs::codex_activity` | metadata | 1 |
@@ -801,7 +801,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/sessions.rs::delete` | db::ended_session | 1 |
 | `ipc/settings.rs::set_draft` | db::set_draft | 1 |
 | `lib.rs::run` | db::rewrite_paths | 1 |
-| `logs/steps.rs::auto_compact_at` | db::auto_compacts | 1 |
+| `logs/steps/windows.rs::auto_compact_at` | db::auto_compacts | 1 |
 | `logs/turns.rs::read_log` | db::save_turns | 1 |
 | `logs/turns.rs::read_log` | db::turns_read | 1 |
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
@@ -904,13 +904,13 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/leads.rs::relay_and_pilead_leads_own_their_executors` | test |  |
 | `src-tauri/src/leads.rs::scan_relay` |  |  |
 | `src-tauri/src/lib.rs::run` |  |  |
-| `src-tauri/src/logs/steps.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
-| `src-tauri/src/logs/steps.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
-| `src-tauri/src/logs/steps.rs::from_codex` |  |  |
-| `src-tauri/src/logs/steps.rs::observe` |  |  |
-| `src-tauri/src/logs/steps.rs::one_detail` |  |  |
-| `src-tauri/src/logs/steps.rs::take` |  |  |
-| `src-tauri/src/logs/steps.rs::turn_rows` |  |  |
+| `src-tauri/src/logs/steps/codex.rs::from_codex` |  |  |
+| `src-tauri/src/logs/steps/detail.rs::one_detail` |  |  |
+| `src-tauri/src/logs/steps/observe.rs::observe` |  |  |
+| `src-tauri/src/logs/steps/take.rs::take` |  |  |
+| `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
+| `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
+| `src-tauri/src/logs/steps/turn_rows.rs::turn_rows` |  |  |
 | `src-tauri/src/logs/transcript.rs::conversation_before` |  |  |
 | `src-tauri/src/sessions.rs::mark` |  |  |
 | `src-tauri/src/talk.rs::run_loop` |  |  |
@@ -925,7 +925,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `ui/sessions.js::lvAct` |  |  |
 | `ui/sessions.js::sessionsView` |  |  |
 
-Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/leads.rs`, `src-tauri/src/logs/steps.rs`, `src-tauri/src/logs/transcript.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
+Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/leads.rs`, `src-tauri/src/logs/transcript.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
 
 ## What this can't see
 
