@@ -3,6 +3,7 @@
 mod asks;
 mod asks_closing;
 mod asks_edges;
+mod bars;
 mod caches;
 mod db_faults;
 mod db_history;
