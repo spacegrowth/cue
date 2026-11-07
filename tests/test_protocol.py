@@ -311,8 +311,9 @@ def test_reply_types_into_the_session_and_confirms():
     sid = SID + "-reply"
     out = tempfile.mktemp(suffix=".txt")
     # A stand-in agent: reads one line from its terminal, saves it, then reports a new turn
-    # the way Claude's UserPromptSubmit hook does.
-    agent = (f'read line; printf %s "$line" > {out}; '
+    # the way Claude's UserPromptSubmit hook does. It reads with `head`, a process of its own in the
+    # pane's foreground: Cue types only where something other than a shell is there (focus::pane_now).
+    agent = (f'line=$(head -n 1); printf %s "$line" > {out}; '
              f'echo \'{{"session_id":"{sid}","cwd":"/tmp/r"}}\' | {HOOK} prompt; sleep 30')
     sess = f"cue-reply-{os.getpid()}"
     subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-e", f"CUE_HOME={os.path.dirname(SOCK)}", "bash", "-c", agent], check=True)
@@ -508,7 +509,7 @@ def test_typed_reply_carries_image_paths():
     """Claude/Codex: the image is saved and its path typed after your words (one paste, then Enter)."""
     sid = SID + "-imgtyped"
     out = tempfile.mktemp(suffix=".txt")
-    agent = (f'read line; printf %s "$line" > {out}; '
+    agent = (f'line=$(head -n 1); printf %s "$line" > {out}; '
              f'echo \'{{"session_id":"{sid}","cwd":"/tmp/r"}}\' | {HOOK} prompt; sleep 30')
     sess = f"cue-img-{os.getpid()}"
     subprocess.run(["tmux", "new-session", "-d", "-s", sess, "-e", f"CUE_HOME={os.path.dirname(SOCK)}", "bash", "-c", agent], check=True)
@@ -657,7 +658,7 @@ def deaf_session(sid, turn_seconds, reply_within):
     # A stand-in Claude Code that never runs a hook: it takes the line typed into its terminal, writes it to
     # its transcript as your turn, then its reply and the turn's end.
     now = 'date -u +%Y-%m-%dT%H:%M:%S.000Z'
-    agent = ("read line; "
+    agent = ("line=$(head -n 1); "
              f"printf '{{\"type\":\"user\",\"timestamp\":\"%s\",\"message\":{{\"role\":\"user\",\"content\":\"%s\"}}}}\\n' \"$({now})\" \"$line\" >> {t.name}; "
              f"sleep {turn_seconds}; "
              f"printf '{{\"type\":\"assistant\",\"timestamp\":\"%s\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"Docs are done.\"}}]}}}}\\n' \"$({now})\" >> {t.name}; "
