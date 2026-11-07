@@ -66,6 +66,16 @@ test("typing refused in the last session's terminal says nothing over the next o
   await expect(page.locator(".term-stalled")).toHaveCount(0);
 });
 
+test("typing refused in an earlier opening of the same terminal says nothing over the one open now", async ({ cue, page }) => {
+  await openTerminal(page);
+  await cue.override("term_write", () => new Promise((_, refuse) => setTimeout(() => refuse("its terminal isn't responding"), 300)));
+  await page.keyboard.type("a");
+  await page.evaluate(() => { closeTerm(true); openTerm("relay"); });
+  await expect.poll(async () => (await cue.calls("term_write")).some((c) => "error" in c)).toBe(true);
+  await page.waitForFunction(() => termSid === "relay");
+  await expect(page.locator(".term-stalled")).toHaveCount(0);
+});
+
 // Earlier messages come in a page at a time as you scroll up to the chat's top (ui/app/bind.js onChatScroll).
 // The chat also moves on its own (its terminal opening above the box shrinks it, a redraw): that loads none,
 // or a chat left open would page in its whole history, and every draw would lay all of it out again.

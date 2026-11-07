@@ -6,6 +6,7 @@
 const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane || !!execTerm(sid);
 let termSid = null;            // whose terminal is open
 let termGen = 0;               // which opening its output belongs to (0: not known yet)
+let termOpening = 0;           // this window's openings, counted: a late answer to an earlier one is left alone
 let termObj = null, termFit = null, termHost = null, termWatch = null, termWires = [];
 /** The xterm, its element and its fit, kept from one opening to the next: made once (a GPU-drawn terminal takes
  *  a few hundred ms to make, all of it on the window's main thread, and a busy window waited on that at every
@@ -63,18 +64,19 @@ async function openTerm(sid) {
   if (termSid) closeTerm(true);
   termSid = sid;
   termGen = 0;
+  const opening = ++termOpening, current = () => termSid === sid && termOpening === opening;
   renderMain();                     // the slot appears
   const slot = document.querySelector("[data-term-slot]");
   if (!slot || typeof Terminal === "undefined") { termSid = null; return renderMain(); }
   ({ host: termHost, term: termObj, fit: termFit } = keptTerm(slot));
-  termWires = [termObj.onData(termTyping(termHost, sid, () => termSid === sid)), termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); })];
+  termWires = [termObj.onData(termTyping(termHost, sid, current)), termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); })];
   termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
   termWatch.observe(termHost);
   termObj.focus();
   try {
     const gen = await invoke("term_open", { sessionId: sid, cols: termObj.cols, rows: termObj.rows });
-    if (termSid === sid) termGen = gen;
-  } catch (e) { toast(`Couldn't open its terminal: ${e}`); if (termSid === sid) closeTerm(); }
+    if (current()) termGen = gen;
+  } catch (e) { toast(`Couldn't open its terminal: ${e}`); if (current()) closeTerm(); }
 }
 /** The kept terminal (`termKept`) in `slot`, cleared of the last session's screen and of a stalled notice:
  *  made the first time (it must be in the window to measure itself). */
