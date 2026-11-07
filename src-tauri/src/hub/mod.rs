@@ -16,6 +16,7 @@ mod events;
 mod hand_off;
 mod history;
 mod kept_history;
+mod live_writes;
 pub(crate) mod ports;
 mod projects;
 mod redraw;

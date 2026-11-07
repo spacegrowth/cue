@@ -10,10 +10,9 @@ digraph locks {
   "INDEX" -> "VERIFY";
   "actions STORE" -> "folder facts";
   "actions WATCH" -> "folder facts";
-  "answered saves" -> "DB";
-  "answered saves" -> "folder facts";
-  "answered saves" -> "the hub's store";
   "config file" -> "config in memory";
+  "db writer's marks" -> "DB";
+  "db writer's marks" -> "folder facts";
   "open_terms" -> "pty master";
   "parked saves" -> "DB";
   "parked saves" -> "folder facts";
@@ -29,10 +28,11 @@ digraph locks {
   "typing gate" -> "INDEX";
   "typing gate" -> "LEDGER";
   "typing gate" -> "VERIFY";
-  "typing gate" -> "answered saves";
   "typing gate" -> "caches";
   "typing gate" -> "config file";
   "typing gate" -> "config in memory";
+  "typing gate" -> "db writer's marks";
+  "typing gate" -> "db writes";
   "typing gate" -> "folder facts";
   "typing gate" -> "parked saves";
   "typing gate" -> "quiet sessions";

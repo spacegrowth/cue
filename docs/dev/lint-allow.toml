@@ -74,21 +74,6 @@ to = "folder facts"
 reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
 
 [[lock_order]]
-from = "answered saves"
-to = "DB"
-reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
-
-[[lock_order]]
-from = "answered saves"
-to = "folder facts"
-reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the save that opened it; folder facts is a leaf"
-
-[[lock_order]]
-from = "answered saves"
-to = "the hub's store"
-reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
-
-[[lock_order]]
 from = "config file"
 to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
@@ -175,11 +160,6 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
-to = "answered saves"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, its answered card's save included"
-
-[[lock_order]]
-from = "typing gate"
 to = "caches"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
@@ -234,3 +214,23 @@ to = "what the status list has cost"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 # External calls reachable while the hub's store is held ([[store_io]]): none. A new one fails the check.
+
+[[lock_order]]
+from = "db writer's marks"
+to = "DB"
+reason = "hub/live_writes.rs: the writer keeps what it last saved under its own lock while it writes; only the writer takes it (or, in a hub without the app, whoever writes), so nothing waits on it"
+
+[[lock_order]]
+from = "db writer's marks"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the write that opened it; folder facts is a leaf"
+
+[[lock_order]]
+from = "typing gate"
+to = "db writer's marks"
+reason = "the typing gate is held while a message is typed, by design (hub/send.rs wait_turn); in a hub without the app the draw a reply asks for writes where it runs. With the app the writer is its own thread"
+
+[[lock_order]]
+from = "typing gate"
+to = "db writes"
+reason = "the typing gate is held while a message is typed, by design (hub/send.rs wait_turn); the draw a reply asks for hands its save to the writer's queue: a lock held for a push"

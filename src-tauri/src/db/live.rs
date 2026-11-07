@@ -6,17 +6,11 @@ use crate::model::{now_ms, Exchange, Item};
 use crate::sessions::{Parked, Session};
 use rusqlite::{params, Connection};
 
-/// Mirror what's live in memory: upsert every session (and append its new exchanges to the log),
-/// mark the ones that are gone as ended, and keep exactly the pending finished-turn cards.
-/// Pending decisions aren't kept: their hook reconnects after a restart and asks again.
+/// Tests: mirror what's live in memory, all of it (the app saves only what changed: hub/live_writes.rs).
+#[cfg(test)]
 pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
-    sync_live_with(sessions, waiting, &[]);
-}
-
-/// `sync_live`, and `answered` cards saved in the same write (a reply's, handed to the draw).
-pub fn sync_live_with(sessions: &[Session], waiting: &[&Item], answered: &[Item]) {
     let live: Vec<&str> = sessions.iter().map(|s| s.origin.session_id.as_str()).collect();
-    save_live(&LiveSave { write: &sessions.iter().collect::<Vec<_>>(), live: &live, waiting: Some(waiting), answered });
+    save_live(&LiveSave { write: &sessions.iter().collect::<Vec<_>>(), live: &live, waiting: Some(waiting), answered: &[] });
 }
 
 /// One save of what's live, as only what changed since the last: the hub's draws save after every change, and

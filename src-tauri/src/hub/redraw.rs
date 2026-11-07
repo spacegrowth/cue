@@ -133,21 +133,28 @@ impl Hub {
     /// sessions that are live again (you resumed one yourself, in a terminal) no longer parked. Each draw does
     /// it, and quitting does it once more, so nothing changed since the last draw is lost.
     pub fn save_live(&self) {
-        let (back, sessions, waiting, ended) = self.write(|st| {
+        let (back, job) = self.write(|st| {
             let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
             st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
             let waiting: Vec<Item> = st.items.iter().filter(|i| i.kind == "waiting").cloned().collect();
-            let ended: Vec<(u64, crate::sessions::Session)> = std::mem::take(&mut st.unsaved_ends).into_iter().filter(|(_, s)| st.sessions.origin(&s.origin.session_id).is_none()).collect();
-            (back, st.sessions.all(), waiting, ended)
+            // Each that ended since the last save, as it was when it ended, not as of the save before: a change and
+            // the end can land within one draw. Taken with the live ones under one lock, so the two agree.
+            let ended = std::mem::take(&mut st.unsaved_ends).into_iter().filter(|(_, s)| st.sessions.origin(&s.origin.session_id).is_none()).collect();
+            // The answered cards handed to this draw go in the same write as the live sessions.
+            let answered = Self::take_unsaved(st);
+            (back, live_writes::Job { live: Some((st.sessions.all(), waiting)), answered, ended, deletes: vec![] })
         });
         for sid in &back {
             self.save_parked(sid);
         }
-        // Only what changed since the last save, with the answered cards handed to this draw, in one write (saves.rs).
-        self.save_live_with_answers(&sessions, &waiting.iter().collect::<Vec<_>>());
-        // Each that ended since the last save, as it was when it ended, not as of the save before: a change and
-        // the end can land within one draw. Taken with the live ones under one lock, so the two agree.
-        crate::db::save_ended(&ended);
+        // To the database writer: only what changed since its last save is written, and not on this thread.
+        self.hand_writes(job);
+    }
+
+    /// `save_live`, and back once all of it is in the database: quitting.
+    pub fn save_live_and_wait(&self) {
+        self.save_live();
+        self.saves.live.flush();
     }
 
     /// Whether a change is drawn (and saved) by a draw that follows it: the app's worker, or a test's queue.

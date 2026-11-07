@@ -36,6 +36,7 @@ impl History {
         self.items.iter_mut()
     }
 
+    #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.items.len()
     }

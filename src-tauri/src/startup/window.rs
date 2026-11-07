@@ -105,7 +105,7 @@ pub(crate) fn on_run_event(handle: &tauri::AppHandle, event: RunEvent) {
             actions::end_plain();
             // What changed since the last draw is saved before Cue goes.
             if let Some(hub) = handle.try_state::<Arc<hub::Hub>>() {
-                hub.save_live();
+                hub.save_live_and_wait();
             }
         }
         RunEvent::Reopen { .. } => {
