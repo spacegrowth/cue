@@ -6,7 +6,11 @@
 const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane || !!execTerm(sid);
 let termSid = null;            // whose terminal is open
 let termGen = 0;               // which opening its output belongs to (0: not known yet)
-let termObj = null, termFit = null, termHost = null, termWatch = null;
+let termObj = null, termFit = null, termHost = null, termWatch = null, termWires = [];
+/** The xterm, its element and its fit, kept from one opening to the next: made once (a GPU-drawn terminal takes
+ *  a few hundred ms to make, all of it on the window's main thread, and a busy window waited on that at every
+ *  opening), then cleared and moved back in on each. */
+let termKept = null;
 let termQueue = [], termFrame = 0;   // output waiting for the next frame: one write per frame, however many chunks came
 const termLast = new Map();    // sid -> its screen's last line, for the closed strip
 const waitsInTerminal = (sid) => state.items.some((i) => i.session_id === sid && inTerminal(i));
@@ -62,12 +66,8 @@ async function openTerm(sid) {
   renderMain();                     // the slot appears
   const slot = document.querySelector("[data-term-slot]");
   if (!slot || typeof Terminal === "undefined") { termSid = null; return renderMain(); }
-  termHost = document.createElement("div");
-  termHost.className = "term-host";
-  slot.appendChild(termHost);
-  ({ term: termObj, fit: termFit } = xterm(termHost));
-  termObj.onData(termTyping(termHost, sid));
-  termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); });
+  ({ host: termHost, term: termObj, fit: termFit } = keptTerm(slot));
+  termWires = [termObj.onData(termTyping(termHost, sid)), termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); })];
   termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
   termWatch.observe(termHost);
   termObj.focus();
@@ -75,6 +75,22 @@ async function openTerm(sid) {
     const gen = await invoke("term_open", { sessionId: sid, cols: termObj.cols, rows: termObj.rows });
     if (termSid === sid) termGen = gen;
   } catch (e) { toast(`Couldn't open its terminal: ${e}`); if (termSid === sid) closeTerm(); }
+}
+/** The kept terminal (`termKept`) in `slot`, cleared of the last session's screen and of a stalled notice:
+ *  made the first time (it must be in the window to measure itself). */
+function keptTerm(slot) {
+  if (!termKept) {
+    const host = document.createElement("div");
+    host.className = "term-host";
+    slot.appendChild(host);
+    termKept = { host, ...xterm(host) };
+    return termKept;
+  }
+  slot.appendChild(termKept.host);
+  termKept.host.querySelector(".term-stalled")?.remove();
+  termKept.term.reset();
+  try { termKept.fit.fit(); } catch {}
+  return termKept;
 }
 /** A remote executor, from its row in its lead's tree: its chat when Cue holds it, else a pane of its
  *  own (execPane), and either way its terminal, attached to its own tmux session there. Once per
@@ -106,8 +122,9 @@ function closeTerm(quiet = false) {
   cancelAnimationFrame(termFrame);
   termQueue = [];
   termFrame = 0;
-  termObj?.dispose();
-  termHost?.remove();
+  termWires.forEach((w) => w.dispose());
+  termWires = [];
+  termHost?.remove();   // the terminal itself is kept for the next opening (termKept)
   termWatch = termObj = termFit = termHost = null;
   if (sid) invoke("term_close", { sessionId: sid, gen: gen || null }).catch(() => {});
   if (!quiet) { renderMain(); homeFocus(); }
