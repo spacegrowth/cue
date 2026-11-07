@@ -79,6 +79,21 @@ to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
 
 [[lock_order]]
+from = "a session's feed"
+to = "WINDOWS"
+reason = "logs/steps: a feed taking a read's lines in asks the window Claude Code's status line said for its session (known_window), under its lock; WINDOWS is a leaf, held only to look up or note a number (its file is read and written with it let go)"
+
+[[lock_order]]
+from = "a session's feed"
+to = "config in memory"
+reason = "logs/steps background.rs add_agent: a feed taking in an agent's launch looks up the session's machine (machines::list) to copy the agent's log over; config in memory is a leaf, held only to clone an Arc"
+
+[[lock_order]]
+from = "a session's feed"
+to = "copies"
+reason = "logs/steps background.rs add_agent/add_script: a background task launched in a machine's session starts its log's copy (machines::logs) as the feed takes the launch in; copies is a leaf (it spawns the copy, waits on nothing)"
+
+[[lock_order]]
 from = "open_terms"
 to = "pty master"
 reason = "term::foreground asks a terminal's PTY master for its foreground process with the terminal table held; the master lock is per terminal, a leaf"

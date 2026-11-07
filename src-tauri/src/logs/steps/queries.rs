@@ -6,7 +6,8 @@ use super::feed::Feed;
 use super::helper::{Helper, TaskFailure};
 use super::kind::Kind;
 use super::model::{Item, Turn};
-use super::windows::{windows_file, with_windows, InsightState};
+use super::reading::{Applied, ROUNDS};
+use super::windows::{remember_window, InsightState};
 use super::FORGET;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -50,12 +51,24 @@ fn open(path: &str) -> (Arc<Mutex<Feed>>, bool) {
     (open.feed.clone(), true)
 }
 
-/// `f` on the feed for `path` (opened if need be, and whether it's new), caught up with its log.
+/// `f` on the feed for `path` (opened if need be, and whether it's new), caught up with its log (read with
+/// its lock let go: `reading`).
 fn caught_up<R>(path: &str, f: impl FnOnce(&mut Feed, bool) -> R) -> R {
     let (feed, fresh) = open(path);
+    catch_up_shared(&feed);
     let mut feed = crate::locking::lock(&feed, "a session's feed");
-    feed.catch_up();
     f(&mut feed, fresh)
+}
+
+/// Catch the shared feed up, its lock taken only to plan and to put in: never while a file is read.
+pub(super) fn catch_up_shared(feed: &Mutex<Feed>) {
+    for _ in 0..ROUNDS {
+        let plan = crate::locking::lock(feed, "a session's feed").plan();
+        let reads = plan.fetch();
+        if crate::locking::lock(feed, "a session's feed").apply(reads) != Applied::Again {
+            return;
+        }
+    }
 }
 
 /// The open feeds whose log paths `pick` picks, for what looks across them.
@@ -137,9 +150,9 @@ pub fn agent_count(path: &str, open: bool) -> Option<usize> {
         return Some(caught_up(path, count));
     }
     let feed = find(path, false)?;
-    let mut feed = crate::locking::lock(&feed, "a session's feed");
-    feed.catch_up();
-    Some(count(&mut feed, false))
+    catch_up_shared(&feed);
+    let n = count(&mut crate::locking::lock(&feed, "a session's feed"), false);
+    Some(n)
 }
 
 /// What one of a session's agents goes by (a teammate its name, a background agent its task), by its id; "" when its
@@ -212,25 +225,13 @@ pub fn set_window(session_id: &str, window: u64, for_model: bool) {
     if window == 0 {
         return;
     }
-    // This session's feeds only (a log is named after its session): a feed being read elsewhere holds no one else up.
-    let feeds = all(|p| std::path::Path::new(p).file_stem().and_then(|s| s.to_str()) == Some(session_id));
-    let feeds: Vec<_> = feeds.iter().map(|f| crate::locking::lock(f, "a session's feed")).filter(|f| f.kind == Kind::Claude).collect();
-    let model = feeds.first().map(|f| f.meta.model.clone()).unwrap_or_default();
-    with_windows(|w| {
-        // Old sessions' entries go now and then; the models' stay.
-        if w.sessions.len() > 2000 {
-            w.sessions.clear();
-        }
-        let new_session = w.sessions.insert(session_id.to_string(), window) != Some(window);
-        let new_model = for_model && !model.is_empty() && w.models.insert(model, window) != Some(window);
-        if (new_session || new_model) && !cfg!(test) {
-            let tmp = windows_file().with_extension("json.tmp");
-            if serde_json::to_vec(&*w).ok().is_some_and(|b| std::fs::write(&tmp, b).is_ok()) {
-                let _ = std::fs::rename(&tmp, windows_file());
-            }
-        }
-    });
-    for mut f in feeds {
+    // This session's feeds only (a log is named after its session): a feed being read elsewhere holds no one else
+    // up. None is held while the window is kept on disk.
+    let feeds: Vec<_> = all(|p| std::path::Path::new(p).file_stem().and_then(|s| s.to_str()) == Some(session_id)).into_iter().filter(|f| crate::locking::lock(f, "a session's feed").kind == Kind::Claude).collect();
+    let model = feeds.first().map(|f| crate::locking::lock(f, "a session's feed").meta.model.clone()).unwrap_or_default();
+    remember_window(session_id, window, for_model.then_some(model.as_str()));
+    for f in feeds {
+        let mut f = crate::locking::lock(&f, "a session's feed");
         if f.meta.window != window {
             f.meta.window = window;
             f.version += 1;

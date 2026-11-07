@@ -8,6 +8,9 @@ digraph locks {
   "INDEX" -> "REMOTE";
   "INDEX" -> "REMOTE_PILEAD";
   "INDEX" -> "VERIFY";
+  "a session's feed" -> "WINDOWS";
+  "a session's feed" -> "config in memory";
+  "a session's feed" -> "copies";
   "actions STORE" -> "folder facts";
   "actions WATCH" -> "folder facts";
   "config file" -> "config in memory";

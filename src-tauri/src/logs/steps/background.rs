@@ -2,18 +2,16 @@
 //! taken up when they launch or are messaged, and marked finished when their task notice comes.
 
 use super::feed::Feed;
-use super::helper::{helper_kind, helper_meta, helper_path, notifications, Helper, TaskFailure, FAILURE_WORTH_MS};
+use super::helper::{helper_path, notifications, Helper, TaskFailure, FAILURE_WORTH_MS};
 use super::queries::helper_done;
 use serde_json::Value;
 
 impl Feed {
-    /// A background agent just started (its launch result came in): remember it and open its log.
+    /// A background agent just started (its launch result came in): remember it and open its log. What
+    /// its launch doesn't say (its type; a teammate's description) its meta file does, read with its log.
     pub(super) fn add_helper(&mut self, step: &str, extra: &Value, at_ms: u64) {
         let s = |k: &str| extra.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        // A teammate's launch has no description: its meta file's, else its name.
-        let meta = || helper_path(&self.path, &s("agentId")).map(|p| helper_meta(&p)).and_then(|m| m.get("description").and_then(Value::as_str).map(str::to_string));
-        let desc = Some(s("description")).filter(|d| !d.is_empty()).or_else(meta).filter(|d| !d.is_empty()).unwrap_or_else(|| s("name"));
-        self.add_agent(step, s("agentId"), desc, s("resolvedModel"), at_ms);
+        self.add_agent(step, s("agentId"), s("description"), s("resolvedModel"), at_ms);
         if s("status") == "teammate_spawned" {
             if let Some(h) = self.helpers.iter_mut().find(|h| h.id == s("agentId")) {
                 h.teammate = true;
@@ -22,17 +20,18 @@ impl Feed {
         }
     }
 
-    fn add_agent(&mut self, step: &str, id: String, desc: String, model: String, at_ms: u64) {
+    /// A background agent taken up (None when it's known already, or has no id). No file is read here
+    /// (the feed's lock is held): its log and meta file are read on the catch-up's next round.
+    fn add_agent(&mut self, step: &str, id: String, desc: String, model: String, at_ms: u64) -> Option<&mut Helper> {
         if id.is_empty() || self.helpers.iter().any(|h| h.id == id) {
-            return;
+            return None;
         }
         // A session on another machine: its agent's log is copied over (to where it's read from here).
         crate::machines::logs::copy_helper(&self.path, &id);
-        let path = helper_path(&self.path, &id);
-        let kind = path.as_ref().map(|p| helper_kind(p)).unwrap_or_default();
-        let feed = path.and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind, model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
+        let feed = helper_path(&self.path, &id).and_then(|p| p.to_str().map(|p| Box::new(Feed::open_helper(p))));
+        self.helpers.push(Helper { id: id.clone(), step: step.to_string(), desc, kind: String::new(), model, started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed, script: false, command: String::new(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path: None, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false, seen: false, unconfirmed: false });
         self.trim_helpers();
+        self.helpers.iter_mut().find(|h| h.id == id)
     }
 
     /// The session sent one of its background agents a message (Claude Code's SendMessage), which put it back
@@ -43,15 +42,11 @@ impl Feed {
             return;
         }
         let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) else {
-            // Not one of its agents Cue knows: taken only with its log there (a message to anything else, or an
-            // agent whose log can't be read, would read as at work for good).
-            if !helper_path(&self.path, id).is_some_and(|p| p.exists()) {
-                return;
-            }
-            let desc = helper_path(&self.path, id).map(|p| helper_meta(&p)).and_then(|m| m.get("description").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
-            self.add_agent(step, id.to_string(), desc, String::new(), at_ms);
-            if let Some(h) = self.helpers.iter_mut().find(|h| h.id == id) {
+            // Not one of its agents Cue knows: kept only once its log is found (a message to anything else, or an
+            // agent whose log can't be read, would read as at work for good). Named by its meta file, read with it.
+            if let Some(h) = self.add_agent(step, id.to_string(), String::new(), String::new(), at_ms) {
                 h.resumed_ms = at_ms;
+                h.unconfirmed = true;
             }
             return;
         };
@@ -82,7 +77,7 @@ impl Feed {
             None => Some(remote),
         });
         let desc = if desc.trim().is_empty() { subject.to_string() } else { desc.trim().to_string() };
-        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false });
+        self.helpers.push(Helper { id, step: step.to_string(), desc, kind: "script".into(), model: String::new(), started_ms: at_ms, finished_ms: 0, last_ms: at_ms, tokens: 0, items: Vec::new(), more: 0, feed: None, script: true, command: command.trim().to_string(), output: Vec::new(), lines: 0, failed: false, stopped: false, out_path, out_len: 0, closed: false, resumed_ms: 0, teammate: false, name: String::new(), meta_read: false, seen: false, unconfirmed: false });
         self.trim_helpers();
     }
 
@@ -120,7 +115,7 @@ impl Feed {
         if h.script {
             h.stopped = status == "killed";
             h.failed = !h.stopped && status != "completed";
-            h.read_output();   // its last lines, written before the notice
+            // Its last lines, written before the notice: its output file is read after the log that says so.
             return true;
         }
         // Copied from another machine: its log is complete once it reports (a moment for its last lines),
@@ -135,10 +130,10 @@ impl Feed {
         true
     }
 
-    /// A script that ended (its notice came, or its output file ends on the exit line), seen to once:
-    /// its copy from another machine stopped, and a failure after a while noted for the hub.
+    /// A script that ended (its notice came, or its output file ends on the exit line), seen to once its
+    /// output has been read (its last line says how a failure went): its copy from another machine stopped, and a failure after a while noted for the hub.
     pub(super) fn close_scripts(&mut self) {
-        for h in self.helpers.iter_mut().filter(|h| h.script && h.finished_ms > 0 && !h.closed) {
+        for h in self.helpers.iter_mut().filter(|h| h.script && h.seen && h.finished_ms > 0 && !h.closed) {
             h.closed = true;
             let (copy, id) = (self.path.clone(), h.id.clone());
             std::thread::spawn(move || {

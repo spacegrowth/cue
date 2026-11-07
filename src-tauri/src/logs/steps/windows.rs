@@ -23,11 +23,40 @@ pub(super) fn windows_file() -> std::path::PathBuf {
     crate::server::cue_dir().join("windows.json")
 }
 
-/// The windows Cue knows (read from disk the first time; tests never touch the real one).
-pub(super) fn with_windows<R>(f: impl FnOnce(&mut Windows) -> R) -> R {
-    let mut g = crate::locking::lock(&WINDOWS, "WINDOWS");
-    let w = g.get_or_insert_with(|| if cfg!(test) { Windows::default() } else { std::fs::read(windows_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() });
-    f(w)
+/// The windows Cue knows (read from disk the first time, with no lock held; tests never touch the real one).
+fn with_windows<R>(f: impl FnOnce(&mut Windows) -> R) -> R {
+    if crate::locking::lock(&WINDOWS, "WINDOWS").is_none() {
+        let read = if cfg!(test) { Windows::default() } else { std::fs::read(windows_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() };
+        crate::locking::lock(&WINDOWS, "WINDOWS").get_or_insert(read);
+    }
+    f(crate::locking::lock(&WINDOWS, "WINDOWS").get_or_insert_with(Windows::default))
+}
+
+/// What a status line said a session's window is (and its model's, `model` when it stands for it), kept on
+/// disk when it's news. The file is written with WINDOWS let go, newest first: an older copy never lands
+/// over a newer one.
+pub(super) fn remember_window(session_id: &str, window: u64, model: Option<&str>) {
+    static SAVED: Mutex<u64> = Mutex::new(0);
+    static COPIES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let copy = with_windows(|w| {
+        // Old sessions' entries go now and then; the models' stay.
+        if w.sessions.len() > 2000 {
+            w.sessions.clear();
+        }
+        let new_session = w.sessions.insert(session_id.to_string(), window) != Some(window);
+        let new_model = model.filter(|m| !m.is_empty()).is_some_and(|m| w.models.insert(m.to_string(), window) != Some(window));
+        let n = COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        (new_session || new_model).then(|| serde_json::to_vec(&*w).ok().map(|b| (n, b))).flatten()
+    });
+    let Some((n, bytes)) = copy.filter(|_| !cfg!(test)) else { return };
+    // Only the file's own writers wait here (nothing reading a session does).
+    let mut saved = crate::locking::lock(&SAVED, "windows file");
+    if n > *saved {
+        let tmp = windows_file().with_extension("json.tmp");
+        if std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, windows_file()).is_ok() {
+            *saved = n;
+        }
+    }
 }
 
 /// A session's window: what its status line said, else what one on the same model said.

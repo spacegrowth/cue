@@ -2,6 +2,7 @@
 
 mod agents;
 mod codex;
+mod concurrent;
 mod hooks;
 mod reading;
 mod scripts;
@@ -19,8 +20,6 @@ use super::turn_rows::*;
 use super::*;
 use crate::logs::transcript::{lines, stamp};
 use serde_json::json;
-use std::collections::HashMap;
-use std::time::Instant;
 
 #[test]
 fn an_edited_file_is_in_the_area_under_its_session_folder() {
@@ -123,7 +122,7 @@ fn a_teammates_message_is_never_your_prompt() {
 }
 
 fn feed_of(jsonl: &str) -> Feed {
-    let mut f = Feed { path: String::new(), meta: Meta::default(), kind: Kind::Claude, patches: HashMap::new(), offset: 0, align: false, turns: Vec::new(), version: 1, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false), max_helpers: MAX_HELPERS };
+    let mut f = Feed::blank("", Kind::Claude, 1, 0);
     for e in lines(jsonl) {
         f.take(&e);
     }

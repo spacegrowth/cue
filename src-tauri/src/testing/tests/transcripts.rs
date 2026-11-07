@@ -2,7 +2,8 @@
 //! Sessions and Asks): a turn whose Stop never came, a compaction done, an ask answered in the terminal,
 //! the status list a prompt asked for, and your latest request.
 
-use crate::testing::World;
+use crate::testing::{Snap, World};
+use std::time::Duration;
 use serde_json::json;
 
 #[test]
@@ -92,4 +93,35 @@ fn a_sessions_cost_from_its_status_line_is_kept() {
     a.prompt("go").cost(1.25);
     assert_eq!(w.hub().session_cost("a"), Some(1.25));
     assert_eq!(w.snapshot().session("a")["tmux_pane"], "%3");
+}
+
+/// A session's log slow to read (a stalled disk) holds up only the read waiting on it: the chat's read of it
+/// waits, while the watcher's tick, which asks the same session's feed for its agents, and the window's state
+/// go on. (The feed's lock is never held while its log is read.)
+#[test]
+fn a_slow_read_of_a_sessions_log_holds_up_neither_the_tick_nor_the_window() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("tidy up");
+    let log = w.home().join("claude").join("a.jsonl").to_string_lossy().into_owned();
+    a.transcript().prompt("tidy up").assistant("Working on it");
+    // The chat has it open (its feed is there), and the log has grown since.
+    crate::steps::steps(&log, 0);
+    a.transcript().assistant("Still at it");
+    let (release, started) = crate::steps::slow_disk::hold_next(&log);
+    let chat = { let log = log.clone(); std::thread::spawn(move || crate::steps::steps(&log, 0)) };
+    started.recv_timeout(Duration::from_secs(5)).expect("the chat's read reached the disk");
+    let hub = w.hub().clone();
+    let (done_tx, done) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        crate::server::tick(&hub, false);
+        let _ = done_tx.send(hub.snapshot());
+    });
+    let built = done.recv_timeout(Duration::from_secs(2));
+    release.send(()).unwrap();
+    let snap = built.expect("the tick and the window's state waited on the chat's slow read");
+    assert_eq!(Snap(snap.as_ref().clone()).state("a"), "working");
+    let steps = chat.join().unwrap();
+    let says: Vec<&str> = steps["turns"][0]["items"].as_array().unwrap().iter().filter_map(|i| i["text"].as_str()).collect();
+    assert_eq!(says, ["Working on it", "Still at it"], "each line once, whichever read put it in");
 }

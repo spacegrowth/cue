@@ -3,12 +3,12 @@
 
 use super::feed::Feed;
 use super::model::Item;
+use super::reading::{HelperRead, Reads, ScriptRead};
 use super::step_line::strip_ansi;
 use super::LINE_CHARS;
 use crate::logs::transcript::cut;
 use serde::Serialize;
 use serde_json::Value;
-use std::io::{Read, Seek, SeekFrom};
 
 /// A background agent a Claude Code session started: it runs inside the session's process, with no
 /// terminal of its own, and writes its log to `<session folder>/subagents/agent-<id>.jsonl`. Nothing
@@ -67,6 +67,12 @@ pub struct Helper {
     /// Its meta file has been read for what its launch didn't say (once it was there).
     #[serde(skip)]
     pub(super) meta_read: bool,
+    /// A catch-up has read its log or output file (its meta file too) at least once.
+    #[serde(skip)]
+    pub(super) seen: bool,
+    /// Taken up on a message to it, not its launch: kept only once its log is found there.
+    #[serde(skip)]
+    pub(super) unconfirmed: bool,
 }
 
 /// A background task that failed after running this long: worth a word (a quick failure is one the
@@ -91,7 +97,6 @@ const MAX_HELPER_ITEMS: usize = 80;
 pub(super) const MAX_HELPERS: usize = 12;
 /// A background script's output shown: its last lines, read from the end of its file.
 const MAX_SCRIPT_LINES: usize = 200;
-const SCRIPT_TAIL_BYTES: u64 = 256 * 1024;
 
 impl Helper {
     /// Running: not reported finished, and its log doesn't end on an answer (one from before its session
@@ -106,16 +111,28 @@ impl Helper {
         self.running() && now.saturating_sub(self.last_ms) > STUCK_MS
     }
 
-    /// Read what its log added; true when its steps changed.
-    pub(super) fn catch_up(&mut self) -> bool {
-        if self.script {
-            let changed = self.read_output();
-            self.last_ms = self.out_path.as_deref().and_then(mtime_ms).unwrap_or(self.started_ms);
-            return changed;
+    /// Put in what a catch-up read of it found; true when what's shown of it changed.
+    pub(super) fn put(&mut self, read: HelperRead) -> bool {
+        let first = !self.seen;
+        self.seen = true;
+        match read {
+            HelperRead::Script(r) => self.put_output(r),
+            HelperRead::Agent { log, meta } => {
+                let found = log.as_ref().is_some_and(|r| r.log.found);
+                self.unconfirmed &= !found;
+                if let Some(meta) = meta {
+                    self.take_meta(&meta);
+                }
+                self.put_log(log) || first
+            }
         }
-        let Some(f) = self.feed.as_mut() else { return false };
+    }
+
+    /// Its log's read put in; true when its steps changed.
+    fn put_log(&mut self, log: Option<Reads>) -> bool {
+        let (Some(f), Some(log)) = (self.feed.as_mut(), log) else { return false };
         let before = f.version;
-        f.catch_up();
+        f.apply(log);
         if f.version == before {
             return false;
         }
@@ -128,15 +145,18 @@ impl Helper {
         if self.model.is_empty() {
             self.model = f.meta.model.clone();
         }
-        // Its meta file can come after it started (copied from another machine).
+        true
+    }
+
+    /// What its meta file says that its launch didn't: its type, its description (else its name), and
+    /// whether it's a teammate. Its meta file can come after it started (copied from another machine).
+    fn take_meta(&mut self, meta: &Value) {
+        let m = |k: &str| meta.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         if self.kind.is_empty() {
-            self.kind = helper_kind(std::path::Path::new(&f.path));
+            self.kind = m("agentType");
         }
-        // Taken up on a message to it, its launch not seen: named by its meta file, which also says a teammate.
-        if self.desc.is_empty() || !self.meta_read {
-            let meta = helper_meta(std::path::Path::new(&f.path));
+        if !self.meta_read {
             self.meta_read = !meta.is_null();
-            let m = |k: &str| meta.get(k).and_then(Value::as_str).unwrap_or("").to_string();
             if self.desc.is_empty() {
                 self.desc = m("description");
             }
@@ -145,39 +165,30 @@ impl Helper {
                 self.name = m("name");
             }
         }
-        true
+        if self.desc.is_empty() {
+            self.desc = self.name.clone();
+        }
     }
 }
 
 impl Helper {
-    /// A script's output file grew (or shrank): its tail again. True when what's shown changed.
-    pub(super) fn read_output(&mut self) -> bool {
-        let Some(path) = self.out_path.as_ref() else { return false };
-        let Ok(mut file) = std::fs::File::open(path) else { return false };
-        let len = file.metadata().map(|m| m.len()).unwrap_or(0);
-        if len == self.out_len {
-            return false;
-        }
-        self.out_len = len;
-        let from = len.saturating_sub(SCRIPT_TAIL_BYTES);
-        if file.seek(SeekFrom::Start(from)).is_err() {
-            return false;
-        }
-        let mut buf = Vec::new();
-        if file.read_to_end(&mut buf).is_err() {
-            return false;
-        }
-        let text = String::from_utf8_lossy(&buf);
+    /// A script's output file as read: its tail again when it grew (or shrank), and when it was last
+    /// written. True when what's shown changed.
+    fn put_output(&mut self, read: ScriptRead) -> bool {
+        self.last_ms = read.mtime.unwrap_or(self.started_ms);
+        let Some(tail) = read.tail.filter(|_| read.planned_len == self.out_len) else { return false };
+        self.out_len = tail.len;
+        let text = String::from_utf8_lossy(&tail.bytes);
         // Cut mid-file: the first partial line goes.
-        let text = if from > 0 { text.split_once('\n').map(|(_, r)| r).unwrap_or("") } else { &text };
+        let text = if tail.from > 0 { text.split_once('\n').map(|(_, r)| r).unwrap_or("") } else { &text };
         let all: Vec<&str> = text.lines().collect();
-        self.lines = all.len() + usize::from(from > 0);
+        self.lines = all.len() + usize::from(tail.from > 0);
         self.output = all.iter().rev().take(MAX_SCRIPT_LINES).rev().map(|l| cut(&strip_ansi(l), LINE_CHARS)).collect();
         // Claude Code ends the file on "[exited with code N]", or "[killed]" when it was stopped: over,
         // even though a stopped one never gets a notice and an ended one's may not show up.
         if self.finished_ms == 0 {
             if let Some(end) = self.output.iter().rev().find(|l| !l.trim().is_empty()).and_then(|l| end_line(l)) {
-                self.finished_ms = mtime_ms(path).unwrap_or_else(crate::model::now_ms).max(1);
+                self.finished_ms = read.mtime.unwrap_or_else(crate::model::now_ms).max(1);
                 self.failed = matches!(end, End::Exited(code) if code != 0);
                 self.stopped = end == End::Killed;
             }
@@ -228,11 +239,6 @@ pub(super) fn mtime_ms(path: &std::path::Path) -> Option<u64> {
 /// A background agent's meta file, beside its log (its type, the description it was given); Null when there's none (yet).
 pub(super) fn helper_meta(log: &std::path::Path) -> Value {
     std::fs::read(log.with_extension("meta.json")).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or(Value::Null)
-}
-
-/// A background agent's type ("Explore"), from the meta file beside its log; "" when there's none (yet).
-pub(super) fn helper_kind(log: &std::path::Path) -> String {
-    helper_meta(log).get("agentType").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
 /// An Agent call's launch status that leaves it working on its own: a background agent ("async_launched"),

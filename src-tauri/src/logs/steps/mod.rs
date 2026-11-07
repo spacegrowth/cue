@@ -34,6 +34,7 @@ mod model;
 mod observe;
 mod pi;
 mod queries;
+mod reading;
 mod step_line;
 mod take;
 mod turn_rows;
@@ -51,6 +52,8 @@ pub use model::Usage;
 pub use queries::{agent_count, agent_name, context_pct, handoff_note, insight_state, last_prompt, last_say, model_of, running_background, running_helpers, set_window, steps, take_task_failures};
 #[cfg(test)]
 pub use queries::{is_handoff_note, HANDOFF_ASK_START};
+#[cfg(test)]
+pub(crate) use reading::slow_disk;
 pub use turn_rows::{turn_rows, TurnRow};
 pub use windows::InsightState;
 
