@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 196 |
 | Lock-graph edges | 43 |
 | Spawn sites | 66 |
-| External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 336 / 124 / 51 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -801,7 +801,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_log` | db::turns_read | 1 |
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 
-### process (53)
+### process (51)
 
 | In | Call | Times |
 |---|---|---|
@@ -852,7 +852,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/shells.rs::tmux` | (program computed) | 1 |
 | `terminal/shells.rs::what` | /bin/ps | 1 |
 | `terminal/speak.rs::send` | (program computed) | 1 |
-| `terminal/term.rs::pane_chain` | (program computed) | 2 |
 | `uploads.rs::clipboard_image` | osascript | 2 |
 | `uploads.rs::clipboard_image` | sips | 1 |
 
@@ -893,6 +892,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/db.rs::open` |  |  |
 | `src-tauri/src/hook.rs::final_turn` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
+| `src-tauri/src/hub/send.rs::reply` |  |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
 | `src-tauri/src/ipc/sessions.rs::move_session_to_cue` |  |  |
