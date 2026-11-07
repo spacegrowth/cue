@@ -65,7 +65,7 @@ pub fn tmux_screen(pane: &str) -> Result<String, String> {
 
 /// The keys Cue's screen view offers: enough to answer any menu or prompt (move, pick, confirm, back
 /// out), nothing that types text.
-const SCREEN_KEYS: [&str; 20] = ["Up", "Down", "Left", "Right", "Enter", "Escape", "Tab", "BTab", "Space", "1", "2", "3", "4", "5", "6", "7", "8", "9", "y", "n"];
+pub const SCREEN_KEYS: [&str; 20] = ["Up", "Down", "Left", "Right", "Enter", "Escape", "Tab", "BTab", "Space", "1", "2", "3", "4", "5", "6", "7", "8", "9", "y", "n"];
 
 /// Press `keys` in a session's tmux pane, in order. Only ones from SCREEN_KEYS.
 pub fn tmux_keys(o: &Origin, keys: &[String]) -> Result<(), String> {
