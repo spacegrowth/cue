@@ -27,4 +27,4 @@ pub use notes::FakeNotes;
 pub use snap::Snap;
 pub use terminal::{FakeTerminal, Key, Takes};
 pub use transcript::Transcript;
-pub use world::World;
+pub use world::{Client, World};
