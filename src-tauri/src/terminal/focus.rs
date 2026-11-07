@@ -6,11 +6,14 @@ use crate::model::Origin;
 use std::process::Command;
 
 /// Find a CLI tool. An app opened from Finder gets a bare PATH (/usr/bin:/bin:…), so Homebrew's
-/// tmux and friends must be looked up explicitly. In tests, tmux only ever on the tests' own server
-/// (terminal::test_tmux).
+/// tmux and friends must be looked up explicitly. In tests, tmux only ever on the tests' own server, or
+/// the stand-in a test put on its thread (terminal::test_tmux).
 fn bin(name: &str) -> String {
     #[cfg(test)]
     if name == "tmux" {
+        if let Some(stand_in) = crate::terminal::test_tmux::standing_in() {
+            return stand_in;
+        }
         crate::terminal::test_tmux::check();
     }
     find_bin(name)
@@ -1442,3 +1445,6 @@ mod tests {
         assert!(!pane_in_its_session(&pane, &label), "a pane that's gone says so");
     }
 }
+
+#[cfg(test)]
+mod typing_tests;

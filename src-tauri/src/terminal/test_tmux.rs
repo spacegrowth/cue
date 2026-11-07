@@ -14,6 +14,31 @@ fn mine() -> PathBuf {
     Path::new("/tmp").join(format!("cue-test-tmux-{}", std::process::id()))
 }
 
+thread_local! {
+    /// A tmux a test stands in on its own thread (`stand_in`): a script, or a name that isn't installed.
+    static STAND_IN: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// While this lives, tmux on this thread is `bin` (focus::bin), never a server: what a test stands in to
+/// make tmux hang, fail, answer as it says, or be missing. Other threads (other tests) are untouched.
+pub struct StandIn(());
+
+pub fn stand_in(bin: &str) -> StandIn {
+    STAND_IN.with(|s| *s.borrow_mut() = Some(bin.to_string()));
+    StandIn(())
+}
+
+impl Drop for StandIn {
+    fn drop(&mut self) {
+        STAND_IN.with(|s| *s.borrow_mut() = None);
+    }
+}
+
+/// The tmux this thread's test stands in, if it does.
+pub fn standing_in() -> Option<String> {
+    STAND_IN.with(|s| s.borrow().clone())
+}
+
 /// Run by the loader before `main`: tmux, from here on, has only this process's own folder to go by.
 extern "C" fn isolate() {
     std::env::remove_var("TMUX");
