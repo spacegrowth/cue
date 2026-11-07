@@ -1,6 +1,7 @@
 // The rest of the board: relay's review cards, parking and resuming, stars, the project switcher, search, and
 // Settings switches. Each checks the call the window made and what it shows once Cue's state comes back.
 import { test, expect } from "./cue.mjs";
+import { compareShot } from "./shots.mjs";
 
 const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
 
@@ -149,4 +150,26 @@ test.describe("Settings", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator(".sheet")).toHaveCount(0);
   });
+});
+
+// A waiting stretch wide enough for its stripes: striped, each one outlined at both its ends (core.js barLayerStyle's
+// `--ends` over the layer's own top and bottom), as drawn.
+test("a wide waiting stretch is striped and outlined at both its ends", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await cue.change((st) => {
+    const s = st.sessions.find((x) => x.session_id === "relay"), t = Date.now() - 1_800_000, m = 60_000;
+    const at = (kind, a, b) => ({ kind, start_ms: t + a * m, end_ms: b == null ? null : t + b * m });
+    s.segments = [at("working", 0, 4), at("waiting", 4, 11), at("working", 11, 14), at("waiting", 14, 24), at("working", 24, 26), at("waiting", 26, 26.3), at("working", 26.3, null)];
+  });
+  await openCard(page, "n1");
+  const striped = page.locator(".ap-bar .bar i.layer.z:not(.thin)");
+  await expect(striped).toHaveCount(1);
+  await expect(page.locator(".ap-bar .bar i.layer.z.thin")).toHaveCount(1);
+  // Two stretches, each end a 1 px line of two stops.
+  expect(((await striped.evaluate((el) => el.style.getPropertyValue("--ends"))).match(/var\(--accent\)/g) || []).length).toBe(8);
+  expect(await striped.evaluate((el) => getComputedStyle(el).backgroundImage), "the ends drawn over the stripes").toMatch(/^linear-gradient\(.*repeating-linear-gradient/);
+  await page.mouse.move(0, 0);
+  const r = compareShot("bar-wide-waiting", await page.locator(".ap-bar").screenshot({ animations: "disabled" }));
+  expect(r.baseline, "baseline for bar-wide-waiting").not.toBe("missing");
+  expect(r.differ, "bar-wide-waiting: pixels that differ from tests/ui/baseline/bar-wide-waiting.png").toBe(0);
 });
