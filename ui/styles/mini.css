@@ -13,8 +13,8 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.ask { background: #E8907F; }
 .m-dot.work { background: var(--work); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
-.m-dotb .m-dot.work { animation: m-breathe 1.6s ease-in-out infinite; }
-@keyframes m-breathe { 50% { opacity: .35; } }
+.m-dotb .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
+@keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
 @media (prefers-reduced-motion: reduce) { .m-dotb .m-dot.work { animation: none; } }
 .m-queued { opacity: .85; box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
 .m-queued .m-quiet { margin-top: 3px; font-size: 11px; }
