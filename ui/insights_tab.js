@@ -262,74 +262,68 @@ function itabClimb(r) {
   </button>`;
 }
 
-/** The Insights view: where the range's dollars went, then three findings (waiting past the cache, long
- *  sessions, corrections), each with the pictures that point at it, the sessions behind it, and what to do;
- *  then the plain trends. */
 /** While Cue is still reading the sessions' history (a new Mac, years of logs): how far, as a bar. */
 function itabReading(r) {
   if (!r?.total) return "";
   const pct = Math.min(99, Math.floor((r.done / r.total) * 100));
   return `<div class="itab-reading"><div class="itab-reading-t"><span>Reading your session history: what's here so far is part of it.</span><b>${pct}%</b></div><div class="itab-reading-bar"><i style="width:${pct}%"></i></div></div>`;
 }
-function insightsTabView() {
-  const d = itabData();
-  // Today at a glance first (history.js histStats), one line. Then the range: LAST and its pills, heading straight into what they change; its totals at the right.
-  const t = d?.totals || {};
-  const sum = t.turns ? `<span class="itab-sum">${esc(itabNum(t.tokens))} tokens · ${esc(itabNum(t.turns))} turns · ${esc(itabNum(t.sessions))} sessions</span>` : "";
-  const ranges = `${histStats()}<div class="itab-range"><span class="hs-head">Last</span>${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}<span class="grow"></span>${sum}</div>${itabReading(d?.reading)}`;
-  if (!d) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Reading…</div></div>`;
-  const w = d.waiting || {}, l = d.long || {}, c = d.corrections || {};
-  if (d.error) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Couldn't read the turns: ${esc(d.error)}</div></div>`;
-  if (!t.turns) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">No turns in the last ${d.days} days yet. Cue reads them from each session's log in the background, a little at a time.</div></div>`;
-  const days = itabDaysList(d.days);
-  const byDay = new Map((d.by_day || []).map((r) => [r.day, r]));
-  const val = (k, gap) => days.map((day) => { const r = byDay.get(day); return r ? r[k] || 0 : gap ? null : 0; });
-  const pct = (x) => `${Math.round((x || 0) * 100)}%`;
-  const bad = (txt) => `<span class="itab-tag">${esc(txt)}</span>`;
-  itabRows.clear();
+/** A share as a whole percent. */
+const itabPct = (x) => `${Math.round((x || 0) * 100)}%`;
+/** A finding's tag ("avoidable"). */
+const itabBad = (txt) => `<span class="itab-tag">${esc(txt)}</span>`;
+/** One number per day of the range, read from its `by_day` rows by key (a day with no row: 0, or a gap). */
+function itabSeries(days, byDay) {
+  return (k, gap) => days.map((day) => { const r = byDay.get(day); return r ? r[k] || 0 : gap ? null : 0; });
+}
 
-  const priced = t.priced != null && t.priced < 0.95 ? ` Some models couldn't be priced (${pct(1 - t.priced)} of tokens), so the dollars run low.` : "";
-  const note = `<div class="itab-fine">Dollars are API list prices. On a subscription they aren't a bill: they're what wears down your usage limits.${priced}</div>`;
-
-  // Where it went: the split, each day, each model.
+/** Where it went: the total, how much was avoidable, the split, each day, each model. */
+function itabWhere(d, t, days, byDay) {
+  const w = d.waiting || {}, l = d.long || {};
   const avoid = (w.usd || 0) + (l.usd || 0), sp = d.split || {};
   const ms = (d.models || []).filter((m) => m.usd > 0 || m.tokens > 0), mTop = Math.max(0.01, ...ms.map((m) => m.usd));
-  const models = ms.length ? itabFig("By model", "", itabRank(ms.map((m) => ({ name: itabModel(m.model), share: m.usd / mTop, value: m.usd ? `<b>${esc(itabUsd(m.usd))}</b> ${pct(m.usd / (t.usd || 1))}` : `${esc(itabNum(m.tokens))} tokens, unpriced` })))) : "";
-  const where = `<section class="itab-find itab-where">
+  const models = ms.length ? itabFig("By model", "", itabRank(ms.map((m) => ({ name: itabModel(m.model), share: m.usd / mTop, value: m.usd ? `<b>${esc(itabUsd(m.usd))}</b> ${itabPct(m.usd / (t.usd || 1))}` : `${esc(itabNum(m.tokens))} tokens, unpriced` })))) : "";
+  return `<section class="itab-find itab-where">
     <div class="itab-kicker">Where it went</div>
-    <div class="itab-claim"><b class="itab-big">${esc(itabUsd(t.usd))}</b><p class="itab-says">${avoid ? `<b class="itab-hot">${esc(itabUsd(avoid))}</b> of it (${pct(avoid / (t.usd || 1))}) was avoidable: caches re-written after a session waited on you, and long contexts re-read past their hand-off point.` : "Nothing in this range was avoidable by the measures below."}</p></div>
+    <div class="itab-claim"><b class="itab-big">${esc(itabUsd(t.usd))}</b><p class="itab-says">${avoid ? `<b class="itab-hot">${esc(itabUsd(avoid))}</b> of it (${itabPct(avoid / (t.usd || 1))}) was avoidable: caches re-written after a session waited on you, and long contexts re-read past their hand-off point.` : "Nothing in this range was avoidable by the measures below."}</p></div>
     ${Object.keys(sp).length ? itabSplit(sp, t.usd) : ""}
     <div class="itab-evidence itab-wide">${itabFig("Each day", "amber: the avoidable part", itabDaily(days, byDay))}${models}</div>
   </section>`;
-
-  // Waiting past the cache: when, how long, which sessions.
-  const ws = w.sessions || [], wTop = Math.max(0.01, ...ws.map((r) => r.usd));
-  const grid = w.grid_usd || [], gSum = grid.reduce((a, x) => a + x, 0);
+}
+/** When the waits past the cache began, in words: how much in the evening or overnight, on weekends, and the
+ *  busiest hour (`grid`: dollars by weekday × hour). */
+function itabWaitWhen(grid, gSum) {
   const share = (f) => (gSum ? grid.reduce((a, x, i) => a + (f(Math.floor(i / 24), i % 24) ? x : 0), 0) / gSum : 0);
   const night = share((_, h) => h >= 18 || h < 6), weekend = share((wd) => wd >= 5);
   const peak = grid.indexOf(Math.max(...grid));
-  const when = gSum ? `${pct(night)} began in the evening or overnight${weekend >= 0.15 ? `, ${pct(weekend)} on weekends` : ""}. Most: ${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][Math.floor(peak / 24)]} around ${((peak % 24) + 11) % 12 + 1}${peak % 24 < 12 ? "am" : "pm"}.` : "";
+  return gSum ? `${itabPct(night)} began in the evening or overnight${weekend >= 0.15 ? `, ${itabPct(weekend)} on weekends` : ""}. Most: ${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][Math.floor(peak / 24)]} around ${((peak % 24) + 11) % 12 + 1}${peak % 24 < 12 ? "am" : "pm"}.` : "";
+}
+/** Waiting past the cache: when, how long, which sessions. */
+function itabWaiting(w) {
+  if (!w.turns) return itabFind("Waiting past the cache", "$0", "No answer came after its session's cache ran out.", "", "", "Keep answering before the countdown on a waiting card runs out.");
+  const ws = w.sessions || [], wTop = Math.max(0.01, ...ws.map((r) => r.usd));
+  const grid = w.grid_usd || [], gSum = grid.reduce((a, x) => a + x, 0);
   const ans = w.answers || [];
-  const wPics = gSum || ans.length ? `<div class="itab-evidence itab-pics">${gSum ? itabFig("When the wait began", when, itabWeek(grid, w.grid_turns)) : ""}${ans.length ? itabFig("Each late answer", "across: how long it waited · up: what it re-wrote · size: what it cost", itabDots(ans)) : ""}</div>` : "";
-  const waiting = w.turns
-    ? itabFind("Waiting past the cache", itabUsd(w.usd),
-      `Answering after a session's cache ran out re-wrote ${itabNum(w.tokens)} tokens: ${w.turns} late answer${w.turns === 1 ? "" : "s"}, ${pct(w.share_of_writes)} of all cache writes.`,
-      "", "",
-      "Answer before its cache runs out: the countdown on a waiting card says how long is left. For a session that's gone stale, start fresh from a hand-off instead of resuming it.",
-      `${wPics}${ws.length ? itabFig("The sessions behind it", "", `<div class="itab-list">${ws.map((r) => itabSess(r, [`${r.times}×`, `waited up to ${itabDur(r.longest_wait_ms)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / wTop)).join("")}</div>`) : ""}`, bad("avoidable"))
-    : itabFind("Waiting past the cache", "$0", "No answer came after its session's cache ran out.", "", "", "Keep answering before the countdown on a waiting card runs out.");
-
-  // Long sessions: each one's climb, the hand-off point marked.
+  const wPics = gSum || ans.length ? `<div class="itab-evidence itab-pics">${gSum ? itabFig("When the wait began", itabWaitWhen(grid, gSum), itabWeek(grid, w.grid_turns)) : ""}${ans.length ? itabFig("Each late answer", "across: how long it waited · up: what it re-wrote · size: what it cost", itabDots(ans)) : ""}</div>` : "";
+  return itabFind("Waiting past the cache", itabUsd(w.usd),
+    `Answering after a session's cache ran out re-wrote ${itabNum(w.tokens)} tokens: ${w.turns} late answer${w.turns === 1 ? "" : "s"}, ${itabPct(w.share_of_writes)} of all cache writes.`,
+    "", "",
+    "Answer before its cache runs out: the countdown on a waiting card says how long is left. For a session that's gone stale, start fresh from a hand-off instead of resuming it.",
+    `${wPics}${ws.length ? itabFig("The sessions behind it", "", `<div class="itab-list">${ws.map((r) => itabSess(r, [`${r.times}×`, `waited up to ${itabDur(r.longest_wait_ms)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / wTop)).join("")}</div>`) : ""}`, itabBad("avoidable"));
+}
+/** Long sessions: each one's climb, the hand-off point marked. */
+function itabLong(l) {
   const ls = l.sessions || [], ho = l.handoffs || { sent: 0, continued: 0 };
   const hoLine = ho.sent ? ` ${ho.sent} hand-off${ho.sent === 1 ? "" : "s"} sent, ${ho.continued} continued in a new session.` : " No hand-offs sent yet.";
-  const long = itabFind("Long sessions", itabUsd(l.usd),
+  return itabFind("Long sessions", itabUsd(l.usd),
     `Sessions that ran on past their hand-off point re-read ${itabNum(l.tokens)} tokens of context above where they started.${hoLine}`,
     "", "",
     "Hand off when Cue offers it: past 300k and four times what it started with (150k and three times once its cache has run out), a fresh one with a short summary re-reads far less.",
-    ls.length ? itabFig("How their context climbed", "amber: re-read above the start, past the hand-off point", `<div class="itab-tiles">${ls.slice(0, 6).map(itabClimb).join("")}</div>`) : "", l.usd ? bad("avoidable") : "");
-
-  // Could have delegated: turns that looked around themselves, and long sessions across several areas.
-  const dl = d.delegate || {}, dls = dl.sessions || [], dsp = dl.spread || [], dTop = Math.max(0.01, ...dls.map((r) => r.usd));
+    ls.length ? itabFig("How their context climbed", "amber: re-read above the start, past the hand-off point", `<div class="itab-tiles">${ls.slice(0, 6).map(itabClimb).join("")}</div>`) : "", l.usd ? itabBad("avoidable") : "");
+}
+/** Could have delegated: turns that looked around themselves, and long sessions across several areas. */
+function itabDelegate(dl) {
+  const dls = dl.sessions || [], dsp = dl.spread || [], dTop = Math.max(0.01, ...dls.map((r) => r.usd));
   const used = `Already delegated: ${itabNum(dl.agents || 0)} background agent${dl.agents === 1 ? "" : "s"} in ${itabNum(dl.agent_sessions || 0)} session${dl.agent_sessions === 1 ? "" : "s"}${dl.relay_spawns ? `, ${itabNum(dl.relay_spawns)} relay executor${dl.relay_spawns === 1 ? "" : "s"}` : ""}.`;
   const looked = dl.turns
     ? `${itabNum(dl.turns)} turn${dl.turns === 1 ? "" : "s"} did ${dl.looks_min} or more reads and searches themselves, each growing its session's context by ${itabNum(dl.growth_min)} or more; later replies re-read ${itabNum(dl.tokens)} tokens of it.`
@@ -340,40 +334,66 @@ function insightsTabView() {
   const split = dl.relay
     ? "For work across several areas, start a relay lead (/relay:mode): each area gets an executor with a small context of its own."
     : "For work across several areas, a background agent per area, each in its own worktree, keeps every context small.";
-  const deleg = itabFind("Could have delegated", itabUsd(dl.usd || 0),
+  return itabFind("Could have delegated", itabUsd(dl.usd || 0),
     `${looked}${spreadLine} ${used}`,
     "", "",
     `Hand the looking to a background agent (“have an agent find where …”): it reads in a context of its own and sends back a summary. ${split}`,
-    `${delSess || delSpread ? `<div class="itab-evidence itab-pics">${delSess}${delSpread}</div>` : ""}`, dl.usd ? bad("avoidable") : "");
-
-  // Corrections: which projects, which prompts.
-  const ex = c.examples || [];
-  const pair = (e) => {
-    itabRows.set(e.session_id, e);
-    return `<button class="itab-pair" data-itab-open="${esc(e.session_id)}" data-itab-at="${e.at_ms || ""}">
+    `${delSess || delSpread ? `<div class="itab-evidence itab-pics">${delSess}${delSpread}</div>` : ""}`, dl.usd ? itabBad("avoidable") : "");
+}
+/** A correction: what you asked, then what you said; it opens its session there. */
+function itabPair(e) {
+  itabRows.set(e.session_id, e);
+  return `<button class="itab-pair" data-itab-open="${esc(e.session_id)}" data-itab-at="${e.at_ms || ""}">
       <span class="itab-meta">${esc(e.project || "")}<span>${esc(itabWhen(e.at_ms))}</span></span>
       <span class="itab-q itab-asked"><span class="itab-qlabel">You asked</span>${esc(itabBare(e.prompt))}</span>
       <span class="itab-q itab-then"><span class="itab-qmark" aria-hidden="true">“</span><span><span class="itab-qlabel">Then you said</span>${esc(itabBare(e.correction))}</span></span>
     </button>`;
-  };
+}
+/** Corrections: which projects, each day, and the prompts. */
+function itabCorrections(c, days, val) {
+  const ex = c.examples || [];
   const bp = (c.by_project || []).map((p) => ({ ...p, rate: p.turns ? p.count / p.turns : 0 })).sort((a, b) => b.rate - a.rate);
   const rTop = Math.max(0.001, ...bp.map((p) => p.rate), c.share || 0);
-  const byProj = bp.length ? itabFig("By project", `line: your ${pct(c.share)} overall`, itabRank(bp.map((p) => ({ name: p.project, share: p.rate / rTop, bad: p.rate > (c.share || 0) * 1.5, value: `<b>${(p.rate * 100).toFixed(1)}%</b> ${p.count} of ${itabNum(p.turns)}` })), (c.share || 0) / rTop)) : "";
-  const corr = itabFind("Corrections", itabNum(c.count),
-    `${pct(c.share)} of turns: your next prompt corrected the one before.`,
+  const byProj = bp.length ? itabFig("By project", `line: your ${itabPct(c.share)} overall`, itabRank(bp.map((p) => ({ name: p.project, share: p.rate / rTop, bad: p.rate > (c.share || 0) * 1.5, value: `<b>${(p.rate * 100).toFixed(1)}%</b> ${p.count} of ${itabNum(p.turns)}` })), (c.share || 0) / rTop)) : "";
+  return itabFind("Corrections", itabNum(c.count),
+    `${itabPct(c.share)} of turns: your next prompt corrected the one before.`,
     "", "",
     "Front-load the prompt: the file, what it should do, and how to check it worked.",
-    `<div class="itab-evidence itab-pics">${byProj}${itabFig("Each day", "", itabChart([{ vals: val("corrected") }], days, (n) => String(Math.round(n))))}</div>${ex.length ? `<details class="itab-more"><summary>${ex.length} examples</summary><div class="itab-pairs">${ex.map(pair).join("")}</div></details>` : ""}`);
-
+    `<div class="itab-evidence itab-pics">${byProj}${itabFig("Each day", "", itabChart([{ vals: val("corrected") }], days, (n) => String(Math.round(n))))}</div>${ex.length ? `<details class="itab-more"><summary>${ex.length} examples</summary><div class="itab-pairs">${ex.map(itabPair).join("")}</div></details>` : ""}`);
+}
+/** The plain trends: tokens, median context and turns a day, and how often Cue's nudges were taken. */
+function itabTrends(d, t, days, val) {
   const ctxs = (d.by_day || []).map((r) => r.median_context).filter((x) => x > 0);
   const midCtx = ctxs.length ? [...ctxs].sort((a, b) => a - b)[Math.floor(ctxs.length / 2)] : 0;
   const ins = (d.insights || []).filter((i) => i.shown).map((i) => `${esc(i.rule)}: acted on ${i.acted} of ${i.shown}${i.tokens ? ` · saved ${itabNum(i.tokens)} tokens` : ""}`).join(" · ");
-  const trends = `<div class="itab-sub">Trends</div><div class="itab-grid">
+  return `<div class="itab-sub">Trends</div><div class="itab-grid">
     ${itabCard("Tokens per day", `${itabNum(t.tokens / d.days)} a day`, itabChart([{ vals: val("tokens") }], days, itabNum))}
     ${itabCard("Median context per turn", midCtx ? `around ${itabNum(midCtx)}` : "", itabChart([{ vals: val("median_context", true) }], days, itabNum))}
     ${itabCard("Turns per day", `${(t.turns / d.days).toFixed(t.turns / d.days < 10 ? 1 : 0)} a day`, itabChart([{ vals: val("turns") }], days, (n) => String(Math.round(n))))}
   </div>${ins ? `<div class="itab-fine">Cue's nudges: ${ins}</div>` : ""}`;
+}
 
+/** The Insights view: today at a glance (history.js histStats), one line; then the range (LAST and its pills,
+ *  heading straight into what they change; its totals at the right); then where the range's dollars went, the
+ *  plain trends, and the findings (waiting past the cache, long sessions, delegating, corrections), each with the
+ *  pictures that point at it, the sessions behind it, and what to do. */
+function insightsTabView() {
+  const d = itabData();
+  const t = d?.totals || {};
+  const sum = t.turns ? `<span class="itab-sum">${esc(itabNum(t.tokens))} tokens · ${esc(itabNum(t.turns))} turns · ${esc(itabNum(t.sessions))} sessions</span>` : "";
+  const ranges = `${histStats()}<div class="itab-range"><span class="hs-head">Last</span>${[7, 30, 90].map((n) => `<button class="hfchip ${itabDays === n ? "on" : ""}" data-itab-days="${n}">${n} days</button>`).join("")}<span class="grow"></span>${sum}</div>${itabReading(d?.reading)}`;
+  if (!d) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Reading…</div></div>`;
+  if (d.error) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">Couldn't read the turns: ${esc(d.error)}</div></div>`;
+  if (!t.turns) return `${ranges}<div class="itab"><div class="quiet-line itab-empty">No turns in the last ${d.days} days yet. Cue reads them from each session's log in the background, a little at a time.</div></div>`;
+  const days = itabDaysList(d.days);
+  const byDay = new Map((d.by_day || []).map((r) => [r.day, r]));
+  const val = itabSeries(days, byDay);
+  itabRows.clear();
+  const priced = t.priced != null && t.priced < 0.95 ? ` Some models couldn't be priced (${itabPct(1 - t.priced)} of tokens), so the dollars run low.` : "";
+  const note = `<div class="itab-fine">Dollars are API list prices. On a subscription they aren't a bill: they're what wears down your usage limits.${priced}</div>`;
+  const where = itabWhere(d, t, days, byDay);
+  const waiting = itabWaiting(d.waiting || {}), long = itabLong(d.long || {}), deleg = itabDelegate(d.delegate || {}), corr = itabCorrections(d.corrections || {}, days, val);
+  const trends = itabTrends(d, t, days, val);
   return `${ranges}<div class="itab">${where}${note}${trends}${waiting}${long}${deleg}${corr}</div>`;
 }
 
