@@ -325,6 +325,9 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "login.open" => {
             let on = value.as_bool().ok_or("must be true or false")?;
             let set = login::set(on);
+            if set.is_ok() {
+                mac::login_set(on);
+            }
             mac::refresh_soon();
             set?;
             remember(key, json!(on))

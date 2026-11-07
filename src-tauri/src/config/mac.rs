@@ -20,15 +20,17 @@ pub struct Facts {
 const UNASKED: Facts = Facts { login: false, tmux: false, terminal: "Terminal" };
 
 /// Facts kept from the last time they were asked, and whether an ask is out now (one at a time: an ask that
-/// hangs isn't joined by another every minute).
+/// hangs isn't joined by another every minute). One asked for while an ask is out is asked once that one is
+/// back (`again`): what changed meanwhile (you flipped Open at login) isn't lost until the next minute.
 pub struct Kept {
     facts: RwLock<Option<Facts>>,
     asking: AtomicBool,
+    again: AtomicBool,
 }
 
 impl Kept {
     pub const fn new() -> Self {
-        Kept { facts: RwLock::new(None), asking: AtomicBool::new(false) }
+        Kept { facts: RwLock::new(None), asking: AtomicBool::new(false), again: AtomicBool::new(false) }
     }
 
     /// The facts as last asked, from memory.
@@ -36,19 +38,36 @@ impl Kept {
         crate::locking::read(&self.facts, "what macOS says").unwrap_or(UNASKED)
     }
 
-    /// Ask again on a thread of its own, unless an ask is out already; `changed` runs when the answer differs.
+    /// Ask again on a thread of its own, or, while an ask is out, once it's back; `changed` runs when the
+    /// answer differs.
     pub fn refresh_soon(&'static self, ask: fn() -> Facts, changed: fn()) {
         if self.asking.swap(true, Ordering::AcqRel) {
+            self.again.store(true, Ordering::Release);
             return;
         }
-        std::thread::spawn(move || {
-            let now = ask();
-            let was = std::mem::replace(&mut *crate::locking::write(&self.facts, "what macOS says"), Some(now));
+        std::thread::spawn(move || loop {
+            self.again.store(false, Ordering::Release);
+            self.put(ask(), changed);
             self.asking.store(false, Ordering::Release);
-            if was != Some(now) {
-                changed();
+            // Asked for while this one was out (and nobody has started another since): once more.
+            if !self.again.load(Ordering::Acquire) || self.asking.swap(true, Ordering::AcqRel) {
+                return;
             }
         });
+    }
+
+    /// `now` kept, `changed` run when it differs from what was.
+    fn put(&self, now: Facts, changed: fn()) {
+        let was = std::mem::replace(&mut *crate::locking::write(&self.facts, "what macOS says"), Some(now));
+        if was != Some(now) {
+            changed();
+        }
+    }
+
+    /// What Cue just set itself (Open at login, set and confirmed), kept at once rather than at the next ask.
+    pub fn set_login(&self, on: bool, changed: fn()) {
+        let now = Facts { login: on, ..self.get() };
+        self.put(now, changed);
     }
 }
 
@@ -62,6 +81,11 @@ pub fn facts() -> Facts {
 /// Ask macOS again, off this thread.
 pub fn refresh_soon() {
     KEPT.refresh_soon(ask, super::changed);
+}
+
+/// Open at login set (macOS took it): kept at once.
+pub fn login_set(on: bool) {
+    KEPT.set_login(on, super::changed);
 }
 
 fn ask() -> Facts {
@@ -119,8 +143,19 @@ mod tests {
         assert_eq!(K.get(), UNASKED, "the last answer (none yet) while macOS is slow");
         assert!(start.elapsed() < Duration::from_millis(100), "a read doesn't wait on the ask");
         K.refresh_soon(stalled, || {});
+        K.refresh_soon(stalled, || {});
+        assert_eq!(STALLED_ASKS.load(Ordering::SeqCst), 1, "no second ask while one is out");
         RELEASE.store(true, Ordering::SeqCst);
         until("the answer came", || K.get().login);
-        assert_eq!(STALLED_ASKS.load(Ordering::SeqCst), 1, "no second ask while one was out");
+        until("asked once more for what was asked for meanwhile", || STALLED_ASKS.load(Ordering::SeqCst) == 2);
+        until("that ask done", || !K.asking.load(Ordering::SeqCst));
+        assert_eq!(STALLED_ASKS.load(Ordering::SeqCst), 2, "once, however many asked meanwhile");
+    }
+
+    #[test]
+    fn open_at_login_set_by_cue_is_kept_at_once() {
+        static K: Kept = Kept::new();
+        K.set_login(true, || {});
+        assert!(K.get().login, "not snapped back to the last ask's answer");
     }
 }
