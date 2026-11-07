@@ -29,8 +29,9 @@ pub use self::insights::{insight_event, insight_counts, turns_read, TurnsOf, sav
 pub use self::insights::insight_events_of;
 pub use self::items::{save_answered, history, DAY_MS, answers_since};
 #[cfg(test)]
+#[cfg(test)]
 pub use self::live::sync_live;
-pub use self::live::{sync_live_with, save_live, LiveSave, save_ended, live, park, parked, unpark, closed, ended_session, delete_session};
+pub use self::live::{save_live, LiveSave, save_ended, live, park, parked, unpark, closed, ended_session, delete_session};
 pub use self::search::{search, known_session_ids, session_log, session_log_page};
 
 #[cfg(test)]
@@ -41,20 +42,40 @@ use std::sync::Mutex;
 
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 
-/// The longest a statement waits for another connection's write to finish. Half the two seconds after
-/// which a wait for a lock is reported (locking/mod.rs): threads queued on DB behind such a wait get it well
-/// before then, so an outside write never reads as a lock bug in locks.log.
+/// The longest a statement waits for another connection's write to finish (sqlite3 in a terminal, a backup).
+/// It waits with DB let go (`with`), so no other caller queues behind it.
 const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+/// How often a statement that found the database busy tries again, within BUSY_WAIT.
+const BUSY_RETRY_MS: u64 = 25;
 
 pub(crate) fn path() -> std::path::PathBuf {
     crate::server::cue_dir().join("cue.db")
 }
 
 /// Run `f` on the open database. A database that can't be opened is logged once and every call
-/// becomes a no-op: Cue keeps working from memory rather than refusing to start. A long hold is counted
-/// by the line that asked (`track_caller`, locking::stats).
+/// becomes a no-op: Cue keeps working from memory rather than refusing to start. Another connection
+/// holding it (SQLITE_BUSY, at once: the connection doesn't wait) has `f` tried again every BUSY_RETRY_MS
+/// for up to BUSY_WAIT, with DB let go in between: one write waiting on another program never holds up
+/// every other caller. (`f` runs whole each time: a transaction it began rolled back when it failed.) A long
+/// hold is counted by the line that asked (`track_caller`, locking::stats).
 #[track_caller]
-fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
+fn with<T>(f: impl Fn(&Connection) -> rusqlite::Result<T>) -> Option<T> {
+    let end = crate::clock::now_mono_ms() + BUSY_WAIT.as_millis() as u64;
+    loop {
+        match attempt(&f)? {
+            Ok(v) => return Some(v),
+            Err(e) if busy(&e) && crate::clock::now_mono_ms() < end => crate::clock::sleep_ms(BUSY_RETRY_MS),
+            Err(e) => {
+                eprintln!("cue: database: {e}");
+                return None;
+            }
+        }
+    }
+}
+
+/// `f` once on the open database (opened first if it isn't), under DB; None when it can't be opened.
+#[track_caller]
+fn attempt<T>(f: &impl Fn(&Connection) -> rusqlite::Result<T>) -> Option<rusqlite::Result<T>> {
     let mut guard = crate::locking::lock(&DB, "DB");
     if guard.is_none() {
         static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -68,13 +89,12 @@ fn with<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
             }
         };
     }
-    match f(guard.as_ref()?) {
-        Ok(v) => Some(v),
-        Err(e) => {
-            eprintln!("cue: database: {e}");
-            None
-        }
-    }
+    Some(f(guard.as_ref()?))
+}
+
+/// SQLite saying another connection holds the database.
+fn busy(e: &rusqlite::Error) -> bool {
+    matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked))
 }
 
 /// After the data folder moved, saved image paths still point at the old one: point them at the new.
@@ -119,7 +139,7 @@ pub fn reset() {
 
 /// Tests: `f` on the open database, as every call here runs.
 #[cfg(test)]
-pub fn raw<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
+pub fn raw<T>(f: impl Fn(&Connection) -> rusqlite::Result<T>) -> Option<T> {
     with(f)
 }
 
