@@ -8,4 +8,6 @@ mod sessions;
 mod store;
 mod transcripts;
 mod typing;
+mod typing_edges;
+mod typing_failures;
 mod typing_support;
