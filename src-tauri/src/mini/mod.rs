@@ -11,7 +11,7 @@
 mod macos;
 
 use serde_json::Value;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// The mini window's label (its page asks for it by this name too).
@@ -27,6 +27,9 @@ pub(crate) enum Mode {
 
 /// The shape open now (Off: none).
 static OPEN: AtomicU8 = AtomicU8::new(Mode::Off as u8);
+/// Cue's own window is in front: the mini window steps aside. Kept from that window's focus events (asked of
+/// the window just as it goes to the back, it can still say it's in front).
+static MAIN_FRONT: AtomicBool = AtomicBool::new(false);
 
 impl Mode {
     fn from_setting(v: Option<&str>) -> Mode {
@@ -151,9 +154,12 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
         win.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
         win.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     }
-    // Always shown, Cue's own window in front or not: it's where you look for Cue without going there. Shown
-    // without ever taking the keyboard: Tauri's show() makes it the key window, and when that ran each time
-    // Cue's window came forward, the two took focus from each other and you couldn't type in Cue.
+    // Not while Cue's own window is in front (it would only repeat it). Shown without ever taking the keyboard:
+    // Tauri's show() makes it the key window, and when that ran each time Cue's window came forward, the two
+    // took focus from each other and you couldn't type in Cue.
+    if MAIN_FRONT.load(Ordering::SeqCst) {
+        return Ok(());
+    }
     #[cfg(target_os = "macos")]
     macos::show_quietly(&win);
     #[cfg(not(target_os = "macos"))]
@@ -179,9 +185,16 @@ pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>)
     Ok(())
 }
 
-/// Cue's window came forward or went back: it may be on another display now, and the rail goes on the one
-/// Cue's window is on. Its page places it again (mini_shape).
-pub(crate) fn main_focused(app: &AppHandle, _focused: bool) {
+/// Cue's window came forward (the mini window steps aside: hidden, which never takes the keyboard) or went
+/// back (its page places it again, on the display Cue's window is on now, and shows it: mini_shape).
+pub(crate) fn main_focused(app: &AppHandle, focused: bool) {
+    MAIN_FRONT.store(focused, Ordering::SeqCst);
+    if focused {
+        if let Some(win) = app.get_webview_window(LABEL) {
+            let _ = win.hide();
+        }
+        return;
+    }
     use tauri::Emitter;
     let _ = app.emit_to(LABEL, "mini-place", ());
 }
