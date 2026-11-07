@@ -128,20 +128,25 @@ impl Hub {
         }
     }
 
-    /// The live sessions and waiting cards saved as the store has them now (a relaunch shows them), and parked
+    /// The live sessions and waiting cards saved as the store has them now (a relaunch shows them), the sessions
+    /// that ended since the last save as their records were when they ended (Closed after a relaunch), and parked
     /// sessions that are live again (you resumed one yourself, in a terminal) no longer parked. Each draw does
     /// it, and quitting does it once more, so nothing changed since the last draw is lost.
     pub fn save_live(&self) {
-        let (back, sessions, waiting) = self.write(|st| {
+        let (back, sessions, waiting, ended) = self.write(|st| {
             let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
             st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
             let waiting: Vec<Item> = st.items.iter().filter(|i| i.kind == "waiting").cloned().collect();
-            (back, st.sessions.all(), waiting)
+            let ended: Vec<(u64, crate::sessions::Session)> = std::mem::take(&mut st.unsaved_ends).into_iter().filter(|(_, s)| st.sessions.origin(&s.origin.session_id).is_none()).collect();
+            (back, st.sessions.all(), waiting, ended)
         });
         for sid in &back {
             self.save_parked(sid);
         }
         crate::db::sync_live(&sessions, &waiting.iter().collect::<Vec<_>>());
+        // Each that ended since the last save, as it was when it ended, not as of the save before: a change and
+        // the end can land within one draw. Taken with the live ones under one lock, so the two agree.
+        crate::db::save_ended(&ended);
     }
 
     /// Tests: how many draws have run.

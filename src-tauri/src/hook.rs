@@ -17,14 +17,16 @@ use serde_json::{json, Map, Value};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::os::unix::net::UnixStream;
 use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// How long to wait for a restarting Cue before giving up on a pending question.
-const RECONNECT_FOR: Duration = Duration::from_secs(15 * 60);
+const RECONNECT_FOR_MS: u64 = 15 * 60_000;
+/// How long between tries to reach a restarting Cue.
+const RETRY_MS: u64 = 2_000;
 
-/// RECONNECT_FOR, or CUE_HOOK_RECONNECT_FOR seconds when that's set (the hook's tests wait seconds, not minutes).
-fn reconnect_for() -> Duration {
-    std::env::var("CUE_HOOK_RECONNECT_FOR").ok().and_then(|s| s.trim().parse().ok()).map_or(RECONNECT_FOR, Duration::from_secs)
+/// RECONNECT_FOR_MS, or CUE_HOOK_RECONNECT_FOR seconds when that's set (the hook's tests wait seconds, not minutes).
+fn reconnect_for_ms() -> u64 {
+    std::env::var("CUE_HOOK_RECONNECT_FOR").ok().and_then(|s| s.trim().parse::<u64>().ok()).map_or(RECONNECT_FOR_MS, |secs| secs * 1000)
 }
 /// Entry point for `cue hook …`. Always returns normally; the caller exits 0.
 pub fn main(args: &[String]) {
@@ -357,25 +359,18 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
     // Asked from within one of its agents (a background agent or teammate): which one, so Cue shows it on that agent.
     msg.insert("agent_id".into(), json!(s(p, "agent_id")));
     let line = format!("{}\n", Value::Object(msg));
-    let mut first = true;
-    let mut gone_since: Option<Instant> = None;
+    let mut reach = Reconnect::default();
     loop {
         let Some(mut sock) = connect(Duration::from_secs(1)) else {
-            if first {
-                return None; // Cue isn't running: stay out of the way
-            }
-            // Cue is restarting: keep the request alive, but not forever.
-            let since = *gone_since.get_or_insert_with(Instant::now);
-            if since.elapsed() > reconnect_for() {
+            if !reach.unreachable() {
                 return None;
             }
-            std::thread::sleep(Duration::from_secs(2));
+            crate::clock::sleep_ms(RETRY_MS);
             continue;
         };
-        first = false;
-        gone_since = None;
+        reach.reached();
         if sock.write_all(line.as_bytes()).is_err() {
-            std::thread::sleep(Duration::from_secs(2));
+            crate::clock::sleep_ms(RETRY_MS);
             continue;
         }
         // Wait as long as it takes; the agent's own hook timeout is the ceiling.
@@ -394,7 +389,34 @@ fn ask(p: &Value, harness: &str) -> Option<()> {
             }
         }
         // The connection closed without an answer: Cue quit or restarted. Ask again when it's back.
-        std::thread::sleep(Duration::from_secs(2));
+        crate::clock::sleep_ms(RETRY_MS);
+    }
+}
+
+/// Whether a pending ask keeps trying to reach Cue. Not running at the first try: stay out of the way (the
+/// agent shows its own prompt). Gone after it was reached (restarting): tried again for reconnect_for_ms()
+/// from when it went, by Cue's clock.
+#[derive(Default)]
+struct Reconnect {
+    reached: bool,
+    gone_since: Option<u64>,
+}
+
+impl Reconnect {
+    /// Cue answered: a later outage starts its wait afresh.
+    fn reached(&mut self) {
+        self.reached = true;
+        self.gone_since = None;
+    }
+
+    /// Cue couldn't be reached just now: true to try again, false to give up.
+    fn unreachable(&mut self) -> bool {
+        if !self.reached {
+            return false;
+        }
+        let now = crate::clock::now_ms();
+        let since = *self.gone_since.get_or_insert(now);
+        now.saturating_sub(since) <= reconnect_for_ms()
     }
 }
 
@@ -448,6 +470,50 @@ mod tests {
         assert!(!in_pane(&Some(String::new()), "/dev/ttys007"), "a pane long closed");
         assert!(in_pane(&None, "/dev/ttys007"), "tmux not answering: trusted");
         assert!(in_pane(&Some("/dev/ttys004".into()), ""), "no tty to compare: trusted");
+    }
+
+    /// A fake clock on this thread, run ahead as each case says.
+    fn on_a_fake_clock() -> crate::clock::fake::Fake {
+        let clock = crate::clock::fake::Fake::frozen(1_000_000);
+        clock.install();
+        clock
+    }
+
+    #[test]
+    fn an_ask_with_no_cue_at_its_first_try_stays_out_of_the_way() {
+        let _clock = on_a_fake_clock();
+        assert!(!Reconnect::default().unreachable(), "the agent's own prompt takes over at once");
+        crate::clock::fake::Fake::uninstall();
+    }
+
+    #[test]
+    fn an_ask_whose_cue_restarts_keeps_trying_for_fifteen_minutes_then_gives_up() {
+        let clock = on_a_fake_clock();
+        let mut r = Reconnect::default();
+        r.reached();
+        assert!(r.unreachable(), "Cue just went: try again");
+        clock.advance(RECONNECT_FOR_MS);
+        assert!(r.unreachable(), "fifteen minutes on: still worth a try");
+        clock.advance(RETRY_MS);
+        assert!(!r.unreachable(), "past fifteen minutes: give up");
+        crate::clock::fake::Fake::uninstall();
+    }
+
+    #[test]
+    fn reaching_cue_again_starts_the_next_outages_wait_afresh() {
+        let clock = on_a_fake_clock();
+        let mut r = Reconnect::default();
+        r.reached();
+        assert!(r.unreachable());
+        clock.advance(RECONNECT_FOR_MS - RETRY_MS);
+        r.reached();
+        clock.advance(RETRY_MS * 2);
+        assert!(r.unreachable(), "the first outage's time doesn't count against the second");
+        clock.advance(RECONNECT_FOR_MS);
+        assert!(r.unreachable(), "fifteen minutes from the second outage's start");
+        clock.advance(1);
+        assert!(!r.unreachable());
+        crate::clock::fake::Fake::uninstall();
     }
 
     #[test]

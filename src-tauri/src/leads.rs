@@ -1409,6 +1409,10 @@ pub fn view(known: &HashSet<String>) -> Value {
 }
 
 #[cfg(test)]
+#[path = "leads_edges_tests.rs"]
+mod edges_tests;
+
+#[cfg(test)]
 mod tests {
     #[test]
     fn a_machines_crews_come_from_relays_listing_there() {

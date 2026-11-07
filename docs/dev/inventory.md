@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 197 |
 | Lock-graph edges | 40 |
 | Spawn sites | 66 |
-| External calls: fs / db / process / notify / login / socket | 339 / 132 / 49 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 339 / 135 / 49 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -676,7 +676,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
 
-### db (132)
+### db (135)
 
 | In | Call | Times |
 |---|---|---|
@@ -729,6 +729,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db.rs::rewrite_paths` | db::with | 1 |
 | `db.rs::save_answered` | db::put_item | 1 |
 | `db.rs::save_answered` | db::with | 1 |
+| `db.rs::save_ended` | db::put_exchange | 1 |
+| `db.rs::save_ended` | db::with | 1 |
 | `db.rs::save_turns` | db::with | 1 |
 | `db.rs::search` | db::snippet | 2 |
 | `db.rs::search` | db::with | 1 |
@@ -762,6 +764,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/mod.rs::Hub::with_ports` | db::set_aside | 1 |
 | `hub/mod.rs::apart_view` | db::ahead_watched | 1 |
 | `hub/mod.rs::apart_view` | db::handoffs | 1 |
+| `hub/redraw.rs::Hub::save_live` | db::save_ended | 1 |
 | `hub/redraw.rs::Hub::save_live` | db::sync_live | 1 |
 | `hub/reviews.rs::Hub::set_aside` | db::add_set_aside | 1 |
 | `hub/saves.rs::Hub::delete_saved_session` | db::delete_session | 1 |

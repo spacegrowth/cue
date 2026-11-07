@@ -305,11 +305,24 @@ fn used_tools(rows: &[Value]) -> bool {
 /// The last list the session wrote: its row, and the list from its heading to the end of that reply.
 fn last_list(rows: &[Value]) -> Option<(usize, String)> {
     rows.iter().enumerate().rev().filter(|(_, r)| r["type"] == "assistant").find_map(|(i, r)| {
-        blocks(r).into_iter().rev().find_map(|b| {
-            let text = b["text"].as_str()?;
-            text.find(MARKER).map(|at| (i, text[at..].trim_end().to_string()))
-        })
+        blocks(r).into_iter().rev().find_map(|b| list_ending(b["text"].as_str()?).map(|l| (i, l)))
     })
+}
+
+/// The status list `text` ends with, as the window reads one (ui/status.js parseStatus): the last heading on a
+/// line of its own, then nothing but the list's lines (✓ → ○ items, at least one, and "Waiting on you"). A reply
+/// that runs on after its list (a pasted log, a quoted older list) doesn't end with one.
+fn list_ending(text: &str) -> Option<String> {
+    let at = text.match_indices(MARKER).map(|(at, _)| at).filter(|at| text[..*at].rsplit('\n').next().is_some_and(|l| l.trim().is_empty())).last()?;
+    let list = text[at..].trim_end();
+    let mut lines = list.lines().map(str::trim);
+    if !matches!(lines.next(), Some(h) if h == MARKER || h == format!("{MARKER}:")) {
+        return None;
+    }
+    let lines: Vec<&str> = lines.filter(|l| !l.is_empty()).collect();
+    let item = |l: &&str| l.starts_with(['✓', '→', '○']);
+    let waiting = |l: &&str| l.trim_start_matches('⏸').trim_start().to_lowercase().starts_with("waiting on you:");
+    (lines.iter().any(item) && lines.iter().all(|l| item(l) || waiting(l))).then(|| list.to_string())
 }
 
 /// Where Claude Code compacted the conversation: what came before it is no longer there as written.

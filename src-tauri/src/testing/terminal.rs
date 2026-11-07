@@ -44,6 +44,8 @@ pub struct Pane {
     /// Whether a typed message is seen still in its box (None: its screen can't be read).
     pub in_box: Option<bool>,
     pub dialog: Option<Dialog>,
+    /// Its dialog closes with the first key pressed in it (the choice's number answers it).
+    pub dialog_takes_a_key: bool,
     pub gone: Option<bool>,
     /// Esc refused with this (the pane went between two keys).
     pub no_escape: Option<String>,
@@ -154,6 +156,11 @@ impl Keys for FakeTerminal {
 
     fn press_keys(&self, o: &Origin, keys: &[String]) -> Result<(), String> {
         self.note(o, Key::Keys(keys.to_vec()));
+        self.pane(&o.session_id, |p| {
+            if p.dialog_takes_a_key {
+                p.dialog = None;
+            }
+        });
         Ok(())
     }
 

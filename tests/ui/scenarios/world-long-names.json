@@ -74,7 +74,7 @@
         {
           "end_ms": 1793984400000,
           "kind": "working",
-          "start_ms": 1793984400000
+          "start_ms": 1793984380000
         },
         {
           "end_ms": 1793984400000,
@@ -93,17 +93,17 @@
       "term_program": "",
       "thread": [
         {
-          "at_ms": 1793984400000,
+          "at_ms": 1793984380000,
           "role": "you",
           "text": "Please read every file under src and explain, in detail, Please read every file under src and explain, in detail, Please read every file under src and explain, in detail, Please read every file under src and explain, in detail, Please read every file under src and explain, in detail, Please read every file under src and explain, in detail,"
         },
         {
-          "at_ms": 1793984400001,
+          "at_ms": 1793984400000,
           "role": "agent",
           "text": "This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card. This is a long answer that keeps going well past the width of a card."
         },
         {
-          "at_ms": 1793984400002,
+          "at_ms": 1793984400001,
           "role": "you",
           "text": "/rename a session name long enough to be cut short in every row it s"
         }
