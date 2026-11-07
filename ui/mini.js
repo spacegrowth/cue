@@ -318,6 +318,10 @@
     const mode = state.settings?.appearance?.mode ?? "system";
     if (mode === "system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.dataset.theme = mode;
+    // Cue's window's Color, as All projects wears it (core.js projTheme), not a project picked in Cue's window:
+    // the rail sits over every app, for every project.
+    projFilter = "";
+    projTheme();
   }
   function take(s) {
     state = s;
