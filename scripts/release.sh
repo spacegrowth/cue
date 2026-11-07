@@ -25,7 +25,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-for part in common args preflight gates record build publish; do
+for part in common args preflight gates record debug_only build publish; do
   # shellcheck disable=SC1090
   . "$ROOT/scripts/release/$part.sh"
 done

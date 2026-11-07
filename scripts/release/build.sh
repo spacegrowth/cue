@@ -79,6 +79,7 @@ check_app() {
   for bin in "$APP"/Contents/MacOS/*; do
     [ "$(strings "$bin" | grep -c "$HOME")" = 0 ] || die "$(basename "$bin") contains this Mac's home folder path: not releasing it"
   done
+  check_debug_only "$APP/Contents/MacOS/cue"
   codesign --verify --deep --strict "$APP" || die "the signature doesn't check out"
   lipo -archs "$APP/Contents/MacOS/cue" | grep -q x86_64 || die "not a universal build"
 }
