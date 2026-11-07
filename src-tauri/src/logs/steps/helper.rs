@@ -123,6 +123,11 @@ impl Helper {
                 if let Some(meta) = meta {
                     self.take_meta(&meta);
                 }
+                // Nothing said what it's doing (no description, none in a meta file, or no log path to find one
+                // by): a teammate goes by its name.
+                if self.desc.is_empty() {
+                    self.desc = self.name.clone();
+                }
                 self.put_log(log) || first
             }
         }
@@ -148,8 +153,8 @@ impl Helper {
         true
     }
 
-    /// What its meta file says that its launch didn't: its type, its description (else its name), and
-    /// whether it's a teammate. Its meta file can come after it started (copied from another machine).
+    /// What its meta file says that its launch didn't: its type, its description, and whether it's a
+    /// teammate. Its meta file can come after it started (copied from another machine).
     fn take_meta(&mut self, meta: &Value) {
         let m = |k: &str| meta.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         if self.kind.is_empty() {
@@ -164,9 +169,6 @@ impl Helper {
                 self.teammate = true;
                 self.name = m("name");
             }
-        }
-        if self.desc.is_empty() {
-            self.desc = self.name.clone();
         }
     }
 }

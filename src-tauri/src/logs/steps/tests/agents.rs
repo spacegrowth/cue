@@ -233,3 +233,22 @@ fn a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it
     assert!(h.running());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A teammate launched in a log whose path names no agents' folder (not a `.jsonl`: no log or meta file of
+/// its own to find) goes by its name, as its launch says.
+#[test]
+fn a_teammate_with_no_log_of_its_own_goes_by_its_name() {
+    let dir = std::env::temp_dir().join(format!("cue-steps-teammate-nolog-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s1.log");
+    std::fs::write(&path, [
+        r#"{"type":"user","timestamp":"2026-10-20T20:34:42.000Z","message":{"content":"start a teammate"}}"#,
+        r#"{"type":"assistant","timestamp":"2026-10-20T20:34:44.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"name":"probe","prompt":"Reply with exactly the text: probe ok"}}]}}"#,
+        r#"{"type":"user","timestamp":"2026-10-20T20:34:45.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"Spawned successfully."}]}]},"toolUseResult":{"status":"teammate_spawned","agentId":"aprobe-30f8","name":"probe"}}"#,
+    ].join("\n") + "\n").unwrap();
+    let mut f = Feed::open(path.to_str().unwrap(), 1);
+    f.catch_up();
+    assert_eq!(f.helpers.len(), 1);
+    assert_eq!((f.helpers[0].desc.as_str(), f.helpers[0].name.as_str()), ("probe", "probe"));
+    std::fs::remove_dir_all(&dir).ok();
+}
