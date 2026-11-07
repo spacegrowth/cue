@@ -24,7 +24,7 @@ async function reviewWhileAnotherWaits(world) {
   relayCrew(world, { lead: LEAD, pid, executors: [{ id: "ex-a", session: "e2e-exec-a", topic: "finder" }, { id: "ex-b", session: "e2e-exec-b", topic: "parser" }] });
   // Both reports waited past relay's wake-up: each card says the lead hasn't picked it up.
   await waitFor(async () => (await card(world, "e2e-exec-a"))?.missed && (await card(world, "e2e-exec-b"))?.missed, "both review cards, missed", { timeout: 20_000 });
-  await world.ui.waitText("Its lead hasn't picked this up.");
+  await world.ui.waitText("its lead hasn't picked this up");
   const probe = watchLatency(world.ui);
   try {
     await world.ui.click('[data-crew=review][data-crew-sid="e2e-exec-a"]');

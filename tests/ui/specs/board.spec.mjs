@@ -6,8 +6,8 @@ const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
 
 test.describe("relay's review cards", () => {
   test.beforeEach(async ({ cue, page }) => { await cue.open("relay-review"); await openCard(page, "n1"); });
-  /** The lead's review card about executor `name`. */
-  const rv = (page, name) => page.locator(".active-pane .rv-card").filter({ hasText: name });
+  /** The lead's review row about executor `name`. */
+  const rv = (page, name) => page.locator(".active-pane .rv-row").filter({ hasText: name });
 
   test("Commit types \"commit it\" into the lead", async ({ cue, page }) => {
     await rv(page, "tz-fix").getByRole("button", { name: "Commit" }).click();
@@ -24,8 +24,9 @@ test.describe("relay's review cards", () => {
     await cue.called("crew_action", { sessionId: "x-miss", action: "review" });
   });
 
-  test("Set aside sets that packet aside", async ({ cue, page }) => {
-    await rv(page, "export-csv").getByRole("button", { name: "Set aside" }).click();
+  test("Set aside (in the row's ⋯ menu) sets that packet aside", async ({ cue, page }) => {
+    await rv(page, "export-csv").locator("[data-rv-more]").click();
+    await page.locator('.rv-menu [data-crew="aside"]').click();
     await cue.called("crew_action", { sessionId: "x-miss", action: "aside" });
   });
 });

@@ -30,7 +30,7 @@ const SCREENS = {
   "board-empty": { scenario: "board-empty", done: (p) => p.locator(".switch-view").waitFor() },
   "board-waiting": { scenario: "board-waiting", done: (p) => p.locator('.nrow[data-big="n6"]').waitFor() },
   "many-sessions": { scenario: "many-sessions", done: (p) => p.locator('.nrow[data-big="mi0"]').waitFor() },
-  "relay-review": { scenario: "relay-review", setup: (p) => openCard(p, "n1"), done: (p) => p.locator(".active-pane .rv-find").waitFor() },
+  "relay-review": { scenario: "relay-review", setup: (p) => openCard(p, "n1"), done: (p) => p.locator(".active-pane .rv-row").first().waitFor() },
   "status-list": { scenario: "status-list", setup: async (p) => { await openCard(p, "n1"); await p.locator('.active-pane .st-bar[data-sid="relay"]').click(); }, done: (p) => p.locator(".active-pane .st-drawer").waitFor() },
   "chat-long-thread": { scenario: "board-waiting", setup: (p) => openCard(p, "n1"), done: (p) => p.locator(".active-pane pre").first().waitFor() },
   "terminal-open": { scenario: "terminal", setup: openTerminal, done: (p) => p.evaluate(() => document.activeElement?.blur()) },

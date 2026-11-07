@@ -2,7 +2,6 @@
 digraph locks {
   rankdir=LR;
   node [shape=box];
-  "ASKED" -> "INDEX";
   "AUTO_SEEN" -> "DB";
   "AUTO_SEEN" -> "REPOS";
   "DB" -> "REPOS";

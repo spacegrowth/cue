@@ -36,14 +36,18 @@ pub fn check() {
     assert_eq!(std::env::var_os("TMUX_TMPDIR").map(PathBuf::from), Some(dir.clone()), "a test would run tmux outside its own folder");
     let _ = std::fs::create_dir_all(&dir);
     static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        for e in std::fs::read_dir("/tmp").into_iter().flatten().flatten() {
-            let pid = e.file_name().to_string_lossy().strip_prefix("cue-test-tmux-").and_then(|p| p.parse::<i32>().ok());
-            if pid.is_some_and(|p| p != std::process::id() as i32 && !crate::server::alive(p)) {
-                take_down(&e.path());
-            }
+    ONCE.call_once(|| take_down_ended(Path::new("/tmp")));
+}
+
+/// The test-run folders under `root` whose process has exited: their servers and folders go. A run still going
+/// (another `cargo test` at the same time) keeps its own, and nothing that isn't a run's folder is touched.
+fn take_down_ended(root: &Path) {
+    for e in std::fs::read_dir(root).into_iter().flatten().flatten() {
+        let pid = e.file_name().to_string_lossy().strip_prefix("cue-test-tmux-").and_then(|p| p.parse::<i32>().ok());
+        if pid.is_some_and(|p| p != std::process::id() as i32 && !crate::server::alive(p)) {
+            take_down(&e.path());
         }
-    });
+    }
 }
 
 /// An exited run's servers (each by its own socket, never by $TMUX) and its folder.
@@ -64,5 +68,30 @@ mod tests {
         assert_eq!(std::env::var_os("TMUX_TMPDIR").map(std::path::PathBuf::from), Some(super::mine()));
         super::check();
         assert!(super::mine().is_dir());
+    }
+
+    /// Two test runs at once (two `cargo test`s in one checkout): a run clears only the tmux servers of runs that have
+    /// ended, never one still going (that would end its sessions mid-test).
+    #[test]
+    fn a_test_run_clears_only_the_tmux_servers_of_runs_that_ended() {
+        use std::process::Command;
+        let root = std::env::temp_dir().join(format!("cue-left-tmux-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut going = Command::new("sleep").arg("30").spawn().unwrap();
+        let mut ended = Command::new("true").spawn().unwrap();
+        ended.wait().unwrap();
+        let dir = |pid: u32| root.join(format!("cue-test-tmux-{pid}"));
+        for pid in [going.id(), ended.id()] {
+            std::fs::create_dir_all(dir(pid).join("tmux-1")).unwrap();
+        }
+        std::fs::create_dir_all(root.join("unrelated")).unwrap();
+        super::take_down_ended(&root);
+        let kept = dir(going.id()).exists();
+        let _ = going.kill();
+        let _ = going.wait();
+        assert!(kept, "a run still going keeps its server");
+        assert!(!dir(ended.id()).exists(), "an ended run's is cleared");
+        assert!(root.join("unrelated").exists(), "nothing else is touched");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

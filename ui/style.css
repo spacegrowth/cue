@@ -1169,10 +1169,21 @@ button.tm-chip:hover { background: var(--panel-2); }
 .tc-acts { display: flex; gap: 6px; flex: none; }
 .tc-acts .btn { height: 26px; padding: 0 10px; font-size: 12px; }
 .team-card > .tc-acts { margin-top: 4px; }
-.rv-card { margin: 0 16px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); padding: 9px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
-.rv-body { line-height: 1.4; }
-.rv-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-.rv-find { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12.5px; }
+.rv-wrap { position: relative; margin: 0 16px 8px; }
+.rv-rows { --rv-row: 41px; max-height: calc(var(--rv-row) * 3.5); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); font-size: 12.5px; }
+.rv-row { display: flex; align-items: center; gap: 8px; min-height: var(--rv-row); padding: 0 8px 0 12px; box-sizing: border-box; }
+.rv-row + .rv-row, .rv-under + .rv-row { border-top: 1px solid var(--line); }
+.rv-name { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; color: var(--ink); }
+.rv-st { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12.5px; padding: 0; }
+button.rv-st { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+button.rv-st:hover { color: var(--ink); }
+.rv-chev { flex: none; width: 10px; text-align: center; }
+.rv-row .btn { flex: none; height: 26px; padding: 0 10px; font-size: 12px; }
+.rv-more { flex: none; height: 26px; padding: 0 6px; border-radius: 8px; color: var(--muted); font-size: 15px; letter-spacing: 0.04em; }
+.rv-more:hover, .rv-more.on { background: var(--panel); color: var(--ink); }
+.rv-under { display: flex; flex-direction: column; gap: 3px; padding: 0 12px 9px; line-height: 1.45; color: var(--ink); user-select: text; }
+.rv-k { color: var(--muted); }
+.rv-menu { top: 0; right: 0; min-width: 180px; }
 .tc-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
 .tc-row:first-child { border-top: 0; }
 .tc-row > span:first-child { flex: 1; min-width: 0; }

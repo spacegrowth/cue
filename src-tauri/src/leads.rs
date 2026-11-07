@@ -104,6 +104,10 @@ pub struct Member {
     /// staged in its worktree: nobody has committed or discarded it yet.
     #[serde(skip)]
     pub parked_staged: bool,
+    /// Executor: a commit made after its report touched the files its packet staged (its lead committed it,
+    /// by hand or through relay). It no longer waits on you, whatever relay's status still says.
+    #[serde(skip)]
+    pub landed: bool,
     /// Executor: its report has been ready (done: reported or idle) for MISSED_WAKE_SECS or more, going
     /// by relay's `updated`. Kept as a flag, not a time, so the window redraws when it turns true.
     #[serde(skip)]
@@ -229,25 +233,63 @@ fn report_woken(e: &Value) -> bool {
     matches!((n("current_packet"), n("report_seen_packet")), (Some(cur), Some(seen)) if seen >= cur)
 }
 
-/// Whether anything is still staged in a worktree (what an executor left for the lead to commit). A
-/// commit or a discard empties it. Asked of git, at most every few seconds per folder (the crew is
-/// rescanned often). A folder git can't read, or one that's gone, counts as nothing staged.
-fn has_staged(worktree: &str) -> bool {
-    static ASKED: Mutex<Option<HashMap<String, (std::time::Instant, bool)>>> = Mutex::new(None);
-    if worktree.is_empty() {
+/// A question to git about a worktree: its exit code and output, None when git can't be run there. Each question is
+/// asked at most every few seconds (the crew is rescanned often).
+fn ask_git(worktree: &str, args: &[&str]) -> Option<(i32, String)> {
+    static GIT_ASKED: Mutex<Option<HashMap<String, (std::time::Instant, Option<(i32, String)>)>>> = Mutex::new(None);
+    let key = format!("{worktree}\0{}", args.join("\0"));
+    let known = crate::locking::lock(&GIT_ASKED, "GIT_ASKED").as_ref().and_then(|c| c.get(&key).cloned());
+    if let Some((_, said)) = known.filter(|(at, _)| at.elapsed() < std::time::Duration::from_secs(5)) {
+        return said;
+    }
+    let out = std::process::Command::new("git").arg("-C").arg(worktree).args(args).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output().ok();
+    let said = out.and_then(|o| Some((o.status.code()?, String::from_utf8_lossy(&o.stdout).trim().to_string())));
+    crate::locking::lock(&GIT_ASKED, "GIT_ASKED").get_or_insert_with(HashMap::new).insert(key, (std::time::Instant::now(), said.clone()));
+    said
+}
+
+/// Whether any of `files` is still staged in a worktree (what an executor left for the lead to commit), or
+/// anything at all when the files aren't known. A commit or a discard empties it. A folder git can't read, or
+/// one that's gone, counts as nothing staged.
+fn has_staged(worktree: &str, files: &[String]) -> bool {
+    let mut args = vec!["diff", "--cached", "--quiet", "--"];
+    args.extend(files.iter().map(String::as_str));
+    !worktree.is_empty() && ask_git(worktree, &args).is_some_and(|(code, _)| code == 1)
+}
+
+/// Whether a commit made after `since` (epoch seconds: the packet's report) touched any of `files`: its lead
+/// committed the work, by hand or through relay. Many sessions can share one checkout, so what is staged
+/// there now says nothing about this packet; a commit of its own files after its report does.
+fn committed_since(worktree: &str, since: u64, files: &[String]) -> bool {
+    if worktree.is_empty() || files.is_empty() {
         return false;
     }
-    {
-        let cache = crate::locking::lock(&ASKED, "ASKED");
-        if let Some((at, yes)) = cache.as_ref().and_then(|c| c.get(worktree)) {
-            if at.elapsed() < std::time::Duration::from_secs(5) {
-                return *yes;
-            }
-        }
+    let mut args = vec!["log", "-1", "--format=%ct", "--"];
+    args.extend(files.iter().map(String::as_str));
+    ask_git(worktree, &args).and_then(|(code, out)| (code == 0).then(|| out.parse::<u64>().ok()).flatten()).is_some_and(|t| t > since)
+}
+
+/// The files a packet staged, from the diff page relay made of it (`NNN-diff.html` holds the diff's text).
+/// Empty when there's no page. Read again only when the page changes.
+fn packet_files(dir: &Path, n: u64) -> Vec<String> {
+    static PACKET_FILES: Mutex<Option<HashMap<PathBuf, (std::time::SystemTime, Vec<String>)>>> = Mutex::new(None);
+    let p = dir.join(format!("packets/{n:03}-diff.html"));
+    let Ok(mtime) = std::fs::metadata(&p).and_then(|m| m.modified()) else { return vec![] };
+    let known = crate::locking::lock(&PACKET_FILES, "PACKET_FILES").as_ref().and_then(|c| c.get(&p).cloned());
+    if let Some((_, files)) = known.filter(|(at, _)| *at == mtime) {
+        return files;
     }
-    let yes = std::process::Command::new("git").args(["-C", worktree, "diff", "--cached", "--quiet"]).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.code() == Some(1));
-    crate::locking::lock(&ASKED, "ASKED").get_or_insert_with(HashMap::new).insert(worktree.to_string(), (std::time::Instant::now(), yes));
-    yes
+    let page = std::fs::read_to_string(&p).unwrap_or_default();
+    let mut files: Vec<String> = page.split("diff --git a/").skip(1).filter_map(|rest| rest.split_once(" b/").map(|(a, _)| a.to_string())).filter(|f| !f.is_empty() && !f.contains(['\\', '"', '<'])).collect();
+    files.sort();
+    files.dedup();
+    crate::locking::lock(&PACKET_FILES, "PACKET_FILES").get_or_insert_with(HashMap::new).insert(p, (mtime, files.clone()));
+    files
+}
+
+/// When a packet's report was written (epoch seconds), 0 when there's none.
+fn written_at(p: &Path) -> u64 {
+    std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs())
 }
 
 /// A relay session id Cue may build a path from (`<relay>/<id>/...`): one folder name, never a path.
@@ -369,7 +411,7 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
         let lead = leads.get(&owner);
         let packet = e.get("current_packet").and_then(Value::as_u64);
         // Goal and outcome only for executors still at work (closed ones pile up by the hundred), and for
-        // one relay parked after a review that nobody has committed yet: its Review card is still up.
+        // one relay parked after a review that nobody has committed yet: its Review row is still up.
         let status = s(&e, "status");
         let id = s(&e, "session_id");
         let parked = status == "closed" && s(&e, "auto_closed") == "reviewed" && live.contains(&owner);
@@ -383,7 +425,12 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
         let reviewed = open.is_some_and(|n| ledger.reviews.contains(&(id.clone(), n))) || review_file.as_ref().is_some_and(|f| f.is_file());
         let review = if reviewed { review_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default() } else { String::new() };
         let diff_size = open.and_then(|n| ledger.stats.get(&(id.clone(), n)).copied());
-        let parked_staged = parked && lead.is_some() && has_staged(&s(&e, "worktree"));
+        // Waiting on you ends once the packet's work is committed (or, parked, no longer staged).
+        let worktree = s(&e, "worktree");
+        let waits = parked || matches!(status.as_str(), "reported" | "idle");
+        let files = open.filter(|_| waits).map(|n| packet_files(&d, n)).unwrap_or_default();
+        let landed = open.is_some_and(|n| waits && committed_since(&worktree, written_at(&d.join(format!("packets/{n:03}-report.md"))), &files));
+        let parked_staged = parked && lead.is_some() && !landed && has_staged(&worktree, &files);
         let m = Member {
             role: "executor".into(),
             plugin: "relay".into(),
@@ -403,6 +450,7 @@ fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, M
             review,
             diff_size,
             parked_staged,
+            landed,
             ready_late: ready_late(&e, now_secs(), None),
             id,
             updated: s(&e, "updated"),
@@ -1258,13 +1306,13 @@ pub fn is_reviewed(session_id: &str) -> bool {
 }
 
 /// Every executor whose packet waits on you, with whether its lead is on auto mode: it reported and
-/// nobody has acted yet, or relay parked it after a review and what it staged is still staged. Cue session id first.
+/// nobody has committed its work yet, or relay parked it after a review and what it staged is still staged. Cue session id first.
 pub fn needing_you() -> Vec<(String, Member, bool)> {
     let cur = crate::locking::lock(&INDEX, "INDEX");
     let Some(index) = cur.as_ref() else { return vec![] };
     index
         .iter()
-        .filter(|(_, m)| m.role == "executor" && (matches!(m.status.as_str(), "reported" | "idle") || m.parked_staged))
+        .filter(|(_, m)| m.role == "executor" && ((matches!(m.status.as_str(), "reported" | "idle") && !m.landed) || m.parked_staged))
         .map(|(sid, m)| (sid.clone(), m.clone(), index.get(&m.lead).and_then(|l| l.auto) == Some(true)))
         .collect()
 }
@@ -2147,6 +2195,61 @@ __CUE_LIVE__
         assert_eq!(names, ["filed", "fresh", "ledgered", "older", "parked-staged", "woken"], "reported ones and the parked one still staged wait; committed and closed ones don't");
         assert!(waiting.iter().all(|(_, auto)| *auto), "each with whether its lead is on auto mode");
         assert_eq!(packet_of("C-woken"), Some(("woken".to_string(), 1)));
+        *crate::locking::lock(&INDEX, "INDEX") = None;
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+
+    /// Many sessions share one checkout: what's staged there may be another session's. A packet stops waiting on
+    /// you once a commit after its report touches its own files (its lead committed it by hand), parked or not;
+    /// another session's staged work, or a commit of other files, doesn't keep it or end it.
+    #[test]
+    fn a_packet_its_lead_committed_by_hand_stops_waiting_even_in_a_shared_checkout() {
+        let _g = GLOBALS.lock().unwrap_or_else(|e| e.into_inner());
+        let root = std::env::temp_dir().join(format!("cue-landed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (relay, pi, cs, wt) = (root.join("relay"), root.join("pi"), root.join("cs"), root.join("shared"));
+        write(&cs.join("1.json"), &format!(r#"{{"pid":{},"sessionId":"L"}}"#, std::process::id()));
+        write(&relay.join("lead/L/marker.json"), r#"{"session_id":"L","project":"proj"}"#);
+        std::fs::create_dir_all(&wt).unwrap();
+        git(&wt, &["init", "-q"]);
+        for f in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+            write(&wt.join(f), "1\n");
+        }
+        git(&wt, &["add", "."]);
+        let hour_ago = format!("@{} +0000", now_secs() - 3600);
+        let base = std::process::Command::new("git").arg("-C").arg(&wt).args(["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "base"]).env("GIT_COMMITTER_DATE", &hour_ago).status().unwrap();
+        assert!(base.success(), "the base commit, an hour ago");
+        // Each packet staged one file; its report was written a minute ago.
+        let ex = |id: &str, file: &str, extra: &str| {
+            write(&relay.join(format!("{id}/session.json")), &format!(r#"{{"session_id":"{id}","agent":"relay-executor","claude_session":"C-{id}","owner_lead":"L","topic":"{id}","current_packet":1,"worktree":"{}",{extra}}}"#, wt.display()));
+            write(&relay.join(format!("{id}/packets/001-diff.html")), &format!(r#"<script>const d = "diff --git a/{file} b/{file}\nindex 1..2\n";</script>"#));
+            let report = relay.join(format!("{id}/packets/001-report.md"));
+            write(&report, "Done.\n");
+            std::fs::File::options().write(true).open(&report).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60)).unwrap();
+        };
+        let parked = r#""status":"closed","auto_closed":"reviewed""#;
+        ex("by-hand", "a.txt", r#""status":"reported""#);
+        ex("parked-by-hand", "b.txt", parked);
+        ex("reported-open", "c.txt", r#""status":"reported""#);
+        ex("parked-open", "d.txt", parked);
+        // The lead commits a.txt and b.txt by hand; c.txt and d.txt are still staged, and so is another session's e.txt.
+        for f in ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"] {
+            write(&wt.join(f), "2\n");
+        }
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "by hand", "--", "a.txt", "b.txt"]);
+        let index = scan(&relay, &pi, &cs);
+        let got = |id: &str| index[&format!("C-{id}")].clone();
+        assert_eq!(packet_files(&relay.join("by-hand"), 1), ["a.txt"], "its files, from its diff page");
+        assert!(got("by-hand").landed && got("parked-by-hand").landed, "committed after the report: landed");
+        assert!(!got("parked-by-hand").parked_staged, "other files staged in the same checkout don't keep it");
+        assert!(!got("reported-open").landed && got("parked-open").parked_staged, "its own files still staged: it waits");
+
+        *crate::locking::lock(&INDEX, "INDEX") = Some(index);
+        let mut names: Vec<String> = needing_you().into_iter().map(|(_, m, _)| m.name).collect();
+        names.sort();
+        assert_eq!(names, ["parked-open", "reported-open"], "committed ones are gone, parked or not");
         *crate::locking::lock(&INDEX, "INDEX") = None;
         let _ = std::fs::remove_dir_all(&root);
     }

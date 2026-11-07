@@ -30,7 +30,7 @@ function renderMain() {
   projTheme();
   retheme();
   // You're dragging out a selection: a redraw would wipe it. It waits until you let go.
-  if (dragSelecting() || folding || (mouseDown && onLink) || composing) { heldDraw = true; return; }
+  if (dragSelecting() || folding || (mouseDown && onPress) || composing) { heldDraw = true; return; }
   const focused = document.activeElement;
   const flipFrom = flipRects();
   const focusKey = focused?.dataset?.text;
@@ -39,7 +39,7 @@ function renderMain() {
   // Each text box is built afresh too, scrolled to its top: a long message would jump there on every redraw.
   const boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
   // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
-  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list";
+  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list, .rv-rows";
   const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
   const mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
   // A background script's output in its full view (chat.js scriptPane): where you were, or at its newest.
@@ -69,6 +69,7 @@ function renderMain() {
   placePip();   // Cue's own terminal: under its button as the peek, or filling the Terminal view
   placeExt();   // the open session's extension tab, over the slot left for it
   placeActs();  // a chip's actions popover under its dots
+  placeReviewMenu();   // a Review row's ⋯ menu under its button
   placeVoiceList();   // Settings → Voice: the open list under its picker
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
@@ -258,6 +259,8 @@ function bindMain() {
     const t = e.target;
     // An add-on's open menu closes on a click anywhere else.
     if (extPickOpen && !t.closest(".xp-menu, [data-ext-open]")) { extPickOpen = null; renderMain(); }
+    // A Review row's ⋯ menu closes on any click but its own button (one of its items runs as it closes).
+    if (reviewMenu && !t.closest("[data-rv-more]")) { reviewMenu = null; renderMain(); }
     if (lightbox) { lightbox = null; return renderMain(); }
     // A queued message, sent now: stopping the turn (Esc) makes the agent read it straight away.
     // Fork under a side answer: this conversation as a new session, picking up from that question and answer.
@@ -567,7 +570,12 @@ function bindMain() {
     if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); }
     const lv = t.closest("[data-lv]");
     if (lv) return lvAct(lv.dataset.lv, lv.dataset);
-    // A Review card's Commit / Send fixes: the words typed into the lead (it commits only; pushing stays yours).
+    // A Review row: its findings (or what it was asked) open under it; ⋯ opens its menu.
+    const ro = t.closest("[data-rv-open], [data-rv-asked]");
+    if (ro) { const exec = ro.dataset.rvOpen || ro.dataset.rvAsked, what = ro.dataset.rvOpen ? "findings" : "asked"; reviewOpen.get(exec) === what ? reviewOpen.delete(exec) : reviewOpen.set(exec, what); return renderMain(); }
+    const rm = t.closest("[data-rv-more]");
+    if (rm) { reviewMenu = reviewMenu === rm.dataset.rvMore ? null : rm.dataset.rvMore; return renderMain(); }
+    // A Review row's Commit / Send fixes: the words typed into the lead (it commits only; pushing stays yours).
     const rv = t.closest("[data-rv-say]");
     if (rv) return invoke("send_to_session", { sessionId: rv.dataset.rvSay, text: rv.dataset.rvText, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't: ${x}`));
     // A team button (auto, Diff, Review) inside a row that opens its session: the button, not the row.

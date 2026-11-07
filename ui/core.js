@@ -823,27 +823,28 @@ addEventListener("compositionend", () => { composing = false; if (heldDraw) { he
 addEventListener("focusout", () => { if (composing) { composing = false; if (heldDraw) { heldDraw = false; renderMain(); } } }, true);
 // A selection made by this press (a click on a button leaves an older one in place: not that).
 const dragSelecting = () => mouseDown && !getSelection().isCollapsed && getSelection().toString() !== selBefore;
-// Pressing a link: a redraw before you let go would swap it for a copy, and the click would land on
-// nothing (a working session redraws twice a second). It waits until the click has gone through.
-let onLink = false;
-addEventListener("mousedown", (e) => { mouseDown = e.button === 0 && !inField(e.target); onLink = mouseDown && !!e.target.closest?.("a[data-href], a[data-path]"); selBefore = getSelection().toString(); }, true);
+// Pressing a link or a button: a redraw before you let go would swap it for a copy, and the browser drops a
+// click whose pressed element left the page (Cue redraws on every change, many times a second with agents at
+// work). It waits until the click has gone through.
+let onPress = false;
+addEventListener("mousedown", (e) => { mouseDown = e.button === 0 && !inField(e.target); onPress = mouseDown && !!e.target.closest?.("a[data-href], a[data-path], button, [role=button]"); selBefore = getSelection().toString(); }, true);
 addEventListener("mouseup", () => {
   if (!mouseDown) return;
   const sel = getSelection(), text = sel.toString(), fresh = dragSelecting();
   mouseDown = false;
-  const wasLink = onLink;
-  onLink = false;
+  const wasPress = onPress;
+  onPress = false;
   // Selected text in the window (not in a box you type in, where ⌘C works as ever): on your clipboard now.
   if (fresh && text.trim() && !inField(sel.anchorNode)) {
     if (!document.execCommand("copy")) navigator.clipboard?.writeText(text);
     copied = { at: Date.now(), words: text.length > 40 ? text.trim().split(/\s+/).length : 0 };
     if (!heldDraw && !showCopied()) toast("Copied");
   }
-  // Pressed on a link: after the click (it fires after this), so the link is still there for it.
-  if (heldDraw) { heldDraw = false; wasLink ? setTimeout(renderMain) : renderMain(); }
+  // Pressed on a link or a button: after the click (it fires after this), so it's still there for it.
+  if (heldDraw) { heldDraw = false; wasPress ? setTimeout(renderMain) : renderMain(); }
 }, true);
 // Let go outside the window (no mouseup here): the held redraw happens anyway.
-addEventListener("blur", () => { mouseDown = onLink = false; if (heldDraw) { heldDraw = false; renderMain(); } });
+addEventListener("blur", () => { mouseDown = onPress = false; if (heldDraw) { heldDraw = false; renderMain(); } });
 
 /** "Copied", in Moss, at the right end just above the chat's text box (or its bottom, with no box). Put back
  *  after each redraw, its fade carrying on where it was. False when there's no chat to show it in. */

@@ -397,5 +397,7 @@ Total ≈ 33 executor-days; with 3 parallel executors ≈ 3 weeks wall-clock, Ph
   three review cards squeeze the chat to one line (relay-review); "needs you" overlaps the time on a
   lead's Waiting card; at 900 px the Later button clips and a mono command breaks mid-word; a stray "0" at
   the right end of the time bar on the waiting board; the open status-list drawer cuts off its cost line.
+  After review-click's rows landed: the top review row is clipped under the active card's header, and the
+  active card's header chips crowd together ("li… ne 7 ag") when a lead has a listen chip and agents.
 - Terminal "stuck" detection: e2e spike saw a SIGSTOPped tmux client's pty accept ~8 MB before blocking,
   so 1,000 typed chars never show the bar — track D is investigating.

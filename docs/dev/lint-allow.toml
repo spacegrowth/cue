@@ -31,11 +31,6 @@ reason = "the tests' own tmux seam: takes down the servers of test runs that hav
 # Lock order today: B may be taken while A is held. A new edge fails the check until it's added here.
 
 [[lock_order]]
-from = "ASKED"
-to = "INDEX"
-reason = "leads::has_staged looks up a worktree in the index under its own answer cache; INDEX never takes ASKED"
-
-[[lock_order]]
 from = "AUTO_SEEN"
 to = "DB"
 reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"

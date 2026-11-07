@@ -5,7 +5,7 @@ use super::*;
 /// After typing a review into a lead, wait this long before judging it free again.
 pub(super) const REVIEW_SETTLE_MS: u64 = 8000;
 
-/// A Review card shows this many lines of findings.
+/// A review's row shows this many lines of findings.
 const FINDING_LINES: usize = 10;
 
 /// "in review" stops showing after this long even if the executor still reads as done.
@@ -131,7 +131,7 @@ impl Hub {
         }
     }
 
-    /// Set aside (the Review card's button): this executor's current packet stops waiting on you. Cue's own
+    /// Set aside (in a Review row's ⋯ menu): this executor's current packet stops waiting on you. Cue's own
     /// note, saved; relay isn't told, and the executor's next packet shows a card again.
     pub fn set_aside(&self, exec: &str) -> Result<String, String> {
         let (id, packet) = crate::leads::packet_of(exec).ok_or("Cue doesn't know this executor's packet")?;
@@ -146,7 +146,7 @@ impl Hub {
     /// `auto`: its lead is on auto mode and reviews it on its own; `queued`: your Review waits for its lead;
     /// `reviewing`: your Review is typed in and running; `reviewed`: a review ran, it waits for you to
     /// commit or send fixes), `missed` (relay's wake-up never reached its lead), and what a card shows:
-    /// executor, lead, packet, goal, outcome, the diff's size (`stat`) and the review's findings.
+    /// executor, lead, packet, goal, outcome, the diff's size (`stat`), the review's findings and what it recommends.
     pub(super) fn reviews_view(st: &mut Store) -> Value {
         let now = now_ms();
         // "in review" until its lead has finished its turn after a review ran (or 15 minutes).
@@ -172,10 +172,10 @@ impl Hub {
             } else {
                 "waiting"
             };
-            let findings = if state == "reviewed" { Self::findings(st, &m) } else { vec![] };
+            let (findings, recommendation) = if state == "reviewed" { Self::findings(st, &m) } else { (vec![], String::new()) };
             out.insert(sid, json!({
                 "state": state, "missed": missed, "name": m.name, "lead": m.lead, "packet": m.packet, "goal": m.goal, "outcome": m.outcome,
-                "stat": Self::stat_line(&m), "findings": findings,
+                "stat": Self::stat_line(&m), "findings": findings, "recommendation": recommendation,
             }));
         }
         Value::Object(out)
@@ -186,12 +186,16 @@ impl Hub {
         m.diff_size.filter(|(files, ..)| *files > 0).map(|(files, added, removed)| format!("{files} file{} · +{added} −{removed}", if files == 1 { "" } else { "s" })).unwrap_or_default()
     }
 
-    /// The numbered findings of a review: relay's saved review, else what the lead said last (an inline review
-    /// has no file: its reply is the review). A few lines.
-    fn findings(st: &Store, m: &crate::leads::Member) -> Vec<String> {
+    /// A review's findings (a few lines) and what it recommends ("commit", "fix-list", "" when it doesn't say):
+    /// relay's saved review, else what the lead said last (an inline review has no file: its reply is the review).
+    fn findings(st: &Store, m: &crate::leads::Member) -> (Vec<String>, String) {
         let reply = || st.items.iter().find(|i| i.kind == "waiting" && i.origin.session_id == m.lead).map(|i| if i.message.is_empty() { i.context.last().map(|c| c.text.clone()).unwrap_or_default() } else { i.message.clone() });
         let text = if m.review.is_empty() { reply().unwrap_or_default() } else { m.review.clone() };
-        text.lines().map(str::trim).filter(|l| !l.is_empty()).take(FINDING_LINES).map(String::from).collect()
+        let said = |l: &str| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("recommendation")).map(|(_, v)| v.split(['.', '(', ',', ';']).next().unwrap_or("").trim().to_string());
+        let lines = || text.lines().map(str::trim).filter(|l| !l.is_empty());
+        let recommendation = lines().find_map(said).unwrap_or_default();
+        let findings = lines().filter(|l| said(l).is_none() && !l.trim_end_matches(':').eq_ignore_ascii_case("findings")).take(FINDING_LINES).map(String::from).collect();
+        (findings, recommendation)
     }
 
     /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×).
@@ -284,12 +288,12 @@ mod tests {
         crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), late)].into());
         let v = Hub::reviews_view(&mut st);
         assert_eq!((v["E"]["state"].as_str(), v["E"]["missed"].as_bool()), (Some("waiting"), Some(true)));
-        let m = crate::leads::Member { review: "1. one\n\n2. two\n".into(), ..crate::leads::reported_exec() };
-        assert_eq!(Hub::findings(&st, &m), ["1. one", "2. two"]);
+        let m = crate::leads::Member { review: "Findings:\n1. one\n\n2. two\nRecommendation: fix-list (finding 1).\n".into(), ..crate::leads::reported_exec() };
+        assert_eq!(Hub::findings(&st, &m), (vec!["1. one".to_string(), "2. two".to_string()], "fix-list".to_string()), "the heading and the recommendation aren't findings");
         let mut said = Hub::new_item(&mut st, "waiting", Origin { session_id: "L".into(), ..Default::default() });
         said.message = "looks right\n1. only thing".into();
         st.items.push(said);
-        assert_eq!(Hub::findings(&st, &crate::leads::reported_exec()), ["looks right", "1. only thing"], "an inline review has no file: the reply is the review");
+        assert_eq!(Hub::findings(&st, &crate::leads::reported_exec()).0, ["looks right", "1. only thing"], "an inline review has no file: the reply is the review");
     }
 
     #[test]

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Cue review click check</title>
+  <link rel="stylesheet" href="../ui/vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="../ui/style.css" />
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // A lead with one packet waiting on you: its Review row at the top of its chat. The real UI code with a fake
+    // Tauri bridge; tests/review_click.test.js presses the card's buttons with the browser's own mouse.
+    window.onerror = (m, src, l, c) => console.log(`CHECK no-error fail ${m} @${l}:${c}`);
+    (() => {
+      const now = Date.now(), M = 60000;
+      const sess = (sid, project) => ({ session_id: sid, project, harness: "claude", cwd: `/x/${project}`, state: "idle", since_ms: now - 2 * M, prompt: "Go.", segments: [], thread: [{ role: "you", text: "Go.", at_ms: now - 3 * M }, { role: "agent", text: "Sent the packet.", at_ms: now - 2 * M }] });
+      const review = (state) => ({ state, missed: false, name: "exec-one", lead: "L", packet: 1, goal: "the thing", outcome: "Done", stat: "2 files · +10 −1", findings: state === "reviewed" ? ["1. Fine."] : [], recommendation: state === "reviewed" ? "commit" : "" });
+      window.STATE = (rv = "waiting", tick = 0) => ({ now_ms: now + tick, window_ms: 30 * M, settings: { appearance: { mode: "light" } }, connections: { claude: { ok: true } }, parked: [], live: [], items: [], history: [],
+        sessions: [sess("L", "lead"), sess("E1", "exec")],
+        crew: { L: { role: "lead", plugin: "relay", name: "lead", executors: [{ session_id: "E1", name: "exec-one", status: "reported" }] }, E1: { role: "executor", plugin: "relay", name: "exec-one", lead: "L", status: "reported" } },
+        reviews: { E1: review(rv) } });
+      window.CALLS = [];
+      window.EMIT = {};
+      window.__TAURI__ = {
+        app: { getVersion: async () => "0" },
+        event: { listen: async (name, fn) => { EMIT[name] = fn; }, emit: async () => {} },
+        core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
+          if (cmd === "crew_action" || cmd === "send_to_session") { CALLS.push({ cmd, ...args }); return "ok"; }
+          if (cmd === "get_state") return STATE();
+          if (cmd === "get_drafts") return {};
+          if (cmd === "session_steps") return { version: 1, turns: [] };
+          if (cmd === "actions_list") return { actions: [], pending: [] };
+          if (cmd === "transcript_page" || cmd === "closed_sessions" || cmd === "machines_list") return [];
+          return null;
+        } },
+      };
+    })();
+  </script>
+  <script src="../ui/vendor/xterm/xterm.js"></script>
+  <script src="../ui/vendor/xterm/addon-fit.js"></script>
+  <script src="../ui/vendor/xterm/addon-webgl.js"></script>
+  <script src="../ui/invoke.js"></script>
+<script src="../ui/core.js"></script>
+  <script src="../ui/reviewcard.js"></script>
+  <script src="../ui/status.js"></script>
+  <script src="../ui/status_panel.js"></script>
+  <script src="../ui/chat.js"></script>
+  <script src="../ui/agents.js"></script>
+  <script src="../ui/insights.js"></script>
+  <script src="../ui/tips.js"></script>
+  <script src="../ui/shells.js"></script>
+  <script src="../ui/board.js"></script>
+  <script src="../ui/sessions.js"></script>
+  <script src="../ui/history.js"></script>
+  <script src="../ui/insights_tab.js"></script>
+  <script src="../ui/sheets.js"></script>
+  <script src="../ui/extensions.js"></script>
+  <script src="../ui/actions.js"></script>
+  <script src="../ui/background.js"></script>
+  <script src="../ui/about.js"></script>
+  <script src="../ui/app.js"></script>
+</body>
+</html>

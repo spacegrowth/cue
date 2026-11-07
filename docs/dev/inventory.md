@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
-| Lock declarations (static or field) | 74 |
-| Lock acquisitions | 352 |
-| Lock-graph edges | 32 |
+| Lock declarations (static or field) | 75 |
+| Lock acquisitions | 354 |
+| Lock-graph edges | 31 |
 | Spawn sites | 59 |
-| External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 339 / 124 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 34 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -198,7 +198,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `leads.rs::REMOTE_SCREENS` | `Mutex<Option<HashMap<String,HashMap<String,crate::terminal::dialog::Setup>>>>` | "REMOTE_SCREENS" (3 sites) |
 | `leads.rs::PARSED` | `Mutex<Option<Parsed>>` | "PARSED" (2 sites) |
 | `leads.rs::FIRST_LINES` | `Mutex<Option<HashMap<PathBuf,(std::time::SystemTime,String)>>>` | "FIRST_LINES" (1 sites) |
-| `leads.rs::ASKED` | `Mutex<Option<HashMap<String,(std::time::Instant,bool)>>>` | "ASKED" (2 sites) |
+| `leads.rs::GIT_ASKED` | `Mutex<Option<HashMap<String,(std::time::Instant,Option<(i32,String)>)>>>` | "GIT_ASKED" (2 sites) |
+| `leads.rs::PACKET_FILES` | `Mutex<Option<HashMap<PathBuf,(std::time::SystemTime,Vec<String>)>>>` | "PACKET_FILES" (2 sites) |
 | `leads.rs::VERIFY` | `Mutex<Option<HashMap<String,(String,Option<Verdict>)>>>` | "VERIFY" (3 sites) |
 | `leads.rs::LEDGER` | `Mutex<Option<HashMap<PathBuf,Ledger>>>` | "LEDGER" (1 sites) |
 | `leads.rs::CARRIED` | `Mutex<Option<HashSet<(String,String)>>>` | "CARRIED" (1 sites) |
@@ -255,7 +256,6 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 
 | Held | Taken |  | First seen |
 |---|---|---|---|
-| "ASKED" | "INDEX" |  | `leads.rs::has_staged` → `leads.rs::worktree`, takes it |
 | "AUTO_SEEN" | "DB" |  | `logs/steps.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with`, takes it |
 | "AUTO_SEEN" | "REPOS" |  | `logs/steps.rs::auto_compact_at` → `db.rs::auto_compacts` → `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
 | "DB" | "REPOS" |  | `db.rs::with` → `db.rs::open` → `db.rs::regroup_projects` → `logs/live.rs::repo_root`, takes it |
@@ -383,7 +383,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 
 ## External calls
 
-### fs (336)
+### fs (339)
 
 | In | Call | Times |
 |---|---|---|
@@ -488,6 +488,8 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `leads.rs::first_line` | metadata | 1 |
 | `leads.rs::first_line` | read_to_string | 1 |
 | `leads.rs::live_claude_sessions` | read_dir | 1 |
+| `leads.rs::packet_files` | metadata | 1 |
+| `leads.rs::packet_files` | read_to_string | 1 |
 | `leads.rs::pilead_bin` | Path::is_file | 1 |
 | `leads.rs::pilead_bin` | read_to_string | 1 |
 | `leads.rs::pilead_diff_page` | read_dir | 1 |
@@ -505,6 +507,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `leads.rs::subdirs` | read_dir | 1 |
 | `leads.rs::verify_reported` | metadata | 1 |
 | `leads.rs::worktree` | read_to_string | 1 |
+| `leads.rs::written_at` | metadata | 1 |
 | `lib.rs::connect_main` | Path::exists | 1 |
 | `locking/report.rs::append_capped` | OpenOptions::new | 1 |
 | `locking/report.rs::append_capped` | create_dir_all | 1 |
@@ -828,7 +831,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `ipc/settings.rs::copy_text` | /usr/bin/pbcopy | 1 |
 | `ipc/settings.rs::open_link` | /usr/bin/open | 1 |
 | `leads.rs::Cmd::run` | (program computed) | 1 |
-| `leads.rs::has_staged` | git | 1 |
+| `leads.rs::ask_git` | git | 1 |
 | `leads.rs::verify_reported` | (program computed) | 1 |
 | `lib.rs::activate_app` | open | 1 |
 | `logs/live.rs::origin_of` | /bin/ps | 1 |
