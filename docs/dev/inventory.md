@@ -18,7 +18,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock declarations (static or field) | 82 |
 | Lock acquisitions | 196 |
 | Lock-graph edges | 43 |
-| Spawn sites | 65 |
+| Spawn sites | 66 |
 | External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
@@ -333,7 +333,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/mod.rs::blocking` | async_runtime::spawn_blocking | 1 |
 | `ipc/restore.rs::with_timeout` | thread::spawn | 1 |
 | `leads.rs::verify_reported` | thread::spawn | 1 |
-| `lib.rs::run` | async_runtime::spawn | 7 |
+| `lib.rs::run` | async_runtime::spawn | 6 |
 | `lib.rs::run` | async_runtime::spawn_blocking | 5 |
 | `lib.rs::run` | thread::spawn | 2 |
 | `locking/probe.rs::watch_main` | Builder::spawn | 1 |
@@ -353,6 +353,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `notify.rs::compact` | thread::spawn | 1 |
 | `notify.rs::later` | Builder::spawn | 1 |
 | `notify.rs::send` | thread::spawn | 1 |
+| `quit.rs::on_signals` | async_runtime::spawn | 2 |
 | `safe_git.rs::on_machine` | thread::spawn | 1 |
 | `server/mod.rs::handle` | tokio::spawn | 1 |
 | `server/mod.rs::serve` | tokio::spawn | 1 |

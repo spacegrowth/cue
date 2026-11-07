@@ -14,6 +14,7 @@ mod locking;
 mod logs;
 mod model;
 mod notify;
+mod quit;
 mod sounds;
 mod statuslist;
 mod talk;
@@ -249,7 +250,7 @@ pub fn run() {
             }
             let hub = Arc::new(Hub::new(Some(app.handle().clone())));
             app.manage(hub.clone());
-            tauri::async_runtime::spawn(quit_on_signal(app.handle().clone()));
+            quit::on_signals(app.handle().clone());
             // Settings kept current in memory (a hand edit of config.json, Login Items in System Settings): a
             // change redraws the window.
             let h = hub.clone();
@@ -446,19 +447,6 @@ pub fn run() {
         }
         _ => {}
     });
-}
-
-/// Asked to quit by a signal (`kill`, logout, Ctrl+C in a terminal that started it): quit as Cue's own Quit
-/// does, so what changed since the last draw is saved first (RunEvent::Exit), instead of dying mid-way.
-async fn quit_on_signal(app: tauri::AppHandle) {
-    use tokio::signal::unix::{signal, SignalKind};
-    let (Ok(mut term), Ok(mut int), Ok(mut hup)) = (signal(SignalKind::terminate()), signal(SignalKind::interrupt()), signal(SignalKind::hangup())) else { return };
-    tokio::select! {
-        _ = term.recv() => {}
-        _ = int.recv() => {}
-        _ = hup.recv() => {}
-    }
-    app.exit(0);
 }
 
 #[cfg(test)]
