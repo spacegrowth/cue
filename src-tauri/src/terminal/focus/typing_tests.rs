@@ -1,6 +1,7 @@
 //! Typing into a tmux pane (stability plan §4, Typing, U and F): the word tmux is handed, the pause before
 //! Enter, telling a shell's prompt from an agent's screen, and type_into against a stand-in tmux
-//! (terminal::fake_tmux) that hangs, refuses Enter, shows a shell, or isn't installed.
+//! (terminal::fake_tmux) that hangs, refuses Enter, shows a shell, or isn't installed; and whether the agent
+//! has exited back to its shell, read from the processes in the pane's foreground (a stand-in `ps`).
 
 use super::*;
 use crate::terminal::fake_tmux::FakeTmux;
@@ -40,12 +41,6 @@ fn a_shell_waiting_for_a_command_is_told_from_an_agents_screen() {
 }
 
 #[test]
-#[ignore = "bug: oh-my-zsh's default prompt (robbyrussell, `➜  cue git:(main) ✗ `) ends in the folder or ✗, so at_shell_prompt misses it and a message is typed into the shell as a command once the agent has exited. Telling it from Claude Code's own `❯ ` box line (which starts the same way) is a design call: read the line's start too, or ask tmux for the pane's foreground process instead of its group leader."]
-fn oh_my_zshs_default_prompt_is_a_shell_prompt() {
-    assert!(at_shell_prompt("➜  cue git:(main) ✗ "));
-}
-
-#[test]
 fn the_usual_shells_are_shells_and_agents_are_not() {
     for s in ["zsh", "-zsh", "bash", "fish", "sh", "login", "nu"] {
         assert!(is_shell(s), "{s}");
@@ -55,19 +50,71 @@ fn the_usual_shells_are_shells_and_agents_are_not() {
     }
 }
 
-#[test]
-fn a_pane_at_a_shell_prompt_gets_nothing_typed() {
-    let tmux = FakeTmux::answering(r"display-message) printf 'zsh\nme@mac ~ %% ' ;;");
+/// tmux naming `running` on /dev/ttys009 with `screen`, and `ps` listing `foreground` there.
+fn pane_with(running: &str, screen: &str, foreground: &str) -> FakeTmux {
+    FakeTmux::answering(&format!("display-message) printf '%s\\n%s' '{running}|/dev/ttys009' '{screen}' ;;")).foreground(foreground)
+}
+
+/// Typing into that pane is refused, saying the shell's name, and nothing is pasted or pressed.
+#[track_caller]
+fn refused(tmux: &FakeTmux, shell: &str) {
     let err = type_into(&pane(), "rm -rf build").unwrap_err();
-    assert!(err.contains("shell prompt (zsh)"), "{err}");
+    assert!(err.contains(&format!("shell prompt ({shell})")), "{err}");
     assert!(tmux.calls_of("set-buffer").is_empty() && tmux.calls_of("send-keys").is_empty(), "{:?}", tmux.calls());
 }
 
 #[test]
-fn an_agent_started_through_sh_is_typed_into_though_tmux_names_the_shell() {
-    let tmux = FakeTmux::answering(r"display-message) printf 'sh\n╭────╮\n│ >  │\n╰────╯' ;;");
+fn oh_my_zshs_default_prompt_gets_nothing_typed() {
+    let tmux = pane_with("zsh", "➜  cue git:(main) ✗ ", "Ss+  -zsh");
+    refused(&tmux, "zsh");
+    assert_eq!(tmux.calls_of("ps"), ["ps -o stat=,comm= -t ttys009"], "decided by what runs there, not by the prompt");
+}
+
+#[test]
+fn a_bash_prompt_gets_nothing_typed() {
+    refused(&pane_with("bash", "user@box:~/src$ ", "Ss+  bash"), "bash");
+}
+
+#[test]
+fn a_fish_prompt_gets_nothing_typed() {
+    refused(&pane_with("fish", "me@mac ~/cue (main)> ", "Ss+  /opt/homebrew/bin/fish"), "fish");
+}
+
+#[test]
+fn a_plain_zsh_prompt_gets_nothing_typed() {
+    refused(&pane_with("zsh", "mac% ", "Ss+  /bin/zsh"), "zsh");
+}
+
+#[test]
+fn a_shell_in_front_of_a_cleared_screen_gets_nothing_typed() {
+    refused(&pane_with("zsh", "", "Ss+  -zsh"), "zsh");
+}
+
+#[test]
+fn with_its_foreground_unreadable_a_shells_prompt_on_screen_still_stops_it() {
+    let tmux = FakeTmux::answering(r"display-message) printf 'zsh\nme@mac ~ %% ' ;;");
+    refused(&tmux, "zsh");
+}
+
+#[test]
+fn an_agent_whose_binary_is_node_is_typed_into_without_asking_ps() {
+    let tmux = pane_with("node", "> ", "Ss+  -zsh");
+    assert_eq!(type_into(&pane(), "go on").as_deref(), Ok("tmux pane %9"));
+    assert!(tmux.calls_of("ps").is_empty());
+    assert_eq!(agent_gone(&pane()), Some(false));
+}
+
+#[test]
+fn an_agent_started_through_sh_is_typed_into_though_tmux_names_the_shell_and_its_screen_ends_in_a_dollar() {
+    let tmux = pane_with("sh", "spent so far: 4$", "Ss+  sh\nS+   claude");
     assert_eq!(type_into(&pane(), "go on").as_deref(), Ok("tmux pane %9"));
     assert_eq!(tmux.calls_of("send-keys").len(), 1);
+}
+
+#[test]
+fn a_pane_back_at_its_shell_is_where_the_agent_has_gone() {
+    let _tmux = pane_with("zsh", "➜  cue git:(main) ✗ ", "Ss+  -zsh");
+    assert_eq!(agent_gone(&pane()), Some(true));
 }
 
 #[test]
@@ -140,4 +187,24 @@ fn with_no_tmux_installed_typing_fails_at_once() {
 fn esc_into_a_pane_tmux_refuses_says_the_pane_is_gone() {
     let _tmux = FakeTmux::answering("send-keys) exit 1 ;;");
     assert_eq!(press_escape(&pane()), Err("tmux pane is gone".into()));
+}
+
+#[test]
+fn a_real_pane_back_at_a_shell_is_read_from_its_foreground_and_gets_nothing_typed() {
+    if !tmux_installed() {
+        return;
+    }
+    let name = format!("cue-shell-front-{}", std::process::id());
+    let pane = tmux_out(&["new-session", "-d", "-s", &name, "-x", "80", "-y", "10", "-P", "-F", "#{pane_id}", "/bin/sh"]).unwrap();
+    let o = Origin { tmux_pane: pane, ..Default::default() };
+    let t0 = Instant::now();
+    while !session_screen(&o).is_ok_and(|s| s.trim_end().ends_with('$')) && t0.elapsed() < Duration::from_secs(10) {
+        std::thread::yield_now();
+    }
+    let typed = type_into(&o, "echo SHOULD-NOT-RUN");
+    let gone = agent_gone(&o);
+    run("tmux", &["kill-session", "-t", &format!("={name}")]);
+    let err = typed.unwrap_err();
+    assert!(err.contains("not the agent: nothing typed"), "{err}");  // /bin/sh is bash on a Mac
+    assert_eq!(gone, Some(true));
 }

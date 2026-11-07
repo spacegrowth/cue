@@ -946,23 +946,61 @@ pub fn still_in_box(box_text: &str, text: &str) -> bool {
     (!tail.is_empty() && line.contains(&tail)) || (text.contains('\n') && line.contains("[Pastedtext#"))
 }
 
-/// The agent is gone from its terminal, so nothing typed there reaches one: a shell at its prompt has the
-/// screen, and (as `type_into` wants both signs) the process there is a shell (tmux says), or the agent's
-/// own process is nowhere to be found (iTerm, Terminal.app). None when Cue can't see the terminal.
+/// The agent is gone from its terminal, so nothing typed there reaches one: in tmux, a shell has the pane's
+/// foreground (`shell_in_front`); elsewhere a shell's prompt has the screen and the agent's own process is
+/// nowhere to be found (iTerm, Terminal.app). None when Cue can't see the terminal.
 pub fn agent_gone(o: &Origin) -> Option<bool> {
     if !o.tmux_pane.is_empty() {
-        let pane = o.tmux_pane.as_str();
-        let args = ["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane];
-        let out = if o.machine.is_empty() {
-            tmux_out(&args)?
-        } else {
-            crate::machines::tmux(&crate::machines::get(&o.machine)?.host, &args).ok()?
-        };
-        let (running, screen) = out.split_once('\n').unwrap_or((out.as_str(), ""));
-        return Some(is_shell(running.trim()) && at_shell_prompt(screen));
+        return pane_now(o, &o.tmux_pane).ok().map(|p| p.shell_in_front);
     }
     let screen = screen_of(o)?;
     Some(at_shell_prompt(&screen) && current_tty(o).is_none())
+}
+
+/// A tmux pane as one trip reads it: what tmux names running there, its screen, and whether a shell has it.
+struct PaneNow {
+    running: String,
+    screen: String,
+    shell_in_front: bool,
+}
+
+/// One trip to the pane (this Mac's or a machine's): its command, its terminal and its screen; then, when
+/// tmux names a shell, the processes in the foreground of that terminal.
+fn pane_now(o: &Origin, pane: &str) -> Result<PaneNow, String> {
+    let out = tmux_try_for(o, pane, &["display-message", "-p", "-t", pane, "#{pane_current_command}|#{pane_tty}", ";", "capture-pane", "-p", "-J", "-t", pane])?;
+    let (first, screen) = out.split_once('\n').unwrap_or((out.as_str(), ""));
+    let (running, tty) = first.rsplit_once('|').unwrap_or((first, ""));
+    let (running, tty) = (running.trim(), tty.trim());
+    let shell_in_front = is_shell(running) && match foreground(o, tty) {
+        Some(names) => names.iter().all(|n| is_shell(n)),
+        // Its foreground can't be listed (no ps answer, the machine's trip failed): the screen decides.
+        None => at_shell_prompt(screen),
+    };
+    Ok(PaneNow { running: running.to_string(), screen: screen.to_string(), shell_in_front })
+}
+
+/// The names of the processes in the foreground of terminal `tty` ("/dev/ttys004"), on this Mac or the
+/// session's machine: those `ps` marks `+`. A shell tmux names may only be what started the agent
+/// (`sh -c "claude …"` runs it in the shell's own process group), so the agent shows here too; with only
+/// shells here, the agent has exited back to one, whatever its prompt looks like. None when it can't be read.
+fn foreground(o: &Origin, tty: &str) -> Option<Vec<String>> {
+    let tty = tty.strip_prefix("/dev/")?;
+    if tty.is_empty() || !tty.chars().all(|c| c.is_ascii_alphanumeric() || c == '/') {
+        return None;
+    }
+    let listing = if o.machine.is_empty() {
+        let out = capped(Command::new(bin("ps")).args(["-o", "stat=,comm=", "-t", tty]), CAP).ok()?;
+        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())?
+    } else {
+        crate::machines::run(&crate::machines::get(&o.machine)?.host, &format!("ps -o stat=,comm= -t {tty}")).ok()?
+    };
+    let names: Vec<String> = listing
+        .lines()
+        .filter_map(|l| l.trim().split_once(char::is_whitespace))
+        .filter(|(stat, _)| stat.contains('+'))
+        .map(|(_, comm)| comm.trim().split_whitespace().next().unwrap_or("").rsplit('/').next().unwrap_or("").to_string())
+        .collect();
+    (!names.is_empty()).then_some(names)
 }
 
 /// A dialog open on the session's screen (its choices numbered), if Cue can see its terminal.
@@ -1058,15 +1096,13 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     let pause = || std::thread::sleep(std::time::Duration::from_secs_f64(enter_gap(text)));
     if !o.tmux_pane.is_empty() {
         let pane = o.tmux_pane.as_str();
-        // First trip: what's in the pane, and the screen as it is. The agent must be what's there: back
-        // at a shell prompt (the agent exited), the paste plus Enter would run the message as a command.
-        // Both signs are needed. On this Mac tmux names the pane's process group leader, which is the
-        // shell for anything started as `sh -c "…"`, so the shell's name alone isn't proof.
-        let out = tmux_try_for(o, pane, &["display-message", "-p", "-t", pane, "#{pane_current_command}", ";", "capture-pane", "-p", "-J", "-t", pane])?;
-        let (running, before) = out.split_once('\n').unwrap_or((out.as_str(), ""));
-        if is_shell(running.trim()) && at_shell_prompt(before) {
-            return Err(format!("its pane shows a shell prompt ({}), not the agent: nothing typed", running.trim()));
+        // First: what's in the pane, and the screen as it is. The agent must be what's there: back at its
+        // shell (the agent exited), the paste plus Enter would run the message as a command.
+        let now = pane_now(o, pane)?;
+        if now.shell_in_front {
+            return Err(format!("its pane shows a shell prompt ({}), not the agent: nothing typed", now.running));
         }
+        let before = now.screen;
         // Second trip: the paste (bracketed when the app asked for it, so a multi-line reply can't submit
         // early). "--": the text is the buffer even when it starts with "-"; a final ";" would end the
         // tmux command instead of being typed, so it goes escaped (tmux turns "\;" back into ";").
@@ -1121,8 +1157,8 @@ pub fn type_into(o: &Origin, text: &str) -> Result<String, String> {
     Err("Cue can't type into this terminal (it works with iTerm, Terminal, tmux, WezTerm and kitty). Use Go to session".into())
 }
 
-/// The process in a tmux pane is a shell, not an agent: what `#{pane_current_command}` says for the
-/// usual shells (a login shell shows with a leading "-").
+/// A process named `command` is a shell, not an agent: the usual shells by the name tmux or ps gives them
+/// (a login shell shows with a leading "-").
 fn is_shell(command: &str) -> bool {
     matches!(command.trim_start_matches('-'), "zsh" | "bash" | "sh" | "fish" | "dash" | "ksh" | "tcsh" | "csh" | "nu" | "login")
 }

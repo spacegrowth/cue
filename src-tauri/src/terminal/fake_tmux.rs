@@ -1,13 +1,15 @@
 //! tmux as a test wants it, on the test's own thread (test_tmux::stand_in): a shell script that notes each
 //! call and answers as told, so typing into a pane and opening its terminal can be driven through a tmux
-//! that hangs, refuses a key, shows a shell prompt, or isn't installed, without a tmux server.
+//! that hangs, refuses a key, shows a shell, or isn't installed, without a tmux server; and `ps`, for what
+//! runs in the foreground of the pane's terminal.
 
 use super::test_tmux::{stand_in, StandIn};
 use std::path::PathBuf;
 
 /// A stand-in tmux for an agent's pane. Each call's arguments are noted (`calls`); `set-buffer` keeps the
-/// pasted text and `capture-pane` shows it in the agent's box, `display-message` says the agent is running,
-/// and anything else succeeds saying nothing. `answering` puts the test's own answers first.
+/// pasted text and `capture-pane` shows it in the agent's box, `display-message` says the agent is running
+/// (on terminal /dev/ttys009), and anything else succeeds saying nothing. `answering` puts the test's own
+/// answers first; `foreground` stands in `ps` too.
 pub(crate) struct FakeTmux {
     dir: PathBuf,
     stand_ins: Vec<StandIn>,
@@ -15,7 +17,7 @@ pub(crate) struct FakeTmux {
 
 /// The answers an agent's pane gives, after the test's own (sh `case` arms on the tmux command).
 const AGENT: &str = r#"
-  display-message) printf 'claude\n> ' ;;
+  display-message) printf 'claude|/dev/ttys009\n> ' ;;
   set-buffer) printf '%s' "$5" > "$DIR/pasted" ;;
   capture-pane) printf '> '; cat "$DIR/pasted" 2>/dev/null ;;
 "#;
@@ -39,6 +41,13 @@ impl FakeTmux {
         );
         let on = stand_in("tmux", &executable(&dir, "tmux", &script));
         Self { dir, stand_ins: vec![on] }
+    }
+
+    /// `ps` lists `lines` ("STAT COMMAND" each, `+` marking the foreground) for any terminal, noting the call.
+    pub(crate) fn foreground(mut self, lines: &str) -> Self {
+        let script = format!("#!/bin/sh\nprintf 'ps %s\\n' \"$*\" >> '{}/calls'\nprintf '%s\\n' '{lines}'\n", self.dir.display());
+        self.stand_ins.push(stand_in("ps", &executable(&self.dir, "ps", &script)));
+        self
     }
 
     /// No tmux on this Mac: a name the system can't find.
