@@ -67,6 +67,10 @@ soak() {
   mkdir -p "$dir"
   rm -f "$dir/rust.json" "$dir/e2e.json"
   echo "soak: $CUE_SOAK_MINUTES min, its files in $dir" >&2
+  # Both built first, one after the other: a run that starts while the other still compiles measures the
+  # compiler, not Cue.
+  (cd "$ROOT/src-tauri" && cargo test -q --lib --no-run && cargo build -q --features e2e --target-dir target/e2e) >"$dir/build.log" 2>&1 \
+    || { echo "soak: the build failed (see $dir/build.log)" >&2; return 1; }
   # Side by side: the gate takes the run's length, not twice it. Each one's output goes to its own log.
   (cd "$ROOT/src-tauri" && CUE_SOAK_OUT="$dir/rust.json" cargo test -q --lib -- --ignored testing::soak::soak --nocapture) >"$dir/rust.log" 2>&1 &
   local rust=$!
