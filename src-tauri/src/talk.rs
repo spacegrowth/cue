@@ -163,11 +163,20 @@ fn helper() -> Option<std::path::PathBuf> {
     std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("cue-voice"))).filter(|p| p.exists())
 }
 
-/// What you said, waiting on its answer: the session, and the newest message it had before (its answer is
-/// the agent's message after that, once the turn is over).
+/// What you said, waiting on its answer: the session, the newest message it had before (its answer is
+/// the agent's message after that, once the turn is over), and how many background agents it had at work
+/// then (its turn ending with only those still at work has answered: it's those it started that it waits on).
 struct Turn {
     sid: String,
     after: u64,
+    helpers: u64,
+}
+
+/// How many background agents `sid` has at work now, as its log says (a Claude Code session here; else none).
+fn helpers_at_work(hub: &Hub, sid: &str) -> u64 {
+    hub.session_origin(sid)
+        .filter(|o| o.harness == "claude" && !o.transcript_path.is_empty())
+        .map_or(0, |o| crate::steps::running_helpers(&o.transcript_path).len() as u64)
 }
 
 /// After a voice turn's answer, that session's next replies are read out too (a turn it started itself, a reply to
@@ -187,14 +196,14 @@ fn saved_file() -> std::path::PathBuf {
 }
 fn save(turn: &Option<Turn>, follows: &[Follow]) {
     let v = json!({
-        "turn": turn.as_ref().map(|t| json!({ "sid": t.sid, "after": t.after })),
+        "turn": turn.as_ref().map(|t| json!({ "sid": t.sid, "after": t.after, "helpers": t.helpers })),
         "follows": follows.iter().map(|f| json!({ "sid": f.sid, "seen": f.seen, "until": f.until })).collect::<Vec<_>>(),
     });
     let _ = std::fs::write(saved_file(), v.to_string());
 }
 fn load() -> (Option<Turn>, Vec<Follow>) {
     let v = std::fs::read_to_string(saved_file()).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or(Value::Null);
-    let turn = v["turn"]["sid"].as_str().map(|sid| Turn { sid: sid.into(), after: v["turn"]["after"].as_u64().unwrap_or(0) });
+    let turn = v["turn"]["sid"].as_str().map(|sid| Turn { sid: sid.into(), after: v["turn"]["after"].as_u64().unwrap_or(0), helpers: v["turn"]["helpers"].as_u64().unwrap_or(0) });
     let one = |f: &Value| f["sid"].as_str().map(|sid| Follow { sid: sid.into(), seen: f["seen"].as_u64().unwrap_or(0), until: f["until"].as_u64().unwrap_or(0) });
     // Saved before more than one was followed: "follow", a single one.
     let follows = match v["follows"].as_array() {
@@ -305,7 +314,7 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
     // "By the way" answers, asked off this loop (they take a few seconds), come back here to be told.
     let (btw_tx, mut btw_rx) = mpsc::unbounded_channel::<Value>();
     // What you said, sent off this loop too (a remote session can take seconds): how it went comes back here.
-    let (sent_tx, mut sent_rx) = mpsc::unbounded_channel::<(String, u64, Result<String, String>)>();
+    let (sent_tx, mut sent_rx) = mpsc::unbounded_channel::<(Turn, Result<String, String>)>();
     let mut c = Conversation::new(app, hub, to, btw_tx.clone(), sent_tx);
     *crate::locking::lock(&RETELL, "talk retell") = Some(btw_tx);   // a setting's line goes the same way
     loop {
@@ -318,7 +327,7 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
             }
             changed = open.changed() => { if changed.is_err() { return; } Ok(()) }
             Some(out) = btw_rx.recv() => tell(&mut c.to, &out),
-            Some((sid, after, reply)) = sent_rx.recv() => c.on_sent(sid, after, reply),
+            Some((turn, reply)) = sent_rx.recv() => c.on_sent(turn, reply),
             line = from.recv() => {
                 let Some(line) = line else { return };
                 c.on_line(&line);
@@ -343,7 +352,7 @@ struct Conversation {
     hub: Arc<Hub>,
     to: ChildStdin,
     btw_tx: mpsc::UnboundedSender<Value>,
-    sent_tx: mpsc::UnboundedSender<(String, u64, Result<String, String>)>,
+    sent_tx: mpsc::UnboundedSender<(Turn, Result<String, String>)>,
     snap: Value,
     told: Value,   // the last target sent
     turn: Option<Turn>,
@@ -355,14 +364,15 @@ struct Conversation {
 }
 
 impl Conversation {
-    fn new(app: tauri::AppHandle, hub: Arc<Hub>, to: ChildStdin, btw_tx: mpsc::UnboundedSender<Value>, sent_tx: mpsc::UnboundedSender<(String, u64, Result<String, String>)>) -> Self {
+    fn new(app: tauri::AppHandle, hub: Arc<Hub>, to: ChildStdin, btw_tx: mpsc::UnboundedSender<Value>, sent_tx: mpsc::UnboundedSender<(Turn, Result<String, String>)>) -> Self {
         let (turn, follows) = load();
         let resumed = turn.is_none();
         Conversation { app, hub, to, btw_tx, sent_tx, snap: Value::Null, told: Value::Null, turn, follows, resumed, told_doing: String::new(), quieted: Vec::new() }
     }
 
     /// How sending what you said went: sent, it's the turn under way.
-    fn on_sent(&mut self, sid: String, after: u64, reply: Result<String, String>) -> std::io::Result<()> {
+    fn on_sent(&mut self, turn: Turn, reply: Result<String, String>) -> std::io::Result<()> {
+        let sid = turn.sid.clone();
         let out = match reply {
             Ok(_) => {
                 // A turn still under way with another session: its answer still comes, as a followed one.
@@ -371,7 +381,7 @@ impl Conversation {
                 }
                 // This one's answer comes as the turn's, not twice.
                 self.follows.retain(|f| f.sid != sid);
-                self.turn = Some(Turn { sid: sid.clone(), after });
+                self.turn = Some(turn);
                 save(&self.turn, &self.follows);
                 json!({ "sent": true, "sid": sid })
             }
@@ -414,8 +424,11 @@ impl Conversation {
             let after = newest(&self.snap, sid);
             let (h, s, sid, said, tx) = (self.hub.clone(), self.snap.clone(), sid.to_string(), said.to_string(), self.sent_tx.clone());
             tokio::spawn(async move {
+                // Its agents at work before it hears you (read off this loop: it's its log).
+                let (h2, sid2) = (h.clone(), sid.clone());
+                let helpers = tokio::task::spawn_blocking(move || helpers_at_work(&h2, &sid2)).await.unwrap_or(0);
                 let reply = send(&h, &s, &sid, &said).await;
-                let _ = tx.send((sid, after, reply));
+                let _ = tx.send((Turn { sid, after, helpers }, reply));
             });
         }
     }
@@ -555,9 +568,10 @@ fn outcome(snap: &Value, t: &Turn) -> Option<Value> {
     if let Some(ask) = items_of(snap, &t.sid).find(|i| i["kind"] != "waiting") {
         return Some(json!({ "answer": format!("It's asking: {}", asking(ask)) }));
     }
-    // Still at it, or at its prompt waiting on background agents it started (Claude Code wakes it when they
-    // report; what it said meanwhile isn't the answer).
-    if s["state"] == "working" || (s["state"] == "agent" && s["helpers"].as_u64().unwrap_or(0) > 0) {
+    // Still at it, or at its prompt waiting on background agents this turn started (Claude Code wakes it when
+    // they report; what it said meanwhile isn't the answer). Agents already at work when you spoke aren't
+    // waited on: its reply to you is the answer.
+    if s["state"] == "working" || (s["state"] == "agent" && s["helpers"].as_u64().unwrap_or(0) > t.helpers) {
         return None;
     }
     let thread = s["thread"].as_array()?;
@@ -788,7 +802,7 @@ mod tests {
 
     #[test]
     fn a_lead_waiting_on_its_background_agents_hasnt_answered_yet() {
-        let t = Turn { sid: "s1".into(), after: 100 };
+        let t = Turn { sid: "s1".into(), after: 100, helpers: 0 };
         let thread = json!([{ "role": "agent", "text": "Started two agents.", "at_ms": 200 }]);
         let mut s = snap("agent", thread.clone(), json!([]));
         s["sessions"][0]["helpers"] = json!(2);
@@ -838,7 +852,7 @@ mod tests {
 
     #[test]
     fn its_answer_is_the_agents_message_after_what_you_said_once_the_turn_is_over() {
-        let t = Turn { sid: "s1".into(), after: 100 };
+        let t = Turn { sid: "s1".into(), after: 100, helpers: 0 };
         let old = json!([{ "role": "agent", "text": "before", "at_ms": 100 }]);
         assert!(outcome(&snap("working", old.clone(), json!([])), &t).is_none(), "still working");
         assert!(outcome(&snap("waiting", old, json!([])), &t).is_none(), "nothing new yet");
@@ -848,7 +862,7 @@ mod tests {
 
     #[test]
     fn a_question_meanwhile_is_said_and_a_stop_ends_it_with_nothing() {
-        let t = Turn { sid: "s1".into(), after: 100 };
+        let t = Turn { sid: "s1".into(), after: 100, helpers: 0 };
         let q = json!([{ "session_id": "s1", "kind": "question", "tool_input": { "questions": [{ "question": "Which branch?" }] } }]);
         assert_eq!(outcome(&snap("deciding", json!([]), q), &t), Some(json!({ "answer": "It's asking: Which branch?" })));
         let stop = json!([{ "session_id": "s1", "kind": "waiting", "interrupted": true, "created_ms": 150 }]);
