@@ -934,6 +934,12 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .nrow.on .btn { background: transparent; color: var(--on-sel); border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); }
 .nrow.on .btn.primary { background: var(--on-sel); color: var(--sel); border-color: var(--on-sel); }
 .nrow-top { display: flex; align-items: center; gap: 8px; font-size: 12.5px; min-width: 0; }
+/* board.js cardTop: who it is takes the line, its time and buttons sit at the right end; when they don't both fit
+   with a readable name (7.5em of it), the time and buttons wrap to a line of their own, still at the right. The two
+   keep the room between them a spacer with a gap each side gave. */
+.nrow-top:has(> .nrow-side) { flex-wrap: wrap; gap: 6px 16px; }
+.nrow-who { display: flex; align-items: center; gap: 8px; flex: 1 1 7.5em; min-width: 0; }
+.nrow-side { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
 .nrow-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The name stays on one line (Later, the pin and × take the room); "your turn" shortens first. */
 .nrow-top .proj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 2.6em; flex: 0 1 auto; }

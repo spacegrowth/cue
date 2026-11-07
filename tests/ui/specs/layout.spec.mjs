@@ -38,10 +38,13 @@ function layoutProblems(page, sel, checks) {
     return out;
   }, [sel, checks]);
 }
-/** A line of chips, tags and buttons: its parts apart, each inside `box` (a card's × reaches into the card's padding,
- *  so a card's top line is measured against the card), and each chip's words inside the chip. */
-const LINE = (box) => ({ apart: [":scope > *", ".tm-chip"], inside: [[":scope > *", box], [".tm-chip > *", ".tm-chip"]] });
-
+/** A line of chips, tags and buttons: its parts (and their parts: a card's top line groups who it is and its time and
+ *  buttons) apart, each inside `box` (a card's × reaches into the card's padding, so a card's top line is measured
+ *  against the card), and each chip's words inside the chip. */
+const LINE = (box) => ({
+  apart: [":scope > *", ":scope > * > *", ".tm-chip"],
+  inside: [[":scope > *", box], [":scope > * > *", box], [".tm-chip > *", ".tm-chip"]],
+});
 test("a lead's chat opens with its first review row in full view", async ({ cue, page }) => {
   await cue.open("relay-review", { frozen: true });
   await openLead(page);
@@ -57,8 +60,9 @@ for (const [size, viewport] of [["", null], [" at the narrowest window", NARROWE
   });
 }
 
-for (const scenario of ["board-waiting", "relay-review"]) {
-  test(`${scenario}: every Waiting card's top line keeps its name, chips, time and buttons apart and inside the card`, async ({ cue, page }) => {
+for (const [scenario, size, viewport] of [["board-waiting", "", null], ["relay-review", "", null], ["board-waiting", " at the narrowest window", NARROWEST]]) {
+  test(`${scenario}: every Waiting card's top line keeps its name, chips, time and buttons apart and inside the card${size}`, async ({ cue, page }) => {
+    if (viewport) await page.setViewportSize(viewport);
     await cue.open(scenario, { frozen: true });
     expect(await layoutProblems(page, ".sec-waiting .nrow-top", LINE(".nrow"))).toEqual([]);
   });
