@@ -1,0 +1,14 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Cue's source inventory and lock/I-O lints (dev only, never shipped)"
+
+[dependencies]
+syn = { version = "2", features = ["full", "visit"] }
+# Line numbers for every parsed token (what the inventory and the size counts report).
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
