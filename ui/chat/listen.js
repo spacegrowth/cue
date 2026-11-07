@@ -95,7 +95,7 @@ function listenFollow(l) {
   glide = null;
   chat.scrollTop += by;
 }
-/** You scrolled the chat being read yourself (app.js: the wheel or trackpad, or its scroll bar): it stops
+/** You scrolled the chat being read yourself (app/bind.js: the wheel or trackpad, or its scroll bar): it stops
  *  following, so it doesn't pull you back while you look elsewhere. */
 function listenScrolled(chat) {
   const root = listening && listenRoot(listening.key);

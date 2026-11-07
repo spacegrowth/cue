@@ -234,7 +234,7 @@ pub fn start(app: &tauri::App, hub: Arc<Hub>) {
         }
         let _ = child.wait();
     });
-    // The window says which chat is open, and the swatch it wears (app.js, when either changes).
+    // The window says which chat is open, and the swatch it wears (ui/app/render.js, when either changes).
     let (open_tx, open_rx) = watch::channel(None::<String>);
     app.listen_any("chat-open", move |e| {
         let v = serde_json::from_str::<Value>(e.payload()).unwrap_or_default();

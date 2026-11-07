@@ -36,10 +36,10 @@ function helperReplyToBox(sid, id) {
 }
 /** Back from an agent's or script's full view (‹ Back, Esc, "Put reply in the box"): the chat again, at its
  *  end (the newest message), not wherever a fresh chat element happens to start. The draw lands it there
- *  (`chatToEnd`, the path a newly opened chat takes in app.js renderMain), then it's pinned again a frame
+ *  (`chatToEnd`, the path a newly opened chat takes in app/render.js renderMain), then it's pinned again a frame
  *  later and once more when settled: whatever grows after the draw (the box growing to a draft, an image,
  *  a table laid out late) would otherwise leave the end just out of view. */
-let chatToEnd = false;    // the next chat draw lands at its end; app.js renderMain consumes it
+let chatToEnd = false;    // the next chat draw lands at its end; app/render.js renderMain consumes it
 let chatPinnedAt = 0;     // when code last put the chat at its end: the scroll events that come of it aren't you scrolling up
 function closeHelperView() {
   helperView = null;

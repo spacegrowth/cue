@@ -517,7 +517,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .foot, .active-pane { position: relative; }
 /* What the chat layers on itself (the sweep, the btw panel) stays under sheets opened over it (Settings, Search). */
 .active-pane { isolation: isolate; }
-/* At work: a light sweeps along the chat's top edge (gone while it waits on you); sweep() in app.js picks
+/* At work: a light sweeps along the chat's top edge (gone while it waits on you); sweep() in chat/thread.js picks
    how. A Moss core with lime ends, so it reads on the white pane (lime alone barely showed). No glow. */
 .sweep { position: absolute; top: 0; left: 0; width: 60%; height: 3px; z-index: 13; pointer-events: none; background: linear-gradient(90deg, transparent, var(--sel) 12%, var(--accent) 45%, var(--accent) 55%, var(--sel) 88%, transparent); animation: sweep 1.6s ease-in-out infinite; }
 @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(170%); } }

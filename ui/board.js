@@ -370,7 +370,7 @@ const needsYou = () => { const all = [...groups().decide, ...groups().yours]; re
  *  (a card like the others, saying "working"; its card stays under Working too); once it's worked longer, it's a job, and only in Working. */
 const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
 /** "3 agents": a session's agents, any kind (agents.js agentPill), beside its state, on any of its cards; a relay
- *  agent that needs you names itself instead. A click opens the session on its Agents tab (app.js). A lead's crew
+ *  agent that needs you names itself instead. A click opens the session on its Agents tab (app/clicks_chat.js). A lead's crew
  *  line (cardCrew) has its count, so its card's pill only names one that needs you. `tree`: the card holds its tree. */
 const bgPill = (s, { count = crewOf(s?.session_id)?.role !== "lead", tree = false } = {}) => agentPill(s?.session_id, { count, tree });
 /** A Waiting card's top line: who it is (dot, mark, name, machine, state, agents) and, at its right end, its time and

@@ -330,7 +330,7 @@ const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
   return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
-/** Settings → Quick phrases as you type them (redraws keep them); saved as you type (app.js) and when you leave. */
+/** Settings → Quick phrases as you type them (redraws keep them); saved as you type (app/inputs.js) and when you leave. */
 let qpEdit = null;
 let qpSaveAt = 0;
 /** What's in the quick phrase fields, saved (empty ones left out); nothing while none is being edited. */

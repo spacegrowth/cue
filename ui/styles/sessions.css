@@ -60,7 +60,7 @@
 @container ap (max-width: 500px) {
   .ap-head > .role, .ap-head .rename-btn { display: none; }
 }
-/* When the top bar doesn't fit (fitTop in app.js adds these one by one). */
+/* When the top bar doesn't fit (fitTop in board_motion.js adds these one by one). */
 .top[class*="tfit"] { gap: 8px; }
 .top[class*="tfit"] .hsub { display: none; }
 .top:is(.tfit2, .tfit3, .tfit4) .usage-chip .um { display: none; }

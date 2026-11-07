@@ -7,7 +7,7 @@ function applyTheme() {
   else document.documentElement.dataset.theme = mode;
   retheme();
 }
-/** The chat and color app.js last said ("chat-open"), so they're said only when they change. */
+/** The chat and color the window last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
 // The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
