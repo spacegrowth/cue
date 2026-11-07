@@ -15,7 +15,7 @@
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
-  const m = { shape: "quiet", open: null, keyed: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
+  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -124,7 +124,7 @@
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
     return `<div class="m-panel m-chat"><div class="m-chat-head">${it ? dot(it) : ""}<b>${esc(nameOf(sid, s?.project || it?.project))}</b>${tag}<span class="g"></span>${NOTCH ? dotsHtml() : ""}<button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
-      <div class="m-foot"><textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
+      <div class="m-foot">${quickHtml()}<textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
   }
 
@@ -132,6 +132,18 @@
    *  second) doesn't rebuild it under the pointer, which reset the cursor each time. */
   const drawn = new WeakMap();   // element -> the html it was last given
   const put = (el, html) => { if (el && drawn.get(el) !== html) { el.innerHTML = html; drawn.set(el, html); } };
+  /** Your quick phrases (Settings, the same list as Cue's chat): a click adds one after what you've typed and
+   *  sends it at once, as in Cue (chat/compose.js sendPhrase). */
+  const quickHtml = () => {
+    const list = state.settings?.quick?.phrases || [];
+    return list.length ? `<div class="m-quick">${list.map((p) => `<button class="m-qp" data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}</div>` : "";
+  };
+  function sendPhrase(p) {
+    const box = root.querySelector("[data-box]");
+    if (!box || m.sending) return;
+    box.value = box.value.trim() ? `${box.value.trimEnd()} ${p}` : p;
+    send();
+  }
   // ---------- size and place ----------
   /** The window as big as what it shows: the panel's own size, the chat no taller than its share of the screen. */
   function fit() {
@@ -268,6 +280,7 @@
       else if (t.dataset.allow) answer(t.dataset.allow, "allow");
       else if (t.dataset.deny) answer(t.dataset.deny, "deny");
       else if (t.dataset.send !== undefined) send();
+      else if (t.dataset.phrase) sendPhrase(t.dataset.phrase);
       else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
     });
     root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
@@ -281,21 +294,40 @@
     // Hover opens the first session's chat after a short pause (a pointer passing by doesn't); the dots switch.
     // Leaving folds it back, unless you've clicked into it (then a click outside or Esc does).
     // Where there are no dots to point at (the notch's island), hovering opens the first session's chat.
-    document.body.addEventListener("mouseenter", () => {
-      clearTimeout(m.timer);
-      if ((m.shape === "quiet" || m.shape === "nod") && !root.querySelector(".m-dotb")) m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid, false); }, HOVER_MS);
-    });
-    document.body.addEventListener("mouseleave", () => { clearTimeout(m.timer); m.hoverSid = null; magnify(null); if (m.shape === "chat" && !m.keyed) m.timer = setTimeout(() => closeChat(false), LEAVE_MS); });
-    // Along the dots, as the Dock does: the one under the pointer grows, its neighbours a little. Resting on one
-    // opens its chat (the keyboard stays where it is); moving on to another switches to it, unless you're typing.
-    root.addEventListener("mousemove", (e) => {
-      magnify(e);
-      const b = e.target.closest(".m-dotb");
-      if (!b || b.dataset.open === m.hoverSid) return;
-      m.hoverSid = b.dataset.open;
-      clearTimeout(m.timer);
-      m.timer = setTimeout(() => { if (!m.keyed && m.open !== m.hoverSid) openChat(m.hoverSid, false); }, HOVER_MS);
-    });
+    // The pointer comes from two places: the page's own events (Cue in front) and Cue itself, which watches it over
+    // this window (mini-pointer: WebKit tells a window of an app that isn't in front nothing about the pointer).
+    document.body.addEventListener("mouseenter", () => pointerIn());
+    document.body.addEventListener("mouseleave", () => pointerOut());
+    root.addEventListener("mousemove", (e) => pointerAt(e.clientX, e.clientY));
+  }
+  /** The pointer came over the mini window: where there are no dots to point at (the notch's island), hovering
+   *  opens the first session's chat after a short pause. */
+  function pointerIn() {
+    if (m.over) return;
+    m.over = true;
+    clearTimeout(m.timer);
+    if ((m.shape === "quiet" || m.shape === "nod") && !root.querySelector(".m-dotb")) m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid, false); }, HOVER_MS);
+  }
+  /** It left: the dots back to their size, and an open chat folds unless you've clicked into it. */
+  function pointerOut() {
+    if (!m.over) return;
+    m.over = false;
+    clearTimeout(m.timer);
+    m.hoverSid = null;
+    magnify(null);
+    if (m.shape === "chat" && !m.keyed) m.timer = setTimeout(() => closeChat(false), LEAVE_MS);
+  }
+  /** It moved, to (x, y) in the window. Along the dots, as the Dock does: the one under it grows, its neighbours a
+   *  little. Resting on one opens its chat (the keyboard stays where it is); moving on to another switches to it,
+   *  unless you're typing. */
+  function pointerAt(x, y) {
+    pointerIn();
+    magnify({ clientX: x, clientY: y });
+    const b = document.elementFromPoint(x, y)?.closest(".m-dotb");
+    if (!b || b.dataset.open === m.hoverSid) return;
+    m.hoverSid = b.dataset.open;
+    clearTimeout(m.timer);
+    m.timer = setTimeout(() => { if (!m.keyed && m.open !== m.hoverSid) openChat(m.hoverSid, false); }, HOVER_MS);
   }
   /** Each dot's size from the pointer's distance to it, along the dots (down the rail, across the notch's head):
    *  up to 2.2 times at the pointer, back to its own size 56 pt away. `e` null: all back to their own size. */
@@ -338,6 +370,7 @@
     setInterval(() => { if (m.shape !== "chat") paint(); }, 60000);
     // Cue's window came forward or went back, maybe on another display: placed again, on that one.
     await T.event.listen("mini-place", () => { m.sized = ""; fit(); });
+    await T.event.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerAt(e.payload.x, e.payload.y); });
   }
   boot();
 }

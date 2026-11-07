@@ -33,6 +33,9 @@ static MAIN_FRONT: AtomicBool = AtomicBool::new(false);
 /// The display the rail is on, where your pointer settled last (its left, top, width, height as f64 bits;
 /// width 0: none yet, so Cue's window's display). Kept by `follow`.
 static ON: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+/// Where the mini window is now (as mini_shape placed it; width 0: hidden), for the pointer watch: kept here so
+/// it never asks the window (each ask is a round trip through the main thread).
+static FRAME: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
 /// The pointer-watching thread is running (started once, with the first mini window).
 static FOLLOWING: AtomicBool = AtomicBool::new(false);
 
@@ -65,6 +68,7 @@ pub(crate) fn apply(app: &AppHandle) {
         let _ = w.destroy();
     }
     OPEN.store(Mode::Off as u8, Ordering::SeqCst);
+    store(&FRAME, (0.0, 0.0, 0.0, 0.0));
     if want == Mode::Off || std::env::var_os("CUE_QUIET").is_some() {
         return;
     }
@@ -84,19 +88,40 @@ pub(crate) fn apply(app: &AppHandle) {
 const LOOK_EVERY: std::time::Duration = std::time::Duration::from_millis(700);
 const SETTLED_LOOKS: u32 = 2;
 
-/// The rail follows you: when your pointer has settled on another display, it moves to that display's right
-/// edge (its page places it again: mini-place). One look every 700 ms; nothing else runs.
+/// How often the pointer is passed to the page while it's over the mini window (for hover and the dots'
+/// magnifying: WebKit tells a window in an app that isn't in front nothing about the pointer).
+const TRACK_EVERY: std::time::Duration = std::time::Duration::from_millis(30);
+
+/// The pointer, watched from here (any thread, no permission needed):
+/// - over the mini window, its place in the window goes to the page ("mini-pointer" {x, y}), every 30 ms, and
+///   once it leaves, {out: true}: hover works whichever app is in front;
+/// - elsewhere, one look every 700 ms: the rail moves to the display the pointer has settled on (mini-place).
 #[cfg(target_os = "macos")]
 fn follow(app: AppHandle) {
-    let (mut seen, mut looks) = (None, 0u32);
+    use tauri::Emitter;
+    let (mut seen, mut looks, mut over) = (None, 0u32, false);
+    // The displays, asked again every few seconds (each ask is a round trip through the main thread).
+    let (mut all, mut asked) = (Vec::new(), 0u32);
     loop {
-        std::thread::sleep(LOOK_EVERY);
-        if OPEN.load(Ordering::SeqCst) != Mode::Rail as u8 {
+        std::thread::sleep(if over { TRACK_EVERY } else { LOOK_EVERY });
+        let open = OPEN.load(Ordering::SeqCst);
+        let Some(win) = app.get_webview_window(LABEL).filter(|_| open != Mode::Off as u8) else { continue };
+        let p = macos::pointer();
+        let inside = load(&FRAME).and_then(|f| inside(f, p));
+        match inside {
+            Some((x, y)) => drop(app.emit_to(LABEL, "mini-pointer", serde_json::json!({ "x": x, "y": y }))),
+            None if over => drop(app.emit_to(LABEL, "mini-pointer", serde_json::json!({ "out": true }))),
+            None => {}
+        }
+        over = inside.is_some();
+        if over || open != Mode::Rail as u8 {
             continue;
         }
-        let Some(win) = app.get_webview_window(LABEL) else { continue };
-        let all: Vec<_> = win.available_monitors().ok().unwrap_or_default().iter().map(points).collect();
-        let here = display_at(&all, macos::pointer());
+        if asked == 0 {
+            all = win.available_monitors().ok().unwrap_or_default().iter().map(points).collect::<Vec<_>>();
+        }
+        asked = (asked + 1) % 7;
+        let here = display_at(&all, p);
         if here != seen {
             (seen, looks) = (here, 0);
             continue;
@@ -104,10 +129,14 @@ fn follow(app: AppHandle) {
         looks += 1;
         if let Some(d) = here.filter(|d| looks == SETTLED_LOOKS && Some(*d) != on()) {
             set_on(d);
-            use tauri::Emitter;
             let _ = app.emit_to(LABEL, "mini-place", ());
         }
     }
+}
+
+/// The point's place inside the frame, if it's inside.
+fn inside((x, y, w, h): (f64, f64, f64, f64), (px, py): (f64, f64)) -> Option<(f64, f64)> {
+    (px >= x && px < x + w && py >= y && py < y + h).then_some((px - x, py - y))
 }
 
 /// The display a point is on (all in points, from the main display's top left).
@@ -115,15 +144,21 @@ fn display_at(all: &[(f64, f64, f64, f64)], (px, py): (f64, f64)) -> Option<(f64
     all.iter().copied().find(|&(x, y, w, h)| px >= x && px < x + w && py >= y && py < y + h)
 }
 
-fn on() -> Option<(f64, f64, f64, f64)> {
-    let v: Vec<f64> = ON.iter().map(|a| f64::from_bits(a.load(Ordering::SeqCst))).collect();
+/// A frame kept in four atomics (width 0: none).
+fn load(cell: &[AtomicU64; 4]) -> Option<(f64, f64, f64, f64)> {
+    let v: Vec<f64> = cell.iter().map(|a| f64::from_bits(a.load(Ordering::SeqCst))).collect();
     (v[2] > 0.0).then_some((v[0], v[1], v[2], v[3]))
 }
-
-fn set_on((x, y, w, h): (f64, f64, f64, f64)) {
-    for (a, v) in ON.iter().zip([x, y, w, h]) {
+fn store(cell: &[AtomicU64; 4], (x, y, w, h): (f64, f64, f64, f64)) {
+    for (a, v) in cell.iter().zip([x, y, w, h]) {
         a.store(v.to_bits(), Ordering::SeqCst);
     }
+}
+fn on() -> Option<(f64, f64, f64, f64)> {
+    load(&ON)
+}
+fn set_on(d: (f64, f64, f64, f64)) {
+    store(&ON, d);
 }
 
 /// The window, made: no frame, see-through round its shapes, over other windows on every Space. Its page sizes
@@ -196,6 +231,7 @@ fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64) -> (f
 pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Result<(), String> {
     let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
     if !show {
+        store(&FRAME, (0.0, 0.0, 0.0, 0.0));
         return win.hide().map_err(|e| e.to_string());
     }
     let mode = if OPEN.load(Ordering::SeqCst) == Mode::Notch as u8 { Mode::Notch } else { Mode::Rail };
@@ -216,8 +252,10 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
     // Tauri's show() makes it the key window, and when that ran each time Cue's window came forward, the two
     // took focus from each other and you couldn't type in Cue.
     if MAIN_FRONT.load(Ordering::SeqCst) {
+        store(&FRAME, (0.0, 0.0, 0.0, 0.0));
         return Ok(());
     }
+    store(&FRAME, (x, y, w, h));
     #[cfg(target_os = "macos")]
     macos::show_quietly(&win);
     #[cfg(not(target_os = "macos"))]
@@ -248,6 +286,7 @@ pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>)
 pub(crate) fn main_focused(app: &AppHandle, focused: bool) {
     MAIN_FRONT.store(focused, Ordering::SeqCst);
     if focused {
+        store(&FRAME, (0.0, 0.0, 0.0, 0.0));
         if let Some(win) = app.get_webview_window(LABEL) {
             let _ = win.hide();
         }
@@ -326,6 +365,14 @@ mod tests {
         assert_eq!(display_at(&all, (3000.0, 100.0)), Some(external));
         assert_eq!(display_at(&all, (3000.0, -400.0)), Some(external), "above the built-in one");
         assert_eq!(display_at(&all, (-10.0, 10.0)), None);
+    }
+
+    #[test]
+    fn the_pointer_inside_the_window_is_given_from_its_corner() {
+        let rail = (4780.0, 564.0, 28.0, 161.0);
+        assert_eq!(inside(rail, (4790.0, 600.0)), Some((10.0, 36.0)));
+        assert_eq!(inside(rail, (4779.0, 600.0)), None);
+        assert_eq!(inside(rail, (4790.0, 725.0)), None, "just below it");
     }
 
     #[test]
