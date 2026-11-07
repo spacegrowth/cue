@@ -10,6 +10,7 @@ use super::apps::{iterm_predicate, iterm_session_do, kitty, terminal_app_script}
 use super::exec::{osa, run};
 use super::screen::{paste_shows, paste_tail};
 use super::tmux::{pane_now, session_screen, tmux_for, tmux_try_for, tmux_word};
+use crate::clock;
 use crate::model::Origin;
 
 /// Pause between typing and Enter, in seconds: 0.6s plus 0.05s per 100 characters, at most 4s.
@@ -22,18 +23,23 @@ pub(super) fn enter_gap(text: &str) -> f64 {
 /// Enter goes straight away. Most messages go in a few tens of milliseconds; a machine's pane is read over
 /// SSH, so there it's as long as the paste really takes. Never longer than `enter_gap`.
 fn wait_for_paste(o: &Origin, text: &str, before: &str) {
-    let end = std::time::Instant::now() + std::time::Duration::from_secs_f64(enter_gap(text));
+    let end = clock::now_ms() + gap_ms(text);
     let tail = paste_tail(text);
-    while std::time::Instant::now() < end {
+    while clock::now_ms() < end {
         if let Ok(now) = session_screen(o) {
             if paste_shows(before, &now, &tail) {
                 // Drawn means taken in; a moment more for the agent to be ready for a key.
-                std::thread::sleep(std::time::Duration::from_millis(40));
+                clock::sleep_ms(40);
                 return;
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(25));
+        clock::sleep_ms(25);
     }
+}
+
+/// `enter_gap` in milliseconds.
+fn gap_ms(text: &str) -> u64 {
+    (enter_gap(text) * 1000.0) as u64
 }
 
 /// Type `text` into the agent's terminal and submit it: tmux, iTerm, Terminal.app, WezTerm or kitty.
@@ -100,7 +106,7 @@ fn enter_after(o: &Origin, text: &str, typed: bool, gone: String, where_: String
     if !typed {
         return Err(gone);
     }
-    std::thread::sleep(std::time::Duration::from_secs_f64(enter_gap(text)));
+    clock::sleep_ms(gap_ms(text));
     press_enter(o)?;
     Ok(where_)
 }

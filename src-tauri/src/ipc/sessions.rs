@@ -571,7 +571,7 @@ pub(crate) async fn trust_folder(hub: State<'_, Arc<Hub>>, session_id: String) -
         if cursor != yes {
             let key = if yes > cursor { "Down" } else { "Up" };
             h.keys().press_keys(&origin, &vec![key.to_string(); cursor.abs_diff(yes)])?;
-            std::thread::sleep(std::time::Duration::from_millis(250));
+            crate::clock::sleep_ms(250);
             if !screen().as_deref().and_then(crate::terminal::dialog::trust_choices).is_some_and(|(c, y)| c == y) {
                 return Err("its cursor didn't reach “Yes”".into());
             }
@@ -691,7 +691,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
             if !alive() {
                 break;
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            crate::clock::sleep_ms(100);
         }
         if alive() {
             focus::tmux_kill_pane(&tab.tmux_pane);
@@ -704,7 +704,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
         if h.session_origin(session_id).is_none() {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        crate::clock::sleep_ms(100);
     }
     // It has ended: from here it always comes back somewhere. In Cue's window if it can be typed into,
     // else in a terminal tab, as Resume would.
@@ -727,7 +727,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     // Until Claude Code is up in it with the conversation loaded: its prompt (or a question of its own)
     // on the screen. Up to 60 s (a long conversation takes a while); then it's left to finish on its own.
     for _ in 0..300 {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        crate::clock::sleep_ms(200);
         if focus::tmux_screen(&tab.tmux_pane).map(|sc| sc.contains('❯')).unwrap_or(false) {
             break;
         }

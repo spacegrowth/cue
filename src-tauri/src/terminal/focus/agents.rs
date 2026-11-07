@@ -32,7 +32,7 @@ pub fn end_agent(pid: i32) -> Result<(), String> {
     }
     unsafe { libc::kill(pid, libc::SIGTERM) };
     for _ in 0..30 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        crate::clock::sleep_ms(100);
         if !alive() {
             return Ok(());
         }

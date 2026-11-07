@@ -84,7 +84,7 @@ pub fn effective() -> Value {
 fn from_config(c: &Value) -> Value {
     let b = |p: &str, d: bool| c.pointer(p).and_then(Value::as_bool).unwrap_or(d);
     let (ins, snooze) = (b("/insights/on", false), c.pointer("/insights/snooze").and_then(Value::as_u64).unwrap_or(0));
-    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let now_ms = crate::clock::now_ms();
     // (flag() falls back to true, so defaults that are off must be listed here.)
     json!({
         "history": { "keep": history_keep() },
