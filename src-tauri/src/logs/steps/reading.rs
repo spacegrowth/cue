@@ -55,7 +55,8 @@ pub(super) struct Reads {
     generation: u64,
     offset: u64,
     pub(super) log: LogRead,
-    auto_at: Option<u64>,
+    /// Claude Code: the model the plan saw, and where sessions on it lately compacted on their own.
+    auto_at: Option<(String, u64)>,
     helpers: Vec<(String, HelperRead)>,
 }
 
@@ -112,8 +113,8 @@ impl Feed {
         if reads.generation != self.generation || reads.offset != self.offset {
             return Applied::Stale;
         }
-        self.put(reads);
-        if self.unread() { Applied::Again } else { Applied::Done }
+        let model_moved = self.put(reads);
+        if model_moved || self.unread() { Applied::Again } else { Applied::Done }
     }
 
     /// Read what was added since last time, for a feed no one else reads (no lock to let go of).
@@ -132,8 +133,9 @@ impl Feed {
     }
 
     /// Put a read in (`apply` checked it's current): the log's new lines, then its background tasks'
-    /// files, then what follows from both.
-    fn put(&mut self, reads: Reads) {
+    /// files, then what follows from both. True when the lines put in name another model than the plan saw:
+    /// its auto-compaction point is asked for in another round.
+    fn put(&mut self, reads: Reads) -> bool {
         let generation = self.generation;
         let mut changed = self.put_log(reads.log);
         for (id, read) in reads.helpers {
@@ -144,10 +146,25 @@ impl Feed {
         // Taken up on a message, and its log isn't there: not one of its agents after all.
         self.helpers.retain(|h| !(h.unconfirmed && h.seen));
         self.close_scripts();
-        if changed {
-            self.changed(reads.auto_at);
+        let (auto_moved, model_moved) = self.take_auto_at(reads.auto_at);
+        if changed || auto_moved {
+            self.changed();
         }
         self.generation = generation + 1;
+        model_moved
+    }
+
+    /// Where sessions on its model lately compacted on their own, when the read asked for the model it's on now
+    /// (else the model just changed: false, true, and the next round asks for the new one). Whether the point
+    /// moved, and whether the model did.
+    fn take_auto_at(&mut self, auto_at: Option<(String, u64)>) -> (bool, bool) {
+        let Some((model, at)) = auto_at.filter(|_| self.kind == Kind::Claude) else { return (false, false) };
+        if model != self.meta.model {
+            return (false, true);
+        }
+        let moved = self.meta.auto_at != at;
+        self.meta.auto_at = at;
+        (moved, false)
     }
 }
 
@@ -170,7 +187,7 @@ impl Plan {
         #[cfg(test)]
         slow_disk::wait(&self.path);
         let log = read_log(&self.path, self.offset);
-        let auto_at = self.model.as_deref().map(auto_compact_at);
+        let auto_at = self.model.map(|m| { let at = auto_compact_at(&m); (m, at) });
         let helpers = self.helpers.into_iter().map(|(id, h)| (id, h.fetch())).collect();
         Reads { generation: self.generation, offset: self.offset, log, auto_at, helpers }
     }

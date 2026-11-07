@@ -273,8 +273,8 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 
 | Held | Taken |  | First seen |
 |---|---|---|---|
-| "AUTO_SEEN" | "DB" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
-| "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "AUTO_SEEN" | "DB" |  | `logs/steps/windows.rs::auto_compact_seen` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
+| "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_seen` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "DB" | "folder facts" |  | `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "INDEX" | "REMOTE" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/close.rs::relay_close` → `leads/commands.rs::relay_for` → `leads/remote.rs::relay_bin_on`, takes it |
 | "INDEX" | "REMOTE_PILEAD" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/commands.rs::pilead_for` → `leads/remote.rs::pilead_bin_on`, takes it |
@@ -835,7 +835,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/sessions.rs::closed_record` | db::ended_session | 1 |
 | `ipc/sessions.rs::delete` | db::ended_session | 1 |
 | `ipc/settings.rs::set_draft` | db::set_draft | 1 |
-| `logs/steps/windows.rs::auto_compact_at` | db::auto_compacts | 1 |
+| `logs/steps/windows.rs::auto_compact_seen` | db::auto_compacts | 1 |
 | `logs/turns.rs::read_log` | db::save_turns | 1 |
 | `logs/turns.rs::read_log` | db::turns_read | 1 |
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |

@@ -125,12 +125,10 @@ impl Feed {
         Feed { helper: true, ..Feed::blank(path, Kind::Claude, 1, 0) }
     }
 
-    /// What follows from a catch-up that changed what's shown: the prices, the model's auto-compaction
-    /// point (`auto_at`, asked with no lock held), the turns kept, and a new version.
-    pub(super) fn changed(&mut self, auto_at: Option<u64>) {
+    /// What follows from a catch-up that changed what's shown: the prices, the turns kept, and a new version.
+    pub(super) fn changed(&mut self) {
         self.meta.cold_x = crate::logs::prices::cold_x(&self.meta.model, self.meta.cache_ttl_s);
         self.meta.cold_cents = crate::logs::prices::cold_cents(&self.meta.model, self.meta.cache_ttl_s, self.meta.context);
-        self.meta.auto_at = if self.kind == Kind::Claude { auto_at.unwrap_or(0) } else { 0 };
         if self.turns.len() > MAX_TURNS {
             self.turns.drain(..self.turns.len() - MAX_TURNS);
         }

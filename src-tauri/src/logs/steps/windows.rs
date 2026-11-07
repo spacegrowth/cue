@@ -93,10 +93,19 @@ const AUTO_MIN: usize = 2;
 /// moves (one model's sessions went from about 967k to anywhere between 206k and 474k between versions),
 /// so the least seen lately is the honest warning. Asked again every 10 minutes, as the history is read.
 pub(super) fn auto_compact_at(model: &str) -> u64 {
-    static SEEN: Mutex<Option<HashMap<String, (Instant, u64)>>> = Mutex::new(None);
-    if model.is_empty() || cfg!(test) {
+    if model.is_empty() {
         return 0;
     }
+    // Tests never read the turns history: the point is what the test set (test_auto), else none.
+    if let Some(at) = test_auto::get(model) {
+        return at;
+    }
+    auto_compact_seen(model)
+}
+
+/// auto_compact_at from the turns history, kept for 10 minutes a model.
+fn auto_compact_seen(model: &str) -> u64 {
+    static SEEN: Mutex<Option<HashMap<String, (Instant, u64)>>> = Mutex::new(None);
     let mut guard = crate::locking::lock(&SEEN, "AUTO_SEEN");
     let seen = guard.get_or_insert_with(HashMap::new);
     if let Some(&(_, v)) = seen.get(model).filter(|(at, _)| at.elapsed() < Duration::from_secs(600)) {
@@ -106,4 +115,30 @@ pub(super) fn auto_compact_at(model: &str) -> u64 {
     let v = if all.len() >= AUTO_MIN { all.into_iter().min().unwrap_or(0) } else { 0 };
     seen.insert(model.to_string(), (Instant::now(), v));
     v
+}
+
+/// Tests: where Claude Code lately compacted sessions on a model on its own, as a test sets it (the turns
+/// history isn't read in tests).
+#[cfg(test)]
+pub(crate) mod test_auto {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    static AT: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
+
+    pub(crate) fn set(model: &str, at: u64) {
+        AT.lock().unwrap().get_or_insert_with(HashMap::new).insert(model.to_string(), at);
+    }
+
+    pub(super) fn get(model: &str) -> Option<u64> {
+        Some(AT.lock().unwrap().as_ref().and_then(|m| m.get(model).copied()).unwrap_or(0))
+    }
+}
+
+/// Outside tests: nothing set, the turns history says.
+#[cfg(not(test))]
+mod test_auto {
+    pub(super) fn get(_model: &str) -> Option<u64> {
+        None
+    }
 }

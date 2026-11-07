@@ -193,3 +193,28 @@ fn a_log_that_doesnt_answer_holds_up_only_its_own_session() {
     assert_eq!(other.expect("another session's query answered while one log stalled"), Some("claude-opus-5-5".to_string()));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A reply on a model, as Claude Code logs it.
+fn reply_on(model: &str, text: &str) -> String {
+    format!("{}\n", json!({"type": "assistant", "timestamp": "2026-10-04T10:00:02.000Z", "message": {"model": model, "content": [{"type": "text", "text": text}], "usage": {"input_tokens": 2, "cache_read_input_tokens": 1000}}}))
+}
+
+/// Where sessions on its model lately compacted on their own is the point for the model its log names: a fresh
+/// feed (no model yet when its read was planned) has it, and so does one whose session switched models (/model).
+#[test]
+fn the_auto_compaction_point_is_the_one_for_the_model_just_read() {
+    crate::logs::steps::windows::test_auto::set("claude-auto-a", 150_000);
+    crate::logs::steps::windows::test_auto::set("claude-auto-b", 400_000);
+    let dir = std::env::temp_dir().join(format!("cue-steps-auto-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s.jsonl");
+    std::fs::write(&path, format!("{}\n{}", json!({"type": "user", "timestamp": "2026-10-04T10:00:00.000Z", "message": {"content": "hi"}}), reply_on("claude-auto-a", "Hello."))).unwrap();
+    let p = path.to_str().unwrap();
+    let mut f = Feed::open(p, 1);
+    f.catch_up();
+    assert_eq!((f.meta.model.as_str(), f.meta.auto_at), ("claude-auto-a", 150_000), "a fresh feed: the model it just read");
+    std::io::Write::write_all(&mut std::fs::OpenOptions::new().append(true).open(&path).unwrap(), reply_on("claude-auto-b", "Switched.").as_bytes()).unwrap();
+    f.catch_up();
+    assert_eq!((f.meta.model.as_str(), f.meta.auto_at), ("claude-auto-b", 400_000), "after /model: the new model's");
+    std::fs::remove_dir_all(&dir).ok();
+}
