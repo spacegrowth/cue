@@ -716,6 +716,123 @@ function dragColGrip(e) {
 }
 let lastGripPress = {};
 document.addEventListener("pointerdown", dragColGrip);
+/** A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one for a
+ *  team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever their own
+ *  project is, busy ones too, not on cards of their own. An executor's card goes into its lead's tree (when Cue has
+ *  the lead); a lead with nothing of its own waiting still gets a card (`heads`), where its executor's would have
+ *  been. Only while the lead still lists it: an executor that left its team (closed, or handed to another lead) can
+ *  still name the old lead, whose card would then hold an empty tree and its own card none. */
+function boardTeams(needs, working) {
+  const listed = (sid, lead) => (crewOf(lead)?.executors || []).some((e) => e.session_id === sid);
+  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) && listed(i.session_id, m.lead) ? m.lead : null; };
+  const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
+  const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
+    .map((l) => ({ _team: l, created_ms: Math.max(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
+  const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
+  const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
+  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && listed(sid, m.lead); };
+  return { leadOf, heads, sessTree, inTree };
+}
+
+/** Waiting's rows. Conversations first (when there are any, under their own heading): the cards that came back,
+ *  then the sessions still working on your message (5 minutes on, under Sessions only). Then newest first. A card
+ *  you just answered fades out in the group it was in, unless its session is back at work there. `count` is
+ *  everything under WAITING, as drawn: In conversation, Newest first, and Need to decide (a parked one asking you
+ *  is in Waiting already: once). */
+function waitingRows(b) {
+  const { needs, later, working, teams, isOpen } = b;
+  const live = new Set(needs.map((i) => i.id));
+  // A ghost fades in once: every later render (they come often while sessions work) draws it still.
+  const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
+  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !teams.inTree(s.session_id) && !teams.sessTree.has(s.session_id) && workingOnYours(s));
+  const talkSids = new Set(talkWork.map((x) => x.session_id));
+  const rows = [...needs.filter((i) => !teams.leadOf(i)), ...teams.heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
+  const inTalk = (i) => !i._team && talking(i);
+  const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
+  const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
+  const restRows = rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest)}</button>${newestShut() ? "" : draw(rest)}` : "";
+  const html = (talks.length || talkWork.length
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
+    : "") + restRows;
+  return { html, count: count(talks) + talkWork.length + count(rest) + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
+}
+
+/** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
+function sessionNote(s) {
+  const i = state.items.find((x) => x.session_id === s.session_id);
+  return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s);
+}
+/** A session's card under Sessions. A lead's card holds its tree (`tree`): only its top part opens the lead (a
+ *  row opens that executor, and the tree's buttons are their own). */
+function sessionCard(s, open, tree) {
+  const go = `data-session="${esc(s.session_id)}"`;
+  const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
+  return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
+      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s, { count: true, tree: !!tree })}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
+      ${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
+      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
+      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`;
+}
+/** Sessions' cards: working, then out of usage, then idle, each under its heading. */
+function workColumn(shown, isOpen, sessTree) {
+  const card = (s) => sessionCard(s, isOpen(s.session_id), sessTree.has(s.session_id) ? teamTree(s.session_id) : "");
+  const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
+  return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
+    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
+    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
+    || `<div class="quiet-line">No other sessions.</div>`;
+}
+
+/** A drawer under Sessions or Waiting: its heading folds it; `body()` is drawn only while it's open. */
+function drawerHtml(name, title, count, body) {
+  const open = drawerOpen(name);
+  return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`;
+}
+/** A folded section's label on the rail; it bubbles a moment when its count goes up. */
+function railLabel(name, count) {
+  const prev = railLast[name];
+  if (prev !== undefined && count > prev) railBubble[name] = Date.now() + 900;
+  railLast[name] = count;
+  return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name.toUpperCase()} · ${count}</span></button>`;
+}
+
+/** The Waiting column: its cards, a line for what's waiting in other projects while one is picked (never out of
+ *  mind: an agent blocked on you with nothing on screen was the bug), and Need to decide. */
+function waitingColumn(b, wait) {
+  const { needs, later } = b;
+  const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
+  return `<div class="col split col-waiting">
+      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${wait.count}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}</span><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${wait.html || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
+      ${later.length ? drawerHtml("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
+    </div>`;
+}
+/** Recently answered: one entry per session, its latest answer (the rest are in History). */
+function recentDrawer() {
+  const seen = new Set();
+  const recent = state.history.filter((i) => inProj(i.project) && !seen.has(i.session_id || i.id) && seen.add(i.session_id || i.id)).slice(0, RECENT);
+  const recentList = () => recent.length
+    ? `<div class="card recent">${recent.map(recentEntry).join("")}
+        ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
+    : `<div class="empty-col">Your answers show up here.</div>`;
+  return drawerHtml("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList);
+}
+/** Starred, in the order you starred them (so they don't shuffle as they work). A starred one you parked stays
+ *  here too, as parked. */
+function starredDrawer(isOpen) {
+  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, c) => (a.starred_ms || Infinity) - (c.starred_ms || Infinity));
+  const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
+  return drawerHtml("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`);
+}
+/** The Sessions column: its cards (`workCol`; `count`: they and the executors in its leads' trees), then the drawers. */
+function sessionsColumn(b, workCol, count) {
+  return `<div class="col split col-sessions ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
+      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${count}</span><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
+      ${starredDrawer(b.isOpen)}
+      ${recentDrawer()}
+      ${shelfDrawer(b.isOpen)}
+    </div>`;
+}
+
 function boardView() {
   if (!quietOpen) current();   // settles what Active shows before the lists mark it
   const { working, later } = groups();
@@ -724,96 +841,18 @@ function boardView() {
   // something never moves a row, so the lists don't shift under your pointer.
   const openSid = quietOpen || active?.sid || null;
   const isOpen = (sid) => !!openSid && sid === openSid;
-  const live = new Set(needs.map((i) => i.id));
-  // A ghost fades in once: every later render (they come often while sessions work) draws it still.
-  const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
-  // A team is one card: an executor's card goes into its lead's tree (when Cue has the lead). A lead with
-  // nothing of its own waiting still gets a card, where its executor's would have been.
-  // Only while the lead still lists it: an executor that left its team (closed, or handed to another lead)
-  // can still name the old lead, whose card would then hold an empty tree and its own card none.
-  const listed = (sid, lead) => (crewOf(lead)?.executors || []).some((e) => e.session_id === sid);
-  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) && listed(i.session_id, m.lead) ? m.lead : null; };
-  const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
-  const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
-    .map((l) => ({ _team: l, created_ms: Math.max(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
-
-  // A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one
-  // for a team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever
-  // their own project is, busy ones too, not on cards of their own.
-  const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
-  const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
-  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && listed(sid, m.lead); };
-  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !inTree(s.session_id) && !sessTree.has(s.session_id) && workingOnYours(s));
-  // Conversations first (when there are any, under their own heading): the cards that came back, then the
-  // sessions still working on your message. Then newest first. A card you just answered fades out in the
-  // group it was in, unless its session is back at work there.
-  const talkSids = new Set(talkWork.map((x) => x.session_id));
-  // A session working on your message shows under In conversation and under Sessions; 5 minutes on, Sessions only.
-  const shown = working.filter((s) => !inTree(s.session_id));
-  const rows = [...needs.filter((i) => !leadOf(i)), ...heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
-  const inTalk = (i) => !i._team && talking(i);
-  const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
-  // With a project picked, what's waiting in the others is off the Board, never out of mind: a line says
-  // how many, and shows all of them. (An agent blocked on you with nothing on screen was the bug.)
-  const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
-  const talks = rows.filter(inTalk).sort((a, b) => a.created_ms - b.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
-  const restRows = rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest)}</button>${newestShut() ? "" : draw(rest)}` : "";
-  const needRows = (talks.length || talkWork.length
-    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} working` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
-    : "") + restRows;
-  // WAITING counts everything under it, as drawn: In conversation (its cards and the ones working on your
-  // message), Newest first, and Need to decide (a parked one asking you is in Waiting already: once).
-  const waitCount = count(talks) + talkWork.length + count(rest) + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length;
-  // Sessions counts what it shows: its cards, and the executors in its leads' trees.
-  const treed = working.filter((s) => inTree(s.session_id) && sessTree.has(crewOf(s.session_id).lead)).length;
-  const stateNote = (s) => { const i = state.items.find((x) => x.session_id === s.session_id); return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s); };
-  // A lead's card in Sessions holds its tree: only its top part opens the lead (a row opens that executor,
-  // and the tree's buttons are their own).
-  const card = (s, open = false) => { const tree = sessTree.has(s.session_id) ? teamTree(s.session_id) : "", go = `data-session="${esc(s.session_id)}"`;
-    const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
-    return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
-      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s, { count: true, tree: !!tree })}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
-      ${stateNote(s) ? `<div class="agent-note">${esc(stateNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
-      ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`; };
-  const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
-  const workCol = (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map((s) => card(s, isOpen(s.session_id))).join("")}` : "")
-    || `<div class="quiet-line">No other sessions.</div>`;
-
-  // One entry per session, its latest answer (the rest are in History).
-  const seen = new Set();
-  const recent = state.history.filter((i) => inProj(i.project) && !seen.has(i.session_id || i.id) && seen.add(i.session_id || i.id)).slice(0, RECENT);
-  const recentList = () => recent.length
-    ? `<div class="card recent">${recent.map(recentEntry).join("")}
-        ${state.history.length > recent.length ? `<button class="link" style="padding:4px 12px 10px" data-act="open-history">All history →</button>` : ""}</div>`
-    : `<div class="empty-col">Your answers show up here.</div>`;
-  // Starred, in the order you starred them (so they don't shuffle as they work).
-  // A starred one you parked stays here too, as parked.
-  const stars = [...state.sessions, ...(state.parked || [])].filter((s) => isStarred(s.session_id) && inProj(s.project)).sort((a, b) => (a.starred_ms || Infinity) - (b.starred_ms || Infinity));
-  const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
-  const drawer = (name, title, count, body) => { const open = drawerOpen(name); return `<div class="sec sec-drawer sec-${name} ${open ? "" : "shut"}"><button class="col-head fold-head" data-fold="${name}" aria-expanded="${open}"><span class="fold-arrow">${open ? "▾" : "▸"}</span>${title} <span>${count}</span></button>${open ? `<div class="sec-body">${body()}</div>` : ""}</div>`; };
+  const teams = boardTeams(needs, working);
+  const b = { needs, later, working, teams, isOpen };
+  const wait = waitingRows(b);
+  const shown = working.filter((s) => !teams.inTree(s.session_id));
+  const sessCount = shown.length + working.filter((s) => teams.inTree(s.session_id) && teams.sessTree.has(crewOf(s.session_id).lead)).length;
+  // Drawn in this order: Waiting's cards, Sessions' cards, Need to decide, then Sessions' drawers.
+  const workCol = workColumn(shown, isOpen, teams.sessTree);
+  const waitingCol = waitingColumn(b, wait), sessionsCol = sessionsColumn(b, workCol, sessCount);
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   const coll = (name) => (focus ? !focusShown.has(name) : collapsed.has(name));
   const wColl = coll("waiting"), sColl = coll("sessions");
-  const railLabel = (name, count) => {
-    const prev = railLast[name];
-    if (prev !== undefined && count > prev) railBubble[name] = Date.now() + 900;
-    railLast[name] = count;
-    return `<button class="pin ${railBubble[name] > Date.now() ? "bubble" : ""}" data-open-section="${name}" aria-label="Open ${name}"><span class="vt">${name.toUpperCase()} · ${count}</span></button>`;
-  };
-  const waitingCol = `<div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${waitCount}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}</span><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${needRows || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
-      ${later.length ? drawer("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
-    </div>`;
-  const sessionsCol = `<div class="col split col-sessions ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
-      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${shown.length + treed}</span><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
-      ${drawer("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`)}
-      ${drawer("recent", "RECENTLY ANSWERED", recent.length ? `${recent.length} session${recent.length === 1 ? "" : "s"}` : "", recentList)}
-      ${shelfDrawer(isOpen)}
-    </div>`;
-  const railCol = (wColl || sColl) ? `<div class="col rail-col"><div class="rail">${wColl ? railLabel("waiting", waitCount) : ""}${sColl ? railLabel("sessions", shown.length + treed) : ""}</div></div>` : "";
+  const railCol = (wColl || sColl) ? `<div class="col rail-col"><div class="rail">${wColl ? railLabel("waiting", wait.count) : ""}${sColl ? railLabel("sessions", sessCount) : ""}</div></div>` : "";
   // main's columns (1.9 : 1 : 0.85 of the board after its two 14px gaps, or as you dragged them); a section
   // that stays open keeps its width when the other folds, and Active takes the room.
   const lay = colLayout(wColl, sColl);
