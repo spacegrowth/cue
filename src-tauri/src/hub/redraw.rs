@@ -131,9 +131,11 @@ impl Hub {
     /// The live sessions and waiting cards saved as the store has them now (a relaunch shows them), the sessions
     /// that ended since the last save as their records were when they ended (Closed after a relaunch), and parked
     /// sessions that are live again (you resumed one yourself, in a terminal) no longer parked. Each draw does
-    /// it, and quitting does it once more, so nothing changed since the last draw is lost.
+    /// it, and quitting does it once more, so nothing changed since the last draw is lost. All of it to the
+    /// database writer: only what changed since its last save is written, and not on this thread.
     pub fn save_live(&self) {
-        let (back, job) = self.write(|st| {
+        // Parked records are taken off here: handed in, in turn with the other parked saves.
+        self.hand_in_parked_turn(|| self.write(|st| {
             let back: Vec<String> = st.parked.iter().map(|p| p.session.origin.session_id.clone()).filter(|sid| st.sessions.origin(sid).is_some()).collect();
             st.parked.retain(|p| !back.contains(&p.session.origin.session_id));
             let waiting: Vec<Item> = st.items.iter().filter(|i| i.kind == "waiting").cloned().collect();
@@ -142,13 +144,9 @@ impl Hub {
             let ended = std::mem::take(&mut st.unsaved_ends).into_iter().filter(|(_, s)| st.sessions.origin(&s.origin.session_id).is_none()).collect();
             // The answered cards handed to this draw go in the same write as the live sessions.
             let answered = Self::take_unsaved(st);
-            (back, live_writes::Job { live: Some((st.sessions.all(), waiting)), answered, ended, deletes: vec![] })
-        });
-        for sid in &back {
-            self.save_parked(sid);
-        }
-        // To the database writer: only what changed since its last save is written, and not on this thread.
-        self.hand_writes(job);
+            let parked = back.into_iter().map(|sid| (sid, None)).collect();
+            live_writes::Job { live: Some((st.sessions.all(), waiting)), answered, ended, parked, deletes: vec![] }
+        }));
     }
 
     /// `save_live`, and back once all of it is in the database: quitting.

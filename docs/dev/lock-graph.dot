@@ -15,6 +15,8 @@ digraph locks {
   "db writer's marks" -> "folder facts";
   "open_terms" -> "pty master";
   "parked saves" -> "DB";
+  "parked saves" -> "db writer's marks";
+  "parked saves" -> "db writes";
   "parked saves" -> "folder facts";
   "parked saves" -> "the hub's store";
   "review queue saves" -> "DB";

@@ -90,6 +90,16 @@ reason = "saves.rs: a save made after the store is let go writes what the store 
 
 [[lock_order]]
 from = "parked saves"
+to = "db writer's marks"
+reason = "saves.rs hand_in_parked_turn: a parked save is handed to the database writer under its save lock, so saves of one record are handed in the order the store changed; without a writer thread (tests, or one that couldn't start) the writing is done there, under it. The writer never takes a save lock"
+
+[[lock_order]]
+from = "parked saves"
+to = "db writes"
+reason = "saves.rs hand_in_parked_turn: a parked save is queued for the database writer under its save lock (so saves of one record are queued in the order the store changed); the queue is a leaf"
+
+[[lock_order]]
+from = "parked saves"
 to = "folder facts"
 reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under the save that opened it; folder facts is a leaf"
 

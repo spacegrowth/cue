@@ -17,7 +17,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | `#[tauri::command]` | 136 (3 sync) |
 | Lock declarations (static or field) | 90 |
 | Lock acquisitions | 195 |
-| Lock-graph edges | 40 |
+| Lock-graph edges | 42 |
 | Spawn sites | 73 |
 | External calls: fs / db / process / notify / login / socket | 340 / 146 / 48 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
@@ -284,9 +284,11 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "db writer's marks" | "DB" |  | `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "db writer's marks" | "folder facts" |  | `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "open_terms" | "pty master" |  | `terminal/term.rs::foreground`, takes it |
-| "parked saves" | "DB" |  | `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
-| "parked saves" | "folder facts" |  | `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "parked saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_parked` → `hub/store_access.rs::Hub::read`, takes it |
+| "parked saves" | "DB" |  | `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
+| "parked saves" | "db writer's marks" |  | `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write`, takes it |
+| "parked saves" | "db writes" |  | `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand`, takes it |
+| "parked saves" | "folder facts" |  | `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "parked saves" | "the hub's store" |  | `hub/redraw.rs::Hub::save_live` in a closure hub::saves::Hub::hand_in_parked_turn runs holding the lock → `hub/store_access.rs::Hub::write`, takes it |
 | "review queue saves" | "DB" |  | `hub/saves.rs::Hub::save_queued_review` → `db/drafts.rs::queue_review` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "review queue saves" | "folder facts" |  | `hub/saves.rs::Hub::save_queued_review` → `db/drafts.rs::queue_review` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "review queue saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_queued_review` → `hub/store_access.rs::Hub::read`, takes it |
@@ -294,17 +296,17 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "the hub's store" | "config in memory" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load` → `config/cache.rs::current`, takes it |
 | "the hub's store" | "folder facts" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::new_item` → `model.rs::project_of_origin` → `model.rs::own_project` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
 | "typing gate" | "CLAUDE" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `terminal/keys.rs::Terminals::type_into` → `terminal/focus/typing.rs::type_into` → `terminal/focus/typing.rs::type_into_tmux` → `terminal/focus/typing.rs::press_enter` → `terminal/focus/apps.rs::iterm_session_do` → `terminal/focus/apps.rs::current_tty` → `logs/live.rs::claude`, takes it |
-| "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
+| "typing gate" | "DB" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "typing gate" | "INDEX" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads/index.rs::view`, takes it |
 | "typing gate" | "LEDGER" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads/index.rs::handoffs` → `leads/ledger.rs::ledger_handoffs` → `leads/ledger.rs::read_ledger`, takes it |
 | "typing gate" | "VERIFY" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::apart_view` → `leads/index.rs::view` → `leads/verify.rs::verdict_of`, takes it |
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/send.rs::Hub::images_there` → `uploads.rs::on_machine` → `machines/mod.rs::run_with_bytes` → `machines/mod.rs::ssh_command` → `machines/mod.rs::env_file`, takes it |
 | "typing gate" | "config file" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::settle_projects` → `config.rs::update` → `config/save.rs::update_with` → `config/save.rs::save` → `config/cache.rs::hold_file`, takes it |
 | "typing gate" | "config in memory" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `config.rs::folders_put` → `config.rs::load` → `config/cache.rs::current`, takes it |
-| "typing gate" | "db writer's marks" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write`, takes it |
-| "typing gate" | "db writes" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand`, takes it |
-| "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked`, takes it |
+| "typing gate" | "db writer's marks" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write`, takes it |
+| "typing gate" | "db writes" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand`, takes it |
+| "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn`, takes it |
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/send.rs::Hub::settle_typed` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "redraw wanted" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Redraws::mark`, takes it |
 | "typing gate" | "shown snapshot" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/mod.rs::Hub::unshown` → `hub/shown.rs::Shown::forget`, takes it |
@@ -787,7 +789,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/cache_tick.rs::cold_soon` | db::handoff | 1 |
 | `hub/hand_off.rs::Hub::hand_off_ahead` | db::draft_text | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::delete_session | 1 |
+| `hub/live_writes.rs::LiveWrites::write` | db::park | 1 |
 | `hub/live_writes.rs::LiveWrites::write` | db::save_ended | 1 |
+| `hub/live_writes.rs::LiveWrites::write` | db::unpark | 1 |
 | `hub/live_writes.rs::save_live` | db::save_live | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::answers_since | 1 |
 | `hub/mod.rs::Hub::with_ports` | db::history | 1 |
@@ -798,8 +802,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/mod.rs::apart_view` | db::ahead_watched | 1 |
 | `hub/mod.rs::apart_view` | db::handoffs | 1 |
 | `hub/reviews.rs::Hub::set_aside` | db::add_set_aside | 1 |
-| `hub/saves.rs::Hub::save_parked` | db::park | 1 |
-| `hub/saves.rs::Hub::save_parked` | db::unpark | 1 |
 | `hub/saves.rs::Hub::save_queued_review` | db::queue_review | 1 |
 | `hub/saves.rs::Hub::save_queued_review` | db::unqueue_review | 1 |
 | `hub/sessions.rs::Hub::chat_log` | db::session_log_page | 1 |

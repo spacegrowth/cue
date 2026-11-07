@@ -105,13 +105,20 @@ impl Hub {
         self.hand_writes(super::live_writes::Job { deletes: vec![(session_id.to_string(), at)], ..Default::default() });
     }
 
-    /// `session_id`'s parked record saved as the store has it now: parked (as it is, star and all), or not.
+    /// `session_id`'s parked record saved as the store has it now: parked (as it is, star and all), or not, by
+    /// the database writer.
     pub(super) fn save_parked(&self, session_id: &str) {
+        self.hand_in_parked_turn(|| {
+            let p = self.read(|st| st.parked.iter().find(|p| p.session.origin.session_id == session_id).cloned());
+            super::live_writes::Job { parked: vec![(session_id.to_string(), p)], ..Default::default() }
+        });
+    }
+
+    /// The job `make` builds (reading the store's parked records), handed to the writer before any other parked
+    /// save can read the store: so saves of the same record are handed in, and land, in the order it changed.
+    pub(super) fn hand_in_parked_turn(&self, make: impl FnOnce() -> super::live_writes::Job) {
         let _saving = crate::locking::lock(&self.saves.parked, "parked saves");
-        match self.read(|st| st.parked.iter().find(|p| p.session.origin.session_id == session_id).cloned()) {
-            Some(p) => crate::db::park(&p),
-            None => crate::db::unpark(session_id),
-        }
+        self.hand_writes(make());
     }
 }
 

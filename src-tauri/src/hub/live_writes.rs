@@ -1,4 +1,4 @@
-//! The live sessions, answered cards, ended sessions and deletions, written to cue.db by one writer, in the
+//! The live sessions, answered cards, ended and parked sessions and deletions, written to cue.db by one writer, in the
 //! order they're handed in. A draw (redraw.rs) hands in what it took from the store and goes on: it never
 //! waits on the database, and neither does an answer, whose card rides along with the next draw's save. With
 //! the app running the writer is a thread of its own, and work handed in while it writes waits its turn, in
@@ -13,7 +13,7 @@
 
 use super::saves::LiveMarks;
 use crate::model::Item;
-use crate::sessions::Session;
+use crate::sessions::{Parked, Session};
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
@@ -26,6 +26,8 @@ pub(super) struct Job {
     pub answered: Vec<Item>,
     /// Sessions that ended, each as it was when it did, and when.
     pub ended: Vec<(u64, Session)>,
+    /// Parked records as the store had them: kept (Some) or taken off Parked (None).
+    pub parked: Vec<(String, Option<Parked>)>,
     /// Sessions deleted, and when: everything saved of them goes, after anything of theirs handed in before,
     /// and a card of theirs answered before then that's handed in after is never saved.
     pub deletes: Vec<(String, u64)>,
@@ -33,7 +35,7 @@ pub(super) struct Job {
 
 impl Job {
     fn is_empty(&self) -> bool {
-        self.live.is_none() && self.answered.is_empty() && self.ended.is_empty() && self.deletes.is_empty()
+        self.live.is_none() && self.answered.is_empty() && self.ended.is_empty() && self.parked.is_empty() && self.deletes.is_empty()
     }
 }
 
@@ -139,10 +141,10 @@ impl LiveWrites {
     }
 
     /// One job to the database, in its order: the live sessions (what changed of them) and the answered cards
-    /// in one write, then the ended ones (not live again, nor deleted, since), then the deletions.
+    /// in one write, then the ended ones (not live again, nor deleted, since), the parked ones, then the deletions.
     fn write(&self, job: Job) {
         let mut w = crate::locking::lock(&self.written, "db writer's marks");
-        let Job { live, mut answered, ended, deletes } = job;
+        let Job { live, mut answered, ended, parked, deletes } = job;
         answered.retain(|it| w.deleted.get(&it.origin.session_id).is_none_or(|at| it.resolved_ms.unwrap_or(0) > *at));
         let live_ids: Vec<String> = live.iter().flat_map(|(s, _)| s.iter().map(|s| s.origin.session_id.clone())).collect();
         match &live {
@@ -155,6 +157,12 @@ impl LiveWrites {
             .filter(|(at, s)| !live_ids.contains(&s.origin.session_id) && w.deleted.get(&s.origin.session_id).is_none_or(|del| at > del))
             .collect();
         crate::db::save_ended(&ended);
+        for (sid, p) in parked {
+            match p {
+                Some(p) => crate::db::park(&p),
+                None => crate::db::unpark(&sid),
+            }
+        }
         for (sid, at) in deletes {
             crate::db::delete_session(&sid);
             // Its row is gone: live again (resumed), it's written whole, not judged unchanged.
@@ -289,6 +297,36 @@ mod tests {
         });
         assert!(done.recv_timeout(std::time::Duration::from_secs(5)).is_ok(), "flush waited on a writer that never started");
         assert!(crate::db::history(50).iter().any(|i| i.id == "a"));
+    }
+
+    /// Parked records are saved by the writer, not where they're handed in (a draw that takes a session off
+    /// Parked never waits on the database), in the order handed in.
+    #[test]
+    fn parked_records_are_saved_by_the_writer_in_the_order_handed_in() {
+        let _db = Db::new("parked");
+        let w = Arc::new(LiveWrites::default());
+        let parked = |sid: &str| Some(Parked { parked_ms: 5, session: session(sid) });
+        let (held_tx, held) = std::sync::mpsc::channel();
+        let (release_tx, release) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || crate::db::hold(held_tx, release));
+        held.recv().unwrap();
+        let handing = {
+            let w = w.clone();
+            std::thread::spawn(move || {
+                w.hand(Job { parked: vec![("p".into(), parked("p")), ("q".into(), parked("q"))], ..Default::default() }, true);
+                w.hand(Job { parked: vec![("q".into(), None)], ..Default::default() }, true);
+            })
+        };
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !handing.is_finished() && std::time::Instant::now() < until {
+            std::thread::yield_now();
+        }
+        let waited = !handing.is_finished();
+        release_tx.send(()).unwrap();
+        holder.join().unwrap();
+        assert!(!waited, "handing parked records in waited on the database");
+        w.flush();
+        assert_eq!(crate::db::parked().iter().map(|p| p.session.origin.session_id.as_str()).collect::<Vec<_>>(), ["p"]);
     }
 
     /// Work waiting for the writer: in the order handed in, the newest live sessions replacing older ones.
