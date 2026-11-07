@@ -3,15 +3,33 @@
 
 use super::files::{color, first_line, predecessor, read_json, s, subdirs};
 use super::git::{committed_since, has_staged, packet_files, written_at};
-use super::ledger::read_ledger;
+use super::ledger::{read_ledger, Ledger};
 use super::wake::{epoch_secs, now_secs, ready_late, report_woken};
-use super::{exec_key, put, safe_id, Member, GONE};
+use super::{exec_key, put, safe_id, Member, RelayLeads, GONE};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 pub(super) fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMap<String, Member>) {
-    let mut leads: HashMap<String, (String, Option<[u8; 3]>)> = HashMap::new();
+    let leads = read_leads(root, index);
+    let ledger = read_ledger(&root.join("sessions.jsonl"));
+    for d in subdirs(root) {
+        let Some(e) = read_json(&d.join("session.json")) else { continue };
+        if !s(&e, "agent").starts_with("relay-executor") {
+            continue;
+        }
+        if !safe_id(&s(&e, "session_id")) {
+            eprintln!("cue: relay session {} has an id that isn't a folder name ({:?}): skipped", d.display(), s(&e, "session_id"));
+            continue;
+        }
+        let m = read_executor(&d, &e, &leads, live, &ledger);
+        put(index, exec_key(&e), m);
+    }
+}
+
+/// Each armed lead's marker (and plan) into the index; what its executors show of it, by its session id.
+fn read_leads(root: &Path, index: &mut HashMap<String, Member>) -> RelayLeads {
+    let mut leads: RelayLeads = HashMap::new();
     for d in subdirs(&root.join("lead")) {
         let Some(m) = read_json(&d.join("marker.json")) else { continue };
         let sid = s(&m, "session_id");
@@ -33,66 +51,60 @@ pub(super) fn scan_relay(root: &Path, live: &HashSet<String>, index: &mut HashMa
         };
         put(index, sid, lead);
     }
-    let ledger = read_ledger(&root.join("sessions.jsonl"));
-    for d in subdirs(root) {
-        let Some(e) = read_json(&d.join("session.json")) else { continue };
-        if !s(&e, "agent").starts_with("relay-executor") {
-            continue;
-        }
-        if !safe_id(&s(&e, "session_id")) {
-            eprintln!("cue: relay session {} has an id that isn't a folder name ({:?}): skipped", d.display(), s(&e, "session_id"));
-            continue;
-        }
-        let owner = s(&e, "owner_lead");
-        let lead = leads.get(&owner);
-        let packet = e.get("current_packet").and_then(Value::as_u64);
-        // Goal and outcome only for executors still at work (closed ones pile up by the hundred), and for
-        // one relay parked after a review that nobody has committed yet: its Review row is still up.
-        let status = s(&e, "status");
-        let id = s(&e, "session_id");
-        let parked = status == "closed" && s(&e, "auto_closed") == "reviewed" && live.contains(&owner);
-        let open = packet.filter(|_| !GONE.contains(&status.as_str()) || parked);
-        let (goal, outcome) = match open {
-            Some(n) => (first_line(&d.join(format!("packets/{n:03}-packet.md"))), first_line(&d.join(format!("packets/{n:03}-report.md")))),
-            None => (String::new(), String::new()),
-        };
-        let verify = open.and_then(|n| ledger.verdicts.get(&(id.clone(), n)).cloned());
-        let review_file = open.map(|n| d.join(format!("packets/{n:03}-review.md")));
-        let reviewed = open.is_some_and(|n| ledger.reviews.contains(&(id.clone(), n))) || review_file.as_ref().is_some_and(|f| f.is_file());
-        let review = if reviewed { review_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default() } else { String::new() };
-        let diff_size = open.and_then(|n| ledger.stats.get(&(id.clone(), n)).copied());
-        // Waiting on you ends once the packet's work is committed (or, parked, no longer staged).
-        let worktree = s(&e, "worktree");
-        let waits = parked || matches!(status.as_str(), "reported" | "idle");
-        let files = open.filter(|_| waits).map(|n| packet_files(&d, n)).unwrap_or_default();
-        let landed = open.is_some_and(|n| waits && committed_since(&worktree, written_at(&d.join(format!("packets/{n:03}-report.md"))), &files));
-        let parked_staged = parked && lead.is_some() && !landed && has_staged(&worktree, &files);
-        let m = Member {
-            role: "executor".into(),
-            plugin: "relay".into(),
-            name: Some(s(&e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| s(&e, "session_id")),
-            color: lead.and_then(|l| l.1),
-            model: s(&e, "model"),
-            status,
-            packet: e.get("current_packet").and_then(Value::as_u64),
-            lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(&e, "owner_project")),
-            lead_armed: Some(lead.is_some() && live.contains(&owner)),
-            lead: owner,
-            goal,
-            outcome,
-            verify,
-            woken: report_woken(&e),
-            reviewed,
-            review,
-            diff_size,
-            parked_staged,
-            landed,
-            ready_late: ready_late(&e, now_secs(), None),
-            id,
-            updated: s(&e, "updated"),
-            ..Default::default()
-        };
-        put(index, exec_key(&e), m);
+    leads
+}
+
+/// An executor's record (its folder `d`, its session.json `e`), with its packet's goal, report, review, verdict,
+/// and whether its work still waits on you.
+fn read_executor(d: &Path, e: &Value, leads: &RelayLeads, live: &HashSet<String>, ledger: &Ledger) -> Member {
+    let owner = s(e, "owner_lead");
+    let lead = leads.get(&owner);
+    let packet = e.get("current_packet").and_then(Value::as_u64);
+    // Goal and outcome only for executors still at work (closed ones pile up by the hundred), and for
+    // one relay parked after a review that nobody has committed yet: its Review row is still up.
+    let status = s(e, "status");
+    let id = s(e, "session_id");
+    let parked = status == "closed" && s(e, "auto_closed") == "reviewed" && live.contains(&owner);
+    let open = packet.filter(|_| !GONE.contains(&status.as_str()) || parked);
+    let (goal, outcome) = match open {
+        Some(n) => (first_line(&d.join(format!("packets/{n:03}-packet.md"))), first_line(&d.join(format!("packets/{n:03}-report.md")))),
+        None => (String::new(), String::new()),
+    };
+    let verify = open.and_then(|n| ledger.verdicts.get(&(id.clone(), n)).cloned());
+    let review_file = open.map(|n| d.join(format!("packets/{n:03}-review.md")));
+    let reviewed = open.is_some_and(|n| ledger.reviews.contains(&(id.clone(), n))) || review_file.as_ref().is_some_and(|f| f.is_file());
+    let review = if reviewed { review_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default() } else { String::new() };
+    let diff_size = open.and_then(|n| ledger.stats.get(&(id.clone(), n)).copied());
+    // Waiting on you ends once the packet's work is committed (or, parked, no longer staged).
+    let worktree = s(e, "worktree");
+    let waits = parked || matches!(status.as_str(), "reported" | "idle");
+    let files = open.filter(|_| waits).map(|n| packet_files(d, n)).unwrap_or_default();
+    let landed = open.is_some_and(|n| waits && committed_since(&worktree, written_at(&d.join(format!("packets/{n:03}-report.md"))), &files));
+    let parked_staged = parked && lead.is_some() && !landed && has_staged(&worktree, &files);
+    Member {
+        role: "executor".into(),
+        plugin: "relay".into(),
+        name: Some(s(e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| s(e, "session_id")),
+        color: lead.and_then(|l| l.1),
+        model: s(e, "model"),
+        status,
+        packet: e.get("current_packet").and_then(Value::as_u64),
+        lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
+        lead_armed: Some(lead.is_some() && live.contains(&owner)),
+        lead: owner,
+        goal,
+        outcome,
+        verify,
+        woken: report_woken(e),
+        reviewed,
+        review,
+        diff_size,
+        parked_staged,
+        landed,
+        ready_late: ready_late(e, now_secs(), None),
+        id,
+        updated: s(e, "updated"),
+        ..Default::default()
     }
 }
 

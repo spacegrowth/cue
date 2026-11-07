@@ -153,6 +153,9 @@ fn is_zero(n: &u64) -> bool {
 /// lead until you Close it.)
 const GONE: &[&str] = &["closed", "superseded", "retired", "done"];
 
+/// relay's leads by session id: each one's project and tab color, as its executors show them.
+type RelayLeads = HashMap<String, (String, Option<[u8; 3]>)>;
+
 /// A relay session id Cue may build a path from (`<relay>/<id>/...`): one folder name, never a path.
 /// Relay only ever writes such ids; anything else came from a file Cue shouldn't trust.
 fn safe_id(id: &str) -> bool {

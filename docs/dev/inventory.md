@@ -494,8 +494,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `leads/ledger.rs::read_ledger` | metadata | 1 |
 | `leads/pilead.rs::scan_pilead` | read_dir | 1 |
 | `leads/pilead.rs::scan_pilead` | read_to_string | 1 |
-| `leads/relay.rs::scan_relay` | Path::is_file | 1 |
-| `leads/relay.rs::scan_relay` | read_to_string | 1 |
+| `leads/relay.rs::read_executor` | Path::is_file | 1 |
+| `leads/relay.rs::read_executor` | read_to_string | 1 |
 | `leads/verify.rs::verify_reported` | metadata | 1 |
 | `lib.rs::connect_main` | Path::exists | 1 |
 | `locking/report.rs::append_capped` | OpenOptions::new | 1 |
@@ -899,8 +899,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
 | `src-tauri/src/ipc/sessions.rs::move_session_to_cue` |  |  |
-| `src-tauri/src/leads/relay.rs::scan_relay` |  |  |
-| `src-tauri/src/leads/remote.rs::parse_remote` |  |  |
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
 | `src-tauri/src/lib.rs::run` |  |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |

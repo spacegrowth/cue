@@ -6,7 +6,7 @@ use super::index::{carry_status_over, merge};
 use super::pilead::parse_pilead;
 use super::verify::verdict_from_json;
 use super::wake::{epoch_secs, now_secs, ready_late, report_woken};
-use super::{exec_key, put, safe_id, Member, GONE};
+use super::{exec_key, put, safe_id, Member, RelayLeads, GONE};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -148,7 +148,26 @@ pub(super) fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String,
     let zone = tz_of(out);
     let v: Value = serde_json::from_str(json.trim()).unwrap_or(Value::Null);
     let mut index = HashMap::new();
-    let mut leads: HashMap<String, (String, Option<[u8; 3]>)> = HashMap::new();
+    let leads = listed_leads(&v, machine, zone, &mut index);
+    for e in v.get("executors").and_then(Value::as_array).into_iter().flatten() {
+        if !s(e, "agent").starts_with("relay-executor") {
+            continue;
+        }
+        if !safe_id(&s(e, "session_id")) {
+            eprintln!("cue: relay on {machine} lists a session whose id isn't a folder name ({:?}): skipped", s(e, "session_id"));
+            continue;
+        }
+        let m = listed_executor(e, &leads, &live, zone, machine);
+        put(&mut index, exec_key(e), m);
+    }
+    parse_pilead(pilead, machine, &mut index);
+    (bin, index)
+}
+
+/// The leads in relay's listing on a machine (`v`) into the index; what their executors show of each, by its
+/// session id. `zone`: the machine's UTC offset.
+fn listed_leads(v: &Value, machine: &str, zone: Option<i64>, index: &mut HashMap<String, Member>) -> RelayLeads {
+    let mut leads: RelayLeads = HashMap::new();
     for l in v.get("leads").and_then(Value::as_array).into_iter().flatten() {
         let sid = s(l, "session_id");
         leads.insert(sid.clone(), (s(l, "project"), color(l)));
@@ -165,47 +184,40 @@ pub(super) fn parse_remote(out: &str, machine: &str) -> (String, HashMap<String,
             machine: machine.into(),
             ..Default::default()
         };
-        put(&mut index, sid, lead);
+        put(index, sid, lead);
     }
-    for e in v.get("executors").and_then(Value::as_array).into_iter().flatten() {
-        if !s(e, "agent").starts_with("relay-executor") {
-            continue;
-        }
-        if !safe_id(&s(e, "session_id")) {
-            eprintln!("cue: relay on {machine} lists a session whose id isn't a folder name ({:?}): skipped", s(e, "session_id"));
-            continue;
-        }
-        let owner = s(e, "owner_lead");
-        let lead = leads.get(&owner);
-        // goal / outcome / verify are newer than the rest of relay's listing: a machine on an older
-        // relay doesn't send them, and that's no error, just nothing to show.
-        let open = !GONE.contains(&s(e, "status").as_str());
-        let m = Member {
-            role: "executor".into(),
-            plugin: "relay".into(),
-            name: Some(s(e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| s(e, "session_id")),
-            color: lead.and_then(|l| l.1),
-            model: s(e, "model"),
-            status: s(e, "status"),
-            goal: if open { clip(&s(e, "goal")) } else { String::new() },
-            outcome: if open { clip(&s(e, "outcome")) } else { String::new() },
-            verify: if open { verdict_from_json(e) } else { None },
-            packet: e.get("current_packet").and_then(Value::as_u64),
-            lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
-            lead_armed: Some(lead.is_some() && live.contains(&owner)),
-            lead: owner,
-            woken: report_woken(e),
-            ready_late: ready_late(e, now_secs(), zone),
-            id: s(e, "session_id"),
-            updated: s(e, "updated"),
-            machine: machine.into(),
-            tmux_session: tmux_name(&s(e, "tmux_session")),
-            ..Default::default()
-        };
-        put(&mut index, exec_key(e), m);
+    leads
+}
+
+/// An executor in relay's listing on a machine (`e`), under its lead as `leads` has it.
+fn listed_executor(e: &Value, leads: &RelayLeads, live: &HashSet<String>, zone: Option<i64>, machine: &str) -> Member {
+    let owner = s(e, "owner_lead");
+    let lead = leads.get(&owner);
+    // goal / outcome / verify are newer than the rest of relay's listing: a machine on an older
+    // relay doesn't send them, and that's no error, just nothing to show.
+    let open = !GONE.contains(&s(e, "status").as_str());
+    Member {
+        role: "executor".into(),
+        plugin: "relay".into(),
+        name: Some(s(e, "topic")).filter(|t| !t.is_empty()).unwrap_or_else(|| s(e, "session_id")),
+        color: lead.and_then(|l| l.1),
+        model: s(e, "model"),
+        status: s(e, "status"),
+        goal: if open { clip(&s(e, "goal")) } else { String::new() },
+        outcome: if open { clip(&s(e, "outcome")) } else { String::new() },
+        verify: if open { verdict_from_json(e) } else { None },
+        packet: e.get("current_packet").and_then(Value::as_u64),
+        lead_name: lead.map(|l| l.0.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| s(e, "owner_project")),
+        lead_armed: Some(lead.is_some() && live.contains(&owner)),
+        lead: owner,
+        woken: report_woken(e),
+        ready_late: ready_late(e, now_secs(), zone),
+        id: s(e, "session_id"),
+        updated: s(e, "updated"),
+        machine: machine.into(),
+        tmux_session: tmux_name(&s(e, "tmux_session")),
+        ..Default::default()
     }
-    parse_pilead(pilead, machine, &mut index);
-    (bin, index)
 }
 
 /// REMOTE_LIST's answer up to the live-sessions marker, split into relay's part (its `BIN:` line and
