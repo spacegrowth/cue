@@ -212,14 +212,14 @@
   // ---------- what you do ----------
   /** The session the rail opens on when you hover it: the first in Waiting's order, else the newest at work. */
   const first = () => needs(1).shown[0]?.session_id || working()[0]?.session_id;
-  /** Open a session's chat. `take`: a click, so the box gets the cursor (this window comes forward alone, not
-   *  Cue's main one); a hover leaves the keyboard where it is. */
-  function openChat(sid, take = true) {
+  /** Open a session's chat with the cursor in its box, ready to type (this window comes forward alone, not Cue's
+   *  main one; the keyboard goes back to the app you were in when it folds). */
+  function openChat(sid) {
     m.open = sid;
     m.note = "";
     m.shape = "chat";
     paint();
-    if (take) invoke("mini_key", { on: true }).then(() => { m.keyed = true; root.querySelector("[data-box]")?.focus(); }, () => {});
+    invoke("mini_key", { on: true }).then(() => { m.keyed = true; root.querySelector("[data-box]")?.focus(); }, () => {});
   }
   /** Fold the chat back to the notch or the rail; `giveBack`: hand the keyboard back too (not needed when it
    *  already went, by a click outside). What you typed is kept for when you open it again. */
@@ -274,7 +274,7 @@
       if (link) { e.preventDefault(); invoke("open_link", { url: link.dataset.href || link.dataset.path }).catch(() => {}); return; }
       const t = e.target.closest("button, [data-open]");
       if (!t) return;
-      if (t.dataset.open !== undefined) openChat(t.dataset.open, true);
+      if (t.dataset.open !== undefined) openChat(t.dataset.open);
       else if (t.dataset.cue !== undefined) invoke("mini_open_in_cue", { sessionId: t.dataset.cue || null }).catch(() => {});
       else if (t.dataset.close !== undefined) closeChat();
       else if (t.dataset.allow) answer(t.dataset.allow, "allow");
@@ -306,20 +306,23 @@
     if (m.over) return;
     m.over = true;
     clearTimeout(m.timer);
-    if ((m.shape === "quiet" || m.shape === "nod") && !root.querySelector(".m-dotb")) m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid, false); }, HOVER_MS);
+    if ((m.shape === "quiet" || m.shape === "nod") && !root.querySelector(".m-dotb")) m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid); }, HOVER_MS);
   }
-  /** It left: the dots back to their size, and an open chat folds unless you've clicked into it. */
+  /** Something typed in the open chat's box (kept: the chat doesn't fold, or switch, under it). */
+  const typing = () => !!root.querySelector("[data-box]")?.value.trim();
+  /** It left: the dots back to their size, and an open chat with nothing typed in it folds, the keyboard back to
+   *  the app you were in. With something typed it stays (Send, Esc or a click outside). */
   function pointerOut() {
     if (!m.over) return;
     m.over = false;
     clearTimeout(m.timer);
     m.hoverSid = null;
     magnify(null);
-    if (m.shape === "chat" && !m.keyed) m.timer = setTimeout(() => closeChat(false), LEAVE_MS);
+    if (m.shape === "chat" && !typing()) m.timer = setTimeout(() => { if (!typing()) closeChat(true); }, LEAVE_MS);
   }
   /** It moved, to (x, y) in the window. Along the dots, as the Dock does: the one under it grows, its neighbours a
-   *  little. Resting on one opens its chat (the keyboard stays where it is); moving on to another switches to it,
-   *  unless you're typing. */
+   *  little. Resting on one opens its chat with the cursor in its box, ready to type; moving on to another
+   *  switches to it while nothing's typed. */
   function pointerAt(x, y) {
     pointerIn();
     magnify({ clientX: x, clientY: y });
@@ -327,7 +330,7 @@
     if (!b || b.dataset.open === m.hoverSid) return;
     m.hoverSid = b.dataset.open;
     clearTimeout(m.timer);
-    m.timer = setTimeout(() => { if (!m.keyed && m.open !== m.hoverSid) openChat(m.hoverSid, false); }, HOVER_MS);
+    m.timer = setTimeout(() => { if (!typing() && m.open !== m.hoverSid) openChat(m.hoverSid); }, HOVER_MS);
   }
   /** Each dot's size from the pointer's distance to it, along the dots (down the rail, across the notch's head):
    *  up to 2.2 times at the pointer, back to its own size 56 pt away. `e` null: all back to their own size. */
