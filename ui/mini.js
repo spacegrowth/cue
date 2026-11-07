@@ -34,7 +34,13 @@
     const shown = [...talk, ...rest].slice(0, MAX);
     return { shown, talk: Math.min(talk.length, MAX), more: all.length - shown.length };
   }
-  const working = () => state.sessions.filter((s) => s.state === "working").length;
+  /** Sessions at work with nothing waiting on you: newest to start first, five at most. A message to one is
+   *  queued (it reads it when it finishes its current step). */
+  function working() {
+    const waiting = new Set(state.items.map((i) => i.session_id));
+    return state.sessions.filter((s) => s.state === "working" && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
+  }
+  const doing = (s) => s.doing || (s.prompt ? `› ${s.prompt}` : "working");
   const asks = (it) => it.kind !== "waiting";
   const itemFor = (sid) => state.items.filter((i) => i.session_id === sid).sort((a, b) => asks(b) - asks(a))[0];
   const name = (it) => nameOf(it.session_id, it.project);
@@ -54,6 +60,7 @@
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
   const row = (it) => `<button class="m-row" data-open="${esc(it.session_id)}">${dot(it)}<span class="m-name">${esc(name(it))}</span><span class="m-what">${esc(what(it))}</span><span class="m-age">${ago(it.created_ms)}</span></button>`;
   const sep = (n, i) => n && i === n ? `<div class="m-sep" role="separator"></div>` : "";
+  const workRow = (s) => `<button class="m-row" data-open="${esc(s.session_id)}"><i class="m-dot work"></i><span class="m-name">${esc(nameOf(s.session_id, s.project))}</span><span class="m-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></button>`;
 
   function dotsHtml() {
     const { shown, talk } = needs();
@@ -64,13 +71,14 @@
     const { shown, talk, more } = needs();
     const busy = working();
     const head = shown.length ? `${state.items.length} need${state.items.length === 1 ? "s" : ""} you` : "Nothing needs you";
-    const foot = [busy ? `${busy} working` : "", more ? `${more} more in Cue` : ""].filter(Boolean).join(" · ");
+    const more2 = more + Math.max(0, busy.length - MAX);
+    const work = busy.length ? `<div class="m-sub">WORKING · ${busy.length}</div>${busy.slice(0, MAX).map(workRow).join("")}` : "";
     return `<div class="m-panel m-list"><div class="m-head"><b>${head}</b><span class="g"></span><button class="m-link" data-cue="">Open Cue</button></div>
-      ${shown.map((it, i) => sep(talk, i) + row(it)).join("")}${foot ? `<div class="m-foot-line">${foot}</div>` : ""}</div>`;
+      ${shown.map((it, i) => sep(talk, i) + row(it)).join("")}${work}${more2 ? `<div class="m-foot-line">${more2} more in Cue</div>` : ""}</div>`;
   }
   function islandHtml() {
     const { shown } = needs();
-    const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working();
+    const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
     const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
     return `<div class="m-panel m-island"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing m-quiet">${busy ? `<i class="m-dot work"></i>${busy}` : ""}</span></div>`;
   }
@@ -105,10 +113,14 @@
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
     return `<div class="m-panel m-chat"><div class="m-chat-head">${it ? dot(it) : ""}<b>${esc(nameOf(sid, s?.project || it?.project))}</b>${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
-      <div class="m-foot"><textarea class="m-box" data-box rows="1" placeholder="Reply to ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
+      <div class="m-foot"><textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
   }
 
+  /** `el` shows `html`, touched only when that changed: a redraw of the same chat (state comes several times a
+   *  second) doesn't rebuild it under the pointer, which reset the cursor each time. */
+  const drawn = new WeakMap();   // element -> the html it was last given
+  const put = (el, html) => { if (el && drawn.get(el) !== html) { el.innerHTML = html; drawn.set(el, html); } };
   // ---------- size and place ----------
   /** The window as big as what it shows: the panel's own size, the chat no taller than its share of the screen. */
   function fit() {
@@ -138,16 +150,20 @@
     if (m.shape === "chat" && box && root.querySelector(".m-chat")) {
       const t = root.querySelector("[data-thread]");
       const atEnd = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
-      root.querySelector("[data-ask]").innerHTML = askHtml(m.open);
-      t.innerHTML = threadHtml(m.open);
+      put(root.querySelector("[data-ask]"), askHtml(m.open));
+      put(t, threadHtml(m.open));
       if (atEnd) t.scrollTop = t.scrollHeight;
       root.querySelector("[data-send]").disabled = m.sending;
       root.querySelector(".m-foot-row .m-quiet").textContent = m.note || "⇧↵ new line";
       const dots = root.querySelector(".m-pair > .m-dots");
-      if (dots) dots.outerHTML = dotsHtml();
+      if (dots && dots.outerHTML !== dotsHtml()) dots.outerHTML = dotsHtml();
     } else {
-      root.innerHTML = shapeHtml();
-      if (m.shape === "chat") toLatest();
+      const html = shapeHtml();
+      if (drawn.get(root) !== html) {
+        root.innerHTML = html;
+        drawn.set(root, html);
+        if (m.shape === "chat") toLatest();
+      }
     }
     fit();
   }
