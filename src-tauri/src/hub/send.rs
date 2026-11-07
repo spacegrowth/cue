@@ -170,6 +170,10 @@ impl Hub {
             // got lost on the way from a machine): taken. Cue starts the turn as its prompt hook would,
             // so the session works, and its reply comes in from the log when the turn ends.
             if crate::transcript::prompt_since(log, text, t0) {
+                const SAID: &str = "its log has it as your turn";
+                // Settled by the log before the turn is started for it: the "active" below settles what's
+                // still open as its prompt hook's word, and the record would credit the hook.
+                self.st().sessions.got_message(sid, text, SAID);
                 let driver = crate::leads::resolve_driver(&origin.session_id, "");
                 self.event(origin.clone(), "active", text.to_string(), vec![], &driver);
                 // A quick turn may be over already (it ended before Cue looked): finish it now, as the
@@ -177,7 +181,7 @@ impl Hub {
                 if let Some((_, reply, parts)) = crate::transcript::turn_ended_parts(log).filter(|(at, _, _)| *at + 2_000 >= t0) {
                     self.event(origin.clone(), "stopped", reply, parts, &driver);
                 }
-                return Some("its log has it as your turn");
+                return Some(SAID);
             }
             // Sent while it worked and taken into the turn: its queue log says so, or the log has the
             // message handed over between two steps (a `queued_command` attachment, not a turn of yours).
