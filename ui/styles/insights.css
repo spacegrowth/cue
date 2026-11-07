@@ -1,0 +1,401 @@
+/* ---------- Insights (insights.js): ink, but for their bulb in the theme's own color. Set off by a line above and below:
+   the bulb and INSIGHT, a bar chart as the evidence, one sentence, then the commands. ---------- */
+.ins { margin: 10px 16px 0; padding: 12px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
+.ins-head { display: flex; align-items: center; gap: 7px; }
+.ins-bulb { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ins-bulb path:first-child { fill: var(--accent); }   /* the bulb is lit: filled, its rays stroked */
+.ins-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .12em; color: var(--ink); }
+.ins-note { font-size: 12.5px; color: var(--muted); }
+.ins-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.ins-axis b { color: var(--ink); }
+.ins-why { font-size: 14px; line-height: 1.45; color: var(--ink); }
+.ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: 999px; padding: 2px 8px; }
+button.ins-n { cursor: pointer; }
+.ins-line .ins-n { margin-left: auto; }
+/* What you just tapped, on its way: in place of the actions. */
+.ins-busy { flex: none; font-size: 12px; font-weight: 650; color: inherit; }
+.ins-lines { display: flex; flex-direction: column; }
+.ins-skill-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.ins-skill-row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.ins-skill-agent { width: 96px; color: var(--ink); }
+/* The hand-off skill drop-up: over the insight's buttons, searchable. */
+.ins-pop { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 30; width: min(460px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ins-pop.down { bottom: auto; top: calc(100% + 4px); }
+.ins-search { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); outline: none; }
+.ins-search:focus { border-color: var(--ink); }
+.ins-pop-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
+.ins-pop-row { display: flex; flex-direction: column; gap: 1px; text-align: left; padding: 6px 8px; border: 0; border-radius: 8px; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.ins-pop-row:hover, .ins-pop-row:first-child { background: var(--panel-2, var(--line)); }
+.ins-pop-row .mono { font-size: 13px; }
+.ins-pop-row .dim { font-size: 12px; }
+.ins-pop-row.on .mono::after { content: " · chosen"; color: var(--muted); font-family: inherit; }
+.ins-pop-empty { padding: 8px; font-size: 12.5px; }
+.ins-pop-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 2px 0; }
+.ins-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* The opened note's foot: hide them all for a while, or turn them off. */
+.ins-hide { font-size: 12px; }
+/* Fresh session: the chip on the chat's title row (insights.js handoffChips), its plan dropping down under it. */
+.ins-chip-wrap { position: relative; display: inline-flex; flex: none; }
+.ap-head .ins-plan .dim { white-space: normal; overflow: visible; }
+.mi-act[aria-expanded="true"] { background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.mi-act .mi-caret { width: 9px; height: 9px; margin-left: 4px; vertical-align: -0.5px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.mi-act[aria-expanded="true"] .mi-caret { transform: rotate(180deg); }
+/* An insight's chip starts with its bulb, in the chip's own amber. */
+.mi-act .ins-bulb, .mi-compact .ins-bulb { width: 11px; height: 11px; margin-right: 4px; vertical-align: -1.5px; stroke: currentColor; }
+.mi-act .ins-bulb path:first-child, .mi-compact .ins-bulb path:first-child { fill: currentColor; }
+.ins-plan { width: min(460px, calc(100vw - 48px)); padding: 12px 14px; gap: 10px; cursor: default; }
+.ins-plan .ins-why { font-size: 13.5px; }
+.ins-plan-steps { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; line-height: 1.45; color: var(--ink); }
+.ins-plan-steps li::marker { font: 700 11px var(--mono); color: var(--accent); }
+.ins-plan .ins-acts .dim { font-size: 12px; }
+/* A hand-off on its way: the three steps, ticking. */
+.ins-steps { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.ins-steps div { display: flex; align-items: center; gap: 9px; }
+.ins-steps .k { font: 700 12px var(--mono); width: 16px; text-align: center; flex: none; }
+.ins-steps .now { color: var(--ink); }
+.ins-steps .now .k { color: var(--accent); }
+.ins-steps b { color: var(--ink); }
+/* The meta line: how far the session has grown, while a fresh session is due; its cache's countdown (the ring and
+   the minutes, amber in its last 5) or "cache gone". */
+.mi-grow { color: var(--amber); font-weight: 650; }
+.mi-cache { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-weight: 650; vertical-align: -1px; }
+.mi-cache .ins-ring { width: 15px; height: 15px; margin: 0; }
+.mi-cache .ins-bulb { width: 12px; height: 12px; }
+.mi-cache.soon { color: var(--amber); }
+.mi-cache.cold { color: var(--muted); }
+/* Under the chat: a hand-off on its way, a note written ahead, a cache gone (insights.js handoffStatus). */
+.cv-status.ins-status { align-self: stretch; color: var(--muted); }
+.cv-status.ins-status .ins-bulb { width: 13px; height: 13px; flex: none; }
+.cv-status.ins-status b { color: var(--ink); }
+.cv-status.ins-status .btn { margin-left: 4px; }
+.linkish { background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.linkish:hover { color: var(--ink); }
+/* Hand off if I don't come back: a checkbox drawn as a button (insights.js watchToggle). */
+.ins-check { display: inline-flex; align-items: center; gap: 6px; flex: none; background: none; border: 0; padding: 2px 4px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.ins-check:hover { color: var(--ink); }
+.ins-check i { width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px; display: inline-grid; place-items: center; }
+.ins-check[aria-checked="true"] { color: var(--ink); }
+.ins-check[aria-checked="true"] i::after { content: ""; width: 6px; height: 6px; border-radius: 1px; background: currentColor; }
+/* One-line insights: a waiting card's cache countdown, the note by Now. */
+.ins-line { display: flex; align-items: center; gap: 9px; font-size: 12.5px; line-height: 1.4; color: var(--muted); margin-top: 8px; }
+.ins-line b { color: var(--ink); }
+.ins-line.ins-own { margin: 8px 18px 0; }
+/* What a line offers is a button at its end, on one line (it was an underlined link that wrapped). */
+.ins-line .btn { flex: none; white-space: nowrap; }
+.ins-ring { width: 20px; height: 20px; margin-right: -5px; flex: none; fill: none; }   /* takes the bulb's 15px, so its text lines up */
+.ins-ring .track { stroke: var(--line); stroke-width: 1.8; }
+.ins-ring .left { stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; }
+.ins-ring.soon .left { stroke: var(--amber); stroke-width: 2.2; }   /* its last 5 minutes: replying now saves it */
+.ins-ring .ins-bulb { stroke-width: 2.4; }
+.ins-queue { margin: 8px 18px 6px; }
+.ins-queue .ins-bulb { width: 13px; height: 13px; }
+/* On the picked card (lime in both themes) insights take its own ink. */
+.nrow.on .ins-line, .nrow.on .ins-line b { color: var(--on-sel); }
+.nrow.on .ins-ring .left, .nrow.on .ins-bulb { stroke: var(--on-sel); }
+.nrow.on .ins-bulb path:first-child { fill: var(--on-sel); }
+.nrow.on .ins-n { color: var(--on-sel); background: color-mix(in srgb, var(--on-sel) 12%, transparent); }
+.nrow.on .ins-ring .track { stroke: color-mix(in srgb, var(--on-sel) 25%, transparent); }
+
+/* ---------- Insights tab ---------- */
+/* What the range cost and where it could have cost less: the range, the numbers, where the dollars went, three
+   findings (a big number, the pictures that point at it, the sessions behind it, what to do), then the trends.
+   Amber (--amber) is kept for what was avoidable: it asks for attention, it isn't an error; everything
+   needed is the ink, in shades. */
+.itab { margin-top: 14px; flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 14px; display: flex; flex-direction: column; gap: 12px; }
+.itab-empty { padding: 18px; background: var(--panel); color: var(--muted); border-radius: 14px; }
+.itab-fine { font-size: 11.5px; color: var(--on-bg-muted); line-height: 1.5; }
+.itab-find { background: var(--panel); color: var(--ink); border-radius: 14px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.itab-kicker { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 10px; }
+.itab-tag { font: 600 10px var(--mono); letter-spacing: .04em; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); padding: 2px 7px; border-radius: 999px; }
+.itab-claim { display: flex; align-items: baseline; gap: 16px; }
+.itab-big { font-size: 34px; font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.itab-says { margin: 0; font-size: 14px; line-height: 1.45; max-width: 680px; }
+.itab-hot { color: var(--amber); }
+.itab-evidence { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 24px; align-items: start; }
+.itab-evidence.itab-wide { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+.itab-evidence.itab-pics { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+.itab-evidence:has(> :only-child) { grid-template-columns: minmax(0, 1fr); }
+.itab-trend { padding-top: 10px; }
+/* A picture's heading: a short name, and what it shows in muted beside it. */
+.itab-fig { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.itab-fighead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.itab-figtitle { font-size: 12.5px; font-weight: 700; }
+.itab-fignote { font-size: 11.5px; color: var(--muted); }
+
+/* Where it went: one bar split by kind; the avoidable kinds amber and hatched at its end. */
+.itab-split { display: flex; height: 30px; border-radius: 8px; overflow: hidden; gap: 2px; background: var(--panel); }
+.itab-split i { display: block; min-width: 2px; }
+.itab-k-read { background: color-mix(in srgb, var(--ink) 78%, var(--panel)); }
+.itab-k-write { background: color-mix(in srgb, var(--ink) 52%, var(--panel)); }
+.itab-k-output { background: color-mix(in srgb, var(--ink) 32%, var(--panel)); }
+.itab-k-fresh { background: color-mix(in srgb, var(--ink) 16%, var(--panel)); }
+.itab-k-rewrite { background: var(--amber); }
+.itab-k-long { background: repeating-linear-gradient(135deg, var(--amber) 0 3px, color-mix(in srgb, var(--amber) 45%, var(--panel)) 3px 6px); }
+.itab-keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 18px; margin-top: -4px; }
+.itab-key { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 34px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.itab-key > i { width: 10px; height: 10px; border-radius: 3px; }
+.itab-key b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.itab-key.bad .itab-keyname, .itab-key.bad b { color: var(--amber); }
+.itab-keyname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itab-keypct { text-align: right; font: 11px var(--mono); }
+/* Each day: a column per day, its avoidable part amber at the foot. */
+.itab-daily { position: relative; height: 110px; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); }
+.itab-col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; background: color-mix(in srgb, var(--ink) 18%, var(--panel)); border-radius: 2px 2px 0 0; }
+.itab-col i { display: block; background: color-mix(in srgb, var(--amber) 70%, var(--panel)); }
+.itab-col.worst i { background: var(--amber); }
+.itab-callout { position: absolute; transform: translate(-50%, -4px); font: 600 10.5px var(--mono); color: var(--amber); background: var(--panel); padding: 1px 4px; white-space: nowrap; border-radius: 4px; }
+.itab-callout.end { transform: translate(-100%, -4px); }
+.itab-callout.start { transform: translate(0, -4px); }
+.itab-daily .itab-top { transform: translateY(-50%); }
+/* Ranked bars: a name, a track with its bar (amber where it stands out) and a tick to compare with, its numbers. */
+.itab-rank { display: grid; grid-template-columns: minmax(70px, auto) minmax(60px, 1fr) auto; align-items: center; gap: 7px 12px; font-size: 12.5px; }
+.itab-rname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itab-rtrack { position: relative; height: 10px; border-radius: 3px; background: var(--panel-2); }
+.itab-rtrack i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: color-mix(in srgb, var(--ink) 60%, var(--panel)); }
+.itab-rtrack i.bad { background: var(--amber); }
+.itab-rmark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); z-index: 1; border-radius: 1px; }
+.itab-rval { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+.itab-rval b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+
+/* Insights while Cue still reads the history: a thin bar and how far. */
+.itab-reading { margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
+.itab-reading-t { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; color: var(--on-bg-muted); }
+.itab-reading-t span { flex: 1; min-width: 0; }
+.itab-reading-t b { color: var(--on-bg); font-variant-numeric: tabular-nums; }
+.itab-reading-bar { height: 4px; margin-top: 8px; border-radius: 2px; background: color-mix(in srgb, var(--on-bg) 15%, transparent); overflow: hidden; }
+.itab-reading-bar i { display: block; height: 100%; background: var(--sel); border-radius: 2px; transition: width 0.6s ease; }
+/* When the wait began: a week of hours, amber as deep as what it cost. */
+.itab-week { display: grid; grid-template-columns: 30px repeat(24, minmax(0, 1fr)); gap: 2px; }
+.itab-week i { aspect-ratio: 1; min-height: 9px; border-radius: 2px; background: var(--panel-2); }
+.itab-week i:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
+.itab-fignote.on { color: var(--ink); font-variant-numeric: tabular-nums; }
+.itab-wday { font: 10.5px var(--mono); color: var(--muted); align-self: center; }
+.itab-hours { display: grid; grid-template-columns: 30px repeat(4, minmax(0, 1fr)); font: 10.5px var(--mono); color: var(--muted); margin-top: -4px; }
+.itab-hours::before { content: ""; }
+/* Each late answer: bands by how long it waited, the dots inside them. */
+.itab-bands { position: relative; height: 34px; }
+.itab-band { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; gap: 1px; padding-left: 6px; border-left: 1px dashed var(--line); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.itab-band b { color: var(--amber); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.itab-scatter { position: relative; height: 150px; border-bottom: 1px solid var(--line); margin-top: 6px; }
+.itab-dot2 { all: unset; position: absolute; border-radius: 50%; transform: translate(-50%, 50%); background: color-mix(in srgb, var(--amber) 45%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 80%, var(--panel)); cursor: pointer; }
+.itab-dot2:hover, .itab-dot2:focus-visible { background: var(--amber); z-index: 2; outline: 2px solid var(--ink); outline-offset: 1px; }
+.itab-scatter .itab-top { transform: none; top: -2px; z-index: 1; }
+.itab-ticks { position: relative; height: 14px; font: 10.5px var(--mono); color: var(--muted); }
+.itab-ticks span { position: absolute; transform: translateX(-50%); }
+.itab-ticks span:first-child { transform: none; }
+.itab-ticks span:last-child { transform: translateX(-100%); }
+
+/* A finding's sessions: name, a bar for its share, its numbers. */
+.itab-list { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap: 14px; }
+.itab-list:has(.itab-row-bar) { grid-template-columns: minmax(0, 1.2fr) minmax(60px, 1fr) auto auto auto; }
+.itab-row { all: unset; box-sizing: border-box; grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 6px 6px; margin: 0 -6px; border-top: 1px solid var(--line); font-size: 12.5px; cursor: pointer; border-radius: 6px; }
+.itab-row:first-child { border-top: 0; }
+.itab-row:hover, .itab-pair:hover, .itab-tile:hover { background: var(--panel-2); }
+.itab-row:focus-visible, .itab-pair:focus-visible, .itab-tile:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.itab-bar { height: 8px; border-radius: 3px; background: var(--panel-2); position: relative; }
+.itab-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--amber); }
+.itab-who { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.itab-proj { color: var(--muted); font-size: 11.5px; white-space: nowrap; flex: none; }
+.itab-ago { color: var(--muted); font-size: 11.5px; white-space: nowrap; flex: none; }
+.itab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itab-cell { color: var(--muted); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.itab-cell b { color: var(--ink); font-weight: 600; }
+.itab-do { margin: 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.5; display: flex; gap: 12px; align-items: baseline; }
+.itab-do-label { font: 600 11px var(--mono); color: var(--muted); white-space: nowrap; flex: none; }
+
+/* Long sessions: a tile per session, its context climbing turn by turn. */
+.itab-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.itab-tile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 9px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; min-width: 0; }
+.itab-tilehead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12.5px; min-width: 0; }
+.itab-tilehead b { font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; }
+.itab-tilefoot { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.itab-climb { position: relative; height: 84px; margin-top: 12px; }
+.itab-climb svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.itab-climb .area { fill: color-mix(in srgb, var(--ink) 10%, transparent); }
+.itab-climb .waste { fill: color-mix(in srgb, var(--amber) 38%, transparent); }
+.itab-climb .line { fill: none; stroke: var(--ink); stroke-width: 1.75; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.itab-climb .start { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.itab-climb .limit { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 1 3; vector-effect: non-scaling-stroke; }
+.itab-climb .mark { stroke: var(--amber); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.itab-limit { position: absolute; left: 0; transform: translateY(-110%); font-size: 10px; color: var(--muted); }
+.itab-handoff { position: absolute; top: -14px; transform: translateX(-3px); font: 600 10px var(--mono); color: var(--amber); white-space: nowrap; }
+.itab-handoff.end { transform: translateX(calc(-100% + 3px)); }
+
+/* Corrections: what you asked, then what you said, the correction in ink behind an amber quote mark. */
+.itab-more { font-size: 12.5px; color: var(--muted); }
+.itab-more summary { cursor: pointer; margin-bottom: 8px; }
+.itab-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.itab-pair { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line); cursor: pointer; min-width: 0; }
+.itab-meta { display: flex; justify-content: space-between; gap: 10px; font: 11px var(--mono); color: var(--muted); }
+.itab-q { font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.itab-asked { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.itab-then { display: flex; gap: 6px; }
+.itab-then > span:last-child { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.itab-qmark { font: 700 26px/0.9 Georgia, serif; color: var(--amber); flex: none; }
+.itab-qlabel { font: 600 10.5px var(--mono); color: var(--muted); margin-right: 8px; }
+
+/* The trends: small line charts. */
+.itab-sub { margin-top: 6px; font: 600 11px var(--mono); color: var(--on-bg-muted); text-transform: uppercase; letter-spacing: .06em; }
+.itab-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.itab-card { background: var(--panel); color: var(--ink); border-radius: 14px; padding: 12px 16px 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.itab-head { display: flex; align-items: baseline; gap: 10px; }
+.itab-title { font-size: 13px; font-weight: 700; }
+.itab-note { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.itab-chart { position: relative; height: 96px; }
+.itab-chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.itab-chart .fill { fill: var(--line); opacity: .55; }
+.itab-chart .base { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.itab-chart .line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.itab-top { position: absolute; left: 0; top: 0; transform: translateY(-40%); font-size: 10.5px; color: var(--muted); background: var(--panel); padding-right: 4px; }
+.itab-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); }
+@media (max-width: 900px) { .itab-evidence, .itab-evidence.itab-wide, .itab-evidence.itab-pics, .itab-pairs { grid-template-columns: minmax(0, 1fr); } .itab-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .itab-grid { grid-template-columns: minmax(0, 1fr); } .itab-claim { flex-direction: column; gap: 6px; } .itab-list { grid-template-columns: minmax(0, 1fr) auto auto; } .itab-list:has(.itab-row-bar) { grid-template-columns: minmax(0, 1fr) minmax(40px, 0.6fr) auto auto; } .itab-minor, .itab-ago { display: none; } }
+
+/* Actions (actions.js): a project's own buttons for its commands. ⌘E's palette, the suggestions under a reply,
+   the dots on a project's chip and their popover, the Actions tab, and its sheets. Commands in mono. */
+.ac-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.ac-cmd { font: 11.5px var(--mono); color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-cmd.was { text-decoration: line-through; opacity: 0.75; }
+.ac-st { font: 600 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.ac-where { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 3em; max-width: 12em; flex: 0 1 auto; }
+.ac-poprow .ac-pname { flex: none; max-width: 9em; }
+.ac-st.on { color: var(--accent); }
+.ac-st.bad { color: var(--deny); }
+.ac-tag { font: 600 9.5px var(--mono); letter-spacing: 0.1em; color: var(--muted); background: var(--panel-2); padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+.ac-tag.warn { color: var(--on-sel); background: var(--sel); }
+.ac-empty { font-size: 12.5px; color: var(--muted); padding: 10px 2px; }
+.ac-pname { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Under a reply: after a thin divider, in the row with Listen and Read. */
+.ac-div { flex: none; width: 1px; height: 18px; background: var(--line); margin: 0 2px; }
+/* A reply's actions stay on its row: the ones that don't fit go into "N more" (actFit), a menu under or over it. */
+.ac-sugs { display: flex; align-items: center; gap: 8px; flex: 1 1 0; min-width: 0; overflow: hidden; padding: 2px 0; }
+.ac-sugs > [hidden] { display: none; }
+.ac-more { flex: none; white-space: nowrap; color: var(--muted); }
+.ac-pop.ac-menu { width: auto; min-width: 200px; max-width: 360px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; }
+.ac-menu .ac-sug { justify-content: flex-start; }
+/* Send to… keeps the row's right end; the actions between fold into "N more" first. */
+.cv-acts .cv-fwd { flex: none; margin-left: auto; }
+.ac-sug { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ac-sug.on .ac-live, .ac-more.on .ac-live { background: currentColor; }
+.ac-more.on { color: var(--on-sel); }
+.ac-sug.bad { color: var(--deny); }
+.ac-sug.wait { color: var(--muted); background: transparent; border-style: dashed; }
+/* The dots on a project's chip (one per running action) and the popover they open. */
+.ac-dots { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 5px; margin: 0 -4px 0 2px; border-radius: 999px; }
+.ac-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--sel); }
+.ac-dots b { font: 600 10px var(--mono); color: inherit; opacity: 0.8; }
+.ac-dots:hover, .ac-dots.open { background: color-mix(in srgb, currentColor 16%, transparent); }
+.hchip.hot .ac-dots i { background: var(--bg); }
+.pj-row .ac-dots i { background: var(--accent); }
+.pj-row.on .ac-dots i { background: var(--on-sel); }
+.ac-pop { position: fixed; z-index: 31; width: 360px; max-height: min(460px, calc(100vh - 80px)); overflow-y: auto; padding: 8px 10px; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); }
+.ac-poph { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 6px 2px 4px; }
+.ac-poprow { display: flex; align-items: center; gap: 7px; padding: 4px 2px; font-size: 12.5px; }
+.ac-poprow .btn.small { height: 24px; padding: 0 8px; font-size: 11px; border-radius: 6px; }
+.ac-poprun { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 0 4px; }
+.ac-poprun .cv-pill { height: 26px; }
+.ac-popfoot { display: flex; gap: 14px; margin-top: 6px; padding: 8px 2px 2px; border-top: 1px solid var(--line); }
+.ac-popfoot button { font-size: 12px; font-weight: 650; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.ac-popfoot button:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* ⌘E: in the middle of the window, as ⌘K's live sessions are. */
+.ac-pal { width: min(620px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 14vh - 40px)); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 16px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line); overflow: hidden; }
+.ac-pal .lv-top { padding: 12px; }
+.ac-pal .sv-search { height: 40px; max-width: none; background: var(--panel-2); }
+.ac-pal .sv-search input { font-size: 15px; }
+.ac-phead { display: flex; align-items: center; gap: 8px; padding: 8px 14px 2px; font-size: 11.5px; font-weight: 750; color: var(--muted); }
+.ac-phead .mono { font-weight: 500; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-plist { overflow-y: auto; padding: 4px 8px 8px; }
+.ac-plist .ac-empty { padding: 10px 6px; }
+.ac-prow { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; min-width: 0; }
+.ac-prow:hover { background: var(--panel-2); }
+.ac-prow.sel { background: var(--sel); color: var(--on-sel); }
+.ac-prow.sel .ac-cmd, .ac-prow.sel .ac-st, .ac-prow.sel .ac-hint { color: color-mix(in srgb, var(--on-sel) 72%, transparent); }
+.ac-prow.sel .ac-live { background: var(--on-sel); }
+.ac-play { flex: none; display: inline-flex; color: var(--muted); }
+.ac-prow .ac-pname { flex: none; max-width: 40%; }
+.ac-hint { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ac-pal .lv-foot { gap: 14px; }
+/* The Actions tab, in place of the chat. */
+.ac-slot { flex: 1; min-height: 0; overflow-y: auto; }
+/* The Agents and Scripts tabs (background.js): each a list of rows like in the chat. */
+.bg-slot { flex: 1; min-height: 0; overflow-y: auto; }
+.bg-page { padding: 10px 16px 14px; display: flex; flex-direction: column; }
+.bg-more { align-self: flex-start; margin-top: 12px; font-size: 12.5px; font-weight: 650; color: var(--accent); padding: 3px 4px; border-radius: 6px; }
+button.bg-more:hover { background: var(--panel-2); }
+/* In a tab its grey part says when too (started, ended, how long): it gives way on a narrow window. */
+.bg-page .bg-row .bg-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The About tab (about.js): what the session is about, in short, Now, a line per turn; the foot at the pane's bottom. */
+.tk-page { padding: 4px 16px 16px; display: flex; flex-direction: column; min-height: 100%; box-sizing: border-box; }
+.tk-intro { max-width: 520px; padding: 14px 2px; font-size: 13px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.tk-intro p { margin: 0; }
+.tk-head { font: 600 10.5px var(--mono); letter-spacing: 0.12em; color: var(--muted); margin: 14px 0 2px; }
+.tk-about { font-weight: 650; }
+.tk-nowline { font-size: 13px; line-height: 1.45; }
+.tk-aboutpage { padding-top: 14px; }
+.tk-about.big { font-size: 14px; }
+.tk-summary { margin: 6px 0 0; max-width: 640px; font-size: 13px; line-height: 1.55; }
+.tk-turn { display: flex; gap: 10px; font-size: 13px; line-height: 1.45; padding: 3px 2px; }
+.tk-turn.new span:last-child { font-weight: 650; }
+.tk-t { flex: none; min-width: 64px; white-space: nowrap; font: 11.5px var(--mono); color: var(--muted); padding-top: 1px; }
+.tk-more { align-self: flex-start; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); padding: 2px; cursor: pointer; }
+.tk-more:hover { color: var(--ink); }
+/* A followed session's card says what it's about and where it stands. */
+.tk-card { display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+.tk-card .tk-about { font-size: 12.5px; line-height: 1.35; }
+.tk-card .tk-now { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.on .tk-card .tk-now, .nrow.on .tk-card .tk-now, .working .tk-card .tk-now { color: inherit; opacity: 0.8; }
+/* "Since you looked" where the new part of the chat starts. */
+.tk-since { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.tk-div { display: flex; align-items: center; gap: 10px; font: 600 10.5px var(--mono); letter-spacing: 0.12em; color: var(--muted); }
+.tk-div i { flex: 1; height: 1px; background: var(--line); }
+/* The foot (status, spend, Refresh, Stop): at the pane's bottom (the page fills the pane, the dock takes the space left
+   above it); a long page scrolls under it. */
+.tk-dock { position: sticky; bottom: 0; margin: auto -16px -16px; padding: 0 16px 12px; background: var(--panel); }
+.tk-foot { display: flex; align-items: center; gap: 8px; white-space: nowrap; margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.tk-err { color: var(--deny); }
+.tk-said { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ac-page { padding: 4px 16px 16px; }
+.ac-head { display: flex; align-items: baseline; gap: 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 16px 0 2px; }
+.ac-head span { font: 500 11px var(--mono); letter-spacing: 0; opacity: 0.85; }
+.ac-row { display: flex; align-items: flex-start; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.ac-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ac-line { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.ac-btns { flex: none; display: flex; align-items: center; gap: 5px; }
+.ac-btns .btn.small { height: 26px; padding: 0 9px; font-size: 11.5px; }
+.ac-edit { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; font-size: 13px; color: var(--muted); }
+.ac-edit:hover { background: var(--panel-2); color: var(--ink); }
+.ac-tail { margin: 4px 0 0; padding: 7px 10px; border-radius: 8px; background: var(--panel-2); font: 11px/1.45 var(--mono); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9.5em; overflow-y: auto; }
+.ac-note { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
+.ac-note .btn { margin-left: auto; }
+.ac-note code, .ac-ask code { font: 11.5px var(--mono); }
+.ac-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+/* The sheets. */
+.ac-sheet { width: min(600px, calc(100vw - 40px)); }
+.ac-sheet.narrow { width: min(460px, calc(100vw - 40px)); }
+.ac-sheet.wide { width: min(860px, calc(100vw - 40px)); }
+.ac-sheet .sheet-head .dim { font-size: 12.5px; }
+.ac-sheet .set-note code { font: 11.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
+.ac-sheet-foot { display: flex; align-items: center; gap: 8px; padding: 12px 22px 16px; border-top: 1px solid var(--line); }
+.ac-f { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ac-fl { font-weight: 650; font-size: 13px; }
+.ac-fs { font-size: 12px; color: var(--muted); margin-top: 5px; }
+.ac-fs code { font: 11.5px var(--mono); }
+.ac-in { width: 100%; height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 13px var(--sans); outline: none; }
+.ac-in.mono { font: 12.5px var(--mono); }
+.ac-in:focus, .ac-prompt:focus { border-color: var(--muted); }
+.ac-json { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); }
+.ac-jf { font: 600 10.5px var(--mono); color: var(--muted); }
+.ac-json code { font: 12px var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.ac-jn { font-size: 12px; color: var(--muted); }
+.ac-trow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ac-trow .ac-cmd { grid-column: 1 / -1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ac-from { font: 11px var(--mono); color: var(--muted); }
+.ac-ask { font-size: 13.5px; line-height: 1.55; padding: 4px 0 6px; }
+/* Run it now or after the turn: the whole command, wrapped (as the trust sheet's), never cut off. */
+.ac-ask .ac-cmd { display: block; margin: 4px 0; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ac-logcmd { display: block; padding: 0 22px 8px; }
+.ac-log-text { margin: 0 22px 20px; padding: 12px 14px; min-height: 160px; max-height: calc(100vh - 260px); overflow: auto; border-radius: 10px; background: var(--slab); color: var(--on-slab); font: 11.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.ac-psub { margin: 6px 0 8px; }
+.ac-prompt { width: 100%; min-height: 110px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 13px/1.5 var(--sans); resize: vertical; outline: none; }
+.ac-pbtns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+

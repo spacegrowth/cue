@@ -1,0 +1,55 @@
+/* Cue's own shells (shells.js): the terminal button by the usage meter, and the peek it drops down under
+   itself; the same terminal fills the Terminal view. */
+.shells-btn { position: relative; }
+.shells-btn[aria-pressed="true"] { opacity: 1; background: color-mix(in srgb, var(--on-bg) 16%, transparent); }
+.sh-live { font: 700 10px var(--sans); line-height: 1; }
+.shells-btn .sh-live { position: absolute; top: 3px; right: 2px; }
+/* The switch's Terminal: its live dot or ✓ after the word, while a shell runs something out of sight. */
+.sv-term { display: inline-flex; align-items: center; gap: 6px; }
+.sv-term .sh-live:empty:not(.run) { display: none; }
+/* The Terminal view: the shells fill it (the terminal over this place); this shows once the last one is closed. */
+.shell-view { flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--on-bg); }
+/* In the Terminal view the terminal is the view: nothing to zoom, tuck, drag or resize. */
+.sh-live.run, .sh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); animation: pulse 1.4s ease-in-out infinite; }
+.sh-live.done { color: var(--sel); }
+.pip { position: fixed; z-index: 9; display: flex; flex-direction: column; background: var(--slab); color: var(--on-slab); border-radius: 14px;
+  box-shadow: 0 26px 60px -16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+/* The peek: its point under the header's terminal button (--point, from shells.js placePip); a look (glance)
+   is a touch quieter, nothing in it has the keyboard yet. In the Terminal view it's the view: no point. */
+.pip::before { content: ""; position: absolute; top: -6px; left: calc(var(--point, 50%) - 6px); width: 12px; height: 12px; background: var(--slab); transform: rotate(45deg); border-radius: 2px 0 0 0; }
+.pip.in-view::before, .pip.in-view .pip-hide, .pip.in-view .pip-view, .pip.in-view .pip-hint { display: none; }
+.pip.glance { opacity: .96; }
+.pip-hint { margin-left: auto; padding: 0 6px; font: 500 11px var(--sans); opacity: .55; white-space: nowrap; }
+.pip-view svg { display: block; margin: auto; }
+.pip[hidden] { display: none; }
+/* Its free edges: the left one, the one away from its corner, and the corner between them. */
+.pip-bar { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 6px 0 8px; flex: none; position: relative; }
+.pip-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.pip-tabs::-webkit-scrollbar { display: none; }
+.pip-tabs { position: relative; }
+.pip-tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.pip-tabs.more-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px); mask-image: linear-gradient(to right, transparent, #000 36px); }
+.pip-tabs.more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 36px, #000 calc(100% - 36px), transparent); }
+.pip-tab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; white-space: nowrap; flex: none; max-width: 220px; }
+.pip-tab:hover { opacity: .9; background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
+.pip-tab[aria-selected="true"] { opacity: 1; background: color-mix(in srgb, var(--on-slab) 14%, transparent); }
+.pip-name { overflow: hidden; text-overflow: ellipsis; }
+.pip-name.mono { font: 11.5px var(--mono); }
+/* Its ⌘ number (⌘1–9 go to it from inside the terminal), when there's more than one tab. */
+.pip-key { font: 600 10px var(--sans); opacity: .45; }
+/* A tab's name being typed (double-click a tab). */
+.pip-rename { width: 140px; height: 20px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--on-slab) 35%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--on-slab) 8%, transparent); color: inherit; font: 600 11.5px var(--sans); outline: 0; }
+.pip-rename:focus { border-color: var(--sel); }
+.pip-x { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; font-size: 13px; line-height: 1; opacity: .6; margin-right: -4px; }
+.pip-x:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 16%, transparent); }
+.pip-add, .pip-view, .pip-hide { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 15px; }
+.pip-add:hover, .pip-view:hover, .pip-hide:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+.pip-slot { flex: 1; min-height: 0; padding: 4px 6px 8px 12px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
+.pip-host { width: 100%; height: 100%; position: relative; }
+.pip-host[hidden] { display: none; }
+.pip-host .xterm-viewport { background: var(--slab) !important; }
+/* The cursor blinks at Cue's 1.4s beat (the GPU renderer's is patched to match; chat.js xterm()). */
+.xterm .xterm-rows .xterm-cursor.xterm-cursor-blink { animation-duration: 1.4s !important; }
+@media (prefers-reduced-motion: reduce) { .sh-live.run, .sh-dot { animation: none; } }
+

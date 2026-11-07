@@ -407,7 +407,7 @@ function termTyping(host, sid) {
 /** An xterm.js terminal in `host`, in Cue's colours, fitted to it: drawn on the GPU where it can be (much
  *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js).
  *  Its cursor blinks at Cue's pace, a 1.4s beat like the live dots: vendor/xterm/addon-webgl.js is patched
- *  from xterm's fixed 600ms to 700ms (keep that on an update), and the default renderer's in style.css. */
+ *  from xterm's fixed 600ms to 700ms (keep that on an update), and the default renderer's in styles/shells.css. */
 function xterm(host) {
   const term = new Terminal({
     fontFamily: cssVar("--mono") || "Menlo, monospace", fontSize: 12, lineHeight: 1.1, cursorBlink: true, scrollback: 5000, macOptionIsMeta: true,
@@ -2633,7 +2633,7 @@ function homeFocus() {
 document.addEventListener("focusout", (e) => { if (!e.relatedTarget) homeFocus(); });
 
 /** Text boxes grow with their content, up to ~8 lines, then scroll. */
-const BOX_MAX = 180;   // the text box's tallest (px); past it, it scrolls (style.css says the same)
+const BOX_MAX = 180;   // the text box's tallest (px); past it, it scrolls (styles/board.css says the same)
 function grow(el) {
   // Already as tall as it gets and still overflowing: nothing to measure. (Measuring collapses it for a
   // moment, which moved what you were reading and jolted the chat above on every key in a long message.)

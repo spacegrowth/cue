@@ -74,7 +74,7 @@ const CUE_HANDOFF = "cue:handoff";   // Cue's own hand-off, as it's kept when ch
  *  SHORTCUT: reads the one-line description only; a skill that takes "resume" without saying so there gets
  *  Cue's message (which still works). Upgrade path: read the skill's own file on its host. */
 const takesResume = (sid, name) => /\bresume\b/i.test(cmdList(sid).find((c) => c.name === name)?.desc || "");
-// Every insight's mark: a lit bulb (rays around it), in the theme's own color (style.css .ins-bulb).
+// Every insight's mark: a lit bulb (rays around it), in the theme's own color (styles/insights.css .ins-bulb).
 /** The bulb drawn small inside the cache's countdown ring (cacheLine). */
 const RING_BULB = `<g class="ins-bulb" transform="translate(12 12.4) scale(0.5) translate(-12 -12)"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></g>`;
 const BULB = `<svg class="ins-bulb" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a4.5 4.5 0 0 0-2.7 8.1c.5.4.8.9.8 1.5v.9h3.8v-.9c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 12 7z"></path><path d="M10.3 21h3.4M12 2.2v1.6M5.4 4.9l1.1 1.1M18.6 4.9l-1.1 1.1M3 11.5h1.6M19.4 11.5H21"></path></svg>`;

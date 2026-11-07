@@ -1,4 +1,4 @@
-/* Shared by the terminal mocks: the Mac app's colors (ui/style.css), the tab strip, the + menu. */
+/* Shared by the terminal mocks: the Mac app's colors (ui/styles/base.css), the tab strip, the + menu. */
 :root {
   --bg: #3F4A22; --on-bg: #FFFFFF; --on-bg-muted: #CDD3B4; --panel: #FFFFFF; --panel-2: #F1F3EA; --line: #DCE0CB;
   --ink: #1E2410; --muted: #5A6340; --sel: #D2DE96; --on-sel: #1E2410; --slab: #1E2410; --on-slab: #ECEFDF;

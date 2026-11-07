@@ -1,0 +1,394 @@
+/* ---------- Sessions view: every live session as a map of project tiles ---------- */
+.sv { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 14px; }
+.sv-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.sv-search { flex: 1; min-width: 240px; max-width: 560px; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 10px; background: var(--panel); color: var(--muted); }
+.sv-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: 500 13.5px var(--sans); }
+.sv-count { margin-left: auto; color: var(--on-bg-muted); font-size: 12.5px; white-space: nowrap; }
+.sv-count b { color: var(--on-bg); }
+.sv-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
+.sx-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+.sx-tile { background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sx-tile.hot { box-shadow: inset 0 0 0 2px var(--deny), var(--shadow); }
+.sx-thead { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sx-tname { font-weight: 750; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sx-branch { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sx-branch::before { content: "⎇ "; }
+.sx-tcount { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* A session: everything visible (no card to open): name, state and buttons, then what it's about
+   and what it's on now. */
+/* Plain rows, no boxes: a hairline between sessions; the state words carry the rest. */
+.sx-solo, .sx-execs { display: flex; flex-direction: column; }
+.sx-item { display: flex; flex-direction: column; gap: 2px; padding: 7px 0 8px; min-width: 0; }
+.sx-solo .sx-item + .sx-item, .sx-execs .sx-item + .sx-item { border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.sx-item.lead { padding: 2px 0 4px; }
+.sx-item.quiet .sx-name { color: var(--muted); }
+.sx-iline { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; }
+.sx-iline .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
+.sx-iline .role, .sx-iline .sx-st, .sx-iline .sx-crew-n { flex: none; }
+/* a done executor's long state words ("done, its lead hasn't picked this up") give way before its name does */
+.sx-iline .sx-st.long { flex: 0 10 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sx-age { font: 11px var(--mono); color: var(--muted); flex: none; }
+.sx-acts { margin-left: auto; display: flex; gap: 4px; flex: none; }
+.sx-acts .btn { height: 22px; padding: 0 8px; font-size: 11px; border-radius: 6px; }
+/* Close stays quiet until you point at it; armed ("Close?") it's red and blinks until you confirm
+   (or it resets after 4 s). The same in Sessions and in the chat's header. */
+.sx-acts .sx-close:not(.on) { color: var(--muted); }
+.sx-close.on { border-color: var(--deny); animation: closeBlink 0.8s ease-in-out infinite; }
+@keyframes closeBlink { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .sx-close.on { animation: none; } }
+/* The chat header's buttons keep their size when it gets tight (they were squeezed to slivers). */
+.ap-head > .btn { flex: none; }
+/* The chat pane adapts to its own width (a container query: the window, and how the Board's columns
+   share it). Narrow: shorter button labels and no agent / model text. Narrower: no state pill (the same
+   state is under the chat) and tighter buttons; narrowest: no role tag, and the name shortens. Close
+   always stays. */
+.active-pane { container: ap / inline-size; }
+.l-short { display: none; }
+@container ap (max-width: 720px) {
+  .ap-head .l-long { display: none; }
+  .ap-head .l-short { display: inline; }
+  .ap-head > .dim { display: none; }
+}
+@container ap (max-width: 640px) {
+  .ap-head > .pill { display: none; }
+  .ap-head > .btn { padding: 0 9px; }
+  .ap-head { gap: 6px; }
+}
+/* Narrowest (the smallest window): the role tag (the line below says whose it is) and the rename pencil go
+   (the name shortens with … only as fitHead's last step, so it doesn't give way for the chips). */
+@container ap (max-width: 500px) {
+  .ap-head > .role, .ap-head .rename-btn { display: none; }
+}
+/* When the top bar doesn't fit (fitTop in app.js adds these one by one). */
+.top[class*="tfit"] { gap: 8px; }
+.top[class*="tfit"] .hsub { display: none; }
+.top:is(.tfit2, .tfit3, .tfit4) .usage-chip .um { display: none; }
+.top:is(.tfit3, .tfit4) .usage-chip .ul { display: none; }
+.top:is(.tfit3, .tfit4) .usage-wrap { margin-right: 0; }
+.top.tfit4 .hlbl { display: none; }
+.top.tfit4 .hchip { padding: 0 10px; }
+.top:is(.tfit3, .tfit4) .pj-pinned { max-width: 110px; }
+/* When the header's buttons still don't fit (fitHead in board.js adds these one by one; each keeps the ones before). */
+.ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-long { display: none; }
+.ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-short { display: inline; }
+.ap-head:is(.fit2, .fit3, .fit4, .fit5, .fit6) > .dim { display: none; }
+.ap-head:is(.fit3, .fit4, .fit5, .fit6) > .pill { display: none; }
+/* "N agents ›": the Agents tab under the bar says the same */
+.ap-head:is(.fit4, .fit5, .fit6) .tm-chip[data-bg-tab] { display: none; }
+.ap-head:is(.fit5, .fit6) > .role, .ap-head:is(.fit5, .fit6) .rename-btn { display: none; }
+/* the rest of the chips (who needs you is in the Agents tab and under the chat too), and the name shortens */
+.ap-head.fit6 .tm-chips { display: none; }
+.ap-head.fit6 .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sx-l { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 24px; }
+.sx-item.exec .sx-l { padding-left: 0; }
+.sx-l.about { color: var(--ink); opacity: .8; }
+.sx-l.run { font: 11px var(--mono); color: var(--ink); }
+.sx-l.ask { color: var(--deny); }
+.sx-l.out .sx-k { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-right: 6px; }
+/* "new": a session that started in the last few minutes, so you can find it. */
+.new-pill { flex: none; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
+.sx-st { font-size: 11px; font-weight: 500; color: var(--muted); }
+.sx-st.hot { color: var(--deny); font-weight: 650; }
+.sx-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.sx-dot.busy { background: var(--accent); box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--accent) 25%, transparent); animation: pulse 1.4s ease-in-out infinite; }
+.sx-dot.idle { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.sx-crew { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.sx-thead + .sx-crew { border-top: 0; padding-top: 0; }
+.sx-crew-h { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; font-size: 11.5px; font-weight: 650; color: var(--ink); text-align: left; padding: 2px 4px 2px 0; border-radius: 6px; }
+.sx-crew-h .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
+.sx-crew-h .sx-st, .sx-crew-h .role { white-space: nowrap; flex: none; }
+/* Executors under a lead line up under its name (the lead's badge stands for them). */
+.sx-execs { padding-left: 24px; }
+.sx-crew-h .sx-lname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sx-crew-h .sx-crew-n { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sx-crew-h.gone, .sx-crew-h.gone .sx-crew-n { color: var(--deny); }
+.sx-crew-n { font-weight: 500; color: var(--muted); white-space: nowrap; }
+/* Executors whose lead is gone: Hand to… / Close all, at the header's end. */
+.sx-crew-h:has(.sx-acts) { display: flex; flex-wrap: wrap; row-gap: 5px; }
+.sx-crew-h .sx-acts { font-weight: 500; flex-basis: 100%; margin-left: 24px; }
+/* The lead a crew's lead took over from, under the crew while it's still open. */
+.sx-item.was { opacity: 0.7; }
+
+/* Recently answered as a list: a hairline between entries, and the one open in Active outlined in lime
+   (a border, not a fill: a filled lime row is the open session, and an answer is a past event). Solid,
+   never dashed: dashed means "working" in Cue. */
+.recent .tl { border-radius: 8px; }
+.recent .tl + .tl::after { content: ""; position: absolute; top: 0; left: 10px; right: 10px; height: 1px; background: var(--line); }
+.recent .tl.on::after, .recent .tl.on + .tl::after { display: none; }
+/* The open one in a white list (Starred, Recently answered): filled lime, as the open card in Waiting is. */
+.recent .tl.on, .recent .tl.on:hover { background: var(--sel); color: var(--on-sel); box-shadow: none; }
+.recent .tl.on .dim, .recent .tl.on .tl-out, .recent .tl.on .tl-top { color: inherit; opacity: 0.75; }
+.recent .tl.on .tl-name { color: inherit; opacity: 1; }
+
+/* History: filters (kind chips + session picker), and a session's answers folded into one row. */
+.hfilter { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.hfchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
+.hfchip span { font-weight: 500; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.hfchip:hover { background: color-mix(in srgb, var(--on-bg) 18%, transparent); }
+.hfchip.on { background: var(--sel); color: var(--on-sel); }
+.hsess { height: 28px; padding: 0 8px; border-radius: 8px; border: 0; font: 600 12px var(--sans); color: var(--ink); background: var(--panel); max-width: 240px; }
+.hsrow .hwho { gap: 7px; }
+.hfold { width: 12px; font-size: 12px; color: var(--ink); opacity: 0.6; flex: none; }
+.hcount { font: 650 10.5px var(--mono); padding: 1px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); flex: none; }
+.hsrow.open { background: var(--panel-2); }
+.hrow.nested { background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); }
+.hrow.nested .hwho { border-left: 2px solid var(--line); height: 100%; margin-left: 14px; }
+.hgroup + .hrow, .hsrow + .hrow.nested { border-top: 0; }
+.hhead, .hrow { grid-template-columns: 220px minmax(0, 1fr) minmax(160px, 0.6fr) 132px; }
+.hrow .age, .hhead span:last-child { white-space: nowrap; text-align: right; }
+.sr-sec { padding: 10px 10px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; color: var(--muted); }
+.sr-sec span { letter-spacing: 0; font-weight: 600; opacity: 0.8; }
+.sr-sec ~ .sr-sec { margin-top: 6px; border-top: 1px solid var(--line); }
+
+/* A conversation opened from search: the whole log, the message you found in lime. */
+.convo-sheet { width: min(860px, calc(100vw - 40px)); }
+.convo-sheet .sheet-head { gap: 10px; }
+.convo-body { display: flex; flex-direction: column; gap: 14px; padding: 6px 22px 22px; }
+.cv-you.cv-hit .cv-you-text { background: var(--sel); color: var(--on-sel); box-shadow: 0 0 0 2px var(--sel); }
+.cv-agent.cv-hit { background: color-mix(in srgb, var(--sel) 38%, transparent); border-radius: 10px; padding: 8px 12px; margin: 0 -12px; }
+.sr-last b { font-weight: 650; }
+
+/* ---------- "N live" in the header: every session one click away, and + New ---------- */
+.lv-wrap { position: relative; display: inline-flex; }
+/* A round pill like waiting / working beside it, with a live, blinking dot. */
+.lv-chip.on { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
+.lv-chip .hdot { animation: pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .lv-chip .hdot { animation: none; } }
+.lv-pop { position: absolute; top: 38px; left: 0; z-index: 30; width: 460px; max-height: min(640px, calc(100vh - 80px)); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); overflow: hidden; }
+/* ⌘K: the same list in the middle of the window, like Spotlight. */
+.spot-scrim { padding-top: 14vh; z-index: 30; }
+.lv-wrap.spot { display: block; }
+.spot .lv-pop { position: static; width: min(620px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 14vh - 40px)); border-radius: 16px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line); }
+.spot .lv-top { padding: 12px; }
+.spot .lv-top .sv-search { height: 40px; }
+.spot .sv-search input { font-size: 15px; }
+.spot .lv-top .btn { height: 40px; }
+.spot .lv-row { padding: 6px 8px; margin: 0 -8px; font-size: 13px; }
+.lv-top { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); }
+.lv-top .sv-search { flex: 1; min-width: 0; height: 32px; background: var(--panel-2); }
+.lv-top .btn { height: 32px; }
+.lv-list { overflow-y: auto; padding: 4px 10px 6px; }
+.lv-group + .lv-group { border-top: 1px solid var(--line); }
+.lv-ghead { display: flex; align-items: baseline; gap: 8px; padding: 8px 0 4px; font-size: 11.5px; font-weight: 750; color: var(--muted); }
+.lv-ghead .sx-plus { margin-left: auto; }
+.lv-row { display: flex; align-items: center; gap: 7px; padding: 4px 6px; margin: 0 -6px; border-radius: 7px; font-size: 12.5px; min-width: 0; cursor: pointer; }
+.lv-row:hover { background: var(--panel-2); }
+.lv-row.sel { background: var(--sel); color: var(--on-sel); }
+.lv-row.sel .sx-st:not(.hot) { color: color-mix(in srgb, var(--on-sel) 70%, transparent); }
+.lv-row .badge { width: 18px; height: 18px; font-size: 9.5px; border-radius: 5px; }
+.lv-row .role { flex: none; }
+.lv-place { flex: none; display: inline-flex; color: var(--muted); opacity: .8; }
+.lv-row.on .lv-place { color: inherit; }
+.lv-name { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lv-row .sx-st, .lv-row .sx-dot { flex: none; }
+.lv-acts { margin-left: auto; display: flex; gap: 4px; flex: none; }
+.lv-acts .btn { height: 22px; padding: 0 8px; font-size: 11px; border-radius: 6px; }
+.lv-foot { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line); }
+.lv-foot button { font-size: 12px; font-weight: 650; color: var(--accent); }
+.lv-foot button:hover { text-decoration: underline; text-underline-offset: 2px; }
+.lv-keys { margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.lv-keys kbd { margin: 0 1px; }
+/* + on a tile / group: a new session in that folder. */
+.sx-plus { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 15px; line-height: 1; color: var(--muted); flex: none; }
+.sx-plus:hover { background: var(--panel-2); color: var(--ink); }
+.sx-thead .sx-plus { margin-left: 2px; }
+/* On the green page, not in a card: a white button (moss would vanish into the background). */
+.btn.primary.sv-new { height: 32px; background: var(--panel); color: var(--ink); border-color: var(--panel); }
+/* The New session form. */
+/* + New on its own: a title bar with ×, then the form, which scrolls when the window is short. */
+.nf-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; font-weight: 700; }
+.nf-x { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; font-size: 18px; line-height: 1; color: var(--muted); }
+.nf-x:hover { background: var(--panel-2); color: var(--ink); }
+.nf-pop .nf { border-bottom: 0; background: var(--panel); padding: 12px 16px 16px; min-height: 0; overflow-y: auto; }
+.nf { padding: 10px 12px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); display: flex; flex-direction: column; gap: 8px; }
+.nf-row { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px; }
+.nf-row.top { align-items: start; }
+.nf-row > .seg { justify-self: start; }   /* as wide as its buttons, like the other rows */
+/* Runs in: a terminal tab or tmux, and what tmux buys you. */
+.nf-where { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; }
+.nf-where .seg { flex-wrap: wrap; }
+/* Skip all: red once picked, with a plain warning beside it. */
+.seg button.danger.on { background: var(--deny); color: #fff; }
+.nf-hint.warn { color: var(--deny); font-weight: 600; }
+.nf-note { margin-top: -4px; }
+.nf-proj { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nf-proj .nf-hint { min-width: 0; flex: 1; }
+.nf-pdrop { left: 0; right: auto; min-width: 220px; }
+.nf-pdrop .nf-dopt { display: flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; }
+.nf-pdrop .nf-dopt .nf-hint { margin-left: auto; }
+.nf-hint { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nf-k { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.nf-row.top .nf-k { padding-top: 7px; }
+.nf-in { width: 100%; border: 0; border-radius: 8px; padding: 6px 9px; background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 500 12.5px var(--sans); outline: none; resize: vertical; }
+.nf-in.mono { font: 12px var(--mono); }
+.nf-sel { width: auto; max-width: 240px; flex: none; height: 30px; padding-right: 6px; font-weight: 600; }
+.nf-model-id { width: 220px; flex: none; }
+.nf-reload { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; color: var(--muted); }
+.nf-reload:hover { background: var(--panel-2); color: var(--ink); }
+.nf-reload:disabled { opacity: .4; cursor: default; }
+.nf-fwrap { position: relative; min-width: 0; }
+.nf-fwrap > .nf-in { padding-right: 28px; }
+.nf-msg { min-width: 0; }
+.nf-msg .nf-attach { position: absolute; right: 3px; top: 3px; width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: var(--muted); }
+.nf-msg .nf-attach:hover { color: var(--accent); background: var(--panel-2); }
+.nf-msg .nf-mic { top: 29px; }
+.nf-msg .nf-mic.on { color: var(--on-accent); background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+.nf-fbtn { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 6px; color: var(--muted); font-size: 11px; }
+.nf-fbtn:hover { background: var(--panel-2); color: var(--ink); }
+.nf-drop { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; max-height: 220px; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+.nf-dopt { text-align: left; padding: 5px 8px; border-radius: 6px; font: 12px var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.nf-dopt:hover { background: var(--panel-2); }
+.nf-dopt.on { background: var(--accent); color: var(--on-accent); }
+.nf-in:focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.nf-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.nf-acts .btn { height: 28px; }
+
+/* Search history, grouped by session: its name once, then its matches indented under it. */
+.sr-group { display: flex; align-items: center; gap: 8px; padding: 10px 10px 2px; font-size: 12.5px; min-width: 0; }
+.sr-group .proj { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr.in-group { padding-left: 38px; }
+.sr-more { margin: 0 0 6px 38px; padding: 4px 0; font-size: 12px; font-weight: 650; color: var(--accent); }
+.sr-more:hover { text-decoration: underline; }
+.sr.in-group { display: flex; align-items: baseline; gap: 10px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
+.sr-who { flex: none; width: 38px; font-size: 11.5px; color: var(--muted); }
+.sr-line { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-line mark { background: var(--sel); color: var(--on-sel); border-radius: 3px; padding: 0 1px; }
+.sr-sec em { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; margin-left: 8px; opacity: 0.85; }
+.sr-resume { font-size: 11.5px; font-weight: 700; color: var(--accent); padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+/* On a closed session's row: a button of its own (the row opens the conversation). */
+.sr-resume.act { cursor: pointer; }
+.sr-resume.act:hover { background: var(--accent); color: var(--on-accent); }
+
+/* A session tile in Sessions is one big button (its own buttons still do their own thing). */
+.sx-item[data-sv] { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; }
+.sx-item[data-sv]:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.active-pane.empty .btn { margin-top: 10px; }
+/* First launch: connect your agents. */
+.setup-lede { margin: 0 0 6px; font-size: 13.5px; line-height: 1.55; color: var(--muted); max-width: 60ch; }
+.setup-foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; }
+/* A quiet session open in Active: why it's read-only, and what to do. */
+.quiet-note { margin: 2px 16px 6px; padding: 9px 12px; border-radius: 10px; background: var(--panel-2); color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+/* Your usage file: a meter that couldn't be read, its error in the details, the path box in Settings. */
+.uf-bad { color: #F0C2B6; }
+.up-err { font-size: 12px; line-height: 1.5; color: var(--deny); padding: 4px 0 2px; }
+.up-bar.none { visibility: hidden; }
+.path-in { width: 280px; height: 32px; border-radius: 9px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 12px var(--mono); flex: none; }
+.up-row.money { grid-template-columns: 72px 1fr auto; }
+.tl-name { color: var(--ink); font-weight: 650; }
+/* The open session's numbers, grey, on the line under the chat's title. The line is tight (the folder path
+   shares it): the path gives way first, then the numbers shrink with … from their end. */
+.ap-meta { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ap-meta b { color: var(--ink); font-weight: 650; }
+.mi-compact, .mi-act { flex: none; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--amber); color: var(--amber); font-size: 11.5px; font-weight: 650; background: transparent; }
+.mi-compact:hover, .mi-act:hover { background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.commit-btn { margin-left: 2px; }
+/* Context: how full, at a glance (a small gauge and the number), amber from 80%, red from 95%. */
+.ap-meta .mi-ctx { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 650; vertical-align: -1px; }
+.ctx-bar { width: 44px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.ctx-bar i { display: block; height: 100%; border-radius: 3px; background: var(--ink); opacity: 0.55; }
+.ap-meta .mi-ctx.high { color: var(--amber); } .mi-ctx.high .ctx-bar i { background: var(--amber); opacity: 1; }
+.ap-meta .mi-ctx.full { color: var(--deny); } .mi-ctx.full .ctx-bar i { background: var(--deny); opacity: 1; }
+/* The chat header's ⋯ menu. */
+.more-wrap { position: relative; display: inline-flex; }
+.more-btn { min-width: 32px; justify-content: center; font-weight: 800; letter-spacing: 1px; }
+.more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 12; min-width: 240px; background: var(--panel); border-radius: 12px; padding: 6px; box-shadow: var(--shadow), 0 0 0 1px var(--line); display: flex; flex-direction: column; }
+.more-menu button { text-align: left; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--ink); display: flex; flex-direction: column; gap: 1px; }
+.more-menu button span { font-size: 11px; font-weight: 500; color: var(--muted); }
+.more-menu button:hover:not(:disabled) { background: var(--panel-2); }
+.more-menu button:disabled { opacity: .5; cursor: default; }
+.more-menu button.armed { color: var(--deny); }
+.proj-move button { flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap; }
+.proj-move button span { flex-basis: 100%; padding-left: 16px; margin-top: -2px; }
+.pm-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 4px; }
+.pm-note { font-size: 12px; color: var(--muted); padding: 0 10px 6px; }
+.pm-none { font-size: 12px; color: var(--muted); padding: 6px 10px 8px; }
+.more-menu button.pm-add { color: var(--muted); font-weight: 600; }
+.pm-new { padding: 4px 6px 2px; }
+.pm-new .pm-note { padding: 6px 4px 2px; }
+.pm-new-in { width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; outline: none; }
+.pm-new-in:focus { border-color: var(--muted); }
+
+/* "3 more ↓" over the bottom edge of a list that's cut off: small, quiet, out of the way until wanted. */
+.sec { position: relative; }
+/* Its cards' offsets count from the list itself (for "N more" and ending on a whole card). */
+.sec-body, .card.recent { position: relative; }
+.more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; padding: 0 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; color: var(--on-bg);
+  background: var(--bg); border: 1px solid color-mix(in srgb, var(--on-bg) 22%, transparent); transition: opacity 0.15s; }
+.more-below:hover { border-color: color-mix(in srgb, var(--on-bg) 45%, transparent); }
+/* Faded after a few seconds still: back only when you scroll the list or its count changes (board.js). */
+.more-below.quiet { opacity: 0; pointer-events: none; transition: opacity 0.4s; }
+
+/* ---------- Parked: sessions you stopped, to resume (the last drawer, below Recently answered) ---------- */
+/* The parking sign: a small rounded square with a bold P, wherever a session is parked. Solid on a
+   card, light on the background, dark on a selected (lime) row; it pulses while the session comes back. */
+.p-sign { display: inline-grid; place-items: center; flex: none; width: 15px; height: 15px; border-radius: 4px; font: 800 9.5px/1 var(--mono); font-style: normal; background: var(--accent); color: var(--on-accent); }
+.prow .p-sign { background: var(--on-bg-muted); color: var(--bg); }
+.prow:hover .p-sign { background: var(--on-bg); }
+.prow.on .p-sign, .tl.on .p-sign { background: var(--on-sel); color: var(--sel); }
+.prow { display: flex; align-items: center; gap: 7px; min-width: 0; height: 30px; padding: 0 4px 0 10px; border-radius: 9px; font-size: 12.5px; color: var(--on-bg-muted); cursor: pointer; }
+.prow:hover { background: color-mix(in srgb, var(--on-bg) 8%, transparent); color: var(--on-bg); }
+.prow.on, .prow.on:hover { background: var(--sel); color: var(--on-sel); }
+.prow b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+/* An agent other than your usual one (core.js oddAgent): its mark, small, after the name. */
+.tl-top .badge, .prow .badge, .card-head .badge { width: 16px; height: 16px; border-radius: 4px; font-size: 9px; }
+.prow .mach { color: inherit; border-color: currentColor; margin-left: 0; }
+.prow-age { margin-left: auto; font: 11px var(--mono); opacity: 0.8; white-space: nowrap; flex: none; }
+.prow-go { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; opacity: 0; }
+.prow:hover .prow-go, .prow.on .prow-go, .prow-go:focus-visible { opacity: 1; }
+.prow-go:hover { background: color-mix(in srgb, currentColor 18%, transparent); }
+.prow.waking .p-sign, .tl.waking .p-sign { animation: pulse 1.4s ease-in-out infinite; }
+.prow.waking .prow-go { display: none; }
+/* Active, for a parked one: its last turns, a little faded, and a dashed line where it stopped. */
+.active-pane.parked .cv-you, .active-pane.parked .cv-agent { opacity: 0.72; }
+.park-more { align-self: center; font-size: 11.5px; font-weight: 650; color: var(--muted); padding: 3px 11px; border-radius: 999px; background: var(--panel-2); }
+.park-more:hover { color: var(--ink); }
+.park-line { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.park-line::before, .park-line::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }
+@media (prefers-reduced-motion: reduce) { .prow.waking .p-sign, .tl.waking .p-sign { animation: none; } }
+/* Starred, parked: the sign where the dot would be, the row faded as if asleep, Resume on the row. */
+.tl.star-tl.parked::before { display: none; }
+.tl.star-tl.parked > .p-sign { position: absolute; left: 6px; top: 10px; }
+.tl.star-tl.parked .tl-top > :not(.star-btn), .tl.star-tl.parked .tl-said > span { opacity: 0.6; }
+.tl.star-tl.parked.on .tl-top > :not(.star-btn), .tl.star-tl.parked.on .tl-said > span { opacity: 0.85; }
+/* Its last words cut short, Resume right after them. */
+.tl-said { display: flex; align-items: baseline; gap: 8px; }
+.tl-said > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-said > .tl-wake { flex: none; font-size: 12px; }
+.tl.star-tl.parked .tl-top > .tl-parked { margin-left: auto; opacity: 1; white-space: nowrap; }
+.tl-wake { font-weight: 700; color: var(--accent); }
+.tl-wake:hover { opacity: 0.8; }
+.tl.on .tl-wake { color: inherit; }
+/* The Active header's "parked" pill carries the sign too. */
+.pill.park-pill { display: inline-flex; align-items: center; gap: 6px; padding-left: 5px; }
+.park-pill .p-sign { width: 14px; height: 14px; font-size: 9px; }
+.active-pane.parked .ap-head .star-btn { width: 20px; height: 20px; color: var(--muted); }
+.active-pane.parked .ap-head .star-btn.on { color: var(--star); }
+/* The last drawer's heading: "▸ PARKED 8 · CLOSED 30", each word a list; the one showing is bright. */
+.shelf-head { gap: 8px; align-items: baseline; }
+.shelf-head .fold-arrow { color: inherit; padding: 0 2px 0 0; }
+.shelf-word { font: inherit; letter-spacing: inherit; color: var(--on-bg-muted); }
+.shelf-word:hover, .shelf-word.on { color: var(--on-bg); }
+.shelf-word span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; }
+.shelf-sep { color: var(--on-bg-muted); }
+.sec-parked .sec-body { gap: 2px; max-height: 322px; }   /* ten lines (30px + 2px gap each); the rest scroll, under "N more" */
+
+/* Sessions tab: a heading over each section (This Mac, each other machine, Parked, Closed). Each folds;
+   the heading stays at the top while its section scrolls under it. */
+.sx-sec + .sx-sec { margin-top: 22px; }
+.sx-sec.shut + .sx-sec { margin-top: 4px; }
+.sx-sec-h { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: baseline; gap: 8px; padding: 2px 2px 9px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-bg); }
+.sx-sec-h > span { color: var(--on-bg-muted); font-weight: 600; letter-spacing: 0.02em; text-transform: none; }
+.sx-sec-fold { display: inline-flex; align-items: baseline; gap: 6px; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; padding: 0; }
+.sx-sec-fold:hover { opacity: 0.8; }
+.sx-arrow { width: 9px; font-size: 10px; color: var(--on-bg-muted); }
+/* Parked and Closed: slim faded lines, in columns; brighter on hover. What doesn't fit waits behind "Show N more". */
+.sx-rest { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 2px 12px; opacity: 0.7; }
+.sx-rest:hover, .sx-rest:has(.prow.on) { opacity: 1; }
+.sx-rest .prow.closed { opacity: 0.8; }
+.sx-rest .sx-cut { display: none; }
+.sx-more { margin: 6px 0 0 8px; padding: 4px 10px; border-radius: 7px; font-size: 11.5px; color: var(--on-bg-muted); }
+.sx-more:hover { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 8%, transparent); }
+

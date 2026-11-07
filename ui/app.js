@@ -1,5 +1,5 @@
 // Cue UI — everything that needs you, visible at once, on one board.
-// Colors live in style.css (Moss, light + dark).
+// Colors live in styles/base.css (Moss, light + dark).
 // Cue UI app — the main draw, the global event handlers, and boot().
 addEventListener("wheel", () => { glide = null; }, { capture: true, passive: true });
 /** The closed strip's line: the open session's screen, every 2 s (its last line with anything on it). */

@@ -152,7 +152,7 @@ const projRoot = (cwd) => state.projects?.[cwd]?.root || cwd;
 // ---------- a project's color: its dot on every card, row and tile, picked by project name ----------
 /** The ten swatches, in the order offered: Moss (Cue's own look, saved as 0), then around the color wheel,
  *  graphite last: [saved as, hue, strength (0: grey, 1: as colorful as Moss)], from the colors picked
- *  (style.css --pcpN, in saved order: Moss #7a7a66 #9b8eb4 #a8925e #b7a38f #6d8375 #5f8b8a #6b739c #a3828f
+ *  (styles/base.css --pcpN, in saved order: Moss #7a7a66 #9b8eb4 #a8925e #b7a38f #6d8375 #5f8b8a #6b739c #a3828f
  *  #6e7076). Nothing between rose and taupe (red and amber mean "asks you" and "stuck"). The window takes
  *  the hue and strength, at Moss's own lightness (projTheme); Moss is Cue's own theme. */
 const MOSS = 0;
@@ -244,13 +244,13 @@ const swatchPicker = (project) => {
 };
 const swatchOf = (project) => project === ALL_PROJ ? allIdx() : projIdx(project);
 /** The window in the color of the project picked in the header (Project colors on), else of All projects: your
- *  Color (style.css .proj-theme). Moss: Cue's own theme. */
+ *  Color (styles/base.css .proj-theme). Moss: Cue's own theme. */
 const themeIdx = () => projFilter ? projIdx(projFilter) : allIdx();
 function projTheme() {
   const idx = themeIdx(), o = ownHue();
   const sw = idx === OWN ? [OWN, o.h, o.k] : idx !== MOSS && SWATCHES.find(([i]) => i === idx);
   const root = document.documentElement;
-  // Your own Color's dot (style.css --pc10), wherever it shows.
+  // Your own Color's dot (styles/base.css --pc10), wherever it shows.
   if (o) { root.style.setProperty("--oh", o.h); root.style.setProperty("--ok", o.k); }
   root.classList.toggle("proj-theme", !!sw);
   if (!sw) return;

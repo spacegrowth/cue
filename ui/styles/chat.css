@@ -1,0 +1,544 @@
+/* ---------- activity bar: solid = working, striped = waiting on you ---------- */
+.bar { position: relative; height: 8px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--line) 45%, transparent); flex: none; }
+.bar i { position: absolute; top: 0; bottom: 0; }
+.bar i.w { background: var(--work); }
+.bar i.z { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); box-shadow: inset 0 0 0 1px var(--accent); }
+/* Still going right now: the stripes march, so "waiting on you" reads at a glance. */
+.bar i.z.live, .sw.z.live { background-size: 8.49px 8.49px; background-image: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); animation: march 0.9s linear infinite; }
+@keyframes march { to { background-position: 8.49px 0; } }
+.bar .now { position: absolute; top: 0; bottom: 0; right: 0; width: 2px; background: var(--ink); opacity: 0.35; }
+.bar-key { display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 10.5px; color: var(--muted); }
+.bar-key span { display: inline-flex; align-items: center; gap: 4px; }
+/* Above the big bar: each stretch's length, centred over it (only stretches wide enough to label). */
+.bar-labels { position: relative; height: 15px; margin-bottom: 2px; }
+.bar-labels span { position: absolute; bottom: 0; text-align: center; font: 600 10.5px var(--mono); color: var(--muted); white-space: nowrap; }
+.bar-labels span.z { color: var(--ink); }
+.sw { display: inline-block; width: 14px; height: 7px; border-radius: 2px; flex: none; }
+.sw.w { background: var(--work); }
+.sw.z { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); box-shadow: inset 0 0 0 1px var(--accent); }
+.sw.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
+@media (prefers-reduced-motion: reduce) { .bar i.z.live, .sw.z.live { animation: none; } }
+/* core.js BAR_THIN: too short a stretch for its stripes, in their color */
+.bar i.z.thin { background: var(--accent); box-shadow: none; animation: none; }
+.working .bar { background: color-mix(in srgb, var(--on-bg-muted) 20%, transparent); }
+.working .bar i.w { background: var(--on-bg-muted); }
+.bar i.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
+.working .bar i.i { background: color-mix(in srgb, var(--on-bg-muted) 35%, transparent); }
+.working.on-agent { opacity: 0.75; }
+.col-sub { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--on-bg-muted); margin-top: 2px; }
+.agent-note { margin-top: 6px; font-size: 12px; font-style: italic; }
+
+/* ---------- full message (markdown-lite) ---------- */
+.msg p { margin: 0 0 9px; }
+.msg ul, .msg ol { margin: 0 0 9px; padding-left: 20px; }
+.msg li { margin: 2px 0; }
+.msg h4 { margin: 4px 0 6px; font-size: 13.5px; }
+.msg blockquote { margin: 0 0 9px; padding: 0 0 0 10px; border-left: 3px solid var(--line); color: var(--muted); }
+.msg blockquote > :last-child { margin-bottom: 0; }
+.msg code { font: 12.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.msg pre { margin: 0 0 9px; background: var(--slab); color: var(--on-slab); padding: 10px 12px; border-radius: 8px; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg .md-table { margin: 0 0 9px; overflow-x: auto; }
+.msg table { border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+.msg th, .msg td { text-align: left; vertical-align: top; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--line); }
+.msg th { font-weight: 650; color: var(--muted); font-size: 12px; }
+.msg tr:last-child td { border-bottom: 0; }
+.msg > :last-child { margin-bottom: 0; }
+
+/* ---------- folded extras (after a stop hook) ---------- */
+.thread-toggle { font-size: 12px; font-weight: 650; color: var(--muted); padding: 2px 0; }
+.thread-toggle:hover { color: var(--ink); }
+.tl[data-detail] { cursor: pointer; }
+.working.click { cursor: pointer; }
+.working.click:hover { border-style: solid; }
+
+.follow { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.follow-body { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.follow-body p, .follow-body ol, .follow-body ul { margin: 0 0 4px; }
+
+/* ---------- images ---------- */
+.chip { position: relative; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); background: var(--panel-2); }
+.chip-img { display: block; width: 100%; height: 100%; }
+.chip-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chip-x { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+.chip-count { align-self: flex-end; font-size: 11.5px; color: var(--muted); padding-bottom: 2px; }
+.thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.thumb { width: 52px; height: 52px; border-radius: 7px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); background: var(--panel-2); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Screenshots a message points at: big enough to read, click for full size. */
+.thumbs.shots { gap: 10px; margin-top: 8px; }
+.thumbs.shots .thumb { width: 240px; height: 150px; cursor: zoom-in; }
+.thumbs.shots .thumb img { object-fit: cover; object-position: top left; }
+.shots-named { margin-top: 6px; font-size: 12px; color: var(--muted); word-break: break-all; }
+.shots-named code { font-family: var(--mono); }
+.msg a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* A path in a message (⌘-click opens it): it stays plain text — paths are everywhere in
+   agent prose — with a dotted underline on hover as the only hint. */
+/* A path: the theme's link colour (its accent, a project's tint with it), underlined only under the pointer. */
+a[data-path], .msg a[data-path], .msg code a[data-path] { color: var(--accent); text-decoration: none; cursor: pointer; }
+a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-underline-offset: 2px; }
+.lightbox { position: fixed; inset: 0; z-index: 40; background: rgba(8, 10, 4, 0.82); display: grid; place-items: center; padding: 40px; cursor: zoom-out; }
+.lightbox img { max-width: 100%; max-height: calc(100vh - 100px); border-radius: 10px; box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7); background: #fff; }
+.lb-count { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 13px; opacity: 0.85; }
+
+/* ---------- Active pane ---------- */
+.active-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.active-pane.empty { align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 24px; }
+.quiet-big { font-size: 16px; font-weight: 650; }
+.ap-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; font-size: 13px; }
+.pill-x { margin: -2px -6px -2px 6px; width: 18px; height: 18px; display: inline-grid; place-items: center; vertical-align: middle; border-radius: 999px; font-size: 14px; line-height: 1; color: inherit; opacity: 0.75; }
+.pill-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }
+.pill.soft { background: var(--panel-2); color: var(--muted); }
+.ap-bar { padding: 8px 16px 0; }
+.ap-chat { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px 10px; display: flex; flex-direction: column; gap: 14px; }
+/* The agent: full-width prose, no bubble, same size as before (it dumps a lot). */
+.cv-agent { font-size: 14px; line-height: 1.6; }
+/* Steps: what the agent did between your message and its reply (a turn), one line per step. */
+.stx { display: flex; flex-direction: column; gap: 6px; }
+.stx-head { display: flex; align-items: center; gap: 8px; }
+.stx-fold { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted); padding: 4px 9px 4px 7px; border-radius: 8px; background: var(--panel-2); }
+.stx-fold b { color: var(--ink); font-weight: 650; }
+.stx-fold:hover { color: var(--ink); }
+.stx-tri { width: 11px; font-size: 12px; color: var(--ink); }
+.stx-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stx-all { margin-left: auto; font-size: 11.5px; font-weight: 650; color: var(--muted); padding: 3px 8px; border-radius: 6px; }
+.stx-all:hover { color: var(--ink); background: var(--panel-2); }
+.stx-more { font-size: 11.5px; padding-left: 4px; }
+.stx-say { font-size: 13.5px; line-height: 1.55; }
+.stx-steps { display: flex; flex-direction: column; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 8px; }
+.stx-line { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-size: 12.5px; color: var(--ink); padding: 3px 4px; border-radius: 6px; min-width: 0; }
+.stx-line[data-step]:hover { background: var(--panel-2); }
+.stx-line:disabled { cursor: default; }
+.stx-ic { width: 17px; height: 17px; border-radius: 4px; flex: none; display: grid; place-items: center; font: 800 9.5px var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
+.stx-ic.k-edit { background: var(--sel); color: var(--on-sel); }
+.stx-ic.k-run, .stx-ic.k-relay { background: var(--slab); color: var(--on-slab); }
+.stx-line.bad .stx-ic { background: color-mix(in srgb, var(--deny) 16%, var(--panel)); color: var(--deny); }
+.stx-what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stx-what .mono { font-size: 11.5px; }
+.stx-res { flex: none; max-width: 42%; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
+.stx-res .add { color: var(--accent); font-weight: 650; } .stx-res .del { color: var(--deny); font-weight: 650; }
+.stx-chev { width: 10px; flex: none; color: var(--muted); font-size: 11px; text-align: center; }
+/* Background work (chat.js bgRow): one row like a step line. Its mark says the kind: an agent A on moss, a
+   teammate a person in a ring (a script is $ on dark, as "Ran"). In the list above the box while it runs
+   (teammates always), under the step that started it once it's over. */
+.stx-ic.k-bgagent { background: var(--accent); color: var(--on-accent); }
+.stx-ic.k-team { background: var(--panel); color: var(--accent); border: 1.5px solid var(--accent); border-radius: 50%; box-sizing: border-box; }
+.stx-ic svg { width: 10px; height: 10px; }
+.bg-rows { flex: none; margin: 6px 0 0; padding-top: 4px; border-top: 1px solid var(--line); display: flex; flex-direction: column; max-height: 140px; overflow-y: auto; overscroll-behavior: contain; }
+.bg-rows > * { flex: none; }
+.bg-row:hover { background: var(--panel-2); }
+.bg-row .bg-name { flex: none; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bg-row.idle .bg-name { color: var(--muted); }
+.bg-row .bg-meta { flex: none; font-size: 11.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bg-row .bg-meta .bad, .bg-view-meta .bad { color: var(--deny); font-weight: 650; }
+.bg-row .bg-tail { flex: 1; min-width: 0; text-align: right; font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stx-steps .bg-row { margin-left: 25px; width: calc(100% - 25px); }
+/* Agents, any kind (agents.js): the row above the box's head, the Agents tab's groups, a row's buttons and ask. */
+.ag-head { display: flex; align-items: center; gap: 8px; padding: 2px 6px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.ag-more { border: 0; background: none; padding: 0; font: 600 11.5px var(--sans); letter-spacing: 0; color: var(--muted); cursor: pointer; }
+.ag-more:hover { color: var(--ink); }
+.ag-group { padding: 10px 6px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.ag-group:first-child { padding-top: 2px; }
+.ag-row { cursor: pointer; }
+.ag-acts { flex: none; display: inline-flex; gap: 6px; margin-left: 6px; }
+.ag-need { color: var(--deny); font-weight: 650; }
+.ag-row .ag-ask { font-family: var(--sans); }
+.ag-row .ag-ask .mono { font-family: var(--mono); }
+.ag-view-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.ag-view-name { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.role.ag-kind { border: 1px solid var(--muted); color: var(--muted); }
+.pill.soft.stuck { color: #d99a3a; }
+.pill.soft.need { color: var(--deny); }
+.pill.soft .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
+.tm-chip.small { height: 18px; padding: 0 7px; font-size: 10.5px; }
+/* On a card's top line, beside the name and before the time and buttons: the chip is what gives way, inside its own
+   edge (its name to …, then its words), never past it onto the time. */
+.tm-chip.small { min-width: 0; overflow: hidden; }
+.tm-chip.small .tm-n { flex-shrink: 1000; }
+.tm-chip.small .tm-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A script's output in its full view: terminal-dark, its lines as they came. */
+.bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
+.bg-out div { white-space: pre; }
+.bg-view-out { flex: 1; min-height: 120px; margin-left: 0; }
+.bg-cmd { background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.bg-view-steps .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
+/* A background agent in full (chat.js helperPane): in place of the chat, its steps at full height. */
+/* The Back row sits above the chat area, not in it, so it stays put while a long agent's steps or a
+   script's output scroll under it. */
+.bg-view-head { display: flex; align-items: center; gap: 8px; padding: 10px 18px 0; flex: none; }
+/* ‹ Back to chat: a real button on its own row, so it reads as the way out, not a caption. */
+.bg-back { height: 28px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.bg-back:hover { border-color: var(--muted); }
+.bg-back .bg-back-ch { font-size: 15px; font-weight: 800; line-height: 1; position: relative; top: -1px; }
+.bg-view-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; margin-top: -6px; }
+/* A script's title is what it does, in plain text (an agent's is its kind, in bold). */
+.bg-view-title.script { font-weight: 400; color: var(--ink); }
+.bg-view-kind { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.bg-view-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: -8px; }
+.bg-view-steps { margin-left: 0; }
+.bg-view-reply { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; user-select: text; -webkit-user-select: text; }
+.bg-view-k { display: block; font: 700 10px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.bg-view-foot { align-items: center; font-size: 12.5px; }
+/* The reader (chat.js readerPane): one reply in one column, larger type, in place of the chat. Its bar sits
+   above the chat area like a background agent's Back row; the text size is a variable (three steps). */
+.rd-head { padding: 12px 18px 2px; gap: 6px; }
+.rd-head > * { flex: none; }
+.rd-head > .rd-name { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 40px; }
+.rd-head > .grow { flex: 1 1 0; }
+/* Waiting in its terminal, in the reader's bar: the terminal strip's waiting amber, as a chip. */
+.rd-term { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: 999px; background: color-mix(in srgb, #d99a3a 32%, var(--slab)); color: var(--on-slab); font-size: 11.5px; font-weight: 650; white-space: nowrap; flex: none; }
+.rd-term:hover { background: color-mix(in srgb, #d99a3a 44%, var(--slab)); }
+.rd-term .tlive { background: #d99a3a; }
+.rd-seg { display: inline-flex; align-items: center; height: 30px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.rd-seg button { height: 100%; min-width: 30px; padding: 0 8px; color: var(--ink); font-size: 14px; font-weight: 700; }
+.rd-seg button + button, .rd-seg .rd-of + button { border-left: 1px solid var(--line); }
+.rd-seg button:hover:not(:disabled) { background: var(--panel-2); }
+.rd-seg button:disabled { color: var(--muted); opacity: .5; }
+.rd-seg .rd-of { padding: 0 10px; font-size: 12px; font-weight: 650; color: var(--muted); border-left: 1px solid var(--line); height: 100%; display: inline-flex; align-items: center; }
+.rd-seg .rd-a.small { font-size: 11px; }
+.rd-seg .rd-a.big { font-size: 16px; }
+.rd { max-width: 34em; width: 100%; margin: 0 auto; padding: 18px 4px 40px; font-size: var(--rd-size, 17px); line-height: 1.65; user-select: text; -webkit-user-select: text; }
+.rd-by { font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: 14px; }
+.rd .msg p, .rd .msg ul, .rd .msg ol, .rd .msg pre, .rd .msg .md-table, .rd .msg blockquote { margin-bottom: .85em; }
+.rd .msg li { margin: .25em 0; }
+.rd .msg h4 { font-size: 1.18em; line-height: 1.3; margin: 1.3em 0 .5em; }
+.rd .msg code { font-size: .88em; }
+.rd .msg pre { font-size: .82em; line-height: 1.55; }
+.rd .msg table { font-size: .9em; }
+.rd .msg th { font-size: .85em; }
+.rd-ask { align-items: center; font-size: 13px; }
+.rd-ask-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--deny); flex: none; align-self: center; }
+/* Quiet: running, nothing for minutes. Amber, like a stalled session's sweep; its dot stops pulsing. */
+.bg-quiet { color: #d99a3a; font-weight: 650; white-space: nowrap; flex: none; }
+.dot-live.stuck { background: #d99a3a; animation: none; }
+/* "N bg" on a session's card and tile: how many agents and scripts it has in the background. */
+.bg-pill { flex: none; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
+button.bg-pill { border: 0; cursor: pointer; }
+button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
+.stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
+.stx-full { font-size: 11.5px; white-space: pre-wrap; word-break: break-word; background: var(--panel-2); border-radius: 7px; padding: 6px 9px; }
+.stx-path { font-size: 11px; color: var(--muted); word-break: break-all; }
+.stx-out, .stx-diff { font-size: 11px; line-height: 1.55; border-radius: 8px; padding: 7px 0; max-height: 360px; overflow: auto; }
+.stx-out { background: var(--slab); color: var(--on-slab); }
+.stx-out div, .stx-diff div { padding: 0 10px; white-space: pre; }
+.stx-diff { background: var(--panel-2); }
+.stx-diff i { display: inline-block; width: 14px; font-style: normal; color: var(--muted); }
+.stx-diff .a { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.stx-diff .d { background: color-mix(in srgb, var(--deny) 13%, transparent); }
+.stx-out .gap, .stx-diff .gap { color: var(--muted); font-style: italic; }
+/* Arrived while you watch: words unroll top to bottom, a step line fades in. */
+.stx-say.reveal { animation: stxUnroll var(--rv, 600ms) linear both; }
+.stx-line.reveal { animation: stxIn 0.25s ease-out both; }
+@keyframes stxUnroll { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes stxIn { from { opacity: 0; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .stx-say.reveal, .stx-line.reveal, .cv-result.reveal { animation: none; } }
+.cv-agent.folded .cv-text { max-height: 4.8em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
+.cv-meta { font-size: 11px; font-weight: 650; color: var(--muted); margin-bottom: 3px; }
+.cv-more { font-size: 12px; font-weight: 650; color: var(--accent); margin-top: 4px; }
+/* Under an agent message: fold, and send it on to another session (shown on hover; always on the latest). */
+.cv-acts { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+/* A reply taller than the chat: its Listen and Read stay at the chat's foot while you're in it, scrolling up or
+ *  down, and go with the reply once its end is in view. Above the row, the text fades out under it. */
+.cv-agent .cv-acts { position: sticky; bottom: -10px; z-index: 2; background: var(--panel); padding: 6px 0 16px; margin: 2px 0 -10px; }   /* -10px: the chat's own bottom padding (.ap-chat), so no line shows under it */
+.cv-agent .cv-acts::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 10px; background: linear-gradient(transparent, var(--panel)); pointer-events: none; }
+/* Listen and Read under a reply: real buttons, not links. */
+.cv-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: var(--panel-2); border: 1px solid var(--line); }
+.cv-pill:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.cv-pill.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+/* A reply read out (Listen): what it read in gray, the sentence it's on in lime, the word it's saying underlined. */
+::highlight(cue-said) { color: var(--muted); }
+::highlight(cue-say) { background-color: var(--sel); color: var(--on-sel); }
+::highlight(cue-word) { background-color: var(--accent); color: var(--on-accent); text-decoration: underline 2px; text-underline-offset: 3px; }
+.ls-line { display: flex; align-items: center; gap: 8px; margin: 0 16px 6px; padding: 5px 6px 5px 12px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
+.ls-where { font: inherit; color: var(--ink); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
+.ls-where:hover { text-decoration-color: currentColor; }
+.ls-line .btn, .ls-player .btn { display: inline-flex; align-items: center; gap: 6px; }
+.ls-btn { display: inline-flex; align-items: center; gap: 6px; }
+.ls-player { align-items: center; gap: 10px; font-size: 12.5px; }
+.ls-player .ls-pp { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.ls-player .rd-seg button.on { background: var(--sel); color: var(--on-sel); }
+.ls-player .ls-speeds button { min-width: 0; padding: 0 7px; font-size: 11px; font-weight: 650; }
+/* Settings → Voice (chat.js voiceSettings): a picker (▶ and the voice in use); open, a list over everything, the
+   sheet's edge too (chat.js placeVoiceList puts it under the picker), scrolling in itself about eight lines tall;
+   one line a voice, the one in use in lime. */
+.set-row.vp-row { align-items: flex-start; }
+.vp-row .set-text { align-self: flex-start; }
+.vp { width: 320px; flex: none; }
+.vp-btn { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.vp-btn.open { border-color: var(--muted); }
+.vp-open { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 100%; padding: 0 8px 0 2px; font-size: 13px; font-weight: 650; color: var(--ink); }
+.vp-caret { font-size: 10px; color: var(--muted); }
+.vp-play { width: 26px; height: 26px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--panel-2); color: var(--accent); }
+.vp-play svg { width: 9px; height: 9px; }
+.vp-play:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.vp-list { position: fixed; z-index: 11; max-height: 324px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 6px; box-shadow: 0 18px 40px -22px rgba(15, 20, 5, .45); }
+.vp-sec { font: 700 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 8px 4px; }
+.vp-line { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 6px; border-radius: 8px; }
+.vp-line[data-voice-pick]:not(.on) { cursor: pointer; }
+.vp-line[data-voice-pick]:not(.on):hover { background: var(--panel-2); }
+.vp-line.on { background: var(--sel); color: var(--on-sel); }
+.vp-line.on .vp-play { background: color-mix(in srgb, var(--on-sel) 12%, transparent); color: inherit; }
+.vp-name { flex: 1; min-width: 0; font-size: 13px; }
+.vp-line.on .vp-name { font-weight: 650; }
+.vp-state, .vp-use, .vp-down { font-size: 12px; font-weight: 650; white-space: nowrap; color: inherit; }
+.vp-down { color: var(--accent); }
+.vp-down:disabled { opacity: .4; }
+.vp-get { display: flex; align-items: center; gap: 6px; font-size: 11.5px; white-space: nowrap; }
+.vp-intro { margin: 6px; padding: 10px; border-radius: 10px; background: var(--panel-2); font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.vp-intro b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 2px; }
+.vp-note { margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+/* A note to heed (the macOS bug): plain text like the others, an amber mark before it. */
+.vp-note.warn::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); margin-right: 6px; vertical-align: 1px; }
+.vp-link { font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.kk-bar { width: 90px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.kk-fill { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+/* core.js hearing: the speaker beside a session's name on its cards while Listen reads one of its replies. */
+.hearing { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%; margin-left: 6px; background: var(--sel); color: var(--on-sel); vertical-align: -5px; }
+.hearing .hw1, .hearing .hw2 { opacity: .45; }
+.hearing.on .hw1 { animation: hearing 1.2s ease-in-out infinite; }
+.hearing.on .hw2 { animation: hearing 1.2s ease-in-out .3s infinite; }
+@keyframes hearing { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .hearing.on .hw1, .hearing.on .hw2 { animation: none; opacity: 1; } }
+.ls-of { min-width: 60px; }
+.ls-track { flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.ls-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.ls-then { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+
+/* A real button (a tinted pill), not a text link, so it doesn't read as part of the message. */
+.cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
+/* Last in the row, at its right end: the reply's own buttons and its project's actions come first. */
+.cv-fwd:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
+/* A message from another session: who it's from, the message, and (for a forward) the original, quoted. */
+.cv-peer { border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); border-radius: 4px 12px 12px 4px; padding: 9px 13px; font-size: 13.5px; line-height: 1.55; }
+.cv-peer-from { font-size: 11.5px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.cv-peer-quote { margin-top: 6px; font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px; max-height: 9em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.cv-peer-quote > :last-child, .cv-peer .msg > :last-child { margin-bottom: 0; }
+/* The "send to another session" menu, right above its button. */
+.fwd-catch { position: fixed; inset: 0; z-index: 25; }
+.fwd-pop { position: fixed; z-index: 26; width: 320px; background: var(--panel); color: var(--ink); border-radius: 12px; padding: 10px; box-shadow: 0 18px 50px -12px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); }
+.fwd-head { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); margin: 2px 4px 8px; }
+.fwd-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
+.fwd-opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 8px; font-size: 13px; text-align: left; }
+.fwd-opt:hover { background: var(--panel-2); }
+.fwd-opt.on { background: color-mix(in srgb, var(--accent) 16%, var(--panel)); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.fwd-st { font: 600 10.5px var(--mono); color: var(--muted); }
+.fwd-note { width: 100%; margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: 12.5px; resize: none; }
+.fwd-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+/* You: a compact tinted bubble on the right. */
+.cv-you { align-self: flex-end; max-width: 72%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+/* A long word with no spaces (a pasted URL, path or log line) wraps instead of widening the bubble past
+   the chat, where its left edge was cut off. */
+.cv-you-text { overflow-wrap: anywhere; max-width: 100%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); font-size: 13.5px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+.cv-you .cv-meta { margin: 3px 2px 0; }
+/* Said by voice: a teal mic beside your message, and inside it, under a hairline, the line Cue added for the agent. */
+.cv-you-row { display: flex; align-items: flex-end; gap: 6px; max-width: 100%; min-width: 0; }
+.cv-mic { flex: none; display: inline-flex; color: var(--voice); margin-bottom: 7px; }
+.cv-mic svg { width: 14px; height: 14px; }
+.cv-voice-note { border-top: 1px solid var(--line); margin-top: 7px; padding-top: 6px; font-size: 12px; color: var(--voice); }
+.cv-voice-ask { font: inherit; font-weight: 650; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.cv-voice-line { margin-top: 5px; color: var(--muted); line-height: 1.45; }
+/* The latest reply's status list: a ring and count in the box's row ahead of the mic (as tall as the mic, so
+   they line up), its card opening upward from it over the box and the chat. */
+.cv-schip { position: relative; flex: none; }
+.cv-schip-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border: 0; font: inherit; font-size: 11px; font-weight: 650; white-space: nowrap; color: var(--ink); background: none; cursor: pointer; }
+.cv-spop { display: none; position: fixed; z-index: 30; overflow-y: auto; width: max-content; min-width: 260px; max-width: min(420px, 80vw); padding: 10px 12px; border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow), 0 0 0 1px var(--line); font-size: 12.5px; }
+.cv-schip.open .cv-spop { display: block; }
+.cv-spop { user-select: text; -webkit-user-select: text; cursor: text; scrollbar-width: none; }
+.cv-spop::-webkit-scrollbar { display: none; }   /* a long list scrolls without a bar */
+.st-ring { flex: none; transform: rotate(-90deg); }   /* arcs start at 12 o'clock */
+.st-ring .trk { stroke: color-mix(in srgb, var(--muted) 40%, transparent); }
+.st-ring .now { stroke: color-mix(in srgb, var(--accent) 40%, transparent); }
+.st-ring .done { stroke: var(--accent); }
+.cv-schip.pinned .st-ring { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 60%, transparent)); }   /* clicked open */
+.st-list { display: flex; flex-direction: column; gap: 3px; line-height: 1.45; }
+.st-item.left { color: var(--muted); }
+.st-item.now { font-weight: 650; }
+.st-item { display: grid; grid-template-columns: 2em 1fr 1.6em; column-gap: 6px; }
+/* The track (status.js statusTree): a step is its number, its dot on the line, its text and mark; a side-by-side
+   group is one step, its items in a box beside one dot (a box item: number, text, mark). */
+.st-step { display: grid; grid-template-columns: 2em 14px 1fr 1.6em; column-gap: 6px; }
+.st-dot { position: relative; align-self: stretch; --st-line: color-mix(in srgb, var(--muted) 45%, var(--panel)); }
+.st-dot::before { content: ""; position: absolute; left: 6.25px; top: -2px; bottom: -2px; width: 1.5px; background: var(--st-line); }
+.st-step.first > .st-dot::before { top: 0.72em; }
+.st-step.last > .st-dot::before { bottom: calc(100% - 0.72em); }
+.st-dot::after { content: ""; position: absolute; left: 3.25px; top: calc(0.72em - 3.5px); width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--muted); background: var(--panel); }
+.st-group > .st-dot::after { top: calc(50% - 3.5px); }
+.st-group.first > .st-dot::before { top: 50%; }
+.st-group.last > .st-dot::before { bottom: 50%; }
+.st-step.done > .st-dot::after { border-color: var(--accent); background: var(--accent); }
+.st-step.now > .st-dot::after { border-color: var(--accent); }
+.st-box { grid-column: 3 / 5; margin: 1px 0; }   /* side by side: indented together under one dot; the indent says it, no shading */
+.st-box .st-item { grid-template-columns: 2em 1fr 1.6em; }
+.st-mark { text-align: right; }
+.st-n { text-align: right; padding-right: 0.5em; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 500; }
+.st-wait { margin-top: 4px; color: var(--muted); }
+/* The ring's switch: the status list on or off for this session (at the card's end; alone while it's off). */
+.st-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-weight: 600; user-select: none; -webkit-user-select: none; }
+.st-toggle.solo { margin-top: 0; padding-top: 0; border-top: 0; }
+.st-toggle .toggle { flex: none; }
+.cv-schip.st-empty .cv-spop { min-width: 0; }   /* the switch alone: one line */
+.st-note { margin-top: 2px; color: var(--muted); font-size: 12px; }   /* on, no list yet: when it starts */
+.st-toggle ~ .st-note { width: 0; min-width: 100%; }   /* notes under the switch wrap to the card's width, never widen it */
+.cv-schip.st-empty .st-ring .trk { stroke: var(--muted); }
+.cv-schip.st-off .cv-schip-btn { opacity: 0.45; }
+/* The list above the chat, under the tabs (status_panel.js): one line in the theme's own color (the window behind the
+   panes, with its text); a click slides the list down over the chat. The list's own rules are reused as they are: inside
+   .st-inv the tokens they read are the theme's. */
+.st-inv { --panel: var(--bg); --ink: var(--on-bg); --muted: var(--on-bg-muted); --panel-2: color-mix(in srgb, var(--on-bg) 10%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 22%, var(--bg)); --accent: var(--on-bg); --on-accent: var(--bg); background: var(--panel); color: var(--ink); }
+/* Dark: the theme color sits a shade below the pane, so dark on dark would blend in. The band is lifted a clear step
+   above the pane instead (its light text mixed in), still the theme's hue, never a pale bar in a dark window. */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); } }
+:root[data-theme="dark"] .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); }
+.st-panel { position: relative; flex: none; margin: 8px 16px 6px; z-index: 5; }
+.st-head { display: flex; align-items: center; gap: 6px; border-radius: 10px; }   /* the line and relay's buttons, one band */
+.st-pill { flex: none; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
+.st-pill:hover { border-color: var(--muted); }
+.st-agents { flex: none; display: inline-flex; align-items: center; gap: 5px; font: 600 11.5px var(--sans); color: var(--muted); }
+.st-agent { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.st-bar { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 32px; padding: 0 4px 0 12px; border: 0; border-radius: 10px; font: 12.5px var(--sans); text-align: left; cursor: pointer; }
+.st-bar b { flex: none; font-weight: 700; }
+.st-bar:focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+.st-line { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-dim { color: var(--muted); }
+.st-toggle .st-dim { font-weight: 400; }   /* the cost beside the switch's name: a note, not part of the name */
+.st-chev { flex: none; align-self: stretch; padding: 0 10px 0 4px; border: 0; background: none; color: inherit; font-size: 15px; line-height: 1; opacity: 0.85; cursor: pointer; }
+.st-drawer { user-select: text; -webkit-user-select: text; cursor: text; position: absolute; top: 100%; left: 0; right: 0; max-height: 60vh; display: flex; flex-direction: column; padding: 10px 12px; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; font-size: 12.5px; box-shadow: var(--shadow); }
+/* Its steps scroll when they don't fit; the switch and the cost under them stay in view. */
+.st-drawer > .st-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.st-drawer > :not(.st-scroll) { flex: none; }
+.st-panel:has(> .st-drawer:not(.closing)) :is(.st-head, .st-bar) { border-radius: 10px 10px 0 0; }   /* the list hangs from the line: one shape; the shape follows the list itself, so it can't stay behind */
+/* It unrolls down from the line, and rolls back up into it. */
+.st-drawer.slide { animation: stUnroll 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.st-drawer.closing { pointer-events: none; }   /* rolling up (statusPanelCloseAll animates it) */
+@keyframes stUnroll { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 -40px 0); } }
+@media (prefers-reduced-motion: reduce) { .st-drawer.slide { animation: none; } }
+   /* off for this session: there, not asking for attention */
+.cv-schip.st-off.open .cv-schip-btn, .cv-schip.st-off .cv-schip-btn:hover { opacity: 0.8; }
+.cv-you.sending { opacity: 0.6; }
+.cv-you.queued .cv-you-text { background: transparent; box-shadow: inset 0 0 0 1px var(--accent); }
+/* Not sent yet: its outline dims and a short brighter arc drifts round it until it goes (on the full-strength
+   outline an arc of the same colour can't be seen). */
+.cv-you.queued .cv-you-text, .cv-you.pending .cv-you-text { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+@property --qa { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes qtrace { to { --qa: 360deg; } }
+.cv-you.queued .cv-you-text, .cv-you.pending .cv-you-text { position: relative; }
+.cv-you.queued .cv-you-text::after, .cv-you.pending .cv-you-text::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from var(--qa), transparent 0 78%, var(--accent) 95%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: qtrace 4s linear infinite; animation-delay: var(--qd, 0ms); }
+@media (prefers-reduced-motion: reduce) { .cv-you.queued .cv-you-text::after, .cv-you.pending .cv-you-text::after { display: none; } .cv-you.queued .cv-you-text, .cv-you.pending .cv-you-text { box-shadow: inset 0 0 0 1px var(--accent); } }
+.cv-empty { text-align: center; margin: 18px 0; }
+.cv-status { align-self: center; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+/* flex: none: beside a long line ("Running: …") it keeps its size instead of being squeezed. */
+.dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+/* A project's dot: its color (--pc), solid; pulsing while the session works. On the green (working
+   cards, the header) the brighter set reads better in light mode; in dark mode the sets are the same. */
+.pdot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--muted)); vertical-align: 0; }
+.pdot.live { animation: pulse 1.4s ease-in-out infinite; }
+.working, .hchips { --pc0: var(--pcb0); --pc1: var(--pcb1); --pc2: var(--pcb2); --pc3: var(--pcb3); --pc4: var(--pcb4); --pc5: var(--pcb5); --pc6: var(--pcb6); --pc7: var(--pcb7); --pc8: var(--pcb8); --pc9: var(--pcb9); --pc10: var(--pcb10); }
+.working.on, .pj-pop, .pc-pop, .pj-pinned.hot { --pc0: var(--pcp0); --pc1: var(--pcp1); --pc2: var(--pcp2); --pc3: var(--pcp3); --pc4: var(--pcp4); --pc5: var(--pcp5); --pc6: var(--pcp6); --pc7: var(--pcp7); --pc8: var(--pcp8); --pc9: var(--pcp9); --pc10: var(--pcp10); }
+.pc-wrap { position: relative; display: inline-flex; flex: none; }
+.pdot-btn { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; margin: 0 -4px 0 -6px; }
+.pdot-btn:hover, .pdot-btn.on { background: color-mix(in srgb, currentColor 12%, transparent); }
+.pc-pop { position: absolute; top: 28px; left: -4px; z-index: 40; display: flex; flex-direction: column; gap: 7px; padding: 8px 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); white-space: nowrap; }
+.pc-pop.up { top: auto; bottom: 28px; }   /* near the foot of the list or window (board.js placeColors) */
+/* Just its name, as wide as the swatches (cut short with … when longer). */
+.pc-title { font-size: 12px; display: grid; width: 136px; }
+.pc-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-title b { color: var(--ink); font-weight: 650; }
+.pc-row { display: grid; grid-template-columns: repeat(5, 20px); gap: 8px 9px; }   /* the ten, two rows of five, around the color wheel */
+.pc-sw { width: 20px; height: 20px; border-radius: 50%; background: var(--c); }
+.pc-sw.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--c); }
+.pc-sw:hover { transform: scale(1.12); }
+/* The Projects chip: one project's cards alone; its list names every project, with the dot to recolor. */
+.pj-wrap { position: relative; display: inline-flex; }
+.pj-chip .pdot { width: 8px; height: 8px; }
+/* The chip: its dot (the colors, for the project shown or for all of them) and its name (the list). */
+.pj-chip { padding: 0 12px 0 10px; gap: 4px; }
+.pj-chip .pdot-btn { margin: 0 -2px 0 -4px; }
+.pj-open { display: inline-flex; align-items: center; gap: 7px; height: 100%; color: inherit; font: inherit; }
+.pj-car { font-size: 9px; opacity: 0.7; margin-left: 1px; }
+.pj-pop { position: absolute; top: 38px; left: 0; z-index: 30; min-width: 240px; max-height: min(480px, calc(100vh - 80px)); overflow-y: auto; padding: 4px; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 12px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--line); }
+.pj-row { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.pj-row:hover { background: var(--panel-2); }
+.pj-row.on { background: var(--sel); color: var(--on-sel); }
+.pj-row .pdot-btn { margin: 0 -2px 0 -4px; }
+.pj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pj-n { font: 600 11px var(--mono); color: var(--muted); }
+.pj-row.on .pj-n { color: inherit; opacity: 0.75; }
+.pj-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.pj-add { width: 100%; text-align: left; color: var(--muted); }
+.pj-pop .pm-new { padding: 4px 4px 2px; }
+/* A row's pin: faint until hovered, solid once pinned (its project then sits beside the projects chip). */
+.pj-pin { display: grid; place-items: center; width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; color: var(--muted); opacity: 0; }
+.pj-row:hover .pj-pin, .pj-pin:focus-visible { opacity: 0.7; }
+.pj-pin:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+.pj-pin.on { opacity: 1; color: inherit; }
+.pj-pin.on svg { fill: currentColor; }
+.pj-pinned { max-width: 170px; }
+.pj-pinned .pj-open { min-width: 0; }
+/* A pinned project's count of replies that just came back in a conversation, while another project is shown. */
+.pj-wait { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font: 700 11px var(--mono); background: #f6e7c8; color: #5b3d05; }
+/* A row's ✎ (rename it in Cue), shown as its pin is; the name's box in its place; its own name under yours. */
+.pj-ren { display: grid; place-items: center; width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; font-size: 12px; color: var(--muted); opacity: 0; }
+.pj-row:hover .pj-ren, .pj-ren:focus-visible { opacity: 0.7; }
+.pj-ren:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+/* A project you made: × beside ✎, shown as it is; once clicked it reads Remove in red until the second click. */
+.pj-del { display: grid; place-items: center; min-width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; font-size: 14px; color: var(--muted); opacity: 0; }
+.pj-row:hover .pj-del, .pj-del:focus-visible { opacity: 0.7; }
+.pj-del:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+.pj-del.armed { opacity: 1; padding: 0 7px; font-size: 11.5px; font-weight: 650; color: var(--deny); }
+.pj-name-in { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; outline: none; }
+.pj-name-in:focus { border-color: var(--muted); }
+.pj-orig { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.pj-row.on .pj-orig { color: inherit; opacity: 0.7; }
+.pj-pn { overflow: hidden; text-overflow: ellipsis; }
+
+@keyframes pulse { 50% { opacity: 0.25; } }
+.cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; }
+/* Eases in once, when it lands (chat.js patchKids marks it): never again on a redraw. */
+.cv-result.reveal { animation: sentIn 0.25s ease; }
+.cv-result.no .sent-check { background: var(--deny); }
+/* Next: solid Moss, the one obvious thing to do after you act. */
+.next-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-size: 13px; text-align: left; min-width: 0; }
+.next-bar:hover { filter: brightness(1.1); }
+.next-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; flex: none; }
+.next-bar .badge { background: var(--on-accent); color: var(--accent); }
+.next-bar .next-proj { font-weight: 650; white-space: nowrap; flex: none; }
+.next-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
+.next-bar { cursor: pointer; }
+.next-clear { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 7px; font-size: 16px; line-height: 1; color: var(--on-accent); background: color-mix(in srgb, var(--on-accent) 16%, transparent); }
+.next-clear:hover { background: color-mix(in srgb, var(--on-accent) 28%, transparent); }
+.next-bar kbd { flex: none; background: color-mix(in srgb, var(--on-accent) 18%, transparent); color: var(--on-accent); box-shadow: none; }
+.act-card { border-top: 1px solid var(--line); background: var(--panel-2); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; max-height: 55%; overflow-y: auto; }
+.foot.held { border-top: 0; padding-top: 0; }
+/* Selected text was copied: a Moss pill at the right end, just above the text box; it fades by itself. */
+.foot, .active-pane { position: relative; }
+/* What the chat layers on itself (the sweep, the btw panel) stays under sheets opened over it (Settings, Search). */
+.active-pane { isolation: isolate; }
+/* At work: a light sweeps along the chat's top edge (gone while it waits on you); sweep() in app.js picks
+   how. A Moss core with lime ends, so it reads on the white pane (lime alone barely showed). No glow. */
+.sweep { position: absolute; top: 0; left: 0; width: 60%; height: 3px; z-index: 13; pointer-events: none; background: linear-gradient(90deg, transparent, var(--sel) 12%, var(--accent) 45%, var(--accent) 55%, var(--sel) 88%, transparent); animation: sweep 1.6s ease-in-out infinite; }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(170%); } }
+/* A quiet spell (a long think): slower and softer. */
+.sweep.calm { opacity: 0.5; }
+/* A step just landed: one quick, solid flick across. */
+.sweep.flick { width: 35%; z-index: 14; background: linear-gradient(90deg, transparent, var(--accent) 30%, var(--accent) 70%, transparent); animation: flick 0.7s ease-out forwards; }
+@keyframes flick { from { transform: translateX(-100%); opacity: 1; } to { transform: translateX(290%); opacity: 0; } }
+/* Stuck (no new output for minutes): it stops, amber, by the "No new output" line. */
+.sweep.stalled { width: 100%; animation: none; background: #d99a3a; }
+@media (prefers-reduced-motion: reduce) { .sweep { animation: none; width: 100%; opacity: 0.6; } .sweep.flick { display: none; } .sweep.stalled { opacity: 1; } }
+/* By the way: a side question's panel, dropping from the btw button over the top of the chat (the chat
+   underneath never changes). Newest answer first, under its own ask box. */
+.btw-btn.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.btw-pop { position: absolute; right: 14px; z-index: 12; width: min(440px, calc(100% - 28px)); max-height: min(60%, 460px); display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: 0 22px 50px -14px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); }
+.btw-head { display: flex; align-items: center; padding: 10px 12px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.btw-clear { margin-left: auto; font-size: 11.5px; font-weight: 650; letter-spacing: 0; color: var(--muted); padding: 2px 6px; border-radius: 6px; }
+.btw-clear:hover { color: var(--ink); background: var(--panel-2); }
+.btw-clear + .btw-x { margin-left: 4px; }
+.btw-x { margin-left: auto; font-size: 16px; line-height: 1; color: var(--muted); padding: 2px 4px; }
+.btw-x:hover { color: var(--ink); }
+.btw-ask { padding: 6px 10px; }
+.btw-ask textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); color: var(--ink); font: 13px/1.4 var(--sans); outline: none; }
+.btw-ask textarea:focus { border-color: var(--accent); }
