@@ -47,7 +47,7 @@ fn compacting_shows_until_its_transcript_says_the_compaction_is_done() {
 
 #[test]
 fn compacting_that_never_finishes_is_given_up_after_fifteen_minutes() {
-    let w = World::new();
+    let w = World::at(1_800_000_000_000);
     let a = w.session("a");
     a.prompt("go").stop("Done.");
     a.compacting();

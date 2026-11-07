@@ -1,7 +1,16 @@
 {
   "about": {},
   "ahead_watch": [],
-  "answers": [],
+  "answers": [
+    {
+      "created_ms": 1793984400000,
+      "outcome": "parked",
+      "project": "backtester",
+      "resolved_ms": 1793984400000,
+      "session_id": "old",
+      "status": "gone"
+    }
+  ],
   "branches": {},
   "connections": {
     "claude": {
@@ -42,9 +51,7 @@
     }
   ],
   "handoffs": {},
-  "history": [],
-  "insight": {},
-  "items": [
+  "history": [
     {
       "agent_pid": null,
       "back_ms": null,
@@ -67,11 +74,11 @@
       "kitty_window_id": "",
       "machine": "",
       "message": "Done; it's 3% worse.",
-      "outcome": "",
+      "outcome": "parked",
       "project": "backtester",
-      "resolved_ms": null,
+      "resolved_ms": 1793984400000,
       "session_id": "old",
-      "status": "pending",
+      "status": "gone",
       "suggestions": null,
       "term_program": "",
       "thread": [
@@ -89,6 +96,8 @@
       "wezterm_pane": ""
     }
   ],
+  "insight": {},
+  "items": [],
   "live": [],
   "now_ms": 1793984400000,
   "parked": [

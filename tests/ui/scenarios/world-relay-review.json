@@ -129,6 +129,7 @@
       "name": "docs",
       "outcome": "Done and staged.",
       "packet": 1,
+      "recommendation": "",
       "stat": "",
       "state": "waiting"
     },
@@ -140,6 +141,7 @@
       "name": "fills",
       "outcome": "Done and staged.",
       "packet": 3,
+      "recommendation": "",
       "stat": "",
       "state": "queued"
     }

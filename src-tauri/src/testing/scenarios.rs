@@ -22,12 +22,19 @@ const SCENARIOS: &[(&str, fn(&World))] = &[
     ("fifty-sessions", fifty_sessions),
     ("handoff-pending", handoff_pending),
     ("settings", settings),
+    ("four-choices", four_choices),
 ];
 
 fn one_ask(w: &World) {
     let a = w.session("api").in_project("api-server");
     a.prompt("Clean the build folder and rebuild");
     a.ask_permission("Bash", json!({"command": "rm -rf build && cargo build", "description": "Clean and rebuild"}));
+}
+
+fn four_choices(w: &World) {
+    let a = w.session("pipe").in_project("data-pipeline");
+    a.prompt("Backfill March");
+    a.ask_question("Which source wins on a clash?", &["Vendor", "Exchange", "Newest", "Ask me each time"]);
 }
 
 fn many_sessions(w: &World) {
@@ -43,7 +50,7 @@ fn many_sessions(w: &World) {
 
 fn relay_review(w: &World) {
     let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "order-engine".into(), ..Default::default() };
-    let exec = |name: &str, packet: u64| Member { name: name.into(), id: format!("relay-{name}"), packet: Some(packet), goal: format!("{name}: the packet's goal"), outcome: "Done and staged.".into(), lead: "lead".into(), lead_name: "order-engine".into(), ..reported_exec() };
+    let exec = |name: &str, packet: u64| Member { name: name.into(), id: format!("relay-{name}"), packet: Some(packet), goal: format!("{name}: the packet's goal"), outcome: "Done and staged.".into(), lead: "lead".into(), lead_name: "order-engine".into(), updated: format!("2026-11-01T10:00:0{packet}"), ..reported_exec() };
     install_index([("lead".to_string(), lead), ("ex-fills".to_string(), exec("fills", 3)), ("ex-docs".to_string(), exec("docs", 1))].into());
     let l = w.session("lead").in_project("order-engine");
     l.prompt("Lead the router refactor");
@@ -64,7 +71,10 @@ fn status_list(w: &World) {
 fn parked(w: &World) {
     let a = w.session("old").in_project("backtester");
     a.prompt("Try the slower fill model").stop("Done; it's 3% worse.");
+    // As Park leaves it: its finished turn filed as parked, its record under Parked.
     let record = w.hub().session_record("old").expect("its record");
+    let cards = w.hub().take_cards("old");
+    w.hub().file_taken(cards, "gone", "parked");
     w.hub().add_parked(record);
     w.session("gone").in_project("web-app").prompt("go").ended();
 }
@@ -119,11 +129,12 @@ const AT_MS: u64 = 1_793_984_400_000;
 const TRANSCRIPTS: &str = "/Users/me/.claude/projects/-work";
 
 /// Facts the snapshot reads from this Mac rather than from the hub (macOS's Login Items, whether tmux is
-/// installed, which terminal app): pinned, so the fixtures are the same whoever writes them.
+/// installed and so whether sessions run in it, which terminal app): pinned, so the fixtures are the same whoever writes them.
 fn pin_machine_facts(state: &mut Value) {
     let s = &mut state["settings"];
     s["login"] = json!({"open": false});
     s["sessions"]["tmux_installed"] = json!(true);
+    s["sessions"]["tmux"] = json!(true);
     s["sessions"]["terminal"] = json!("Terminal");
     state["usage_file"] = Value::Null;
 }

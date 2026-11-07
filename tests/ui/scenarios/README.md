@@ -20,7 +20,7 @@ What the `world-*` files promise, so the screenshots taken from them don't chang
 - Rows in `sessions` are sorted by `session_id`, and every object's keys are sorted (the hub keeps several
   in hash maps; the window sorts what it shows itself).
 - Facts read from the Mac that writes them are pinned: `settings.login.open` false,
-  `settings.sessions.tmux_installed` true, `settings.sessions.terminal` "Terminal", `usage_file` null.
+  `settings.sessions.tmux_installed` and `settings.sessions.tmux` true, `settings.sessions.terminal` "Terminal", `usage_file` null.
   Transcript paths read `/Users/me/.claude/projects/-work/<session>.jsonl`; folders are `/work/<project>`.
 
 | scenario | what's in it |
@@ -37,3 +37,4 @@ What the `world-*` files promise, so the screenshots taken from them don't chang
 | world-fifty-sessions | 50 sessions over 7 projects, every third finished |
 | world-handoff-pending | a session that sent /handoff and hasn't continued |
 | world-settings | Finished-turn notifications off, History kept to 50 |
+| world-four-choices | one session asking a question with four choices (the 1–4 keys) |
