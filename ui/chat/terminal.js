@@ -67,7 +67,7 @@ async function openTerm(sid) {
   const slot = document.querySelector("[data-term-slot]");
   if (!slot || typeof Terminal === "undefined") { termSid = null; return renderMain(); }
   ({ host: termHost, term: termObj, fit: termFit } = keptTerm(slot));
-  termWires = [termObj.onData(termTyping(termHost, sid)), termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); })];
+  termWires = [termObj.onData(termTyping(termHost, sid, () => termSid === sid)), termObj.onResize(({ cols, rows }) => { if (termSid) invoke("term_resize", { sessionId: termSid, cols, rows }).catch(() => {}); })];
   termWatch = new ResizeObserver(() => { try { termFit?.fit(); } catch {} });
   termWatch.observe(termHost);
   termObj.focus();
@@ -190,8 +190,10 @@ function flushTerm() {
 /** What you type into terminal `sid` (shown in `host`), on its way to it. A write that doesn't go (its client
  *  stopped reading: a stopped tmux client, a dead SSH line) stops its input in Cue too (term::write): a line
  *  over the terminal says so, once, and nothing typed is sent until Resume (term_resume), which drops what was
- *  waiting to go in. Also Cue's own shells' (shells.js). */
-function termTyping(host, sid) {
+ *  waiting to go in. Also Cue's own shells' (shells.js). `shown`: whether `host` still shows `sid` (the
+ *  session's terminal is one, kept from opening to opening): a refusal that comes back after it went to
+ *  another session says nothing over that one's. */
+function termTyping(host, sid, shown = () => true) {
   let notice = null;
   const stop = () => {
     if (notice) return;
@@ -204,7 +206,7 @@ function termTyping(host, sid) {
     });
     host.appendChild(notice);
   };
-  return (data) => { if (!notice) invoke("term_write", { sessionId: sid, data }).catch(stop); };
+  return (data) => { if (!notice) invoke("term_write", { sessionId: sid, data }).catch(() => { if (shown()) stop(); }); };
 }
 /** An xterm.js terminal in `host`, in Cue's colours, fitted to it: drawn on the GPU where it can be (much
  *  faster than the default; if that's lost, back to the default). Also Cue's own shells' (shells.js).
