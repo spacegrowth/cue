@@ -88,12 +88,12 @@ pub(crate) fn apply(app: &AppHandle) {
 const LOOK_EVERY: std::time::Duration = std::time::Duration::from_millis(700);
 const SETTLED_LOOKS: u32 = 2;
 
-/// How often the pointer is passed to the page while it's over the mini window (for hover and the dots'
-/// magnifying: WebKit tells a window in an app that isn't in front nothing about the pointer).
-const TRACK_EVERY: std::time::Duration = std::time::Duration::from_millis(30);
+/// How often the pointer is looked at while it's over the mini window, so its page hears it leave (WebKit tells a
+/// window of an app that isn't in front nothing about the pointer).
+const TRACK_EVERY: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// The pointer, watched from here (any thread, no permission needed):
-/// - over the mini window, its place in the window goes to the page ("mini-pointer" {x, y}), every 30 ms, and
+/// - over the mini window, its place in the window goes to the page ("mini-pointer" {x, y}), every 120 ms, and
 ///   once it leaves, {out: true}: hover works whichever app is in front;
 /// - elsewhere, one look every 700 ms: the rail moves to the display the pointer has settled on (mini-place).
 #[cfg(target_os = "macos")]

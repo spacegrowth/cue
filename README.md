@@ -35,11 +35,11 @@ the card either way.
   in its corner. Off until you turn it on (Settings → Voice). What you say is written down on your Mac,
   by Apple's recognizer or, if you pick it, NVIDIA's Parakeet (Apple silicon), so nothing you say leaves it.
 - **Mini window** — Cue at the edge of your screen while you work in another app (Settings → General →
-  Mini window: Right edge or Notch). It shows what needs you in the Waiting column's order, in
-  conversation first and then newest first, five at most, with a dot for each session at work. Hover it
-  for the first one's whole chat (code, tables, earlier messages); the dots switch between them. Answer in
-  its box, Allow or Deny an ask, or ⤢ to open it in Cue. It steps aside while Cue's own window is in front.
-  Off until you turn it on.
+  Mini window: Right edge or Notch). At the edge it's one small dot, red while something asks, striped
+  when it's your turn, breathing while sessions work. Hover it and the chat opens, ready to type: the first
+  session in the Waiting column's order (in conversation first, then newest first), a tab across the top
+  for each of the others. The whole chat (code, tables, earlier messages), your quick phrases, Allow or Deny
+  an ask, or ⤢ to open it in Cue. It steps aside while Cue's own window is in front. Off until you turn it on.
 - **Listen and Read** — Listen reads a reply out loud, in your Mac's voice or a natural voice that runs
   on your Mac (Settings → Voice); Read opens a long reply full width.
 - **Insights** — what your sessions cost, by day and by model, and the part that was avoidable: caches

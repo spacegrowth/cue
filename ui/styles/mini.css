@@ -13,9 +13,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.ask { background: #E8907F; }
 .m-dot.work { background: var(--work); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
-.m-dotb .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
+.m-mark .m-dot.work, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
-@media (prefers-reduced-motion: reduce) { .m-dotb .m-dot.work { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .m-mark .m-dot.work, .m-tab .m-dot.work { animation: none; } }
 .m-queued { opacity: .85; box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
 .m-queued .m-quiet { margin-top: 3px; font-size: 11px; }
 .m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
@@ -26,18 +26,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-btn { font-size: 12px; font-weight: 650; border-radius: 8px; padding: 5px 12px; background: var(--accent); color: var(--on-accent); }
 .m-btn.deny { background: transparent; color: var(--deny); box-shadow: inset 0 0 0 1px var(--line); }
 .m-btn:disabled { opacity: .45; cursor: default; }
-.m-sep { height: 1px; margin: 4px 8px; background: currentColor; opacity: .18; }
 
 /* ---------- the rail ---------- */
 .rail .m-hair { height: 200px; background: var(--bg); border-radius: 3px 0 0 3px; }
-.rail .m-dots { background: var(--bg); border-radius: 12px 0 0 12px; padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; color: var(--on-bg); }
-.rail .m-dots .m-sep { width: 12px; margin: -4px 0; }
-.m-dotb { display: grid; place-items: center; width: 22px; height: 22px; margin: -6px 0; border-radius: 50%; }
-.m-dotb .m-dot { transition: transform .09s ease-out, width .12s ease-out, height .12s ease-out; }   /* the Dock's magnifying, smoothed */
-.m-dotb.on .m-dot { width: 12px; height: 12px; }   /* the session whose chat is open: its dot, bigger */
-.rail .m-pair { display: flex; align-items: flex-start; gap: 0; }   /* the dots stay at the top, where they were */
+.rail .m-pair { display: flex; align-items: flex-start; gap: 0; }   /* the mark stays at the top, where it was */
 .rail .m-pair > .m-chat { width: 420px; flex: none; }
-.rail .m-pair > .m-dots { width: 28px; flex: none; }
 .m-age { font: 11px var(--mono); opacity: .7; }
 .rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; border: 1.5px solid var(--bg); }
 
@@ -95,6 +88,12 @@ body.mini { overflow: hidden; font-size: 13px; }
 @keyframes m-in { from { opacity: 0; transform: var(--from, none); } }
 @media (prefers-reduced-motion: reduce) { .m-enter .m-panel { animation: none; } }
 
-/* At the notch the dots sit in the chat's head, in a row: they switch between sessions. */
-.notch .m-chat-head .m-dots { display: flex; flex-direction: row; align-items: center; gap: 6px; width: auto; padding: 0 4px; background: none; border-radius: 0; }
-.notch .m-chat-head .m-dotb { margin: 0; }
+
+/* The rail: one small dot at the edge, the most urgent state's. */
+.rail .m-mark { width: 12px; height: 28px; background: var(--bg); border-radius: 7px 0 0 7px; display: grid; place-items: center; }
+.rail .m-pair > .m-mark { width: 12px; flex: none; }
+/* Tabs across the chat's top: a session each, the open one on the panel. */
+.m-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
+.m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px 8px 0 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.m-tab:hover { color: var(--ink); }
+.m-tab.on { color: var(--ink); font-weight: 650; background: var(--panel-2); }

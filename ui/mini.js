@@ -11,7 +11,7 @@
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const TALK = 5 * 60000;             // in conversation: back within 5 minutes of your message (board.js TALK_MS)
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 28, chat: 448 };   // the rail's chat: 420 + its dots
+  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 12, chat: 432 };   // the rail's chat: 420 + its mark
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
@@ -32,7 +32,7 @@
     const talk = all.filter(talking).sort((a, b) => a.created_ms - b.created_ms);
     const rest = all.filter((i) => !talking(i)).sort(newest);
     const shown = [...talk, ...rest].slice(0, most);
-    return { shown, talk: Math.min(talk.length, most) };
+    return { shown };
   }
   /** Sessions at work with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
    *  queued (it reads it when it finishes its current step). */
@@ -57,18 +57,21 @@
 
   // ---------- drawing ----------
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
-  const sep = (n, i) => n && i === n ? `<div class="m-sep" role="separator"></div>` : "";
 
-  /** The rail: a dot per session that needs you (in conversation, a separator, newest first), then, under
-   *  another separator, a solid dot per session at work. */
-  function dotsHtml() {
-    const { shown, talk } = needs();
-    const busy = working().slice(0, MAX);
-    const on = (sid) => m.shape === "chat" && sid === m.open ? "on" : "";
-    const btn = (sid, name, inner) => `<button class="m-dotb ${on(sid)}" data-open="${esc(sid)}" aria-label="${esc(name)}">${inner}</button>`;
-    const waits = shown.map((it, i) => sep(talk, i) + btn(it.session_id, name(it), dot(it))).join("");
-    const works = busy.map((s) => btn(s.session_id, nameOf(s.session_id, s.project), `<i class="m-dot work"></i>`)).join("");
-    return `<div class="m-panel m-dots">${waits}${waits && works ? `<div class="m-sep" role="separator"></div>` : ""}${works}</div>`;
+  /** The rail: one small dot, the most urgent state's: red while something asks, striped while something waits
+   *  for your turn, breathing while sessions only work. */
+  function markHtml() {
+    const { shown } = needs();
+    const cls = shown.some(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "";
+    return `<div class="m-panel m-mark"><i class="m-dot ${cls}"></i></div>`;
+  }
+  /** Every session, one tab each across the chat's top: what needs you (Waiting's order), then the ones at work.
+   *  A click switches; each keeps what you typed in it. */
+  function tabsHtml() {
+    const tab = (sid, project, cls) => `<button class="m-tab ${sid === m.open ? "on" : ""}" data-open="${esc(sid)}"><i class="m-dot ${cls}"></i>${esc(nameOf(sid, project))}</button>`;
+    const waits = needs(Infinity).shown.map((it) => tab(it.session_id, it.project, dotCls(it)));
+    const works = working().map((s) => tab(s.session_id, s.project, "work"));
+    return [...waits, ...works].join("");
   }
   const anything = () => needs().shown.length > 0 || working().length > 0;
   function islandHtml() {
@@ -122,7 +125,7 @@
     const it = itemFor(sid);
     const s = sessionOf(sid);
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
-    return `<div class="m-panel m-chat"><div class="m-chat-head">${it ? dot(it) : ""}<b>${esc(nameOf(sid, s?.project || it?.project))}</b>${tag}<span class="g"></span>${NOTCH ? dotsHtml() : ""}<button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
+    return `<div class="m-panel m-chat"><div class="m-tabs" data-tabs>${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
       <div class="m-foot">${quickHtml()}<textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
@@ -161,10 +164,10 @@
     invoke("mini_shape", args).catch(() => { m.sized = ""; });
   }
   function shapeHtml() {
-    if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-pair">${chatHtml()}${dotsHtml()}</div>`;
+    if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-pair">${chatHtml()}${markHtml()}</div>`;
     if (m.shape === "nod") return nodHtml();
     if (NOTCH) return islandHtml();
-    return anything() ? dotsHtml() : `<div class="m-panel m-hair"></div>`;
+    return anything() ? markHtml() : `<div class="m-panel m-hair"></div>`;
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {
@@ -189,8 +192,9 @@
       if (atEnd) t.scrollTop = t.scrollHeight;
       root.querySelector("[data-send]").disabled = m.sending;
       root.querySelector(".m-foot-row .m-quiet").textContent = m.note || "⇧↵ new line";
-      const dots = root.querySelector(".m-pair > .m-dots, .m-chat-head .m-dots");
-      if (dots && dots.outerHTML !== dotsHtml()) dots.outerHTML = dotsHtml();
+      put(root.querySelector("[data-tabs]"), tabsHtml());
+      const mark = root.querySelector(".m-pair > .m-mark");
+      if (mark && mark.outerHTML !== markHtml()) mark.outerHTML = markHtml();
     } else {
       const html = shapeHtml();
       if (drawn.get(root) !== html) {
@@ -300,50 +304,25 @@
     // this window (mini-pointer: WebKit tells a window of an app that isn't in front nothing about the pointer).
     document.body.addEventListener("mouseenter", () => pointerIn());
     document.body.addEventListener("mouseleave", () => pointerOut());
-    root.addEventListener("mousemove", (e) => pointerAt(e.clientX, e.clientY));
+    root.addEventListener("mousemove", () => pointerIn());
   }
-  /** The pointer came over the mini window: where there are no dots to point at (the notch's island), hovering
-   *  opens the first session's chat after a short pause. */
+  /** The pointer came over the mini window (the rail's dot, the notch's island): after a short pause the chat
+   *  opens, on the session a new card nodded for, else the first in Waiting's order, the cursor in its box. */
   function pointerIn() {
     if (m.over) return;
     m.over = true;
     clearTimeout(m.timer);
-    if ((m.shape === "quiet" || m.shape === "nod") && !root.querySelector(".m-dotb")) m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid); }, HOVER_MS);
+    if (m.shape === "quiet" || m.shape === "nod") m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid); }, HOVER_MS);
   }
-  /** Something typed in the open chat's box (kept: the chat doesn't fold, or switch, under it). */
+  /** Something typed in the open chat's box (kept: the chat doesn't fold under it). */
   const typing = () => !!root.querySelector("[data-box]")?.value.trim();
-  /** It left: the dots back to their size, and an open chat with nothing typed in it folds, the keyboard back to
-   *  the app you were in. With something typed it stays (Send, Esc or a click outside). */
+  /** It left: an open chat with nothing typed in it folds, the keyboard back to the app you were in. With
+   *  something typed it stays (Send, Esc or a click outside). */
   function pointerOut() {
     if (!m.over) return;
     m.over = false;
     clearTimeout(m.timer);
-    m.hoverSid = null;
-    magnify(null);
     if (m.shape === "chat" && !typing()) m.timer = setTimeout(() => { if (!typing()) closeChat(true); }, LEAVE_MS);
-  }
-  /** It moved, to (x, y) in the window. Along the dots, as the Dock does: the one under it grows, its neighbours a
-   *  little. Resting on one opens its chat with the cursor in its box, ready to type; moving on to another
-   *  switches to it while nothing's typed. */
-  function pointerAt(x, y) {
-    pointerIn();
-    magnify({ clientX: x, clientY: y });
-    const b = document.elementFromPoint(x, y)?.closest(".m-dotb");
-    if (!b || b.dataset.open === m.hoverSid) return;
-    m.hoverSid = b.dataset.open;
-    clearTimeout(m.timer);
-    m.timer = setTimeout(() => { if (!typing() && m.open !== m.hoverSid) openChat(m.hoverSid); }, HOVER_MS);
-  }
-  /** Each dot's size from the pointer's distance to it, along the dots (down the rail, across the notch's head):
-   *  up to 2.2 times at the pointer, back to its own size 56 pt away. `e` null: all back to their own size. */
-  function magnify(e) {
-    for (const b of root.querySelectorAll(".m-dotb")) {
-      const r = b.getBoundingClientRect();
-      const d = !e ? Infinity : NOTCH ? Math.abs(e.clientX - (r.left + r.width / 2)) : Math.abs(e.clientY - (r.top + r.height / 2));
-      const grow = 1 + 1.2 * Math.max(0, 1 - d / 56);
-      const dot = b.querySelector(".m-dot");
-      if (dot) dot.style.transform = grow > 1.001 ? `scale(${grow.toFixed(3)})` : "";
-    }
   }
   /** What you type is that session's draft, kept in Cue's database as Cue's own chat keeps it (the same key,
    *  "s:<session>"), so it's still there after a restart; saved half a second after you stop. Its images, if
@@ -391,7 +370,7 @@
     setInterval(() => { if (m.shape !== "chat") paint(); }, 60000);
     // Cue's window came forward or went back, maybe on another display: placed again, on that one.
     await T.event.listen("mini-place", () => { m.sized = ""; fit(); });
-    await T.event.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerAt(e.payload.x, e.payload.y); });
+    await T.event.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerIn(); });
   }
   boot();
 }
