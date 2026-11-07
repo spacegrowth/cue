@@ -34,7 +34,9 @@ Run in this order. The first one that fails stops the release, and its log is in
 6. **soak 10 min:** `tests/run.sh soak 10`. Until the soak harness lands, that prints "soak: not yet" and
    succeeds; the gate counts that as a failure.
 
-Before the gates, a run that ships (`--publish`, `--beta`, `--promote`) checks that its version comes after
+Before the gates and before anything in `dist/` is removed, every build (dry or not, published or not)
+checks that its version isn't tagged here or released on GitHub: a released version's `dist/v<version>` holds
+the dSYM for its hang reports, so it's never built over. Then a run that ships (`--publish`, `--beta`, `--promote`) checks that its version comes after
 the latest stable release (stable never goes back, and a beta older than stable would never be offered) and
 the one-ship rule (below). A real run (not a dry run) also
 checks the signing key, the update key and notarytool before the gates, so a missing key doesn't wait

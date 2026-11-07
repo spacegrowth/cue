@@ -40,11 +40,12 @@ if [ "$PROMOTE" = 1 ]; then
   exit 0
 fi
 
+check_unreleased
+run_preflight
 # A dry run's logs and record go beside a real build's, never over them.
 if [ "$DRY_RUN" = 1 ]; then DIST="$ROOT/dist/dry-run-v$VERSION"; else DIST="$ROOT/dist/v$VERSION"; fi
 rm -rf "$DIST"; mkdir -p "$DIST"
 
-run_preflight
 [ "$DRY_RUN" = 1 ] || signing_prerequisites   # before the gates, so a missing key doesn't wait out a soak
 run_gates "$DIST/gates"
 write_record "$DIST/release-record.txt"

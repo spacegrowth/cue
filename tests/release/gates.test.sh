@@ -39,7 +39,14 @@ case "$name $1 $2" in
     elif [ -n "${STUB_PROMOTED_TODAY:-}" ]; then echo "[{\"tag_name\":\"$STUB_PROMOTED_TODAY\",\"published_at\":\"2026-01-01T00:00:00Z\",\"assets\":[{\"name\":\"latest.json\",\"created_at\":\"$now\"}]},$old]"
     else echo "[$old]"; fi ;;
   "gh release view")
-    case "$*" in *isPrerelease*) echo true ;; *) echo "${STUB_STABLE_TAG:-v0.1.86}" ;; esac ;;
+    case "$*" in
+      *isPrerelease*) echo true ;;
+      *"--json body"*) echo "Notes." ;;
+      "release view v"*)
+        [ -n "${STUB_VIEW_ERROR:-}" ] && { echo "$STUB_VIEW_ERROR" >&2; exit 1; }
+        case " ${STUB_RELEASED:-} " in *" $3 "*) echo "{\"tagName\":\"$3\"}" ;; *) echo "release not found" >&2; exit 1 ;; esac ;;
+      *) echo "${STUB_STABLE_TAG:-v0.1.86}" ;;
+    esac ;;
   "gh release download")
     dir="$(printf '%s\n' "$@" | sed -n '/^--dir$/{n;p;}')"
     case "$*" in
@@ -91,7 +98,7 @@ start() {
   CASE="$1"; CASE_FAILED=0
   unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
     STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION STUB_STABLE_TAG \
-    STUB_PROMOTED_TODAY
+    STUB_PROMOTED_TODAY STUB_RELEASED STUB_VIEW_ERROR
   REPO="$(make_repo)"
   export CALLS="$WORK/calls"; : >"$CALLS"
 }
@@ -250,6 +257,26 @@ start "a promote never takes stable back"
 export STUB_STABLE_TAG=v0.3.0 STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z
 release --promote 0.2.0 --dry-run
 refused; says "0.2.0 isn't newer than the stable release (v0.3.0)"; not_called "gh release upload"
+done_case
+
+start "a version already released is never built again, and its dist folder is kept"
+mkdir -p "$REPO/dist/v0.2.0"; echo "symbols" >"$REPO/dist/v0.2.0/Cue.dSYM.zip"
+export STUB_RELEASED=v0.2.0
+release 0.2.0 "Notes."
+refused; says "v0.2.0 is already released on GitHub"; not_called "tests/run.sh"; not_called "security"
+[ -f "$REPO/dist/v0.2.0/Cue.dSYM.zip" ] || fail "the shipped version's dSYM was removed"
+done_case
+
+start "a version already tagged here is never built again"
+(cd "$REPO" && git tag v0.2.0)
+release 0.2.0 "Notes." --dry-run
+refused; says "v0.2.0 is already tagged"
+done_case
+
+start "not knowing whether a version is out stops the run"
+export STUB_VIEW_ERROR="HTTP 401: Bad credentials"
+release 0.2.0 "Notes." --dry-run
+refused; says "couldn't ask GitHub whether v0.2.0 is out: HTTP 401: Bad credentials"
 done_case
 
 start "a real build reaches signing and the build only through the stand-ins"

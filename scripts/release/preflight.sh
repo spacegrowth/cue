@@ -6,6 +6,22 @@ ships() {
   [ "$CHANNEL" != none ] || [ "$PROMOTE" = 1 ]
 }
 
+# A version already out is never built again: its dist/v<version> holds the dSYM that resolves its hang reports,
+# and a build would replace it. Checked before anything is removed or run, ship or not.
+check_unreleased() {
+  local said
+  if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+    die "v$VERSION is already tagged: release the next version (dist/v$VERSION is left as it is)"
+  fi
+  if said="$(gh release view "v$VERSION" --repo "$REPO" --json tagName 2>&1)"; then
+    die "v$VERSION is already released on GitHub: release the next version (dist/v$VERSION is left as it is)"
+  fi
+  case "$said" in
+    *"release not found"*) return 0 ;;
+    *) die "couldn't ask GitHub whether v$VERSION is out: $said" ;;
+  esac
+}
+
 # The latest stable release's tag.
 latest_stable_tag() {
   gh release view --repo "$REPO" --json tagName --jq .tagName
