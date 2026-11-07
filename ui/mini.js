@@ -15,7 +15,7 @@
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
-  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
+  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -246,7 +246,9 @@
     try {
       const said = it ? await invoke("reply", { id: it.id, text }) : await invoke("send_to_session", { sessionId: sid, text });
       m.typed[sid] = "";
+      m.images[sid] = [];
       box.value = "";
+      keepDraft(sid);
       m.note = typeof said === "string" && said ? said : `Sent to ${nameOf(sid, sessionOf(sid)?.project)}`;
     } catch (e) {
       m.note = String(e);
@@ -286,7 +288,7 @@
     root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
     // A click anywhere outside takes the keyboard elsewhere: the open chat folds away, as a menu would.
     window.addEventListener("blur", () => closeChat(false));
-    root.addEventListener("input", (e) => { if (e.target.matches("[data-box]")) { m.typed[m.open] = e.target.value; grow(e.target); } });
+    root.addEventListener("input", (e) => { if (e.target.matches("[data-box]")) { m.typed[m.open] = e.target.value; grow(e.target); keepDraft(m.open); } });
     root.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { e.preventDefault(); closeChat(); }
       else if (e.key === "Enter" && !e.shiftKey && e.target.matches("[data-box]")) { e.preventDefault(); send(); }
@@ -343,6 +345,21 @@
       if (dot) dot.style.transform = grow > 1.001 ? `scale(${grow.toFixed(3)})` : "";
     }
   }
+  /** What you type is that session's draft, kept in Cue's database as Cue's own chat keeps it (the same key,
+   *  "s:<session>"), so it's still there after a restart; saved half a second after you stop. Its images, if
+   *  Cue's chat has any for it, are kept as they are. */
+  function keepDraft(sid) {
+    clearTimeout(m.draftT[sid]);   // one wait per session: switching sessions doesn't drop the last one's save
+    m.draftT[sid] = setTimeout(() => invoke("set_draft", { key: `s:${sid}`, text: m.typed[sid] || "", images: m.images[sid] || [] }).catch(() => {}), 500);
+  }
+  async function loadDrafts() {
+    const saved = await invoke("get_drafts").catch(() => ({}));
+    for (const [k, d] of Object.entries(saved || {})) {
+      if (!k.startsWith("s:")) continue;
+      m.typed[k.slice(2)] = d.text || "";
+      m.images[k.slice(2)] = d.images || [];
+    }
+  }
   /** The box grows with what you type: 5 lines on the rail, 3 at the notch, then it scrolls. */
   function grow(box) {
     const line = 19.5, most = NOTCH ? 3 : 5;
@@ -367,6 +384,7 @@
 
   async function boot() {
     bind();
+    await loadDrafts();
     take(await invoke("get_state"));
     await T.event.listen("state", (e) => take(e.payload));
     // Ages move on with no new state: once a minute is enough for "4m".
