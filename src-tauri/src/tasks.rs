@@ -61,6 +61,41 @@ pub struct Turn {
 
 const TURNS_KEPT: usize = 60;
 
+/// The small model, asked `prompt` about session `session_id` (btw::ask_small). In tests, the one a test stands
+/// in (`small::stand_in`), never Claude Code itself.
+fn ask_small(prompt: &str, session_id: &str) -> Result<crate::btw::Answer, String> {
+    #[cfg(test)]
+    return small::ask(prompt, session_id);
+    #[cfg(not(test))]
+    crate::btw::ask_small(prompt, session_id)
+}
+
+/// Tests: the small model as a test says it answers, and the tracks forgotten between tests.
+#[cfg(test)]
+pub mod small {
+    use std::sync::{Arc, Mutex};
+
+    type Model = Arc<dyn Fn(&str, &str) -> Result<crate::btw::Answer, String> + Send + Sync>;
+    static MODEL: Mutex<Option<Model>> = Mutex::new(None);
+
+    /// `model` answers every ask from now on (the prompt and the session's id in, its answer out).
+    pub fn stand_in(model: impl Fn(&str, &str) -> Result<crate::btw::Answer, String> + Send + Sync + 'static) {
+        *crate::locking::lock(&MODEL, "the small model's stand-in") = Some(Arc::new(model));
+    }
+
+    pub(super) fn ask(prompt: &str, session_id: &str) -> Result<crate::btw::Answer, String> {
+        let model = crate::locking::lock(&MODEL, "the small model's stand-in").clone().ok_or("no small model in tests")?;
+        model(prompt, session_id)
+    }
+
+    /// No stand-in, and every track and total forgotten: the next read is from this test's folder.
+    pub fn reset() {
+        *crate::locking::lock(&MODEL, "the small model's stand-in") = None;
+        *crate::locking::lock(&super::TRACKS, "what each session is about") = None;
+        *crate::locking::lock(&super::TOTAL, "what About has cost") = None;
+    }
+}
+
 /// About is on (Settings → Summaries): off, nothing is read or asked for, and the window shows none of it.
 pub fn on() -> bool {
     crate::config::effective().pointer("/tasks/on").and_then(Value::as_bool).unwrap_or(false)
@@ -247,7 +282,7 @@ fn read_all(hub: &Hub, session_id: &str) -> Result<(), String> {
     if log.is_empty() {
         return Err("nothing has been said in this session yet".into());
     }
-    let a = crate::btw::ask_small(&chat_prompt(&log), session_id)?;
+    let a = ask_small(&chat_prompt(&log), session_id)?;
     spend(a.spent);
     let r = parse(&a.text).ok_or_else(|| format!("its answer wasn't what was asked: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let seen = log.last().map(|e| e.at_ms).unwrap_or(0);
@@ -267,7 +302,7 @@ fn update(hub: &Hub, session_id: &str) -> Result<(), String> {
     if !since.iter().any(|e| e.role == "agent") {
         return Ok(());
     }
-    let a = crate::btw::ask_small(&update_prompt(&about, &summary, &since), session_id)?;
+    let a = ask_small(&update_prompt(&about, &summary, &since), session_id)?;
     spend(a.spent);
     let r = parse(&a.text).ok_or_else(|| format!("its answer wasn't what was asked: {}", crate::logs::transcript::cut(&a.text, 200)))?;
     let newest = since.last().map(|e| e.at_ms).unwrap_or(seen);

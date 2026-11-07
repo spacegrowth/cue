@@ -11,5 +11,6 @@ mod reviews;
 mod sessions;
 mod settings;
 mod store;
+mod tasks;
 mod transcripts;
 mod typing;
