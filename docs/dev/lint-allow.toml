@@ -148,7 +148,12 @@ reason = "a session's project (Sessions::mark → project_of_origin → repos::r
 [[lock_order]]
 from = "typing gate"
 to = "CLAUDE"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus::current_tty). Seen since the hub types through terminal::keys, which the check follows"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus/apps.rs current_tty). Seen since the hub types through terminal::keys, which the check follows"
+
+[[lock_order]]
+from = "typing gate"
+to = "config file"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); a reply that redraws with no window (a test's hub) builds the snapshot on its own thread, which settles projects into the config file. Seen since the check follows a module's `use child::item` re-exports"
 
 [[lock_order]]
 from = "typing gate"

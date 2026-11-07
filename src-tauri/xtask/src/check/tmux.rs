@@ -1,4 +1,4 @@
-//! tmux started by name. In tests every tmux call must go through the crate's seam (`terminal/focus.rs`:
+//! tmux started by name. In tests every tmux call must go through the crate's seam (`terminal/focus/exec.rs`:
 //! `bin("tmux")`/`tmux_bin()`), which first points tmux at a private test server; a `Command::new("tmux")`
 //! anywhere else, test code included, would reach the server of whoever runs the tests (an agent's
 //! `$TMUX`), where a `kill-session` or `kill-server` is the user's real terminals gone. Read syntactically

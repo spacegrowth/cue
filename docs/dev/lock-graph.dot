@@ -32,6 +32,7 @@ digraph locks {
   "typing gate" -> "VERIFY";
   "typing gate" -> "answered saves";
   "typing gate" -> "caches";
+  "typing gate" -> "config file";
   "typing gate" -> "config in memory";
   "typing gate" -> "folder facts";
   "typing gate" -> "parked saves";
