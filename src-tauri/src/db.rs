@@ -295,6 +295,8 @@ fn regroup_projects(c: &Connection) {
         };
         let mut n = 0;
         for (id, cwd) in rows {
+            // Once, as the database opens: each folder looked at first (asking alone doesn't wait).
+            crate::logs::repos::first_look(&cwd);
             let Some(root) = crate::logs::repos::repo_root(&cwd) else { continue };
             let project = crate::logs::repos::repo_name(&root);
             let column = if table == "parked" { "" } else { ", project = ?1" };

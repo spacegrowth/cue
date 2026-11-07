@@ -300,7 +300,12 @@ pub fn run() {
                     tick.tick().await;
                     // Also every live Claude session, for the Sessions view, and each folder's repository and branch
                     // (non-short-circuit |: all run).
-                    if tauri::async_runtime::spawn_blocking(|| leads::refresh() | live::refresh() | logs::repos::refresh()).await.unwrap_or(false) {
+                    let (others, folders) = tauri::async_runtime::spawn_blocking(|| (leads::refresh() | live::refresh(), logs::repos::refresh())).await.unwrap_or((false, false));
+                    // Folders' facts came in: the projects the hub keeps derived again (that redraws).
+                    if folders {
+                        let f = h.clone();
+                        let _ = tauri::async_runtime::spawn_blocking(move || f.folders_found()).await;
+                    } else if others {
                         h.redraw();
                     }
                     // Claude sessions here whose agent is gone (no process Cue can watch: Cue's own terminal, a lost tab).

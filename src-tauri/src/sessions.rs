@@ -437,6 +437,19 @@ impl Sessions {
         self.0.get(session_id).map_or(0, |s| s.teammates_read_ms)
     }
 
+    /// Each session's project derived again from its folder (hub/projects.rs); true when one changed.
+    pub fn reproject(&mut self) -> bool {
+        let mut changed = false;
+        for s in self.0.values_mut() {
+            let p = crate::model::project_of_origin(&s.origin);
+            if s.project != p {
+                s.project = p;
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// The project of the live session running as process `pid`.
     pub fn project_by_pid(&self, pid: i32) -> Option<String> {
         self.0.values().find(|s| s.origin.agent_pid == Some(pid)).map(|s| s.project.clone())

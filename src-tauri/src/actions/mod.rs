@@ -729,6 +729,9 @@ pub async fn project_for_folder(folder: String, machine: Option<String>) -> Resu
         if !folder.starts_with('/') {
             return Err("that isn't a folder".into());
         }
+        if m.is_empty() {
+            crate::logs::repos::first_look(&folder);
+        }
         let (name, how) = crate::model::project_how(&folder, &m);
         Ok(json!({ "name": name, "own": crate::model::own_project(&folder, &m), "how": how, "key": crate::model::put_key(&folder, &m) }))
     })

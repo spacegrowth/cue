@@ -39,6 +39,12 @@ pub struct Prompt {
 /// `msg`, applied to the hub. `peer`: the connecting process, when the socket can say (a subscription
 /// is refused to any other process than the session's own).
 pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
+    // A session's folder, seen before the hub records it with its project (logs::repos::first_look).
+    if let ClientMsg::Ask { origin, .. } | ClientMsg::Event { origin, .. } = &msg {
+        if origin.machine.is_empty() {
+            crate::logs::repos::first_look(&origin.cwd);
+        }
+    }
     match msg {
         ClientMsg::Ask { origin, kind, tool_name, tool_input, suggestions, context, agent_id } => {
             let (id, answer) = hub.add_ask(origin, kind, tool_name, tool_input, suggestions, context, agent_id);

@@ -58,3 +58,27 @@ fn the_window_builds_while_a_sessions_folder_doesnt_answer() {
     w.hub().redraw();
     assert_eq!(w.snapshot().0["projects"][&cwd]["name"], "shop", "what the repository says, once the disk answered");
 }
+
+/// A session in a folder whose facts aren't in yet is recorded under the folder's own name; once they come
+/// in, it says its repository's project, without anything waiting on the disk meanwhile.
+#[test]
+fn a_project_recorded_before_its_folder_was_known_is_put_right_when_it_is() {
+    let w = World::new();
+    let repo = StalledRepo::new("reproject");
+    let sub = repo.dir.join("web");
+    std::fs::create_dir_all(&sub).unwrap();
+    let start = Instant::now();
+    w.session("a").in_folder(&sub).prompt("fix the login");
+    assert!(start.elapsed() < Duration::from_secs(2), "the hook waited on the disk: {:?}", start.elapsed());
+    assert_eq!(w.hub().session_record("a").unwrap().project, "web", "unknown for now: the folder's own name");
+    repo.answer("{}");
+    let cwd = sub.to_string_lossy().into_owned();
+    let back = Instant::now();
+    while crate::logs::repos::facts(&cwd).is_none() {
+        assert!(back.elapsed() < Duration::from_secs(5), "the folder's lookup came back");
+        crate::logs::repos::refresh();
+    }
+    w.hub().folders_found();
+    let repo_name = repo.dir.file_name().unwrap().to_string_lossy().into_owned();
+    assert_eq!(w.hub().session_record("a").unwrap().project, repo_name, "its repository's, once the folder is known");
+}

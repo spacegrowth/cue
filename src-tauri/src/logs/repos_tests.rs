@@ -26,6 +26,22 @@ fn on_branch(b: &str) -> Facts {
 }
 
 #[test]
+fn asking_never_waits_and_a_folder_comes_in_with_the_next_refresh() {
+    static GATE: AtomicBool = AtomicBool::new(false);
+    fn look(_: &str) -> Facts {
+        until("the test let the lookup go", || GATE.load(Ordering::SeqCst));
+        on_branch("main")
+    }
+    let f = folders(look, Duration::from_secs(2));
+    let start = Instant::now();
+    assert_eq!(f.facts("/slow/app"), None, "unknown for now");
+    assert!(start.elapsed() < Duration::from_millis(50), "asking doesn't wait for the lookup");
+    GATE.store(true, Ordering::SeqCst);
+    until("the lookup came back", || f.facts("/slow/app").is_some());
+    assert!(f.refresh(), "its coming in is a change for the hub to take up");
+}
+
+#[test]
 fn a_folder_known_is_answered_from_memory() {
     static LOOKS: AtomicUsize = AtomicUsize::new(0);
     fn look(_: &str) -> Facts {
@@ -33,7 +49,7 @@ fn a_folder_known_is_answered_from_memory() {
         on_branch("main")
     }
     let f = folders(look, Duration::from_secs(2));
-    assert_eq!(f.facts("/r/src").map(|x| x.branch).as_deref(), Some("main"), "the first asker waits for a quick lookup");
+    assert_eq!(f.first_look("/r/src").map(|x| x.branch).as_deref(), Some("main"), "a first look waits for a quick lookup");
     for _ in 0..100 {
         assert_eq!(f.facts("/r/src").map(|x| x.branch).as_deref(), Some("main"));
     }
@@ -48,7 +64,7 @@ fn a_refresh_picks_up_a_change_and_says_so() {
         on_branch(if FIX_IT.load(Ordering::SeqCst) { "fix-it" } else { "main" })
     }
     let f = folders(look, Duration::from_secs(2));
-    assert_eq!(f.facts("/r").unwrap().branch, "main");
+    assert_eq!(f.first_look("/r").unwrap().branch, "main");
     f.refresh();
     assert!(!f.refresh(), "nothing changed on disk: nothing to redraw");
     FIX_IT.store(true, Ordering::SeqCst);
@@ -72,12 +88,13 @@ fn stalls_on_home(cwd: &str) -> Facts {
 fn a_stalled_folder_is_unknown_and_holds_nothing_up() {
     let f = folders(stalls_on_home, Duration::from_millis(50));
     let start = Instant::now();
-    assert_eq!(f.facts("/home/me/app"), None, "unknown once its first wait is up");
-    assert!(start.elapsed() < Duration::from_secs(1), "the first asker waits a moment, not for the disk");
+    assert_eq!(f.first_look("/home/me/app"), None, "unknown once its first wait is up");
+    assert!(start.elapsed() < Duration::from_secs(1), "a first look waits a moment, not for the disk");
     let again = Instant::now();
+    assert_eq!(f.first_look("/home/me/app"), None);
     assert_eq!(f.facts("/home/me/app"), None);
     assert!(again.elapsed() < Duration::from_millis(40), "nobody waits on it a second time");
-    assert_eq!(f.facts("/Users/me/web").map(|x| x.branch).as_deref(), Some("main"), "other folders still answer");
+    assert_eq!(f.first_look("/Users/me/web").map(|x| x.branch).as_deref(), Some("main"), "other folders still answer");
     let tick = Instant::now();
     f.refresh();
     assert!(tick.elapsed() < Duration::from_secs(3), "a refresh waits for a stalled folder only so long");
@@ -100,6 +117,10 @@ fn repo_of_worktree() {
     run(&main, &["worktree", "add", "-q", "../app-wt/fix-it"]);
     let wt = base.join("app-wt/fix-it");
     std::fs::create_dir_all(wt.join("deep")).unwrap();
+    // Each folder looked at first, as a session's hook does (first_look): asking alone doesn't wait.
+    for p in [main.join("src"), wt.clone(), wt.join("deep")] {
+        first_look(p.to_str().unwrap());
+    }
     let name = |p: &Path| repo_root(p.to_str().unwrap()).map(|r| repo_name(&r));
     assert_eq!(name(&main.join("src")).as_deref(), Some("app"));
     assert_eq!(name(&wt).as_deref(), Some("app"));
@@ -134,6 +155,9 @@ fn a_folders_project_by_the_three_rules() {
     let s = |p: &Path| p.to_str().unwrap().to_string();
     let said = |p: &Path, put: &HashMap<String, String>| crate::model::project_said(&s(p), "", put);
     let none = HashMap::new();
+    for p in [web.join("ui"), web.clone(), base.join("web-app-fix"), scratch.clone(), scratch.join("deep"), scratch.join("deep/inner-repo"), docs.clone()] {
+        first_look(&s(&p));
+    }
     // 3. its own: the repository, from a subfolder and a worktree too; else the folder.
     assert_eq!(crate::model::own_project(&s(&web.join("ui")), ""), "web-app");
     assert_eq!(crate::model::own_project(&s(&base.join("web-app-fix")), ""), "web-app");
@@ -169,17 +193,21 @@ fn reads_the_branch_of_a_repo_and_a_worktree() {
     std::fs::create_dir_all(d.join("repo/.git")).unwrap();
     std::fs::create_dir_all(d.join("repo/src/deep")).unwrap();
     std::fs::write(d.join("repo/.git/HEAD"), "ref: refs/heads/chart-lines\n").unwrap();
+    first_look(d.join("repo/src/deep").to_str().unwrap());
+    first_look(d.join("repo").to_str().unwrap());
     assert_eq!(branch(d.join("repo/src/deep").to_str().unwrap()), "chart-lines", "found from a subfolder");
     assert_eq!(branch(d.join("repo").to_str().unwrap()), "chart-lines");
     std::fs::create_dir_all(d.join("repo/.git/worktrees/wt")).unwrap();
     std::fs::write(d.join("repo/.git/worktrees/wt/HEAD"), "4f2a9c1e0b7d\n").unwrap();
     std::fs::create_dir_all(d.join("wt")).unwrap();
     std::fs::write(d.join("wt/.git"), format!("gitdir: {}\n", d.join("repo/.git/worktrees/wt").display())).unwrap();
+    first_look(d.join("wt").to_str().unwrap());
     assert_eq!(branch(d.join("wt").to_str().unwrap()), "4f2a9c1", "a detached worktree shows its commit");
     std::fs::write(d.join("repo/.git/HEAD"), "ref: refs/heads/main\n").unwrap();
     assert_eq!(branch(d.join("repo").to_str().unwrap()), "chart-lines", "read from memory until a refresh");
     refresh();
     assert_eq!(branch(d.join("repo").to_str().unwrap()), "main", "a checkout is picked up by the refresh");
+    first_look("/");
     assert_eq!(branch("/"), "");
     assert_eq!(branch(""), "");
     let _ = std::fs::remove_dir_all(&d);

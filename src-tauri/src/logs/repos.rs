@@ -3,11 +3,14 @@
 //! memory: the disk is only ever read on a thread of its own, so a folder on a disk that stalls (an
 //! automounted /home, a network share) holds nothing else up.
 //!
-//! A folder seen for the first time is looked up at once, and its first asker waits for the answer a short
-//! while (`FIRST_WAIT`): a local folder answers in well under that. One that doesn't is unknown (no
-//! repository) until its lookup comes back; nobody waits on it again. Every folder asked about lately is
-//! looked up again on each `refresh` (the 3-second tick), so a branch checked out or a folder made a
-//! repository shows within a tick.
+//! Asking never waits: a folder not known yet is looked up and is unknown (no repository) until the lookup
+//! comes back; the tick's `refresh` says so, and the hub then derives the projects it keeps again. Where a
+//! new folder first shows up (a hook from a session in it), `first_look` waits for it a short while
+//! (`FIRST_WAIT`) with no lock held: a local folder answers in well under that, so its first card already
+//! says its project. Every folder asked about lately is looked up again on each `refresh` (the 3-second
+//! tick), so a branch checked out or a folder made a repository shows within a tick; one not asked about
+//! for a long while is forgotten. A folder has one lookup out at a time, so one that hangs is never joined
+//! by another.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -36,12 +39,14 @@ const FIRST_WAIT: Duration = Duration::from_millis(200);
 const REFRESH_WAIT: Duration = Duration::from_secs(1);
 /// A folder not asked about for this long isn't looked up again until it's asked about.
 const RECENT: Duration = Duration::from_secs(600);
+/// A folder not asked about for this long is forgotten (unless its lookup is still out).
+const FORGET: Duration = Duration::from_secs(6 * 3600);
 
 struct Entry {
     facts: Option<Facts>,
     /// A lookup is out (one per folder at a time: one that hangs isn't joined by another every tick).
     looking: bool,
-    /// Someone waited `FIRST_WAIT` for it already, so nobody waits again.
+    /// Someone waited `first_wait` for it already, so nobody waits again.
     waited: bool,
     asked: Instant,
 }
@@ -66,20 +71,30 @@ impl Folders {
         Folders { known: Mutex::new(Known::default()), found: Condvar::new(), look, first_wait }
     }
 
-    /// `cwd`'s facts from memory; None while they're unknown (being looked up past the first wait).
+    /// `cwd`'s facts from memory; None while they're unknown (looked up now, if no lookup is out).
     pub fn facts(&'static self, cwd: &str) -> Option<Facts> {
         let mut known = crate::locking::lock(&self.known, "folder facts");
+        self.asked(&mut known, cwd).facts.clone()
+    }
+
+    /// `cwd` asked about: its entry, its lookup started if it's unknown and none is out.
+    fn asked<'k>(&'static self, known: &'k mut Known, cwd: &str) -> &'k mut Entry {
         let e = known.folders.entry(cwd.to_string()).or_insert_with(|| Entry { facts: None, looking: false, waited: false, asked: Instant::now() });
         e.asked = Instant::now();
-        if let Some(f) = &e.facts {
-            return Some(f.clone());
-        }
-        if !e.looking {
+        if e.facts.is_none() && !e.looking {
             e.looking = true;
             self.look_up(cwd.to_string());
         }
-        if std::mem::replace(&mut e.waited, true) {
-            return None;
+        e
+    }
+
+    /// `cwd`'s facts, waiting `first_wait` for them the first time it's asked about (nobody waits again).
+    /// Call with no lock held.
+    pub fn first_look(&'static self, cwd: &str) -> Option<Facts> {
+        let mut known = crate::locking::lock(&self.known, "folder facts");
+        let e = self.asked(&mut known, cwd);
+        if e.facts.is_some() || std::mem::replace(&mut e.waited, true) {
+            return e.facts.clone();
         }
         let deadline = Instant::now() + self.first_wait;
         loop {
@@ -98,6 +113,7 @@ impl Folders {
     /// folder unknown till now came back) since the last refresh.
     pub fn refresh(&'static self) -> bool {
         let mut known = crate::locking::lock(&self.known, "folder facts");
+        known.folders.retain(|_, e| e.looking || e.asked.elapsed() < FORGET);
         let due: Vec<String> = known.folders.iter_mut()
             .filter(|(_, e)| !e.looking && e.asked.elapsed() < RECENT)
             .map(|(cwd, e)| {
@@ -143,6 +159,14 @@ pub fn facts(cwd: &str) -> Option<Facts> {
         return None;
     }
     FOLDERS.facts(cwd)
+}
+
+/// `cwd` seen, by whoever is about to need its facts: waited for a short while the first time (see the
+/// module's note). Call with no lock held.
+pub fn first_look(cwd: &str) {
+    if !cwd.is_empty() {
+        FOLDERS.first_look(cwd);
+    }
 }
 
 /// Look the folders asked about lately up again (the 3-second tick); true when one changed.

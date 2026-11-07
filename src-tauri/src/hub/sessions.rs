@@ -94,6 +94,9 @@ impl Hub {
     }
 
     pub fn started(&self, origin: Origin, message: &str, images: &[String], asks_trust: bool) {
+        if origin.machine.is_empty() {
+            crate::logs::repos::first_look(&origin.cwd);
+        }
         self.write(|st| {
             let sid = origin.session_id.clone();
             let msg = message.trim();
@@ -892,6 +895,7 @@ mod tests {
         // that is macOS's automounter here (its lookup stalled a launch once).
         let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_str().unwrap().to_string();
         let there = "/home/someone/cue";
+        crate::logs::repos::first_look(&here); // as a hook from it does (server::inbound)
         hub.event(Origin { session_id: "here".into(), harness: "claude".into(), cwd: here.clone(), ..Default::default() }, "stopped", "done".into(), vec![], "");
         hub.event(Origin { session_id: "there".into(), harness: "claude".into(), cwd: there.into(), machine: "box".into(), ..Default::default() }, "stopped", "done".into(), vec![], "");
         let snap = hub.snapshot();
