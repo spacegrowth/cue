@@ -346,10 +346,17 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
     if !ALLOWED.contains(&key) {
         return Err(format!("unknown setting {key}"));
     }
+    match key {
+        "pi.gate" | "appearance.mode" | "notify.sound" | "turn.mode" | "steps.mode" | "voice.pick" => checked_choice(key, &value),
+        "project.colors" | "project.all" | "project.hue" | "project.pins" | "project.made" | "project.names" | "project.moves" | "project.folders" => checked_project(key, value),
+        "insights.skills" | "status.sessions" | "background.sessions" | "quick.phrases" => checked_list(key, value),
+        _ => checked_plain(key, value),
+    }
+}
+
+/// A setting that's one of a few names.
+fn checked_choice(key: &str, value: &Value) -> Result<Value, String> {
     Ok(match key {
-        "history.keep" => json!(value.as_u64().ok_or("keep must be a number")?.max(10)),
-        "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
-        "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
         "pi.gate" => match value.as_str() {
             Some(g @ ("dangerous" | "all" | "off")) => json!(g),
             _ => return Err("gate must be dangerous, all or off".into()),
@@ -362,21 +369,26 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
             Some(c) if crate::sounds::CHOICES.contains(&c) => json!(c),
             _ => return Err(format!("the sound must be one of {}", crate::sounds::CHOICES.join(", "))),
         },
-        "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
         "turn.mode" => match value.as_str() {
             Some(m @ ("answer" | "last")) => json!(m),
             _ => return Err("turn mode must be answer or last".into()),
         },
-        // Your usage meters' CSV file (a path; ~ is your home folder). Empty: back to the default.
-        "usage.file" => {
-            let p = value.as_str().ok_or("the usage file must be a path")?.trim();
-            json!(if p.is_empty() { USAGE_FILE_DEFAULT } else { p })
-        }
         // Steps in the chat: one line each (open one with a tap), everything open, or hidden.
         "steps.mode" => match value.as_str() {
             Some(m @ ("line" | "all" | "hidden")) => json!(m),
             _ => return Err("steps must be line, all or hidden".into()),
         },
+        "voice.pick" => match value.as_str() {
+            Some(v) if v.len() <= 24 && v.chars().all(|c| c.is_ascii_lowercase() || c == '_') => json!(v),
+            _ => return Err("the voice must be one of Kokoro's names, or empty for the Mac's own".into()),
+        },
+        _ => return Err(format!("unknown setting {key}")),
+    })
+}
+
+/// A project setting: colors, pins, names, moves and folders.
+fn checked_project(key: &str, value: Value) -> Result<Value, String> {
+    Ok(match key {
         "project.colors" => {
             let map = value.as_object().ok_or("colors must be folder: swatch")?;
             if !map.values().all(|v| v.as_u64().is_some_and(|n| n < 10)) {
@@ -384,6 +396,22 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
             }
             value
         }
+        "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
+        // Your own Color, past the ten: a hue and a strength (null: one of the ten, project.all).
+        "project.hue" if value.is_null() || own_hue(&value) => value,
+        "project.hue" => return Err("your own color is a hue (0 to 360) and a strength (0 to 1)".into()),
+        "project.pins" => pins(&value)?,
+        "project.made" => made(&value)?,
+        "project.names" => names(&value)?,
+        "project.moves" => moves(&value)?,
+        "project.folders" => folders(&value)?,
+        _ => return Err(format!("unknown setting {key}")),
+    })
+}
+
+/// A setting that's a list or a map: hand-off skills, the status list's sessions, quick phrases.
+fn checked_list(key: &str, value: Value) -> Result<Value, String> {
+    Ok(match key {
         // The skill that hands a session off, per machine and agent ("build-box|claude", "|codex" for this
         // Mac): one command name each, as the session's "/" menu lists it.
         "insights.skills" => {
@@ -394,28 +422,11 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
             }
             value
         }
-        // Insights hidden until this time (ms since 1970); 0 shows them again.
-        "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
-        "tasks.on" | "tasks.auto" | "status.on" => json!(value.as_bool().ok_or("must be on or off")?),
         // The sessions the status list is on for: their ids (statuslist::sessions_with keeps the newest 500).
         "status.sessions" | "background.sessions" => match value.as_array() {
             Some(ids) if ids.len() <= 500 && ids.iter().all(|i| i.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 100)) => value,
             _ => return Err("the sessions are a list of session ids".into()),
         },
-        "voice.pick" => match value.as_str() {
-            Some(v) if v.len() <= 24 && v.chars().all(|c| c.is_ascii_lowercase() || c == '_') => json!(v),
-            _ => return Err("the voice must be one of Kokoro's names, or empty for the Mac's own".into()),
-        },
-        "actions.prompt" | "login.open" => return Err(format!("{key} is saved with config::set")),
-        "project.all" => json!(value.as_u64().filter(|n| *n < 10).ok_or("a swatch is 0 to 9")?),
-        // Your own Color, past the ten: a hue and a strength (null: one of the ten, project.all).
-        "project.hue" if value.is_null() || own_hue(&value) => value,
-        "project.hue" => return Err("your own color is a hue (0 to 360) and a strength (0 to 1)".into()),
-        "project.pins" => pins(&value)?,
-        "project.made" => made(&value)?,
-        "project.names" => names(&value)?,
-        "project.moves" => moves(&value)?,
-        "project.folders" => folders(&value)?,
         "quick.phrases" => {
             let list = value.as_array().ok_or("phrases must be a list")?;
             let phrases: Vec<String> = list.iter().filter_map(Value::as_str).map(|p| p.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|p| !p.is_empty()).collect();
@@ -427,6 +438,26 @@ fn checked(key: &str, value: Value) -> Result<Value, String> {
             }
             json!(phrases)
         }
+        _ => return Err(format!("unknown setting {key}")),
+    })
+}
+
+/// A setting that's a number, a path or on/off (any other allowed key is on/off).
+fn checked_plain(key: &str, value: Value) -> Result<Value, String> {
+    Ok(match key {
+        "history.keep" => json!(value.as_u64().ok_or("keep must be a number")?.max(10)),
+        "sessions.tmux" => json!(value.as_bool().ok_or("tmux must be on or off")?),
+        "context.keep" => json!(value.as_u64().ok_or("keep must be a number")?.clamp(1, 50)),
+        "appearance.zoom" => json!(value.as_f64().and_then(zoom_step).ok_or("text size must be 0.9, 1, 1.15 or 1.3")?),
+        // Your usage meters' CSV file (a path; ~ is your home folder). Empty: back to the default.
+        "usage.file" => {
+            let p = value.as_str().ok_or("the usage file must be a path")?.trim();
+            json!(if p.is_empty() { USAGE_FILE_DEFAULT } else { p })
+        }
+        // Insights hidden until this time (ms since 1970); 0 shows them again.
+        "insights.snooze" => json!(value.as_u64().ok_or("snooze must be a time")?),
+        "tasks.on" | "tasks.auto" | "status.on" => json!(value.as_bool().ok_or("must be on or off")?),
+        "actions.prompt" | "login.open" => return Err(format!("{key} is saved with config::set")),
         _ => json!(value.as_bool().ok_or("must be true or false")?),
     })
 }
