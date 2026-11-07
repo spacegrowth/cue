@@ -11,11 +11,11 @@
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const TALK = 5 * 60000;             // in conversation: back within 5 minutes of your message (board.js TALK_MS)
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { quiet: 260, nod: 500, list: 560, chat: 560 } : { quiet: 28, list: 320, chat: 448 };   // the rail's chat: 420 + its dots
+  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 28, chat: 448 };   // the rail's chat: 420 + its dots
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
-  // shape: quiet | nod | list | chat. open: the session whose chat is open.
-  const m = { shape: "quiet", open: null, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
+  // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
+  const m = { shape: "quiet", open: null, keyed: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -32,7 +32,7 @@
     const talk = all.filter(talking).sort((a, b) => a.created_ms - b.created_ms);
     const rest = all.filter((i) => !talking(i)).sort(newest);
     const shown = [...talk, ...rest].slice(0, most);
-    return { shown, talk: Math.min(talk.length, most), more: all.length - shown.length };
+    return { shown, talk: Math.min(talk.length, most) };
   }
   /** Sessions at work with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
    *  queued (it reads it when it finishes its current step). */
@@ -53,14 +53,11 @@
     if (/^\s*\|.*\|\s*$/m.test(t)) bits.push("a table");
     return bits.filter(Boolean).join(" · ");
   }
-  const what = (it) => asks(it) ? `${verb(it)} · ${summary(it)}` : ["your turn", shapeOf(finishedText(it))].filter(Boolean).join(" · ");
   const dotCls = (it) => asks(it) ? "ask" : "turn";
 
   // ---------- drawing ----------
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
-  const row = (it) => `<button class="m-row" data-open="${esc(it.session_id)}">${dot(it)}<span class="m-name">${esc(name(it))}</span><span class="m-what">${esc(what(it))}</span><span class="m-age">${ago(it.created_ms)}</span></button>`;
   const sep = (n, i) => n && i === n ? `<div class="m-sep" role="separator"></div>` : "";
-  const workRow = (s) => `<button class="m-row" data-open="${esc(s.session_id)}"><i class="m-dot work"></i><span class="m-name">${esc(nameOf(s.session_id, s.project))}</span><span class="m-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></button>`;
 
   /** The rail: a dot per session that needs you (in conversation, a separator, newest first), then, under
    *  another separator, a solid dot per session at work. */
@@ -74,16 +71,6 @@
     return `<div class="m-panel m-dots">${waits}${waits && works ? `<div class="m-sep" role="separator"></div>` : ""}${works}</div>`;
   }
   const anything = () => needs().shown.length > 0 || working().length > 0;
-  /** Hover: everything, what needs you (in conversation, a separator, newest first), then every session at work.
-   *  Taller than most of the screen, it scrolls inside. */
-  function listHtml() {
-    const { shown, talk } = needs(Infinity);
-    const busy = working();
-    const head = shown.length ? `${shown.length} need${shown.length === 1 ? "s" : ""} you` : "Nothing needs you";
-    const work = busy.length ? `<div class="m-sub">WORKING · ${busy.length}</div>${busy.map(workRow).join("")}` : "";
-    return `<div class="m-panel m-list"><div class="m-head"><b>${head}</b><span class="g"></span><button class="m-link" data-cue="">Open Cue</button></div>
-      <div class="m-rows">${shown.map((it, i) => sep(talk, i) + row(it)).join("")}${work}</div></div>`;
-  }
   function islandHtml() {
     const { shown } = needs();
     const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
@@ -125,7 +112,7 @@
     const it = itemFor(sid);
     const s = sessionOf(sid);
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
-    return `<div class="m-panel m-chat"><div class="m-chat-head">${it ? dot(it) : ""}<b>${esc(nameOf(sid, s?.project || it?.project))}</b>${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
+    return `<div class="m-panel m-chat"><div class="m-chat-head">${it ? dot(it) : ""}<b>${esc(nameOf(sid, s?.project || it?.project))}</b>${tag}<span class="g"></span>${NOTCH ? dotsHtml() : ""}<button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
       <div class="m-foot"><textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
@@ -141,7 +128,6 @@
     const p = root.querySelector(".m-panel");
     const cap = Math.round(screen.height * CAP);
     document.documentElement.style.setProperty("--cap", `${cap}px`);
-    document.documentElement.style.setProperty("--list-cap", `${Math.round(screen.height * 0.7)}px`);
     const empty = !NOTCH && m.shape === "quiet" && !anything();
     const w = empty ? 6 : WIDTH[m.shape] || WIDTH.quiet;   // nothing running at all: the rail is a thin strip
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
@@ -154,7 +140,6 @@
   }
   function shapeHtml() {
     if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-pair">${chatHtml()}${dotsHtml()}</div>`;
-    if (m.shape === "list") return listHtml();
     if (m.shape === "nod") return nodHtml();
     if (NOTCH) return islandHtml();
     return anything() ? dotsHtml() : `<div class="m-panel m-hair"></div>`;
@@ -168,9 +153,13 @@
       m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, 200);
     }
     m.drawnShape = m.shape;
+    const drawnOpen = m.drawnOpen;
+    m.drawnOpen = m.open;
     document.body.className = `mini ${NOTCH ? "notch" : "rail"} s-${m.shape}${m.entering ? " m-enter" : ""}`;
     const box = root.querySelector("[data-box]");
-    if (m.shape === "chat" && box && root.querySelector(".m-chat")) {
+    // The same session's chat, redrawn: only its ask, its messages and the dots (the box you're typing in stays).
+    // Another session (a dot clicked): drawn whole.
+    if (m.shape === "chat" && box && root.querySelector(".m-chat") && m.open === drawnOpen) {
       const t = root.querySelector("[data-thread]");
       const atEnd = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
       put(root.querySelector("[data-ask]"), askHtml(m.open));
@@ -178,7 +167,7 @@
       if (atEnd) t.scrollTop = t.scrollHeight;
       root.querySelector("[data-send]").disabled = m.sending;
       root.querySelector(".m-foot-row .m-quiet").textContent = m.note || "⇧↵ new line";
-      const dots = root.querySelector(".m-pair > .m-dots");
+      const dots = root.querySelector(".m-pair > .m-dots, .m-chat-head .m-dots");
       if (dots && dots.outerHTML !== dotsHtml()) dots.outerHTML = dotsHtml();
     } else {
       const html = shapeHtml();
@@ -199,20 +188,24 @@
   const go = (shape) => { if (m.shape !== shape) { m.shape = shape; paint(); } };
 
   // ---------- what you do ----------
-  function openChat(sid) {
+  /** The session the rail opens on when you hover it: the first in Waiting's order, else the newest at work. */
+  const first = () => needs(1).shown[0]?.session_id || working()[0]?.session_id;
+  /** Open a session's chat. `take`: a click, so the box gets the cursor (this window comes forward alone, not
+   *  Cue's main one); a hover leaves the keyboard where it is. */
+  function openChat(sid, take = true) {
     m.open = sid;
     m.note = "";
     m.shape = "chat";
     paint();
-    // The box has the cursor at once: this window comes forward alone (not Cue's main one).
-    invoke("mini_key", { on: true }).then(() => root.querySelector("[data-box]")?.focus(), () => {});
+    if (take) invoke("mini_key", { on: true }).then(() => { m.keyed = true; root.querySelector("[data-box]")?.focus(); }, () => {});
   }
   /** Fold the chat back to the notch or the rail; `giveBack`: hand the keyboard back too (not needed when it
    *  already went, by a click outside). What you typed is kept for when you open it again. */
   function closeChat(giveBack = true) {
     if (m.shape !== "chat") return;
     m.open = null;
-    if (giveBack) invoke("mini_key", { on: false }).catch(() => {});
+    if (giveBack && m.keyed) invoke("mini_key", { on: false }).catch(() => {});
+    m.keyed = false;
     go("quiet");
   }
   async function answer(id, behavior) {
@@ -259,7 +252,7 @@
       if (link) { e.preventDefault(); invoke("open_link", { url: link.dataset.href || link.dataset.path }).catch(() => {}); return; }
       const t = e.target.closest("button, [data-open]");
       if (!t) return;
-      if (t.dataset.open !== undefined) openChat(t.dataset.open);
+      if (t.dataset.open !== undefined) openChat(t.dataset.open, true);
       else if (t.dataset.cue !== undefined) invoke("mini_open_in_cue", { sessionId: t.dataset.cue || null }).catch(() => {});
       else if (t.dataset.close !== undefined) closeChat();
       else if (t.dataset.allow) answer(t.dataset.allow, "allow");
@@ -267,7 +260,7 @@
       else if (t.dataset.send !== undefined) send();
       else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
     });
-    root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) invoke("mini_key", { on: true }).catch(() => {}); });
+    root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
     // A click anywhere outside takes the keyboard elsewhere: the open chat folds away, as a menu would.
     window.addEventListener("blur", () => closeChat(false));
     root.addEventListener("input", (e) => { if (e.target.matches("[data-box]")) { m.typed[m.open] = e.target.value; grow(e.target); } });
@@ -275,9 +268,13 @@
       if (e.key === "Escape") { e.preventDefault(); closeChat(); }
       else if (e.key === "Enter" && !e.shiftKey && e.target.matches("[data-box]")) { e.preventDefault(); send(); }
     });
-    // Hover opens the list after a short pause (a pointer passing by doesn't); leaving folds it back. An open chat stays.
-    document.body.addEventListener("mouseenter", () => { clearTimeout(m.timer); if (m.shape === "quiet" || m.shape === "nod") m.timer = setTimeout(() => go("list"), HOVER_MS); });
-    document.body.addEventListener("mouseleave", () => { clearTimeout(m.timer); if (m.shape === "list") m.timer = setTimeout(() => go("quiet"), LEAVE_MS); });
+    // Hover opens the first session's chat after a short pause (a pointer passing by doesn't); the dots switch.
+    // Leaving folds it back, unless you've clicked into it (then a click outside or Esc does).
+    document.body.addEventListener("mouseenter", () => {
+      clearTimeout(m.timer);
+      if (m.shape === "quiet" || m.shape === "nod") m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid, false); }, HOVER_MS);
+    });
+    document.body.addEventListener("mouseleave", () => { clearTimeout(m.timer); if (m.shape === "chat" && !m.keyed) m.timer = setTimeout(() => closeChat(false), LEAVE_MS); });
   }
   /** The box grows with what you type: 5 lines on the rail, 3 at the notch, then it scrolls. */
   function grow(box) {

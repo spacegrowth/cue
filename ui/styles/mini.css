@@ -31,18 +31,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .rail .m-pair { display: flex; align-items: flex-start; gap: 0; }   /* the dots stay at the top, where they were */
 .rail .m-pair > .m-chat { width: 420px; flex: none; }
 .rail .m-pair > .m-dots { width: 28px; flex: none; }
-.rail .m-list { background: var(--bg); color: var(--on-bg); border-radius: 14px 0 0 14px; padding: 8px; }
-.m-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px 6px; font-size: 12px; }
-.rail .m-head .m-link { color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 14%, transparent); }
-.m-row { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left; }
-.rail .m-row:hover { background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
-.m-name { font-weight: 650; white-space: nowrap; }
-.m-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; opacity: .78; }
 .m-age { font: 11px var(--mono); opacity: .7; }
-.m-list { display: flex; flex-direction: column; max-height: var(--list-cap, 600px); }
-.m-rows { overflow-y: auto; min-height: 0; }
-.m-sub { padding: 8px 8px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; opacity: .7; }
-.m-foot-line { padding: 6px 8px 2px; font-size: 12px; color: var(--on-bg-muted); }
 .rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; border: 1.5px solid var(--bg); }
 
 /* ---------- the chat (both shapes) ---------- */
@@ -83,11 +72,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 .notch .m-island .m-dot { width: 8px; height: 8px; }
 .notch .m-nod { padding: 12px 18px 14px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
 .m-nod-top { display: flex; align-items: center; gap: 8px; }
-.notch .m-list { padding: 14px 10px 10px; border-radius: 0 0 26px 26px; }
-.notch .m-row { border-top: 1px solid var(--line); border-radius: 0; }
-.notch .m-row:hover { background: var(--panel-2); }
-.notch .m-head .m-link { color: var(--ink); background: var(--panel-2); }
-.notch .m-foot-line { color: var(--muted); }
 .notch .m-chat { border-radius: 0 0 26px 26px; padding-top: 6px; }
 .notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
 .notch .m-box { background: var(--slab); box-shadow: none; }
@@ -100,3 +84,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .notch.m-enter .m-panel { --from: translateY(-10px); }
 @keyframes m-in { from { opacity: 0; transform: var(--from, none); } }
 @media (prefers-reduced-motion: reduce) { .m-enter .m-panel { animation: none; } }
+
+/* At the notch the dots sit in the chat's head, in a row: they switch between sessions. */
+.notch .m-chat-head .m-dots { display: flex; flex-direction: row; align-items: center; gap: 6px; width: auto; padding: 0 4px; background: none; border-radius: 0; }
+.notch .m-chat-head .m-dotb { margin: 0; }
