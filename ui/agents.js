@@ -75,10 +75,11 @@ const agentChipsOf = (list) => ({ needs: agentGroups(list).needs });
  *  Agents tab, its cards). Its background agents and teammates as Cue counts them from the list its chat shows (the
  *  snapshot's `agents`: the live list, not the earlier ones Show earlier adds), plus a lead's relay agents. `needs`: the
  *  names of those asking you, any kind. */
+/** The names of a session's own agents (background agents, teammates) asking you; a lead's relay agents not among them. */
+const helperNeeds = (sid) => helperAsks(sid).map((i) => i.agent_name || "an agent");
 function agentCount(sid) {
   const m = crewOf(sid), ex = m?.role === "lead" ? (m.executors || []).filter((e) => e.session_id !== sid) : [];
-  const helperNeeds = helperAsks(sid).map((i) => i.agent_name || "an agent");
-  return { n: (sessionOf(sid)?.agents || 0) + ex.length, needs: [...helperNeeds, ...ex.filter((e) => asksOf(e.session_id)).map((e) => e.name || e.session_id)] };
+  return { n: (sessionOf(sid)?.agents || 0) + ex.length, needs: [...helperNeeds(sid), ...ex.filter((e) => asksOf(e.session_id)).map((e) => e.name || e.session_id)] };
 }
 
 // ---------- how they look ----------
@@ -144,12 +145,13 @@ function agentChips(sid) {
   const on = bgTabOn.get(sid) === "agents";
   return `<span class="tm-chips">${need}<button class="tm-chip ${on ? "on" : ""}" data-bg-tab="agents" data-sid="${esc(sid)}">${n} agent${n === 1 ? "" : "s"} <span class="tm-sub">›</span></button></span>`;
 }
-/** A card's count, any kind: "N agents" (opens its session on the Agents tab), or a relay agent that needs you by
- *  name. `count`: false on a lead's card, whose crew line has the count. */
-function agentPill(sid, count = true) {
+/** A card's count, any kind: "N agents" (opens its session on the Agents tab), or an agent that needs you by name.
+ *  `count`: false on a lead's card, whose crew line has the count. `tree`: the card holds the lead's tree, whose
+ *  rows already name the relay agents asking you (with their buttons), so only its own agents get the chip. */
+function agentPill(sid, { count = true, tree = false } = {}) {
   if (!sid) return "";
-  const c = agentCount(sid);
-  if (c.needs.length) return `<span class="tm-chip need small"><span class="tm-n">${esc(c.needs[0])}</span> <span class="tm-sub">needs you</span></span>`;
+  const c = agentCount(sid), needs = tree ? helperNeeds(sid) : c.needs;
+  if (needs.length) return `<span class="tm-chip need small"><span class="tm-n">${esc(needs[0])}</span> <span class="tm-sub">needs you</span></span>`;
   return count && c.n ? `<button class="bg-pill" data-bg-open="${esc(sid)}">${c.n} agent${c.n === 1 ? "" : "s"}</button>` : "";
 }
 /** The top of an agent's own view, any kind: ‹ Back, its mark, its name, its kind tag, its state, and the session
