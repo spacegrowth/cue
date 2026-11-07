@@ -1,0 +1,67 @@
+//! Tests run tmux on a server of their own, never yours: `/tmp/cue-test-tmux-<pid>` (short enough for a
+//! socket's path). A session a failing test leaves can't show up in Cue as one of your terminal tabs, and
+//! a test can't reach, let alone kill, the server your own terminals live on.
+//!
+//! tmux picks its server from $TMUX before $TMUX_TMPDIR, and a test run started inside tmux (an agent's
+//! terminal) inherits your $TMUX. So the test binary drops it before `main`, before any test thread can
+//! run tmux (`ISOLATE`), and every tmux command a test runs checks that it's still so (`check`, from
+//! focus::bin), failing loudly instead of reaching your server.
+
+use std::path::{Path, PathBuf};
+
+/// This test process's tmux folder.
+fn mine() -> PathBuf {
+    Path::new("/tmp").join(format!("cue-test-tmux-{}", std::process::id()))
+}
+
+/// Run by the loader before `main`: tmux, from here on, has only this process's own folder to go by.
+extern "C" fn isolate() {
+    std::env::remove_var("TMUX");
+    std::env::remove_var("TMUX_PANE");
+    std::env::set_var("TMUX_TMPDIR", mine());
+}
+
+#[used]
+#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
+#[cfg_attr(target_os = "linux", link_section = ".init_array")]
+static ISOLATE: extern "C" fn() = isolate;
+
+/// Before a test's tmux command: still isolated (a panic naming why, not a command on your server), and,
+/// the first time, this process's folder made and the servers of earlier test runs that have exited
+/// taken down. A run still going (another `cargo test` at the same time) keeps its own.
+pub fn check() {
+    let dir = mine();
+    assert!(std::env::var_os("TMUX").is_none(), "a test would run tmux on the server in $TMUX (yours): the test binary's isolation didn't run");
+    assert_eq!(std::env::var_os("TMUX_TMPDIR").map(PathBuf::from), Some(dir.clone()), "a test would run tmux outside its own folder");
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = std::fs::create_dir_all(&dir);
+        for e in std::fs::read_dir("/tmp").into_iter().flatten().flatten() {
+            let pid = e.file_name().to_string_lossy().strip_prefix("cue-test-tmux-").and_then(|p| p.parse::<i32>().ok());
+            if pid.is_some_and(|p| p != std::process::id() as i32 && !crate::server::alive(p)) {
+                take_down(&e.path());
+            }
+        }
+    });
+}
+
+/// An exited run's servers (each by its own socket, never by $TMUX) and its folder.
+fn take_down(folder: &Path) {
+    for s in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        let sock = s.path().join("default");
+        let _ = std::process::Command::new(super::focus::find_bin("tmux")).args(["-S", &sock.to_string_lossy(), "kill-server"]).env_remove("TMUX").output();
+    }
+    let _ = std::fs::remove_dir_all(folder);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn tests_run_tmux_on_their_own_server_from_the_start() {
+        // Before any tmux command of this process: isolated already.
+        assert!(std::env::var_os("TMUX").is_none());
+        assert_eq!(std::env::var_os("TMUX_TMPDIR").map(std::path::PathBuf::from), Some(super::mine()));
+        super::check();
+        assert!(super::mine().is_dir());
+    }
+}
