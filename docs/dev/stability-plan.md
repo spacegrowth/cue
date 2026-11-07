@@ -23,9 +23,9 @@ Every number below was measured on that tree; "unverified" marks what wasn't.
 | Node tests (`tests/*.test.js`) | 4 files; `tests/run.sh` runs only `status.test.js` | read `run.sh` |
 | `tests/preview.html` fake-bridge coverage | 69 of 135 commands have a fake | grep `cmd ===` |
 | CI | none for tests (`.github/workflows/pages.yml` only) | ls |
-| Functions > 60 lines (Rust, tests included) | 36; biggest: `hub/activity.rs:670 refresh_activity` 235, `lib.rs:180 run` 234, `hub/activity.rs:109 on_event` 227, `ipc/insights_tab.rs:256 summary` 188, `talk.rs:293 run_loop` 161, `logs/steps.rs:1257 observe` 150, `server.rs:143 handle` 147, `sessions.rs:216 mark` 106, `hub/mod.rs:250 snapshot` 97, `config.rs:259 set` 95 | awk brace counter (crude; re-measure with a real tool in Phase 1) |
-| Functions > 60 lines (JS) | `ui/app.js:233 bindMain` **683**, `ui/app.js:29 renderMain` 158, `ui/board.js:712 boardView` 106, `ui/insights_tab.js:274` 105, `ui/insights.js:536 insAct` 91, `ui/sessions.js:485` 90 | same |
-| Files > 1,000 lines | `logs/steps.rs` 3,230; `leads.rs` 2,141; `sessions.rs` 1,769; `terminal/focus.rs` 1,464; `db.rs` 1,407; `logs/transcript.rs` 1,342; `hub/activity.rs` 1,241; `machines/hooks.rs` 1,019; `ui/chat.js` 2,646; `ui/style.css` 2,409; `ui/board.js` 1,081; `ui/core.js` 1,066; `ui/app.js` 1,026 | `wc -l` |
+| Functions > 60 lines (Rust, tests included) | 34 (28 outside tests); biggest: `lib.rs:180 run` 237, `hub/activity.rs:670 refresh_activity` 235, `hub/activity.rs:109 on_event` 227, `ipc/insights_tab.rs:256 summary` 188, `talk.rs:293 run_loop` 161, `logs/steps.rs:1257 observe` 150, `logs/steps.rs:1409 take` 109, `sessions.rs:216 mark` 106, `hub/mod.rs:282 build_snapshot` 99 | `cargo run -p xtask -- sizes` (from the syn parse); full list in `docs/dev/inventory.md` (Phase 1) |
+| Functions > 60 lines (JS) | 10; `ui/app.js:233 bindMain` **683** (its click handler at `:257` alone 439), `ui/app.js:29 renderMain` 158, `ui/app.js:759` (anonymous) 156, `ui/board.js:712 boardView` 106, `ui/insights_tab.js:274 insightsTabView` 105, `ui/insights.js:536 insAct` 91, `ui/sessions.js:485 sessionsView` 90 | `xtask sizes` (brace-aware scan) |
+| Files > 1,000 lines | `logs/steps.rs` 3,230; `leads.rs` 2,147; `sessions.rs` 1,769; `terminal/focus.rs` 1,464; `db.rs` 1,450; `logs/transcript.rs` 1,342; `hub/activity.rs` 1,241; `machines/hooks.rs` 1,019; `ui/chat.js` 2,665; `ui/style.css` 2,412; `ui/board.js` 1,081; `ui/core.js` 1,065; `ui/app.js` 1,026 | `xtask sizes` (Phase 1) |
 | 30-day churn | 338 commits, Rust +32,745 / −8,502 | `git log --since` |
 | Release symbols | `[profile.release] strip = true` (`Cargo.toml:33`); no dSYM kept; `scripts/release.sh:79` remaps paths | read |
 
@@ -387,6 +387,6 @@ Total ≈ 33 executor-days; with 3 parallel executors ≈ 3 weeks wall-clock, Ph
   lint answers this mechanically in Phase 1.
 - Not verified: wdio embedded server's screenshot/`executeScript` support on macOS (docs silent) — the Phase 1
   spike decides; fallback is `screencapture -l`.
-- The awk-measured function lengths are approximate (brace counting); the xtask tool replaces them.
+- Function and file lengths in §0 were re-measured with `xtask sizes` in Phase 1 (they were awk brace counts).
 - `tests/run.sh` runs only `status.test.js`; `agents/review_card/status_panel.test.js` aren't in any runner
   today — Phase 1 adds them.
