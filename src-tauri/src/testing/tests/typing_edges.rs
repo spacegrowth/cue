@@ -327,3 +327,20 @@ fn a_review_queued_behind_a_message_kept_for_its_lead_waits_until_that_message_g
     w.advance(2_000);
     assert_eq!(w.terminal.typed("L"), ["check the budget first", "/relay:review E1"]);
 }
+
+/// The blank line after Stop goes on a message sent within 30 s of it, by the clock that only moves
+/// forward: the Mac's clock set an hour on, or back, in between changes nothing.
+#[test]
+fn the_moment_after_stop_is_measured_by_the_forward_only_clock() {
+    let w = World::new();
+    let a = w.session("a");
+    a.prompt("long job");
+    w.interrupt("a");
+    w.clock().set_wall(3_600_000);
+    w.send_to("a", "right after");
+    a.stop("on it");
+    w.advance(31_000);
+    w.clock().set_wall(-7_200_000);
+    w.send_to("a", "much later");
+    assert_eq!(w.terminal.typed("a"), ["\n\nright after", "much later"]);
+}
