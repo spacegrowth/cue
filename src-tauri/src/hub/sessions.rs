@@ -390,7 +390,7 @@ impl Hub {
             let mine: Vec<(String, String)> = st.sessions.all().into_iter().filter(|s| s.origin.machine == machine && s.origin.harness == "claude").map(|s| (s.origin.session_id, s.origin.transcript_path)).collect();
             let mut gone = vec![];
             for (sid, transcript) in mine {
-                let written = std::fs::metadata(&transcript).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|e| (e.as_millis() as u64) < GONE_AFTER_MS);
+                let written = written_ms(&transcript).is_some_and(|at| now.saturating_sub(at) < GONE_AFTER_MS);
                 if live.is_some_and(|l| !l.contains(&sid)) && !written {
                     let since = *st.missing.entry(sid.clone()).or_insert(now);
                     if now.saturating_sub(since) > GONE_AFTER_MS {
@@ -530,7 +530,7 @@ impl Hub {
                 self.st().sessions.defer_rename(session_id);
                 Ok("Renamed · Claude Code gets it when this turn ends".into())
             }
-            "claude" => match crate::focus::type_into(&origin, &format!("/rename {name}")) {
+            "claude" => match self.keys().type_into(&origin, &format!("/rename {name}")) {
                 Ok(_) => {
                     // Claude Code's list shows a rename within a few seconds: give it 15.
                     if origin.machine.is_empty() {
@@ -582,14 +582,19 @@ impl Hub {
         if origin.machine.is_empty() {
             self.st().sessions.expect_rename(session_id, &name, now_ms() + 2_000 + RENAME_WITHIN_MS);
         }
-        let (me, sid) = (self.shared(), session_id.to_string());
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            if let (Err(e), Some(me)) = (crate::focus::type_into(&origin, &format!("/rename {name}")), me) {
+        let sid = session_id.to_string();
+        self.later(2000, move |me| {
+            if let Err(e) = me.keys().type_into(&origin, &format!("/rename {name}")) {
                 me.rename_failed(&sid, &format!("Couldn't give Claude Code the new name: {e}"));
             }
         });
     }
+}
+
+/// When the file at `path` was last written (ms since 1970), if it's there.
+fn written_ms(path: &str) -> Option<u64> {
+    let at = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
+    at.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }
 
 /// A prompt open this long in a terminal before Cue makes a card for it: its own permission hook (which

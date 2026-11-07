@@ -1,0 +1,3019 @@
+{
+  "about": {},
+  "ahead_watch": [],
+  "answers": [],
+  "branches": {
+    "/work/project-0": "",
+    "/work/project-1": "",
+    "/work/project-2": "",
+    "/work/project-3": "",
+    "/work/project-4": "",
+    "/work/project-5": "",
+    "/work/project-6": ""
+  },
+  "connections": {
+    "claude": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "codex": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "pi": {
+      "ok": true,
+      "present": true
+    }
+  },
+  "crew": {},
+  "ended": [],
+  "handoffs": {},
+  "history": [],
+  "insight": {},
+  "items": [
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 0 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-0",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400001",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 0 done.",
+      "outcome": "",
+      "project": "project-0",
+      "resolved_ms": null,
+      "session_id": "s00",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 0"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s00.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 3 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-3",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400002",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 3 done.",
+      "outcome": "",
+      "project": "project-3",
+      "resolved_ms": null,
+      "session_id": "s03",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 3"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s03.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 6 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-6",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400003",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 6 done.",
+      "outcome": "",
+      "project": "project-6",
+      "resolved_ms": null,
+      "session_id": "s06",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 6"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s06.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 9 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-2",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400004",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 9 done.",
+      "outcome": "",
+      "project": "project-2",
+      "resolved_ms": null,
+      "session_id": "s09",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 9"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s09.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 12 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-5",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400005",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 12 done.",
+      "outcome": "",
+      "project": "project-5",
+      "resolved_ms": null,
+      "session_id": "s12",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 12"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s12.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 15 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-1",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400006",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 15 done.",
+      "outcome": "",
+      "project": "project-1",
+      "resolved_ms": null,
+      "session_id": "s15",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 15"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s15.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 18 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-4",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400007",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 18 done.",
+      "outcome": "",
+      "project": "project-4",
+      "resolved_ms": null,
+      "session_id": "s18",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 18"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s18.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 21 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-0",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400008",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 21 done.",
+      "outcome": "",
+      "project": "project-0",
+      "resolved_ms": null,
+      "session_id": "s21",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 21"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s21.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 24 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-3",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400009",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 24 done.",
+      "outcome": "",
+      "project": "project-3",
+      "resolved_ms": null,
+      "session_id": "s24",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 24"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s24.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 27 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-6",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400010",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 27 done.",
+      "outcome": "",
+      "project": "project-6",
+      "resolved_ms": null,
+      "session_id": "s27",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 27"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s27.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 30 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-2",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400011",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 30 done.",
+      "outcome": "",
+      "project": "project-2",
+      "resolved_ms": null,
+      "session_id": "s30",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 30"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s30.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 33 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-5",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400012",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 33 done.",
+      "outcome": "",
+      "project": "project-5",
+      "resolved_ms": null,
+      "session_id": "s33",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 33"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s33.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 36 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-1",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400013",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 36 done.",
+      "outcome": "",
+      "project": "project-1",
+      "resolved_ms": null,
+      "session_id": "s36",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 36"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s36.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 39 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-4",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400014",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 39 done.",
+      "outcome": "",
+      "project": "project-4",
+      "resolved_ms": null,
+      "session_id": "s39",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 39"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s39.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 42 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-0",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400015",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 42 done.",
+      "outcome": "",
+      "project": "project-0",
+      "resolved_ms": null,
+      "session_id": "s42",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 42"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s42.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 45 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-3",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400016",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 45 done.",
+      "outcome": "",
+      "project": "project-3",
+      "resolved_ms": null,
+      "session_id": "s45",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 45"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s45.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Task 48 done."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/project-6",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400017",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Task 48 done.",
+      "outcome": "",
+      "project": "project-6",
+      "resolved_ms": null,
+      "session_id": "s48",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 48"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s48.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "live": [],
+  "now_ms": 1793984400000,
+  "parked": [],
+  "projects": {
+    "/work/project-0": {
+      "key": "/work/project-0",
+      "name": "project-0",
+      "own": "project-0",
+      "root": "/work/project-0",
+      "top": "/work/project-0"
+    },
+    "/work/project-1": {
+      "key": "/work/project-1",
+      "name": "project-1",
+      "own": "project-1",
+      "root": "/work/project-1",
+      "top": "/work/project-1"
+    },
+    "/work/project-2": {
+      "key": "/work/project-2",
+      "name": "project-2",
+      "own": "project-2",
+      "root": "/work/project-2",
+      "top": "/work/project-2"
+    },
+    "/work/project-3": {
+      "key": "/work/project-3",
+      "name": "project-3",
+      "own": "project-3",
+      "root": "/work/project-3",
+      "top": "/work/project-3"
+    },
+    "/work/project-4": {
+      "key": "/work/project-4",
+      "name": "project-4",
+      "own": "project-4",
+      "root": "/work/project-4",
+      "top": "/work/project-4"
+    },
+    "/work/project-5": {
+      "key": "/work/project-5",
+      "name": "project-5",
+      "own": "project-5",
+      "root": "/work/project-5",
+      "top": "/work/project-5"
+    },
+    "/work/project-6": {
+      "key": "/work/project-6",
+      "name": "project-6",
+      "own": "project-6",
+      "root": "/work/project-6",
+      "top": "/work/project-6"
+    }
+  },
+  "restarted": {},
+  "restarting": {},
+  "review_queue": {},
+  "reviews": {},
+  "sessions": [
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 0",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s00",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 0"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 0 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s00.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 1",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s01",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 1"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s01.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 2",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s02",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 2"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s02.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 3",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s03",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 3"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 3 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s03.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 4",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s04",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 4"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s04.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 5",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s05",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 5"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s05.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 6",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s06",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 6"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 6 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s06.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 7",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s07",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 7"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s07.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 8",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s08",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 8"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s08.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 9",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s09",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 9"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 9 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s09.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 10",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s10",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 10"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s10.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 11",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s11",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 11"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s11.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 12",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s12",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 12"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 12 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s12.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 13",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s13",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 13"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s13.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 14",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s14",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 14"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s14.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 15",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s15",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 15"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 15 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s15.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 16",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s16",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 16"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s16.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 17",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s17",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 17"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s17.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 18",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s18",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 18"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 18 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s18.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 19",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s19",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 19"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s19.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 20",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s20",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 20"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s20.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 21",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s21",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 21"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 21 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s21.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 22",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s22",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 22"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s22.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 23",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s23",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 23"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s23.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 24",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s24",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 24"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 24 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s24.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 25",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s25",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 25"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s25.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 26",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s26",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 26"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s26.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 27",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s27",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 27"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 27 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s27.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 28",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s28",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 28"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s28.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 29",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s29",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 29"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s29.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 30",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s30",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 30"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 30 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s30.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 31",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s31",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 31"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s31.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 32",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s32",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 32"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s32.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 33",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s33",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 33"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 33 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s33.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 34",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s34",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 34"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s34.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 35",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s35",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 35"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s35.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 36",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s36",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 36"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 36 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s36.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 37",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s37",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 37"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s37.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 38",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s38",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 38"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s38.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 39",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s39",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 39"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 39 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s39.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 40",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s40",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 40"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s40.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 41",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s41",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 41"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s41.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 42",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s42",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 42"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 42 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s42.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-1",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-1",
+      "prompt": "Task 43",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s43",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 43"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s43.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-2",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-2",
+      "prompt": "Task 44",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s44",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 44"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s44.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-3",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-3",
+      "prompt": "Task 45",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s45",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 45"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 45 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s45.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-4",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-4",
+      "prompt": "Task 46",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s46",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 46"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s46.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-5",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-5",
+      "prompt": "Task 47",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s47",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 47"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s47.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-6",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-6",
+      "prompt": "Task 48",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s48",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 48"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Task 48 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s48.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/project-0",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "project-0",
+      "prompt": "Task 49",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "s49",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Task 49"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/s49.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "settings": {
+    "actions": {
+      "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+      "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+    },
+    "agents": {
+      "show_driven": false
+    },
+    "appearance": {
+      "mode": "system",
+      "project": false,
+      "zoom": 1.0
+    },
+    "background": {
+      "sessions": []
+    },
+    "context": {
+      "keep": 5
+    },
+    "history": {
+      "keep": 300
+    },
+    "insights": {
+      "ahead": false,
+      "cache": false,
+      "handoff": false,
+      "on": false,
+      "queue": false,
+      "skills": {},
+      "snooze": 0
+    },
+    "login": {
+      "open": false
+    },
+    "notify": {
+      "cold": true,
+      "decisions": true,
+      "finished": true,
+      "sound": "pluck"
+    },
+    "pi": {
+      "gate": "dangerous"
+    },
+    "project": {
+      "all": null,
+      "colors": {},
+      "folders": {},
+      "hue": null,
+      "made": [],
+      "moves": {},
+      "names": {},
+      "pins": []
+    },
+    "quick": {
+      "phrases": [
+        "Commit",
+        "Go ahead",
+        "Think hard"
+      ]
+    },
+    "sessions": {
+      "terminal": "Terminal",
+      "tmux": true,
+      "tmux_installed": true
+    },
+    "setup": {
+      "done": false
+    },
+    "status": {
+      "on": true,
+      "sessions": []
+    },
+    "steps": {
+      "mode": "line"
+    },
+    "tasks": {
+      "auto": false,
+      "on": false
+    },
+    "tips": {
+      "on": true
+    },
+    "turn": {
+      "mode": "answer"
+    },
+    "usage": {
+      "claude": true,
+      "file": "~/.cue/usage.csv"
+    },
+    "voice": {
+      "pick": ""
+    }
+  },
+  "skill_handoffs": {},
+  "status_spent": {
+    "replies": 0,
+    "sessions": {},
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "tasks": {},
+  "tasks_spent": {
+    "calls": 0,
+    "tokens": 0,
+    "tracked": 0,
+    "usd": 0.0
+  },
+  "unreachable": [],
+  "usage": null,
+  "usage_file": null,
+  "window_ms": 1800000
+}

@@ -1,0 +1,350 @@
+{
+  "about": {},
+  "ahead_watch": [],
+  "answers": [],
+  "branches": {
+    "/work/data-pipeline": "",
+    "/work/web-app": ""
+  },
+  "connections": {
+    "claude": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "codex": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "pi": {
+      "ok": true,
+      "present": true
+    }
+  },
+  "crew": {},
+  "ended": [],
+  "handoffs": {},
+  "history": [],
+  "insight": {},
+  "items": [
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Fetched."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/data-pipeline",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400001",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Fetched.",
+      "outcome": "",
+      "project": "data-pipeline",
+      "resolved_ms": null,
+      "session_id": "stuck",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "tmux",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Fetch the feed"
+        }
+      ],
+      "tmux_pane": "%7",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/stuck.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [],
+      "created_ms": 1793984400000,
+      "cwd": "/work/web-app",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400002",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "terminal",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Claude needs your permission to use network access",
+      "outcome": "",
+      "project": "web-app",
+      "resolved_ms": null,
+      "session_id": "net",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Download the fixtures"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/net.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "live": [],
+  "now_ms": 1793984400000,
+  "parked": [],
+  "projects": {
+    "/work/data-pipeline": {
+      "key": "/work/data-pipeline",
+      "name": "data-pipeline",
+      "own": "data-pipeline",
+      "root": "/work/data-pipeline",
+      "top": "/work/data-pipeline"
+    },
+    "/work/web-app": {
+      "key": "/work/web-app",
+      "name": "web-app",
+      "own": "web-app",
+      "root": "/work/web-app",
+      "top": "/work/web-app"
+    }
+  },
+  "restarted": {},
+  "restarting": {},
+  "review_queue": {},
+  "reviews": {},
+  "sessions": [
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/web-app",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "web-app",
+      "prompt": "Download the fixtures",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "net",
+      "since_ms": 1793984400000,
+      "state": "deciding",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Download the fixtures"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/net.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/data-pipeline",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "data-pipeline",
+      "prompt": "Fetch the feed",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "stuck",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "tmux",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Fetch the feed"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Fetched."
+        }
+      ],
+      "tmux_pane": "%7",
+      "transcript_path": "/Users/me/.claude/projects/-work/stuck.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "settings": {
+    "actions": {
+      "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+      "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+    },
+    "agents": {
+      "show_driven": false
+    },
+    "appearance": {
+      "mode": "system",
+      "project": false,
+      "zoom": 1.0
+    },
+    "background": {
+      "sessions": []
+    },
+    "context": {
+      "keep": 5
+    },
+    "history": {
+      "keep": 300
+    },
+    "insights": {
+      "ahead": false,
+      "cache": false,
+      "handoff": false,
+      "on": false,
+      "queue": false,
+      "skills": {},
+      "snooze": 0
+    },
+    "login": {
+      "open": false
+    },
+    "notify": {
+      "cold": true,
+      "decisions": true,
+      "finished": true,
+      "sound": "pluck"
+    },
+    "pi": {
+      "gate": "dangerous"
+    },
+    "project": {
+      "all": null,
+      "colors": {},
+      "folders": {},
+      "hue": null,
+      "made": [],
+      "moves": {},
+      "names": {},
+      "pins": []
+    },
+    "quick": {
+      "phrases": [
+        "Commit",
+        "Go ahead",
+        "Think hard"
+      ]
+    },
+    "sessions": {
+      "terminal": "Terminal",
+      "tmux": true,
+      "tmux_installed": true
+    },
+    "setup": {
+      "done": false
+    },
+    "status": {
+      "on": true,
+      "sessions": []
+    },
+    "steps": {
+      "mode": "line"
+    },
+    "tasks": {
+      "auto": false,
+      "on": false
+    },
+    "tips": {
+      "on": true
+    },
+    "turn": {
+      "mode": "answer"
+    },
+    "usage": {
+      "claude": true,
+      "file": "~/.cue/usage.csv"
+    },
+    "voice": {
+      "pick": ""
+    }
+  },
+  "skill_handoffs": {},
+  "status_spent": {
+    "replies": 0,
+    "sessions": {},
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "tasks": {},
+  "tasks_spent": {
+    "calls": 0,
+    "tokens": 0,
+    "tracked": 0,
+    "usd": 0.0
+  },
+  "unreachable": [],
+  "usage": null,
+  "usage_file": null,
+  "window_ms": 1800000
+}

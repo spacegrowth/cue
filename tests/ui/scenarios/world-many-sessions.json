@@ -1,0 +1,719 @@
+{
+  "about": {},
+  "ahead_watch": [],
+  "answers": [],
+  "branches": {
+    "/work/api-server": "",
+    "/work/data-pipeline": "",
+    "/work/filings-bot": "",
+    "/work/notes": "",
+    "/work/order-engine": "",
+    "/work/web-app": ""
+  },
+  "connections": {
+    "claude": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "codex": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "pi": {
+      "ok": true,
+      "present": true
+    }
+  },
+  "crew": {},
+  "ended": [],
+  "handoffs": {},
+  "history": [],
+  "insight": {},
+  "items": [
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Done: the bundle is 40% smaller."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/web-app",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400001",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Done: the bundle is 40% smaller.",
+      "outcome": "",
+      "project": "web-app",
+      "resolved_ms": null,
+      "session_id": "web",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Make the login page faster"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/web.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [],
+      "created_ms": 1793984400000,
+      "cwd": "/work/data-pipeline",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400002",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "question",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "",
+      "outcome": "",
+      "project": "data-pipeline",
+      "resolved_ms": null,
+      "session_id": "pipe",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Backfill March"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": {
+        "questions": [
+          {
+            "options": [
+              {
+                "label": "Vendor"
+              },
+              {
+                "label": "Exchange"
+              }
+            ],
+            "question": "Which source wins on a clash?"
+          }
+        ]
+      },
+      "tool_name": "AskUserQuestion",
+      "transcript_path": "/Users/me/.claude/projects/-work/pipe.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Summary in notes/today.md"
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/notes",
+      "followup": "",
+      "harness": "pi",
+      "id": "n1793984400003",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Summary in notes/today.md",
+      "outcome": "",
+      "project": "notes",
+      "resolved_ms": null,
+      "session_id": "pi",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Summarise today"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Ported; tests pass."
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/api-server",
+      "followup": "",
+      "harness": "codex",
+      "id": "n1793984400004",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Ported; tests pass.",
+      "outcome": "",
+      "project": "api-server",
+      "resolved_ms": null,
+      "session_id": "cx",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Port the handler"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/cx.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "live": [],
+  "now_ms": 1793984400000,
+  "parked": [],
+  "projects": {
+    "/work/api-server": {
+      "key": "/work/api-server",
+      "name": "api-server",
+      "own": "api-server",
+      "root": "/work/api-server",
+      "top": "/work/api-server"
+    },
+    "/work/data-pipeline": {
+      "key": "/work/data-pipeline",
+      "name": "data-pipeline",
+      "own": "data-pipeline",
+      "root": "/work/data-pipeline",
+      "top": "/work/data-pipeline"
+    },
+    "/work/filings-bot": {
+      "key": "/work/filings-bot",
+      "name": "filings-bot",
+      "own": "filings-bot",
+      "root": "/work/filings-bot",
+      "top": "/work/filings-bot"
+    },
+    "/work/notes": {
+      "key": "/work/notes",
+      "name": "notes",
+      "own": "notes",
+      "root": "/work/notes",
+      "top": "/work/notes"
+    },
+    "/work/order-engine": {
+      "key": "/work/order-engine",
+      "name": "order-engine",
+      "own": "order-engine",
+      "root": "/work/order-engine",
+      "top": "/work/order-engine"
+    },
+    "/work/web-app": {
+      "key": "/work/web-app",
+      "name": "web-app",
+      "own": "web-app",
+      "root": "/work/web-app",
+      "top": "/work/web-app"
+    }
+  },
+  "restarted": {},
+  "restarting": {},
+  "review_queue": {},
+  "reviews": {},
+  "sessions": [
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/filings-bot",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "limit": {
+        "kind": "session",
+        "resets_ms": 1793984400000,
+        "scope": "all",
+        "since_ms": 1793984400000,
+        "text": "You've hit your session limit · resets 4:10am (America/Los_Angeles)"
+      },
+      "machine": "",
+      "project": "filings-bot",
+      "prompt": "Parse every 10-K",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "idle",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "bot",
+      "since_ms": 1793984400000,
+      "state": "limited",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Parse every 10-K"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/bot.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/api-server",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "codex",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "api-server",
+      "prompt": "Port the handler",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "cx",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Port the handler"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Ported; tests pass."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/cx.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/order-engine",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "order-engine",
+      "prompt": "Refactor the order router",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": null,
+          "kind": "working",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "eng",
+      "since_ms": 1793984400000,
+      "state": "working",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Refactor the order router"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/eng.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/order-engine",
+      "doing_ms": 0,
+      "driven_by": "its relay lead (eng)",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "order-engine",
+      "prompt": "packet 2",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "idle",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "helper",
+      "since_ms": 1793984400000,
+      "state": "agent",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "packet 2"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Report written."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/helper.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/notes",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "pi",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "notes",
+      "prompt": "Summarise today",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "pi",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Summarise today"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Summary in notes/today.md"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/data-pipeline",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "data-pipeline",
+      "prompt": "Backfill March",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "pipe",
+      "since_ms": 1793984400000,
+      "state": "deciding",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Backfill March"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "asked: Which source wins on a clash?"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/pipe.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/web-app",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "web-app",
+      "prompt": "Make the login page faster",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "web",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Make the login page faster"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Done: the bundle is 40% smaller."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/web.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "settings": {
+    "actions": {
+      "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+      "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+    },
+    "agents": {
+      "show_driven": false
+    },
+    "appearance": {
+      "mode": "system",
+      "project": false,
+      "zoom": 1.0
+    },
+    "background": {
+      "sessions": []
+    },
+    "context": {
+      "keep": 5
+    },
+    "history": {
+      "keep": 300
+    },
+    "insights": {
+      "ahead": false,
+      "cache": false,
+      "handoff": false,
+      "on": false,
+      "queue": false,
+      "skills": {},
+      "snooze": 0
+    },
+    "login": {
+      "open": false
+    },
+    "notify": {
+      "cold": true,
+      "decisions": true,
+      "finished": true,
+      "sound": "pluck"
+    },
+    "pi": {
+      "gate": "dangerous"
+    },
+    "project": {
+      "all": null,
+      "colors": {},
+      "folders": {},
+      "hue": null,
+      "made": [],
+      "moves": {},
+      "names": {},
+      "pins": []
+    },
+    "quick": {
+      "phrases": [
+        "Commit",
+        "Go ahead",
+        "Think hard"
+      ]
+    },
+    "sessions": {
+      "terminal": "Terminal",
+      "tmux": true,
+      "tmux_installed": true
+    },
+    "setup": {
+      "done": false
+    },
+    "status": {
+      "on": true,
+      "sessions": []
+    },
+    "steps": {
+      "mode": "line"
+    },
+    "tasks": {
+      "auto": false,
+      "on": false
+    },
+    "tips": {
+      "on": true
+    },
+    "turn": {
+      "mode": "answer"
+    },
+    "usage": {
+      "claude": true,
+      "file": "~/.cue/usage.csv"
+    },
+    "voice": {
+      "pick": ""
+    }
+  },
+  "skill_handoffs": {},
+  "status_spent": {
+    "replies": 0,
+    "sessions": {},
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "tasks": {},
+  "tasks_spent": {
+    "calls": 0,
+    "tokens": 0,
+    "tracked": 0,
+    "usd": 0.0
+  },
+  "unreachable": [],
+  "usage": null,
+  "usage_file": null,
+  "window_ms": 1800000
+}

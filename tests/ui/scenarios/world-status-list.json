@@ -1,0 +1,262 @@
+{
+  "about": {},
+  "ahead_watch": [],
+  "answers": [],
+  "branches": {
+    "/work/agent-relay": ""
+  },
+  "connections": {
+    "claude": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "codex": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "pi": {
+      "ok": true,
+      "present": true
+    }
+  },
+  "crew": {},
+  "ended": [],
+  "handoffs": {},
+  "history": [],
+  "insight": {},
+  "items": [
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Board shipped.\n\n**Where we are**\n✓ Spend column\n→ Footer totals\n○ Docs\nWaiting on you: nothing"
+        }
+      ],
+      "created_ms": 1793984400000,
+      "cwd": "/work/agent-relay",
+      "followup": "",
+      "harness": "claude",
+      "id": "n1793984400001",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Board shipped.\n\n**Where we are**\n✓ Spend column\n→ Footer totals\n○ Docs\nWaiting on you: nothing",
+      "outcome": "",
+      "project": "agent-relay",
+      "resolved_ms": null,
+      "session_id": "relay",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "text": "Ship the board"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/relay.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "live": [],
+  "now_ms": 1793984400000,
+  "parked": [],
+  "projects": {
+    "/work/agent-relay": {
+      "key": "/work/agent-relay",
+      "name": "agent-relay",
+      "own": "agent-relay",
+      "root": "/work/agent-relay",
+      "top": "/work/agent-relay"
+    }
+  },
+  "restarted": {},
+  "restarting": {},
+  "review_queue": {},
+  "reviews": {},
+  "sessions": [
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/agent-relay",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "agent-relay",
+      "prompt": "Ship the board",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984400000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "relay",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984400000,
+          "role": "you",
+          "status_ask": "End this reply with the status list: **Where we are**",
+          "text": "Ship the board"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "Board shipped.\n\n**Where we are**\n✓ Spend column\n→ Footer totals\n○ Docs\nWaiting on you: nothing"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/relay.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "settings": {
+    "actions": {
+      "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+      "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+    },
+    "agents": {
+      "show_driven": false
+    },
+    "appearance": {
+      "mode": "system",
+      "project": false,
+      "zoom": 1.0
+    },
+    "background": {
+      "sessions": []
+    },
+    "context": {
+      "keep": 5
+    },
+    "history": {
+      "keep": 300
+    },
+    "insights": {
+      "ahead": false,
+      "cache": false,
+      "handoff": false,
+      "on": false,
+      "queue": false,
+      "skills": {},
+      "snooze": 0
+    },
+    "login": {
+      "open": false
+    },
+    "notify": {
+      "cold": true,
+      "decisions": true,
+      "finished": true,
+      "sound": "pluck"
+    },
+    "pi": {
+      "gate": "dangerous"
+    },
+    "project": {
+      "all": null,
+      "colors": {},
+      "folders": {},
+      "hue": null,
+      "made": [],
+      "moves": {},
+      "names": {},
+      "pins": []
+    },
+    "quick": {
+      "phrases": [
+        "Commit",
+        "Go ahead",
+        "Think hard"
+      ]
+    },
+    "sessions": {
+      "terminal": "Terminal",
+      "tmux": true,
+      "tmux_installed": true
+    },
+    "setup": {
+      "done": false
+    },
+    "status": {
+      "on": true,
+      "sessions": []
+    },
+    "steps": {
+      "mode": "line"
+    },
+    "tasks": {
+      "auto": false,
+      "on": false
+    },
+    "tips": {
+      "on": true
+    },
+    "turn": {
+      "mode": "answer"
+    },
+    "usage": {
+      "claude": true,
+      "file": "~/.cue/usage.csv"
+    },
+    "voice": {
+      "pick": ""
+    }
+  },
+  "skill_handoffs": {},
+  "status_spent": {
+    "replies": 0,
+    "sessions": {},
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "tasks": {},
+  "tasks_spent": {
+    "calls": 0,
+    "tokens": 0,
+    "tracked": 0,
+    "usd": 0.0
+  },
+  "unreachable": [],
+  "usage": null,
+  "usage_file": null,
+  "window_ms": 1800000
+}

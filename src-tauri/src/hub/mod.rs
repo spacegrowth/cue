@@ -12,6 +12,7 @@ use tokio::sync::oneshot;
 mod activity;
 mod asks;
 mod history;
+pub(crate) mod ports;
 mod reviews;
 mod send;
 mod sessions;
@@ -137,10 +138,16 @@ pub struct Hub {
     typing: Mutex<HashMap<String, std::sync::Arc<Mutex<()>>>>,
     /// The window's state as last built, handed out without building it again (shown.rs).
     shown: shown::Shown,
+    /// The terminals it types into and where its follow-up work runs (ports.rs).
+    ports: ports::Ports,
 }
 
 impl Hub {
     pub fn new(app: Option<AppHandle>) -> Self {
+        Self::with_ports(app, ports::Ports::real())
+    }
+
+    pub(crate) fn with_ports(app: Option<AppHandle>, ports: ports::Ports) -> Self {
         let mut st = Store::default();
         st.history = crate::db::history(crate::config::history_keep());
         st.answers = crate::db::answers_since(now_ms().saturating_sub(crate::db::DAY_MS));
@@ -152,7 +159,28 @@ impl Hub {
         st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default() }
+        Self { store: Mutex::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports }
+    }
+
+    /// The session terminals, to type into and look at.
+    fn keys(&self) -> &dyn crate::terminal::keys::Keys {
+        &*self.ports.keys
+    }
+
+    /// `job` after `after_ms`, off this thread, with the hub as the app holds it (ports::Later). A hub with no
+    /// app (a test's) has nothing to hand it: dropped, unless the test holds it (testing::Deferred).
+    fn later(&self, after_ms: u64, job: impl FnOnce(&Arc<Hub>) + Send + 'static) {
+        match &self.ports.later {
+            ports::Later::Threads => {
+                let Some(me) = self.shared() else { return };
+                std::thread::spawn(move || {
+                    crate::clock::sleep_ms(after_ms);
+                    job(&me);
+                });
+            }
+            #[cfg(test)]
+            ports::Later::Deferred(queue) => queue.hand_in(after_ms, Box::new(job)),
+        }
     }
 
     /// The session's typing gate (see `typing`). Held for seconds by design (typing, then waiting for its hook):

@@ -25,6 +25,13 @@ impl<'ast> Visit<'ast> for Walker<'_, '_, '_> {
 
     fn visit_item(&mut self, _: &'ast syn::Item) {}
 
+    /// A `#[cfg(test)]` arm isn't in the crate outside tests (a test's stand-in for a port).
+    fn visit_arm(&mut self, a: &'ast syn::Arm) {
+        if !crate::parse::attrs::is_test(&a.attrs) {
+            syn::visit::visit_arm(self, a);
+        }
+    }
+
     fn visit_expr_call(&mut self, c: &'ast syn::ExprCall) {
         self.call(c);
     }

@@ -1280,6 +1280,12 @@ pub fn packet_of(session_id: &str) -> Option<(String, u64)> {
 #[cfg(test)]
 pub static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+/// This test's turn at TEST_LOCK, held until the guard goes.
+#[cfg(test)]
+pub fn test_turn() -> std::sync::MutexGuard<'static, ()> {
+    TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// For the hub's tests: the crew as relay's files would give it.
 #[cfg(test)]
 pub fn install_index(index: HashMap<String, Member>) {

@@ -19,6 +19,7 @@ digraph locks {
   "the hub's store" -> "DB";
   "the hub's store" -> "INDEX";
   "the hub's store" -> "REPOS";
+  "typing gate" -> "CLAUDE";
   "typing gate" -> "DB";
   "typing gate" -> "DECLARED";
   "typing gate" -> "INDEX";

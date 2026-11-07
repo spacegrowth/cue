@@ -1,3 +1,4 @@
+mod clock;
 mod config;
 mod actions;
 mod btw;
@@ -27,6 +28,8 @@ mod server;
 mod sessions;
 mod uploads;
 mod terminal;
+#[cfg(test)]
+mod testing;
 mod machines;
 mod remote_poll;
 
