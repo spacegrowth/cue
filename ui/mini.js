@@ -14,8 +14,8 @@
   const WIDTH = NOTCH ? { quiet: 260, nod: 500, list: 560, chat: 560 } : { quiet: 28, list: 320, chat: 448 };   // the rail's chat: 420 + its dots
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
-  // shape: quiet | nod | list | chat. open: the session whose chat is open. at: where on the screen it opened.
-  const m = { shape: "quiet", open: null, at: null, timer: 0, nodT: 0, sized: "", fresh: new Set(), sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
+  // shape: quiet | nod | list | chat. open: the session whose chat is open.
+  const m = { shape: "quiet", open: null, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -65,7 +65,7 @@
   function dotsHtml() {
     const { shown, talk } = needs();
     const on = (it) => m.shape === "chat" && it.session_id === m.open ? "on" : "";
-    return `<div class="m-panel m-dots">${shown.map((it, i) => sep(talk, i) + `<button class="m-dotb ${on(it)}" data-open="${esc(it.session_id)}" aria-label="${esc(name(it))}">${dot(it, m.fresh.has(it.id) ? "new" : "")}</button>`).join("")}</div>`;
+    return `<div class="m-panel m-dots">${shown.map((it, i) => sep(talk, i) + `<button class="m-dotb ${on(it)}" data-open="${esc(it.session_id)}" aria-label="${esc(name(it))}">${dot(it)}</button>`).join("")}</div>`;
   }
   function listHtml() {
     const { shown, talk, more } = needs();
@@ -130,7 +130,7 @@
     const empty = !NOTCH && m.shape === "quiet" && !needs().shown.length;
     const w = empty ? 4 : WIDTH[m.shape] || WIDTH.quiet;   // nothing waiting: the rail is a hairline
     const h = empty ? 200 : Math.min(p ? Math.ceil(p.getBoundingClientRect().height) : 30, m.shape === "chat" ? cap : 4000);
-    const args = { w, h, at: m.shape === "chat" ? m.at : null, show: true };
+    const args = { w, h, show: true };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
@@ -176,9 +176,7 @@
   const go = (shape) => { if (m.shape !== shape) { m.shape = shape; paint(); } };
 
   // ---------- what you do ----------
-  function openChat(sid, el) {
-    const r = el?.getBoundingClientRect();
-    m.at = r ? window.screenY + r.top + r.height / 2 : null;
+  function openChat(sid) {
     m.open = sid;
     m.note = "";
     m.shape = "chat";
@@ -223,10 +221,6 @@
     const ids = new Set(state.items.map((i) => i.id));
     const all = m.seen ? state.items.filter((i) => !m.seen.has(i.id)).sort((a, b) => b.created_ms - a.created_ms) : [];
     const fresh = all[0];
-    if (all.length) {
-      m.fresh = new Set(all.map((i) => i.id));
-      setTimeout(() => { m.fresh = new Set(); }, 1500);
-    }
     if (NOTCH && fresh && m.shape === "quiet") {
       m.nod = fresh.id;
       m.shape = "nod";
@@ -242,7 +236,7 @@
       if (link) { e.preventDefault(); invoke("open_link", { url: link.dataset.href || link.dataset.path }).catch(() => {}); return; }
       const t = e.target.closest("button, [data-open]");
       if (!t) return;
-      if (t.dataset.open !== undefined) openChat(t.dataset.open, t);
+      if (t.dataset.open !== undefined) openChat(t.dataset.open);
       else if (t.dataset.cue !== undefined) invoke("mini_open_in_cue", { sessionId: t.dataset.cue || null }).catch(() => {});
       else if (t.dataset.close !== undefined) closeChat();
       else if (t.dataset.allow) answer(t.dataset.allow, "allow");

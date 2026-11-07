@@ -12,9 +12,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.turn { background: repeating-linear-gradient(45deg, var(--sel) 0 2px, transparent 2px 4px); box-shadow: 0 0 0 1.5px var(--sel); }
 .m-dot.ask { background: #E8907F; }
 .m-dot.work { background: var(--work); }
-.m-dot.new { animation: m-bounce .5s ease 2; }
-@keyframes m-bounce { 50% { transform: translateX(-5px); } }
-@media (prefers-reduced-motion: reduce) { .m-dot.new { animation: none; } }
 .m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
 .m-tag.turn { background: var(--sel); color: var(--on-sel); }
 .m-tag.ask { background: var(--deny); color: #fff; }
