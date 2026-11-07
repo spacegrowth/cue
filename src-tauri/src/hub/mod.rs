@@ -272,14 +272,36 @@ impl Hub {
 
     /// The window's state built now, and kept as the last one (shown.rs) unless a newer one is in already.
     pub fn snapshot(&self) -> Arc<Value> {
-        let (seq, snap) = self.build_snapshot();
+        let (seq, snap, next) = self.build_snapshot();
         let snap = Arc::new(snap);
-        self.shown.put(seq, snap.clone());
+        if self.shown.put(seq, snap.clone()) {
+            self.rebuild_when(&next);
+        }
         snap
     }
 
-    /// The snapshot, and its place in the order snapshots were taken from the store.
-    fn build_snapshot(&self) -> (u64, Value) {
+    /// What the window shows changes with time alone at `next`: it's built again and sent then (shown.rs).
+    /// Only with a window: without one (tests) every ask builds it.
+    fn rebuild_when(&self, next: &shown::NextChange) {
+        let Some(me) = self.app.as_ref().and_then(|a| a.try_state::<Arc<Hub>>()).map(|h| Arc::downgrade(h.inner())) else { return };
+        self.shown.rebuild_at(next.when(), move || Box::new(move || if let Some(h) = me.upgrade() { h.redraw() }));
+    }
+
+    /// When the window's state changes with time alone: each rule the snapshot applies that compares the
+    /// clock with a threshold, at the moment it flips.
+    fn next_change(st: &Store, now: u64) -> shown::NextChange {
+        let mut next = shown::NextChange::default();
+        Self::review_changes(st, now, &mut next);
+        // A session that just ended stays off the live list (snapshot_sources) until JUST_ENDED_MS after.
+        for at in st.just_ended.values() {
+            next.at(at + sessions::JUST_ENDED_MS, now);
+        }
+        next
+    }
+
+    /// The snapshot, its place in the order snapshots were taken from the store, and when it next changes
+    /// with time alone.
+    fn build_snapshot(&self) -> (u64, Value, shown::NextChange) {
         // What the files say (each Claude session's transcript tail, each folder's git HEAD) is read
         // with the store unlocked: this runs on every change, and a slow disk mustn't hold every hook and
         // tick behind it.
@@ -324,6 +346,7 @@ impl Hub {
         st.shown_seq += 1;
         let seq = st.shown_seq;
         let reviews = Self::reviews_view(&mut st);
+        let next = Self::next_change(&st, now_ms());
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.
         let mut sessions = st.sessions.snapshot();
@@ -376,7 +399,7 @@ impl Hub {
         if !taken.is_empty() {
             let _ = crate::config::update("project.moves", |c| Some(Value::Object(crate::config::moves_in(c).into_iter().chain(taken).map(|(k, v)| (k, json!(v))).collect())));
         }
-        (seq, snap)
+        (seq, snap, next)
     }
 
     /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each

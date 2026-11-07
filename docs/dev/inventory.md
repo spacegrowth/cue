@@ -15,10 +15,10 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
-| Lock declarations (static or field) | 73 |
+| Lock declarations (static or field) | 74 |
 | Lock acquisitions | 351 |
 | Lock-graph edges | 31 |
-| Spawn sites | 64 |
+| Spawn sites | 65 |
 | External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 34 |
 
@@ -185,7 +185,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hub/mod.rs::Hub.store` | `Mutex<Store>` | "the hub's store" (172 sites) |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
-| `hub/shown.rs::Shown.0` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
+| `hub/shown.rs::Shown.kept` | `RwLock<(u64,Option<Arc<Value>>)>` | "shown snapshot" (3 sites) |
+| `hub/shown.rs::Shown.timer` | `OnceLock<Sender<Option<Instant>>>` | — |
 | `ipc/chat.rs::FOUND` | `std::sync::Mutex<Option<std::collections::HashMap<String,String>>>` | — |
 | `ipc/chat.rs::FOUND` | `std::sync::Mutex<Option<std::collections::HashMap<String,String>>>` | — |
 | `ipc/insights.rs::CONTINUING` | `Mutex<Option<HashSet<String>>>` | "CONTINUING" (2 sites) |
@@ -344,6 +345,7 @@ What the store's holders reach while they hold it (34 allowed for now in `lint-a
 | `hub/send.rs::Hub::confirm_later` | thread::spawn | 1 |
 | `hub/send.rs::Hub::send_held_soon` | thread::spawn | 1 |
 | `hub/sessions.rs::Hub::deliver_deferred_rename` | thread::spawn | 1 |
+| `hub/shown.rs::Shown::rebuild_at` | Builder::spawn | 1 |
 | `ipc/chat.rs::restart_ends_when_running` | thread::spawn | 1 |
 | `ipc/mod.rs::blocking` | async_runtime::spawn_blocking | 1 |
 | `ipc/restore.rs::with_timeout` | thread::spawn | 1 |

@@ -3,7 +3,7 @@
 use super::*;
 
 /// After typing a review into a lead, wait this long before judging it free again.
-const REVIEW_SETTLE_MS: u64 = 8000;
+pub(super) const REVIEW_SETTLE_MS: u64 = 8000;
 
 /// A Review card shows this many lines of findings.
 const FINDING_LINES: usize = 10;
@@ -120,6 +120,17 @@ impl Hub {
         None
     }
 
+    /// When the review rules above flip with time alone: a lead is no longer settling (REVIEW_SETTLE_MS after
+    /// its last review), and "in review" stops showing (REVIEW_SHOWN_MS after it was sent).
+    pub(super) fn review_changes(st: &Store, now: u64, next: &mut super::shown::NextChange) {
+        for at in st.review_last.values() {
+            next.at(at + REVIEW_SETTLE_MS, now);
+        }
+        for (_, at) in st.review_sent.values() {
+            next.at(at + REVIEW_SHOWN_MS, now);
+        }
+    }
+
     /// Set aside (the Review card's button): this executor's current packet stops waiting on you. Cue's own
     /// note, saved; relay isn't told, and the executor's next packet shows a card again.
     pub fn set_aside(&self, exec: &str) -> Result<String, String> {
@@ -208,6 +219,22 @@ mod tests {
         assert_eq!(Hub::lead_busy(&st, "L", t + 1000), Some("reviewing E1".into()));
         assert_eq!(Hub::lead_busy(&st, "L", t + REVIEW_SETTLE_MS + 1), None);
         assert_eq!(Hub::lead_busy(&st, "OTHER", t + 1000), None);
+    }
+
+    /// The snapshot is built again when the lead stops settling and when "in review" stops showing: the
+    /// times those rules flip, and none once they're past.
+    #[test]
+    fn a_review_says_when_its_card_changes_with_time_alone() {
+        let mut st = Store::default();
+        let t = 1_000_000;
+        st.review_sent.insert("E1".into(), ("L".into(), t));
+        st.review_last.insert("L".into(), t);
+        let next = |now| { let mut n = crate::hub::shown::NextChange::default(); Hub::review_changes(&st, now, &mut n); n.when() };
+        assert_eq!(next(t + 1000), Some(t + REVIEW_SETTLE_MS), "the settle ends first");
+        assert_eq!(Hub::lead_busy(&st, "L", t + REVIEW_SETTLE_MS - 1).is_some(), true, "busy until then");
+        assert_eq!(Hub::lead_busy(&st, "L", t + REVIEW_SETTLE_MS), None, "free from then");
+        assert_eq!(next(t + REVIEW_SETTLE_MS), Some(t + REVIEW_SHOWN_MS), "then in review stops showing");
+        assert_eq!(next(t + REVIEW_SHOWN_MS), None);
     }
 
     /// One state per packet that waits on you, from every fact: a woken lead is nothing yet (waiting), a lead on auto reviews on
