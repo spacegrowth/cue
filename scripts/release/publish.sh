@@ -8,9 +8,15 @@ latest_stable_tag() {
   gh release view --repo "$REPO" --json tagName --jq .tagName
 }
 
-# The beta file as published now, into folder $1 (nothing there before the first beta).
+# The beta file as published now, into folder $1. Only "no such asset" (before the first beta) leaves it empty:
+# any other failure stops the release, since reading it as missing could put an older beta file in its place.
 fetch_beta_file() {
-  gh release download --repo "$REPO" --pattern latest-beta.json --dir "$1" --clobber 2>/dev/null || true
+  local said
+  said="$(gh release download --repo "$REPO" --pattern latest-beta.json --dir "$1" --clobber 2>&1 >/dev/null)" && return 0
+  case "$said" in
+    *"no assets match the file pattern"*) return 0 ;;
+    *) die "couldn't read the beta file on GitHub: $said" ;;
+  esac
 }
 
 # A stable release: everyone's update, and beta's too unless a newer beta is out.

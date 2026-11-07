@@ -42,7 +42,10 @@ case "$name $1 $2" in
     dir="$(printf '%s\n' "$@" | sed -n '/^--dir$/{n;p;}')"
     case "$*" in
       *update.json*) printf '{"version":"%s","notes":"n","pub_date":"%s","platforms":{}}' "${STUB_BETA_VERSION:-0.2.0}" "${STUB_BETA_PUBLISHED:-$now}" >"$dir/update.json" ;;
-      *) exit 1 ;;
+      *latest-beta.json*)
+        [ -z "${STUB_DOWNLOAD_ERROR:-}" ] || { echo "$STUB_DOWNLOAD_ERROR" >&2; exit 1; }
+        [ -n "${STUB_BETA_FILE_VERSION:-}" ] || { echo "no assets match the file pattern" >&2; exit 1; }
+        printf '{"version":"%s","notes":"n","pub_date":"%s","platforms":{}}' "$STUB_BETA_FILE_VERSION" "$now" >"$dir/latest-beta.json" ;;
     esac ;;
   "security find-identity "*) echo '  1) ABC "Developer ID Application: Test (TEAM)"' ;;
   "security "*) echo "a password" ;;
@@ -85,7 +88,7 @@ STUB
 start() {
   CASE="$1"; CASE_FAILED=0
   unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
-    STUB_NO_NOTARY STUB_BUILD_FAILS
+    STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION
   REPO="$(make_repo)"
   export CALLS="$WORK/calls"; : >"$CALLS"
 }
@@ -202,6 +205,12 @@ export STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z
 release --promote 0.2.0 --dry-run
 passed; says "dry run: v0.2.0"; says "would become stable, the same build"
 called "gh release download v0.2.0 --repo spacegrowth/cue --pattern update.json"; not_called "gh release upload"; not_called "cargo"
+done_case
+
+start "a beta file GitHub fails to give is an error, never read as no beta"
+export STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z STUB_DOWNLOAD_ERROR="HTTP 502: Bad Gateway"
+release --promote 0.2.0 --dry-run
+refused; says "couldn't read the beta file on GitHub: HTTP 502: Bad Gateway"
 done_case
 
 start "a promote whose update file is another version's is refused"
