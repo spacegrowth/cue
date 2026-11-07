@@ -8,8 +8,10 @@ update.json is one build's signed update, kept on its own release; latest.json (
   channel.py newer <a> <b>                                      print the newer of two files (b may be missing)
   channel.py is-newer <version> <version>                       succeeds when the first comes after the second
   channel.py age-hours <file>                                   whole hours since the file's build was published
-  channel.py shipped-today                                      from `gh release list --json tagName,publishedAt`
-                                                                on stdin: the release tags published today, here
+  channel.py shipped-today                                      from GitHub's releases (`gh api …/releases`) on
+                                                                stdin: the tags shipped today, here: published
+                                                                today, or promoted today (their latest.json
+                                                                uploaded today)
 """
 import datetime
 import json
@@ -56,11 +58,18 @@ def age_hours(path):
     print(int(age.total_seconds() // 3600))
 
 
+def ship_times(release):
+    """When a release went out: published (stable or beta), and promoted to stable, which uploads its latest.json."""
+    times = [release.get("published_at")]
+    times += [a.get("created_at") for a in release.get("assets", []) if a.get("name") == "latest.json"]
+    return [published(t) for t in times if t]
+
+
 def shipped_today():
     today = datetime.datetime.now().astimezone().date()
-    tags = [r["tagName"] for r in json.load(sys.stdin)
-            if re.match(r"^v[0-9]", r.get("tagName", "")) and r.get("publishedAt")
-            and published(r["publishedAt"]).astimezone().date() == today]
+    tags = [r["tag_name"] for r in json.load(sys.stdin)
+            if re.match(r"^v[0-9]", r.get("tag_name", "")) and not r.get("draft")
+            and any(t.astimezone().date() == today for t in ship_times(r))]
     print(", ".join(tags))
 
 

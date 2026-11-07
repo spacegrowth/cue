@@ -69,10 +69,11 @@ An example (the timings left out):
 
 ## One ship a day
 
-A run with `--publish` or `--beta` lists the releases on GitHub and refuses when a `v*` release (stable or
-beta) was already published today (your Mac's date). A build that isn't published isn't a ship.
-`--hotfix "<why>"` allows the second one; the reason is recorded. A promote isn't a new release, so it
-isn't counted, but it has its own wait: a beta is promoted after a day on beta, sooner only with `--hotfix`.
+A run that ships (`--publish`, `--beta`, `--promote`) reads the releases on GitHub (`gh api …/releases`) and
+refuses when a `v*` release already shipped today (your Mac's date): published today, stable or beta, or
+promoted today. A promote's date is when its `latest.json` was uploaded, which only a stable publish or a
+promote does. A build that isn't published isn't a ship. `--hotfix "<why>"` allows the second one; the
+reason is recorded. A promote also waits a day on beta, sooner only with `--hotfix`.
 
 ## What gets recorded
 

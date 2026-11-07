@@ -33,9 +33,11 @@ case "$name $1 $2" in
       *"xtask -- inventory"*) [ -n "${STUB_INVENTORY:-}" ] && printf '%s\n' "$STUB_INVENTORY" >../docs/dev/inventory.md; exit 0 ;;
       *"xtask -- check"*) [ -z "${STUB_XTASK_FAILS:-}" ] ;;
     esac ;;
-  "gh release list")
-    if [ -n "${STUB_SHIPPED_TODAY:-}" ]; then echo "[{\"tagName\":\"$STUB_SHIPPED_TODAY\",\"publishedAt\":\"$now\"}]"
-    else echo '[{"tagName":"v0.1.80","publishedAt":"2026-01-02T03:04:05Z"}]'; fi ;;
+  "gh api repos/"*)
+    old='{"tag_name":"v0.1.80","published_at":"2026-01-02T03:04:05Z","assets":[{"name":"latest.json","created_at":"2026-01-02T03:04:05Z"}]}'
+    if [ -n "${STUB_SHIPPED_TODAY:-}" ]; then echo "[{\"tag_name\":\"$STUB_SHIPPED_TODAY\",\"published_at\":\"$now\",\"assets\":[]},$old]"
+    elif [ -n "${STUB_PROMOTED_TODAY:-}" ]; then echo "[{\"tag_name\":\"$STUB_PROMOTED_TODAY\",\"published_at\":\"2026-01-01T00:00:00Z\",\"assets\":[{\"name\":\"latest.json\",\"created_at\":\"$now\"}]},$old]"
+    else echo "[$old]"; fi ;;
   "gh release view")
     case "$*" in *isPrerelease*) echo true ;; *) echo "${STUB_STABLE_TAG:-v0.1.86}" ;; esac ;;
   "gh release download")
@@ -88,7 +90,8 @@ STUB
 start() {
   CASE="$1"; CASE_FAILED=0
   unset STUB_FAILS STUB_SOAK_NOT_YET STUB_INVENTORY STUB_XTASK_FAILS STUB_SHIPPED_TODAY STUB_BETA_VERSION STUB_BETA_PUBLISHED \
-    STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION STUB_STABLE_TAG
+    STUB_NO_NOTARY STUB_BUILD_FAILS STUB_DOWNLOAD_ERROR STUB_BETA_FILE_VERSION STUB_STABLE_TAG \
+    STUB_PROMOTED_TODAY
   REPO="$(make_repo)"
   export CALLS="$WORK/calls"; : >"$CALLS"
 }
@@ -174,7 +177,7 @@ done_case
 start "a build that isn't published isn't a ship"
 export STUB_SHIPPED_TODAY=v0.1.99
 release 0.2.0 "Notes." --dry-run
-passed; not_called "gh release list"
+passed; not_called "gh api"
 done_case
 
 start "skipping the gates runs none and records why"
@@ -217,6 +220,20 @@ start "a promote whose update file is another version's is refused"
 export STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z STUB_BETA_VERSION=0.1.9
 release --promote 0.2.0 --dry-run
 refused; says "offers another version"
+done_case
+
+start "a promote is the day's one ship"
+export STUB_SHIPPED_TODAY=v0.1.99 STUB_BETA_PUBLISHED=2026-01-01T00:00:00Z
+release --promote 0.2.0 --dry-run
+refused; says "already released today (v0.1.99)"
+release --promote 0.2.0 --dry-run --hotfix "the stable build loses drafts"
+passed; says "hotfix, the stable build loses drafts"
+done_case
+
+start "a promote today counts as today's ship"
+export STUB_PROMOTED_TODAY=v0.1.99
+release 0.2.0 "Notes." --beta --dry-run
+refused; says "already released today (v0.1.99)"
 done_case
 
 start "a stable or beta release must come after the stable one"

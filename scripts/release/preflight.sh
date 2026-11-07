@@ -18,12 +18,13 @@ check_newer_than_stable() {
   channel_py is-newer "$VERSION" "$stable" || die "$VERSION isn't newer than the stable release ($stable)"
 }
 
-# One ship a day: a second release (stable or beta) published today is refused unless it's a --hotfix, whose
-# reason is recorded. Batching is the point: seven ships in a day was the symptom.
+# One ship a day: a second ship today (a stable or beta release published, or a beta promoted) is refused unless
+# it's a --hotfix, whose reason is recorded. A promote counts from when its latest.json was uploaded (channel.py
+# ship_times). Batching is the point: seven ships in a day was the symptom.
 
 check_ship_day() {
   local listed today
-  listed="$(gh release list --repo "$REPO" --limit 30 --json tagName,publishedAt)" || die "couldn't list the releases on GitHub (gh release list)"
+  listed="$(gh api "repos/$REPO/releases?per_page=30")" || die "couldn't list the releases on GitHub (gh api …/releases)"
   today="$(printf '%s' "$listed" | channel_py shipped-today)"
   [ -n "$today" ] || return 0
   [ -n "$HOTFIX" ] || die "already released today ($today): one ship a day. Fold this into tomorrow's, or --hotfix \"why\" if it can't wait"
