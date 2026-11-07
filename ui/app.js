@@ -26,7 +26,7 @@ function applyTheme() {
 }
 /** The chat and color app.js last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
-// The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat.js liftChat /
+// The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat/patch.js liftChat /
 // settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
 // data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
 const SCROLLERS = [".col", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rv-rows"];
@@ -52,7 +52,7 @@ function renderMain() {
   const boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
   const scrolls = new Map(scrollerKeys().map(([key, el]) => [key, el.scrollTop]));
   const mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
-  // A background script's output in its full view (chat.js scriptPane): where you were, or at its newest.
+  // A background script's output in its full view (chat/helpers.js scriptPane): where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
   // Waiting is newest first, so a card that comes in lands on top and pushes the rest down. While the pointer
   // is over the list, the card under it stays put: the new one comes in above, and the count says so.
@@ -156,16 +156,16 @@ function renderMain() {
   // New target: jump to the end. Same chat, you were at the end (within 24 px, measured before the patch):
   // stay there (an image added to the box, or a step landing, mustn't push the last lines out of view).
   // Scrolled up to read: a row arriving leaves your place alone.
-  // Back from a background agent's or script's view (chat.js closeHelperView): the end, whatever the view's scroll was.
+  // Back from a background agent's or script's view (chat/helpers.js closeHelperView): the end, whatever the view's scroll was.
   if (chat && chatToEnd) { pinChatEnd(chat); holdChat = null; }
-  // A reply just opened in the reader (chat.js readerPane): its start, wherever the chat was.
+  // A reply just opened in the reader (chat/reader.js readerPane): its start, wherever the chat was.
   else if (chat && !kept && chat.dataset.chatFor?.startsWith("r|")) { chat.scrollTop = 0; holdChat = null; }
   else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
   else if (chat && (key !== activeKey || chatPinned)) chat.scrollTop = chat.scrollHeight;
   // Drawn afresh for the same chat (its steps feed was replaced): where you were.
   else if (chat && !kept && oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
   activeKey = key;
-  // A reply being read out: what it's reading stays in view, over the chat's jump to its end (chat.js listenFollow).
+  // A reply being read out: what it's reading stays in view, over the chat's jump to its end (chat/listen.js listenFollow).
   if (listening) listenFollow(listening);
   // Which chat is open, and the window's color, told to an add-on (once each time either changes).
   const openNow = chat ? active?.sid || null : null, swatch = themeIdx(), hue = swatch === OWN ? ownHue() : null;
@@ -247,14 +247,14 @@ function bindMain() {
   document.addEventListener("scroll", placeForward, true);
   // Near the top of the chat: the next page of earlier messages comes in above. Only the chat itself (a
   // background agent's view fills the same element: its steps' top isn't the chat's), and only when it's
-  // you scrolling: not the scroll events of a chat code just put at its end (chat.js pinChatEnd).
+  // you scrolling: not the scroll events of a chat code just put at its end (chat/helpers.js pinChatEnd).
   document.addEventListener("scroll", (e) => {
     if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || /^[hr]\|/.test(e.target.dataset.chatFor || "") || Date.now() - chatPinnedAt < 400) return;
     const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
     if (sid) loadOlder(sid);
   }, true);   // the send-to menu follows its button
   // You scrolling the chat (the wheel or trackpad, or a press on its scroll bar, which lands on the chat itself):
-  // a reply being read out stops scrolling it along (chat.js listenScrolled).
+  // a reply being read out stops scrolling it along (chat/listen.js listenScrolled).
   document.addEventListener("wheel", (e) => { const c = e.target.closest?.("[data-chat]"); if (c) listenScrolled(c); }, { passive: true, capture: true });
   document.addEventListener("pointerdown", (e) => { if (e.target.matches?.("[data-chat]")) listenScrolled(e.target); }, true);
   const app = document.getElementById("app");
@@ -805,7 +805,7 @@ function bindMain() {
       if (e.key === "ArrowUp" || e.key === "ArrowDown") { cmdSel = (cmdSel + (e.key === "ArrowDown" ? 1 : m.length - 1)) % m.length; return refreshCmd(mk); }
       return pickCmd(mk, m[cmdSel].name, e.key === "Enter");
     }
-    // ↑ / ↓ in a session's box: back and forth through the last messages you sent it (chat.js recallSent).
+    // ↑ / ↓ in a session's box: back and forth through the last messages you sent it (chat/compose.js recallSent).
     if (mk?.startsWith("s:") && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) return e.preventDefault();
     if (e.target.dataset?.text === "new-cwd") {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); return stepFolder(e.key === "ArrowDown" ? 1 : -1); }

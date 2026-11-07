@@ -49,7 +49,7 @@
 .pip-host { width: 100%; height: 100%; position: relative; }
 .pip-host[hidden] { display: none; }
 .pip-host .xterm-viewport { background: var(--slab) !important; }
-/* The cursor blinks at Cue's 1.4s beat (the GPU renderer's is patched to match; chat.js xterm()). */
+/* The cursor blinks at Cue's 1.4s beat (the GPU renderer's is patched to match; chat/terminal.js xterm()). */
 .xterm .xterm-rows .xterm-cursor.xterm-cursor-blink { animation-duration: 1.4s !important; }
 @media (prefers-reduced-motion: reduce) { .sh-live.run, .sh-dot { animation: none; } }
 

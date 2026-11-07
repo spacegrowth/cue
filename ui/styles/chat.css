@@ -118,7 +118,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-line.bad .stx-res { color: var(--deny); font-weight: 650; }
 .stx-res .add { color: var(--accent); font-weight: 650; } .stx-res .del { color: var(--deny); font-weight: 650; }
 .stx-chev { width: 10px; flex: none; color: var(--muted); font-size: 11px; text-align: center; }
-/* Background work (chat.js bgRow): one row like a step line. Its mark says the kind: an agent A on moss, a
+/* Background work (chat/helpers.js bgRow): one row like a step line. Its mark says the kind: an agent A on moss, a
    teammate a person in a ring (a script is $ on dark, as "Ran"). In the list above the box while it runs
    (teammates always), under the step that started it once it's over. */
 .stx-ic.k-bgagent { background: var(--accent); color: var(--on-accent); }
@@ -162,7 +162,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-view-out { flex: 1; min-height: 120px; margin-left: 0; }
 .bg-cmd { background: var(--panel-2); border-radius: 8px; padding: 7px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text; }
 .bg-view-steps .stx-say.small { font-size: 12.5px; padding: 2px 4px; }
-/* A background agent in full (chat.js helperPane): in place of the chat, its steps at full height. */
+/* A background agent in full (chat/helpers.js helperPane): in place of the chat, its steps at full height. */
 /* The Back row sits above the chat area, not in it, so it stays put while a long agent's steps or a
    script's output scroll under it. */
 .bg-view-head { display: flex; align-items: center; gap: 8px; padding: 10px 18px 0; flex: none; }
@@ -179,7 +179,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-view-reply { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; user-select: text; -webkit-user-select: text; }
 .bg-view-k { display: block; font: 700 10px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
 .bg-view-foot { align-items: center; font-size: 12.5px; }
-/* The reader (chat.js readerPane): one reply in one column, larger type, in place of the chat. Its bar sits
+/* The reader (chat/reader.js readerPane): one reply in one column, larger type, in place of the chat. Its bar sits
    above the chat area like a background agent's Back row; the text size is a variable (three steps). */
 .rd-head { padding: 12px 18px 2px; gap: 6px; }
 .rd-head > * { flex: none; }
@@ -258,8 +258,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-player .ls-pp { min-width: 40px; display: inline-flex; align-items: center; justify-content: center; }
 .ls-player .rd-seg button.on { background: var(--sel); color: var(--on-sel); }
 .ls-player .ls-speeds button { min-width: 0; padding: 0 7px; font-size: 11px; font-weight: 650; }
-/* Settings → Voice (chat.js voiceSettings): a picker (▶ and the voice in use); open, a list over everything, the
-   sheet's edge too (chat.js placeVoiceList puts it under the picker), scrolling in itself about eight lines tall;
+/* Settings → Voice (chat/listen.js voiceSettings): a picker (▶ and the voice in use); open, a list over everything, the
+   sheet's edge too (chat/listen.js placeVoiceList puts it under the picker), scrolling in itself about eight lines tall;
    one line a voice, the one in use in lime. */
 .set-row.vp-row { align-items: flex-start; }
 .vp-row .set-text { align-self: flex-start; }
@@ -497,7 +497,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 
 @keyframes pulse { 50% { opacity: 0.25; } }
 .cv-result { display: flex; align-items: center; gap: 10px; margin: 0 12px 8px; padding: 8px 12px; border-radius: 10px; background: var(--panel-2); font-size: 13px; font-weight: 600; }
-/* Eases in once, when it lands (chat.js patchKids marks it): never again on a redraw. */
+/* Eases in once, when it lands (chat/patch.js patchKids marks it): never again on a redraw. */
 .cv-result.reveal { animation: sentIn 0.25s ease; }
 .cv-result.no .sent-check { background: var(--deny); }
 /* Next: solid Moss, the one obvious thing to do after you act. */

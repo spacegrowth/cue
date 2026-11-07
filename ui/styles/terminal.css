@@ -14,7 +14,7 @@
 .tdock.waiting .tlive { background: #d99a3a; }
 .tslot { height: min(360px, 42vh); padding: 4px 6px 6px 10px; border-top: 1px solid color-mix(in srgb, var(--on-slab) 12%, transparent); }
 .term-host { width: 100%; height: 100%; position: relative; }
-/* A terminal whose input stopped (chat.js termTyping): one line over its bottom edge, and Resume. */
+/* A terminal whose input stopped (chat/terminal.js termTyping): one line over its bottom edge, and Resume. */
 .term-stalled { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; background: var(--panel); color: var(--ink); font-size: 12.5px; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
 .term-stalled span { flex: 1; }
 .term-host .xterm-viewport { background: var(--slab) !important; }
@@ -64,7 +64,7 @@
    (floating 6px up, the dark strip showed in the gap and at its rounded corners). */
 .tdock + .foot .cmd-slot { bottom: 100%; }
 .tdock + .foot .cmd-menu { border-radius: 10px 10px 0 0; }
-/* Over a background agent's view (chat.js helperPane) there's no box for the dock to sit on: the dock is
+/* Over a background agent's view (chat/helpers.js helperPane) there's no box for the dock to sit on: the dock is
    a card of its own, a little above the foot's line. */
 .tdock:has(+ .bg-view-foot) { border-radius: 12px; margin-bottom: 8px; }
 .tdock + .bg-view-foot { padding-top: 10px; }

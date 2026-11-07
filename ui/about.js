@@ -30,7 +30,7 @@ function aboutCardText(sid) {
   return `<div class="tk-card">${t.about ? `<div class="tk-about">${esc(t.about)}</div>` : ""}${t.now ? `<div class="tk-now">${esc(t.now)}</div>` : ""}</div>`;
 }
 
-/** When you last looked at a session's chat before this look (chat.js catchUp), 0 if Cue doesn't know. */
+/** When you last looked at a session's chat before this look (chat/send.js catchUp), 0 if Cue doesn't know. */
 const aboutLookedAt = (sid) => (catchUp?.sid === sid ? catchUp.since : looked[sid]) || 0;
 
 /** In the chat: for a followed session you've come back to (Catch me up's rule: 15 minutes or more away, with

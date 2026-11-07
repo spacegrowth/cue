@@ -25,8 +25,9 @@ for (const f of ["tests/ui/bridge.js", ...fakesList.map((n) => `tests/ui/fakes/$
 win.CueBridge.start(() => ({ sessions: [], items: [], history: [], settings: {} }));
 const faked = sorted(win.CueBridge.commands());
 
-// Every command the window calls by name.
-const called = sorted(fs.readdirSync(path.join(root, "ui")).filter((f) => f.endsWith(".js")).flatMap((f) => [...read(`ui/${f}`).matchAll(/\binvoke\("([a-z_0-9]+)"/g)].map((m) => m[1])));
+// Every command the window calls by name, in the scripts ui/index.html loads.
+const scripts = [...read("ui/index.html").matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]).filter((s) => !s.startsWith("vendor/"));
+const called = sorted(scripts.flatMap((f) => [...read(`ui/${f}`).matchAll(/\binvoke\("([a-z_0-9]+)"/g)].map((m) => m[1])));
 
 const missing = (a, b) => a.filter((x) => !b.includes(x));
 assert.deepStrictEqual(missing(declared, registered), [], "commands declared but not registered in generate_handler!");
