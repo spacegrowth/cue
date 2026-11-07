@@ -167,7 +167,7 @@
     m.note = "";
     m.shape = "chat";
     paint();
-    // The box has the cursor at once: the panel takes the keyboard (the app you're in stays active).
+    // The box has the cursor at once: this window comes forward alone (not Cue's main one).
     invoke("mini_key", { on: true }).then(() => root.querySelector("[data-box]")?.focus(), () => {});
   }
   /** Fold the chat back to the notch or the rail; `giveBack`: hand the keyboard back too (not needed when it
