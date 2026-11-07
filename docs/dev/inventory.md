@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 196 |
 | Lock-graph edges | 43 |
 | Spawn sites | 66 |
-| External calls: fs / db / process / notify / login / socket | 336 / 124 / 51 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 336 / 124 / 49 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -670,12 +670,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/speak.rs::helper` | Path::exists | 1 |
 | `uploads.rs::clipboard_image` | read | 1 |
 | `uploads.rs::clipboard_image` | remove_file | 2 |
+| `uploads.rs::new_file` | File::create_new | 1 |
 | `uploads.rs::on_machine` | read | 1 |
 | `uploads.rs::prune` | Path::metadata | 1 |
 | `uploads.rs::prune` | read_dir | 1 |
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
-| `uploads.rs::save` | write | 1 |
 
 ### db (124)
 
@@ -801,7 +801,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_log` | db::turns_read | 1 |
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 
-### process (51)
+### process (49)
 
 | In | Call | Times |
 |---|---|---|
@@ -826,12 +826,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `lib.rs::activate_app` | open | 1 |
 | `logs/live.rs::origin_of` | /bin/ps | 1 |
 | `logs/live.rs::tty_of` | /bin/ps | 1 |
-| `machines/mod.rs::direct_command` | /usr/bin/ssh | 1 |
 | `machines/mod.rs::end_streams` | /bin/ps | 1 |
-| `machines/mod.rs::ssh_command` | /usr/bin/ssh | 1 |
-| `machines/mod.rs::ssh_command_err` | /usr/bin/ssh | 1 |
-| `machines/mod.rs::ssh_login` | /usr/bin/ssh | 1 |
-| `machines/mod.rs::stream_command` | /usr/bin/ssh | 1 |
+| `machines/mod.rs::ssh` | (program computed) | 1 |
+| `machines/mod.rs::ssh` | /usr/bin/ssh | 1 |
 | `safe_git.rs::run` | (program computed) | 1 |
 | `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |
@@ -842,6 +839,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/focus.rs::agents_installed` | (program computed) | 1 |
 | `terminal/focus.rs::app_running` | pgrep | 1 |
 | `terminal/focus.rs::focus` | (program computed) | 2 |
+| `terminal/focus.rs::foreground` | (program computed) | 1 |
 | `terminal/focus.rs::run` | (program computed) | 1 |
 | `terminal/focus.rs::run_osascript` | osascript | 1 |
 | `terminal/focus.rs::tmux_out` | (program computed) | 1 |

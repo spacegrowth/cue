@@ -102,6 +102,16 @@ pub fn shared() -> [&'static str; 10] {
     ["-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/cue-%C", "-o", "ControlPersist=15m", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"]
 }
 
+/// `ssh`, to be given its arguments: the system's own, never one found on PATH (an app launched from the Dock
+/// has none of yours). A test stands a fake one in for it (testing::FakeSsh).
+fn ssh() -> Command {
+    #[cfg(test)]
+    if let Some(fake) = crate::testing::FakeSsh::program() {
+        return Command::new(fake);
+    }
+    Command::new("/usr/bin/ssh")
+}
+
 /// Single-quoted for a POSIX shell (the one helper Cue has for it).
 pub use crate::terminal::focus::shq;
 
@@ -117,7 +127,7 @@ pub fn short_name(name: &str) -> String {
 /// A long-running `script` on `host` (a stream that keeps going until it's stopped or the line drops),
 /// never asking for anything, with no input. Callers set where its output goes, then spawn it.
 pub fn stream_command(host: &str, script: &str) -> Command {
-    let mut c = Command::new("/usr/bin/ssh");
+    let mut c = ssh();
     c.args(shared())
         .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command(script)])
         .stdin(std::process::Stdio::null())
@@ -275,7 +285,7 @@ fn not_taken(err: &str) -> bool {
 /// ssh itself. Should the file be gone (you cleaned ~/.cue), the script still runs, with sh's own PATH.
 pub(crate) fn ssh_command(host: &str, script: &str) -> Command {
     let command = if env_file(host) { env_command(script) } else { remote_command(script) };
-    let mut c = Command::new("/usr/bin/ssh");
+    let mut c = ssh();
     c.args(shared())
         .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &command]);
     c
@@ -293,7 +303,7 @@ fn env_command(script: &str) -> String {
 /// `ssh host`, through your login shell there (`remote_command`): for the two calls that must not depend
 /// on the environment file, reading the environment and writing the file.
 fn ssh_login(host: &str, script: &str) -> Command {
-    let mut c = Command::new("/usr/bin/ssh");
+    let mut c = ssh();
     c.args(shared())
         .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command(script)]);
     c
@@ -379,7 +389,7 @@ pub fn forget(host: &str) {
 
 /// `ssh_command` keeping the script's stderr: a "!" line's card shows it, as it does on this Mac.
 pub(crate) fn ssh_command_err(host: &str, script: &str) -> Command {
-    let mut c = Command::new("/usr/bin/ssh");
+    let mut c = ssh();
     c.args(shared())
         .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &remote_command_err(script)]);
     c
@@ -458,7 +468,7 @@ pub fn tmux_path(host: &str) -> Option<String> {
 
 /// ssh running the script in /bin/sh, no login shell: for a script that names its programs by full path.
 fn direct_command(host: &str, script: &str) -> Command {
-    let mut c = Command::new("/usr/bin/ssh");
+    let mut c = ssh();
     c.args(shared()).args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &format!("exec /bin/sh -c {}", shq(script))]);
     c
 }
