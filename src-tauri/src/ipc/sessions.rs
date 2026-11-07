@@ -649,23 +649,8 @@ pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) ->
 }
 
 pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
-    if !focus::tmux_installed() {
-        return Err("tmux isn't installed".into());
-    }
-    let origin = h.live_origin(session_id).ok_or("that session is gone")?;
-    if origin.harness != "claude" {
-        return Err("only a Claude Code session can be resumed in Cue".into());
-    }
-    if !origin.tmux_pane.is_empty() {
-        return Err("it already runs in Cue".into());
-    }
-    if leads::close_plan(session_id).is_some() {
-        return Err("a relay lead: close it through relay, then resume it in Cue".into());
-    }
+    let origin = movable_origin(h, session_id)?;
     let cwd = origin.cwd.clone();
-    if cwd.is_empty() {
-        return Err("Cue doesn't know which folder it runs in".into());
-    }
     let name = h.session_name(session_id);
     let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
     let path = if origin.transcript_path.is_empty() { archive::lookup(session_id).map(|(p, _, _)| p).unwrap_or_default() } else { origin.transcript_path.clone() };
@@ -674,30 +659,9 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     // Its window in Cue first, empty: only once that's there does the old one end, so a tmux that won't
     // cooperate never leaves the session ended and nowhere.
     let mut tab = focus::open_in_tmux("", &cwd, &label)?;
-    // Ended as Close does (SIGTERM, its tab closed). One that doesn't take the signal within 3 s is asked
-    // to leave the way you would, with /exit typed into it, and given a few seconds more.
+    // Ended as Close does (SIGTERM, its tab closed).
     if let Err(e) = end_session(h, session_id) {
-        if !e.contains("didn't quit") {
-            focus::tmux_kill_pane(&tab.tmux_pane);
-            return Err(e);
-        }
-        let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
-        if let Err(e) = focus::type_into(&origin, "/exit") {
-            focus::tmux_kill_pane(&tab.tmux_pane);
-            return Err(e);
-        }
-        let alive = || pid > 0 && unsafe { libc::kill(pid, 0) == 0 };
-        for _ in 0..60 {
-            if !alive() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        if alive() {
-            focus::tmux_kill_pane(&tab.tmux_pane);
-            return Err("it didn't quit, even to /exit: close it in its tab, then Resume it here".into());
-        }
-        let _ = focus::close_tab(&origin);
+        ask_to_exit(&origin, session_id, &tab.tmux_pane, e)?;
     }
     // Its SessionEnd hook drops Cue's record of it as it exits: let that land before the new one is made.
     for _ in 0..20 {
@@ -734,4 +698,54 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
     }
     h.mark_state(&moved, "waiting");
     Ok("Moved to Cue: resumed in its terminal here".into())
+}
+
+/// The session, when it can be moved to Cue: an idle Claude Code session here, outside Cue's tmux, not a
+/// relay lead, in a folder Cue knows.
+fn movable_origin(h: &Arc<Hub>, session_id: &str) -> Result<model::Origin, String> {
+    if !focus::tmux_installed() {
+        return Err("tmux isn't installed".into());
+    }
+    let origin = h.live_origin(session_id).ok_or("that session is gone")?;
+    if origin.harness != "claude" {
+        return Err("only a Claude Code session can be resumed in Cue".into());
+    }
+    if !origin.tmux_pane.is_empty() {
+        return Err("it already runs in Cue".into());
+    }
+    if leads::close_plan(session_id).is_some() {
+        return Err("a relay lead: close it through relay, then resume it in Cue".into());
+    }
+    if origin.cwd.is_empty() {
+        return Err("Cue doesn't know which folder it runs in".into());
+    }
+    Ok(origin)
+}
+
+/// A session that didn't take the signal within 3 s (`ended`, why ending it failed) is asked to leave the way
+/// you would, with /exit typed into it, and given a few seconds more; then its tab is closed. When it still
+/// won't go, Cue's new window for it (`pane`) is taken down again.
+fn ask_to_exit(origin: &model::Origin, session_id: &str, pane: &str, ended: String) -> Result<(), String> {
+    if !ended.contains("didn't quit") {
+        focus::tmux_kill_pane(pane);
+        return Err(ended);
+    }
+    let pid = origin.agent_pid.or_else(|| live::claude().into_iter().find(|q| q.session_id == session_id).map(|q| q.pid)).unwrap_or(0);
+    if let Err(e) = focus::type_into(origin, "/exit") {
+        focus::tmux_kill_pane(pane);
+        return Err(e);
+    }
+    let alive = || pid > 0 && unsafe { libc::kill(pid, 0) == 0 };
+    for _ in 0..60 {
+        if !alive() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    if alive() {
+        focus::tmux_kill_pane(pane);
+        return Err("it didn't quit, even to /exit: close it in its tab, then Resume it here".into());
+    }
+    let _ = focus::close_tab(origin);
+    Ok(())
 }
