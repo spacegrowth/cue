@@ -31,6 +31,7 @@ unit() {
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
   python3 "$ROOT/tests/test_protocol.py"
   "$ROOT/tests/release/gates.test.sh"
+  "$ROOT/tests/release/debug_only.test.sh"
 }
 
 # What the unit run started, and only that: its private Cue (by its pid), whatever else runs with its CUE_HOME

@@ -7,7 +7,8 @@
 //! - CUE_CHAOS_FS_DELAY_MS: every read of a transcript waits that much first.
 //!
 //! Debug builds only: in a release build `get` is always None, and the variables' names aren't in the
-//! binary at all (tests/run.sh soak proves it with `strings`). Unset, zero or unreadable: off.
+//! binary at all (`set` is compiled out, the test below keeps them there; scripts/release/debug_only.sh
+//! refuses a release binary that names one). Unset, zero or unreadable: off.
 
 pub mod db;
 pub mod ssh;
@@ -87,6 +88,23 @@ pub fn named() -> Vec<(&'static str, u64)> {
 
 #[cfg(test)]
 mod tests {
+    /// The knobs' names live only in `set`, which only a debug build compiles; a release build's `get`
+    /// answers None without reading anything.
+    #[test]
+    fn the_knobs_are_compiled_into_debug_builds_only() {
+        let src = include_str!("mod.rs");
+        let code = &src[..src.find("#[cfg(test)]\nmod tests").unwrap()];
+        let set = code.find("#[cfg(debug_assertions)]\nmod set {").expect("`set` behind cfg(debug_assertions)");
+        let set_end = set + code[set..].find("\n}\n").unwrap();
+        for (at, _) in code.match_indices("\"CUE_CHAOS_") {
+            assert!((set..set_end).contains(&at), "a knob's name outside the debug-only `set`, at byte {at}");
+        }
+        assert!(code.contains("#[cfg(not(debug_assertions))]\n    {\n        let _ = knob;\n        None"), "release `get` is None");
+        for dir_file in [include_str!("ssh.rs"), include_str!("db.rs")] {
+            assert!(!dir_file.contains("\"CUE_CHAOS_"), "a knob read outside `set`");
+        }
+    }
+
     #[test]
     fn a_knob_is_a_whole_number_above_zero_or_off() {
         assert_eq!(super::set::parse(" 250 "), Some(250));
