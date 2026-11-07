@@ -50,6 +50,8 @@ const SCENARIOS = {
   "status-list": () => statusList(world()),
   "terminal": () => inTmux(world()),
   "parked-ended": () => world("park=1&live=1"),
+  // A relay lead on build-box whose executor dns-cutover runs in a tmux session of its own there; Cue holds it too.
+  "crew-remote": () => world("crew=1&remote=1&held=1"),
 };
 
 for (const [name, make] of Object.entries(SCENARIOS)) {

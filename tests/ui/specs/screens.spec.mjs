@@ -49,7 +49,9 @@ for (const [name, s] of Object.entries(SCREENS)) {
     await cue.open(s.scenario, { flags: s.flags, frozen: true });
     await s.setup?.(page);
     await s.done(page);
-    // Fonts in, and two frames drawn since the last change (xterm and the status drawer draw on a frame).
+    // Nothing under the pointer (where the last click left it, a row can show its hover look or not, depending on
+    // when the layout moved under it); fonts in; two frames drawn since the last change (xterm draws on a frame).
+    await page.mouse.move(0, 0);
     await page.evaluate(() => document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))));
     const png = await page.screenshot({ animations: "disabled", caret: "hide" });
     const r = compareShot(name, png);
