@@ -85,3 +85,24 @@ test("scrolling up to the chat's top yourself loads earlier messages", async ({ 
   await chatAtTop(page);
   await expect.poll(() => pagesAsked(cue)).toBeGreaterThan(0);
 });
+
+test("a slow drag of the chat's scrollbar to its top loads earlier messages", async ({ cue, page }) => {
+  await openTerminal(page);
+  const chat = page.locator("[data-chat]");
+  await chat.dispatchEvent("pointerdown");
+  // Held longer than a press counts as moving the chat, still dragging.
+  await page.waitForTimeout(1300);
+  await chatAtTop(page);
+  await expect.poll(() => pagesAsked(cue)).toBeGreaterThan(0);
+  await chat.dispatchEvent("pointerup");
+});
+
+test("once a press on the chat is let go, the chat moving on its own loads nothing", async ({ cue, page }) => {
+  await openTerminal(page);
+  const chat = page.locator("[data-chat]");
+  await chat.dispatchEvent("pointerdown");
+  await chat.dispatchEvent("pointerup");
+  await page.waitForTimeout(1300);
+  await chatAtTop(page);
+  expect(await pagesAsked(cue)).toBe(0);
+});

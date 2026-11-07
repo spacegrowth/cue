@@ -35,15 +35,25 @@ function bindTips() {
   addEventListener("blur", hide);
 }
 
-/** When you last moved the chat yourself: the wheel, a touch, a scroll key, or a press (its scrollbar). A
- *  scroll event without one is the chat moving on its own: it grew or shrank (a terminal opened above the
- *  box, a redraw), and the browser kept it in range. */
+/** When you last moved the chat yourself: the wheel, a touch, a scroll key, or a press (its scrollbar), and
+ *  all the while a press on it is held (a slow drag of its scrollbar's thumb). A scroll event without one is
+ *  the chat moving on its own: it grew or shrank (a terminal opened above the box, a redraw), and the browser
+ *  kept it in range. */
 let chatMovedAt = 0;
+let chatHeld = false;
 const CHAT_MOVED_MS = 1000;
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 function noteChatMove(e) {
   const moved = e.type === "keydown" ? SCROLL_KEYS.has(e.key) && !e.target?.closest?.("textarea, input, [contenteditable]") : e.target?.closest?.("[data-chat]");
-  if (moved) chatMovedAt = Date.now();
+  if (!moved) return;
+  chatMovedAt = Date.now();
+  if (e.type === "pointerdown") chatHeld = true;
+}
+/** A press on the chat let go (or lost with the window): moved by you until now. */
+function releaseChat() {
+  if (!chatHeld) return;
+  chatHeld = false;
+  chatMovedAt = Date.now();
 }
 /** Near the top of the chat: the next page of earlier messages comes in above. Only the chat itself (a
  *  background agent's view fills the same element: its steps' top isn't the chat's), and only when it's
@@ -51,7 +61,7 @@ function noteChatMove(e) {
  *  just put at its end (chat/helpers.js pinChatEnd). Each page makes every draw after it longer. */
 function onChatScroll(e) {
   if (!e.target?.matches?.("[data-chat]") || e.target.scrollTop > 60 || /^[hr]\|/.test(e.target.dataset.chatFor || "") || Date.now() - chatPinnedAt < 400) return;
-  if (Date.now() - chatMovedAt > CHAT_MOVED_MS) return;
+  if (!chatHeld && Date.now() - chatMovedAt > CHAT_MOVED_MS) return;
   const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
   if (sid) loadOlder(sid);
 }
@@ -62,6 +72,8 @@ function bindMain() {
   document.addEventListener("scroll", placeForward, true);   // the send-to menu follows its button
   document.addEventListener("scroll", onChatScroll, true);
   for (const type of ["wheel", "touchmove", "pointerdown", "keydown"]) document.addEventListener(type, noteChatMove, { capture: true, passive: true });
+  for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, releaseChat, { capture: true, passive: true });
+  addEventListener("blur", releaseChat);
   // You scrolling the chat (the wheel or trackpad, or a press on its scroll bar, which lands on the chat itself):
   // a reply being read out stops scrolling it along (chat/listen.js listenScrolled).
   document.addEventListener("wheel", (e) => { const c = e.target.closest?.("[data-chat]"); if (c) listenScrolled(c); }, { passive: true, capture: true });
