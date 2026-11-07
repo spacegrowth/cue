@@ -40,8 +40,7 @@ publish_beta() {
 # A beta a day old (or a --hotfix) becomes stable: its own update.json, the same signed build, nothing rebuilt.
 promote() {
   local dir age
-  # (A global for the trap: it runs after this function's locals are gone.)
-  PROMOTE_WORK="$(mktemp -d)"; trap 'rm -rf "$PROMOTE_WORK"' EXIT
+  PROMOTE_WORK="$(mktemp -d)"   # (removed by release.sh's on_exit)
   dir="$PROMOTE_WORK"
   [ "$(gh release view "v$VERSION" --repo "$REPO" --json isPrerelease --jq .isPrerelease)" = true ] ||
     die "v$VERSION isn't a beta on GitHub (already stable, or not released)"

@@ -42,7 +42,14 @@ the one-ship rule (below). A real run (not a dry run) also
 checks the signing key, the update key and notarytool before the gates, so a missing key doesn't wait
 out a soak.
 
-`--skip-gates "<why>"` runs no gate. The reason is required and recorded.
+`--skip-gates "<why>"` runs only the clean-tree gate. The reason is required and recorded.
+
+The build is the commit plus the version written into `package.json`, `tauri.conf.json`, `Cargo.toml` and
+`Cargo.lock`. `release.sh` never commits: `release-next.sh` commits the bump only once the release is
+published. A run that stops before it finishes (a failed build, notarization or upload) puts those files
+back as committed, so the next try passes the clean-tree gate. The clean tree is checked first, so this
+never touches your own edits. A run that fails after GitHub already has the release is refused next time
+(the version is out): finish it by hand with `gh`, or release the next version.
 
 ## Dry run
 
@@ -79,8 +86,8 @@ reason is recorded. A promote also waits a day on beta, sooner only with `--hotf
 
 ## What gets recorded
 
-`dist/v<version>/release-record.txt`: the version and channel, the date, the commit, the gates passed and
-where their logs are (or `gates: SKIPPED, <why>`), `hotfix: <why>` when given, Cargo.lock's sha256 and
+`dist/v<version>/release-record.txt`: the version and channel, the date, the commit (plus the version bump), the gates passed and
+where their logs are (or `gates: SKIPPED (all but the clean tree), <why>`), `hotfix: <why>` when given, Cargo.lock's sha256 and
 `rustc --version`. The release's notes on GitHub end with "Released without its gates: <why>" or
 "Hotfix: <why>" when either applies, so they stay visible after `dist/` is gone. A promote with `--hotfix`
 adds "Promoted after N h on beta, a hotfix: <why>" to the release's notes.

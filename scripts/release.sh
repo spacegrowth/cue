@@ -30,6 +30,15 @@ for part in common args preflight gates record build publish; do
   . "$ROOT/scripts/release/$part.sh"
 done
 
+# What a run leaves when it stops: no scratch folders, and unless it finished, the version files as committed.
+on_exit() {
+  local status=$?
+  [ -z "${WORK:-}" ] || rm -rf "$WORK"
+  [ -z "${PROMOTE_WORK:-}" ] || rm -rf "$PROMOTE_WORK"
+  if [ "$status" != 0 ] && [ "$BUMPED" = 1 ]; then restore_version; fi
+}
+trap on_exit EXIT
+
 parse_args "$@"
 # shellcheck disable=SC1091
 [ -f .release.env ] && . ./.release.env

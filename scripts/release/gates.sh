@@ -70,16 +70,17 @@ run_gate() {
   fi
 }
 
-# Every gate, cheapest first, with their logs in $1. --skip-gates runs none of them (its reason is recorded).
+# Every gate, cheapest first, with their logs in $1. --skip-gates runs only the clean tree (its reason is
+# recorded): a build is always of a commit, and a run that fails puts the version files back from it.
 run_gates() {
   GATE_LOGS="$1"
   mkdir -p "$GATE_LOGS"
+  run_gate "clean tree" gate_clean_tree
   if [ -n "$SKIP_GATES" ]; then
-    say "gates skipped: $SKIP_GATES"
+    say "the other gates skipped: $SKIP_GATES"
     return 0
   fi
   say "gates (logs in $GATE_LOGS)"
-  run_gate "clean tree" gate_clean_tree
   run_gate "xtask check" gate_xtask_check
   run_gate "inventory current" gate_inventory_current
   run_gate "swift helpers" gate_swift_helpers

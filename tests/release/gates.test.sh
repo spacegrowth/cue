@@ -189,8 +189,11 @@ done_case
 
 start "skipping the gates runs none and records why"
 release 0.2.0 "Notes." --beta --dry-run --skip-gates "Apple's notary is down; tried the suites by hand"
-passed; not_called "tests/run.sh"; not_called "cargo"
-says "gates: SKIPPED, Apple's notary is down; tried the suites by hand"
+passed; not_called "tests/run.sh"; not_called "cargo"; says "passed  clean tree"
+says "gates: SKIPPED (all but the clean tree), Apple's notary is down; tried the suites by hand"
+echo "edit" >>"$REPO/package.json"
+release 0.2.0 "Notes." --beta --dry-run --skip-gates "in a hurry"
+refused; says "the clean tree gate failed"
 done_case
 
 start "a reason is required"
@@ -241,6 +244,18 @@ start "a promote today counts as today's ship"
 export STUB_PROMOTED_TODAY=v0.1.99
 release 0.2.0 "Notes." --beta --dry-run
 refused; says "already released today (v0.1.99)"
+done_case
+
+start "a build that fails puts the version back, so trying again starts clean"
+export STUB_BUILD_FAILS=1
+release 0.2.0 "Notes."
+refused; says "the version files are back as committed"
+[ -z "$(cd "$REPO" && git status --porcelain)" ] || fail "the failed build left the tree changed"
+grep -q '"0.1.86"' "$REPO/package.json" || fail "package.json kept the bumped version"
+: >"$CALLS"
+release 0.2.0 "Notes."
+refused; says "error: the build failed"; called "npx tauri build"
+grep -qF "commit: $(cd "$REPO" && git rev-parse HEAD), plus the version set to 0.2.0" "$REPO/dist/v0.2.0/release-record.txt" || fail "the record doesn't say the build is the commit plus the bump"
 done_case
 
 start "a stable or beta release must come after the stable one"
