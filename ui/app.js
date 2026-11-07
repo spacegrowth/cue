@@ -26,6 +26,18 @@ function applyTheme() {
 }
 /** The chat and color app.js last said ("chat-open"), so they're said only when they change. */
 let chatOpenTold;
+// The lists a redraw puts back where they were scrolled (the chat keeps its element across draws, chat.js liftChat /
+// settleChat, so its scroll is its own). Each is known by its kind and its place among that kind, or by its
+// data-scroll-key: a list new in this draw (a lead's review rows) is never handed another list's place.
+const SCROLLERS = [".col", ".lv-list", ".sv-scroll", ".sheet-body", ".sec-body", ".card.recent", ".hist", ".hdetail", ".itab", ".vp-list", ".rv-rows"];
+function scrollerKeys() {
+  const seen = {};
+  return [...document.querySelectorAll(SCROLLERS.join(", "))].map((el) => {
+    const kind = SCROLLERS.find((s) => el.matches(s));
+    seen[kind] = (seen[kind] ?? -1) + 1;
+    return [el.dataset.scrollKey ? `${kind}:${el.dataset.scrollKey}` : `${kind}#${seen[kind]}`, el];
+  });
+}
 function renderMain() {
   projTheme();
   retheme();
@@ -38,9 +50,7 @@ function renderMain() {
   const caret = focusKey || (focusId && focused.setSelectionRange) ? [focused.selectionStart, focused.selectionEnd] : null;
   // Each text box is built afresh too, scrolled to its top: a long message would jump there on every redraw.
   const boxTops = new Map([...document.querySelectorAll("textarea[data-text]")].map((el) => [el.dataset.text, el.scrollTop]));
-  // The chat keeps its element across draws (chat.js: liftChat / settleChat), so its scroll is its own.
-  const SCROLLERS = ".col, .lv-list, .sv-scroll, .sheet-body, .sec-body, .card.recent, .hist, .hdetail, .itab, .vp-list, .rv-rows";
-  const scrolls = [...document.querySelectorAll(SCROLLERS)].map((el) => el.scrollTop);
+  const scrolls = new Map(scrollerKeys().map(([key, el]) => [key, el.scrollTop]));
   const mcpTops = new Map([...document.querySelectorAll(".mcp-list[data-mcp-key]")].map((el) => [el.dataset.mcpKey, el.scrollTop]));   // the MCP picker, redrawn on every tick
   // A background script's output in its full view (chat.js scriptPane): where you were, or at its newest.
   const bgScrolls = new Map([...document.querySelectorAll("[data-bg-scroll]")].map((el) => [el.dataset.bgScroll, el.scrollHeight - el.scrollTop - el.clientHeight < 4 ? null : el.scrollTop]));
@@ -73,7 +83,7 @@ function renderMain() {
   placeVoiceList();   // Settings → Voice: the open list under its picker
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
-  [...document.querySelectorAll(SCROLLERS)].forEach((el, i) => { if (scrolls[i] != null) el.scrollTop = scrolls[i]; });
+  scrollerKeys().forEach(([key, el]) => { if (scrolls.has(key)) el.scrollTop = scrolls.get(key); });
   if (waitAnchor) {
     const el = [...document.querySelectorAll(".sec-waiting .sec-body .nrow[data-big]")].find((x) => x.dataset.big === waitAnchor.id);
     const dy = el ? el.getBoundingClientRect().top - waitAnchor.top : 0;
