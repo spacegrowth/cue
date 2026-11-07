@@ -1,6 +1,6 @@
 //! Cue's source inventory and lints: `xtask inventory` writes docs/dev/inventory.md and
 //! docs/dev/lock-graph.dot, `xtask check` runs the rules in docs/dev/lint-allow.toml, `xtask sizes`
-//! prints the long functions and files. `cargo test` in src-tauri runs the check and the inventory's
+//! prints the long functions and files, `xtask soak-report` judges soak runs (soak/). `cargo test` in src-tauri runs the check and the inventory's
 //! drift test (src/locking/lint.rs).
 //!
 //! parse (files → module tree → index → resolution) → walk (each function's events, with the locks it
@@ -12,6 +12,7 @@ pub mod graph;
 pub mod parse;
 pub mod report;
 pub mod sizes;
+pub mod soak;
 pub mod walk;
 
 use std::path::Path;
