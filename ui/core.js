@@ -726,6 +726,9 @@ function md(text, { runIn = null } = {}) {
   return out.join("");
 }
 
+/** A stretch narrower than this share of the bar can't show its stripes (one stripe is about 3.5% of a Sessions card's
+ *  bar): its outline closed round a sliver of stripe read as a "0". It's drawn solid in the stripes' color. */
+const BAR_THIN = 3.5;
 /** The 30-minute activity bar for a session: solid = working, striped = waiting on you. */
 function bar(sid) {
   const s = sessionOf(sid);
@@ -736,8 +739,8 @@ function bar(sid) {
     const end = g.end_ms ?? now();
     const left = ((start - from) / w) * 100;
     const width = Math.max(0.6, ((end - start) / w) * 100);
-    const live = g.end_ms == null ? " live" : "";
-    return `<i class="${g.kind === "working" ? "w" : g.kind === "idle" ? "i" : "z"}${live}" style="left:${left.toFixed(2)}%;width:${Math.min(width, 100 - left).toFixed(2)}%"></i>`;
+    const live = g.end_ms == null ? " live" : "", thin = width < BAR_THIN ? " thin" : "";
+    return `<i class="${g.kind === "working" ? "w" : g.kind === "idle" ? "i" : "z"}${live}${thin}" style="left:${left.toFixed(2)}%;width:${Math.min(width, 100 - left).toFixed(2)}%"></i>`;
   });
   return `<div class="bar" title="last 30 min · solid = working, striped = waiting on you">${segs.join("")}<b class="now"></b></div>`;
 }

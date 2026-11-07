@@ -305,6 +305,8 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .sw.z { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); box-shadow: inset 0 0 0 1px var(--accent); }
 .sw.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .bar i.z.live, .sw.z.live { animation: none; } }
+/* core.js BAR_THIN: too short a stretch for its stripes, in their color */
+.bar i.z.thin { background: var(--accent); box-shadow: none; animation: none; }
 .working .bar { background: color-mix(in srgb, var(--on-bg-muted) 20%, transparent); }
 .working .bar i.w { background: var(--on-bg-muted); }
 .bar i.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }

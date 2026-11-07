@@ -91,3 +91,13 @@ test("at the narrowest window a command on its card wraps between its words, nev
   await expect(page.locator(".nrow-text.mono")).not.toHaveCount(0);
   expect(await splitWords(page, ".nrow-text.mono")).toEqual([]);
 });
+
+test("a waiting stretch too short for its stripes is drawn solid, not as an outlined sliver", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  // One stripe of the pattern runs 6 / sin 45° ≈ 8.5 px along the bar.
+  const slivers = await page.evaluate(() => [...document.querySelectorAll(".bar i.z")]
+    .filter((el) => el.getBoundingClientRect().width < 8.5 && getComputedStyle(el).backgroundImage !== "none")
+    .map((el) => el.getBoundingClientRect().width));
+  expect(await page.locator(".ap-bar .bar i.z").count()).toBeGreaterThan(0);
+  expect(slivers).toEqual([]);
+});
