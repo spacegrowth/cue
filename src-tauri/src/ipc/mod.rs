@@ -13,6 +13,7 @@ mod sessions;
 mod settings;
 mod state;
 mod terminal;
+mod updates;
 
 pub(crate) use chat::*;
 pub(crate) use insights::*;
@@ -23,6 +24,7 @@ pub(crate) use sessions::*;
 pub(crate) use settings::*;
 pub(crate) use state::*;
 pub(crate) use terminal::*;
+pub(crate) use updates::*;
 
 /// `f` on the blocking pool: what a command does that can wait (a lock, the db, a file, a process, the
 /// network) runs there, never on the window's thread (where Tauri runs a command that isn't async) nor on

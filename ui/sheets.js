@@ -279,10 +279,12 @@ function setExtPick(id, value) {
   invoke("ext_set", { id, value }).then(() => { extSections = null; renderMain(); }, (e) => toast(`Couldn't change it: ${e}`));
 }
 /** Updates: what Cue found (from GitHub's latest release, checked by Cue itself). `offer`: a newer
- *  version found in the background, shown as a card until you update or put it off. */
-let upd = { current: "", version: "", notes: "", status: "", offer: false };
+ *  version found in the background, shown as a card until you update or put it off. `beta`: the channel the
+ *  last check was on (Get beta builds), so switching it checks again. */
+let upd = { current: "", version: "", notes: "", status: "", offer: false, beta: false };
+const betaUpdates = () => state.settings?.updates?.beta === true;
 async function checkUpdate() {
-  upd = { ...upd, status: "checking" };
+  upd = { ...upd, status: "checking", beta: betaUpdates() };
   renderMain();
   try { const r = await invoke("update_check"); upd = { ...upd, current: r.current, version: r.version || "", notes: r.notes || "", status: r.version ? "found" : "latest" }; }
   catch (e) { upd = { ...upd, status: `error:${e}` }; }
@@ -295,14 +297,17 @@ async function installUpdate() {
   try { await invoke("update_install"); } catch (e) { upd = { ...upd, status: `error:${e}` }; renderMain(); }
 }
 function updateRow() {
-  if (!upd.status) checkUpdate();   // the first time Settings opens
+  const beta = betaUpdates();
+  // The first time Settings opens, and again once Get beta builds is switched (not over a check or an install).
+  if (!upd.status || (upd.beta !== beta && !["checking", "installing"].includes(upd.status))) checkUpdate();
   const st = upd.status;
   const sub = st === "checking" ? "Checking…" : st === "installing" ? `Installing Cue ${esc(upd.version)}. Cue restarts by itself when it's done.`
     : st === "found" ? `Cue ${esc(upd.version)} is out.${upd.notes ? ` ${esc(upd.notes.split("\n")[0].slice(0, 140))}` : ""}`
     : st === "latest" ? "You have the latest version." : st.startsWith("error:") ? esc(st.slice(6)) : "";
   const btn = st === "found" ? `<button class="btn primary" data-upd="install">Update and restart</button>`
     : `<button class="btn" data-upd="check" ${st === "checking" || st === "installing" ? "disabled" : ""}>Check for updates</button>`;
-  return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}Cue also looks by itself a minute after it opens, then every 6 hours.`, btn);
+  return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}Cue also looks by itself a minute after it opens, then every 6 hours.`, btn)
+    + setRow("Get beta builds", "Newer versions a day or more before everyone else, to try them out first. Off: only the versions everyone gets.", toggle("updates.beta", beta));
 }
 /** The agents Cue connects to, as Settings rows (also the first-launch setup screen's). */
 function agentRows() {

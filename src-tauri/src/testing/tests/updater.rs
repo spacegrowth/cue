@@ -1,5 +1,6 @@
 //! Updates (stability plan §4, updater): find_update against a release server of the test's own on 127.0.0.1
-//! serving latest.json as GitHub does, with Cue's real update key. A mock app (tauri::test) is version 0.1.0.
+//! serving latest.json (and, for the beta channel, latest-beta.json) as GitHub does, with Cue's real update key.
+//! A mock app (tauri::test) is version 0.1.0.
 
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
@@ -18,6 +19,13 @@ enum Answer {
     Never,
 }
 
+/// What the release server answers for each channel's file: latest.json, and latest-beta.json (a 404 when None).
+#[derive(Clone)]
+struct Answers {
+    stable: Answer,
+    beta: Option<Answer>,
+}
+
 /// The release server: what it answers, and the paths it was asked for.
 struct Server {
     base: String,
@@ -25,15 +33,20 @@ struct Server {
 }
 
 impl Server {
+    /// A server with only a stable release file.
     fn new(answer: Answer) -> Self {
+        Self::with(Answers { stable: answer, beta: None })
+    }
+
+    fn with(answers: Answers) -> Self {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", l.local_addr().unwrap());
         let asked = Arc::new(Mutex::new(vec![]));
         let (b, a) = (base.clone(), asked.clone());
         std::thread::spawn(move || {
             for s in l.incoming().flatten() {
-                let (answer, base, asked) = (answer.clone(), b.clone(), a.clone());
-                std::thread::spawn(move || serve(s, &answer, &base, &asked));
+                let (answers, base, asked) = (answers.clone(), b.clone(), a.clone());
+                std::thread::spawn(move || serve(s, &answers, &base, &asked));
             }
         });
         Server { base, asked }
@@ -44,12 +57,17 @@ impl Server {
     }
 }
 
-fn serve(mut s: TcpStream, answer: &Answer, base: &str, asked: &Mutex<Vec<String>>) {
+fn serve(mut s: TcpStream, answers: &Answers, base: &str, asked: &Mutex<Vec<String>>) {
     let mut head = String::new();
     let mut r = BufReader::new(s.try_clone().unwrap());
     while r.read_line(&mut head).is_ok_and(|n| n > 0) && !head.ends_with("\r\n\r\n") {}
     let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
     asked.lock().unwrap().push(path.clone());
+    let not_found = Answer::Status(404, "Not Found".into());
+    let answer = match path.as_str() {
+        "/latest-beta.json" => answers.beta.as_ref().unwrap_or(&not_found),
+        _ => &answers.stable,
+    };
     let (status, body) = match (path.as_str(), answer) {
         ("/cue.app.tar.gz", _) => (200, "not really an app".to_string()),
         (_, Answer::Never) => return std::thread::sleep(Duration::from_secs(120)),
@@ -90,6 +108,11 @@ fn app(server: &Server) -> tauri::App<tauri::test::MockRuntime> {
 
 fn release(version: &str) -> Answer {
     Answer::Release { version: version.into(), signature: signed_by_another_key(), after: Duration::ZERO }
+}
+
+fn on(server: &Server, channel: crate::ipc::Channel) -> Result<Option<String>, String> {
+    let app = app(server);
+    tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), channel)).map(|u| u.map(|u| u.version))
 }
 
 fn found(answer: Answer) -> Result<Option<String>, String> {
@@ -141,9 +164,40 @@ fn a_release_server_that_never_answers_is_given_up_on() {
     let server = Server::new(Answer::Never);
     let app = app(&server);
     let start = Instant::now();
-    let check = crate::ipc::check_within(app.handle(), Duration::from_secs(1));
+    let check = crate::ipc::check_within(app.handle(), Duration::from_secs(1), crate::ipc::Channel::Stable);
     let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(20), check).await });
     let Err(err) = r.expect("the check waited on and on") else { panic!("a server that never answered offered a release") };
     assert!(err.starts_with("Couldn't check for updates: "), "{err}");
     assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
+}
+
+#[test]
+fn the_beta_channel_reads_the_beta_file_and_offers_its_release() {
+    let server = Server::with(Answers { stable: release("0.2.0"), beta: Some(release("0.3.0")) });
+    assert_eq!(on(&server, crate::ipc::Channel::Beta), Ok(Some("0.3.0".into())));
+    assert_eq!(server.asked(), vec!["/latest-beta.json"], "never the stable file");
+}
+
+#[test]
+fn the_stable_channel_never_sees_a_beta() {
+    let server = Server::with(Answers { stable: release("0.2.0"), beta: Some(release("0.3.0")) });
+    assert_eq!(on(&server, crate::ipc::Channel::Stable), Ok(Some("0.2.0".into())));
+    assert_eq!(server.asked(), vec!["/latest.json"]);
+}
+
+#[test]
+fn a_beta_release_not_signed_with_cues_key_is_never_installed() {
+    let server = Server::with(Answers { stable: release("0.1.0"), beta: Some(release("0.3.0")) });
+    let app = app(&server);
+    let found = tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), crate::ipc::Channel::Beta));
+    let u = found.unwrap().expect("0.3.0 is on beta");
+    assert!(tauri::async_runtime::block_on(u.download_and_install(|_, _| {}, || {})).is_err(), "installed a release signed with another key");
+    assert_eq!(server.asked(), vec!["/latest-beta.json", "/cue.app.tar.gz"], "downloaded from beta, checked against Cue's key, refused");
+}
+
+#[test]
+fn no_beta_file_on_the_server_says_it_couldnt_check() {
+    let server = Server::new(release("0.2.0"));
+    let err = on(&server, crate::ipc::Channel::Beta).unwrap_err();
+    assert!(err.starts_with("Couldn't check for updates: "), "{err}");
 }

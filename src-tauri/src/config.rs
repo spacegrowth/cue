@@ -98,6 +98,8 @@ fn from_config(c: &Value) -> Value {
         "insights": { "on": ins, "handoff": ins, "cache": ins, "queue": ins && b("/insights/queue", true), "ahead": ins && snooze <= now_ms, "snooze": snooze, "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // Tips (ui/tips.js): a key or command now and then on the line under the chat; on until turned off.
         "tips": { "on": b("/tips/on", true) },
+        // Updates (ipc/updates.rs): from the beta channel when `beta` is on; off until you turn it on.
+        "updates": { "beta": beta_updates_in(c) },
         // About (tasks.rs, Settings → Summaries): `on` shows the About tab, a followed session's About and Now and its
         // turns (off: none of it, and nothing is asked); `auto` follows every session from its next turn's end. Both off
         // until you turn them on.
@@ -224,6 +226,15 @@ pub fn turn_mode() -> String {
     load().pointer("/turn/mode").and_then(Value::as_str).filter(|m| *m == "last").unwrap_or("answer").to_string()
 }
 
+/// Settings → Get beta builds: updates from the beta channel (ipc/updates.rs).
+pub fn beta_updates() -> bool {
+    beta_updates_in(&load())
+}
+/// `beta_updates`, from these settings: on only when set to true.
+pub(crate) fn beta_updates_in(c: &Value) -> bool {
+    c.pointer("/updates/beta").and_then(Value::as_bool).unwrap_or(false)
+}
+
 /// Text size: the window's zoom, one of these steps (⌘+ / ⌘− / ⌘0, or Settings → Text size).
 pub const ZOOM_STEPS: [f64; 4] = [0.9, 1.0, 1.15, 1.3];
 
@@ -315,7 +326,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {
