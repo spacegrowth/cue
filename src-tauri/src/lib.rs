@@ -240,6 +240,8 @@ pub fn run() {
                 let old = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cue");
                 if let Some(old) = server::move_from_old_folder(&old, &server::cue_dir()) {
                     db::rewrite_paths(&format!("{old}/"), &format!("{}/", server::cue_dir().display()));
+                    // Its settings moved with it: read from where they are now.
+                    config::refresh();
                 }
             }
             // Point the hook shim at this copy of Cue (wherever the app lives now).

@@ -21,15 +21,17 @@ pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>
         c[section] = json!({});
     }
     c[section][name] = value;
-    replace(&path, &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
-    super::cache::keep(&path, super::cache::stamp_of(&path), c);
+    let stamp = replace(&path, &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
+    super::cache::keep(&path, stamp, c);
     Ok(out)
 }
 
 /// `path` holding `text`, replaced whole: written beside it and flushed to disk, then renamed over it, so a
 /// crash leaves the old file or the new one, never an empty one. A `path` that's a link (config.json kept with
 /// your dotfiles) has the file it points to replaced, the link left as it is; the file keeps its permissions.
-fn replace(path: &std::path::Path, text: &str) -> Result<(), String> {
+/// The stamp of what was written, taken before it's in place: a hand edit right after is a different stamp,
+/// so the next refresh reads it.
+fn replace(path: &std::path::Path, text: &str) -> Result<Option<super::cache::Stamp>, String> {
     use std::io::Write;
     let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     std::fs::create_dir_all(path.parent().unwrap_or(&path)).map_err(|e| e.to_string())?;
@@ -43,7 +45,9 @@ fn replace(path: &std::path::Path, text: &str) -> Result<(), String> {
     }
     f.sync_all().map_err(|e| e.to_string())?;
     drop(f);
-    std::fs::rename(&next, &path).map_err(|e| e.to_string())
+    let stamp = super::cache::stamp_of(&next);
+    std::fs::rename(&next, &path).map_err(|e| e.to_string())?;
+    Ok(stamp)
 }
 
 #[cfg(test)]
@@ -70,5 +74,19 @@ mod tests {
         assert_eq!(text, "{\"a\": 1}\n", "its target has the new text");
         assert_eq!(mode, 0o600, "and its permissions");
         assert_eq!(leftovers.len(), 1, "nothing left beside it: {leftovers:?}");
+    }
+
+    /// The stamp kept with a save is the file that was written: an edit made right after it is a new stamp, so
+    /// the next refresh reads that edit rather than taking it for the save.
+    #[test]
+    fn a_saves_stamp_is_what_it_wrote_and_an_edit_after_it_differs() {
+        let dir = std::env::temp_dir().join(format!("cue-cfg-stamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let wrote = super::replace(&path, "{\"a\": 1}\n").unwrap();
+        assert_eq!(wrote, super::super::cache::stamp_of(&path), "the file in place is the one written");
+        std::fs::write(&path, "{\"a\": 22}\n").unwrap();
+        assert_ne!(wrote, super::super::cache::stamp_of(&path), "an edit after it is another stamp");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

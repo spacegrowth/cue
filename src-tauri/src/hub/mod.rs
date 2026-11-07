@@ -160,7 +160,7 @@ pub struct Hub {
     /// What keeps saves made after the store is let go in order (saves.rs).
     saves: saves::SaveLocks,
     /// Changes waiting to be drawn, and the worker that draws them (redraw.rs).
-    redraws: redraw::Redraws,
+    redraws: Arc<redraw::Redraws>,
 }
 
 impl Hub {
@@ -181,7 +181,7 @@ impl Hub {
         st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
-        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: redraw::Redraws::default() }
+        Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: Arc::default() }
     }
 
     /// The session terminals, to type into and look at.

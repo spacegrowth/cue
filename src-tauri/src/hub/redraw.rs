@@ -88,7 +88,8 @@ impl Hub {
             return self.draw();
         };
         self.redraws.worker.get_or_init(|| {
-            let _ = std::thread::Builder::new().name("cue-redraw".into()).spawn(move || draw_when_wanted(me));
+            let redraws = self.redraws.clone();
+            let _ = std::thread::Builder::new().name("cue-redraw".into()).spawn(move || draw_when_wanted(redraws, me));
         });
     }
 
@@ -143,11 +144,12 @@ impl Hub {
 }
 
 /// The worker: a draw each time one is wanted, at most one per DRAW_EVERY, until the hub is gone.
-fn draw_when_wanted(hub: Weak<Hub>) {
+/// It holds the hub only while it draws.
+fn draw_when_wanted(redraws: Arc<Redraws>, hub: Weak<Hub>) {
     loop {
-        let Some(h) = hub.upgrade() else { return };
-        h.redraws.wait();
+        redraws.wait();
         let started = std::time::Instant::now();
+        let Some(h) = hub.upgrade() else { return };
         h.draw();
         drop(h);
         std::thread::sleep(DRAW_EVERY.saturating_sub(started.elapsed()));
