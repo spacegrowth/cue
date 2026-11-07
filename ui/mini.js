@@ -89,8 +89,18 @@
   function threadHtml(sid) {
     const it = itemFor(sid);
     const all = sessionOf(sid)?.thread || it?.thread || [];
-    const msgs = all.length ? all : it ? [{ role: "agent", text: finishedText(it) }] : [];
-    return (msgs.map(msg).join("") || `<div class="m-quiet">Nothing said yet.</div>`) + nowHtml(sid);
+    const s = sessionOf(sid);
+    // What you queued shows once, as queued, not also as the thread's copy of it (chat/thread.js does the same).
+    const q = s?.queued?.text?.trim() || "";
+    const isQueued = (e) => !!q && e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === q || (q.length >= 20 && e.text.includes(q)));
+    const msgs = (all.length ? all : it ? [{ role: "agent", text: finishedText(it) }] : []).filter((e) => !isQueued(e));
+    return (msgs.map(msg).join("") || `<div class="m-quiet">Nothing said yet.</div>`) + waitingHtml(s) + nowHtml(sid);
+  }
+  /** Your messages still on their way, as the chat in Cue shows them: kept in Cue until the turn ends, or queued
+   *  in the agent until it finishes its current step. */
+  function waitingHtml(s) {
+    const one = (m2, note) => m2?.text ? `<div class="m-you m-queued">${esc(m2.text)}<div class="m-quiet">${note}</div></div>` : "";
+    return one(s?.held, "Kept in Cue · it goes when this turn ends") + one(s?.queued, "Queued · it reads this when it finishes the current step");
   }
   /** At work: what it's doing now, last in the chat, so its last reply isn't read as the answer to you. */
   function nowHtml(sid) {
