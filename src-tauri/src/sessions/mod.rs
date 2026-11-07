@@ -5,6 +5,7 @@
 //! got to it are in `thread` and `delivery`, messages kept for later in `held`, names in `names`,
 //! what the current turn is doing in `turn`, and your own marks on it (later, star, tell me) in `marks`.
 
+mod bar;
 mod delivery;
 mod held;
 mod marks;
@@ -420,7 +421,7 @@ impl Sessions {
         self.0.values().filter_map(|s| s.origin.agent_pid.map(|p| (s.origin.session_id.clone(), p))).collect()
     }
 
-    /// Sessions for the window, with segments clipped to the last 30 minutes.
+    /// Sessions for the window, each with its activity bar's last 30 minutes (bar.rs).
     pub fn snapshot(&self) -> Vec<Session> {
         let now = now_ms();
         let from = now.saturating_sub(WINDOW_MS);
@@ -428,17 +429,8 @@ impl Sessions {
             .0
             .values()
             .map(|s| {
-                let mut s = s.clone();
-                s.segments = s
-                    .segments
-                    .into_iter()
-                    .filter(|g| g.end_ms.map_or(true, |e| e > from))
-                    .map(|mut g| {
-                        g.start_ms = g.start_ms.max(from);
-                        g
-                    })
-                    .collect();
-                s
+                let segments = bar::shown(&s.segments, from, now);
+                Session { segments, ..s.clone() }
             })
             .collect();
         out.sort_by_key(|s| s.since_ms);
