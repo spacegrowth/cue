@@ -1185,6 +1185,12 @@ pub fn reset() {
     AHEAD_WATCHED.stale();
 }
 
+/// Tests: `f` on the open database, as every call here runs.
+#[cfg(test)]
+pub fn raw<T>(f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Option<T> {
+    with(f)
+}
+
 /// How many exchanges the log holds for a session.
 #[cfg(test)]
 pub fn exchange_count(session_id: &str) -> i64 {
