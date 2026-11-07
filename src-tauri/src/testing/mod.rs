@@ -6,14 +6,18 @@
 //! messages go through server::inbound::apply, exactly as a socket connection hands them over; what the
 //! window would show is read back from the same `list` a client gets (`Snap`).
 //!
-//! Left for the Terminal port (plan §6 step 5): the pane reads of hub/activity.rs, the built-in terminal
-//! (term.rs) and machines over SSH still reach the real thing; the clock seam covers the hub's own waits
+//! Machines over SSH are played by `FakeSsh` (machines::ssh), the hub served on a socket of its own by
+//! `World::serve`. Left for the Terminal port (plan §6 step 5): the pane reads of hub/activity.rs and the
+//! built-in terminal (term.rs, whose ssh tab is still the system's) still reach the real thing; the clock seam covers the hub's own waits
 //! and `now_ms`, not tokio's timers, `Instant` deadlines elsewhere, or file times read through `elapsed()`.
 
 mod agent;
 mod later;
 mod notes;
+mod served;
 mod snap;
+mod ssh;
+mod stall;
 mod terminal;
 pub(crate) mod transcript;
 mod world;
@@ -24,7 +28,10 @@ mod tests;
 pub use agent::{Agent, Ask};
 pub use later::Deferred;
 pub use notes::FakeNotes;
+pub use served::Served;
 pub use snap::Snap;
+pub use ssh::{until, FakeSsh, RUNS_IT};
+pub use stall::Stall;
 pub use terminal::{FakeTerminal, Key, Takes};
 pub use transcript::Transcript;
 pub use world::World;

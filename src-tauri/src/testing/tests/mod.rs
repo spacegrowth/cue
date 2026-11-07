@@ -2,6 +2,8 @@
 
 mod asks;
 mod caches;
+mod machine_stream;
+mod machines;
 mod redraw;
 mod reviews;
 mod sessions;
