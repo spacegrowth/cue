@@ -3,7 +3,7 @@
 //! session vanished), and what a relaunch after a reboot brings back by itself.
 
 use crate::ipc::{auto_resumable, park, restart_session_now};
-use crate::testing::{AgentProcess, Crew, World};
+use crate::testing::{relay_calls, AgentProcess, Crew, World};
 use serde_json::json;
 
 /// Session `sid` at its finished turn, its agent running as `agent`.
@@ -93,6 +93,7 @@ fn a_lead_with_executors_open_cant_be_parked_and_one_with_none_can() {
     assert_eq!(park(w.hub(), "L"), Err("it leads 1 executor still open: close them, or hand the lead off, first".to_string()));
     Crew::default().lead("L").install();
     assert!(park(w.hub(), "L").is_ok());
+    assert!(relay_calls().iter().any(|c| c == "close --self L"), "relay is told the lead stops: {:?}", relay_calls());
     assert!(!agent.running());
 }
 

@@ -16,6 +16,7 @@ mod launcher;
 mod later;
 mod notes;
 mod process;
+pub(crate) mod sandbox;
 mod served;
 mod snap;
 mod ssh;
@@ -29,7 +30,7 @@ mod scenarios;
 mod tests;
 
 pub use agent::{Agent, Ask};
-pub use crew::Crew;
+pub use crew::{relay_calls, Crew};
 pub use launcher::FakeLauncher;
 pub use later::Deferred;
 pub use notes::FakeNotes;
