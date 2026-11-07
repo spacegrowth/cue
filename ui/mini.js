@@ -124,7 +124,7 @@
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
     return `<div class="m-panel m-chat"><div class="m-chat-head">${it ? dot(it) : ""}<b>${esc(nameOf(sid, s?.project || it?.project))}</b>${tag}<span class="g"></span>${NOTCH ? dotsHtml() : ""}<button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
-      <div class="m-foot"><textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
+      <div class="m-foot">${quickHtml()}<textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
   }
 
@@ -132,6 +132,18 @@
    *  second) doesn't rebuild it under the pointer, which reset the cursor each time. */
   const drawn = new WeakMap();   // element -> the html it was last given
   const put = (el, html) => { if (el && drawn.get(el) !== html) { el.innerHTML = html; drawn.set(el, html); } };
+  /** Your quick phrases (Settings, the same list as Cue's chat): a click adds one after what you've typed and
+   *  sends it at once, as in Cue (chat/compose.js sendPhrase). */
+  const quickHtml = () => {
+    const list = state.settings?.quick?.phrases || [];
+    return list.length ? `<div class="m-quick">${list.map((p) => `<button class="m-qp" data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}</div>` : "";
+  };
+  function sendPhrase(p) {
+    const box = root.querySelector("[data-box]");
+    if (!box || m.sending) return;
+    box.value = box.value.trim() ? `${box.value.trimEnd()} ${p}` : p;
+    send();
+  }
   // ---------- size and place ----------
   /** The window as big as what it shows: the panel's own size, the chat no taller than its share of the screen. */
   function fit() {
@@ -268,6 +280,7 @@
       else if (t.dataset.allow) answer(t.dataset.allow, "allow");
       else if (t.dataset.deny) answer(t.dataset.deny, "deny");
       else if (t.dataset.send !== undefined) send();
+      else if (t.dataset.phrase) sendPhrase(t.dataset.phrase);
       else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
     });
     root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
