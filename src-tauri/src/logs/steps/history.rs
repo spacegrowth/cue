@@ -1,26 +1,40 @@
 //! A session's background work over its whole transcript, for the Background tab's Show earlier.
 
 use super::feed::Feed;
-use super::queries::helper_json;
+use super::queries::{helper_json, with_caught_up};
 use super::FORGET;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// Every piece of background work a session ran, read from its whole transcript (its feed reads only the
 /// last START_BYTES and keeps MAX_HELPERS): read when asked for (the Background tab's Show earlier), kept
-/// FORGET after the last ask.
-static HISTORY: Mutex<Option<HashMap<String, Feed>>> = Mutex::new(None);
+/// FORGET after the last ask. The table's lock is held only to find, file or forget one; each is read with
+/// its own lock let go (`with_caught_up`).
+static HISTORY: Mutex<Option<HashMap<String, (Arc<Mutex<Feed>>, Instant)>>> = Mutex::new(None);
+
+/// The history feed for `path`, made (its log's first line read with no lock held) if there's none.
+fn history_feed(path: &str) -> Arc<Mutex<Feed>> {
+    let found = {
+        let mut guard = crate::locking::lock(&HISTORY, "HISTORY");
+        let all = guard.get_or_insert_with(HashMap::new);
+        all.retain(|_, (_, used)| used.elapsed() < FORGET);
+        all.get_mut(path).map(|(feed, used)| {
+            *used = Instant::now();
+            feed.clone()
+        })
+    };
+    if let Some(feed) = found {
+        return feed;
+    }
+    let new = Arc::new(Mutex::new(Feed { max_helpers: usize::MAX, ..Feed::start(path, 1, 0) }));
+    let mut guard = crate::locking::lock(&HISTORY, "HISTORY");
+    guard.get_or_insert_with(HashMap::new).entry(path.to_string()).or_insert((new, Instant::now())).0.clone()
+}
 
 fn with_history<T>(path: &str, f: impl FnOnce(&Feed) -> T) -> T {
-    let mut guard = crate::locking::lock(&HISTORY, "HISTORY");
-    let all = guard.get_or_insert_with(HashMap::new);
-    all.retain(|_, h| h.used.elapsed() < FORGET);
-    let feed = all.entry(path.to_string()).or_insert_with(|| Feed { max_helpers: usize::MAX, ..Feed::start(path, 1, 0) });
-    feed.used = Instant::now();
-    feed.catch_up();
-    f(feed)
+    with_caught_up(&history_feed(path), f)
 }
 
 /// A session's background work, all of it, oldest first: each one as `steps` gives it, but without its

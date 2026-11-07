@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 136 (3 sync) |
 | Lock declarations (static or field) | 91 |
-| Lock acquisitions | 202 |
+| Lock acquisitions | 204 |
 | Lock-graph edges | 45 |
 | Spawn sites | 73 |
 | External calls: fs / db / process / notify / login / socket | 339 / 146 / 48 / 4 / 1 / 3 |
@@ -229,9 +229,9 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/live.rs::ABOUT` | `Mutex<Option<HashMap<String,(u64,std::time::SystemTime,String)>>>` | "ABOUT" (2 sites) |
 | `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (4 sites) |
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
-| `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,Feed>>>` | "HISTORY" (1 sites) |
+| `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,(Arc<Mutex<Feed>>,Instant)>>>` | "HISTORY" (2 sites) |
 | `logs/steps/pi.rs::STORE` | `std::sync::OnceLock<Value>` | — |
-| `logs/steps/queries.rs::Open.feed` | `Arc<Mutex<Feed>>` | "a session's feed" (9 sites) |
+| `logs/steps/queries.rs::Open.feed` | `Arc<Mutex<Feed>>` | "a session's feed" (10 sites) |
 | `logs/steps/queries.rs::FEEDS` | `Mutex<Option<HashMap<String,Open>>>` | "FEEDS" (3 sites) |
 | `logs/steps/windows.rs::WINDOWS` | `Mutex<Option<Windows>>` | "WINDOWS" (3 sites) |
 | `logs/steps/windows.rs::SAVED` | `Mutex<u64>` | "windows file" (1 sites) |

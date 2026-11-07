@@ -130,3 +130,22 @@ fn a_slow_read_holds_up_no_one_else_asking_about_the_session() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// One session's history slow to read (Show earlier) holds up no other session's.
+#[test]
+fn a_slow_history_read_holds_up_no_other_sessions_history() {
+    let (dir_a, a) = log_at("history-a");
+    let (dir_b, b) = log_at("history-b");
+    append(&a, &turn(0));
+    append(&b, &turn(0));
+    let (release, started) = slow_disk::hold_next(&a);
+    let slow = { let a = a.clone(); std::thread::spawn(move || history(&a)) };
+    started.recv_timeout(Duration::from_secs(5)).expect("the slow read reached the disk");
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || { let _ = tx.send(history(&b)); });
+    let answered = rx.recv_timeout(Duration::from_secs(2));
+    release.send(()).unwrap();
+    assert_eq!(answered.ok(), Some(json!([])), "the other session's history waited on the slow read");
+    slow.join().unwrap();
+    std::fs::remove_dir_all(&dir_a).ok();
+    std::fs::remove_dir_all(&dir_b).ok();
+}

@@ -71,6 +71,13 @@ pub(super) fn catch_up_shared(feed: &Mutex<Feed>) {
     }
 }
 
+/// `f` on a feed kept elsewhere (a session's history), caught up with its log first.
+pub(super) fn with_caught_up<R>(feed: &Mutex<Feed>, f: impl FnOnce(&Feed) -> R) -> R {
+    catch_up_shared(feed);
+    let feed = crate::locking::lock(feed, "a session's feed");
+    f(&feed)
+}
+
 /// The open feeds whose log paths `pick` picks, for what looks across them.
 fn all(pick: impl Fn(&str) -> bool) -> Vec<Arc<Mutex<Feed>>> {
     crate::locking::lock(&FEEDS, "FEEDS").get_or_insert_with(HashMap::new).iter().filter(|(p, _)| pick(p)).map(|(_, o)| o.feed.clone()).collect()
