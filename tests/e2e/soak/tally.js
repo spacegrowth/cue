@@ -8,6 +8,8 @@ export class Tally {
     this.answerMs = [];
     /** What the window's main thread spent its time on, by what it was doing (load.js timePage). */
     this.pageMs = {};
+    /** The window's element count over time: [seconds, elements]. */
+    this.elements = [];
     this.decisionsMs = [];
     this.undecided = 0;
     this.memory = [];
@@ -36,7 +38,7 @@ export class Tally {
   json(about, probe, panics, log) {
     const c = this.counts;
     return {
-      ...about, seconds: this.at(), answer_ms: this.answerMs, draws_ms: this.pageMs.setState || [], page_ms: this.pageMs, decisions_ms: this.decisionsMs, undecided: this.undecided,
+      ...about, seconds: this.at(), answer_ms: this.answerMs, draws_ms: this.pageMs.setState || [], page_ms: this.pageMs, elements: this.elements, decisions_ms: this.decisionsMs, undecided: this.undecided,
       memory: this.memory, snapshot: this.snapshot,
       events: { sent: c.eventsSent, failed: c.eventsFailed }, typing: { sent: c.typingSent, failed: c.typingFailed, refused: this.refused },
       polls: c.polls, asks: c.asks, terminals: { opened: c.opened, closed: c.closed }, probe, panics, log, errors: this.errors,

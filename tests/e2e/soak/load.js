@@ -110,10 +110,15 @@ export function timePage(ui) {
   }, TIMED);
 }
 
-/** The times counted since the last look, taken out of the page (plain lists of numbers, by name). */
+/** The times counted since the last look, taken out of the page (plain lists of numbers, by name), and how
+ *  many elements the window has now (what every draw lays out again). */
 async function drainPage(soak) {
-  const got = await soak.world.ui.runDirect(() => Object.fromEntries(Object.entries(window.__soakTimes || {}).map(([k, v]) => [k, v.splice(0).map(Number)])));
-  for (const [name, ms] of Object.entries(got || {})) (soak.tally.pageMs[name] ||= []).push(...ms);
+  const got = await soak.world.ui.runDirect(() => ({
+    times: Object.fromEntries(Object.entries(window.__soakTimes || {}).map(([k, v]) => [k, v.splice(0).map(Number)])),
+    elements: document.getElementsByTagName("*").length,
+  }));
+  for (const [name, ms] of Object.entries(got?.times || {})) (soak.tally.pageMs[name] ||= []).push(...ms);
+  soak.tally.elements.push([soak.tally.at(), got?.elements || 0]);
 }
 
 /** The window's poll of Cue's state, five times a second, timed; memory, the state's size and the window's

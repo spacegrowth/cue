@@ -29,6 +29,7 @@ fn section(out: &mut String, r: &Run) {
     holds(out, r);
     curve(out, "memory (MB)", &r.curve("/memory"), 1e6);
     curve(out, "window state (KB)", &r.curve("/snapshot"), 1e3);
+    curve(out, "window elements", &r.curve("/elements"), 1.0);
     parts(out, r);
     decisions(out, r);
     let _ = writeln!(out, "  failures: {}", if failures.is_empty() { "none".to_string() } else { String::new() });
