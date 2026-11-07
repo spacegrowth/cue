@@ -98,8 +98,8 @@ const tick = () => new Promise((r) => setImmediate(r));
     await tick();
     assert.deepStrictEqual(b.started.map((c) => `${c.cmd}:${c.args.sessionId || c.args.text}`), ["handoff_continue:s1", "handoff_keep:s2", "ext_log:one"]);
   }
-  // Every lane names a command the backend has (src-tauri/src/lib.rs generate_handler!).
-  const handlers = require("fs").readFileSync(__dirname + "/../src-tauri/src/lib.rs", "utf8").match(/generate_handler!\[([^\]]*)\]/)[1].split(",").map((s) => s.trim().split("::").pop());
+  // Every lane names a command the backend has (src-tauri/src/startup/mod.rs generate_handler!).
+  const handlers = require("fs").readFileSync(__dirname + "/../src-tauri/src/startup/mod.rs", "utf8").match(/generate_handler!\[([^\]]*)\]/)[1].split(",").map((s) => s.trim().split("::").pop());
   for (const cmd of Object.keys(INVOKE_LANES)) assert.ok(handlers.includes(cmd), `${cmd} is a command`);
   console.log("invoke.test.js: ok");
 })().catch((e) => { console.error(e); process.exit(1); });
