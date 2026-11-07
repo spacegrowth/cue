@@ -18,7 +18,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock declarations (static or field) | 90 |
 | Lock acquisitions | 195 |
 | Lock-graph edges | 40 |
-| Spawn sites | 72 |
+| Spawn sites | 73 |
 | External calls: fs / db / process / notify / login / socket | 340 / 146 / 48 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
@@ -375,6 +375,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `startup/watchers.rs::machines` | thread::spawn | 1 |
 | `talk.rs::Conversation::ask_by_the_way` | task::spawn_blocking | 1 |
 | `talk.rs::Conversation::ask_by_the_way` | tokio::spawn | 1 |
+| `talk.rs::Conversation::on_line` | task::spawn_blocking | 1 |
 | `talk.rs::Conversation::on_line` | tokio::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
 | `talk.rs::start` | async_runtime::spawn | 1 |
