@@ -11,6 +11,7 @@ mod bindings;
 mod calls;
 pub mod classify;
 pub mod events;
+mod json;
 mod visit;
 
 use crate::parse::index::{FnDef, FnId, Index};

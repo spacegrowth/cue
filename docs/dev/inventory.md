@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 196 |
 | Lock-graph edges | 43 |
 | Spawn sites | 66 |
-| External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 336 / 125 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -677,7 +677,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save` | write | 1 |
 
-### db (124)
+### db (125)
 
 | In | Call | Times |
 |---|---|---|
@@ -728,7 +728,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db.rs::save_answered` | db::put_item | 1 |
 | `db.rs::save_answered` | db::with | 1 |
 | `db.rs::save_turns` | db::with | 1 |
-| `db.rs::search` | db::snippet | 1 |
+| `db.rs::search` | db::snippet | 2 |
 | `db.rs::search` | db::with | 1 |
 | `db.rs::session_log` | db::with | 1 |
 | `db.rs::session_log_page` | db::with | 1 |
@@ -939,7 +939,8 @@ The analysis reads the source with `syn`; it doesn't type-check it. So:
   that function's calls of the parameter (in line, or on a thread when it spawns it); one it never calls
   is treated as run later, under no lock.
 - **Macros**: arguments of a macro are read when they parse as a comma-separated list of expressions
-  (`format!`, `vec!`, `assert!`, …); others (`json!({..})`, `matches!`) are skipped, calls inside them too.
+  (`format!`, `vec!`, `assert!`, …); `json!({..})` is read as JSON, each value (and parenthesized key) an
+  expression; others (`matches!`) are skipped, calls inside them too.
 - **Lock lifetimes follow Rust 2021's drop rules, simplified**: a `let` guard lives to the end of its
   block or `drop(guard)`; an unbound guard to the end of its statement (through a `match`/`if let`/`for`
   body), except a plain `if`/`while` condition. A guard moved into a function, returned, or kept in a
