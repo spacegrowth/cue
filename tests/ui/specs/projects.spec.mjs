@@ -58,3 +58,15 @@ test.describe("moving a session to another project", () => {
     await expect(page.locator('.nrow[data-big="n1"]')).toBeVisible();
   });
 });
+
+// History's rows come brief, and a row opened asks for its card in full (ui/core.js fullItem): a row whose
+// project then moves (hub/projects.rs, in place) is asked for again, never the card as it was.
+test("a History card already had in full follows its row when its project moves", async ({ cue, page }) => {
+  await cue.open("terminal");
+  await cue.change((st) => { for (const h of st.history) h.brief = true; });
+  const id = await page.evaluate(() => state.history[0].id);
+  await page.evaluate((id) => findItem(id), id);
+  await expect.poll(async () => (await cue.calls("history_item")).length).toBe(1);
+  await cue.change((st, id) => { st.history.find((i) => i.id === id).project = "elsewhere"; }, id);
+  await expect.poll(() => page.evaluate((id) => findItem(id).project, id)).toBe("elsewhere");
+});
