@@ -16,8 +16,6 @@ mod guard;
 mod held;
 #[cfg(test)]
 mod lint;
-#[cfg(test)]
-mod source;
 pub mod probe;
 mod report;
 mod watchdog;

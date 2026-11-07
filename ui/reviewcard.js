@@ -23,9 +23,10 @@ function reviewCardBody(r) {
   }
 }
 
-/** One button: Review, Diff and Set aside are Cue's (data-crew); Commit and Send fixes type their words into the lead. */
+/** One button: Review, Diff and Set aside are Cue's (data-crew); Commit and Send fixes type their words into the lead
+ *  (data-rv-text: not data-text, which marks a text box the window gives the cursor back to after a redraw). */
 function reviewCardButton(act, exec, lead) {
-  const say = (text, label, primary) => `<button class="btn ${primary ? "primary" : ""}" data-rv-say="${esc(lead)}" data-text="${esc(text)}">${label}</button>`;
+  const say = (text, label, primary) => `<button class="btn ${primary ? "primary" : ""}" data-rv-say="${esc(lead)}" data-rv-text="${esc(text)}">${label}</button>`;
   switch (act) {
     case "review": return crewBtn(exec, "review", "Review", true);
     case "diff": return crewBtn(exec, "diff", "Diff");

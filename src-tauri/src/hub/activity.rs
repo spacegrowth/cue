@@ -1204,7 +1204,7 @@ mod tests {
             let pane = |sid: &str, box_line: &str| -> (String, String) {
                 let name = format!("cue-ahead-{sid}-{}", std::process::id());
                 let script = format!("printf '%s\\n' '────────' '{box_line}' '────────'; exec cat");
-                let out = std::process::Command::new("tmux").args(["new-session", "-d", "-s", &name, "-x", "120", "-y", "20", "-P", "-F", "#{pane_id}", "sh", "-c", &script]).output().unwrap();
+                let out = std::process::Command::new(crate::focus::tmux_bin()).args(["new-session", "-d", "-s", &name, "-x", "120", "-y", "20", "-P", "-F", "#{pane_id}", "sh", "-c", &script]).output().unwrap();
                 let pane = String::from_utf8_lossy(&out.stdout).trim().to_string();
                 std::thread::sleep(std::time::Duration::from_millis(400));
                 (name, pane)
@@ -1231,7 +1231,7 @@ mod tests {
             hub.cache_tick();
             assert_eq!(events("t1"), ["shown:session"], "asked once");
             for n in [n1, n2] {
-                let _ = std::process::Command::new("tmux").args(["kill-session", "-t", &n]).output();
+                let _ = std::process::Command::new(crate::focus::tmux_bin()).args(["kill-session", "-t", &n]).output();
             }
         }
         std::env::remove_var("CUE_HOME");

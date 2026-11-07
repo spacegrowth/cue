@@ -1,169 +1,31 @@
-//! Checks over Cue's own source (every `.rs` file under src/ but this folder, whose code and patterns
-//! name the shapes it refuses): every lock goes through `locking::lock` with a name no other lock has,
-//! and none is taken where it stays held while the next one is taken.
+//! Cue's source against the xtask analysis (src-tauri/xtask; docs/dev/inventory.md says what it reads and
+//! what it can't see): every lock taken through `locking::lock` with a name of its own, no lock cycle, lock
+//! orders and external calls under the hub's store only as docs/dev/lint-allow.toml allows, no sync command
+//! but the AppKit ones, no tmux started past the test seam; and the inventory kept current.
 
-use super::source::{code_only, test_only};
-use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
-/// Taking a lock through the one way (`locking::lock`, `read`, `write`), or the hub's store (`st()`).
-const LOCK_CALLS: &[&str] = &["locking::lock(", "locking::read(", "locking::write(", ".st()"];
+fn repo() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
+}
 
-/// Taking a lock any other way: a `Mutex` locked or tried, an `RwLock` read or written.
-const BARE: &[&str] = &[".lock()", "Mutex::lock(", ".try_lock(", ".read()", ".write()"];
+/// One analysis for both tests.
+fn outcome() -> &'static xtask::Outcome {
+    static OUTCOME: OnceLock<Result<xtask::Outcome, String>> = OnceLock::new();
+    OUTCOME.get_or_init(|| xtask::run(&repo(), &repo().join(xtask::ALLOW))).as_ref().unwrap_or_else(|e| panic!("xtask: {e}"))
+}
 
-/// The one lock taken another way on purpose: a session's typing gate, held for seconds by design and
-/// waited on with its own deadline and its own error (hub/send.rs, `wait_turn`).
-const BARE_ALLOWED: &[(&str, &str)] = &[("hub/send.rs", "gate.try_lock()")];
+#[test]
+fn the_source_passes_the_xtask_check() {
+    let check = &outcome().check;
+    assert!(check.failures.is_empty(), "{}", check.render());
+}
 
-/// Every source file but this folder's, by its path under src/, with its text.
-fn sources() -> Vec<(String, String)> {
-    fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(dir).unwrap().flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                rs_files(&path, out);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                out.push(path);
-            }
-        }
+#[test]
+fn the_inventory_is_current() {
+    for (path, generated) in [(xtask::INVENTORY, &outcome().inventory), (xtask::LOCK_GRAPH, &outcome().lock_graph)] {
+        let on_disk = std::fs::read_to_string(repo().join(path)).unwrap_or_default();
+        assert!(on_disk == *generated, "{path} is out of date: run `cargo run -p xtask -- inventory` in src-tauri and commit it");
     }
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut files = vec![];
-    rs_files(&src, &mut files);
-    files.sort();
-    files
-        .into_iter()
-        .map(|p| (p.strip_prefix(&src).unwrap().to_string_lossy().into_owned(), std::fs::read_to_string(&p).unwrap()))
-        .filter(|(rel, _)| !rel.starts_with("locking/"))
-        .collect()
-}
-
-/// The lines (from 1) of the file at `path` that take a lock another way, outside comments, strings
-/// and test code.
-fn bare_locks(path: &str, text: &str) -> Vec<usize> {
-    let code = code_only(text, false);
-    let lines: Vec<&str> = code.lines().collect();
-    let test = test_only(&lines);
-    let allowed: Vec<&str> = BARE_ALLOWED.iter().filter(|(p, _)| *p == path).map(|(_, site)| *site).collect();
-    let bare = |l: &str| {
-        let l = allowed.iter().fold(l.to_string(), |l, site| l.replace(site, ""));
-        BARE.iter().any(|b| l.contains(b))
-    };
-    lines.iter().enumerate().filter(|(i, l)| !test[*i] && bare(l)).map(|(i, _)| i + 1).collect()
-}
-
-/// The names `text` gives its locks: the string after each `locking::lock(<lock>, ` (or `read`, `write`).
-fn lock_names(text: &str) -> Vec<String> {
-    code_only(text, true)
-        .lines()
-        .flat_map(|l| LOCK_CALLS[..3].iter().flat_map(move |call| l.match_indices(call).map(move |(at, _)| l[at..].to_string())))
-        .filter_map(|call| call.split('"').nth(1).map(str::to_string))
-        .collect()
-}
-
-/// Names used in more than one file, with the files. A lock is used in one file (others go through a
-/// function of that file), so a name in two files is two locks that can't be told apart in a log.
-fn shared_names(files: &[(String, String)]) -> Vec<String> {
-    let mut by_name: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
-    for (path, text) in files {
-        for name in lock_names(text) {
-            by_name.entry(name).or_default().insert(path);
-        }
-    }
-    by_name.into_iter().filter(|(_, f)| f.len() > 1).map(|(n, f)| format!("\"{n}\" names a lock in {}", f.into_iter().collect::<Vec<_>>().join(" and "))).collect()
-}
-
-/// Where a lock is taken while another is still held, in the shapes a line can show: a second lock in
-/// the same statement, or a lock in the head of a `for`, `match`, `if let` or `while let` (held through
-/// the body, Rust 2021) whose body locks again.
-fn held_across(path: &str, text: &str) -> Vec<String> {
-    let calls = || LOCK_CALLS.iter().chain(BARE);
-    let is_lock = |l: &str| calls().any(|c| l.contains(c));
-    let code = code_only(text, false);
-    let lines: Vec<&str> = code.lines().collect();
-    let mut bad = vec![];
-    for (i, line) in lines.iter().enumerate() {
-        let t = line.trim();
-        let first = calls().filter_map(|c| t.find(c).map(|at| at + c.len())).min();
-        if first.is_some_and(|past| is_lock(&t[past..])) {
-            bad.push(format!("{path}:{}: two locks in one expression", i + 1));
-        }
-        let head = ["for ", "match ", "if let ", "while let "].iter().any(|k| t.starts_with(k)) && is_lock(t) && t.ends_with('{');
-        if !head {
-            continue;
-        }
-        let mut depth = 0i32;
-        for body in &lines[i + 1..] {
-            depth += body.matches('{').count() as i32 - body.matches('}').count() as i32;
-            if depth < 0 {
-                break;
-            }
-            if is_lock(body) || body.contains(".changed()") {
-                bad.push(format!("{path}:{}: a lock in the head of a block that locks again", i + 1));
-                break;
-            }
-        }
-    }
-    bad
-}
-
-#[test]
-fn every_lock_goes_through_locking_lock() {
-    let bad: Vec<String> = sources()
-        .iter()
-        .flat_map(|(path, text)| bare_locks(path, text).into_iter().map(move |n| format!("{path}:{n}")))
-        .collect();
-    assert!(bad.is_empty(), "a lock taken another way than crate::locking::lock(&m, \"its name\") (or read, write):\n{}", bad.join("\n"));
-}
-
-#[test]
-fn every_lock_has_a_name_of_its_own() {
-    let bad = shared_names(&sources());
-    assert!(bad.is_empty(), "{}", bad.join("\n"));
-}
-
-/// The shape behind both hangs that reached the app. Bind the lookup with `let` and let it drop, then do
-/// the next thing.
-#[test]
-fn no_lock_is_taken_in_the_head_of_a_block_or_twice_in_one_expression() {
-    let bad: Vec<String> = sources().iter().flat_map(|(path, text)| held_across(path, text)).collect();
-    assert!(bad.is_empty(), "lock taken while held (see locking/lint.rs):\n{}", bad.join("\n"));
-}
-
-#[test]
-fn a_bare_lock_is_found_outside_tests_comments_and_strings_only() {
-    let text = "\
-fn a() {
-    let g = M.lock().unwrap();
-}
-// M.lock() in a comment
-#[cfg(test)]
-static T: Mutex<()> = Mutex::new(());
-fn b() {
-    let _ = N.try_lock(); /* M.lock() */
-}
-#[cfg(test)]
-mod tests {
-    fn t() {
-        let g = M.lock().unwrap();
-    }
-}
-#[cfg(test)] fn helper() { M.lock(); }
-fn c() { O.read(); P.write(); Mutex::lock(&Q); }
-fn d() { say(\"M.lock()\"); }
-/* M.lock()
-   N.lock() */
-fn e() { gate.try_lock(); }
-";
-    assert_eq!(bare_locks("x.rs", text), [2, 8, 17, 21]);
-    assert_eq!(bare_locks("hub/send.rs", text), [2, 8, 17], "the typing gate's own try, there only");
-}
-
-#[test]
-fn a_name_in_two_files_is_found() {
-    let one = ("a.rs".to_string(), "let x = crate::locking::lock(&INDEX, \"INDEX\");".to_string());
-    let two = ("b.rs".to_string(), "*crate::locking::lock(&INDEX, \"INDEX\") = None;".to_string());
-    let own = ("c.rs".to_string(), "crate::locking::lock(&X, \"c X\"); crate::locking::lock(&X, \"c X\");".to_string());
-    assert_eq!(shared_names(&[one, two, own]), ["\"INDEX\" names a lock in a.rs and b.rs"]);
 }

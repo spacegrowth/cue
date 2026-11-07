@@ -8,6 +8,11 @@ edition = "2021"
 name = "cue_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# xtask: the source inventory and lints (docs/dev/inventory.md), a dev-only tool run by `cargo run -p xtask`
+# and by `cargo test` (locking/lint.rs). Not a default member: `cargo build` and `tauri build` never build it.
+[workspace]
+members = ["xtask"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -32,6 +37,9 @@ vt100 = { version = "0.16", optional = true }
 # Only for the end-to-end tests (`e2e` feature, debug builds only): a WebDriver server inside the app that
 # tests/e2e drives the real window with. lib.rs refuses to compile it into a release build.
 tauri-plugin-wdio-webdriver = { version = "=1.5.1", optional = true }
+
+[dev-dependencies]
+xtask = { path = "xtask" }
 
 [profile.release]
 # File and line for every address, kept out of the app: rustc writes them to cue.dSYM next to the binary

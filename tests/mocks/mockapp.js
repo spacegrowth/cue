@@ -1,10 +1,10 @@
 // The real Cue UI (the design preview, ../preview.html) in a frame, for mocks that add to it: what they
 // put in its page is put back after each of its redraws (it rebuilds #app's markup every time).
 const MockApp = {
-  /** Loads the preview into `frame`; resolves to its window and document once it's drawn. */
+  /** Loads the preview into `frame`; resolves to its window and document once the UI's scripts are in. */
   load(frame, query = "") {
     return new Promise((done) => {
-      frame.addEventListener("load", () => done({ win: frame.contentWindow, doc: frame.contentDocument }), { once: true });
+      frame.addEventListener("load", () => frame.contentWindow.CueUI.ready.then(() => done({ win: frame.contentWindow, doc: frame.contentDocument })), { once: true });
       frame.src = `../preview.html${query}`;
     });
   },

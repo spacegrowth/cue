@@ -42,8 +42,8 @@ assert.deepEqual(buttons(h), ["Diff"]);
 h = cards({ state: "reviewed", findings: ["1. A regular handoff is not covered yet.", "2. Off stays off: tested."] });
 assert.match(h, /REVIEWED · WAITING FOR YOU/);
 assert.match(h, /<div>1\. A regular handoff is not covered yet\.<\/div><div>2\. Off stays off: tested\.<\/div>/);
-assert.match(h, /data-rv-say="L" data-text="commit it">Commit/);
-assert.match(h, /data-rv-say="L" data-text="send the fixes">Send fixes/);
+assert.match(h, /data-rv-say="L" data-rv-text="commit it">Commit/);
+assert.match(h, /data-rv-say="L" data-rv-text="send the fixes">Send fixes/);
 assert.deepEqual(buttons(h), ["Commit", "Send fixes", "Diff"]);
 assert.match(cards({ state: "reviewed" }), /: reviewed\./, "no findings anywhere: just says it ran");
 

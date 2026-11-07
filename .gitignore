@@ -18,3 +18,6 @@ dist/
 # Swift builds of the voices and voice helpers (src-tauri/speak, src-tauri/voice)
 src-tauri/speak/.build/
 src-tauri/voice/.build/
+
+# UI test screenshots (tests/ui/specs): the latest run's; the baselines are tests/ui/baseline
+tests/ui/shots/
