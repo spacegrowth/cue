@@ -1,7 +1,8 @@
-//! `xtask check`: the rules, over the model and the allow-list. Every failure says what to do; an
+//! `xtask check`: the rules, over the model, the sizes and the allow-list. Every failure says what to do; an
 //! allow-list entry nothing matches any more is a failure too (the list only shrinks).
 
 mod locks;
+mod sizes;
 pub mod tmux;
 
 use crate::allow::Allow;
@@ -34,7 +35,7 @@ impl CheckReport {
     }
 }
 
-pub fn check(model: &Model, allow: &Allow, literal_tmux: Vec<String>) -> CheckReport {
+pub fn check(model: &Model, allow: &Allow, literal_tmux: Vec<String>, sizes: &crate::sizes::Sizes) -> CheckReport {
     let mut failures = vec![];
     failures.extend(cycles(model));
     failures.extend(lock_order(model, allow));
@@ -44,6 +45,7 @@ pub fn check(model: &Model, allow: &Allow, literal_tmux: Vec<String>) -> CheckRe
     failures.extend(locks::bare(model, allow));
     failures.extend(locks::shared_names(model));
     failures.extend(literal_tmux.into_iter().map(|t| format!("tmux started by its literal name at {t}: go through terminal::focus::tmux_bin() (tests then use a private tmux server, never yours)")));
+    failures.extend(sizes::sizes(sizes, &allow.size_exempt));
     CheckReport { failures, calls: model.call_stats(), allowed_store_io }
 }
 
