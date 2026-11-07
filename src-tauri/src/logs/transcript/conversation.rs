@@ -73,10 +73,7 @@ pub fn status_asks(path: &str) -> Vec<(String, String)> {
 pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Value> {
     use std::io::BufRead;
     let Ok(f) = File::open(path) else { return vec![] };
-    let mut out: Vec<Value> = vec![];
-    let mut reply: Option<(u64, String)> = None;   // the turn's latest text reply so far
-    let mut yours: Option<(String, usize)> = None;   // your latest message: its entry's uuid, where it is in `out`
-    let msg = |at: u64, role: &str, text: &str| serde_json::json!({ "at_ms": at, "role": role, "text": cut(text.trim(), 6000), "images": [] });
+    let mut chat = Chat::default();
     for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
         let Ok(e) = serde_json::from_str::<Value>(&line) else { continue };
         let at = stamp(&e);
@@ -86,18 +83,8 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
         if e.get("isSidechain").and_then(Value::as_bool) == Some(true) || e.get("isMeta").and_then(Value::as_bool) == Some(true) {
             continue;
         }
-        // Said by voice: Cue's prompt hook added the line asking for a short spoken answer to that message.
-        if said_by_voice(&e) {
-            if let Some((_, i)) = yours.as_ref().filter(|(uuid, _)| e.get("parentUuid").and_then(Value::as_str) == Some(uuid)) {
-                out[*i]["voice"] = Value::Bool(true);
-            }
-            continue;
-        }
-        // A status list asked for: another prompt hook added its ask to that message.
-        if let Some(ask) = status_ask(&e) {
-            if let Some((_, i)) = yours.as_ref().filter(|(uuid, _)| e.get("parentUuid").and_then(Value::as_str) == Some(uuid)) {
-                out[*i]["status_ask"] = Value::String(ask);
-            }
+        if let Some((key, note)) = hook_note(&e) {
+            chat.mark_yours(&e, key, note);
             continue;
         }
         let text = text_of(&e);
@@ -106,31 +93,72 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
             continue;
         }
         match e.get("type").and_then(Value::as_str) {
-            Some("assistant") => reply = Some((at, text)),
-            Some("user") => {
-                if let Some((t, r)) = reply.take() {
-                    out.push(msg(t, "agent", &r));
-                }
-                // A teammate's message (or its notice, which says nothing to show): not yours.
-                if text.starts_with("Another Claude session sent a message:") && text.contains("<teammate-message") {
-                    for (who, said) in teammate_messages(&text) {
-                        let mut m = msg(at, "peer", &said);
-                        m["from"] = Value::String(who);
-                        out.push(m);
-                    }
-                    continue;
-                }
-                yours = e.get("uuid").and_then(Value::as_str).map(|u| (u.to_string(), out.len()));
-                out.push(msg(at, "you", &text));
-            }
+            Some("assistant") => chat.reply = Some((at, text)),
+            Some("user") => chat.said(&e, at, &text),
             _ => {}
         }
     }
-    if let Some((t, r)) = reply {
-        out.push(msg(t, "agent", &r));
+    chat.last(limit)
+}
+
+/// What a prompt hook added to your message, as the field it sets on it: said by voice (Cue's prompt hook
+/// added the line asking for a short spoken answer), or a status list asked for (another hook added its ask).
+fn hook_note(e: &Value) -> Option<(&'static str, Value)> {
+    if said_by_voice(e) {
+        return Some(("voice", Value::Bool(true)));
     }
-    let skip = out.len().saturating_sub(limit);
-    out.into_iter().skip(skip).collect()
+    status_ask(e).map(|ask| ("status_ask", Value::String(ask)))
+}
+
+/// One message of the conversation as the chat shows it.
+fn chat_message(at: u64, role: &str, text: &str) -> Value {
+    serde_json::json!({ "at_ms": at, "role": role, "text": cut(text.trim(), 6000), "images": [] })
+}
+
+/// The conversation as `conversation_before` reads it, oldest first.
+#[derive(Default)]
+struct Chat {
+    out: Vec<Value>,
+    /// The turn's latest text reply so far.
+    reply: Option<(u64, String)>,
+    /// Your latest message: its entry's uuid, where it is in `out`.
+    yours: Option<(String, usize)>,
+}
+
+impl Chat {
+    /// Set `key` on your latest message, when `e` (a prompt hook's row) belongs to it.
+    fn mark_yours(&mut self, e: &Value, key: &str, note: Value) {
+        if let Some((_, i)) = self.yours.as_ref().filter(|(uuid, _)| e.get("parentUuid").and_then(Value::as_str) == Some(uuid)) {
+            self.out[*i][key] = note;
+        }
+    }
+
+    /// A user entry: the turn before it ends with its last reply, then a teammate's messages or yours.
+    fn said(&mut self, e: &Value, at: u64, text: &str) {
+        if let Some((t, r)) = self.reply.take() {
+            self.out.push(chat_message(t, "agent", &r));
+        }
+        // A teammate's message (or its notice, which says nothing to show): not yours.
+        if text.starts_with("Another Claude session sent a message:") && text.contains("<teammate-message") {
+            for (who, said) in teammate_messages(text) {
+                let mut m = chat_message(at, "peer", &said);
+                m["from"] = Value::String(who);
+                self.out.push(m);
+            }
+            return;
+        }
+        self.yours = e.get("uuid").and_then(Value::as_str).map(|u| (u.to_string(), self.out.len()));
+        self.out.push(chat_message(at, "you", text));
+    }
+
+    /// The last `limit` messages, the turn's reply still open included.
+    fn last(mut self, limit: usize) -> Vec<Value> {
+        if let Some((t, r)) = self.reply.take() {
+            self.out.push(chat_message(t, "agent", &r));
+        }
+        let skip = self.out.len().saturating_sub(limit);
+        self.out.into_iter().skip(skip).collect()
+    }
 }
 
 /// The last `n` human-readable turns: your prompts and Claude's text replies (no tool noise).
