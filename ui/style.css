@@ -436,6 +436,11 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .pill.soft.need { color: var(--deny); }
 .pill.soft .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
 .tm-chip.small { height: 18px; padding: 0 7px; font-size: 10.5px; }
+/* On a card's top line, beside the name and before the time and buttons: the chip is what gives way, inside its own
+   edge (its name to …, then its words), never past it onto the time. */
+.tm-chip.small { min-width: 0; overflow: hidden; }
+.tm-chip.small .tm-n { flex-shrink: 1000; }
+.tm-chip.small .tm-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* A script's output in its full view: terminal-dark, its lines as they came. */
 .bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
 .bg-out div { white-space: pre; }
@@ -1152,8 +1157,10 @@ button.auto-tg:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .crew-plan b { color: var(--ink); font-weight: 650; }
 /* Chips on the chat's title line: a session's agents (agents.js agentChips), or a relay agent's lead; then the packet
    card (an executor) or what the team needs from you (the lead). */
-.tm-chips { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
-.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+/* A chip gives way only by its name's … (never under 3 letters), so what it says never runs into the next one; in the
+   chat's header, fitHead takes chips away whole when even that doesn't fit. */
+.tm-chips { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; }
+.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; white-space: nowrap; flex: 0 1 auto; }
 .tm-n { overflow: hidden; text-overflow: ellipsis; min-width: 3ch; }
 button.tm-chip:hover { background: var(--panel-2); }
 .tm-chip.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
@@ -1499,11 +1506,10 @@ button.rv-st:hover { color: var(--ink); }
   .ap-head > .btn { padding: 0 9px; }
   .ap-head { gap: 6px; }
 }
-/* Narrowest (the smallest window): the role tag (the line below says whose it is) and the rename pencil
-   go, and the name shortens with … before any button is cut off. */
+/* Narrowest (the smallest window): the role tag (the line below says whose it is) and the rename pencil go
+   (the name shortens with … only as fitHead's last step, so it doesn't give way for the chips). */
 @container ap (max-width: 500px) {
   .ap-head > .role, .ap-head .rename-btn { display: none; }
-  .ap-head .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 /* When the top bar doesn't fit (fitTop in app.js adds these one by one). */
 .top[class*="tfit"] { gap: 8px; }
@@ -1514,13 +1520,17 @@ button.rv-st:hover { color: var(--ink); }
 .top.tfit4 .hlbl { display: none; }
 .top.tfit4 .hchip { padding: 0 10px; }
 .top:is(.tfit3, .tfit4) .pj-pinned { max-width: 110px; }
-/* When the header's buttons still don't fit (fitHead in app.js adds these one by one). */
-.ap-head.fit1 .l-long, .ap-head.fit2 .l-long, .ap-head.fit3 .l-long, .ap-head.fit4 .l-long { display: none; }
-.ap-head.fit1 .l-short, .ap-head.fit2 .l-short, .ap-head.fit3 .l-short, .ap-head.fit4 .l-short { display: inline; }
-.ap-head.fit2 > .dim, .ap-head.fit3 > .dim, .ap-head.fit4 > .dim { display: none; }
-.ap-head.fit3 > .pill, .ap-head.fit4 > .pill { display: none; }
-.ap-head.fit4 > .role, .ap-head.fit4 .rename-btn { display: none; }
-.ap-head.fit4 .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* When the header's buttons still don't fit (fitHead in board.js adds these one by one; each keeps the ones before). */
+.ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-long { display: none; }
+.ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-short { display: inline; }
+.ap-head:is(.fit2, .fit3, .fit4, .fit5, .fit6) > .dim { display: none; }
+.ap-head:is(.fit3, .fit4, .fit5, .fit6) > .pill { display: none; }
+/* "N agents ›": the Agents tab under the bar says the same */
+.ap-head:is(.fit4, .fit5, .fit6) .tm-chip[data-bg-tab] { display: none; }
+.ap-head:is(.fit5, .fit6) > .role, .ap-head:is(.fit5, .fit6) .rename-btn { display: none; }
+/* the rest of the chips (who needs you is in the Agents tab and under the chat too), and the name shortens */
+.ap-head.fit6 .tm-chips { display: none; }
+.ap-head.fit6 .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sx-l { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 24px; }
 .sx-item.exec .sx-l { padding-left: 0; }
 .sx-l.about { color: var(--ink); opacity: .8; }

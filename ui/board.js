@@ -925,10 +925,11 @@ function placeColors() {
   const r = pop.getBoundingClientRect(), btn = pop.previousElementSibling.getBoundingClientRect();
   pop.classList.toggle("up", r.bottom > box.bottom && btn.top - r.height - 6 >= box.top);
 }
-/** The chat header's buttons never get cut off: when they don't fit, it gives up room step by step
- *  (short labels, then the agent and model, then the "your turn" pill, then the role tag, and the
- *  name shortens). The CSS widths below can't know how many buttons a session has. */
-const FIT_STEPS = ["fit1", "fit2", "fit3", "fit4"];
+/** The chat header's buttons never get cut off and its chips never run into each other: when they don't fit, it
+ *  gives up room step by step (short labels, then the agent and model, then the "your turn" pill, then the
+ *  "N agents" chip, then the role tag, then the other chips, and the name shortens). The CSS widths can't know how
+ *  many buttons and chips a session has. */
+const FIT_STEPS = ["fit1", "fit2", "fit3", "fit4", "fit5", "fit6"];
 function fitHead() {
   const h = document.querySelector(".ap-head");
   if (!h) return;
