@@ -1,0 +1,1172 @@
+{
+ "now_ms": 1793984400000,
+ "window_ms": 1800000,
+ "settings": {
+  "history": {
+   "keep": 300
+  },
+  "notify": {
+   "finished": true,
+   "decisions": true
+  },
+  "pi": {
+   "gate": "dangerous"
+  },
+  "appearance": {
+   "mode": "system"
+  },
+  "quick": {
+   "phrases": [
+    "Commit",
+    "Go ahead",
+    "Think hard"
+   ]
+  },
+  "insights": {
+   "handoff": true,
+   "cache": true,
+   "queue": true,
+   "skills": {}
+  }
+ },
+ "ahead_watch": [],
+ "skill_handoffs": {},
+ "connections": {
+  "claude": {
+   "ok": true,
+   "events": [
+    "PermissionRequest",
+    "Stop",
+    "UserPromptSubmit",
+    "SessionEnd"
+   ]
+  },
+  "pi": {
+   "ok": true
+  }
+ },
+ "sessions": [
+  {
+   "session_id": "m0",
+   "project": "api-server",
+   "harness": "claude",
+   "cwd": "/Users/me/code/api-server",
+   "state": "working",
+   "since_ms": 1793984340000,
+   "prompt": "Step 0: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 0 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m1",
+   "project": "web-app",
+   "harness": "claude",
+   "cwd": "/Users/me/code/web-app",
+   "state": "waiting",
+   "since_ms": 1793983920000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983920000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983920000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m2",
+   "project": "order-engine",
+   "harness": "claude",
+   "cwd": "/Users/me/code/order-engine",
+   "state": "working",
+   "since_ms": 1793983500000,
+   "prompt": "Step 2: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m3",
+   "project": "data-pipeline",
+   "harness": "pi",
+   "cwd": "/Users/me/code/data-pipeline",
+   "state": "deciding",
+   "since_ms": 1793983080000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983080000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983080000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m4",
+   "project": "a-rather-long-project-name-for-the-row",
+   "harness": "claude",
+   "cwd": "/Users/me/code/a-rather-long-project-name-for-the-row",
+   "state": "agent",
+   "since_ms": 1793982660000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982660000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982660000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m5",
+   "project": "filings-bot",
+   "harness": "claude",
+   "cwd": "/Users/me/code/filings-bot",
+   "state": "working",
+   "since_ms": 1793982240000,
+   "prompt": "Step 5: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m6",
+   "project": "backtester",
+   "harness": "claude",
+   "cwd": "/Users/me/code/backtester",
+   "state": "waiting",
+   "since_ms": 1793981820000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981820000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981820000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 6 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m7",
+   "project": "alerts",
+   "harness": "pi",
+   "cwd": "/Users/me/code/alerts",
+   "state": "working",
+   "since_ms": 1793981400000,
+   "prompt": "Step 7: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m8",
+   "project": "docs-site",
+   "harness": "claude",
+   "cwd": "/Users/me/code/docs-site",
+   "state": "deciding",
+   "since_ms": 1793984280000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793984280000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793984280000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m9",
+   "project": "infra",
+   "harness": "claude",
+   "cwd": "/Users/me/code/infra",
+   "state": "agent",
+   "since_ms": 1793983860000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983860000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983860000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m10",
+   "project": "api-server",
+   "harness": "claude",
+   "cwd": "/Users/me/code/api-server",
+   "state": "working",
+   "since_ms": 1793983440000,
+   "prompt": "Step 10: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m11",
+   "project": "web-app",
+   "harness": "pi",
+   "cwd": "/Users/me/code/web-app",
+   "state": "waiting",
+   "since_ms": 1793983020000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983020000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983020000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m12",
+   "project": "order-engine",
+   "harness": "claude",
+   "cwd": "/Users/me/code/order-engine",
+   "state": "working",
+   "since_ms": 1793982600000,
+   "prompt": "Step 12: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 12 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m13",
+   "project": "data-pipeline",
+   "harness": "claude",
+   "cwd": "/Users/me/code/data-pipeline",
+   "state": "deciding",
+   "since_ms": 1793982180000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982180000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982180000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m14",
+   "project": "a-rather-long-project-name-for-the-row",
+   "harness": "claude",
+   "cwd": "/Users/me/code/a-rather-long-project-name-for-the-row",
+   "state": "agent",
+   "since_ms": 1793981760000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981760000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981760000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m15",
+   "project": "filings-bot",
+   "harness": "pi",
+   "cwd": "/Users/me/code/filings-bot",
+   "state": "working",
+   "since_ms": 1793981340000,
+   "prompt": "Step 15: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m16",
+   "project": "backtester",
+   "harness": "claude",
+   "cwd": "/Users/me/code/backtester",
+   "state": "waiting",
+   "since_ms": 1793984220000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793984220000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793984220000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m17",
+   "project": "alerts",
+   "harness": "claude",
+   "cwd": "/Users/me/code/alerts",
+   "state": "working",
+   "since_ms": 1793983800000,
+   "prompt": "Step 17: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m18",
+   "project": "docs-site",
+   "harness": "claude",
+   "cwd": "/Users/me/code/docs-site",
+   "state": "deciding",
+   "since_ms": 1793983380000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983380000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983380000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 18 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m19",
+   "project": "infra",
+   "harness": "pi",
+   "cwd": "/Users/me/code/infra",
+   "state": "agent",
+   "since_ms": 1793982960000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982960000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982960000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m20",
+   "project": "api-server",
+   "harness": "claude",
+   "cwd": "/Users/me/code/api-server",
+   "state": "working",
+   "since_ms": 1793982540000,
+   "prompt": "Step 20: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m21",
+   "project": "web-app",
+   "harness": "claude",
+   "cwd": "/Users/me/code/web-app",
+   "state": "waiting",
+   "since_ms": 1793982120000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982120000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982120000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m22",
+   "project": "order-engine",
+   "harness": "claude",
+   "cwd": "/Users/me/code/order-engine",
+   "state": "working",
+   "since_ms": 1793981700000,
+   "prompt": "Step 22: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m23",
+   "project": "data-pipeline",
+   "harness": "pi",
+   "cwd": "/Users/me/code/data-pipeline",
+   "state": "deciding",
+   "since_ms": 1793981280000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981280000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981280000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m24",
+   "project": "a-rather-long-project-name-for-the-row",
+   "harness": "claude",
+   "cwd": "/Users/me/code/a-rather-long-project-name-for-the-row",
+   "state": "agent",
+   "since_ms": 1793984160000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793984160000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793984160000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 24 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m25",
+   "project": "filings-bot",
+   "harness": "claude",
+   "cwd": "/Users/me/code/filings-bot",
+   "state": "working",
+   "since_ms": 1793983740000,
+   "prompt": "Step 25: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m26",
+   "project": "backtester",
+   "harness": "claude",
+   "cwd": "/Users/me/code/backtester",
+   "state": "waiting",
+   "since_ms": 1793983320000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983320000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983320000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m27",
+   "project": "alerts",
+   "harness": "pi",
+   "cwd": "/Users/me/code/alerts",
+   "state": "working",
+   "since_ms": 1793982900000,
+   "prompt": "Step 27: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m28",
+   "project": "docs-site",
+   "harness": "claude",
+   "cwd": "/Users/me/code/docs-site",
+   "state": "deciding",
+   "since_ms": 1793982480000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982480000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982480000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m29",
+   "project": "infra",
+   "harness": "claude",
+   "cwd": "/Users/me/code/infra",
+   "state": "agent",
+   "since_ms": 1793982060000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982060000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982060000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m30",
+   "project": "api-server",
+   "harness": "claude",
+   "cwd": "/Users/me/code/api-server",
+   "state": "working",
+   "since_ms": 1793981640000,
+   "prompt": "Step 30: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 30 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m31",
+   "project": "web-app",
+   "harness": "pi",
+   "cwd": "/Users/me/code/web-app",
+   "state": "waiting",
+   "since_ms": 1793981220000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981220000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981220000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m32",
+   "project": "order-engine",
+   "harness": "claude",
+   "cwd": "/Users/me/code/order-engine",
+   "state": "working",
+   "since_ms": 1793984100000,
+   "prompt": "Step 32: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m33",
+   "project": "data-pipeline",
+   "harness": "claude",
+   "cwd": "/Users/me/code/data-pipeline",
+   "state": "deciding",
+   "since_ms": 1793983680000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983680000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983680000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m34",
+   "project": "a-rather-long-project-name-for-the-row",
+   "harness": "claude",
+   "cwd": "/Users/me/code/a-rather-long-project-name-for-the-row",
+   "state": "agent",
+   "since_ms": 1793983260000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983260000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983260000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m35",
+   "project": "filings-bot",
+   "harness": "pi",
+   "cwd": "/Users/me/code/filings-bot",
+   "state": "working",
+   "since_ms": 1793982840000,
+   "prompt": "Step 35: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m36",
+   "project": "backtester",
+   "harness": "claude",
+   "cwd": "/Users/me/code/backtester",
+   "state": "waiting",
+   "since_ms": 1793982420000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982420000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982420000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 36 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m37",
+   "project": "alerts",
+   "harness": "claude",
+   "cwd": "/Users/me/code/alerts",
+   "state": "working",
+   "since_ms": 1793982000000,
+   "prompt": "Step 37: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m38",
+   "project": "docs-site",
+   "harness": "claude",
+   "cwd": "/Users/me/code/docs-site",
+   "state": "deciding",
+   "since_ms": 1793981580000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981580000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981580000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m39",
+   "project": "infra",
+   "harness": "pi",
+   "cwd": "/Users/me/code/infra",
+   "state": "agent",
+   "since_ms": 1793981160000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981160000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981160000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m40",
+   "project": "api-server",
+   "harness": "claude",
+   "cwd": "/Users/me/code/api-server",
+   "state": "working",
+   "since_ms": 1793984040000,
+   "prompt": "Step 40: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m41",
+   "project": "web-app",
+   "harness": "claude",
+   "cwd": "/Users/me/code/web-app",
+   "state": "waiting",
+   "since_ms": 1793983620000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983620000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983620000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m42",
+   "project": "order-engine",
+   "harness": "claude",
+   "cwd": "/Users/me/code/order-engine",
+   "state": "working",
+   "since_ms": 1793983200000,
+   "prompt": "Step 42: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 42 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m43",
+   "project": "data-pipeline",
+   "harness": "pi",
+   "cwd": "/Users/me/code/data-pipeline",
+   "state": "deciding",
+   "since_ms": 1793982780000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982780000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982780000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m44",
+   "project": "a-rather-long-project-name-for-the-row",
+   "harness": "claude",
+   "cwd": "/Users/me/code/a-rather-long-project-name-for-the-row",
+   "state": "agent",
+   "since_ms": 1793982360000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793982360000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793982360000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m45",
+   "project": "filings-bot",
+   "harness": "claude",
+   "cwd": "/Users/me/code/filings-bot",
+   "state": "working",
+   "since_ms": 1793981940000,
+   "prompt": "Step 45: rework the long-running migration so it can resume halfway through without redoing the batches already written",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m46",
+   "project": "backtester",
+   "harness": "claude",
+   "cwd": "/Users/me/code/backtester",
+   "state": "waiting",
+   "since_ms": 1793981520000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793981520000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793981520000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m47",
+   "project": "alerts",
+   "harness": "pi",
+   "cwd": "/Users/me/code/alerts",
+   "state": "working",
+   "since_ms": 1793981100000,
+   "prompt": "Step 47: fix the flaky test in the importer",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": null
+    }
+   ]
+  },
+  {
+   "session_id": "m48",
+   "project": "docs-site",
+   "harness": "claude",
+   "cwd": "/Users/me/code/docs-site",
+   "state": "deciding",
+   "since_ms": 1793983980000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983980000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983980000,
+     "end_ms": null
+    }
+   ],
+   "name": "session 48 with a name long enough to be cut short on its card"
+  },
+  {
+   "session_id": "m49",
+   "project": "infra",
+   "harness": "claude",
+   "cwd": "/Users/me/code/infra",
+   "state": "agent",
+   "since_ms": 1793983560000,
+   "prompt": "",
+   "segments": [
+    {
+     "kind": "working",
+     "start_ms": 1793982600000,
+     "end_ms": 1793983560000
+    },
+    {
+     "kind": "waiting",
+     "start_ms": 1793983560000,
+     "end_ms": null
+    }
+   ]
+  }
+ ],
+ "items": [
+  {
+   "id": "mi0",
+   "kind": "waiting",
+   "harness": "claude",
+   "session_id": "m1",
+   "cwd": "/Users/me/code/web-app",
+   "project": "web-app",
+   "message": "Finished step 0: the tests pass.",
+   "context": [],
+   "created_ms": 1793983920000,
+   "status": "pending",
+   "outcome": ""
+  },
+  {
+   "id": "mi1",
+   "kind": "waiting",
+   "harness": "claude",
+   "session_id": "m6",
+   "cwd": "/Users/me/code/backtester",
+   "project": "backtester",
+   "message": "Finished step 1: the tests pass.",
+   "context": [],
+   "created_ms": 1793981820000,
+   "status": "pending",
+   "outcome": ""
+  },
+  {
+   "id": "mi2",
+   "kind": "waiting",
+   "harness": "pi",
+   "session_id": "m11",
+   "cwd": "/Users/me/code/web-app",
+   "project": "web-app",
+   "message": "Finished step 2: the tests pass.",
+   "context": [],
+   "created_ms": 1793983020000,
+   "status": "pending",
+   "outcome": ""
+  },
+  {
+   "id": "mi3",
+   "kind": "waiting",
+   "harness": "claude",
+   "session_id": "m16",
+   "cwd": "/Users/me/code/backtester",
+   "project": "backtester",
+   "message": "Finished step 3: the tests pass.",
+   "context": [],
+   "created_ms": 1793984220000,
+   "status": "pending",
+   "outcome": ""
+  },
+  {
+   "id": "mi4",
+   "kind": "waiting",
+   "harness": "claude",
+   "session_id": "m21",
+   "cwd": "/Users/me/code/web-app",
+   "project": "web-app",
+   "message": "Finished step 4: the tests pass.",
+   "context": [],
+   "created_ms": 1793982120000,
+   "status": "pending",
+   "outcome": ""
+  },
+  {
+   "id": "mi5",
+   "kind": "waiting",
+   "harness": "claude",
+   "session_id": "m26",
+   "cwd": "/Users/me/code/backtester",
+   "project": "backtester",
+   "message": "Finished step 5: the tests pass.",
+   "context": [],
+   "created_ms": 1793983320000,
+   "status": "pending",
+   "outcome": ""
+  }
+ ],
+ "history": [
+  {
+   "id": "h1",
+   "kind": "permission",
+   "harness": "claude",
+   "project": "data-pipeline",
+   "tool_name": "Bash",
+   "tool_input": {
+    "command": "git status"
+   },
+   "status": "answered",
+   "outcome": "allowed",
+   "created_ms": 1793983500000,
+   "resolved_ms": 1793983560000
+  },
+  {
+   "id": "h2",
+   "kind": "permission",
+   "harness": "pi",
+   "project": "web-app",
+   "tool_name": "bash",
+   "tool_input": {
+    "command": "rm -rf node_modules"
+   },
+   "status": "answered",
+   "outcome": "denied — “use npm ci instead”",
+   "created_ms": 1793982480000,
+   "resolved_ms": 1793982600000
+  },
+  {
+   "id": "h3",
+   "kind": "waiting",
+   "harness": "claude",
+   "project": "agent-relay",
+   "message": "Packet 2 done.",
+   "status": "answered",
+   "outcome": "replied — “ship it”",
+   "created_ms": 1793980200000,
+   "resolved_ms": 1793980500000
+  }
+ ],
+ "tasks": {},
+ "tasks_spent": {},
+ "parked": [],
+ "ended": [
+  {
+   "session_id": "lost1",
+   "name": "",
+   "cwd": "/Users/me/code/billing",
+   "project": "billing",
+   "harness": "claude",
+   "machine": "",
+   "ended_ms": 1793973600000,
+   "thread": [
+    {
+     "role": "you",
+     "text": "Add the proration test.",
+     "at_ms": 1793972880000
+    },
+    {
+     "role": "agent",
+     "text": "Added `test_proration_midcycle`; it passes.",
+     "at_ms": 1793973240000
+    }
+   ]
+  },
+  {
+   "session_id": "lost2",
+   "name": "",
+   "cwd": "/Users/me/code/notes",
+   "project": "notes",
+   "harness": "pi",
+   "machine": "",
+   "ended_ms": 1793638800000,
+   "thread": [
+    {
+     "role": "agent",
+     "text": "Summarised the meeting into notes/2026-10-06.md.",
+     "at_ms": 1793638800000
+    }
+   ]
+  }
+ ]
+}
