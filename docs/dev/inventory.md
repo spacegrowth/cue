@@ -670,12 +670,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/speak.rs::helper` | Path::exists | 1 |
 | `uploads.rs::clipboard_image` | read | 1 |
 | `uploads.rs::clipboard_image` | remove_file | 2 |
+| `uploads.rs::new_file` | File::create_new | 1 |
 | `uploads.rs::on_machine` | read | 1 |
 | `uploads.rs::prune` | Path::metadata | 1 |
 | `uploads.rs::prune` | read_dir | 1 |
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
-| `uploads.rs::save` | write | 1 |
 
 ### db (124)
 
