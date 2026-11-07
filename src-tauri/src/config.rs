@@ -507,7 +507,7 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
         let backup = format!("{}.cue-backup-{}", path.display(), crate::model::now_ms());
         std::fs::copy(path, &backup).map_err(|e| format!("Couldn't back up {}: {e}", path.display()))?;
     }
-    let cfg = merge_hooks(cfg, hook, harness).map_err(|e| format!("{e} in {}", path.display()))?;
+    let cfg = merge_hooks(cfg, hook, harness, true).map_err(|e| format!("{e} in {}", path.display()))?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
@@ -516,7 +516,7 @@ fn add_hooks(path: &std::path::Path, hook: &str, harness: &str) -> Result<(), St
 
 /// An agent's settings with Cue's hook entries in: earlier Cue entries replaced, everything else kept.
 /// (No files: Connect writes the result here, + New → Machine on a machine.)
-pub fn merge_hooks(mut cfg: Value, hook: &str, harness: &str) -> Result<Value, String> {
+pub fn merge_hooks(mut cfg: Value, hook: &str, harness: &str, on_mac: bool) -> Result<Value, String> {
     if !cfg.is_object() {
         return Err("the settings aren't an object".into());
     }
@@ -534,7 +534,7 @@ pub fn merge_hooks(mut cfg: Value, hook: &str, harness: &str) -> Result<Value, S
         }
     }
     events.retain(|_, g| g.as_array().is_none_or(|l| !l.is_empty()));
-    for (event, group) in wanted(hook, harness) {
+    for (event, group) in wanted(hook, harness, on_mac) {
         let list = events.entry(event).or_insert_with(|| json!([]));
         if let Some(l) = list.as_array_mut() {
             l.push(group);
@@ -543,8 +543,9 @@ pub fn merge_hooks(mut cfg: Value, hook: &str, harness: &str) -> Result<Value, S
     Ok(cfg)
 }
 
-/// Cue's hook entries for one agent: event name, and the group that goes under it.
-fn wanted(hook: &str, harness: &str) -> Vec<(&'static str, Value)> {
+/// Cue's hook entries for one agent (`on_mac`: this Mac's, not a machine's): event name, and the group that
+/// goes under it.
+fn wanted(hook: &str, harness: &str, on_mac: bool) -> Vec<(&'static str, Value)> {
     // Claude Code waits as long as you take; Codex caps hooks (600 s by default).
     let wait = if harness == "claude" { 86400 } else { 3600 };
     // Quoted: the path has a space in it ("Application Support").
@@ -562,6 +563,10 @@ fn wanted(hook: &str, harness: &str) -> Vec<(&'static str, Value)> {
         want.push(("PreCompact", json!({ "hooks": [{ "type": "command", "command": cmd("compact"), "timeout": 5 }] })));
         // A permission prompt waiting in its terminal that Cue can't answer (a sandboxed command's network access).
         want.push(("Notification", json!({ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": cmd("notice"), "timeout": 5 }] })));
+        // On this Mac, where the guard is: Cue's tmux guard first on the session's PATH (terminal::tmux_guard).
+        if on_mac {
+            want.push(("SessionStart", json!({ "hooks": [{ "type": "command", "command": cmd("start"), "timeout": 5 }] })));
+        }
     }
     want
 }
@@ -603,7 +608,7 @@ pub fn refresh_hooks() {
     for (harness, file) in [("claude", format!("{home}/.claude/settings.json")), ("codex", format!("{home}/.codex/hooks.json"))] {
         let Some(cfg) = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { continue };
         let ours = |e: &str| cfg.pointer(&format!("/hooks/{e}")).is_some_and(|g| g.to_string().contains("cue-hook"));
-        let want = wanted(&hook, harness);
+        let want = wanted(&hook, harness, true);
         if want.iter().any(|(e, _)| ours(e)) && !want.iter().all(|(e, _)| ours(e)) {
             if let Err(e) = add_hooks(std::path::Path::new(&file), &hook, harness) {
                 eprintln!("cue: couldn't add new hooks for {harness}: {e}");
@@ -728,9 +733,12 @@ mod tests {
         let stop = v["hooks"]["Stop"].to_string();
         assert!(stop.contains("my-own-check") && stop.contains("/new/bin/cue-hook") && !stop.contains("/old/bin"));
         assert_eq!(v["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "guard");
-        for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure"] {
+        for e in ["PermissionRequest", "UserPromptSubmit", "SessionEnd", "StopFailure", "SessionStart"] {
             assert!(v["hooks"][e].to_string().contains("/new/bin/cue-hook"), "{e}");
         }
+        // The tmux guard is on this Mac only: a machine's settings get no SessionStart.
+        let machine = merge_hooks(json!({}), "$HOME/.cue/cue-hook", "claude", false).unwrap();
+        assert!(machine["hooks"]["SessionStart"].is_null() && !machine["hooks"]["Stop"].is_null());
         // Connecting again doesn't add a second copy.
         add_hooks(&path, "/new/bin/cue-hook", "claude").unwrap();
         let again: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();

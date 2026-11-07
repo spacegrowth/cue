@@ -9,6 +9,7 @@
 //!   end         SessionEnd         -> tell Cue the session is gone
 //!   compact     PreCompact         -> tell Cue it's compacting (Claude Code)
 //!   notice      Notification       -> a prompt is showing in its terminal that never reached Cue (Claude Code)
+//!   start       SessionStart       -> Cue's tmux guard first on the session's PATH (Claude Code, this Mac)
 //!
 //! Never gets in the agent's way: if Cue isn't running or anything goes wrong, it exits 0 with no
 //! output and the agent carries on with its normal terminal prompt.
@@ -67,6 +68,11 @@ pub fn main(args: &[String]) {
             Some((name, message)) => send_event(&p, harness, name, &message, None, "", voice),
             None => None,
         },
+        // SessionStart: Cue's tmux guard on the session's PATH (terminal::tmux_guard).
+        "start" => {
+            crate::terminal::tmux_guard::on_session_start();
+            None
+        }
         // StopFailure: the turn ended on an API error (a usage limit, an outage) instead of finishing.
         "failure" => send_failure(&p, harness),
         // The status line's input, piped here by the status line script: the plan's usage.
@@ -436,6 +442,7 @@ pub fn write_shim() {
     let Ok(exe) = std::env::current_exe() else { return };
     put_script("cue-hook", &format!("#!/bin/sh\n# Written by Cue on every launch: hands the agent's hook event to Cue.\nexec \"{}\" hook \"$@\"\n", exe.display()));
     put_script("cue-statusline", STATUS_LINE);
+    crate::terminal::tmux_guard::write();
 }
 
 /// Cue's pass-through status line on this Mac (config.rs puts it in Claude Code's settings): hands Claude
@@ -454,17 +461,21 @@ exit 0
 
 /// A script in Cue's bin folder, executable, replaced only when it changed.
 fn put_script(name: &str, body: &str) {
-    let dir = crate::server::cue_dir().join("bin");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join(name);
-    if std::fs::read_to_string(&path).ok().as_deref() == Some(body) {
+    put_executable(&crate::server::cue_dir().join("bin").join(name), body);
+}
+
+/// An executable script at `path` (its folder made), replaced only when it changed, never seen half-written.
+pub(crate) fn put_executable(path: &std::path::Path, body: &str) {
+    let Some(dir) = path.parent() else { return };
+    let _ = std::fs::create_dir_all(dir);
+    if std::fs::read_to_string(path).ok().as_deref() == Some(body) {
         return;
     }
-    let tmp = dir.join(format!("{name}.tmp"));
+    let tmp = path.with_extension("tmp");
     if std::fs::write(&tmp, body).is_ok() {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755));
-        let _ = std::fs::rename(&tmp, &path);
+        let _ = std::fs::rename(&tmp, path);
     }
 }
 

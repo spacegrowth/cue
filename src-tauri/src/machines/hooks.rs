@@ -182,7 +182,7 @@ pub fn setup(m: &Machine, tools: &Value) -> Result<Vec<String>, String> {
         let path = format!("$HOME/{file}");
         let current = machines::run(&m.host, &format!(r#"cat "{path}" 2>/dev/null; true"#))?;
         let cfg: Value = if current.trim().is_empty() { json!({}) } else { serde_json::from_str(&current).map_err(|e| format!("~/{file} on {} isn't valid JSON ({e}): fix it there, then Check again", m.name))? };
-        let mut merged = crate::config::merge_hooks(cfg.clone(), "$HOME/.cue/cue-hook", harness)?;
+        let mut merged = crate::config::merge_hooks(cfg.clone(), "$HOME/.cue/cue-hook", harness, false)?;
         // Claude Code's status line too: your command is saved first, so it keeps running from Cue's.
         let mut what = "hooks";
         if harness == "claude" {
