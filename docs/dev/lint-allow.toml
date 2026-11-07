@@ -1,0 +1,392 @@
+# What `cargo run -p xtask -- check` accepts today (see docs/dev/inventory.md). Every entry says why. An
+# entry nothing matches any more fails the check, so this list only shrinks as the code gets there.
+
+[store]
+# The lock no external call (file, db, process, XPC, socket) may happen under.
+lock = "the hub's store"
+
+[[sync_command]]
+name = "hide_window"
+reason = "AppKit: hides the window, which must happen on the main thread"
+
+[[sync_command]]
+name = "set_fullscreen"
+reason = "AppKit: window fullscreen, main thread only"
+
+[[sync_command]]
+name = "is_fullscreen"
+reason = "AppKit: reads the window's fullscreen state, main thread only"
+
+[[bare_lock]]
+file = "hub/send.rs"
+receiver = "gate"
+name = "typing gate"
+reason = "a session's typing gate is held for seconds by design and waited on with its own deadline and error (wait_turn), not locking::lock's 5 s limit"
+
+[[tmux_seam]]
+file = "terminal/focus.rs"
+function = "private_tmux"
+reason = "the seam itself: kills tmux servers left by earlier test runs, each by its own private socket (-S), never the default one"
+
+# Lock order today: B may be taken while A is held. A new edge fails the check until it's added here.
+
+[[lock_order]]
+from = "ASKED"
+to = "INDEX"
+reason = "leads::has_staged looks up a worktree in the index under its own answer cache; INDEX never takes ASKED"
+
+[[lock_order]]
+from = "AUTO_SEEN"
+to = "DB"
+reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
+
+[[lock_order]]
+from = "AUTO_SEEN"
+to = "REPOS"
+reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
+
+[[lock_order]]
+from = "DB"
+to = "REPOS"
+reason = "db::open regroups projects by repo root (live::repo_root) the first time the db is opened, under DB; REPOS is a leaf"
+
+[[lock_order]]
+from = "FEEDS"
+to = "WINDOWS"
+reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+
+[[lock_order]]
+from = "INDEX"
+to = "REMOTE"
+reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
+
+[[lock_order]]
+from = "INDEX"
+to = "REMOTE_PILEAD"
+reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
+
+[[lock_order]]
+from = "INDEX"
+to = "VERIFY"
+reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
+
+[[lock_order]]
+from = "actions STORE"
+to = "REPOS"
+reason = "actions key their state by repo root (live::repo_root) under their own lock; REPOS is a leaf"
+
+[[lock_order]]
+from = "actions WATCH"
+to = "REPOS"
+reason = "actions key their state by repo root (live::repo_root) under their own lock; REPOS is a leaf"
+
+[[lock_order]]
+from = "actions log"
+to = "WINDOWS"
+reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+
+[[lock_order]]
+from = "copies"
+to = "WINDOWS"
+reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+
+[[lock_order]]
+from = "extensions log"
+to = "WINDOWS"
+reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
+
+[[lock_order]]
+from = "open_terms"
+to = "pty master"
+reason = "term::foreground asks a terminal's PTY master for its foreground process with the terminal table held; the master lock is per terminal, a leaf"
+
+[[lock_order]]
+from = "the hub's store"
+to = "DB"
+reason = "db::park/unpark under the store (Hub::set_starred, Hub::changed); §2.5 forbids store → DB: Phase 2 moves these writes after the store is let go"
+
+[[lock_order]]
+from = "the hub's store"
+to = "INDEX"
+reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX never takes the store"
+
+[[lock_order]]
+from = "the hub's store"
+to = "REPOS"
+reason = "Sessions::mark → model::project_of_origin → live::repo_root under the store; Phase 2 (§2.4) caches project lookups outside it"
+
+[[lock_order]]
+from = "typing gate"
+to = "DB"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "DECLARED"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "INDEX"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "LEDGER"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "REPOS"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "TOPS"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "VERIFY"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "caches"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "quiet sessions"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "shown snapshot"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "the hub's store"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "what About has cost"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "what each session is about"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+[[lock_order]]
+from = "typing gate"
+to = "what the status list has cost"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
+
+# External calls reachable while the hub's store is held, today. Phase 2 burns this list down (§2.3, §2.4).
+
+[[store_io]]
+holder = "hub::Hub::changed"
+effect = "db"
+site = "hub::Hub::changed"
+reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
+
+[[store_io]]
+holder = "hub::Hub::notify_full"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::activity::Hub::failed"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::activity::Hub::on_event"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::activity::Hub::on_event"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::activity::Hub::refresh_activity"
+effect = "fs"
+site = "hub::activity::Hub::refresh_activity"
+reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
+
+[[store_io]]
+holder = "hub::asks::Hub::add_ask"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::asks::Hub::add_ask"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::asks::Hub::answer_terminal"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::asks::Hub::finish"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::asks::Hub::finish"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::asks::Hub::finish"
+effect = "db"
+site = "hub::history::push_history"
+reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
+
+[[store_io]]
+holder = "hub::asks::Hub::set_starred"
+effect = "db"
+site = "hub::asks::Hub::set_starred"
+reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
+
+[[store_io]]
+holder = "hub::asks::Hub::terminal_ask_with"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::asks::Hub::terminal_ask_with"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::asks::Hub::waiting_card"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::reviews::Hub::drain_reviews"
+effect = "db"
+site = "hub::reviews::Hub::drain_reviews"
+reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
+
+[[store_io]]
+holder = "hub::reviews::Hub::review"
+effect = "db"
+site = "hub::reviews::Hub::review"
+reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
+
+[[store_io]]
+holder = "hub::send::Hub::interrupt"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::send::Hub::interrupt"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::send::Hub::prompt_from_peer"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::send::Hub::prompt_from_you"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::send::Hub::reply"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::send::Hub::reply"
+effect = "db"
+site = "hub::history::push_history"
+reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
+
+[[store_io]]
+holder = "hub::send::Hub::send_saved"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::sessions::Hub::mark_state"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::sessions::Hub::resumed"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::sessions::Hub::resumed"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::sessions::Hub::started"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::sessions::Hub::started"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::sessions::Hub::sweep"
+effect = "fs"
+site = "hub::sessions::Hub::sweep"
+reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
+
+[[store_io]]
+holder = "hub::sessions::Hub::unparked"
+effect = "fs"
+site = "config::load"
+reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
+
+[[store_io]]
+holder = "hub::sessions::Hub::unparked"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
+
+[[store_io]]
+holder = "hub::sessions::Hub::your_turn_since"
+effect = "fs"
+site = "logs::live::find_root"
+reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
