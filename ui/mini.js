@@ -26,15 +26,15 @@
   }
   const newest = (a, b) => (!!a.back_ms - !!b.back_ms) || (a.back_ms ? a.back_ms - b.back_ms : b.created_ms - a.created_ms);
   /** Conversations first (in the order they came back), then newest first; parked sessions' finished turns stay in Need to decide. */
-  function needs() {
+  function needs(most = MAX) {
     const parked = new Set(state.sessions.filter((s) => s.later_ms).map((s) => s.session_id));
     const all = state.items.filter((i) => i.kind !== "waiting" || !parked.has(i.session_id));
     const talk = all.filter(talking).sort((a, b) => a.created_ms - b.created_ms);
     const rest = all.filter((i) => !talking(i)).sort(newest);
-    const shown = [...talk, ...rest].slice(0, MAX);
-    return { shown, talk: Math.min(talk.length, MAX), more: all.length - shown.length };
+    const shown = [...talk, ...rest].slice(0, most);
+    return { shown, talk: Math.min(talk.length, most), more: all.length - shown.length };
   }
-  /** Sessions at work with nothing waiting on you: newest to start first, five at most. A message to one is
+  /** Sessions at work with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
    *  queued (it reads it when it finishes its current step). */
   function working() {
     const waiting = new Set(state.items.map((i) => i.session_id));
@@ -62,19 +62,27 @@
   const sep = (n, i) => n && i === n ? `<div class="m-sep" role="separator"></div>` : "";
   const workRow = (s) => `<button class="m-row" data-open="${esc(s.session_id)}"><i class="m-dot work"></i><span class="m-name">${esc(nameOf(s.session_id, s.project))}</span><span class="m-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></button>`;
 
+  /** The rail: a dot per session that needs you (in conversation, a separator, newest first), then, under
+   *  another separator, a solid dot per session at work. */
   function dotsHtml() {
     const { shown, talk } = needs();
-    const on = (it) => m.shape === "chat" && it.session_id === m.open ? "on" : "";
-    return `<div class="m-panel m-dots">${shown.map((it, i) => sep(talk, i) + `<button class="m-dotb ${on(it)}" data-open="${esc(it.session_id)}" aria-label="${esc(name(it))}">${dot(it)}</button>`).join("")}</div>`;
+    const busy = working().slice(0, MAX);
+    const on = (sid) => m.shape === "chat" && sid === m.open ? "on" : "";
+    const btn = (sid, name, inner) => `<button class="m-dotb ${on(sid)}" data-open="${esc(sid)}" aria-label="${esc(name)}">${inner}</button>`;
+    const waits = shown.map((it, i) => sep(talk, i) + btn(it.session_id, name(it), dot(it))).join("");
+    const works = busy.map((s) => btn(s.session_id, nameOf(s.session_id, s.project), `<i class="m-dot work"></i>`)).join("");
+    return `<div class="m-panel m-dots">${waits}${waits && works ? `<div class="m-sep" role="separator"></div>` : ""}${works}</div>`;
   }
+  const anything = () => needs().shown.length > 0 || working().length > 0;
+  /** Hover: everything, what needs you (in conversation, a separator, newest first), then every session at work.
+   *  Taller than most of the screen, it scrolls inside. */
   function listHtml() {
-    const { shown, talk, more } = needs();
+    const { shown, talk } = needs(Infinity);
     const busy = working();
-    const head = shown.length ? `${state.items.length} need${state.items.length === 1 ? "s" : ""} you` : "Nothing needs you";
-    const more2 = more + Math.max(0, busy.length - MAX);
-    const work = busy.length ? `<div class="m-sub">WORKING · ${busy.length}</div>${busy.slice(0, MAX).map(workRow).join("")}` : "";
+    const head = shown.length ? `${shown.length} need${shown.length === 1 ? "s" : ""} you` : "Nothing needs you";
+    const work = busy.length ? `<div class="m-sub">WORKING · ${busy.length}</div>${busy.map(workRow).join("")}` : "";
     return `<div class="m-panel m-list"><div class="m-head"><b>${head}</b><span class="g"></span><button class="m-link" data-cue="">Open Cue</button></div>
-      ${shown.map((it, i) => sep(talk, i) + row(it)).join("")}${work}${more2 ? `<div class="m-foot-line">${more2} more in Cue</div>` : ""}</div>`;
+      <div class="m-rows">${shown.map((it, i) => sep(talk, i) + row(it)).join("")}${work}</div></div>`;
   }
   function islandHtml() {
     const { shown } = needs();
@@ -127,8 +135,9 @@
     const p = root.querySelector(".m-panel");
     const cap = Math.round(screen.height * CAP);
     document.documentElement.style.setProperty("--cap", `${cap}px`);
-    const empty = !NOTCH && m.shape === "quiet" && !needs().shown.length;
-    const w = empty ? 4 : WIDTH[m.shape] || WIDTH.quiet;   // nothing waiting: the rail is a hairline
+    document.documentElement.style.setProperty("--list-cap", `${Math.round(screen.height * 0.7)}px`);
+    const empty = !NOTCH && m.shape === "quiet" && !anything();
+    const w = empty ? 6 : WIDTH[m.shape] || WIDTH.quiet;   // nothing running at all: the rail is a thin strip
     const h = empty ? 200 : Math.min(p ? Math.ceil(p.getBoundingClientRect().height) : 30, m.shape === "chat" ? cap : 4000);
     const args = { w, h, show: true };
     const key = JSON.stringify(args);
@@ -141,7 +150,7 @@
     if (m.shape === "list") return listHtml();
     if (m.shape === "nod") return nodHtml();
     if (NOTCH) return islandHtml();
-    return needs().shown.length ? dotsHtml() : `<div class="m-panel m-hair"></div>`;
+    return anything() ? dotsHtml() : `<div class="m-panel m-hair"></div>`;
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {
@@ -280,6 +289,8 @@
     await T.event.listen("state", (e) => take(e.payload));
     // Ages move on with no new state: once a minute is enough for "4m".
     setInterval(() => { if (m.shape !== "chat") paint(); }, 60000);
+    // Cue's window came forward or went back, maybe on another display: placed again, on that one.
+    await T.event.listen("mini-place", () => { m.sized = ""; fit(); });
   }
   boot();
 }

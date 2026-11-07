@@ -11,7 +11,7 @@
 mod macos;
 
 use serde_json::Value;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// The mini window's label (its page asks for it by this name too).
@@ -27,11 +27,6 @@ pub(crate) enum Mode {
 
 /// The shape open now (Off: none).
 static OPEN: AtomicU8 = AtomicU8::new(Mode::Off as u8);
-/// Cue's own window is in front (its last focus event): the mini window waits, hidden. Kept from the events
-/// themselves: asked of the window just as it goes to the back, it can still say it's in front.
-static MAIN_FRONT: AtomicBool = AtomicBool::new(false);
-/// Its page has sized it at least once (a window never sized isn't shown: it would flash at 4 × 200).
-static SIZED: AtomicBool = AtomicBool::new(false);
 
 impl Mode {
     fn from_setting(v: Option<&str>) -> Mode {
@@ -62,7 +57,6 @@ pub(crate) fn apply(app: &AppHandle) {
         let _ = w.destroy();
     }
     OPEN.store(Mode::Off as u8, Ordering::SeqCst);
-    SIZED.store(false, Ordering::SeqCst);
     if want == Mode::Off || std::env::var_os("CUE_QUIET").is_some() {
         return;
     }
@@ -94,6 +88,12 @@ fn open_window(app: &AppHandle, mode: Mode) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The main display's height in points: AppKit counts heights up from its bottom edge.
+#[cfg(target_os = "macos")]
+fn primary_height(w: &tauri::WebviewWindow) -> f64 {
+    w.primary_monitor().ok().flatten().map(|m| points(&m).3).unwrap_or(0.0)
+}
+
 /// A display's left, top, width and height, in points.
 fn points(m: &tauri::Monitor) -> (f64, f64, f64, f64) {
     let s = m.scale_factor();
@@ -102,19 +102,14 @@ fn points(m: &tauri::Monitor) -> (f64, f64, f64, f64) {
 }
 
 /// The display the mini window goes on: the notch's island on the main display (the built-in one, with the
-/// notch); the rail on the display furthest right, so its edge is an outer one and never the seam between two.
-fn screen(w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64, f64, f64, f64)> {
+/// notch); the rail on the display Cue's own window is on (where you look for Cue), else the main display.
+fn screen(app: &AppHandle, w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64, f64, f64, f64)> {
     let main = w.primary_monitor().ok().flatten().map(|m| points(&m));
     if mode == Mode::Notch {
         return main;
     }
-    let all: Vec<_> = w.available_monitors().ok().unwrap_or_default().iter().map(points).collect();
-    rightmost(&all).or(main)
-}
-
-/// The display whose right edge is furthest right.
-fn rightmost(all: &[(f64, f64, f64, f64)]) -> Option<(f64, f64, f64, f64)> {
-    all.iter().copied().max_by(|a, b| (a.0 + a.2).total_cmp(&(b.0 + b.2)))
+    let cue = app.get_webview_window("main").and_then(|m| m.current_monitor().ok().flatten()).map(|m| points(&m));
+    cue.or(main)
 }
 
 /// Room kept free above and below the rail's panels: the menu bar, then a margin.
@@ -143,18 +138,21 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
         return win.hide().map_err(|e| e.to_string());
     }
     let mode = if OPEN.load(Ordering::SeqCst) == Mode::Notch as u8 { Mode::Notch } else { Mode::Rail };
-    let scr = screen(&win, mode).ok_or("no screen")?;
+    let scr = screen(&app, &win, mode).ok_or("no screen")?;
     let (w, h) = (w.clamp(1.0, scr.2), h.clamp(1.0, scr.3));
     let (x, y) = place(mode, scr, w, h);
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
-    win.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
-    win.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
-    SIZED.store(true, Ordering::SeqCst);
-    if !MAIN_FRONT.load(Ordering::SeqCst) {
-        win.show().map_err(|e| e.to_string())?;
+    // Grown or shrunk smoothly, in place (macOS animates the frame); elsewhere, at once.
+    #[cfg(target_os = "macos")]
+    macos::frame(&win, (x, y, w, h), primary_height(&win));
+    #[cfg(not(target_os = "macos"))]
+    {
+        win.set_size(tauri::LogicalSize::new(w, h)).map_err(|e| e.to_string())?;
+        win.set_position(tauri::LogicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     }
-    Ok(())
+    // Always shown, Cue's own window in front or not: it's where you look for Cue without going there.
+    win.show().map_err(|e| e.to_string())
 }
 
 /// The mini window takes the keyboard (you clicked into its box) or hands it back to the app you were in.
@@ -175,15 +173,11 @@ pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>)
     Ok(())
 }
 
-/// Cue's window came forward (hide the mini window) or went back (show it again, as its page last sized it).
-pub(crate) fn main_focused(app: &AppHandle, focused: bool) {
-    MAIN_FRONT.store(focused, Ordering::SeqCst);
-    let Some(win) = app.get_webview_window(LABEL) else { return };
-    if focused {
-        let _ = win.hide();
-    } else if SIZED.load(Ordering::SeqCst) {
-        let _ = win.show();
-    }
+/// Cue's window came forward or went back: it may be on another display now, and the rail goes on the one
+/// Cue's window is on. Its page places it again (mini_shape).
+pub(crate) fn main_focused(app: &AppHandle, _focused: bool) {
+    use tauri::Emitter;
+    let _ = app.emit_to(LABEL, "mini-place", ());
 }
 
 #[cfg(test)]
@@ -217,11 +211,9 @@ mod tests {
     }
 
     #[test]
-    fn the_rail_takes_the_outer_edge_of_the_display_furthest_right() {
-        let built_in = (0.0, 0.0, 1800.0, 1125.0);
+    fn on_a_display_left_of_or_above_another_it_still_takes_that_displays_own_right_edge() {
         let external = (1800.0, -567.0, 3008.0, 1692.0);
-        assert_eq!(rightmost(&[built_in, external]), Some(external));
-        assert_eq!(place(Mode::Rail, external, 28.0, 130.0).0, 1800.0 + 3008.0 - 28.0);
+        assert_eq!(place(Mode::Rail, external, 28.0, 130.0), (1800.0 + 3008.0 - 28.0, -567.0 + 1692.0 / 3.0));
     }
 
     #[test]
