@@ -120,6 +120,13 @@ test.describe("Settings", () => {
     expect(await cue.calls("update_check")).toHaveLength(2);
   });
 
+  test("Get beta builds with no beta out says the answer is stable's", async ({ cue, page }) => {
+    await cue.open("board-waiting", { flags: "nobeta=1" });
+    await page.keyboard.press(",");
+    await page.locator('.sheet [data-set="updates.beta"]').click();
+    await expect(page.locator(".sheet")).toContainText("You have the latest version. No beta is out right now, so this is the version everyone gets.");
+  });
+
   test("Esc closes Settings", async ({ page }) => {
     await expect(page.locator(".sheet")).toBeVisible();
     await page.keyboard.press("Escape");
