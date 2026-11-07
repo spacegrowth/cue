@@ -5,7 +5,6 @@ digraph locks {
   "AUTO_SEEN" -> "DB";
   "AUTO_SEEN" -> "folder facts";
   "DB" -> "folder facts";
-  "FEEDS" -> "WINDOWS";
   "INDEX" -> "REMOTE";
   "INDEX" -> "REMOTE_PILEAD";
   "INDEX" -> "VERIFY";

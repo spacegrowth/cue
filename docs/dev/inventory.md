@@ -15,9 +15,9 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
-| Lock declarations (static or field) | 86 |
-| Lock acquisitions | 198 |
-| Lock-graph edges | 41 |
+| Lock declarations (static or field) | 87 |
+| Lock acquisitions | 192 |
+| Lock-graph edges | 40 |
 | Spawn sites | 71 |
 | External calls: fs / db / process / notify / login / socket | 340 / 143 / 48 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
@@ -227,7 +227,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
 | `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,Feed>>>` | "HISTORY" (1 sites) |
 | `logs/steps/pi.rs::STORE` | `std::sync::OnceLock<Value>` | — |
-| `logs/steps/queries.rs::FEEDS` | `Mutex<Option<HashMap<String,Feed>>>` | "FEEDS" (14 sites) |
+| `logs/steps/queries.rs::Open.feed` | `Arc<Mutex<Feed>>` | "a session's feed" (5 sites) |
+| `logs/steps/queries.rs::FEEDS` | `Mutex<Option<HashMap<String,Open>>>` | "FEEDS" (3 sites) |
 | `logs/steps/windows.rs::WINDOWS` | `Mutex<Option<Windows>>` | "WINDOWS" (1 sites) |
 | `logs/steps/windows.rs::SEEN` | `Mutex<Option<HashMap<String,(Instant,u64)>>>` | "AUTO_SEEN" (1 sites) |
 | `logs/turns.rs::CATCHING_UP` | `std::sync::Mutex<Option<(u64,u64)>>` | "turns CATCHING_UP" (2 sites) |
@@ -270,7 +271,6 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "AUTO_SEEN" | "DB" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with`, takes it |
 | "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "DB" | "folder facts" |  | `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "FEEDS" | "WINDOWS" |  | `logs/steps/queries.rs::steps` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window` → `logs/steps/windows.rs::with_windows`, takes it |
 | "INDEX" | "REMOTE" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/close.rs::relay_close` → `leads/commands.rs::relay_for` → `leads/remote.rs::relay_bin_on`, takes it |
 | "INDEX" | "REMOTE_PILEAD" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/commands.rs::pilead_for` → `leads/remote.rs::pilead_bin_on`, takes it |
 | "INDEX" | "VERIFY" |  | `leads/index.rs::view` → `leads/verify.rs::verdict_of`, takes it |
