@@ -280,8 +280,8 @@ pub fn tmux_kill_pane(pane: &str) {
     let _ = run("tmux", &["kill-pane", "-t", pane]);
 }
 
-/// tmux's answer, trimmed; None if it failed.
-fn tmux_out(args: &[&str]) -> Option<String> {
+/// tmux's answer, trimmed; None if it failed or didn't answer in time.
+pub(crate) fn tmux_out(args: &[&str]) -> Option<String> {
     let out = capped(Command::new(bin("tmux")).args(args), 10).ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }

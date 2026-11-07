@@ -261,7 +261,7 @@ fn launch(sid: &str, target: &Target, host: Option<&str>, cols: u16, rows: u16, 
     let gen = next_gen();
     let (chain, view): (Vec<String>, Option<String>) = match target {
         Target::Pane(pane) => {
-            let (chain, view) = pane_chain(&tmux, pane, host, gen)?;
+            let (chain, view) = pane_chain(pane, host, gen)?;
             (chain, Some(view))
         }
         Target::Session(name) => (attach_args(name).ok_or(format!("“{name}” isn't a tmux session name Cue will attach to"))?, None),
@@ -336,7 +336,7 @@ fn view_prefix() -> &'static str {
 
 /// A pane's client: one round trip (over SSH for a machine's session) to find the pane, then the tmux
 /// command line for a view of Cue's own on its window, and that view's name.
-fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<(Vec<String>, String), String> {
+fn pane_chain(pane: &str, host: Option<&str>, gen: u64) -> Result<(Vec<String>, String), String> {
     // Where the pane is, and (the same trip) its window follows the size of whichever terminal was used
     // last (this one while you type here): one trip to the machine, not two. Two tmux commands, not one
     // line: tmux before 3.1 has no "latest" and fails the line, which lost the answer ("pane is gone").
@@ -348,9 +348,10 @@ fn pane_chain(tmux: &str, pane: &str, host: Option<&str>, gen: u64) -> Result<(V
     let where_ = match host {
         // Not reached: say so, not that the pane is gone.
         Some(h) => crate::machines::tmux_then(h, &ask, &also)?,
+        // Capped as every tmux trip of Cue's is: a server that doesn't answer fails the opening, never holds it.
         None => {
-            let out = std::process::Command::new(tmux).args(ask).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
-            let _ = std::process::Command::new(tmux).args(also).output();
+            let out = crate::terminal::focus::tmux_out(&ask).unwrap_or_default();
+            let _ = crate::terminal::focus::tmux_out(&also);
             out
         }
     };
