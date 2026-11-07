@@ -148,7 +148,18 @@ pub fn dictation() -> Option<Command> {
     Some(c)
 }
 
+/// A line from cue-voice saying how it is (`{"status": …}`), kept for Settings: true when it was one.
+fn noted_status(line: &Value) -> bool {
+    let Some(st) = line.get("status") else { return false };
+    *crate::locking::lock(&STATUS, "talk status") = st.clone();
+    true
+}
+
+/// cue-voice, shipped next to Cue's binary; in tests, the stand-in a test puts in its place (`voice_tests`).
 fn helper() -> Option<std::path::PathBuf> {
+    #[cfg(test)]
+    return voice_tests::helper();
+    #[cfg(not(test))]
     std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("cue-voice"))).filter(|p| p.exists())
 }
 
@@ -333,8 +344,7 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
             }
             line = from.recv() => {
                 let Some(line) = line else { return };
-                if let Some(st) = line.get("status") {
-                    *crate::locking::lock(&STATUS, "talk status") = st.clone();
+                if noted_status(&line) {
                     // Settings, if open, shows it now: turned on, it asked before cue-voice had said how it is (just
                     // the switch), and a download's progress moves.
                     use tauri::Emitter;
@@ -804,3 +814,7 @@ mod tests {
         assert_eq!(target(&json!({ "sessions": [] }), None), Value::Null);
     }
 }
+
+#[cfg(test)]
+#[path = "voice_tests.rs"]
+mod voice_tests;
