@@ -4,6 +4,7 @@ mod asks;
 mod caches;
 mod db_faults;
 mod db_history;
+mod insights;
 mod redraw;
 mod reviews;
 mod sessions;
