@@ -17,6 +17,7 @@ mod terminal;
 pub(crate) mod transcript;
 mod world;
 
+mod scenarios;
 mod tests;
 
 pub use agent::{Agent, Ask};
