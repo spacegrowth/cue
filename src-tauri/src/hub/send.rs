@@ -356,15 +356,7 @@ impl Hub {
         let gate = self.typing_gate(session_id);
         let _typing = wait_turn(&gate)?;
         self.set_later(session_id, false); // you wrote to it: decided
-        let (origin, busy, direct) = self.read(|st| {
-            // Its terminal is showing a permission prompt or a question: typing now would answer it.
-            if st.sessions.state(session_id).as_deref() == Some("deciding") {
-                return Err("it's asking you something first: answer that, then send".to_string());
-            }
-            // Compacting counts as busy: Claude Code holds what you type until it's done (that can take a minute).
-            let busy = st.sessions.state(session_id).as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;
-            Ok((st.sessions.origin(session_id), busy, st.subscribers.contains_key(session_id)))
-        })?;
+        let (origin, busy, direct) = self.read(|st| Self::send_state(st, session_id))?;
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.)
@@ -402,11 +394,7 @@ impl Hub {
             st.sessions.note_sent(session_id, text, &paths, t0, crate::config::context_keep());
             st.sessions.note_delivery(session_id, text, &delivery_step(&via, submitted));
             if busy {
-                // It's mid-turn: the agent reads this when it finishes its current step.
-                // The same message as the thread's copy (same time), so the chat shows it once, as queued.
-                let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
-                let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None };
-                st.sessions.set_queued(session_id, Some(q));
+                queue_typed(st, session_id, text, paths);
             }
             // "/compact" from the box: the same "Compacting" line as Compact in the ⋯ menu.
             if submitted && !busy && is_command(typed, "compact") {
@@ -421,6 +409,18 @@ impl Hub {
             return Ok(format!("via {via}; Cue is watching for it to take it"));
         }
         Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
+    }
+
+    /// Where a session is and whether it's busy (working or compacting: Claude Code holds what you type until
+    /// it's done, and that can take a minute), and whether it listens directly; an error while it's asking you
+    /// something (its terminal shows a permission prompt or a question: typing now would answer it).
+    fn send_state(st: &Store, session_id: &str) -> Result<(Option<Origin>, bool, bool), String> {
+        let state = st.sessions.state(session_id);
+        if state.as_deref() == Some("deciding") {
+            return Err("it's asking you something first: answer that, then send".to_string());
+        }
+        let busy = state.as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;
+        Ok((st.sessions.origin(session_id), busy, st.subscribers.contains_key(session_id)))
     }
 
     /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
@@ -639,6 +639,14 @@ struct Watch {
     last_enter: u64,
     /// Looks in a row that saw it still in its box.
     seen_in_box: u32,
+}
+
+/// A message typed into a session mid-turn, queued: the agent reads it when it finishes its current step. The
+/// same message as the thread's copy (same time), so the chat shows it once, as queued.
+fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
+    let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
+    let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None };
+    st.sessions.set_queued(session_id, Some(q));
 }
 
 /// Is `text` the command `/name` (with or without arguments)?
