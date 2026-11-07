@@ -280,11 +280,33 @@
     });
     // Hover opens the first session's chat after a short pause (a pointer passing by doesn't); the dots switch.
     // Leaving folds it back, unless you've clicked into it (then a click outside or Esc does).
+    // Where there are no dots to point at (the notch's island), hovering opens the first session's chat.
     document.body.addEventListener("mouseenter", () => {
       clearTimeout(m.timer);
-      if (m.shape === "quiet" || m.shape === "nod") m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid, false); }, HOVER_MS);
+      if ((m.shape === "quiet" || m.shape === "nod") && !root.querySelector(".m-dotb")) m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid, false); }, HOVER_MS);
     });
-    document.body.addEventListener("mouseleave", () => { clearTimeout(m.timer); if (m.shape === "chat" && !m.keyed) m.timer = setTimeout(() => closeChat(false), LEAVE_MS); });
+    document.body.addEventListener("mouseleave", () => { clearTimeout(m.timer); m.hoverSid = null; magnify(null); if (m.shape === "chat" && !m.keyed) m.timer = setTimeout(() => closeChat(false), LEAVE_MS); });
+    // Along the dots, as the Dock does: the one under the pointer grows, its neighbours a little. Resting on one
+    // opens its chat (the keyboard stays where it is); moving on to another switches to it, unless you're typing.
+    root.addEventListener("mousemove", (e) => {
+      magnify(e);
+      const b = e.target.closest(".m-dotb");
+      if (!b || b.dataset.open === m.hoverSid) return;
+      m.hoverSid = b.dataset.open;
+      clearTimeout(m.timer);
+      m.timer = setTimeout(() => { if (!m.keyed && m.open !== m.hoverSid) openChat(m.hoverSid, false); }, HOVER_MS);
+    });
+  }
+  /** Each dot's size from the pointer's distance to it, along the dots (down the rail, across the notch's head):
+   *  up to 2.2 times at the pointer, back to its own size 56 pt away. `e` null: all back to their own size. */
+  function magnify(e) {
+    for (const b of root.querySelectorAll(".m-dotb")) {
+      const r = b.getBoundingClientRect();
+      const d = !e ? Infinity : NOTCH ? Math.abs(e.clientX - (r.left + r.width / 2)) : Math.abs(e.clientY - (r.top + r.height / 2));
+      const grow = 1 + 1.2 * Math.max(0, 1 - d / 56);
+      const dot = b.querySelector(".m-dot");
+      if (dot) dot.style.transform = grow > 1.001 ? `scale(${grow.toFixed(3)})` : "";
+    }
   }
   /** The box grows with what you type: 5 lines on the rail, 3 at the notch, then it scrolls. */
   function grow(box) {
