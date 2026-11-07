@@ -218,8 +218,14 @@ fn open_at(path: &std::path::Path) -> rusqlite::Result<Connection> {
     c.execute_batch(SCHEMA)?;
     import_old_files(&c);
     let version = c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?;
+    migrate(&c, version)?;
+    Ok(c)
+}
+
+/// A database at `version` (its user_version) brought up to date, one version at a time.
+fn migrate(c: &Connection, version: i64) -> rusqlite::Result<()> {
     if version < 1 {
-        regroup_projects(&c);
+        regroup_projects(c);
     }
     // Turns read before Cue counted a Codex read's first call, and when it took Claude Code's own turns (a
     // background task reporting back) for answers of yours: they only hold what the logs say, so they're
@@ -266,7 +272,7 @@ fn open_at(path: &std::path::Path) -> rusqlite::Result<Connection> {
         let _ = c.execute("ALTER TABLE exchanges ADD COLUMN status_ask TEXT NOT NULL DEFAULT ''", []);
         c.pragma_update(None, "user_version", 8)?;
     }
-    Ok(c)
+    Ok(())
 }
 
 /// Once: a project used to be its folder's name; now it's the folder's git repository, so a worktree's

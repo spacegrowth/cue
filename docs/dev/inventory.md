@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 197 |
 | Lock-graph edges | 40 |
 | Spawn sites | 66 |
-| External calls: fs / db / process / notify / login / socket | 339 / 135 / 49 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 339 / 136 / 49 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -264,8 +264,8 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | Held | Taken |  | First seen |
 |---|---|---|---|
 | "AUTO_SEEN" | "DB" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with`, takes it |
-| "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
-| "DB" | "folder facts" |  | `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "AUTO_SEEN" | "folder facts" |  | `logs/steps/windows.rs::auto_compact_at` → `db/insights.rs::auto_compacts` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "DB" | "folder facts" |  | `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "FEEDS" | "WINDOWS" |  | `logs/steps/queries.rs::steps` → `logs/steps/feed.rs::Feed::open` → `logs/steps/feed.rs::start_of` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window` → `logs/steps/windows.rs::with_windows`, takes it |
 | "INDEX" | "REMOTE" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/close.rs::relay_close` → `leads/commands.rs::relay_for` → `leads/remote.rs::relay_bin_on`, takes it |
 | "INDEX" | "REMOTE_PILEAD" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/commands.rs::pilead_for` → `leads/remote.rs::pilead_bin_on`, takes it |
@@ -273,15 +273,15 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "actions STORE" | "folder facts" |  | `actions/mod.rs::record` → `actions/mod.rs::key` → `actions/mod.rs::mine_dir` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
 | "actions WATCH" | "folder facts" |  | `actions/mod.rs::watch` → `actions/mod.rs::key` → `actions/mod.rs::mine_dir` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
 | "answered saves" | "DB" |  | `hub/saves.rs::Hub::save_answered` → `hub/history.rs::Answered::save_unless_purged` → `db/items.rs::save_answered` → `db/mod.rs::with`, takes it |
-| "answered saves" | "folder facts" |  | `hub/saves.rs::Hub::save_answered` → `hub/history.rs::Answered::save_unless_purged` → `db/items.rs::save_answered` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "answered saves" | "folder facts" |  | `hub/saves.rs::Hub::save_answered` → `hub/history.rs::Answered::save_unless_purged` → `db/items.rs::save_answered` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "answered saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_answered` → `hub/store_access.rs::Hub::read`, takes it |
 | "config file" | "config in memory" |  | `config/cache.rs::refresh` → `config/cache.rs::kept_stamp`, takes it |
 | "open_terms" | "pty master" |  | `terminal/term.rs::foreground`, takes it |
 | "parked saves" | "DB" |  | `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with`, takes it |
-| "parked saves" | "folder facts" |  | `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "parked saves" | "folder facts" |  | `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "parked saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_parked` → `hub/store_access.rs::Hub::read`, takes it |
 | "review queue saves" | "DB" |  | `hub/saves.rs::Hub::save_queued_review` → `db/drafts.rs::queue_review` → `db/mod.rs::with`, takes it |
-| "review queue saves" | "folder facts" |  | `hub/saves.rs::Hub::save_queued_review` → `db/drafts.rs::queue_review` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "review queue saves" | "folder facts" |  | `hub/saves.rs::Hub::save_queued_review` → `db/drafts.rs::queue_review` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "review queue saves" | "the hub's store" |  | `hub/saves.rs::Hub::save_queued_review` → `hub/store_access.rs::Hub::read`, takes it |
 | "the hub's store" | "INDEX" |  | `hub/mod.rs::Hub::build_snapshot` in a closure hub::store_access::Hub::write runs holding the lock → `hub/mod.rs::Hub::store_view` → `hub/reviews.rs::Hub::reviews_view` → `leads/index.rs::is_reviewed`, takes it |
 | "the hub's store" | "config in memory" |  | `hub/asks.rs::Hub::add_ask` in a closure hub::store_access::Hub::write runs holding the lock → `config.rs::context_keep` → `config.rs::load` → `config/cache.rs::current`, takes it |
@@ -294,7 +294,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "answered saves" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::keep_reply` → `hub/saves.rs::Hub::save_answered`, takes it |
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/send.rs::Hub::images_there` → `uploads.rs::on_machine` → `machines/mod.rs::run_with_bytes` → `machines/mod.rs::ssh_command` → `machines/mod.rs::env_file`, takes it |
 | "typing gate" | "config in memory" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `config.rs::folders_put` → `config.rs::load` → `config/cache.rs::current`, takes it |
-| "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked` → `db/live.rs::park` → `db/mod.rs::with` → `db/schema.rs::open` → `db/schema.rs::open_at` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
 | "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::save_parked`, takes it |
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/send.rs::Hub::settle_typed` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "redraw wanted" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Redraws::mark`, takes it |
@@ -676,7 +676,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::prune` | remove_file | 1 |
 | `uploads.rs::save` | create_dir_all | 1 |
 
-### db (135)
+### db (136)
 
 | In | Call | Times |
 |---|---|---|
@@ -740,12 +740,13 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/mod.rs::with` | db::path | 1 |
 | `db/schema.rs::import_old_files` | db::put_exchange | 1 |
 | `db/schema.rs::import_old_files` | db::put_item | 2 |
+| `db/schema.rs::migrate` | db::regroup_projects | 1 |
 | `db/schema.rs::open` | db::keep_aside | 1 |
 | `db/schema.rs::open` | db::open_at | 2 |
 | `db/schema.rs::open` | db::path | 4 |
 | `db/schema.rs::open` | db::unreadable | 1 |
 | `db/schema.rs::open_at` | db::import_old_files | 1 |
-| `db/schema.rs::open_at` | db::regroup_projects | 1 |
+| `db/schema.rs::open_at` | db::migrate | 1 |
 | `db/search.rs::known_session_ids` | db::with | 1 |
 | `db/search.rs::search` | db::snippet | 2 |
 | `db/search.rs::search` | db::with | 1 |
@@ -892,7 +893,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/actions/mod.rs::tick` |  |  |
 | `src-tauri/src/actions/run.rs::start` |  |  |
 | `src-tauri/src/config.rs::checked` |  |  |
-| `src-tauri/src/db/schema.rs::open_at` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
