@@ -321,7 +321,7 @@ fn refresh_hook(m: &Machine) {
 }
 
 /// One SSH stream: runs until the connection drops or the machine is removed.
-fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
+pub(crate) fn stream(m: &Machine, stop: &std::sync::atomic::AtomicBool) -> Result<(), String> {
     refresh_hook(m);
     status_on_to(m);
     let mut child = machines::stream_command(&m.host, &watch_script()).stdout(Stdio::piped()).spawn().map_err(|e| e.to_string())?;

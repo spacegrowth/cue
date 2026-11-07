@@ -79,8 +79,10 @@ pub(crate) async fn update_install(app: tauri::AppHandle) -> Result<(), String> 
     install_update(app).await
 }
 
-pub(crate) async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
-    let Some(u) = find_update(&app).await? else { return Err("Cue is already up to date".into()) };
+pub(crate) async fn install_update<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    let Some(mut u) = find_update(&app).await? else { return Err("Cue is already up to date".into()) };
+    // The check's wait is for the release server's answer; the download takes as long as your line needs.
+    u.timeout = None;
     u.download_and_install(|_, _| {}, || {}).await.map_err(|e| format!("Couldn't install the update: {e}"))?;
     app.restart()
 }
@@ -91,14 +93,25 @@ pub(crate) fn offer_update(app: &tauri::AppHandle, u: &tauri_plugin_updater::Upd
     let _ = app.emit("update-ready", serde_json::json!({ "version": u.version, "notes": u.body }));
 }
 
+/// The longest a check for a newer Cue waits on the release server. Past it, it couldn't check: a network that
+/// takes the connection and never answers would otherwise hold that check for good, and with it the window's
+/// "Check for updates" and every later check in the background.
+const CHECK_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// A Cue built with the add-on never offers a release: releases are built without it, so installing
 /// one would drop the add-on. That Cue is updated by building it again.
-pub(crate) async fn find_update(app: &tauri::AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
+pub(crate) async fn find_update<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Option<tauri_plugin_updater::Update>, String> {
+    check_within(app, CHECK_FOR).await
+}
+
+/// `find_update`, waiting `wait` at most for the release server.
+pub(crate) async fn check_within<R: tauri::Runtime>(app: &tauri::AppHandle<R>, wait: std::time::Duration) -> Result<Option<tauri_plugin_updater::Update>, String> {
     if cfg!(feature = "ext") {
         return Ok(None);
     }
     use tauri_plugin_updater::UpdaterExt;
-    app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| format!("Couldn't check for updates: {e}"))
+    let updater = app.updater_builder().timeout(wait).build().map_err(|e| e.to_string())?;
+    updater.check().await.map_err(|e| format!("Couldn't check for updates: {e}"))
 }
 
 /// A link in a message: open it in your browser (web links); a document (PDF, Markdown, text, an

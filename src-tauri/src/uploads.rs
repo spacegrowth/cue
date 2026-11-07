@@ -45,11 +45,25 @@ pub fn save(images: &[Upload]) -> Result<Vec<Saved>, String> {
             }
             let raw = im.data.split_once(',').map(|(_, b)| b).unwrap_or(&im.data); // accept data: URLs
             let bytes = base64::engine::general_purpose::STANDARD.decode(raw.trim()).map_err(|e| format!("{}: {e}", im.name))?;
-            let path = d.join(format!("{stamp}-{n}.{}", ext(&im.mime)));
-            std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+            let (path, mut file) = new_file(&d, &format!("{stamp}-{n}"), ext(&im.mime))?;
+            std::io::Write::write_all(&mut file, &bytes).map_err(|e| e.to_string())?;
             Ok(Saved { path: path.to_string_lossy().to_string(), mime: im.mime.clone() })
         })
         .collect()
+}
+
+/// A file for an image named `stem`.`ext`, or `stem`-2.`ext` and on when that's taken: two saves in the same
+/// millisecond (a reply, and a message from another window) would otherwise write over each other's image.
+fn new_file(d: &std::path::Path, stem: &str, ext: &str) -> Result<(std::path::PathBuf, std::fs::File), String> {
+    for k in 1..=100 {
+        let path = d.join(if k == 1 { format!("{stem}.{ext}") } else { format!("{stem}-{k}.{ext}") });
+        match std::fs::File::create_new(&path) {
+            Ok(f) => return Ok((path, f)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Err(format!("too many images named {stem} at once"))
 }
 
 /// An image's type from its file name ("" when it isn't one Cue takes).
