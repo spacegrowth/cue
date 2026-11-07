@@ -6,23 +6,35 @@
 
 use serde_json::{json, Value};
 
-/// One dotted key read, changed and written back under the config lock. `f` gets the whole config as it is
-/// now and returns the key's new value (None: nothing to write) and what the caller wants back. Unchecked:
-/// a setting the window may save goes through `config::update`, which checks it as `config::set` does.
+/// Who a save is for: you, from the window (a setting you changed), or Cue itself (a tick, a hook, a hand-off).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum By {
+    You,
+    Cue,
+}
+
+/// How long a save waits for a config.json it can't read to be readable again: an editor writing it in place
+/// (cut short, then written) is done well within it.
+const SETTLE_MS: u64 = 200;
+
+/// One dotted key read, changed and written back under the config lock, as Cue saves its own (`By::Cue`).
+/// `f` gets the whole config as it is now and returns the key's new value (None: nothing to write) and what the
+/// caller wants back. Unchecked: a setting the window may save goes through `config::update`, which checks it
+/// as `config::set` does.
 pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>, R), String>) -> Result<R, String> {
+    save(key, By::Cue, f)
+}
+
+/// `update_with`, for a setting you changed in the window (`By::You`).
+pub fn update_yours<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>, R), String>) -> Result<R, String> {
+    save(key, By::You, f)
+}
+
+fn save<R>(key: &str, by: By, f: impl FnOnce(&Value) -> Result<(Option<Value>, R), String>) -> Result<R, String> {
     let _one = super::cache::hold_file();
     let path = super::path();
-    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost. One that
-    // isn't settings is kept aside before it's replaced: a hand edit with a typo isn't every setting gone.
-    let mut c = match super::cache::read(&path) {
-        super::cache::File::Settings(v) => v,
-        super::cache::File::Missing => json!({}),
-        super::cache::File::Unreadable(why) => {
-            let kept = keep_aside(&path)?;
-            eprintln!("cue: {} isn't valid settings ({why}): kept as {}, saving a new one", path.display(), kept.display());
-            json!({})
-        }
-    };
+    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost.
+    let mut c = current(&path, by)?;
     let (value, out) = f(&c)?;
     let Some(value) = value else { return Ok(out) };
     let (section, name) = key.split_once('.').ok_or_else(|| format!("{key} isn't a dotted key"))?;
@@ -33,6 +45,33 @@ pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>
     let stamp = replace(&path, &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
     super::cache::keep(&path, stamp, c);
     Ok(out)
+}
+
+/// The settings `path` holds now, for a save `by` you or Cue. One it can't read is read again a moment later
+/// (an editor caught mid-write has finished by then). Still unreadable: Cue's own save leaves it for you to put
+/// right; yours keeps it aside and starts a new file, so a hand edit with a typo isn't every setting gone.
+fn current(path: &std::path::Path, by: By) -> Result<Value, String> {
+    use super::cache::{read, File};
+    let why = match read(path) {
+        File::Settings(v) => return Ok(v),
+        File::Missing => return Ok(json!({})),
+        File::Unreadable(_) => {
+            #[cfg(test)]
+            tests::REREAD.with(|then| then.take().map(|f| f(path)));
+            crate::clock::sleep_ms(SETTLE_MS);
+            match read(path) {
+                File::Settings(v) => return Ok(v),
+                File::Missing => return Ok(json!({})),
+                File::Unreadable(why) => why,
+            }
+        }
+    };
+    if by == By::Cue {
+        return Err(format!("{} isn't valid settings ({why}): not saved until it's put right", path.display()));
+    }
+    let kept = keep_aside(path)?;
+    eprintln!("cue: {} isn't valid settings ({why}): kept as {}, saving a new one", path.display(), kept.display());
+    Ok(json!({}))
 }
 
 /// A copy of `path` beside it, as `<name>.unreadable-<ms>`, for a person to put right.
@@ -80,6 +119,8 @@ mod tests {
     thread_local! {
         /// What happens to the file the moment a save on this thread has put it in place (once).
         pub(super) static PLACED: Cell<Option<Then>> = const { Cell::new(None) };
+        /// What happens to an unreadable file between a save's first read of it and its second (once).
+        pub(super) static REREAD: Cell<Option<Then>> = const { Cell::new(None) };
     }
 
     #[test]
@@ -137,5 +178,84 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert!(changed, "the refresh saw the edit");
         assert_eq!(c["hand"]["edited"], true, "what's on disk now: {c}");
+    }
+
+    /// A Cue folder of the test's own (CUE_HOME, its turn at the test lock) whose config.json holds `bytes`,
+    /// read into memory; put back when it goes.
+    struct Home {
+        dir: std::path::PathBuf,
+        _g: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Home {
+        fn with(name: &str, bytes: &[u8]) -> Self {
+            let g = crate::db::test_turn();
+            let dir = std::env::temp_dir().join(format!("cue-cfg-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::env::set_var("CUE_HOME", &dir);
+            std::fs::write(dir.join("config.json"), bytes).unwrap();
+            crate::config::refresh();
+            Home { dir, _g: g }
+        }
+
+        fn file(&self) -> Vec<u8> {
+            std::fs::read(self.dir.join("config.json")).unwrap()
+        }
+
+        fn kept_aside(&self) -> Vec<Vec<u8>> {
+            std::fs::read_dir(&self.dir).unwrap().filter_map(Result::ok).filter(|e| e.file_name().to_string_lossy().contains(".unreadable-")).map(|e| std::fs::read(e.path()).unwrap()).collect()
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            let _ = std::fs::set_permissions(self.dir.join("config.json"), std::fs::Permissions::from_mode(0o644));
+            std::env::remove_var("CUE_HOME");
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// A byte that isn't UTF-8 makes config.json unreadable, not missing: your save keeps it aside, as it was.
+    #[test]
+    fn a_config_that_isnt_utf8_is_kept_aside_by_your_save_not_taken_for_none() {
+        let broken = b"{\"history\": {\"keep\": 120}, \"name\": \"caf\xe9\"}\n".to_vec();
+        let h = Home::with("utf8", &broken);
+        crate::config::set("tips.on", serde_json::json!(false)).unwrap();
+        assert_eq!(h.kept_aside(), [broken], "kept aside as it was");
+    }
+
+    /// A config.json Cue may not read: your save fails and the file is left as it is.
+    #[test]
+    fn a_config_cue_may_not_read_is_left_alone() {
+        let h = Home::with("perm", b"{\"history\": {\"keep\": 120}}\n");
+        std::fs::set_permissions(h.dir.join("config.json"), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let r = crate::config::set("tips.on", serde_json::json!(false));
+        std::fs::set_permissions(h.dir.join("config.json"), std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(r.is_err(), "{r:?}");
+        assert_eq!(h.file(), b"{\"history\": {\"keep\": 120}}\n", "left as it was");
+    }
+
+    /// Cue's own saves (a tick's, a hook's) never replace a config.json that isn't settings: that's yours to put
+    /// right, or to save over from the window.
+    #[test]
+    fn cues_own_save_never_replaces_a_broken_config() {
+        let h = Home::with("own", b"{\"tips\": {\"on\": fal");
+        let r = crate::config::remember("status.sessions", serde_json::json!(["s1"]));
+        assert!(r.as_ref().is_err_and(|e| e.contains("not saved until it's put right")), "{r:?}");
+        assert_eq!(h.file(), b"{\"tips\": {\"on\": fal", "untouched");
+        assert!(h.kept_aside().is_empty());
+    }
+
+    /// An editor writing config.json in place, caught mid-write by a save: read again a moment later, whole,
+    /// and saved with it; nothing kept aside.
+    #[test]
+    fn a_save_catching_an_editor_mid_write_waits_for_the_whole_file() {
+        let h = Home::with("midwrite", b"{\"tips\": {\"on\": fal");
+        REREAD.set(Some(Box::new(|path| std::fs::write(path, "{\"tips\": {\"on\": false}, \"hand\": {\"kept\": true}}\n").unwrap())));
+        crate::config::remember("status.sessions", serde_json::json!(["s1"])).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&h.file()).unwrap();
+        assert_eq!((saved["hand"]["kept"].clone(), saved["status"]["sessions"].clone()), (serde_json::json!(true), serde_json::json!(["s1"])));
+        assert!(h.kept_aside().is_empty());
     }
 }
