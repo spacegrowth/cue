@@ -86,6 +86,23 @@ test.describe("the board", () => {
     await cue.called("search", { q: "coupon" });
     await expect(page.getByText("checkout-flow").first()).toBeVisible();
   });
+
+  // The window is drawn whole on every change: a bar an element a stretch made a busy board's bars most of
+  // each draw (core.js bar). Its stretches are one masked layer a kind, and the one still going.
+  test("a session's bar is a few elements however many stretches it had", async ({ cue, page }) => {
+    await cue.change((st) => {
+      const s = st.sessions.find((x) => x.session_id === "relay"), t = Date.now() - 1_800_000;
+      s.segments = Array.from({ length: 300 }, (_, k) => ({ kind: k % 2 ? "working" : "waiting", start_ms: t + k * 5_990, end_ms: t + (k + 1) * 5_990 }));
+      s.segments.push({ kind: "waiting", start_ms: t + 300 * 5_990, end_ms: null });
+    });
+    await openCard(page, "n1");
+    const bar = page.locator(".ap-bar .bar");
+    await expect(bar.locator("i")).toHaveCount(3);
+    await expect(bar.locator("i.live")).toHaveCount(1);
+    const spans = (cls) => bar.locator(`i.layer.${cls}`).evaluate((el) => ((el.style.maskImage || el.style.webkitMaskImage).match(/#000|rgb\(0, 0, 0\)/g) || []).length);
+    expect(await spans("w")).toBe(300);   // each stretch is two opaque stops
+    expect(await spans("z")).toBe(300);
+  });
 });
 
 test.describe("Settings", () => {

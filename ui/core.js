@@ -744,20 +744,39 @@ function md(text, { runIn = null } = {}) {
 /** A stretch narrower than this share of the bar can't show its stripes (one stripe is about 3.5% of a Sessions card's
  *  bar): its outline closed round a sliver of stripe read as a "0". It's drawn solid in the stripes' color. */
 const BAR_THIN = 3.5;
-/** The 30-minute activity bar for a session: solid = working, striped = waiting on you. */
+/** A session's activity bar: its last 30 minutes, solid = working, striped = waiting on you, faint = idle. Each
+ *  kind of stretch is one layer the bar's width, masked to where that kind held, so a bar is a handful of
+ *  elements however many stretches it has: the window is drawn whole on every change, and an element a
+ *  stretch made a busy board's bars most of what each draw laid out (700 of them ten minutes into a soak,
+ *  every draw slower with each). The stretch still going stays an element of its own: its stripes march. */
 function bar(sid) {
   const s = sessionOf(sid);
   const w = state.window_ms || 1800000;
   const from = now() - w;
-  const segs = (s?.segments || []).map((g) => {
+  const layers = new Map();   // its classes -> [[left %, right %]]
+  let live = "";
+  for (const g of s?.segments || []) {
     const start = Math.max(g.start_ms, from);
-    const end = g.end_ms ?? now();
     const left = ((start - from) / w) * 100;
-    const width = Math.max(0.6, ((end - start) / w) * 100);
-    const live = g.end_ms == null ? " live" : "", thin = width < BAR_THIN ? " thin" : "";
-    return `<i class="${g.kind === "working" ? "w" : g.kind === "idle" ? "i" : "z"}${live}${thin}" style="left:${left.toFixed(2)}%;width:${Math.min(width, 100 - left).toFixed(2)}%"></i>`;
-  });
-  return `<div class="bar" title="last 30 min · solid = working, striped = waiting on you">${segs.join("")}<b class="now"></b></div>`;
+    const width = Math.min(Math.max(0.6, (((g.end_ms ?? now()) - start) / w) * 100), 100 - left);
+    const kind = g.kind === "working" ? "w" : g.kind === "idle" ? "i" : "z";
+    const thin = width < BAR_THIN ? " thin" : "";
+    if (g.end_ms == null) { live = `<i class="${kind} live${thin}" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%"></i>`; continue; }
+    const cls = kind === "z" ? kind + thin : kind;   // only stripes are drawn otherwise when thin
+    if (!layers.has(cls)) layers.set(cls, []);
+    layers.get(cls).push([left, left + width]);
+  }
+  const drawn = [...layers].map(([cls, spans]) => `<i class="${cls} layer" style="${barLayerStyle(cls, spans)}"></i>`);
+  return `<div class="bar" title="last 30 min · solid = working, striped = waiting on you">${drawn.join("")}${live}<b class="now"></b></div>`;
+}
+/** A bar layer's style: masked to its stretches (`spans`, % of the bar). Striped stretches each keep their
+ *  outline: its top and bottom are the layer's own, its two ends drawn here (`--ends`). */
+function barLayerStyle(cls, spans) {
+  const pc = (v) => `${v.toFixed(2)}%`;
+  const mask = `linear-gradient(to right,${spans.map(([a, b]) => `transparent ${pc(a)},#000 ${pc(a)},#000 ${pc(b)},transparent ${pc(b)}`).join(",")})`;
+  const line = (at, to) => `transparent ${at},var(--accent) ${at},var(--accent) ${to},transparent ${to}`;
+  const ends = cls === "z" ? `--ends:linear-gradient(to right,${spans.map(([a, b]) => `${line(pc(a), `calc(${pc(a)} + 1px)`)},${line(`calc(${pc(b)} - 1px)`, pc(b))}`).join(",")});` : "";
+  return `${ends}-webkit-mask-image:${mask};mask-image:${mask}`;
 }
 /** Above the big bar: how long each stretch lasted, over the ones wide enough to hold a label. */
 function barLabels(sid) {
