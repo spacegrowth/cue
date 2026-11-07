@@ -18,7 +18,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock declarations (static or field) | 82 |
 | Lock acquisitions | 197 |
 | Lock-graph edges | 40 |
-| Spawn sites | 66 |
+| Spawn sites | 69 |
 | External calls: fs / db / process / notify / login / socket | 339 / 136 / 49 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
@@ -361,6 +361,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `startup/tickers.rs::updates` | async_runtime::spawn | 1 |
 | `startup/tickers.rs::usage_file` | async_runtime::spawn | 1 |
 | `startup/watchers.rs::machines` | thread::spawn | 1 |
+| `talk.rs::Conversation::ask_by_the_way` | task::spawn_blocking | 1 |
+| `talk.rs::Conversation::ask_by_the_way` | tokio::spawn | 1 |
+| `talk.rs::Conversation::on_line` | tokio::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
 | `talk.rs::start` | async_runtime::spawn | 1 |
 | `talk.rs::start` | thread::spawn | 1 |
@@ -906,7 +909,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_sent_a_message_after_it_finished_is_at_work_again_until_it_reports_again` | test |  |
 | `src-tauri/src/logs/steps/tests/agents.rs::a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_finished` | test |  |
-| `src-tauri/src/talk.rs::run_loop` |  |  |
 | `src-tauri/src/terminal/focus.rs::type_into` |  |  |
 | `ui/app.js::(anonymous)` |  | 2 of them |
 | `ui/app.js::bindMain` |  |  |
