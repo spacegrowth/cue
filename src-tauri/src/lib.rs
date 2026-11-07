@@ -177,6 +177,10 @@ fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
         || terminal::shells::NOT_HERE.contains(&k)
 }
 
+// E2E_DEBUG_ONLY: a release build never carries the end-to-end tests' WebDriver server.
+#[cfg(all(feature = "e2e", not(debug_assertions)))]
+compile_error!("the `e2e` feature puts a WebDriver server in the app: debug builds only");
+
 pub fn run() {
     // Opened from the Finder or the Dock, an app gets no locale, and tmux without UTF-8 rewrites what it
     // prints (a tab in its answers as "_", "❯" as "_" in the terminal it draws). Cue and everything it
@@ -194,7 +198,12 @@ pub fn run() {
             std::env::remove_var(&k);
         }
     }
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // The end-to-end tests (tests/e2e) drive this window through a WebDriver server inside the app, on
+    // 127.0.0.1 at TAURI_WEBDRIVER_PORT. Only a debug build with the `e2e` feature has it (see E2E_DEBUG_ONLY).
+    #[cfg(feature = "e2e")]
+    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
+    let app = builder
         .manage(dictation::Dictation::default())
         .manage(terminal::speak::Speak::default())
         .plugin(tauri_plugin_notification::init())

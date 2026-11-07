@@ -29,6 +29,9 @@ axum = { version = "0.8", features = ["ws"], optional = true }
 qrcode = { version = "0.14", default-features = false, features = ["svg"], optional = true }
 jsonwebtoken = { version = "9", optional = true }
 vt100 = { version = "0.16", optional = true }
+# Only for the end-to-end tests (`e2e` feature, debug builds only): a WebDriver server inside the app that
+# tests/e2e drives the real window with. lib.rs refuses to compile it into a release build.
+tauri-plugin-wdio-webdriver = { version = "=1.5.1", optional = true }
 
 [profile.release]
 # File and line for every address, kept out of the app: rustc writes them to cue.dSYM next to the binary
@@ -49,3 +52,6 @@ block2 = "0.6"
 [features]
 # The add-on in src-tauri/ext/ (not part of this repo); install.sh turns it on when that folder is there.
 ext = ["dep:axum", "dep:qrcode", "dep:jsonwebtoken", "dep:vt100"]
+# The end-to-end tests' driver (tests/e2e/run.sh builds with it). Off by default; a release build with it on
+# fails to compile.
+e2e = ["dep:tauri-plugin-wdio-webdriver"]
