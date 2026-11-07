@@ -5,7 +5,7 @@
 //! the order handed in: the newest live sessions replace older ones not yet written (each save writes the
 //! store as it is, so the latest is all that counts), and the rest stays where it was handed in, so a session
 //! deleted then resumed is saved again, and one saved then deleted stays deleted. Without the app (tests, the
-//! World) the writing is done where it's handed in, so each test reads the database right after.
+//! World), or if the writer's thread couldn't start, the writing is done where it's handed in.
 //!
 //! The writer keeps what the last save wrote (`LiveMarks`) and writes only the sessions that changed since,
 //! and which sessions were deleted, so nothing of theirs from before then (an answered card, the record of
@@ -63,31 +63,54 @@ impl Queue {
     }
 }
 
-#[derive(Default)]
+/// How the writer's thread is started (a test's can refuse, as the system can).
+type Spawn = fn(Box<dyn FnOnce() + Send>) -> std::io::Result<()>;
+
+fn spawn_writer(run: Box<dyn FnOnce() + Send>) -> std::io::Result<()> {
+    std::thread::Builder::new().name("cue-db-writer".into()).spawn(run).map(drop)
+}
+
 pub(super) struct LiveWrites {
     queue: Mutex<Queue>,
     /// Wakes the writer (work handed in) and whoever waits for it to be done (`flush`).
     wake: Condvar,
     /// What the writer keeps: only it takes this (or, without a writer thread, whoever writes).
     written: Mutex<Written>,
-    worker: OnceLock<()>,
+    /// Whether the writer's thread runs: started at the first threaded hand-in, once.
+    worker: OnceLock<bool>,
+    spawn: Spawn,
+}
+
+impl Default for LiveWrites {
+    fn default() -> Self {
+        Self { queue: Default::default(), wake: Default::default(), written: Default::default(), worker: Default::default(), spawn: spawn_writer }
+    }
 }
 
 impl LiveWrites {
-    /// `job` written: by the writer thread when `threaded` (started at the first), here otherwise.
+    /// `job` written: by the writer thread when `threaded` (started at the first), here otherwise, and here
+    /// too if the thread couldn't start (nothing waits on a writer that isn't there).
     pub(super) fn hand(self: &Arc<Self>, job: Job, threaded: bool) {
         if job.is_empty() {
             return;
         }
-        if !threaded {
+        if !threaded || !self.writer_runs() {
             return self.write(job);
         }
-        self.worker.get_or_init(|| {
-            let me = self.clone();
-            let _ = std::thread::Builder::new().name("cue-db-writer".into()).spawn(move || me.run());
-        });
         crate::locking::lock(&self.queue, "db writes").push(job);
         self.wake.notify_all();
+    }
+
+    /// The writer's thread, started if it isn't yet: whether it runs.
+    fn writer_runs(self: &Arc<Self>) -> bool {
+        *self.worker.get_or_init(|| {
+            let me = self.clone();
+            let started = (self.spawn)(Box::new(move || me.run()));
+            if let Err(e) = &started {
+                eprintln!("cue: the database writer couldn't start ({e}): saves are written where they're made");
+            }
+            started.is_ok()
+        })
     }
 
     /// Returns once everything handed in so far is written (quitting: nothing changed is lost).
@@ -249,6 +272,23 @@ mod tests {
         w.hand(Job { ended: vec![(15, session("s")), (25, session("t"))], ..Default::default() }, false);
         assert!(crate::db::ended_session("s").is_none(), "deleted after it ended");
         assert!(crate::db::ended_session("t").is_some());
+    }
+
+    /// The writer's thread can't start: each job is written where it's handed in, and `flush` doesn't wait
+    /// on a writer that isn't there.
+    #[test]
+    fn without_a_writer_thread_jobs_are_written_where_handed_in_and_flush_returns() {
+        let _db = Db::new("nothread");
+        let w = Arc::new(LiveWrites { spawn: |_| Err(std::io::Error::other("no threads left")), ..Default::default() });
+        w.hand(Job { answered: vec![answered("a", "s", 10)], ..Default::default() }, true);
+        let (done_tx, done) = std::sync::mpsc::channel();
+        let flushing = w.clone();
+        std::thread::spawn(move || {
+            flushing.flush();
+            let _ = done_tx.send(());
+        });
+        assert!(done.recv_timeout(std::time::Duration::from_secs(5)).is_ok(), "flush waited on a writer that never started");
+        assert!(crate::db::history(50).iter().any(|i| i.id == "a"));
     }
 
     /// Work waiting for the writer: in the order handed in, the newest live sessions replacing older ones.

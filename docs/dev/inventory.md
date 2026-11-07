@@ -192,7 +192,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (1 sites) |
-| `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<()>` | — |
+| `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
 | `hub/redraw.rs::Redraws.dirty` | `Mutex<bool>` | "redraw wanted" (3 sites) |
 | `hub/redraw.rs::Redraws.worker` | `OnceLock<()>` | — |
@@ -334,7 +334,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
 | `hub/cache_tick.rs::Hub::hand_off_due` | thread::spawn | 1 |
-| `hub/live_writes.rs::LiveWrites::hand` | Builder::spawn | 1 |
+| `hub/live_writes.rs::spawn_writer` | Builder::spawn | 1 |
 | `hub/mod.rs::Hub::later` | thread::spawn | 1 |
 | `hub/redraw.rs::Hub::draw_on_worker` | Builder::spawn | 1 |
 | `hub/shown.rs::Shown::rebuild_at` | Builder::spawn | 1 |
