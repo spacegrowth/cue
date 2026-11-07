@@ -781,6 +781,44 @@ pub fn insight_events_of(session_id: &str) -> Vec<(String, String, String)> {
     }).unwrap_or_default()
 }
 
+/// A query's answer kept in memory, so the window's every redraw doesn't ask the database: read again after a
+/// write to its table (`stale`), or once it's a minute old (it can depend on the time). A read that raced a
+/// write isn't kept: the write's generation moved on meanwhile.
+struct Kept<T> {
+    generation: std::sync::atomic::AtomicU64,
+    kept: Mutex<Option<(u64, std::time::Instant, T)>>,
+}
+
+impl<T: Clone> Kept<T> {
+    const fn new() -> Self {
+        Self { generation: std::sync::atomic::AtomicU64::new(0), kept: Mutex::new(None) }
+    }
+
+    fn get(&self, read: impl FnOnce() -> T) -> T {
+        use std::sync::atomic::Ordering::SeqCst;
+        let generation = self.generation.load(SeqCst);
+        if let Some((g, at, v)) = &*crate::locking::lock(&self.kept, "a kept db answer") {
+            if *g == generation && at.elapsed() < std::time::Duration::from_secs(60) {
+                return v.clone();
+            }
+        }
+        let v = read();
+        let mut kept = crate::locking::lock(&self.kept, "a kept db answer");
+        if self.generation.load(SeqCst) == generation {
+            *kept = Some((generation, std::time::Instant::now(), v.clone()));
+        }
+        v
+    }
+
+    fn stale(&self) {
+        self.generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// `handoffs()` and `ahead_watched()`, kept (see `Kept`).
+static HANDOFFS: Kept<Value> = Kept::new();
+static AHEAD_WATCHED: Kept<Vec<String>> = Kept::new();
+
 /// A session sent its hand-off skill (or Cue's own): it's offered "Continue in a new session" until it does.
 /// `resume`: the skill takes "resume" for the new session; otherwise Cue's own message starts it. A note
 /// seen before is forgotten (this hand-off writes its own; an older one, written before `sent_ms`, isn't taken again).
@@ -788,12 +826,14 @@ pub fn insight_events_of(session_id: &str) -> Vec<(String, String, String)> {
 pub fn handoff_sent(session_id: &str, skill: &str, resume: bool, ahead: u8) {
     with(|c| c.execute("INSERT INTO handoffs (session_id, skill, sent_ms, resume, ahead) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(session_id) DO UPDATE SET skill = ?2, sent_ms = ?3, resume = ?4, next_session = '', continued_ms = 0, note = '', note_ms = 0, ahead = ?5",
         params![session_id, skill, now_ms() as i64, resume, ahead]));
+    HANDOFFS.stale();
 }
 
 /// A hand-off written ahead that you didn't continue from (you replied in its session): gone, so its
 /// session is offered hand-offs as before.
 pub fn handoff_drop(session_id: &str) {
     with(|c| c.execute("DELETE FROM handoffs WHERE session_id = ?1", params![session_id]));
+    HANDOFFS.stale();
 }
 
 /// "Hand off if I don't come back" on (or off) for a session.
@@ -803,15 +843,19 @@ pub fn ahead_watch(session_id: &str, on: bool) {
     } else {
         with(|c| c.execute("DELETE FROM ahead_watch WHERE session_id = ?1", params![session_id]));
     }
+    AHEAD_WATCHED.stale();
 }
 
 /// The sessions with "Hand off if I don't come back" on.
 pub fn ahead_watched() -> Vec<String> {
-    with(|c| {
-        let mut q = c.prepare("SELECT session_id FROM ahead_watch")?;
-        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-    }).unwrap_or_default()
+    AHEAD_WATCHED.get(|| {
+        with(|c| {
+            let mut q = c.prepare("SELECT session_id FROM ahead_watch")?;
+            let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+        })
+        .unwrap_or_default()
+    })
 }
 
 /// A session wrote its hand-off note (`note`: its path as its log names it; `at_ms`: when, by the log).
@@ -826,11 +870,13 @@ pub fn handoff_noted(session_id: &str, skill: &str, note: &str, at_ms: u64, fres
     } else {
         with(|c| c.execute("UPDATE handoffs SET note = ?2, note_ms = ?3 WHERE session_id = ?1", params![session_id, note, at_ms as i64]));
     }
+    HANDOFFS.stale();
 }
 
 /// It continued in `next`: the link between the two.
 pub fn handoff_continued(session_id: &str, next: &str) {
     with(|c| c.execute("UPDATE handoffs SET next_session = ?2, continued_ms = ?3 WHERE session_id = ?1", params![session_id, next, now_ms() as i64]));
+    HANDOFFS.stale();
 }
 
 /// One session's hand-off, as kept (see the handoffs table).
@@ -860,6 +906,10 @@ pub fn handoff(session_id: &str) -> Option<Handoff> {
 
 /// Hand-offs of the last 30 days: session → { skill, sent_ms, next, continued_ms, resume, note_ms, ahead }.
 pub fn handoffs() -> Value {
+    HANDOFFS.get(read_handoffs)
+}
+
+fn read_handoffs() -> Value {
     let since = now_ms().saturating_sub(30 * 24 * 3600 * 1000) as i64;
     let rows = with(|c| {
         let mut q = c.prepare("SELECT session_id, skill, sent_ms, next_session, continued_ms, resume, note_ms, ahead FROM handoffs WHERE sent_ms >= ?1")?;
@@ -1098,6 +1148,8 @@ pub fn hold(held: std::sync::mpsc::Sender<()>, release: std::sync::mpsc::Receive
 #[cfg(test)]
 pub fn reset() {
     *crate::locking::lock(&DB, "DB") = None;
+    HANDOFFS.stale();
+    AHEAD_WATCHED.stale();
 }
 
 /// How many exchanges the log holds for a session.

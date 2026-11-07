@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 135 (3 sync) |
-| Lock declarations (static or field) | 78 |
-| Lock acquisitions | 188 |
+| Lock declarations (static or field) | 79 |
+| Lock acquisitions | 190 |
 | Lock-graph edges | 38 |
 | Spawn sites | 62 |
-| External calls: fs / db / process / notify / login / socket | 336 / 119 / 53 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -185,6 +185,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `config/cache.rs::FILE` | `Mutex<()>` | "config file" (3 sites) |
 | `config/mac.rs::Kept.facts` | `RwLock<Option<Facts>>` | "what macOS says" (2 sites) |
 | `db.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
+| `db.rs::Kept.kept` | `Mutex<Option<(u64,std::time::Instant,T)>>` | "a kept db answer" (2 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hub/mod.rs::Hub.typing` | `Mutex<HashMap<String,std::sync::Arc<Mutex<()>>>>` | "typing gates" (1 sites) |
 | `hub/saves.rs::SaveLocks.review_queue` | `Mutex<()>` | "review queue saves" (1 sites) |
@@ -666,7 +667,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `uploads.rs::save` | create_dir_all | 1 |
 | `uploads.rs::save` | write | 1 |
 
-### db (119)
+### db (124)
 
 | In | Call | Times |
 |---|---|---|
@@ -676,6 +677,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `commands.rs::reread` | db::stale_commands | 1 |
 | `commands.rs::reread_all` | db::stale_commands | 1 |
 | `db.rs::add_set_aside` | db::with | 1 |
+| `db.rs::ahead_watch` | db::stale | 1 |
 | `db.rs::ahead_watch` | db::with | 2 |
 | `db.rs::ahead_watched` | db::with | 1 |
 | `db.rs::all_commands` | db::with | 1 |
@@ -688,12 +690,15 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db.rs::drafts` | db::with | 1 |
 | `db.rs::ended_session` | db::with | 1 |
 | `db.rs::handoff` | db::with | 1 |
+| `db.rs::handoff_continued` | db::stale | 1 |
 | `db.rs::handoff_continued` | db::with | 1 |
 | `db.rs::handoff_counts` | db::with | 1 |
+| `db.rs::handoff_drop` | db::stale | 1 |
 | `db.rs::handoff_drop` | db::with | 1 |
+| `db.rs::handoff_noted` | db::stale | 1 |
 | `db.rs::handoff_noted` | db::with | 3 |
+| `db.rs::handoff_sent` | db::stale | 1 |
 | `db.rs::handoff_sent` | db::with | 1 |
-| `db.rs::handoffs` | db::with | 1 |
 | `db.rs::history` | db::with | 1 |
 | `db.rs::import_old_files` | db::put_exchange | 1 |
 | `db.rs::import_old_files` | db::put_item | 2 |
@@ -707,6 +712,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db.rs::park` | db::with | 1 |
 | `db.rs::parked` | db::with | 1 |
 | `db.rs::queue_review` | db::with | 1 |
+| `db.rs::read_handoffs` | db::with | 1 |
 | `db.rs::review_queue` | db::with | 1 |
 | `db.rs::rewrite_paths` | db::with | 1 |
 | `db.rs::save_answered` | db::put_item | 1 |
