@@ -305,6 +305,8 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .sw.z { background: repeating-linear-gradient(45deg, var(--accent) 0 3px, var(--panel) 3px 6px); box-shadow: inset 0 0 0 1px var(--accent); }
 .sw.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
 @media (prefers-reduced-motion: reduce) { .bar i.z.live, .sw.z.live { animation: none; } }
+/* core.js BAR_THIN: too short a stretch for its stripes, in their color */
+.bar i.z.thin { background: var(--accent); box-shadow: none; animation: none; }
 .working .bar { background: color-mix(in srgb, var(--on-bg-muted) 20%, transparent); }
 .working .bar i.w { background: var(--on-bg-muted); }
 .bar i.i { background: color-mix(in srgb, var(--muted) 30%, transparent); }
@@ -436,6 +438,11 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .pill.soft.need { color: var(--deny); }
 .pill.soft .dot-live { display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px; }
 .tm-chip.small { height: 18px; padding: 0 7px; font-size: 10.5px; }
+/* On a card's top line, beside the name and before the time and buttons: the chip is what gives way, inside its own
+   edge (its name to …, then its words), never past it onto the time. */
+.tm-chip.small { min-width: 0; overflow: hidden; }
+.tm-chip.small .tm-n { flex-shrink: 1000; }
+.tm-chip.small .tm-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* A script's output in its full view: terminal-dark, its lines as they came. */
 .bg-out { margin-left: 8px; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 6px 10px; font: 11px/1.55 var(--mono); overflow: auto; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
 .bg-out div { white-space: pre; }
@@ -683,7 +690,10 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .st-dim { color: var(--muted); }
 .st-toggle .st-dim { font-weight: 400; }   /* the cost beside the switch's name: a note, not part of the name */
 .st-chev { flex: none; align-self: stretch; padding: 0 10px 0 4px; border: 0; background: none; color: inherit; font-size: 15px; line-height: 1; opacity: 0.85; cursor: pointer; }
-.st-drawer { user-select: text; -webkit-user-select: text; cursor: text; position: absolute; top: 100%; left: 0; right: 0; max-height: 60vh; overflow-y: auto; padding: 10px 12px; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; font-size: 12.5px; box-shadow: var(--shadow); }
+.st-drawer { user-select: text; -webkit-user-select: text; cursor: text; position: absolute; top: 100%; left: 0; right: 0; max-height: 60vh; display: flex; flex-direction: column; padding: 10px 12px; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; font-size: 12.5px; box-shadow: var(--shadow); }
+/* Its steps scroll when they don't fit; the switch and the cost under them stay in view. */
+.st-drawer > .st-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.st-drawer > :not(.st-scroll) { flex: none; }
 .st-panel:has(> .st-drawer:not(.closing)) :is(.st-head, .st-bar) { border-radius: 10px 10px 0 0; }   /* the list hangs from the line: one shape; the shape follows the list itself, so it can't stay behind */
 /* It unrolls down from the line, and rolls back up into it. */
 .st-drawer.slide { animation: stUnroll 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
@@ -929,6 +939,12 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .nrow.on .btn { background: transparent; color: var(--on-sel); border-color: color-mix(in srgb, var(--on-sel) 35%, transparent); }
 .nrow.on .btn.primary { background: var(--on-sel); color: var(--sel); border-color: var(--on-sel); }
 .nrow-top { display: flex; align-items: center; gap: 8px; font-size: 12.5px; min-width: 0; }
+/* board.js cardTop: who it is takes the line, its time and buttons sit at the right end; when they don't both fit
+   with a readable name (7.5em of it), the time and buttons wrap to a line of their own, still at the right. The two
+   keep the room between them a spacer with a gap each side gave. */
+.nrow-top:has(> .nrow-side) { flex-wrap: wrap; gap: 6px 16px; }
+.nrow-who { display: flex; align-items: center; gap: 8px; flex: 1 1 7.5em; min-width: 0; }
+.nrow-side { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
 .nrow-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The name stays on one line (Later, the pin and × take the room); "your turn" shortens first. */
 .nrow-top .proj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 2.6em; flex: 0 1 auto; }
@@ -945,6 +961,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .working .x-clear:hover { opacity: 1; background: color-mix(in srgb, var(--on-bg) 14%, transparent); color: var(--on-bg); }
 .nrow-text { font-size: 12.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .nrow-text.mono { font: 12px/1.45 var(--mono); }
+/* core.js cmdWords: each word of a command kept whole on its line, unless it's wider than the line */
+.cmd-w { display: inline-block; max-width: 100%; vertical-align: top; }
 .nrow-acts { display: flex; gap: 6px; }
 .nrow-acts .btn { flex: 1; height: 28px; }
 .nrow-acts.wrap { flex-wrap: wrap; }
@@ -1049,7 +1067,7 @@ kbd { font: 600 10.5px var(--mono); padding: 2px 6px; border-radius: 5px; backgr
 .set-title { font-weight: 650; }
 .set-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .set-line { display: block; }   /* a row's sub on lines of its own (Progress → What it has cost) */
-.set-sub code { font: 11.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
+.set-sub code { font: 11.5px var(--mono); background: var(--panel-2); padding: 1px 5px; border-radius: 5px; white-space: nowrap; }   /* a command or path stays whole, never split at its dashes */
 .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--panel-2); flex: none; }
 .seg button { padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; }
 .seg button.on { background: var(--accent); color: var(--on-accent); }
@@ -1152,8 +1170,10 @@ button.auto-tg:hover { box-shadow: inset 0 0 0 1px var(--muted); }
 .crew-plan b { color: var(--ink); font-weight: 650; }
 /* Chips on the chat's title line: a session's agents (agents.js agentChips), or a relay agent's lead; then the packet
    card (an executor) or what the team needs from you (the lead). */
-.tm-chips { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
-.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+/* A chip gives way only by its name's … (never under 3 letters), so what it says never runs into the next one; in the
+   chat's header, fitHead takes chips away whole when even that doesn't fit. */
+.tm-chips { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; }
+.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; white-space: nowrap; flex: 0 1 auto; }
 .tm-n { overflow: hidden; text-overflow: ellipsis; min-width: 3ch; }
 button.tm-chip:hover { background: var(--panel-2); }
 .tm-chip.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
@@ -1188,6 +1208,7 @@ button.rv-st:hover { color: var(--ink); }
 .tc-row:first-child { border-top: 0; }
 .tc-row > span:first-child { flex: 1; min-width: 0; }
 .tc-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+.tc-foot:first-child { margin-top: 0; padding-top: 0; border-top: 0; }   /* alone (only the plan): no rule over nothing */
 /* On the board: a lead's executors inside its card, as a small tree. */
 .team-tree { margin: 9px -2px -2px; padding-top: 4px; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
 .tn { position: relative; padding: 5px 0 5px 18px; font-size: 12.5px; border-radius: 6px; }
@@ -1299,7 +1320,9 @@ button.rv-st:hover { color: var(--ink); }
 .col.split.col-waiting { overflow-y: auto; padding-bottom: 16px; }
 .col.col-waiting > .sec { flex: none; max-height: none; }
 .col.col-waiting .sec-body { overflow: visible; }
-.col.col-waiting > .sec > .col-head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 4px 0 6px; margin: -4px 0 -6px; }
+/* Its band reaches 4px above the text, held there by the margin; stuck at the same offset, so the heading lines up
+   with ACTIVE and SESSIONS (stuck at 0, the band's top sat at the column's top and pushed the text 4px down). */
+.col.col-waiting > .sec > .col-head { --band: 4px; position: sticky; top: calc(-1 * var(--band)); z-index: 2; background: var(--bg); padding: var(--band) 0 6px; margin: calc(-1 * var(--band)) 0 -6px; }
 .sec-waiting .sec-body { padding: 0 2px 4px; margin: 0 -2px; }
 /* Waiting in two groups: IN CONVERSATION, then OLDEST FIRST; a conversation card says why it's there. */
 .sec-waiting .col-sub { margin: 6px 2px 2px; }
@@ -1499,11 +1522,10 @@ button.rv-st:hover { color: var(--ink); }
   .ap-head > .btn { padding: 0 9px; }
   .ap-head { gap: 6px; }
 }
-/* Narrowest (the smallest window): the role tag (the line below says whose it is) and the rename pencil
-   go, and the name shortens with … before any button is cut off. */
+/* Narrowest (the smallest window): the role tag (the line below says whose it is) and the rename pencil go
+   (the name shortens with … only as fitHead's last step, so it doesn't give way for the chips). */
 @container ap (max-width: 500px) {
   .ap-head > .role, .ap-head .rename-btn { display: none; }
-  .ap-head .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 /* When the top bar doesn't fit (fitTop in app.js adds these one by one). */
 .top[class*="tfit"] { gap: 8px; }
@@ -1514,13 +1536,17 @@ button.rv-st:hover { color: var(--ink); }
 .top.tfit4 .hlbl { display: none; }
 .top.tfit4 .hchip { padding: 0 10px; }
 .top:is(.tfit3, .tfit4) .pj-pinned { max-width: 110px; }
-/* When the header's buttons still don't fit (fitHead in app.js adds these one by one). */
-.ap-head.fit1 .l-long, .ap-head.fit2 .l-long, .ap-head.fit3 .l-long, .ap-head.fit4 .l-long { display: none; }
-.ap-head.fit1 .l-short, .ap-head.fit2 .l-short, .ap-head.fit3 .l-short, .ap-head.fit4 .l-short { display: inline; }
-.ap-head.fit2 > .dim, .ap-head.fit3 > .dim, .ap-head.fit4 > .dim { display: none; }
-.ap-head.fit3 > .pill, .ap-head.fit4 > .pill { display: none; }
-.ap-head.fit4 > .role, .ap-head.fit4 .rename-btn { display: none; }
-.ap-head.fit4 .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* When the header's buttons still don't fit (fitHead in board.js adds these one by one; each keeps the ones before). */
+.ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-long { display: none; }
+.ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-short { display: inline; }
+.ap-head:is(.fit2, .fit3, .fit4, .fit5, .fit6) > .dim { display: none; }
+.ap-head:is(.fit3, .fit4, .fit5, .fit6) > .pill { display: none; }
+/* "N agents ›": the Agents tab under the bar says the same */
+.ap-head:is(.fit4, .fit5, .fit6) .tm-chip[data-bg-tab] { display: none; }
+.ap-head:is(.fit5, .fit6) > .role, .ap-head:is(.fit5, .fit6) .rename-btn { display: none; }
+/* the rest of the chips (who needs you is in the Agents tab and under the chat too), and the name shortens */
+.ap-head.fit6 .tm-chips { display: none; }
+.ap-head.fit6 .proj { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sx-l { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 24px; }
 .sx-item.exec .sx-l { padding-left: 0; }
 .sx-l.about { color: var(--ink); opacity: .8; }

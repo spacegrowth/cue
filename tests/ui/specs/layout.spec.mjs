@@ -1,0 +1,137 @@
+// Layout: nothing on screen sits on top of something else or is cut off by its box. The screenshots catch a
+// change; these say what's wrong in words, and keep saying it if a baseline is ever rewritten over a bug.
+// Each check measures in the page in one go, so a redraw (they come as steps land) can't fall between two reads.
+import { test, expect } from "./cue.mjs";
+
+// The smallest the window goes (tauri.conf.json minWidth).
+const NARROWEST = { width: 900, height: 600 };
+const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
+const openLead = async (page) => { await openCard(page, "n1"); await page.locator(".active-pane .rv-row").first().waitFor(); };
+
+/** What's wrong with the layout under each of `sel`, as sentences ([] when nothing is): `checks` names what to measure,
+ *  run in the page. inside: [part, box] (each `part` under it lies inside its nearest `box`, or the matched element
+ *  itself when `box` is ""); apart: a selector whose matches mustn't overlap one another. Half a pixel's give for
+ *  subpixel layout. */
+function layoutProblems(page, sel, checks) {
+  return page.evaluate(([sel, checks]) => {
+    const out = [];
+    const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+    const say = (el) => `${el.className || el.tagName} "${el.textContent.trim().slice(0, 30)}"`;
+    const rect = (el) => el.getBoundingClientRect();
+    for (const root of document.querySelectorAll(sel)) {
+      if (!shown(root)) continue;
+      for (const [part, box] of checks.inside || []) {
+        for (const el of root.querySelectorAll(part)) {
+          if (!shown(el)) continue;
+          const b = box ? el.parentElement.closest(box) : root, r = rect(el), o = rect(b);
+          if (r.left < o.left - 0.5 || r.top < o.top - 0.5 || r.right > o.right + 0.5 || r.bottom > o.bottom + 0.5) out.push(`${say(el)} sticks out of ${say(b)}`);
+        }
+      }
+      for (const part of checks.apart || []) {
+        const els = [...root.querySelectorAll(part)].filter(shown);
+        for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
+          const a = rect(els[i]), b = rect(els[j]);
+          if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5) out.push(`${say(els[i])} overlaps ${say(els[j])}`);
+        }
+      }
+    }
+    return out;
+  }, [sel, checks]);
+}
+/** A line of chips, tags and buttons: its parts (and their parts: a card's top line groups who it is and its time and
+ *  buttons) apart, each inside `box` (a card's × reaches into the card's padding, so a card's top line is measured
+ *  against the card), and each chip's words inside the chip. */
+const LINE = (box) => ({
+  apart: [":scope > *", ":scope > * > *", ".tm-chip"],
+  inside: [[":scope > *", box], [":scope > * > *", box], [".tm-chip > *", ".tm-chip"]],
+});
+/** The words of what `sel` shows that are split over two lines, by where each word's letters land. */
+const splitWords = (page, sel) => page.evaluate((sel) => {
+  const out = [];
+  for (const el of document.querySelectorAll(sel)) {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+      for (const m of t.data.matchAll(/\S+/g)) {
+        const r = document.createRange();
+        r.setStart(t, m.index);
+        r.setEnd(t, m.index + m[0].length);
+        if (new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size > 1) out.push(m[0]);
+      }
+    }
+  }
+  return out;
+}, sel);
+
+test("a lead's chat opens with its first review row in full view", async ({ cue, page }) => {
+  await cue.open("relay-review", { frozen: true });
+  await openLead(page);
+  expect(await layoutProblems(page, ".rv-rows", { inside: [[".rv-row:first-child", ""]] })).toEqual([]);
+});
+
+for (const [size, viewport] of [["", null], [" at the narrowest window", NARROWEST]]) {
+  test(`a lead's chat header: its chips and buttons never run into each other${size}`, async ({ cue, page }) => {
+    if (viewport) await page.setViewportSize(viewport);
+    await cue.open("relay-review", { frozen: true });
+    await openLead(page);
+    expect(await layoutProblems(page, ".ap-head", LINE(""))).toEqual([]);
+  });
+}
+
+for (const [scenario, size, viewport] of [["board-waiting", "", null], ["relay-review", "", null], ["board-waiting", " at the narrowest window", NARROWEST]]) {
+  test(`${scenario}: every Waiting card's top line keeps its name, chips, time and buttons apart and inside the card${size}`, async ({ cue, page }) => {
+    if (viewport) await page.setViewportSize(viewport);
+    await cue.open(scenario, { frozen: true });
+    expect(await layoutProblems(page, ".sec-waiting .nrow-top", LINE(".nrow"))).toEqual([]);
+  });
+}
+
+test("at the narrowest window a command on its card wraps between its words, never inside one", async ({ cue, page }) => {
+  await page.setViewportSize(NARROWEST);
+  await cue.open("board-waiting", { frozen: true });
+  await expect(page.locator(".nrow-text.mono")).not.toHaveCount(0);
+  expect(await splitWords(page, ".nrow-text.mono")).toEqual([]);
+});
+
+test("a waiting stretch too short for its stripes is drawn solid, not as an outlined sliver", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  // One stripe of the pattern runs 6 / sin 45° ≈ 8.5 px along the bar.
+  const slivers = await page.evaluate(() => [...document.querySelectorAll(".bar i.z")]
+    .filter((el) => el.getBoundingClientRect().width < 8.5 && getComputedStyle(el).backgroundImage !== "none")
+    .map((el) => el.getBoundingClientRect().width));
+  expect(await page.locator(".ap-bar .bar i.z").count()).toBeGreaterThan(0);
+  expect(slivers).toEqual([]);
+});
+
+test("the open status list keeps its switch and what it costs in full view, under steps that scroll", async ({ cue, page }) => {
+  await cue.open("status-list", { frozen: true });
+  await openCard(page, "n1");
+  await page.locator('.active-pane .st-bar[data-sid="relay"]').click();
+  await page.locator(".active-pane .st-drawer").waitFor();
+  expect(await layoutProblems(page, ".st-drawer", { inside: [[".st-toggle", ""], [".st-note", ""]] })).toEqual([]);
+});
+
+test("Settings → Agents: a command in a setting's note stays whole", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  await page.keyboard.press(",");
+  await page.locator('[data-act="set-tab"][data-tab="agents"]').click();
+  await page.locator(".sheet .set-sub code").first().waitFor();
+  expect(await splitWords(page, ".sheet .set-sub")).toEqual([]);
+});
+
+test("the board's column headings line up", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  const tops = await page.evaluate(() => [".col.main", ".col-waiting", ".col-sessions"].map((c) => {
+    const r = document.createRange();
+    r.selectNodeContents(document.querySelector(`${c} .col-head`));
+    return Math.round(r.getClientRects()[0].top);
+  }));
+  expect(new Set(tops).size, `heading tops ${tops}`).toBe(1);
+});
+
+test("a lead's plan alone in its card has no rule above it", async ({ cue, page }) => {
+  await cue.open("relay-review", { frozen: true });
+  await openLead(page);
+  const foot = page.locator(".active-pane .team-card > .tc-foot:first-child");
+  await expect(foot).toHaveCount(1);
+  expect(await foot.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("none");
+});

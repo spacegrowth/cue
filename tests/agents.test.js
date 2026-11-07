@@ -118,6 +118,7 @@ assert.ok(h.indexOf("cue-build") < h.indexOf("Inventory agent UIs"), "the one th
 assert.ok(h.includes('data-act="deny" data-id="I1"') && h.includes('data-act="allow" data-id="I1"'), "Deny / Allow inline");
 assert.deepEqual(ctx.agentCount("L"), { n: 4, needs: ["cue-build"] }, "the board's count names who needs you");
 assert.ok(ctx.agentPill("L").includes("cue-build") && ctx.agentPill("L").includes("needs you"), "a card names the agent that needs you");
+assert.ok(!ctx.agentPill("L", { count: false, tree: true }).includes("cue-build"), "a card holding the lead's tree leaves its relay agents to the tree");
 world.items = [];
 assert.ok(ctx.agentPill("L").includes("4 agents"), "a card says N agents, every kind: the title's count");
 
@@ -131,10 +132,11 @@ h = ctx.agentTray("L");
 assert.ok(h.indexOf("Inventory agent UIs") < h.indexOf("cue-build") && h.includes('data-act="allow" data-id="I2"'), "first, with Deny / Allow");
 assert.ok(ctx.agentChips("L").includes('data-big="I2"'), "its chip on the title line");
 assert.deepEqual(ctx.agentCount("L").needs, ["Inventory agent UIs"], "the card names it");
+assert.ok(ctx.agentPill("L", { tree: true }).includes("Inventory agent UIs"), "the tree doesn't name the lead's own agents: its card's chip does");
 world.items = [{ id: "I3", session_id: "L", kind: "permission", cmd: "ls" }];
 assert.ok(ctx.agentsOf("L").every((a) => a.state !== "needs"), "the session's own ask isn't an agent's");
 world.items = [];
-assert.equal(ctx.agentPill("L", false), "", "a lead's card leaves the count to its crew line");
+assert.equal(ctx.agentPill("L", { count: false }), "", "a lead's card leaves the count to its crew line");
 
 // The Agents tab: grouped, and a done relay agent's row carries Diff and Review.
 h = ctx.agentsPage("L", world.helpers.L);
