@@ -915,17 +915,8 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/sessions.rs::mark` |  |  |
 | `src-tauri/src/talk.rs::run_loop` |  |  |
 | `src-tauri/src/terminal/focus.rs::type_into` |  |  |
-| `ui/app.js::(anonymous)` |  | 2 of them |
-| `ui/app.js::bindMain` |  |  |
-| `ui/app.js::renderMain` |  |  |
-| `ui/board.js::boardView` |  |  |
-| `ui/chat.js::activePane` |  |  |
-| `ui/insights.js::insAct` |  |  |
-| `ui/insights_tab.js::insightsTabView` |  |  |
-| `ui/sessions.js::lvAct` |  |  |
-| `ui/sessions.js::sessionsView` |  |  |
 
-Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/leads.rs`, `src-tauri/src/logs/steps.rs`, `src-tauri/src/logs/transcript.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`, `ui/app.js`, `ui/board.js`, `ui/chat.js`, `ui/core.js`, `ui/style.css`.
+Files over 1000 lines: `src-tauri/src/db.rs`, `src-tauri/src/leads.rs`, `src-tauri/src/logs/steps.rs`, `src-tauri/src/logs/transcript.rs`, `src-tauri/src/machines/hooks.rs`, `src-tauri/src/sessions.rs`, `src-tauri/src/terminal/focus.rs`.
 
 ## What this can't see
 
