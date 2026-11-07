@@ -7,16 +7,16 @@ use super::history::{first_line, push_history};
 /// How long a message waits for the one before it to finish being typed into the same session. Typing one
 /// takes seconds (up to ~25 with its checks); longer means that one is stuck, and this fails instead of
 /// spinning on "Sending…" for good.
-const TURN_WAIT: std::time::Duration = std::time::Duration::from_secs(45);
+const TURN_WAIT_MS: u64 = 45_000;
 
 /// This session's typing turn (see Hub::typing), or an error once the one before has held it for TURN_WAIT.
 fn wait_turn(gate: &Mutex<()>) -> Result<std::sync::MutexGuard<'_, ()>, String> {
-    let until = std::time::Instant::now() + TURN_WAIT;
+    let until = now_ms() + TURN_WAIT_MS;
     loop {
         match gate.try_lock() {
             Ok(g) => return Ok(g),
             Err(std::sync::TryLockError::Poisoned(e)) => return Ok(e.into_inner()),
-            Err(std::sync::TryLockError::WouldBlock) if std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(std::sync::TryLockError::WouldBlock) if now_ms() < until => crate::clock::sleep_ms(100),
             Err(std::sync::TryLockError::WouldBlock) => return Err("the message before this one is still being typed into its terminal (stuck?): try again in a moment".into()),
         }
     }
@@ -31,15 +31,15 @@ impl Hub {
     /// Returns true when it's known to have gone through after all.
     fn settle_typed(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) -> bool {
         if text.starts_with('/') {
-            if let Some(d) = crate::focus::dialog_on(origin) {
+            if let Some(d) = self.keys().dialog_on(origin) {
                 self.st().sessions.got_message(sid, text, "it opened a dialog");
                 self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
                 return true;
             }
         }
         // Not into a dialog: a bare Enter there picks whatever is highlighted.
-        if crate::focus::text_in_box(origin, text) == Some(true) && crate::focus::dialog_on(origin).is_none() {
-            let _ = crate::focus::press_enter(origin);
+        if self.keys().text_in_box(origin, text) == Some(true) && self.keys().dialog_on(origin).is_none() {
+            let _ = self.keys().press_enter(origin);
             self.st().sessions.note_delivery(sid, text, "Enter again: it was still in its box");
             if self.wait_active(sid, t0, 3000) {
                 return true;
@@ -80,11 +80,17 @@ impl Hub {
 
     /// Keep looking, off this thread, for the pending message to be taken (`confirm`).
     pub(super) fn confirm_later(&self, sid: String, origin: Origin, text: String, cmd_before: Option<usize>, t0: u64) {
-        let Some(me) = self.shared() else { return };
-        std::thread::spawn(move || me.confirm(&sid, &origin, &text, cmd_before, t0));
+        self.look_later(Watch { sid, origin, text, cmd_before, t0, start: now_ms(), late: false, enters: 0, last_enter: 0, seen_in_box: 0 });
     }
 
-    /// Watch a typed message until something says what became of it. "Taken" is a fact: any witness
+    /// The watch's next look (`confirm`): every 2 s at first, every 10 s once it's late.
+    fn look_later(&self, mut w: Watch) {
+        w.late = now_ms().saturating_sub(w.start) >= PENDING_MS;
+        let after = if w.late { LATE_EVERY_MS } else { 2000 };
+        self.later(after, move |h| h.confirm(w));
+    }
+
+    /// One look at a typed message, until something says what became of it. "Taken" is a fact: any witness
     /// proves it, whenever it speaks (`witness`): its prompt hook, its log, a dialog it opened. "Not taken"
     /// is a verdict, and needs something seen: the text still in its box after the wait, twice in a row,
     /// or the agent gone from its pane. Meanwhile the text seen in its box gets Enter once more (the
@@ -93,57 +99,55 @@ impl Hub {
     /// way (another terminal, or no box on the screen), there is no verdict: after `PENDING_MS` the
     /// bubble says Cue hasn't seen it taken, and after `LATE_MS` Cue stops looking.
     /// Its log is read only where it is on this Mac (a machine's is mirrored here, or not read at all).
-    fn confirm(&self, sid: &str, origin: &Origin, text: &str, cmd_before: Option<usize>, t0: u64) {
-        let start = now_ms();
-        let (mut enters, mut last_enter, mut seen_in_box) = (0u32, 0u64, 0u32);
-        loop {
-            let late = now_ms().saturating_sub(start) >= PENDING_MS;
-            std::thread::sleep(std::time::Duration::from_millis(if late { LATE_EVERY_MS } else { 2000 }));
-            let pending = self.st().sessions.is_pending(sid, text);
-            if !pending {
-                return; // a witness settled it (its hook came), or it was sent again
-            }
-            if let Some(w) = self.witness(sid, origin, text, cmd_before, t0) {
-                let w = w.to_string();
-                self.st().sessions.got_message(sid, text, &w);
-                self.changed();
-                return;
-            }
-            match crate::focus::text_in_box(origin, text) {
-                Some(true) => {
-                    seen_in_box += 1;
-                    if late && seen_in_box >= 2 {
-                        let why = format!("still in its box after {}s", now_ms().saturating_sub(start) / 1000);
-                        self.st().sessions.mark_unsent(sid, text, &why);
-                        self.changed();
-                        return;
-                    }
-                    // Not into a dialog: a bare Enter there picks whatever is highlighted.
-                    if enters < ENTER_AGAIN && now_ms().saturating_sub(last_enter) >= 3000 && crate::focus::dialog_on(origin).is_none() {
-                        let _ = crate::focus::press_enter(origin);
-                        self.st().sessions.note_delivery(sid, text, "Enter again: it was still in its box");
-                        enters += 1;
-                        last_enter = now_ms();
-                    }
-                }
-                Some(false) => seen_in_box = 0,
-                None => {}
-            }
-            let gone = late && crate::focus::agent_gone(origin) == Some(true);
-            if gone {
-                self.st().sessions.mark_unsent(sid, text, "its pane shows a shell prompt, not the agent");
-                self.changed();
-                return;
-            }
-            if now_ms().saturating_sub(start) >= LATE_MS {
-                let mut st = self.st();
-                st.sessions.set_pending(sid, text, false);
-                st.sessions.note_delivery(sid, text, "no word from it: Cue stopped looking");
-                drop(st);
-                self.changed();
-                return;
-            }
+    /// Undecided, the next look is scheduled (`look_later`).
+    fn confirm(&self, mut w: Watch) {
+        let late = w.late;
+        if !self.st().sessions.is_pending(&w.sid, &w.text) {
+            return; // a witness settled it (its hook came), or it was sent again
         }
+        if let Some(why) = self.witness(&w.sid, &w.origin, &w.text, w.cmd_before, w.t0) {
+            self.st().sessions.got_message(&w.sid, &w.text, why);
+            return self.changed();
+        }
+        if let Some(why) = self.box_verdict(&mut w, late) {
+            self.st().sessions.mark_unsent(&w.sid, &w.text, &why);
+            return self.changed();
+        }
+        if late && self.keys().agent_gone(&w.origin) == Some(true) {
+            self.st().sessions.mark_unsent(&w.sid, &w.text, "its pane shows a shell prompt, not the agent");
+            return self.changed();
+        }
+        if now_ms().saturating_sub(w.start) >= LATE_MS {
+            let mut st = self.st();
+            st.sessions.set_pending(&w.sid, &w.text, false);
+            st.sessions.note_delivery(&w.sid, &w.text, "no word from it: Cue stopped looking");
+            drop(st);
+            return self.changed();
+        }
+        self.look_later(w);
+    }
+
+    /// What the input box says this look: the text seen still there twice in a row once it's late is a
+    /// verdict (why it wasn't taken); seen there before that, Enter once more (not into a dialog: a bare
+    /// Enter there picks whatever is highlighted).
+    fn box_verdict(&self, w: &mut Watch, late: bool) -> Option<String> {
+        match self.keys().text_in_box(&w.origin, &w.text) {
+            Some(true) => {
+                w.seen_in_box += 1;
+                if late && w.seen_in_box >= 2 {
+                    return Some(format!("still in its box after {}s", now_ms().saturating_sub(w.start) / 1000));
+                }
+                if w.enters < ENTER_AGAIN && now_ms().saturating_sub(w.last_enter) >= 3000 && self.keys().dialog_on(&w.origin).is_none() {
+                    let _ = self.keys().press_enter(&w.origin);
+                    self.st().sessions.note_delivery(&w.sid, &w.text, "Enter again: it was still in its box");
+                    w.enters += 1;
+                    w.last_enter = now_ms();
+                }
+            }
+            Some(false) => w.seen_in_box = 0,
+            None => {}
+        }
+        None
     }
 
     /// Who, if anyone, says the agent took `text` since `t0`: its prompt hook (`active_at`), its command
@@ -185,7 +189,7 @@ impl Hub {
             }
         }
         if !name.is_empty() {
-            if let Some(d) = crate::focus::dialog_on(origin) {
+            if let Some(d) = self.keys().dialog_on(origin) {
                 self.terminal_ask_with(origin.clone(), "Waiting in its terminal: dialog open".into(), false, Some(d), false);
                 return Some("it opened a dialog");
             }
@@ -245,10 +249,10 @@ impl Hub {
         let cmd_before = command_before(&it.origin, text);
         // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
         let direct = self.send_direct(&sid, text, &saved, false);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(&sid, &it.origin, &saved)?))? };
+        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(&sid, &it.origin, &saved)?))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
         let mut submitted = self.took(&sid, &it.origin, text, cmd_before, t0);
-        if !submitted && !direct && !text.starts_with('/') && Self::retry_enter(&it.origin, text) {
+        if !submitted && !direct && !text.starts_with('/') && self.retry_enter(&it.origin, text) {
             submitted = self.wait_active(&sid, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
@@ -304,7 +308,7 @@ impl Hub {
                 self.changed();
                 return Ok("it already has your message: it took it in between steps".into());
             }
-            crate::focus::press_escape(&origin)?;
+            self.keys().press_escape(&origin)?;
         }
         self.st().sessions.set_queued(session_id, None); // it's reading it now
         self.changed();
@@ -317,7 +321,7 @@ impl Hub {
             let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
             (st.sessions.origin(session_id), direct)
         };
-        let via = if direct { "the session directly".to_string() } else { crate::focus::press_escape(&origin.clone().ok_or("that session is gone")?)? };
+        let via = if direct { "the session directly".to_string() } else { self.keys().press_escape(&origin.clone().ok_or("that session is gone")?)? };
         {
             let mut st = self.st();
             if let Some(o) = origin {
@@ -378,8 +382,8 @@ impl Hub {
         let stopped = now && busy && !direct;
         let busy = if stopped {
             self.st().stopped_to_send.insert(session_id.to_string(), now_ms());
-            crate::focus::press_escape(origin.as_ref().ok_or("that session is gone")?)?;
-            std::thread::sleep(std::time::Duration::from_millis(700));
+            self.keys().press_escape(origin.as_ref().ok_or("that session is gone")?)?;
+            crate::clock::sleep_ms(700);
             false
         } else {
             busy && !now
@@ -393,10 +397,10 @@ impl Hub {
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
         let direct = self.send_direct(session_id, text, &saved, now);
-        let via = if direct { "the session directly".to_string() } else { crate::focus::type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?)))? };
+        let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?)))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
-        if !submitted && !typed.starts_with('/') && Self::retry_enter(&origin, typed) {
+        if !submitted && !typed.starts_with('/') && self.retry_enter(&origin, typed) {
             submitted = self.wait_active(session_id, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
@@ -444,23 +448,20 @@ impl Hub {
     /// box and the text is gone from it (it was taken; a session without Cue's hooks never reports), and
     /// not into a dialog: a bare Enter there picks whatever is highlighted, "Yes" on a permission prompt.
     /// True when it was pressed.
-    fn retry_enter(origin: &Origin, text: &str) -> bool {
+    fn retry_enter(&self, origin: &Origin, text: &str) -> bool {
         // Only when the text is seen still in its box: a blind Enter (a screen Cue can't read) could answer a
         // prompt that came up meanwhile.
-        if crate::focus::text_in_box(origin, text) != Some(true) || crate::focus::dialog_on(origin).is_some() {
+        if self.keys().text_in_box(origin, text) != Some(true) || self.keys().dialog_on(origin).is_some() {
             return false;
         }
-        crate::focus::press_enter(origin).is_ok()
+        self.keys().press_enter(origin).is_ok()
     }
 
     /// The kept message goes off this thread (it types into a terminal): after `wait_ms`, for a
     /// terminal that was just stopped to settle.
     pub(super) fn send_held_soon(&self, session_id: &str, wait_ms: u64) {
-        let Some(app) = &self.app else { return };
-        let hub = app.state::<Arc<Hub>>().inner().clone();
         let sid = session_id.to_string();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+        self.later(wait_ms, move |hub| {
             if let Err(e) = hub.send_held(&sid, false) {
                 eprintln!("cue: couldn't send the message kept for {sid}: {e}");
             }
@@ -521,7 +522,7 @@ impl Hub {
             if self.st().active_at.get(session_id).is_some_and(|t| *t >= since) {
                 return true;
             }
-            std::thread::sleep(std::time::Duration::from_millis(150));
+            crate::clock::sleep_ms(150);
         }
         false
     }
@@ -550,15 +551,15 @@ impl Hub {
             "relay-off" => "/relay:stop",
             _ => return Err(format!("Cue doesn't know \"{action}\"")),
         };
-        crate::focus::type_into(&origin, line)?;
+        self.keys().type_into(&origin, line)?;
         // Still in its box after a moment (it was busy drawing, or held the text): one more Enter, and if
         // it's still there, say so rather than show "Compacting" for the 15 minutes until Cue gives up,
         // holding every message meanwhile.
-        std::thread::sleep(std::time::Duration::from_millis(800));
-        if crate::focus::text_in_box(&origin, line) == Some(true) {
-            let _ = crate::focus::press_enter(&origin);
-            std::thread::sleep(std::time::Duration::from_millis(600));
-            if crate::focus::text_in_box(&origin, line) == Some(true) {
+        crate::clock::sleep_ms(800);
+        if self.keys().text_in_box(&origin, line) == Some(true) {
+            let _ = self.keys().press_enter(&origin);
+            crate::clock::sleep_ms(600);
+            if self.keys().text_in_box(&origin, line) == Some(true) {
                 return Err(format!("{line} is typed but it didn't take it: press Enter in its terminal"));
             }
         }
@@ -637,6 +638,24 @@ const LATE_EVERY_MS: u64 = 10_000;
 const LATE_MS: u64 = 10 * 60 * 1000;
 /// How many times at most Enter is pressed again for a message seen still in its box.
 const ENTER_AGAIN: u32 = 2;
+
+/// A typed message Cue is watching for the agent to take (`Hub::confirm`), and what its looks have seen.
+struct Watch {
+    sid: String,
+    origin: Origin,
+    text: String,
+    cmd_before: Option<usize>,
+    /// When it was typed.
+    t0: u64,
+    /// When the watch started.
+    start: u64,
+    /// Past PENDING_MS when this look was scheduled: from then on only a verdict or LATE_MS ends the watch.
+    late: bool,
+    enters: u32,
+    last_enter: u64,
+    /// Looks in a row that saw it still in its box.
+    seen_in_box: u32,
+}
 
 /// Is `text` the command `/name` (with or without arguments)?
 fn is_command(text: &str, name: &str) -> bool {

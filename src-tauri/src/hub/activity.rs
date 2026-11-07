@@ -253,11 +253,8 @@ impl Hub {
                     }
                 }
                 // A lead's turn ended: its next queued review goes (after a moment, for its hooks to settle).
-                if let Some(me) = self.shared().filter(|_| self.st().review_queue.iter().any(|q| q.lead == sid)) {
-                    std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(1500));
-                        me.drain_reviews();
-                    });
+                if self.st().review_queue.iter().any(|q| q.lead == sid) {
+                    self.later(1500, |me| me.drain_reviews());
                 }
                 // Context high (80%+): the notification says so and offers Compact.
                 let full = (!origin_path.is_empty()).then(|| crate::steps::context_pct(&origin_path)).flatten().filter(|p| *p >= CONTEXT_HIGH);
@@ -645,8 +642,8 @@ impl Hub {
     /// A turn began: note the folder's git state (in the background: git can take a moment) to tell
     /// later what this turn changed.
     fn turn_started(&self, session_id: &str, cwd: &str, machine: &str) {
-        let (Some(me), sid, cwd, machine) = (self.shared(), session_id.to_string(), cwd.to_string(), machine.to_string()) else { return };
-        std::thread::spawn(move || {
+        let (sid, cwd, machine) = (session_id.to_string(), cwd.to_string(), machine.to_string());
+        self.later(0, move |me| {
             // A session on another machine: its folder is there, so git runs there.
             let base = if machine.is_empty() { crate::changes::base(&cwd) } else { crate::changes::base_on(&machine, &cwd) };
             me.st().sessions.set_turn_base(&sid, base);
@@ -656,8 +653,8 @@ impl Hub {
     /// A turn ended: what it changed, for the "4 files · +98 −9" pill and Commit.
     fn turn_changes(&self, session_id: &str) {
         let Some(base) = self.st().sessions.take_turn_base(session_id) else { return };
-        let (Some(me), sid) = (self.shared(), session_id.to_string()) else { return };
-        std::thread::spawn(move || {
+        let sid = session_id.to_string();
+        self.later(0, move |me| {
             let changes = crate::changes::since(&base);
             if me.st().sessions.set_changes(&sid, changes) {
                 me.changed();
@@ -764,10 +761,7 @@ impl Hub {
                 st.sessions.set_background(&sid, background);
             }
             self.changed();
-            let me = self.shared();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(HELPERS_SETTLE_SECS));
-                let Some(me) = me else { return };
+            self.later(HELPERS_SETTLE_SECS * 1000, move |me| {
                 let still = me.st().sessions.state(&sid).as_deref() == Some("agent");
                 if still {
                     if let Some((at, reply, parts)) = transcript::turn_ended_parts(&o.transcript_path) {

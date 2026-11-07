@@ -1,3 +1,4 @@
+mod clock;
 mod config;
 mod actions;
 mod btw;

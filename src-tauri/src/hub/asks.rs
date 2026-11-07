@@ -77,7 +77,7 @@ impl Hub {
         let sid = origin.session_id.clone();
         let path = origin.transcript_path.clone();
         let call = (!path.is_empty()).then(|| transcript::waiting_tool_use(&path)).flatten();
-        let dialog = dialog.or_else(|| crate::focus::dialog_on(&origin));
+        let dialog = dialog.or_else(|| self.keys().dialog_on(&origin));
         let message = match &dialog {
             Some(d) if !d.title.is_empty() => format!("Asking in its terminal: {}", d.title),
             _ => message,
@@ -139,13 +139,13 @@ impl Hub {
         let o = &it.origin;
         // The screen now, not the card's copy of it: the dialog may have closed since, and a permission
         // prompt in its place has numbered choices too, so the same key there would answer that instead.
-        if !crate::focus::dialog_on(o).is_some_and(|now| now.options == d.options) {
+        if !self.keys().dialog_on(o).is_some_and(|now| now.options == d.options) {
             return Err("that dialog isn't on its screen any more".into());
         }
-        crate::focus::tmux_keys(o, &[n.to_string()])?;
-        std::thread::sleep(std::time::Duration::from_millis(400));
-        if crate::focus::dialog_on(o).is_some_and(|now| now.options == d.options) {
-            crate::focus::tmux_keys(o, &["Enter".into()])?;
+        self.keys().press_keys(o, &[n.to_string()])?;
+        crate::clock::sleep_ms(400);
+        if self.keys().dialog_on(o).is_some_and(|now| now.options == d.options) {
+            self.keys().press_keys(o, &["Enter".into()])?;
         }
         self.finish(id, "answered", &format!("chose {n}. {label}"));
         // A command's dialog ("/model …"): answered, it's back at its prompt, not at work.

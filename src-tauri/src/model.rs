@@ -308,12 +308,7 @@ pub struct Item {
     pub agent_name: String,
 }
 
-pub fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+pub use crate::clock::now_ms;
 
 /// A folder's own name ("fix-locks"): what a session there is called until you name it.
 pub fn folder_of(cwd: &str) -> String {

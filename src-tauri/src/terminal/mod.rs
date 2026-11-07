@@ -8,6 +8,7 @@ pub(crate) mod focus;
 pub(crate) mod shell;
 pub(crate) mod shells;
 pub(crate) mod input;
+pub(crate) mod keys;
 pub(crate) mod term;
 #[cfg(test)]
 pub(crate) mod test_tmux;
