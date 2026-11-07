@@ -81,7 +81,7 @@ reason = "a save or a refresh keeps what it wrote or read in memory under the fi
 [[lock_order]]
 from = "a session's feed"
 to = "WINDOWS"
-reason = "logs/steps: a feed taking a read's lines in asks the window Claude Code's status line said for its session (known_window), under its lock; WINDOWS is a leaf, held only to look up or note a number (its file is read and written with it let go)"
+reason = "logs/steps: a feed taking a read's lines in asks the window Claude Code's status line said for its session (known_window), under its lock, which only looks up what's loaded; WINDOWS is a leaf, held only to look up or note a number. Its file is loaded in a feed's read step (load_windows, no lock held) and written with WINDOWS let go"
 
 [[lock_order]]
 from = "a session's feed"

@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 136 (3 sync) |
 | Lock declarations (static or field) | 91 |
-| Lock acquisitions | 206 |
+| Lock acquisitions | 207 |
 | Lock-graph edges | 45 |
 | Spawn sites | 73 |
 | External calls: fs / db / process / notify / login / socket | 339 / 146 / 48 / 4 / 1 / 3 |
@@ -233,7 +233,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/steps/pi.rs::STORE` | `std::sync::OnceLock<Value>` | — |
 | `logs/steps/queries.rs::Open.feed` | `Arc<Mutex<Feed>>` | "a session's feed" (10 sites) |
 | `logs/steps/queries.rs::FEEDS` | `Mutex<Option<HashMap<String,Open>>>` | "FEEDS" (3 sites) |
-| `logs/steps/windows.rs::WINDOWS` | `Mutex<Option<Windows>>` | "WINDOWS" (3 sites) |
+| `logs/steps/windows.rs::WINDOWS` | `Mutex<Option<Windows>>` | "WINDOWS" (4 sites) |
 | `logs/steps/windows.rs::SAVED` | `Mutex<u64>` | "windows file" (1 sites) |
 | `logs/steps/windows.rs::SEEN` | `Mutex<Option<HashMap<String,(Instant,u64)>>>` | "AUTO_SEEN" (1 sites) |
 | `logs/turns.rs::CATCHING_UP` | `std::sync::Mutex<Option<(u64,u64)>>` | "turns CATCHING_UP" (2 sites) |
@@ -279,7 +279,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "INDEX" | "REMOTE" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/close.rs::relay_close` → `leads/commands.rs::relay_for` → `leads/remote.rs::relay_bin_on`, takes it |
 | "INDEX" | "REMOTE_PILEAD" |  | `leads/index.rs::close_plan` → `leads/close.rs::close_plan_in` → `leads/commands.rs::pilead_for` → `leads/remote.rs::pilead_bin_on`, takes it |
 | "INDEX" | "VERIFY" |  | `leads/index.rs::view` → `leads/verify.rs::verdict_of`, takes it |
-| "a session's feed" | "WINDOWS" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window` → `logs/steps/windows.rs::with_windows`, takes it |
+| "a session's feed" | "WINDOWS" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/observe.rs::Feed::observe` → `logs/steps/observe.rs::Feed::observe_claude` → `logs/steps/observe.rs::Feed::claude_usage` → `logs/steps/windows.rs::known_window`, takes it |
 | "a session's feed" | "config in memory" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/take.rs::Feed::take` → `logs/steps/take.rs::Feed::take_user` → `logs/steps/take.rs::Feed::finish` → `logs/steps/background.rs::Feed::add_helper` → `logs/steps/background.rs::Feed::add_agent` → `machines/logs.rs::copy_helper` → `machines/logs.rs::helper_paths` → `machines/mod.rs::list` → `config.rs::load` → `config/cache.rs::current`, takes it |
 | "a session's feed" | "copies" |  | `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/take.rs::Feed::take` → `logs/steps/take.rs::Feed::take_user` → `logs/steps/take.rs::Feed::finish` → `logs/steps/background.rs::Feed::add_helper` → `logs/steps/background.rs::Feed::add_agent` → `machines/logs.rs::copy_helper`, takes it |
 | "actions STORE" | "folder facts" |  | `actions/mod.rs::record` → `actions/mod.rs::key` → `actions/mod.rs::mine_dir` → `logs/repos.rs::repo_root` → `logs/repos.rs::facts` → `logs/repos.rs::Folders::facts`, takes it |
@@ -584,9 +584,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/reading.rs::read_script` | File::open | 1 |
 | `logs/steps/reading.rs::read_script` | Path::metadata | 1 |
 | `logs/steps/turn_rows.rs::whole_lines` | File::open | 1 |
+| `logs/steps/windows.rs::load_windows` | read | 1 |
 | `logs/steps/windows.rs::remember_window` | rename | 1 |
 | `logs/steps/windows.rs::remember_window` | write | 1 |
-| `logs/steps/windows.rs::with_windows` | read | 1 |
 | `logs/transcript/activity.rs::activity` | metadata | 1 |
 | `logs/transcript/activity.rs::codex_activity` | metadata | 1 |
 | `logs/transcript/conversation.rs::conversation_before` | File::open | 1 |

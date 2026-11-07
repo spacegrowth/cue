@@ -11,7 +11,7 @@
 use super::feed::{Feed, Head};
 use super::helper::{helper_meta, mtime_ms, Helper};
 use super::kind::Kind;
-use super::windows::auto_compact_at;
+use super::windows::{auto_compact_at, load_windows};
 use serde_json::Value;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -187,6 +187,8 @@ impl Plan {
         #[cfg(test)]
         slow_disk::wait(&self.path);
         let log = read_log(&self.path, self.offset);
+        // The windows the lines put in look up (known_window, under the feed's lock): on disk until first needed.
+        load_windows();
         let auto_at = self.model.map(|m| { let at = auto_compact_at(&m); (m, at) });
         let helpers = self.helpers.into_iter().map(|(id, h)| (id, h.fetch())).collect();
         Reads { generation: self.generation, offset: self.offset, log, auto_at, helpers }

@@ -23,12 +23,18 @@ pub(super) fn windows_file() -> std::path::PathBuf {
     crate::server::cue_dir().join("windows.json")
 }
 
-/// The windows Cue knows (read from disk the first time, with no lock held; tests never touch the real one).
-fn with_windows<R>(f: impl FnOnce(&mut Windows) -> R) -> R {
-    if crate::locking::lock(&WINDOWS, "WINDOWS").is_none() {
-        let read = if cfg!(test) { Windows::default() } else { std::fs::read(windows_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() };
-        crate::locking::lock(&WINDOWS, "WINDOWS").get_or_insert(read);
+/// The windows Cue knows, read from disk the first time (tests never touch the real one). Call it with no
+/// lock held: a feed's read step does (`Plan::fetch`), before its lines are put in under the feed's lock.
+pub(super) fn load_windows() {
+    if crate::locking::lock(&WINDOWS, "WINDOWS").is_some() {
+        return;
     }
+    let read = if cfg!(test) { Windows::default() } else { std::fs::read(windows_file()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() };
+    crate::locking::lock(&WINDOWS, "WINDOWS").get_or_insert(read);
+}
+
+fn with_windows<R>(f: impl FnOnce(&mut Windows) -> R) -> R {
+    load_windows();
     f(crate::locking::lock(&WINDOWS, "WINDOWS").get_or_insert_with(Windows::default))
 }
 
@@ -62,7 +68,9 @@ pub(super) fn remember_window(session_id: &str, window: u64, model: Option<&str>
 /// A session's window: what its status line said, else what one on the same model said.
 pub(super) fn known_window(path: &str, model: &str) -> Option<u64> {
     let sid = std::path::Path::new(path).file_stem()?.to_str()?;
-    with_windows(|w| w.sessions.get(sid).or_else(|| w.models.get(model)).copied())
+    // Only what's loaded (`load_windows`): this runs under a feed's lock, where no file is read.
+    let windows = crate::locking::lock(&WINDOWS, "WINDOWS");
+    windows.as_ref().and_then(|w| w.sessions.get(sid).or_else(|| w.models.get(model)).copied())
 }
 
 /// What a waiting card's insights need from a session's log.
