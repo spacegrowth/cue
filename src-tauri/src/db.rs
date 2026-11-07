@@ -406,6 +406,11 @@ pub fn answers_since(since_ms: u64) -> Vec<Answer> {
 /// mark the ones that are gone as ended, and keep exactly the pending finished-turn cards.
 /// Pending decisions aren't kept: their hook reconnects after a restart and asks again.
 pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
+    sync_live_with(sessions, waiting, &[]);
+}
+
+/// `sync_live`, and `answered` cards saved in the same write (a reply's, handed to the draw).
+pub fn sync_live_with(sessions: &[Session], waiting: &[&Item], answered: &[Item]) {
     with(|c| {
         let tx = c.unchecked_transaction()?;
         let now = now_ms() as i64;
@@ -450,7 +455,7 @@ pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
             tx.execute("UPDATE sessions SET ended_ms = ?2 WHERE id = ?1", params![id, now])?;
         }
         tx.execute("DELETE FROM items WHERE status = 'pending'", [])?;
-        for it in waiting {
+        for it in waiting.iter().copied().chain(answered) {
             put_item(&tx, it)?;
         }
         tx.commit()

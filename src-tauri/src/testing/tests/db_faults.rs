@@ -37,10 +37,11 @@ fn saved(id: &str) -> bool {
     crate::db::history(50).iter().any(|i| i.id == id)
 }
 
-/// Another program writing to the database holds a reply's save up for the busy wait (a second) and no
-/// longer: the reply is answered in the window all the same, and the next save after the other write lands.
+/// Another program writing to the database: a reply doesn't wait on it at all (its answer is saved with the
+/// draw), and the draw waits the busy wait (a second) once, not once for the answer and again for the sessions.
+/// The reply is answered in the window all the same, and saving goes on once the other write is done.
 #[test]
-fn a_reply_while_another_program_writes_waits_a_second_at_most() {
+fn a_reply_while_another_program_writes_isnt_held_and_its_draw_waits_once() {
     let w = World::new();
     let id = finished_turn(&w, "a");
     let other = another_program(&w);
@@ -48,11 +49,14 @@ fn a_reply_while_another_program_writes_waits_a_second_at_most() {
     // The reply as its connection waits for it; the draw after it (the window's worker's, in the app) apart.
     let t0 = Instant::now();
     let told = w.client().ask(json!({"type": "reply", "id": id, "text": "thanks"}));
-    let took = t0.elapsed();
+    let reply = t0.elapsed();
+    let t1 = Instant::now();
     w.settle();
+    let draw = t1.elapsed();
     assert_eq!(told["ok"], true);
     other.execute_batch("ROLLBACK").unwrap();
-    assert!(took < Duration::from_secs(2), "held up {took:?}");
+    assert!(reply < Duration::from_millis(500), "the reply waited {reply:?}");
+    assert!(draw < Duration::from_millis(1900), "the draw waited {draw:?}: more than once");
     assert!(in_history_shown(&w, &id), "answered in the window all the same");
     let next = reply_to_a_finished_turn(&w, "b");
     assert!(saved(&next), "the next save, the other write done, lands");

@@ -20,6 +20,11 @@ impl Answered {
     pub(super) fn session_id(&self) -> &str {
         &self.0.origin.session_id
     }
+
+    /// The card to save, unless its session was deleted since it was answered (as `save_unless_purged`).
+    pub(super) fn unless_purged(self, purged: Option<u64>) -> Option<Item> {
+        purged.is_none_or(|at| self.0.resolved_ms.unwrap_or(0) > at).then_some(self.0)
+    }
 }
 
 pub(super) fn push_history(st: &mut Store, it: Item) -> Answered {

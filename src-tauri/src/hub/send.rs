@@ -273,7 +273,7 @@ impl Hub {
         h.outcome = outcome;
         h.resolved_ms = Some(now_ms());
         let answered = self.write(|st| push_history(st, h));
-        self.save_answered(answered);
+        self.save_answered_with_draw(answered);
         self.changed();
         Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
     }

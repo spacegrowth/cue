@@ -9,6 +9,7 @@ mod notifications;
 mod machine_stream;
 mod machines;
 mod redraw;
+mod reply_saves;
 mod reviews;
 mod sessions;
 mod settings;
