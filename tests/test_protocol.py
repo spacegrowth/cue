@@ -15,9 +15,14 @@ import tempfile
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Only ever a private Cue (tests/run.sh starts one under its own CUE_HOME): without CUE_HOME these tests
+# would talk to your own Cue and leave test sessions and history in it.
+OWN = {os.path.realpath(os.path.expanduser(p)) for p in ("~/.cue", "~/Library/Application Support/dev.spacegrowth.cue")}
+if not os.environ.get("CUE_HOME") or os.path.realpath(os.environ["CUE_HOME"]) in OWN:
+    sys.exit("test_protocol.py: run it through tests/run.sh unit (it needs a private CUE_HOME, never your own Cue's)")
 # The hook is built into Cue's binary; Cue writes this shim at launch (what the agents' settings run).
-HOOK = os.path.join(os.environ.get("CUE_HOME") or "", "bin", "cue-hook")
-SOCK = os.path.join(os.environ.get("CUE_HOME") or os.path.expanduser("~/.cue"), "cue.sock")
+HOOK = os.path.join(os.environ["CUE_HOME"], "bin", "cue-hook")
+SOCK = os.path.join(os.environ["CUE_HOME"], "cue.sock")
 SID = f"test-{os.getpid()}"
 
 
