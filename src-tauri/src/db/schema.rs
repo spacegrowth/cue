@@ -203,6 +203,8 @@ pub(super) fn open() -> rusqlite::Result<Connection> {
     if let Err(e) = set_up(&c) {
         eprintln!("cue: {} isn't all readable ({e}): using it as it is", path().display());
     }
+    // Busy from here on is said at once, and waited out by `with` with DB let go.
+    c.busy_timeout(std::time::Duration::ZERO)?;
     Ok(c)
 }
 
@@ -237,8 +239,8 @@ fn keep_aside(db: &std::path::Path) -> std::path::PathBuf {
 /// The database at `path`, opened and its header read (where a file that isn't a database says so).
 fn first_read(path: &std::path::Path) -> rusqlite::Result<Connection> {
     let c = Connection::open(path)?;
-    // Another connection writing (a test Cue, sqlite3 in a terminal) makes a write wait its turn, for up to
-    // BUSY_WAIT and no longer: DB stays locked for every other caller in Cue while it waits.
+    // Another connection writing (a test Cue, sqlite3 in a terminal) makes setting it up wait its turn, for
+    // up to BUSY_WAIT. Once it's open it doesn't wait at all (`open`): `with` waits instead, with DB let go.
     c.busy_timeout(BUSY_WAIT)?;
     c.pragma_query_value(None, "schema_version", |r| r.get::<_, i64>(0))?;
     Ok(c)
