@@ -1,5 +1,5 @@
 //! The Insights tab: how sessions went over the last days, summed from the turns logs/turns.rs keeps
-//! (db.rs `turns`), and how hand-offs and insights went.
+//! (db/insights.rs, the `turns` table), and how hand-offs and insights went.
 
 use super::blocking;
 use crate::db;

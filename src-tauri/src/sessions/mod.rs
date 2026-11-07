@@ -12,8 +12,8 @@ mod names;
 mod thread;
 mod turn;
 
-pub use delivery::unwrap_pasted;
-use delivery::taken;
+pub use self::delivery::unwrap_pasted;
+use self::delivery::taken;
 
 use crate::model::{now_ms, Exchange, Origin};
 use serde::{Deserialize, Serialize};
