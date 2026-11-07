@@ -30,7 +30,7 @@ pub use self::insights::insight_events_of;
 pub use self::items::{save_answered, history, DAY_MS, answers_since};
 #[cfg(test)]
 pub use self::live::sync_live;
-pub use self::live::{sync_live_with, save_ended, live, park, parked, unpark, closed, ended_session, delete_session};
+pub use self::live::{sync_live_with, save_live, LiveSave, save_ended, live, park, parked, unpark, closed, ended_session, delete_session};
 pub use self::search::{search, known_session_ids, session_log, session_log_page};
 
 #[cfg(test)]

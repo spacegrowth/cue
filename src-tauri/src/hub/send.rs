@@ -254,7 +254,7 @@ impl Hub {
             st.sessions.hold(sid, text, paths);
             push_history(st, h)
         });
-        self.save_answered(answered);
+        self.save_answered_with_draw(answered);
         self.changed();
         "kept in Cue: it goes when this turn ends".into()
     }

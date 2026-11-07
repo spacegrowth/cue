@@ -143,8 +143,8 @@ impl Hub {
         for sid in &back {
             self.save_parked(sid);
         }
-        // The answered cards handed to this draw go in the same write (saves.rs).
-        self.save_handed_answers(|answered| crate::db::sync_live_with(&sessions, &waiting.iter().collect::<Vec<_>>(), answered));
+        // Only what changed since the last save, with the answered cards handed to this draw, in one write (saves.rs).
+        self.save_live_with_answers(&sessions, &waiting.iter().collect::<Vec<_>>());
         // Each that ended since the last save, as it was when it ended, not as of the save before: a change and
         // the end can land within one draw. Taken with the live ones under one lock, so the two agree.
         crate::db::save_ended(&ended);

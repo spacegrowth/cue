@@ -248,7 +248,8 @@ impl Hub {
             Some(filed(st, it, status, outcome))
         });
         let Some(answered) = answered else { return };
-        self.save_answered(answered);
+        // Saved with the draw this change asks for: whoever answered never waits on the database (saves.rs).
+        self.save_answered_with_draw(answered);
         self.changed();
     }
 
@@ -280,7 +281,7 @@ impl Hub {
     pub fn file_taken(&self, items: Vec<Item>, status: &str, outcome: &str) {
         for it in items {
             let answered = self.write(|st| filed(st, it, status, outcome));
-            self.save_answered(answered);
+            self.save_answered_with_draw(answered);
         }
         self.changed();
     }

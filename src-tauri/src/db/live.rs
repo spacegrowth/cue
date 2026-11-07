@@ -15,55 +15,82 @@ pub fn sync_live(sessions: &[Session], waiting: &[&Item]) {
 
 /// `sync_live`, and `answered` cards saved in the same write (a reply's, handed to the draw).
 pub fn sync_live_with(sessions: &[Session], waiting: &[&Item], answered: &[Item]) {
+    let live: Vec<&str> = sessions.iter().map(|s| s.origin.session_id.as_str()).collect();
+    save_live(&LiveSave { write: &sessions.iter().collect::<Vec<_>>(), live: &live, waiting: Some(waiting), answered });
+}
+
+/// One save of what's live, as only what changed since the last: the hub's draws save after every change, and
+/// writing every session and its whole conversation each time held the database for the length of the lot.
+pub struct LiveSave<'a> {
+    /// The sessions whose records changed since they were last saved (all of them, the first time).
+    pub write: &'a [&'a Session],
+    /// Every live session's id: the open rows not among them have ended, and the rest are still heard from.
+    pub live: &'a [&'a str],
+    /// The pending finished-turn cards, when they changed (None: as last saved).
+    pub waiting: Option<&'a [&'a Item]>,
+    /// Answered cards to save in the same write.
+    pub answered: &'a [Item],
+}
+
+/// `save` in one transaction; whether it was written.
+pub fn save_live(save: &LiveSave) -> bool {
     with(|c| {
         let tx = c.unchecked_transaction()?;
         let now = now_ms() as i64;
-        for s in sessions {
-            tx.execute(
-                "INSERT INTO sessions (id, harness, project, cwd, state, driven_by, started_ms, updated_ms, ended_ms, data)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, NULL, ?8)
-                 ON CONFLICT(id) DO UPDATE SET harness = excluded.harness, project = excluded.project, cwd = excluded.cwd,
-                   state = excluded.state, driven_by = excluded.driven_by, updated_ms = excluded.updated_ms,
-                   ended_ms = NULL, data = excluded.data",
-                params![
-                    s.origin.session_id,
-                    s.origin.harness,
-                    s.project,
-                    s.origin.cwd,
-                    s.state,
-                    s.driven_by,
-                    now,
-                    serde_json::to_string(s).unwrap_or_default(),
-                ],
-            )?;
-            for e in &s.thread {
-                put_exchange(&tx, &s.origin.session_id, e)?;
-            }
-            // A message that moved (one you queued, put below the reply it waited behind) leaves its
-            // old row: within the thread's span, the log keeps only what the thread has.
-            if let Some(first) = s.thread.first() {
-                let mut q = tx.prepare("SELECT at_ms, role FROM exchanges WHERE session_id = ?1 AND at_ms >= ?2")?;
-                let rows: Vec<(i64, String)> = q.query_map(params![s.origin.session_id, first.at_ms as i64], |r| Ok((r.get(0)?, r.get(1)?)))?.filter_map(|r| r.ok()).collect();
-                drop(q);
-                for (at, role) in rows.iter().filter(|(at, role)| !s.thread.iter().any(|e| e.at_ms as i64 == *at && e.role == *role)) {
-                    tx.execute("DELETE FROM exchanges WHERE session_id = ?1 AND at_ms = ?2 AND role = ?3", params![s.origin.session_id, at, role])?;
-                }
+        for s in save.write {
+            put_session(&tx, s, now)?;
+        }
+        end_the_rest(&tx, save.live, now)?;
+        if let Some(waiting) = save.waiting {
+            tx.execute("DELETE FROM items WHERE status = 'pending'", [])?;
+            for it in waiting {
+                put_item(&tx, it)?;
             }
         }
-        // Whatever isn't live any more has ended (its agent exited, or it said so).
-        let live: Vec<&str> = sessions.iter().map(|s| s.origin.session_id.as_str()).collect();
-        let mut q = tx.prepare("SELECT id FROM sessions WHERE ended_ms IS NULL")?;
-        let open: Vec<String> = q.query_map([], |r| r.get(0))?.filter_map(|r| r.ok()).collect();
-        drop(q);
-        for id in open.iter().filter(|id| !live.contains(&id.as_str())) {
-            tx.execute("UPDATE sessions SET ended_ms = ?2 WHERE id = ?1", params![id, now])?;
-        }
-        tx.execute("DELETE FROM items WHERE status = 'pending'", [])?;
-        for it in waiting.iter().copied().chain(answered) {
+        for it in save.answered {
             put_item(&tx, it)?;
         }
         tx.commit()
-    });
+    })
+    .is_some()
+}
+
+/// A live session's record and its conversation as it has it now.
+fn put_session(tx: &Connection, s: &Session, now: i64) -> rusqlite::Result<()> {
+    tx.execute(
+        "INSERT INTO sessions (id, harness, project, cwd, state, driven_by, started_ms, updated_ms, ended_ms, data)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, NULL, ?8)
+         ON CONFLICT(id) DO UPDATE SET harness = excluded.harness, project = excluded.project, cwd = excluded.cwd,
+           state = excluded.state, driven_by = excluded.driven_by, updated_ms = excluded.updated_ms,
+           ended_ms = NULL, data = excluded.data",
+        params![s.origin.session_id, s.origin.harness, s.project, s.origin.cwd, s.state, s.driven_by, now, serde_json::to_string(s).unwrap_or_default()],
+    )?;
+    for e in &s.thread {
+        put_exchange(tx, &s.origin.session_id, e)?;
+    }
+    // A message that moved (one you queued, put below the reply it waited behind) leaves its
+    // old row: within the thread's span, the log keeps only what the thread has.
+    let Some(first) = s.thread.first() else { return Ok(()) };
+    let mut q = tx.prepare("SELECT at_ms, role FROM exchanges WHERE session_id = ?1 AND at_ms >= ?2")?;
+    let rows: Vec<(i64, String)> = q.query_map(params![s.origin.session_id, first.at_ms as i64], |r| Ok((r.get(0)?, r.get(1)?)))?.filter_map(|r| r.ok()).collect();
+    drop(q);
+    for (at, role) in rows.iter().filter(|(at, role)| !s.thread.iter().any(|e| e.at_ms as i64 == *at && e.role == *role)) {
+        tx.execute("DELETE FROM exchanges WHERE session_id = ?1 AND at_ms = ?2 AND role = ?3", params![s.origin.session_id, at, role])?;
+    }
+    Ok(())
+}
+
+/// Whatever isn't live any more has ended (its agent exited, or it said so); what is, is still heard from
+/// as of `now` (a relaunch restores the sessions heard from within the last day).
+fn end_the_rest(tx: &Connection, live: &[&str], now: i64) -> rusqlite::Result<()> {
+    let mut q = tx.prepare("SELECT id FROM sessions WHERE ended_ms IS NULL")?;
+    let open: Vec<String> = q.query_map([], |r| r.get(0))?.filter_map(|r| r.ok()).collect();
+    drop(q);
+    for id in open.iter().filter(|id| !live.contains(&id.as_str())) {
+        tx.execute("UPDATE sessions SET ended_ms = ?2 WHERE id = ?1", params![id, now])?;
+    }
+    tx.execute("UPDATE sessions SET updated_ms = ?1 WHERE ended_ms IS NULL", params![now])?;
+    Ok(())
 }
 
 /// Sessions that ended, each its record as it was when it ended and when that was: their saved rows say so,
