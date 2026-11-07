@@ -459,7 +459,7 @@ function needRow(it, ghost, open = false) {
     ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${bgPill(sessionOf(it.session_id), { tree: crewOf(it.session_id)?.role === "lead" })}`,
       `<span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}`)}
     ${talkNote(it)}${cardCrew(it.session_id)}
-    ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
+    ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
 }
 /** A lead whose team needs you while it has nothing waiting itself: a slim card holding the team's tree.
  *  Its title line opens the lead; a row in the tree opens that executor. */

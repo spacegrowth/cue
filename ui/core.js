@@ -53,6 +53,9 @@ const shortPath = (p) => { const parts = String(p).split("/"); return parts.leng
 const questions = (it) => it.tool_input?.questions || [];
 const tool = (it) => (it.tool_name || "").toLowerCase();
 const isBash = (it) => (it.kind === "permission" || it.kind === "terminal") && tool(it) === "bash";
+/** A command as wrapping text: it breaks only between its words, so a flag never parts from its dash ("-" / "q -x");
+ *  a word longer than the line still breaks inside itself (.cmd-w). */
+const cmdWords = (text) => String(text).split(/(\s+)/).map((w, i) => i % 2 ? w : w && `<span class="cmd-w">${esc(w)}</span>`).join("");
 /** A prompt waiting in its terminal that Cue can't answer (a sandboxed command's network access): you go there. */
 const inTerminal = (it) => it?.kind === "terminal";
 /** How each agent is named on screen. */

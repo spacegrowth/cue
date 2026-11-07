@@ -45,6 +45,23 @@ const LINE = (box) => ({
   apart: [":scope > *", ":scope > * > *", ".tm-chip"],
   inside: [[":scope > *", box], [":scope > * > *", box], [".tm-chip > *", ".tm-chip"]],
 });
+/** The words of what `sel` shows that are split over two lines, by where each word's letters land. */
+const splitWords = (page, sel) => page.evaluate((sel) => {
+  const out = [];
+  for (const el of document.querySelectorAll(sel)) {
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+      for (const m of t.data.matchAll(/\S+/g)) {
+        const r = document.createRange();
+        r.setStart(t, m.index);
+        r.setEnd(t, m.index + m[0].length);
+        if (new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size > 1) out.push(m[0]);
+      }
+    }
+  }
+  return out;
+}, sel);
+
 test("a lead's chat opens with its first review row in full view", async ({ cue, page }) => {
   await cue.open("relay-review", { frozen: true });
   await openLead(page);
@@ -67,3 +84,10 @@ for (const [scenario, size, viewport] of [["board-waiting", "", null], ["relay-r
     expect(await layoutProblems(page, ".sec-waiting .nrow-top", LINE(".nrow"))).toEqual([]);
   });
 }
+
+test("at the narrowest window a command on its card wraps between its words, never inside one", async ({ cue, page }) => {
+  await page.setViewportSize(NARROWEST);
+  await cue.open("board-waiting", { frozen: true });
+  await expect(page.locator(".nrow-text.mono")).not.toHaveCount(0);
+  expect(await splitWords(page, ".nrow-text.mono")).toEqual([]);
+});

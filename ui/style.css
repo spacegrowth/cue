@@ -956,6 +956,8 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .working .x-clear:hover { opacity: 1; background: color-mix(in srgb, var(--on-bg) 14%, transparent); color: var(--on-bg); }
 .nrow-text { font-size: 12.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .nrow-text.mono { font: 12px/1.45 var(--mono); }
+/* core.js cmdWords: each word of a command kept whole on its line, unless it's wider than the line */
+.cmd-w { display: inline-block; max-width: 100%; vertical-align: top; }
 .nrow-acts { display: flex; gap: 6px; }
 .nrow-acts .btn { flex: 1; height: 28px; }
 .nrow-acts.wrap { flex-wrap: wrap; }
