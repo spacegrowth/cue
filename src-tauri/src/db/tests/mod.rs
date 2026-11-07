@@ -6,6 +6,7 @@ use crate::model::{now_ms, Exchange, Item, Origin};
 use crate::sessions::Session;
 use serde_json::{json, Value};
 
+mod busy;
 mod schema;
 
 fn session(id: &str, driven_by: &str) -> Session {
