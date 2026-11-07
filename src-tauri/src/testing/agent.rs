@@ -46,6 +46,12 @@ impl<'w> Agent<'w> {
         self
     }
 
+    /// In folder `path` on this Mac (one the test made: its repository and project are read from it).
+    pub fn in_folder(mut self, path: &std::path::Path) -> Self {
+        self.origin.cwd = path.to_string_lossy().into_owned();
+        self
+    }
+
     /// Running in tmux pane `pane` (where Cue types into it).
     pub fn in_tmux(mut self, pane: &str) -> Self {
         self.origin.tmux_pane = pane.into();

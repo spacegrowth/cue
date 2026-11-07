@@ -297,8 +297,9 @@ pub fn run() {
                 let mut tick = tokio::time::interval(std::time::Duration::from_secs(3));
                 loop {
                     tick.tick().await;
-                    // Also every live Claude session, for the Sessions view (non-short-circuit |: both run).
-                    if tauri::async_runtime::spawn_blocking(|| leads::refresh() | live::refresh()).await.unwrap_or(false) {
+                    // Also every live Claude session, for the Sessions view, and each folder's repository and branch
+                    // (non-short-circuit |: all run).
+                    if tauri::async_runtime::spawn_blocking(|| leads::refresh() | live::refresh() | logs::repos::refresh()).await.unwrap_or(false) {
                         h.redraw();
                     }
                     // Claude sessions here whose agent is gone (no process Cue can watch: Cue's own terminal, a lost tab).

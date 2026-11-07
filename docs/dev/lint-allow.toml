@@ -36,16 +36,6 @@ to = "DB"
 reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
 
 [[lock_order]]
-from = "AUTO_SEEN"
-to = "REPOS"
-reason = "logs::steps::auto_compact_at asks the db under its own seen cache; neither takes AUTO_SEEN"
-
-[[lock_order]]
-from = "DB"
-to = "REPOS"
-reason = "db::open regroups projects by repo root (live::repo_root) the first time the db is opened, under DB; REPOS is a leaf"
-
-[[lock_order]]
 from = "FEEDS"
 to = "WINDOWS"
 reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
@@ -64,16 +54,6 @@ reason = "leads: the agent index held while a side table of the same file is rea
 from = "INDEX"
 to = "VERIFY"
 reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
-
-[[lock_order]]
-from = "actions STORE"
-to = "REPOS"
-reason = "actions key their state by repo root (live::repo_root) under their own lock; REPOS is a leaf"
-
-[[lock_order]]
-from = "actions WATCH"
-to = "REPOS"
-reason = "actions key their state by repo root (live::repo_root) under their own lock; REPOS is a leaf"
 
 [[lock_order]]
 from = "actions log"
@@ -106,11 +86,6 @@ to = "INDEX"
 reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX never takes the store"
 
 [[lock_order]]
-from = "the hub's store"
-to = "REPOS"
-reason = "Sessions::mark → model::project_of_origin → live::repo_root under the store; Phase 2 (§2.4) caches project lookups outside it"
-
-[[lock_order]]
 from = "typing gate"
 to = "CLAUDE"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus::current_tty). Seen since the hub types through terminal::keys, which the check follows"
@@ -122,27 +97,12 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
-to = "DECLARED"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
 to = "INDEX"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 [[lock_order]]
 from = "typing gate"
 to = "LEDGER"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "REPOS"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "TOPS"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 [[lock_order]]
@@ -186,6 +146,26 @@ to = "what the status list has cost"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 [[lock_order]]
+from = "AUTO_SEEN"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened; folder facts is a leaf, read from memory (a new folder's lookup runs on its own thread, waited on at most 200 ms)"
+
+[[lock_order]]
+from = "DB"
+to = "folder facts"
+reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
+
+[[lock_order]]
+from = "actions STORE"
+to = "folder facts"
+reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
+
+[[lock_order]]
+from = "actions WATCH"
+to = "folder facts"
+reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
+
+[[lock_order]]
 from = "config file"
 to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
@@ -196,9 +176,19 @@ to = "config in memory"
 reason = "settings are read under the store (context_keep, flag, moved); config in memory is a leaf, held only to clone an Arc"
 
 [[lock_order]]
+from = "the hub's store"
+to = "folder facts"
+reason = "a session's project (Sessions::mark → project_of_origin → repos::repo_root) is found under the store; folder facts is a leaf, read from memory (a new folder waits on its own lookup thread at most 200 ms, then is unknown)"
+
+[[lock_order]]
 from = "typing gate"
 to = "config in memory"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, settings read included"
+
+[[lock_order]]
+from = "typing gate"
+to = "folder facts"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, a folder's project included"
 
 # External calls reachable while the hub's store is held, today. Phase 2 burns this list down (§2.3, §2.4).
 
@@ -209,40 +199,10 @@ site = "hub::Hub::changed"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
-holder = "hub::activity::Hub::failed"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::activity::Hub::on_event"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
 holder = "hub::activity::Hub::refresh_activity"
 effect = "fs"
 site = "hub::activity::Hub::refresh_activity"
 reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
-
-[[store_io]]
-holder = "hub::asks::Hub::add_ask"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::asks::Hub::answer_terminal"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::asks::Hub::finish"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
 
 [[store_io]]
 holder = "hub::asks::Hub::finish"
@@ -257,18 +217,6 @@ site = "hub::asks::Hub::set_starred"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
-holder = "hub::asks::Hub::terminal_ask_with"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::asks::Hub::waiting_card"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
 holder = "hub::reviews::Hub::drain_reviews"
 effect = "db"
 site = "hub::reviews::Hub::drain_reviews"
@@ -281,49 +229,13 @@ site = "hub::reviews::Hub::review"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
-holder = "hub::send::Hub::interrupt"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
 holder = "hub::send::Hub::reply"
 effect = "db"
 site = "hub::history::push_history"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
-holder = "hub::sessions::Hub::mark_state"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::sessions::Hub::resumed"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::sessions::Hub::started"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
 holder = "hub::sessions::Hub::sweep"
 effect = "fs"
 site = "hub::sessions::written_ms"
 reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
-
-[[store_io]]
-holder = "hub::sessions::Hub::unparked"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::sessions::Hub::your_turn_since"
-effect = "fs"
-site = "logs::live::find_root"
-reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"

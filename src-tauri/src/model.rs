@@ -322,8 +322,8 @@ pub fn folder_of(cwd: &str) -> String {
 /// checkout's name, so every worktree of `cue` is `cue`; outside a repository, and on another machine
 /// (its repository isn't read from here), the folder's own name.
 pub fn own_project(cwd: &str, machine: &str) -> String {
-    let repo = if machine.is_empty() { crate::logs::live::repo_root(cwd) } else { None };
-    repo.map(|r| crate::logs::live::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
+    let repo = if machine.is_empty() { crate::logs::repos::repo_root(cwd) } else { None };
+    repo.map(|r| crate::logs::repos::repo_name(&r)).unwrap_or_else(|| folder_of(cwd))
 }
 
 /// The project a folder belongs to, by three rules, the first that says one:
@@ -348,7 +348,7 @@ pub fn project_how(cwd: &str, machine: &str) -> (String, &'static str) {
     if let Some(said) = said_how(cwd, machine, &crate::config::folders_put()) {
         return said;
     }
-    let repo = machine.is_empty() && crate::logs::live::repo_root(cwd).is_some();
+    let repo = machine.is_empty() && crate::logs::repos::repo_root(cwd).is_some();
     (own_project(cwd, machine), if repo { "repo" } else { "folder" })
 }
 
@@ -361,23 +361,23 @@ fn said_how(cwd: &str, machine: &str, put: &std::collections::HashMap<String, St
         // Never a look at that path on this Mac: by the folders you put in alone.
         return std::path::Path::new(cwd).ancestors().find_map(|d| put.get(&format!("{machine}:{}", d.display())).map(|p| (p.clone(), "put")));
     }
-    let top = crate::logs::live::checkout_top(cwd);
-    let mut ancestors = std::path::Path::new(cwd).ancestors();
+    let facts = crate::logs::repos::facts(cwd).unwrap_or_default();
+    let top = facts.top.as_deref();
     let mut said = None;
-    for d in ancestors.by_ref() {
+    for d in std::path::Path::new(cwd).ancestors() {
         if let Some(p) = put.get(&d.to_string_lossy().to_string()) {
             said = Some(p.clone());
             break;
         }
-        if top.as_deref() == Some(d) {
+        if top == Some(d) {
             break;
         }
     }
-    let repo = top.as_ref().and_then(|_| crate::logs::live::repo_root(cwd));
-    said.or_else(|| repo.as_ref().and_then(|r| put.get(&r.to_string_lossy().to_string()).cloned()))
+    let repo = top.and(facts.root.as_ref());
+    said.or_else(|| repo.and_then(|r| put.get(&r.to_string_lossy().to_string()).cloned()))
         .map(|p| (p, "put"))
-        .or_else(|| top.as_deref().and_then(declared).map(|p| (p, "repo-says")))
-        .or_else(|| repo.as_deref().filter(|r| Some(*r) != top.as_deref()).and_then(declared).map(|p| (p, "repo-says")))
+        .or_else(|| facts.declared_top.clone().map(|p| (p, "repo-says")))
+        .or_else(|| facts.declared_root.clone().map(|p| (p, "repo-says")))
 }
 
 /// Where Move to project puts a folder: a repository's main checkout (all of it, worktrees too), else the
@@ -387,30 +387,7 @@ pub fn put_key(cwd: &str, machine: &str) -> String {
     if !machine.is_empty() {
         return format!("{machine}:{cwd}");
     }
-    crate::logs::live::repo_root(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string())
-}
-
-static DECLARED: std::sync::Mutex<Option<std::collections::HashMap<std::path::PathBuf, (Option<std::time::SystemTime>, Option<String>)>>> = std::sync::Mutex::new(None);
-
-/// The project a checkout's .cue/actions.json says it belongs to (`"project"`), read again when the file changes.
-fn declared(top: &std::path::Path) -> Option<String> {
-    let file = top.join(".cue").join("actions.json");
-    let mtime = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
-    {
-        let cache = crate::locking::lock(&DECLARED, "DECLARED");
-        if let Some((at, p)) = cache.as_ref().and_then(|m| m.get(top)) {
-            if *at == mtime {
-                return p.clone();
-            }
-        }
-    }
-    let p = mtime.and_then(|_| std::fs::read_to_string(&file).ok())
-        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-        .and_then(|v| v.get("project").and_then(serde_json::Value::as_str).map(|s| s.trim().to_string()))
-        .filter(|s| !s.is_empty() && s.len() <= 80);
-    let mut cache = crate::locking::lock(&DECLARED, "DECLARED");
-    cache.get_or_insert_with(std::collections::HashMap::new).insert(top.to_path_buf(), (mtime, p.clone()));
-    p
+    crate::logs::repos::repo_root(cwd).map(|r| r.to_string_lossy().to_string()).unwrap_or_else(|| cwd.to_string())
 }
 
 /// The project a folder on this Mac belongs to (`project_at`).

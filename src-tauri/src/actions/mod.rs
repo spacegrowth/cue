@@ -59,7 +59,7 @@ fn top(folder: String, machine: &Option<String>) -> String {
     if machine.as_deref().is_some_and(|m| !m.is_empty()) {
         return folder;
     }
-    crate::logs::live::checkout_top(&folder).map(|t| t.to_string_lossy().to_string()).unwrap_or(folder)
+    crate::logs::repos::checkout_top(&folder).map(|t| t.to_string_lossy().to_string()).unwrap_or(folder)
 }
 
 /// The folder your actions are kept for: on this Mac a worktree's are its main checkout's (they're
@@ -68,7 +68,7 @@ fn mine_dir(folder: &str, machine: &str) -> String {
     if !machine.is_empty() {
         return folder.to_string();
     }
-    match crate::logs::live::repo_root(folder) {
+    match crate::logs::repos::repo_root(folder) {
         Some(r) if r.join(".git").is_dir() => r.to_string_lossy().to_string(),
         _ => folder.to_string(),
     }
@@ -575,7 +575,7 @@ fn running() -> Vec<Value> {
             // project's chip with every session closed. And which checkout, for two of a repository's
             // worktrees running at once: its branch (this Mac's) and folder's name.
             let project = crate::model::project_at(&s.folder, &s.machine);
-            let branch = if s.machine.is_empty() { crate::logs::live::branch(&s.folder) } else { String::new() };
+            let branch = if s.machine.is_empty() { crate::logs::repos::branch(&s.folder) } else { String::new() };
             out.push(json!({ "folder": s.folder, "machine": s.machine, "project": project, "branch": branch, "checkout": crate::model::folder_of(&s.folder), "id": s.id, "name": s.name, "port": s.port, "since": s.start_ms }));
         }
     }

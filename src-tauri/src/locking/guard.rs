@@ -28,10 +28,20 @@ impl<'a, T> Locked<MutexGuard<'a, T>> {
     /// back when the lock does. Called as `Guard::wait(g, &cv)`, not a method, so it never hides a method
     /// of what's locked (a locked `Child`'s `wait`), as `MutexGuard::map` does.
     pub fn wait(guard: Self, cv: &Condvar) -> Self {
+        Self::let_go_while(guard, |g| cv.wait(g).unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// `wait`, for at most `dur` (`Condvar::wait_timeout`); the caller looks again at what it waits for.
+    pub fn wait_timeout(guard: Self, cv: &Condvar, dur: std::time::Duration) -> Self {
+        Self::let_go_while(guard, |g| cv.wait_timeout(g, dur).unwrap_or_else(|e| e.into_inner()).0)
+    }
+
+    /// The lock and its record let go while `wait` runs, both back after.
+    fn let_go_while(guard: Self, wait: impl FnOnce(MutexGuard<'a, T>) -> MutexGuard<'a, T>) -> Self {
         let Locked { held, inner } = guard;
         let (what, at) = held.which();
         drop(held);
-        let inner = cv.wait(inner).unwrap_or_else(|e| e.into_inner());
+        let inner = wait(inner);
         Locked { held: Held::new(what, at), inner }
     }
 }
