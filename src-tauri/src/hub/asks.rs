@@ -226,17 +226,18 @@ impl Hub {
                 let _ = tx.send(Reply::Cancel(outcome.to_string()));
             }
             let pos = st.items.iter().position(|i| i.id == id)?;
-            let mut it = st.items.remove(pos);
-            // An answered permission or question means the agent is back at work. A command's dialog
-            // answered at its prompt starts no turn (no Stop would ever come): back to its prompt.
+            let it = st.items.remove(pos);
+            // An answered permission or question means the agent is back at work, unless another of its asks
+            // still waits on you (two tool calls asked at once). A command's dialog answered at its prompt
+            // starts no turn (no Stop would ever come): back to its prompt.
             if it.kind != "waiting" && status != "gone" {
-                st.sessions.mark(&it.origin, if it.at_prompt { "waiting" } else { "working" }, None);
+                let still_asking = st.items.iter().any(|i| i.kind != "waiting" && i.origin.session_id == it.origin.session_id);
+                if !still_asking {
+                    st.sessions.mark(&it.origin, if it.at_prompt { "waiting" } else { "working" }, None);
+                }
                 st.sessions.note_decision(&it.origin.session_id, outcome, crate::config::context_keep());
             }
-            it.status = status.into();
-            it.outcome = outcome.into();
-            it.resolved_ms = Some(now_ms());
-            Some(push_history(st, it))
+            Some(filed(st, it, status, outcome))
         });
         let Some(answered) = answered else { return };
         self.save_answered(answered);
@@ -347,6 +348,14 @@ pub(super) fn notify_title(it: &Item) -> (String, String) {
         _ => "wants permission",
     };
     (format!("{who} {what}"), first_line(&summary(it), 140))
+}
+
+/// `it`, off Waiting already, to History as `status` / `outcome`, resolved now.
+fn filed(st: &mut Store, mut it: Item, status: &str, outcome: &str) -> super::history::Answered {
+    it.status = status.into();
+    it.outcome = outcome.into();
+    it.resolved_ms = Some(now_ms());
+    push_history(st, it)
 }
 
 fn describe(d: &Decision) -> String {
