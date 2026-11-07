@@ -117,3 +117,13 @@ test("Settings → Agents: a command in a setting's note stays whole", async ({ 
   await page.locator(".sheet .set-sub code").first().waitFor();
   expect(await splitWords(page, ".sheet .set-sub")).toEqual([]);
 });
+
+test("the board's column headings line up", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  const tops = await page.evaluate(() => [".col.main", ".col-waiting", ".col-sessions"].map((c) => {
+    const r = document.createRange();
+    r.selectNodeContents(document.querySelector(`${c} .col-head`));
+    return Math.round(r.getClientRects()[0].top);
+  }));
+  expect(new Set(tops).size, `heading tops ${tops}`).toBe(1);
+});
