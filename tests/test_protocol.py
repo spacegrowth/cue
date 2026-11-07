@@ -20,6 +20,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OWN = {os.path.realpath(os.path.expanduser(p)) for p in ("~/.cue", "~/Library/Application Support/dev.spacegrowth.cue")}
 if not os.environ.get("CUE_HOME") or os.path.realpath(os.environ["CUE_HOME"]) in OWN:
     sys.exit("test_protocol.py: run it through tests/run.sh unit (it needs a private CUE_HOME, never your own Cue's)")
+# Its stand-in agents run in tmux: only ever on the private server tests/run.sh sets up inside CUE_HOME, never yours.
+if os.environ.get("TMUX") or not os.path.realpath(os.environ.get("TMUX_TMPDIR", "/")).startswith(os.path.realpath(os.environ["CUE_HOME"]) + os.sep):
+    sys.exit("test_protocol.py: run it through tests/run.sh unit (its tmux must be a private server inside CUE_HOME, never yours)")
 # The hook is built into Cue's binary; Cue writes this shim at launch (what the agents' settings run).
 HOOK = os.path.join(os.environ["CUE_HOME"], "bin", "cue-hook")
 SOCK = os.path.join(os.environ["CUE_HOME"], "cue.sock")

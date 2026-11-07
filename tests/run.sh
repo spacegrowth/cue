@@ -16,9 +16,14 @@ unit() {
   export CUE_HOME="$(mktemp -d /tmp/cue-test.XXXX)"
   export CUE_QUIET=1
   export CUE_BIN="$ROOT/src-tauri/target/debug/cue"
+  # The protocol tests' stand-in agents, and the private Cue typing into them, on a tmux server of their own:
+  # with $TMUX unset, a bare `tmux` would otherwise start sessions on your default server.
+  export TMUX_TMPDIR="$CUE_HOME/tmux"
+  mkdir -p "$TMUX_TMPDIR"
   (cd "$ROOT/src-tauri" && cargo test -q --workspace 2>&1 | grep -E "test result|FAILED|panicked" ; cargo build -q)
   "$CUE_BIN" >/dev/null 2>&1 &
-  trap 'pkill -f "$CUE_BIN"; rm -rf "$CUE_HOME"' EXIT   # every test Cue process, hooks included
+  # Every test Cue process (hooks included), the private tmux server by its own socket, then the folder.
+  trap 'pkill -f "$CUE_BIN"; tmux -S "$TMUX_TMPDIR/tmux-$(id -u)/default" kill-server 2>/dev/null; rm -rf "$CUE_HOME"' EXIT
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
   python3 "$ROOT/tests/test_protocol.py"
 }
