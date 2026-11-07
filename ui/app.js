@@ -890,7 +890,8 @@ function bindMain() {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); tipUsed("find"); return openFind(); }   // like GitHub and Gmail (only when not typing)
     if (e.key === "h") { view = view === "history" ? "board" : "history"; return renderMain(); }
-    if (e.key === "l") return lvAct("toggle", {});
+    // The list focuses its search box: the key that opened it mustn't land there as typed text.
+    if (e.key === "l") { e.preventDefault(); return lvAct("toggle", {}); }
     if (e.key === ",") { sheet = sheet === "settings" ? null : "settings"; return renderMain(); }
     if (sheet) return;
     if (e.key === "n") return goNext();
