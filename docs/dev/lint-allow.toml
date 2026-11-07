@@ -76,11 +76,6 @@ to = "folder facts"
 reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
 
 [[lock_order]]
-from = "actions log"
-to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
-
-[[lock_order]]
 from = "answered saves"
 to = "DB"
 reason = "saves.rs: a save made after the store is let go checks or reads the store under its own save lock (save lock, then a look at the store, then the database); nothing takes a save lock under the store or the database"
@@ -99,16 +94,6 @@ reason = "saves.rs: a save made after the store is let go checks or reads the st
 from = "config file"
 to = "config in memory"
 reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
-
-[[lock_order]]
-from = "copies"
-to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
-
-[[lock_order]]
-from = "extensions log"
-to = "WINDOWS"
-reason = "a log feed opened under its owner's lock reads the known-windows table (logs::steps::with_windows), a leaf"
 
 [[lock_order]]
 from = "open_terms"

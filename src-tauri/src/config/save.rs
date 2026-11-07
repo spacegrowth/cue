@@ -12,8 +12,17 @@ use serde_json::{json, Value};
 pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>, R), String>) -> Result<R, String> {
     let _one = super::cache::hold_file();
     let path = super::path();
-    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost.
-    let mut c = super::cache::read_file(&path);
+    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost. One that
+    // isn't settings is kept aside before it's replaced: a hand edit with a typo isn't every setting gone.
+    let mut c = match super::cache::read(&path) {
+        super::cache::File::Settings(v) => v,
+        super::cache::File::Missing => json!({}),
+        super::cache::File::Unreadable(why) => {
+            let kept = keep_aside(&path)?;
+            eprintln!("cue: {} isn't valid settings ({why}): kept as {}, saving a new one", path.display(), kept.display());
+            json!({})
+        }
+    };
     let (value, out) = f(&c)?;
     let Some(value) = value else { return Ok(out) };
     let (section, name) = key.split_once('.').ok_or_else(|| format!("{key} isn't a dotted key"))?;
@@ -24,6 +33,15 @@ pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>
     let stamp = replace(&path, &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
     super::cache::keep(&path, stamp, c);
     Ok(out)
+}
+
+/// A copy of `path` beside it, as `<name>.unreadable-<ms>`, for a person to put right.
+fn keep_aside(path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".unreadable-{}", crate::clock::now_ms()));
+    let kept = path.with_file_name(name);
+    std::fs::copy(path, &kept).map_err(|e| format!("couldn't keep the unreadable {} aside: {e}", path.display()))?;
+    Ok(kept)
 }
 
 /// `path` holding `text`, replaced whole: written beside it and flushed to disk, then renamed over it, so a
@@ -47,12 +65,22 @@ fn replace(path: &std::path::Path, text: &str) -> Result<Option<super::cache::St
     drop(f);
     let stamp = super::cache::stamp_of(&next);
     std::fs::rename(&next, &path).map_err(|e| e.to_string())?;
+    #[cfg(test)]
+    tests::PLACED.with(|then| then.take().map(|f| f(&path)));
     Ok(stamp)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::os::unix::fs::PermissionsExt;
+
+    type Then = Box<dyn FnOnce(&std::path::Path)>;
+
+    thread_local! {
+        /// What happens to the file the moment a save on this thread has put it in place (once).
+        pub(super) static PLACED: Cell<Option<Then>> = const { Cell::new(None) };
+    }
 
     #[test]
     fn a_linked_config_has_its_target_replaced_and_the_file_keeps_its_permissions() {
@@ -88,5 +116,26 @@ mod tests {
         std::fs::write(&path, "{\"a\": 22}\n").unwrap();
         assert_ne!(wrote, super::super::cache::stamp_of(&path), "an edit after it is another stamp");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A hand edit that lands between a save putting its file in place and the save noting what it wrote is
+    /// read by the next refresh, not taken for the save.
+    #[test]
+    fn a_hand_edit_right_after_a_save_is_read_by_the_next_refresh() {
+        let _g = crate::db::test_turn();
+        let dir = std::env::temp_dir().join(format!("cue-cfg-placed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("CUE_HOME", &dir);
+        std::fs::write(dir.join("config.json"), "{}\n").unwrap();
+        crate::config::refresh();
+        PLACED.set(Some(Box::new(|path| std::fs::write(path, "{\"hand\": {\"edited\": true}}\n").unwrap())));
+        crate::config::remember("tips.on", serde_json::json!(false)).unwrap();
+        let changed = crate::config::refresh();
+        let c = crate::config::load();
+        std::env::remove_var("CUE_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(changed, "the refresh saw the edit");
+        assert_eq!(c["hand"]["edited"], true, "what's on disk now: {c}");
     }
 }

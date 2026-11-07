@@ -749,13 +749,13 @@ mod tests {
     use super::*;
 
     /// A private Cue folder and a project folder in it, for one test (others wait).
-    struct Scratch {
-        home: std::path::PathBuf,
-        project: String,
+    pub(super) struct Scratch {
+        pub(super) home: std::path::PathBuf,
+        pub(super) project: String,
         _g: std::sync::MutexGuard<'static, ()>,
     }
     impl Scratch {
-        fn new(tag: &str) -> Scratch {
+        pub(super) fn new(tag: &str) -> Scratch {
             let g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let home = std::env::temp_dir().join(format!("cue-actions-{tag}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&home);
@@ -765,7 +765,7 @@ mod tests {
             Scratch { home, project, _g: g }
         }
         /// The project's file of actions, as an agent would write it.
-        fn write(&self, text: &str) {
+        pub(super) fn write(&self, text: &str) {
             write_mine(&self.project, "", text).unwrap();
         }
         fn file(&self) -> Value {
@@ -924,3 +924,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "flow_tests.rs"]
+mod flow;

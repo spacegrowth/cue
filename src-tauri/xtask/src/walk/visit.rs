@@ -64,6 +64,12 @@ impl<'ast> Visit<'ast> for Walker<'_, '_, '_> {
     }
 
     fn visit_macro(&mut self, m: &'ast syn::Macro) {
+        if super::json::is_json(m) {
+            for e in super::json::expressions(m.tokens.clone()) {
+                self.visit_expr(&e);
+            }
+            return;
+        }
         let args = m.parse_body_with(syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated);
         for e in args.iter().flatten() {
             self.visit_expr(e);

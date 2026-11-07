@@ -64,6 +64,7 @@ impl Walker<'_, '_, '_> {
         let line = m.method.span().start().line;
         let name = m.method.to_string();
         let target = self.method_target(m);
+        let unknown = target == Resolved::Unknown;
         if m.args.is_empty() && BARE_LOCK_METHODS.contains(&name.as_str()) && target == Resolved::Unknown {
             return self.bare_lock(&m.receiver, line);
         }
@@ -77,7 +78,7 @@ impl Walker<'_, '_, '_> {
                 if m.args.is_empty() && DISK_METHODS.contains(&name.as_str()) {
                     let held = self.held();
                     self.push(Ev::Effect { effect: Effect::Fs, detail: format!("Path::{name}"), line, held });
-                } else if self.cx.ix.method_owners.contains_key(&name) {
+                } else if unknown && self.cx.ix.method_owners.contains_key(&name) {
                     // A crate type has a method of this name: this call may be one, and isn't followed.
                     self.facts.unresolved += 1;
                 }
@@ -178,7 +179,26 @@ impl Walker<'_, '_, '_> {
         let name = m.method.to_string();
         match self.receiver_type(&m.receiver) {
             Some(ty) => self.cx.ix.method_on(&ty, &name),
+            // `OpenOptions::new().create(true).open(p)`: a value an outside function made, never a crate
+            // method however its name matches one.
+            None if self.made_outside(&m.receiver) => Resolved::Outside(vec![name]),
             None => self.cx.ix.method_by_name(&name),
+        }
+    }
+
+    /// Whether `e` is a chain of calls that starts at an outside function's result (`File::open(p)?`,
+    /// `std::fs::OpenOptions::new().append(true)`).
+    fn made_outside(&self, e: &Expr) -> bool {
+        match e {
+            Expr::Paren(p) => self.made_outside(&p.expr),
+            Expr::Reference(r) => self.made_outside(&r.expr),
+            Expr::Try(t) => self.made_outside(&t.expr),
+            Expr::MethodCall(m) => self.receiver_type(&m.receiver).is_none() && self.made_outside(&m.receiver),
+            Expr::Call(c) => match &*c.func {
+                Expr::Path(p) => matches!(self.cx.ix.resolve_path(&self.scope_of(), &path_segs(&p.path)), Resolved::Outside(_)),
+                _ => false,
+            },
+            _ => false,
         }
     }
 

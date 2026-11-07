@@ -212,3 +212,24 @@ fn reads_the_branch_of_a_repo_and_a_worktree() {
     assert_eq!(branch(""), "");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// A folder not asked about for six hours is forgotten: asked about again, it's unknown until looked up anew.
+/// One asked about meanwhile is kept.
+#[test]
+fn a_folder_not_asked_about_for_six_hours_is_forgotten() {
+    fn look(_: &str) -> Facts {
+        on_branch("main")
+    }
+    let clock = crate::clock::fake::Fake::default();
+    clock.install();
+    let f = folders(look, Duration::from_secs(2));
+    assert!(f.first_look("/old").is_some() && f.first_look("/kept").is_some());
+    clock.advance(5 * 3600_000);
+    assert!(f.facts("/kept").is_some(), "asked about again, five hours on");
+    clock.advance(3600_000 + 1);
+    f.refresh();
+    let (old, kept) = (f.facts("/old"), f.facts("/kept"));
+    crate::clock::fake::Fake::uninstall();
+    assert_eq!(old, None, "forgotten: looked up anew");
+    assert!(kept.is_some(), "asked about an hour ago: kept");
+}

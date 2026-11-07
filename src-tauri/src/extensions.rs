@@ -349,8 +349,11 @@ pub async fn ext_git(ext: String, op: String, folder: String, machine: Option<St
 
 /// Programs that would run whatever text they're given: never run for an extension.
 const NOT_PROGRAMS: [&str; 22] = ["sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh", "env", "xargs", "python", "python3", "node", "deno", "bun", "ruby", "perl", "php", "osascript", "lua", "tclsh", "expect"];
-/// The longest a run may take (making a container or a pod can take a while).
+/// The longest a run may take (making a container or a pod can take a while); a test's run, a moment.
+#[cfg(not(test))]
 const PROGRAM_LIMIT: std::time::Duration = std::time::Duration::from_secs(600);
+#[cfg(test)]
+const PROGRAM_LIMIT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// A program's name as an extension may give it: a plain name, not a path, not one of NOT_PROGRAMS
 /// (nor a versioned one, python3.12 say).
@@ -680,3 +683,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+#[path = "extensions_programs_tests.rs"]
+mod programs;

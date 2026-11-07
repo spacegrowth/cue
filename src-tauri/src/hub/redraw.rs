@@ -27,6 +27,8 @@ pub(super) struct Redraws {
     worker: OnceLock<()>,
     /// How many draws ran (the coalescing's own measure).
     draws: AtomicU64,
+    /// How many times the worker has started waiting for a change (where it must hold no hub).
+    waits: AtomicU64,
 }
 
 impl Redraws {
@@ -46,6 +48,7 @@ impl Redraws {
 
     /// Waits until a draw is wanted, and takes the mark.
     fn wait(&self) {
+        self.waits.fetch_add(1, Ordering::SeqCst);
         let mut dirty = crate::locking::lock(&self.dirty, "redraw wanted");
         while !*dirty {
             dirty = crate::locking::Guard::wait(dirty, &self.wake);
@@ -87,6 +90,11 @@ impl Hub {
         let Some(me) = self.app.as_ref().and_then(|a| a.try_state::<Arc<Hub>>()).map(|h| Arc::downgrade(h.inner())) else {
             return self.draw();
         };
+        self.draw_on_worker(me);
+    }
+
+    /// The worker started (once) for this hub, `me`.
+    fn draw_on_worker(&self, me: Weak<Hub>) {
         self.redraws.worker.get_or_init(|| {
             let redraws = self.redraws.clone();
             let _ = std::thread::Builder::new().name("cue-redraw".into()).spawn(move || draw_when_wanted(redraws, me));
@@ -155,3 +163,7 @@ fn draw_when_wanted(redraws: Arc<Redraws>, hub: Weak<Hub>) {
         std::thread::sleep(DRAW_EVERY.saturating_sub(started.elapsed()));
     }
 }
+
+#[cfg(test)]
+#[path = "redraw_tests.rs"]
+mod tests;

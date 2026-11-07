@@ -6,6 +6,10 @@
 //! terminal) inherits your $TMUX. So the test binary drops it before `main`, before any test thread can
 //! run tmux (`ISOLATE`), and every tmux command a test runs checks that it's still so (`check`, from
 //! focus::bin), failing loudly instead of reaching your server.
+//!
+//! That server is started with a config of its own (`CONFIG`), not your ~/.tmux.conf, and its windows run
+//! /bin/sh, not your login shell: a test that types into a new window waits on a shell that starts in
+//! moments, never on your shell's startup files (a second idle, ten under a parallel test run).
 
 use std::path::{Path, PathBuf};
 
@@ -67,6 +71,12 @@ extern "C" fn isolate() {
     std::env::remove_var("TMUX");
     std::env::remove_var("TMUX_PANE");
     std::env::set_var("TMUX_TMPDIR", mine());
+    unsafe { libc::atexit(end) };
+}
+
+/// Run as the test process exits: its server (kept up while it ran, `CONFIG`) and its folder go.
+extern "C" fn end() {
+    take_down(&mine());
 }
 
 #[used]
@@ -84,7 +94,22 @@ pub fn check() {
     assert_eq!(std::env::var_os("TMUX_TMPDIR").map(PathBuf::from), Some(dir.clone()), "a test would run tmux outside its own folder");
     let _ = std::fs::create_dir_all(&dir);
     static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| take_down_ended(Path::new("/tmp")));
+    ONCE.call_once(|| {
+        take_down_ended(Path::new("/tmp"));
+        start_server(&dir);
+    });
+}
+
+/// The test server's settings: kept up with no sessions (tests start and end theirs throughout the run; it's
+/// taken down as the process exits, `end`, or by the next run if it was killed), and /bin/sh in every new window.
+const CONFIG: &str = "set -s exit-empty off\nset -g default-shell /bin/sh\nset -g default-command ''\n";
+
+/// This process's server, started on `CONFIG` before any test's command could start it on your config.
+fn start_server(dir: &Path) {
+    let conf = dir.join("tmux.conf");
+    std::fs::write(&conf, CONFIG).expect("the test tmux server's config");
+    let ok = std::process::Command::new(super::focus::find_bin("tmux")).args(["-f", &conf.to_string_lossy(), "start-server"]).env("SHELL", "/bin/sh").status();
+    assert!(ok.as_ref().is_ok_and(|s| s.success()), "the test tmux server didn't start: {ok:?}");
 }
 
 /// The test-run folders under `root` whose process has exited: their servers and folders go. A run still going
@@ -116,6 +141,16 @@ mod tests {
         assert_eq!(std::env::var_os("TMUX_TMPDIR").map(std::path::PathBuf::from), Some(super::mine()));
         super::check();
         assert!(super::mine().is_dir());
+    }
+
+    /// A new window runs /bin/sh, whatever your login shell and its startup files are.
+    #[test]
+    fn the_test_server_runs_a_plain_shell_in_new_windows() {
+        if !crate::terminal::focus::tmux_installed() {
+            return;
+        }
+        let shell = std::process::Command::new(crate::terminal::focus::tmux_bin()).args(["show-options", "-gv", "default-shell"]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&shell.stdout).trim(), "/bin/sh");
     }
 
     /// Two test runs at once (two `cargo test`s in one checkout): a run clears only the tmux servers of runs that have

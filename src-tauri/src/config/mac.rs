@@ -65,9 +65,20 @@ impl Kept {
     }
 
     /// What Cue just set itself (Open at login, set and confirmed), kept at once rather than at the next ask.
-    pub fn set_login(&self, on: bool, changed: fn()) {
+    fn set_login(&self, on: bool, changed: fn()) {
         let now = Facts { login: on, ..self.get() };
         self.put(now, changed);
+    }
+
+    /// Open at login switched with `set` (login::set): kept at once when macOS took it, and macOS asked again
+    /// (`ask`) either way, so the switch shows what it says.
+    pub fn switch_login(&'static self, on: bool, set: fn(bool) -> Result<(), String>, ask: fn() -> Facts, changed: fn()) -> Result<(), String> {
+        let done = set(on);
+        if done.is_ok() {
+            self.set_login(on, changed);
+        }
+        self.refresh_soon(ask, changed);
+        done
     }
 }
 
@@ -83,9 +94,9 @@ pub fn refresh_soon() {
     KEPT.refresh_soon(ask, super::changed);
 }
 
-/// Open at login set (macOS took it): kept at once.
-pub fn login_set(on: bool) {
-    KEPT.set_login(on, super::changed);
+/// Open at login switched (login::set): kept at once when macOS took it.
+pub fn switch_login(on: bool) -> Result<(), String> {
+    KEPT.switch_login(on, super::login::set, ask, super::changed)
 }
 
 fn ask() -> Facts {
@@ -157,5 +168,25 @@ mod tests {
         static K: Kept = Kept::new();
         K.set_login(true, || {});
         assert!(K.get().login, "not snapped back to the last ask's answer");
+    }
+
+    static LOGIN_RELEASE: AtomicBool = AtomicBool::new(false);
+    fn login_off_slowly() -> Facts {
+        until("the test let the ask go", || LOGIN_RELEASE.load(Ordering::SeqCst));
+        Facts { login: false, tmux: true, terminal: "iTerm" }
+    }
+
+    /// Switching Open at login shows what you switched it to at once, while macOS's own answer is still out;
+    /// switching it when macOS refuses leaves it as it was.
+    #[test]
+    fn open_at_login_switched_shows_at_once_while_macos_is_asked() {
+        static K: Kept = Kept::new();
+        K.set_login(false, || {});
+        assert_eq!(K.switch_login(true, |_| Ok(()), login_off_slowly, || {}), Ok(()));
+        assert!(K.get().login, "on at once, the ask still out");
+        assert_eq!(K.switch_login(false, |_| Err("macOS didn't allow it".into()), login_off_slowly, || {}), Err("macOS didn't allow it".into()));
+        assert!(K.get().login, "refused: still on");
+        LOGIN_RELEASE.store(true, Ordering::SeqCst);
+        until("macOS's answer came", || !K.get().login && !K.asking.load(Ordering::SeqCst));
     }
 }
