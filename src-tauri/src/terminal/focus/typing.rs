@@ -23,17 +23,10 @@ pub(super) fn enter_gap(text: &str) -> f64 {
 /// Enter goes straight away. Most messages go in a few tens of milliseconds; a machine's pane is read over
 /// SSH, so there it's as long as the paste really takes. Never longer than `enter_gap`.
 fn wait_for_paste(o: &Origin, text: &str, before: &str) {
-    let end = clock::now_ms() + gap_ms(text);
     let tail = paste_tail(text);
-    while clock::now_ms() < end {
-        if let Ok(now) = session_screen(o) {
-            if paste_shows(before, &now, &tail) {
-                // Drawn means taken in; a moment more for the agent to be ready for a key.
-                clock::sleep_ms(40);
-                return;
-            }
-        }
-        clock::sleep_ms(25);
+    if clock::within(gap_ms(text), 25, || session_screen(o).is_ok_and(|now| paste_shows(before, &now, &tail))) {
+        // Drawn means taken in; a moment more for the agent to be ready for a key.
+        clock::sleep_ms(40);
     }
 }
 
