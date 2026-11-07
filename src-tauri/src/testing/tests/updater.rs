@@ -112,7 +112,7 @@ fn release(version: &str) -> Answer {
 
 fn on(server: &Server, channel: crate::ipc::Channel) -> Result<Option<String>, String> {
     let app = app(server);
-    tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), channel)).map(|u| u.map(|u| u.version))
+    tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), channel)).map(|f| f.update.map(|u| u.version))
 }
 
 fn found(answer: Answer) -> Result<Option<String>, String> {
@@ -190,14 +190,42 @@ fn a_beta_release_not_signed_with_cues_key_is_never_installed() {
     let server = Server::with(Answers { stable: release("0.1.0"), beta: Some(release("0.3.0")) });
     let app = app(&server);
     let found = tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), crate::ipc::Channel::Beta));
-    let u = found.unwrap().expect("0.3.0 is on beta");
+    let u = found.unwrap().update.expect("0.3.0 is on beta");
     assert!(tauri::async_runtime::block_on(u.download_and_install(|_, _| {}, || {})).is_err(), "installed a release signed with another key");
     assert_eq!(server.asked(), vec!["/latest-beta.json", "/cue.app.tar.gz"], "downloaded from beta, checked against Cue's key, refused");
 }
 
 #[test]
-fn no_beta_file_on_the_server_says_it_couldnt_check() {
+fn no_beta_file_on_the_server_asks_stable_and_says_so() {
     let server = Server::new(release("0.2.0"));
-    let err = on(&server, crate::ipc::Channel::Beta).unwrap_err();
+    let app = app(&server);
+    let found = tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), crate::ipc::Channel::Beta)).unwrap();
+    assert_eq!((found.update.map(|u| u.version), found.no_beta), (Some("0.2.0".into()), true), "stable's release, said to be stable's");
+    assert_eq!(server.asked(), vec!["/latest-beta.json", "/latest.json"]);
+}
+
+#[test]
+fn a_beta_check_that_finds_its_file_says_nothing_of_stable() {
+    let server = Server::with(Answers { stable: release("0.2.0"), beta: Some(release("0.1.0")) });
+    let app = app(&server);
+    let found = tauri::async_runtime::block_on(crate::ipc::check_within(app.handle(), Duration::from_secs(5), crate::ipc::Channel::Beta)).unwrap();
+    assert_eq!((found.update.is_none(), found.no_beta), (true, false), "up to date on beta; stable never asked");
+    assert_eq!(server.asked(), vec!["/latest-beta.json"]);
+}
+
+#[test]
+fn a_beta_check_with_no_answer_at_all_doesnt_fall_back() {
+    let server = Server::with(Answers { stable: release("0.2.0"), beta: Some(Answer::Never) });
+    let app = app(&server);
+    let check = crate::ipc::check_within(app.handle(), Duration::from_secs(1), crate::ipc::Channel::Beta);
+    let r = tauri::async_runtime::block_on(async { tokio::time::timeout(Duration::from_secs(20), check).await }).expect("the check waited on and on");
+    let Err(err) = r else { panic!("a server that never answered offered a release") };
+    assert!(err.starts_with("Couldn't check for updates: "), "{err}");
+    assert_eq!(server.asked(), vec!["/latest-beta.json"], "a timeout isn't a missing file: stable isn't asked");
+}
+
+#[test]
+fn stable_with_no_release_file_still_says_it_couldnt_check() {
+    let err = on(&Server::new(Answer::Status(404, "Not Found".into())), crate::ipc::Channel::Stable).unwrap_err();
     assert!(err.starts_with("Couldn't check for updates: "), "{err}");
 }

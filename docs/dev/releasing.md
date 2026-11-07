@@ -1,7 +1,7 @@
 # Releasing Cue
 
 `scripts/release.sh` builds, signs, notarizes and (when asked) publishes a release. It refuses to build
-until every gate below passes. The script's parts are in `scripts/release/` (`gates.sh`, `ship_day.sh`,
+until every gate below passes. The script's parts are in `scripts/release/` (`preflight.sh`, `gates.sh`,
 `build.sh`, `publish.sh`, `record.sh`, `channel.py`), and their tests are `tests/release/gates.test.sh`,
 which `tests/run.sh unit` runs.
 
@@ -31,14 +31,24 @@ Run in this order. The first one that fails stops the release, and its log is in
 4. **swift helpers:** cue-listen (`swiftc`), and cue-speak and cue-voice (`swift build`), each built into a new
    scratch folder, so a half-purged build cache can't hide a broken build.
 5. **unit, ui, e2e tests:** `tests/run.sh unit`, `ui`, `e2e`, one gate each.
-6. **soak 10 min:** `tests/run.sh soak 10`. Until the soak harness lands, that prints "soak: not yet" and
-   succeeds; the gate counts that as a failure.
+6. **soak 10 min:** `tests/run.sh soak 10` (docs/dev/soak.md).
 
-Before the gates, a run that publishes checks the one-ship rule (below). A real run (not a dry run) also
+Before the gates and before anything in `dist/` is removed, every build (dry or not, published or not)
+checks that its version isn't tagged here or released on GitHub: a released version's `dist/v<version>` holds
+the dSYM for its hang reports, so it's never built over. Then a run that ships (`--publish`, `--beta`, `--promote`) checks that its version comes after
+the latest stable release (stable never goes back, and a beta older than stable would never be offered) and
+the one-ship rule (below). A real run (not a dry run) also
 checks the signing key, the update key and notarytool before the gates, so a missing key doesn't wait
 out a soak.
 
-`--skip-gates "<why>"` runs no gate. The reason is required and recorded.
+`--skip-gates "<why>"` runs only the clean-tree gate. The reason is required and recorded.
+
+The build is the commit plus the version written into `package.json`, `tauri.conf.json`, `Cargo.toml` and
+`Cargo.lock`. `release.sh` never commits: `release-next.sh` commits the bump only once the release is
+published. A run that stops before it finishes (a failed build, notarization or upload) puts those files
+back as committed, so the next try passes the clean-tree gate. The clean tree is checked first, so this
+never touches your own edits. A run that fails after GitHub already has the release is refused next time
+(the version is out): finish it by hand with `gh`, or release the next version.
 
 ## Dry run
 
@@ -67,15 +77,16 @@ An example (the timings left out):
 
 ## One ship a day
 
-A run with `--publish` or `--beta` lists the releases on GitHub and refuses when a `v*` release (stable or
-beta) was already published today (your Mac's date). A build that isn't published isn't a ship.
-`--hotfix "<why>"` allows the second one; the reason is recorded. A promote isn't a new release, so it
-isn't counted, but it has its own wait: a beta is promoted after a day on beta, sooner only with `--hotfix`.
+A run that ships (`--publish`, `--beta`, `--promote`) reads the releases on GitHub (`gh api …/releases`) and
+refuses when a `v*` release already shipped today (your Mac's date): published today, stable or beta, or
+promoted today. A promote's date is when its `latest.json` was uploaded, which only a stable publish or a
+promote does. A build that isn't published isn't a ship. `--hotfix "<why>"` allows the second one; the
+reason is recorded. A promote also waits a day on beta, sooner only with `--hotfix`.
 
 ## What gets recorded
 
-`dist/v<version>/release-record.txt`: the version and channel, the date, the commit, the gates passed and
-where their logs are (or `gates: SKIPPED, <why>`), `hotfix: <why>` when given, Cargo.lock's sha256 and
+`dist/v<version>/release-record.txt`: the version and channel, the date, the commit (plus the version bump), the gates passed and
+where their logs are (or `gates: SKIPPED (all but the clean tree), <why>`), `hotfix: <why>` when given, Cargo.lock's sha256 and
 `rustc --version`. The release's notes on GitHub end with "Released without its gates: <why>" or
 "Hotfix: <why>" when either applies, so they stay visible after `dist/` is gone. A promote with `--hotfix`
 adds "Promoted after N h on beta, a hotfix: <why>" to the release's notes.

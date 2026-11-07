@@ -25,25 +25,36 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-for part in common args gates ship_day record build publish; do
+for part in common args preflight gates record build publish; do
   # shellcheck disable=SC1090
   . "$ROOT/scripts/release/$part.sh"
 done
+
+# What a run leaves when it stops: no scratch folders, and unless it finished, the version files as committed.
+on_exit() {
+  local status=$?
+  [ -z "${WORK:-}" ] || rm -rf "$WORK"
+  [ -z "${PROMOTE_WORK:-}" ] || rm -rf "$PROMOTE_WORK"
+  if [ "$status" != 0 ] && [ "$BUMPED" = 1 ]; then restore_version; fi
+}
+trap on_exit EXIT
 
 parse_args "$@"
 # shellcheck disable=SC1091
 [ -f .release.env ] && . ./.release.env
 
 if [ "$PROMOTE" = 1 ]; then
+  run_preflight
   promote
   exit 0
 fi
 
+check_unreleased
+run_preflight
 # A dry run's logs and record go beside a real build's, never over them.
 if [ "$DRY_RUN" = 1 ]; then DIST="$ROOT/dist/dry-run-v$VERSION"; else DIST="$ROOT/dist/v$VERSION"; fi
 rm -rf "$DIST"; mkdir -p "$DIST"
 
-check_ship_day
 [ "$DRY_RUN" = 1 ] || signing_prerequisites   # before the gates, so a missing key doesn't wait out a soak
 run_gates "$DIST/gates"
 write_record "$DIST/release-record.txt"

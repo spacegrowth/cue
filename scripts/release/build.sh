@@ -31,8 +31,14 @@ notarize() {  # $1 = a zip or a dmg; waits for Apple's verdict
   grep -q "status: Accepted" <<<"$out" || { printf '%s\n' "$out" >&2; die "Apple didn't accept $(basename "$1") (xcrun notarytool log <id> says why)"; }
 }
 
+# The files the version is written in. release-next.sh commits them once the release is published; a run that
+# stops before that puts them back as committed (restore_version), so the next try starts from a clean tree.
+VERSION_FILES="package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock"
+BUMPED=0
+
 # The version, everywhere it's written.
 bump_version() {
+  BUMPED=1
   python3 - "$VERSION" <<'PY'
 import json, re, sys
 v = sys.argv[1]
@@ -43,6 +49,12 @@ p = "src-tauri/Cargo.toml"; s = open(p).read()
 open(p, "w").write(re.sub(r'(?m)^version = "[^"]*"', f'version = "{v}"', s, count=1))
 PY
   say "version  → $VERSION"
+}
+
+# The version files as committed again. Safe: the clean-tree check guaranteed nothing else was in them.
+restore_version() {
+  # shellcheck disable=SC2086
+  git checkout -q HEAD -- $VERSION_FILES && say "the run didn't finish: the version files are back as committed"
 }
 
 # Both chip types, signed with the hardened runtime. Sets APP.
@@ -139,7 +151,7 @@ make_dmg() {
 }
 
 build_release() {
-  WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+  WORK="$(mktemp -d)"   # (removed by release.sh's on_exit)
   bump_version
   build_app
   check_app

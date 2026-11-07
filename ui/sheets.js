@@ -286,7 +286,7 @@ const betaUpdates = () => state.settings?.updates?.beta === true;
 async function checkUpdate() {
   upd = { ...upd, status: "checking", beta: betaUpdates() };
   renderMain();
-  try { const r = await invoke("update_check"); upd = { ...upd, current: r.current, version: r.version || "", notes: r.notes || "", status: r.version ? "found" : "latest" }; }
+  try { const r = await invoke("update_check"); upd = { ...upd, current: r.current, version: r.version || "", notes: r.notes || "", note: r.note || "", status: r.version ? "found" : "latest" }; }
   catch (e) { upd = { ...upd, status: `error:${e}` }; }
   renderMain();
 }
@@ -306,7 +306,9 @@ function updateRow() {
     : st === "latest" ? "You have the latest version." : st.startsWith("error:") ? esc(st.slice(6)) : "";
   const btn = st === "found" ? `<button class="btn primary" data-upd="install">Update and restart</button>`
     : `<button class="btn" data-upd="check" ${st === "checking" || st === "installing" ? "disabled" : ""}>Check for updates</button>`;
-  return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}Cue also looks by itself a minute after it opens, then every 6 hours.`, btn)
+  // (A beta check with no beta out answers from stable, and says so: ipc/updates.rs NO_BETA.)
+  const note = upd.note && (st === "found" || st === "latest") ? `${esc(upd.note)} ` : "";
+  return setRow(`Cue ${esc(upd.current || "")}`, `${sub}${sub ? " " : ""}${note}Cue also looks by itself a minute after it opens, then every 6 hours.`, btn)
     + setRow("Get beta builds", "Newer versions a day or more before everyone else, to try them out first. Off: only the versions everyone gets.", toggle("updates.beta", beta));
 }
 /** The agents Cue connects to, as Settings rows (also the first-launch setup screen's). */
