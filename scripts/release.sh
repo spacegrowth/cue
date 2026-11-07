@@ -1,10 +1,15 @@
 #!/bin/bash
-# Build a Cue release: Apple silicon + Intel, signed with your Developer ID, notarized by Apple, a disk
-# image to download, and an update the app's auto-updater accepts. Nothing is published unless you
-# pass --publish.
+# Release Cue: the gates first (every test suite, the soak, the lints, the inventory, a clean tree, the Swift
+# helpers from scratch), then a build for Apple silicon + Intel, signed with your Developer ID, notarized by
+# Apple, a disk image to download, and an update the app's auto-updater accepts. docs/dev/releasing.md has it all.
 #
-#   scripts/release.sh 0.1.1 "What changed"            build, sign, notarize → dist/v0.1.1/
-#   scripts/release.sh 0.1.1 "What changed" --publish  …and create the GitHub release v0.1.1
+#   scripts/release.sh 0.1.1 "What changed"              gates, build, sign, notarize → dist/v0.1.1/
+#   scripts/release.sh 0.1.1 "What changed" --beta       …and publish it as a beta (Settings → Get beta builds)
+#   scripts/release.sh --promote 0.1.1                   that beta, a day later, becomes everyone's update
+#   scripts/release.sh 0.1.1 "What changed" --publish    …or publish it as stable straight away
+#   scripts/release.sh 0.1.1 "What changed" --beta --dry-run    the gates and checks only, then stop
+#   --hotfix "<why>" allows a second release in a day; --skip-gates "<why>" goes without the gates. Both reasons
+#   are recorded, in dist/v<version>/release-record.txt and in the release's notes on GitHub.
 #
 # Needs (once, on this Mac):
 #   - a "Developer ID Application" certificate in your keychain (Xcode → Settings → Accounts)
@@ -13,156 +18,45 @@
 #     otherwise (an app-specific password from appleid.apple.com):
 #       xcrun notarytool store-credentials cue-notary --apple-id <you@example.com> --team-id <TEAM>
 #     Without it the build is signed but not notarized (fine to try locally, not to publish).
-#   - for --publish: gh, logged in, with push access to the repo below
 #     Or, in .release.env, NOTARY_APPLE_ID and NOTARY_TEAM_ID, with the app-specific password in Keychain:
 #       security add-generic-password -a <you@example.com> -s cue-notary-password -w
+#   - to publish: gh, logged in, with push access to the repo (scripts/release/common.sh)
 # Local overrides (e.g. NOTARY_PROFILE=…) can go in .release.env at the repo root (git-ignored).
-#
-# Releases never include an add-on (src-tauri/ext): the build doesn't use the `ext` feature, and the
-# script stops if the app contains any of its code anyway.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REPO="spacegrowth/cue"
-VERSION="${1:-}"; NOTES="${2:-}"; PUBLISH="${3:-}"
-say() { printf '  %s\n' "$*"; }
-die() { printf 'release: %s\n' "$*" >&2; exit 1; }
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "usage: scripts/release.sh <version, e.g. 0.1.1> \"notes\" [--publish]"
-[ -n "$NOTES" ] || die "say what changed (it shows in Cue's update card)"
 cd "$ROOT"
+for part in common args gates ship_day record build publish; do
+  # shellcheck disable=SC1090
+  . "$ROOT/scripts/release/$part.sh"
+done
+
+parse_args "$@"
 # shellcheck disable=SC1091
 [ -f .release.env ] && . ./.release.env
-PROFILE="${NOTARY_PROFILE:-cue-notary}"
 
-# --- what signs it --------------------------------------------------------------------------------
-IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
-[ -n "$IDENTITY" ] || die "no Developer ID Application certificate in your keychain"
-[ -f "$HOME/.tauri/cue.key" ] || die "no update key at ~/.tauri/cue.key"
-KEY_PASSWORD="$(security find-generic-password -s cue-updater-key -w 2>/dev/null)" || die "no 'cue-updater-key' password in Keychain"
-# How notarytool signs in: with NOTARY_APPLE_ID and NOTARY_TEAM_ID set (.release.env), an app-specific password
-# kept in Keychain as "cue-notary-password", read once here like the update key's; else the keychain profile.
-if [ -n "${NOTARY_APPLE_ID:-}" ] && [ -n "${NOTARY_TEAM_ID:-}" ]; then
-  NOTARY_PASSWORD="$(security find-generic-password -s cue-notary-password -w 2>/dev/null)" || die "no 'cue-notary-password' password in Keychain"
-  NOTARY_AUTH=(--apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD")
-else
-  NOTARY_AUTH=(--keychain-profile "$PROFILE")
-fi
-NOTARIZE=1
-if ! NOTARY_CHECK="$(xcrun notarytool history "${NOTARY_AUTH[@]}" 2>&1)"; then
-  printf '%s\n' "$NOTARY_CHECK" | head -5 >&2   # what notarytool said (a missing profile, or Apple unreachable)
-  [ "$PUBLISH" = "--publish" ] && die "can't publish without notarizing: no working notarytool profile '$PROFILE' (see the top of this script)"
-  NOTARIZE=0
-  say "no notarytool profile '$PROFILE': signing only, not notarizing"
-fi
-notarize() {  # $1 = a zip or a dmg; waits for Apple's verdict
-  local out
-  out="$(xcrun notarytool submit "$1" "${NOTARY_AUTH[@]}" --wait 2>&1)" || true
-  grep -q "status: Accepted" <<<"$out" || { printf '%s\n' "$out" >&2; die "Apple didn't accept $(basename "$1") (xcrun notarytool log <id> says why)"; }
-}
-
-# --- the version, everywhere it's written -----------------------------------------------------------
-python3 - "$VERSION" <<'PY'
-import json, re, sys
-v = sys.argv[1]
-for path in ("src-tauri/tauri.conf.json", "package.json"):
-    d = json.load(open(path)); d["version"] = v
-    open(path, "w").write(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
-p = "src-tauri/Cargo.toml"; s = open(p).read()
-open(p, "w").write(re.sub(r'(?m)^version = "[^"]*"', f'version = "{v}"', s, count=1))
-PY
-say "version  → $VERSION"
-
-# --- build: both chip types, signed with the hardened runtime -----------------------------------------
-rustup target add x86_64-apple-darwin aarch64-apple-darwin >/dev/null
-export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/cue.key" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$KEY_PASSWORD"
-RELEASE_CONFIG='{"bundle":{"macOS":{"signingIdentity":"'"$IDENTITY"'","hardenedRuntime":true,"entitlements":"entitlements.plist"}}}'
-# Build paths (this Mac's home folder) are written into the app for error messages: rewrite them.
-export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/cue --remap-path-prefix=$HOME=/home"
-say "building (both chip types; a few minutes)…"
-npx tauri build --target universal-apple-darwin --bundles app --config "$RELEASE_CONFIG"
-APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Cue.app"
-
-# --- checks before anything leaves this Mac -----------------------------------------------------------
-for trace in axum "cue://pair" jsonwebtoken; do
-  [ "$(strings "$APP/Contents/MacOS/cue" | grep -c "$trace")" = 0 ] || die "the app contains add-on code ($trace): not releasing it"
-done
-for bin in "$APP"/Contents/MacOS/*; do
-  [ "$(strings "$bin" | grep -c "$HOME")" = 0 ] || die "$(basename "$bin") contains this Mac's home folder path: not releasing it"
-done
-codesign --verify --deep --strict "$APP" || die "the signature doesn't check out"
-lipo -archs "$APP/Contents/MacOS/cue" | grep -q x86_64 || die "not a universal build"
-
-DIST="$ROOT/dist/v$VERSION"; rm -rf "$DIST"; mkdir -p "$DIST"
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-
-# --- symbols: Cue.dSYM, so addresses in a hang report from this build resolve (atos) --------------------
-# rustc wrote each chip's cue.dSYM as it linked (Cargo.toml's release profile), before stripping the binary's
-# debug info. The two become one, as the app's binary did, checked to be this very build's (same UUIDs), and
-# stay in dist/ with their UUIDs; they're not published.
-DSYM="$WORK/Cue.dSYM"
-DWARF="$DSYM/Contents/Resources/DWARF"
-cp -RL src-tauri/target/aarch64-apple-darwin/release/cue.dSYM "$DSYM" || die "no dSYM from the build (see Cargo.toml's release profile)"   # (a link into deps/)
-rm -f "$DWARF"/*
-lipo -create -output "$DWARF/cue" src-tauri/target/{aarch64,x86_64}-apple-darwin/release/cue.dSYM/Contents/Resources/DWARF/* || die "couldn't join the two dSYMs"
-uuids() { dwarfdump --uuid "$1" | awk '{print $2, $3}' | sort; }
-UUIDS="$(uuids "$APP/Contents/MacOS/cue")"; DSYM_UUIDS="$(uuids "$DSYM")"
-# (Two empty lists would compare equal: none read is a failure, not a match.)
-[ -n "$UUIDS" ] && [ -n "$DSYM_UUIDS" ] || die "couldn't read the UUIDs of the app or its dSYM (dwarfdump --uuid)"
-[ "$DSYM_UUIDS" = "$UUIDS" ] || die "the dSYM isn't this build's (its UUIDs differ from the app's)"
-ditto -c -k --keepParent "$DSYM" "$DIST/Cue.dSYM.zip"
-printf 'Cue %s, dSYM UUIDs (dwarfdump --uuid):\n%s\n' "$VERSION" "$UUIDS" > "$DIST/dSYM-uuids.txt"
-
-# --- notarize the app and staple Apple's ticket to it ---------------------------------------------------
-if [ "$NOTARIZE" = 1 ]; then
-  say "notarizing the app…"
-  ditto -c -k --keepParent "$APP" "$WORK/Cue.zip"
-  notarize "$WORK/Cue.zip"
-  xcrun stapler staple "$APP" >/dev/null || die "couldn't staple the app's notarization"
-  spctl --assess --type execute "$APP" || die "Gatekeeper rejects the app"
+if [ "$PROMOTE" = 1 ]; then
+  promote
+  exit 0
 fi
 
-# --- the update: the (notarized) app as tar.gz, signed with the update key ------------------------------
-tar -czf "$DIST/Cue.app.tar.gz" -C "$(dirname "$APP")" Cue.app
-# (Without the build's key variables: the signer refuses a key given twice.)
-# (The password through its variable, never as an argument: those show in `ps` while it runs.)
-env -u TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$KEY_PASSWORD" npx tauri signer sign -f "$HOME/.tauri/cue.key" "$DIST/Cue.app.tar.gz" >/dev/null
-SIG="$(cat "$DIST/Cue.app.tar.gz.sig")"; rm "$DIST/Cue.app.tar.gz.sig"
-URL="https://github.com/$REPO/releases/download/v$VERSION/Cue.app.tar.gz"
-python3 - "$VERSION" "$NOTES" "$SIG" "$URL" "$DIST/latest.json" <<'PY'
-import json, sys, datetime
-v, notes, sig, url, out = sys.argv[1:]
-both = {"signature": sig, "url": url}
-json.dump({"version": v, "notes": notes, "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-           "platforms": {"darwin-aarch64": both, "darwin-x86_64": both}}, open(out, "w"), indent=2)
-PY
+# A dry run's logs and record go beside a real build's, never over them.
+if [ "$DRY_RUN" = 1 ]; then DIST="$ROOT/dist/dry-run-v$VERSION"; else DIST="$ROOT/dist/v$VERSION"; fi
+rm -rf "$DIST"; mkdir -p "$DIST"
 
-# --- the download: a disk image (open it, drag Cue to Applications), signed and notarized too -----------
-mkdir -p "$WORK/dmg"
-ditto "$APP" "$WORK/dmg/Cue.app"
-ln -s /Applications "$WORK/dmg/Applications"
-DMG="$DIST/Cue-$VERSION.dmg"
-# hdiutil now and then says "Resource busy" (something on the Mac still reading the folder): it's tried again.
-for try in 1 2 3; do
-  hdiutil create -volname "Cue" -srcfolder "$WORK/dmg" -ov -format UDZO "$DMG" >/dev/null && break
-  [ "$try" = 3 ] && die "couldn't make the disk image"
-  sleep 10
-done
-codesign --force --sign "$IDENTITY" --timestamp "$DMG" || die "couldn't sign the disk image"
-if [ "$NOTARIZE" = 1 ]; then
-  say "notarizing the disk image…"
-  notarize "$DMG"
-  xcrun stapler staple "$DMG" >/dev/null || die "couldn't staple the disk image's notarization"
-  spctl --assess --type open --context context:primary-signature "$DMG" || die "Gatekeeper rejects the disk image"
-  say "signed, notarized and accepted by Gatekeeper"
-else
-  say "signed (not notarized)"
+check_ship_day
+[ "$DRY_RUN" = 1 ] || signing_prerequisites   # before the gates, so a missing key doesn't wait out a soak
+run_gates "$DIST/gates"
+write_record "$DIST/release-record.txt"
+
+if [ "$DRY_RUN" = 1 ]; then
+  say "dry run: Cue $VERSION ($(channel_name)) would be built now; nothing built, nothing published"
+  sed 's/^/    /' "$DIST/release-record.txt"
+  exit 0
 fi
 
-say "ready    → $DIST"
-ls -1 "$DIST" | sed 's/^/             /'
-if [ "$PUBLISH" = "--publish" ]; then
-  gh release create "v$VERSION" --repo "$REPO" --title "Cue $VERSION" --notes "$NOTES" \
-    "$DMG" "$DIST/Cue.app.tar.gz" "$DIST/latest.json"
-  say "published → https://github.com/$REPO/releases/tag/v$VERSION"
-else
-  say "not published (add --publish to create the GitHub release)"
-fi
+build_release
+case "$CHANNEL" in
+  stable) publish_stable ;;
+  beta) publish_beta ;;
+  none) say "not published (--beta or --publish to create the GitHub release)" ;;
+esac

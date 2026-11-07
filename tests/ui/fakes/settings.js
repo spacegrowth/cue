@@ -46,7 +46,8 @@ CueBridge.area("settings", (w) => {
     // Settings rows an add-on adds: none without one.
     ext_settings: () => [],
     ext_set: () => null,
-    update_check: () => ({ current: "0.1.86" }),
+    // Up to date on stable; a newer build on beta (Settings → Get beta builds), as ipc/updates.rs picks the channel.
+    update_check: () => (w.state.settings.updates?.beta ? { current: "0.1.86", version: "0.1.87", notes: "A beta build." } : { current: "0.1.86" }),
     update_install: () => null,
     open_link: () => null,
     image_data: () => `data:image/png;base64,${PIXEL}`,

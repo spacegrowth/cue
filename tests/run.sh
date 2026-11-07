@@ -2,7 +2,8 @@
 # Cue's tests, headless, never touching your real Cue or stealing the window's focus.
 #   tests/run.sh [unit|ui|e2e|soak [minutes]|all]      (all when none is named)
 #   unit  Rust tests (the app and src-tauri/xtask), then the protocol tests against a private, silent Cue: its own socket (CUE_HOME), no
-#         notifications, no windows (CUE_QUIET). Your real Cue keeps running untouched.
+#         notifications, no windows (CUE_QUIET). Your real Cue keeps running untouched. Then scripts/release.sh's
+#         gates against stand-ins (tests/release/gates.test.sh): nothing built or published.
 #   ui    every node test (tests/*.test.js, tests/ui/*.test.js), then the real UI in headless Chromium on the fake
 #         bridge (tests/ui: screens against their baselines, and interactions). Needs `npm ci` once.
 #   e2e   the real app driven over WebDriver, a private Cue per journey (tests/e2e/run.sh, docs/dev/e2e.md).
@@ -29,6 +30,7 @@ unit() {
   trap end_unit EXIT
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
   python3 "$ROOT/tests/test_protocol.py"
+  "$ROOT/tests/release/gates.test.sh"
 }
 
 # What the unit run started, and only that: its private Cue (by its pid), whatever else runs with its CUE_HOME

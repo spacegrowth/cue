@@ -123,8 +123,6 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `connect_agent` | async | `ipc/settings.rs::connect_agent` | ipc::with_hub |
 | `ext_settings` | async | `ipc/settings.rs::ext_settings` | ipc::blocking |
 | `ext_set` | async | `ipc/settings.rs::ext_set` | ipc::blocking |
-| `update_check` | async | `ipc/settings.rs::update_check` | — |
-| `update_install` | async | `ipc/settings.rs::update_install` | — |
 | `open_link` | async | `ipc/settings.rs::open_link` | ipc::blocking |
 | `image_data` | async | `ipc/settings.rs::image_data` | ipc::blocking |
 | `agents_installed` | async | `ipc/settings.rs::agents_installed` | ipc::blocking |
@@ -165,6 +163,8 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `term_resume` | async | `ipc/terminal.rs::term_resume` | — |
 | `term_resize` | async | `ipc/terminal.rs::term_resize` | — |
 | `term_close` | async | `ipc/terminal.rs::term_close` | ipc::blocking |
+| `update_check` | async | `ipc/updates.rs::update_check` | — |
+| `update_install` | async | `ipc/updates.rs::update_install` | — |
 
 ## Locks
 

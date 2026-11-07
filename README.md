@@ -177,10 +177,21 @@ speaks the same socket protocol.
 ```sh
 npm install
 npm run dev                      # run the app
-./tests/run.sh                   # all tests, against a private silent Cue (yours keeps running)
+./tests/run.sh unit              # Rust tests, the protocol tests, release.sh's gate tests
+./tests/run.sh ui                # node tests, then the real UI in headless Chromium (npm ci once)
+./tests/run.sh e2e               # the real app over WebDriver (docs/dev/e2e.md)
+./tests/run.sh soak 10           # the stress run, 10 minutes
+./tests/run.sh                   # all of them
 python3 -m http.server 8765      # then open /tests/preview.html — the real UI with sample data
 hooks/cue-ctl list               # poke a running Cue from the shell (needs python3)
 ```
+
+The tests never touch the Cue you're using: each run has its own home (`CUE_HOME`), socket and tmux
+server, and starts no notifications or windows. Run them through `tests/run.sh` only, never
+`tests/test_protocol.py` on its own (it refuses to run without the private home `tests/run.sh unit` sets
+up). If you work inside tmux, start the tests with `env -u TMUX -u TMUX_PANE` so nothing reaches your
+session's server.
+Releases: `docs/dev/releasing.md`.
 
 ## License
 
