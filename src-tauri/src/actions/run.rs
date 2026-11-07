@@ -251,23 +251,7 @@ pub fn start(s: &Spec) -> Result<Seen, String> {
         stop(s.folder, s.machine, &name)?;
     }
     let cmd = match &host {
-        None => {
-            use std::io::Write;
-            use std::os::unix::fs::OpenOptionsExt;
-            let dir = scripts_dir();
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            let script = dir.join(format!("run-{name}.sh"));
-            let shell = std::env::var("SHELL").ok().filter(|s| s.starts_with('/')).unwrap_or_else(|| "/bin/zsh".into());
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&script)
-                .and_then(|mut f| f.write_all(launcher(&crate::terminal::focus::tmux_bin(), &name, &shell, s.folder, s.run).as_bytes()))
-                .map_err(|e| e.to_string())?;
-            format!("exec /bin/sh {}", crate::terminal::focus::shq(&script.to_string_lossy()))
-        }
+        None => local_launcher(&name, s.folder, s.run)?,
         Some(h) => remote_launcher(&crate::machines::tmux_path(h).unwrap_or_else(|| "tmux".into()), &name, s.folder, s.run),
     };
     let start_ms = crate::model::now_ms().to_string();
@@ -296,6 +280,26 @@ pub fn start(s: &Spec) -> Result<Seen, String> {
     }
     tmux_at(s.machine, &args).map_err(|e| if e.is_empty() { "tmux didn't start it".to_string() } else { e })?;
     Ok(Seen { session: name, running: true, start_ms: start_ms.parse().ok(), keep: s.keep, machine: s.machine.into(), folder: s.folder.into(), id: s.id.into(), name: s.name.into(), ..Default::default() })
+}
+
+/// The command that runs action session `name` here: its launcher script written to Cue's actions folder
+/// (yours only), which runs `run` in your shell.
+fn local_launcher(name: &str, folder: &str, run: &str) -> Result<String, String> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let dir = scripts_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let script = dir.join(format!("run-{name}.sh"));
+    let shell = std::env::var("SHELL").ok().filter(|s| s.starts_with('/')).unwrap_or_else(|| "/bin/zsh".into());
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&script)
+        .and_then(|mut f| f.write_all(launcher(&crate::terminal::focus::tmux_bin(), name, &shell, folder, run).as_bytes()))
+        .map_err(|e| e.to_string())?;
+    Ok(format!("exec /bin/sh {}", crate::terminal::focus::shq(&script.to_string_lossy())))
 }
 
 /// `format` of session `name`'s pane; None when there's no such session (display-message would answer

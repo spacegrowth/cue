@@ -396,13 +396,13 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `actions/mod.rs::write_mine` | create_dir_all | 1 |
 | `actions/mod.rs::write_mine` | rename | 1 |
 | `actions/mod.rs::write_mine` | write | 1 |
+| `actions/run.rs::local_launcher` | OpenOptions::new | 1 |
+| `actions/run.rs::local_launcher` | create_dir_all | 1 |
 | `actions/run.rs::plain_log` | read | 1 |
 | `actions/run.rs::plain_start` | File::create | 1 |
 | `actions/run.rs::plain_start` | Path::is_dir | 1 |
 | `actions/run.rs::plain_start` | create_dir_all | 1 |
-| `actions/run.rs::start` | OpenOptions::new | 1 |
 | `actions/run.rs::start` | Path::is_dir | 1 |
-| `actions/run.rs::start` | create_dir_all | 1 |
 | `changes.rs::since` | read | 1 |
 | `commands.rs::yours_changed_ms` | metadata | 1 |
 | `config.rs::add_hooks` | Path::exists | 1 |
@@ -900,7 +900,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | Function |  |  |
 |---|---|---|
 | `src-tauri/src/actions/mod.rs::an_action_runs_in_tmux_and_is_stopped` | test |  |
-| `src-tauri/src/actions/run.rs::start` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
