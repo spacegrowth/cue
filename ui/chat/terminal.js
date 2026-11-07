@@ -134,15 +134,26 @@ function rgbVar(name) {
   rgbProbe.fillRect(0, 0, 1, 1);
   return [...rgbProbe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
 }
+/** What the window's colors depend on now: the theme, the project's hue, light or dark. */
+function themeKey() {
+  const root = document.documentElement;
+  return [root.className, root.dataset.theme, root.style.getPropertyValue("--ph"), root.style.getPropertyValue("--pk"), matchMedia("(prefers-color-scheme: dark)").matches].join("|");
+}
+/** The terminals' colors for the window's colors now, worked out once per change of them: reading a color
+ *  makes the browser work out the whole window's styles, and a terminal opened under a busy window paid that
+ *  four times over on every opening. */
+let themeMade = { key: null, theme: null };
 function termTheme() {
+  const key = themeKey();
+  if (themeMade.key === key) return themeMade.theme;
   const hex = (name) => "#" + rgbVar(name).map((v) => v.toString(16).padStart(2, "0")).join("");
   const [r, g, b] = rgbVar("--sel");
-  return { background: hex("--slab"), foreground: hex("--on-slab"), cursor: hex("--sel"), cursorAccent: hex("--slab"), selectionBackground: `rgba(${r}, ${g}, ${b}, 0.35)` };
+  themeMade = { key, theme: { background: hex("--slab"), foreground: hex("--on-slab"), cursor: hex("--sel"), cursorAccent: hex("--slab"), selectionBackground: `rgba(${r}, ${g}, ${b}, 0.35)` } };
+  return themeMade.theme;
 }
 /** The open terminals in the window's colors now: the project's, light or dark. */
 function retheme() {
-  const root = document.documentElement;
-  const key = [root.className, root.dataset.theme, root.style.getPropertyValue("--ph"), root.style.getPropertyValue("--pk"), matchMedia("(prefers-color-scheme: dark)").matches].join("|");
+  const key = themeKey();
   if (key === termKey) return;
   termKey = key;
   if (!terms.size) return;
