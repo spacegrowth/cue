@@ -438,6 +438,7 @@ impl Hub {
                 st.just_ended.insert(session_id.to_string(), now);
                 st.ended.retain(|(_, e)| e.origin.session_id != session_id);
                 st.ended.push_front((now, s.clone()));
+                st.unsaved_ends.push((now, s.clone()));
                 st.ended.truncate(crate::ipc::CLOSED_MAX);
             }
             gone.is_some()

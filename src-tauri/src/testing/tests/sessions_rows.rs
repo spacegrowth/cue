@@ -143,8 +143,8 @@ fn a_name_sixty_characters_long_at_most() {
 fn closed_still_lists_a_session_after_a_restart() {
     let mut w = World::new();
     w.session("a").in_project("web").prompt("go").stop("Done.");
+    // Renamed and ended within one draw: nothing drawn between the two saves the name.
     w.hub().rename("a", "web-fix").unwrap();
-    w.settle();
     w.session("a").ended();
     w.relaunch();
     let closed = w.hub().closed(24 * 3600 * 1000, crate::ipc::CLOSED_MAX);
