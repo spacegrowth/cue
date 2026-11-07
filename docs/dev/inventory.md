@@ -18,7 +18,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock declarations (static or field) | 81 |
 | Lock acquisitions | 193 |
 | Lock-graph edges | 39 |
-| Spawn sites | 63 |
+| Spawn sites | 64 |
 | External calls: fs / db / process / notify / login / socket | 336 / 124 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
@@ -328,7 +328,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/mod.rs::blocking` | async_runtime::spawn_blocking | 1 |
 | `ipc/restore.rs::with_timeout` | thread::spawn | 1 |
 | `leads.rs::verify_reported` | thread::spawn | 1 |
-| `lib.rs::run` | async_runtime::spawn | 6 |
+| `lib.rs::run` | async_runtime::spawn | 7 |
 | `lib.rs::run` | async_runtime::spawn_blocking | 4 |
 | `lib.rs::run` | thread::spawn | 2 |
 | `locking/probe.rs::watch_main` | Builder::spawn | 1 |

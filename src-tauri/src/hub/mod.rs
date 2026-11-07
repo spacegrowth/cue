@@ -459,7 +459,8 @@ impl Hub {
         self.app.as_ref().map(|a| a.state::<Arc<Hub>>().inner().clone())
     }
 
-    /// No window to build the new state for (tests): the next ask for it builds it.
+    /// The kept state is out of date (the store changed): the next ask for it builds it, until a draw keeps a
+    /// newer one.
     fn unshown(&self) {
         let seq = self.read(|st| st.shown_seq);
         self.shown.forget(seq);

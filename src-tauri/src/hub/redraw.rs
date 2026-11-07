@@ -56,16 +56,17 @@ impl Redraws {
 
 impl Hub {
     /// Something changed what the window shows: drawn soon, by the worker (see the module's note).
+    /// The kept state is no longer current at once, so an ask before the draw builds it (`Hub::state`).
     pub(super) fn changed(&self) {
+        self.unshown();
         match &self.ports.later {
             #[cfg(test)]
             Later::Deferred(queue) => {
-                self.unshown();
                 if self.redraws.mark() {
                     queue.hand_in(0, Box::new(|h| h.draw()));
                 }
             }
-            Later::Threads if self.app.is_none() => self.unshown(),
+            Later::Threads if self.app.is_none() => {}
             Later::Threads => {
                 self.redraws.mark();
                 self.start_drawing();
