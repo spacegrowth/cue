@@ -6,11 +6,27 @@ CueBridge.area("settings", (w) => {
   // A 1×1 PNG: what a pasted or attached image reads as.
   const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
+  /** Each session's project as the scenario had it, before any move. */
+  const own = new Map();
+  /** The sessions in `moves` shown under the project each was moved to, the rest under their own again, as
+   *  hub/mod.rs move_projects builds every snapshot. */
+  const moveProjects = (moves) => {
+    for (const list of ["items", "history", "sessions", "parked", "ended"]) {
+      for (const r of w.state[list] || []) {
+        if (!own.has(r.session_id)) own.set(r.session_id, r.folder_project ?? r.project);
+        const to = moves[r.session_id];
+        r.project = to ?? own.get(r.session_id);
+        if (to) r.folder_project = own.get(r.session_id); else delete r.folder_project;
+      }
+    }
+  };
+
   return {
     // "a.b" sets settings.a.b, as config.rs set does for the keys the window saves.
     set_setting: ({ key, value }) => {
       const [a, b] = key.split(".");
       if (b == null) w.state.settings[a] = value; else (w.state.settings[a] ||= {})[b] = value;
+      if (key === "project.moves") moveProjects(value || {});
       w.changed(10);
       return null;
     },
