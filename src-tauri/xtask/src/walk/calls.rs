@@ -122,7 +122,7 @@ impl Walker<'_, '_, '_> {
             self.push(Ev::Call { target, line, held: held.clone() });
         }
         let f = &self.cx.ix.fns[ids[0]];
-        if f.module.first().is_some_and(|m| m == "db") {
+        if f.in_db() {
             self.push(Ev::Effect { effect: Effect::Db, detail: format!("db::{}", f.name), line, held });
         }
         if let Some(lock) = self.cx.guard_fns.get(&ids[0]).cloned() {

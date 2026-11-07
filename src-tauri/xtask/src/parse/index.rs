@@ -37,6 +37,11 @@ impl FnDef<'_> {
         segs.push(self.name.clone());
         segs.join("::")
     }
+
+    /// In the `db` module or one of its children: a call to it is a database call.
+    pub fn in_db(&self) -> bool {
+        self.module.first().is_some_and(|m| m == "db")
+    }
 }
 
 pub struct Param {
