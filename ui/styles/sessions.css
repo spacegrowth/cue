@@ -69,7 +69,7 @@
 .top.tfit4 .hlbl { display: none; }
 .top.tfit4 .hchip { padding: 0 10px; }
 .top:is(.tfit3, .tfit4) .pj-pinned { max-width: 110px; }
-/* When the header's buttons still don't fit (fitHead in board.js adds these one by one; each keeps the ones before). */
+/* When the header's buttons still don't fit (fitHead in board_motion.js adds these one by one; each keeps the ones before). */
 .ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-long { display: none; }
 .ap-head:is(.fit1, .fit2, .fit3, .fit4, .fit5, .fit6) .l-short { display: inline; }
 .ap-head:is(.fit2, .fit3, .fit4, .fit5, .fit6) > .dim { display: none; }
