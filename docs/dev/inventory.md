@@ -900,7 +900,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | Function |  |  |
 |---|---|---|
 | `src-tauri/src/actions/mod.rs::an_action_runs_in_tmux_and_is_stopped` | test |  |
-| `src-tauri/src/actions/mod.rs::tick` |  |  |
 | `src-tauri/src/actions/run.rs::start` |  |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |

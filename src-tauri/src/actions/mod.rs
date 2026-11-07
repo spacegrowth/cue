@@ -347,69 +347,96 @@ fn stamp(folder: &str, machine: &str) -> u64 {
 /// One look: the running actions' states (this Mac's every time, a machine's every third), and the
 /// watched projects' files (every second time). Changes go to the window.
 fn tick(n: u64) {
-    let (machines, files): (HashSet<String>, Vec<(String, String, String, u64)>) = {
-        let w = crate::locking::lock(&WATCH, "actions WATCH");
-        let all = w.as_ref().map(|m| m.values().collect::<Vec<_>>()).unwrap_or_default();
-        let machines = all.iter().filter(|e| !e.running.is_empty()).map(|e| e.machine.clone()).filter(|m| m.is_empty() || n % 3 == 0).collect();
-        let files = if n % 2 == 0 { all.iter().filter(|e| e.listed.elapsed() < LISTED_FOR).map(|e| (key(&e.folder, &e.machine), e.folder.clone(), e.machine.clone(), e.stamp)).collect() } else { vec![] };
-        (machines, files)
-    };
+    let (machines, files) = due(n);
     let mut events: Vec<(String, String)> = vec![];
     for m in machines {
-        let seen = run::list(&m);
-        let mut ended: Vec<run::Seen> = vec![];
-        let mut ports: Vec<(String, String)> = vec![];
-        {
-            let mut w = crate::locking::lock(&WATCH, "actions WATCH");
-            for e in w.as_mut().map(|x| x.values_mut()).into_iter().flatten().filter(|e| e.machine == m && !e.running.is_empty()) {
-                let mut moved = false;
-                let tag = run::project_tag(&e.folder, &e.machine);
-                for (name, before) in e.running.clone() {
-                    match seen.iter().find(|s| s.session == name) {
-                        Some(now) if now.running => {
-                            if now.port.is_none() && before.port.is_none() {
-                                ports.push((m.clone(), name.clone()));
-                            }
-                            if now.port != before.port {
-                                moved = true;
-                                e.running.insert(name, now.clone());
-                            }
-                        }
-                        Some(now) => {
-                            ended.push(now.clone());
-                            e.running.remove(&name);
-                            moved = true;
-                        }
-                        None => {
-                            ended.push(run::Seen { running: false, ..before });
-                            e.running.remove(&name);
-                            moved = true;
-                        }
-                    }
-                }
-                // Started elsewhere meanwhile (another window's click, a Cue before this one).
-                let new: Vec<&run::Seen> = seen.iter().filter(|s| s.running && s.session.starts_with(&tag) && !e.running.contains_key(&s.session)).collect();
-                for s in new {
-                    e.running.insert(s.session.clone(), s.clone());
-                    moved = true;
-                }
-                if moved {
-                    events.push((e.folder.clone(), e.machine.clone()));
-                }
-            }
-        }
-        for s in &ended {
-            note_ended(s);
-        }
-        for (m, name) in ports {
-            if run::find_port(&m, &name).is_some() {
-                let s = seen.iter().find(|s| s.session == name);
-                if let Some(s) = s {
-                    events.push((s.folder.clone(), s.machine.clone()));
-                }
+        look_at_machine(m, &mut events);
+    }
+    look_at_files(files, &mut events);
+    events.sort();
+    events.dedup();
+    for (f, m) in events {
+        changed(&f, &m);
+    }
+}
+
+/// What look `n` reads: the machines with actions running whose turn it is, and the watched projects'
+/// files (key, folder, machine, stamp) when it's their turn.
+fn due(n: u64) -> (HashSet<String>, Vec<(String, String, String, u64)>) {
+    let w = crate::locking::lock(&WATCH, "actions WATCH");
+    let all = w.as_ref().map(|m| m.values().collect::<Vec<_>>()).unwrap_or_default();
+    let machines = all.iter().filter(|e| !e.running.is_empty()).map(|e| e.machine.clone()).filter(|m| m.is_empty() || n % 3 == 0).collect();
+    let files = if n % 2 == 0 { all.iter().filter(|e| e.listed.elapsed() < LISTED_FOR).map(|e| (key(&e.folder, &e.machine), e.folder.clone(), e.machine.clone(), e.stamp)).collect() } else { vec![] };
+    (machines, files)
+}
+
+/// Machine `m`'s actions as tmux has them now: the watched ones brought up to date, the ended ones noted,
+/// and a port looked for where none is known yet. The projects that changed go into `events`.
+fn look_at_machine(m: String, events: &mut Vec<(String, String)>) {
+    let seen = run::list(&m);
+    let mut ended: Vec<run::Seen> = vec![];
+    let mut ports: Vec<(String, String)> = vec![];
+    {
+        let mut w = crate::locking::lock(&WATCH, "actions WATCH");
+        for e in w.as_mut().map(|x| x.values_mut()).into_iter().flatten().filter(|e| e.machine == m && !e.running.is_empty()) {
+            if update_running(e, &m, &seen, &mut ended, &mut ports) {
+                events.push((e.folder.clone(), e.machine.clone()));
             }
         }
     }
+    for s in &ended {
+        note_ended(s);
+    }
+    for (m, name) in ports {
+        if run::find_port(&m, &name).is_some() {
+            let s = seen.iter().find(|s| s.session == name);
+            if let Some(s) = s {
+                events.push((s.folder.clone(), s.machine.clone()));
+            }
+        }
+    }
+}
+
+/// One project's running actions against what tmux on machine `m` has (`seen`): a port that moved, one
+/// that ended (into `ended`), one started elsewhere; still no port goes into `ports`. True when it changed.
+fn update_running(e: &mut Watched, m: &str, seen: &[run::Seen], ended: &mut Vec<run::Seen>, ports: &mut Vec<(String, String)>) -> bool {
+    let mut moved = false;
+    let tag = run::project_tag(&e.folder, &e.machine);
+    for (name, before) in e.running.clone() {
+        match seen.iter().find(|s| s.session == name) {
+            Some(now) if now.running => {
+                if now.port.is_none() && before.port.is_none() {
+                    ports.push((m.to_string(), name.clone()));
+                }
+                if now.port != before.port {
+                    moved = true;
+                    e.running.insert(name, now.clone());
+                }
+            }
+            Some(now) => {
+                ended.push(now.clone());
+                e.running.remove(&name);
+                moved = true;
+            }
+            None => {
+                ended.push(run::Seen { running: false, ..before });
+                e.running.remove(&name);
+                moved = true;
+            }
+        }
+    }
+    // Started elsewhere meanwhile (another window's click, a Cue before this one).
+    let new: Vec<&run::Seen> = seen.iter().filter(|s| s.running && s.session.starts_with(&tag) && !e.running.contains_key(&s.session)).collect();
+    for s in new {
+        e.running.insert(s.session.clone(), s.clone());
+        moved = true;
+    }
+    moved
+}
+
+/// The watched projects' files (key, folder, machine, stamp when last read): one that changed is stamped
+/// anew and its project goes into `events`.
+fn look_at_files(files: Vec<(String, String, String, u64)>, events: &mut Vec<(String, String)>) {
     for (k, folder, machine, before) in files {
         let now = stamp(&folder, &machine);
         if now != before {
@@ -420,11 +447,6 @@ fn tick(n: u64) {
             drop(w);
             events.push((folder, machine));
         }
-    }
-    events.sort();
-    events.dedup();
-    for (f, m) in events {
-        changed(&f, &m);
     }
 }
 
