@@ -1,7 +1,7 @@
 #!/bin/bash
 # Cue's tests, headless, never touching your real Cue or stealing the window's focus.
 #   tests/run.sh [unit|ui|e2e|soak|all]      (all when none is named)
-#   unit  Rust tests, then the protocol tests against a private, silent Cue: its own socket (CUE_HOME), no
+#   unit  Rust tests (the app and src-tauri/xtask), then the protocol tests against a private, silent Cue: its own socket (CUE_HOME), no
 #         notifications, no windows (CUE_QUIET). Your real Cue keeps running untouched.
 #   ui    every node test (tests/*.test.js, tests/ui/*.test.js), then the real UI in headless Chromium on the fake
 #         bridge (tests/ui: screens against their baselines, and interactions). Needs `npm ci` once.
@@ -16,7 +16,7 @@ unit() {
   export CUE_HOME="$(mktemp -d /tmp/cue-test.XXXX)"
   export CUE_QUIET=1
   export CUE_BIN="$ROOT/src-tauri/target/debug/cue"
-  (cd "$ROOT/src-tauri" && cargo test -q 2>&1 | grep -E "test result|FAILED|panicked" ; cargo build -q)
+  (cd "$ROOT/src-tauri" && cargo test -q --workspace 2>&1 | grep -E "test result|FAILED|panicked" ; cargo build -q)
   "$CUE_BIN" >/dev/null 2>&1 &
   trap 'pkill -f "$CUE_BIN"; rm -rf "$CUE_HOME"' EXIT   # every test Cue process, hooks included
   for i in $(seq 1 50); do [ -S "$CUE_HOME/cue.sock" ] && break; sleep 0.2; done
