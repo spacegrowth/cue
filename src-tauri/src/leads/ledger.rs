@@ -66,6 +66,14 @@ pub(super) fn read_ledger(path: &Path) -> Ledger {
     let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else { return seen(ledger) };
     ledger.offset += end as u64 + 1;
     let text = String::from_utf8_lossy(&bytes[..end]);
+    add_handoffs(ledger, &text);
+    add_reviews(ledger, &text);
+    add_verdicts(ledger, &text);
+    seen(ledger)
+}
+
+/// The `lead_handoff` events in newly read lines.
+fn add_handoffs(ledger: &mut Ledger, text: &str) {
     let handoffs = std::sync::Arc::make_mut(&mut ledger.handoffs);
     for line in text.lines().filter(|l| l.contains("\"lead_handoff\"")) {
         let Ok(d) = serde_json::from_str::<Value>(line) else { continue };
@@ -74,6 +82,11 @@ pub(super) fn read_ledger(path: &Path) -> Ledger {
             handoffs.insert(from, (to, s(&d, "project"), epoch_secs(&s(&d, "ts"), None).map_or(0, |t| t * 1000)));
         }
     }
+}
+
+/// The `report_reviewed` and auto-commit events in newly read lines: which packets were reviewed, and the size
+/// of each one's staged diff.
+fn add_reviews(ledger: &mut Ledger, text: &str) {
     let reviews = std::sync::Arc::make_mut(&mut ledger.reviews);
     let stats = std::sync::Arc::make_mut(&mut ledger.stats);
     for line in text.lines().filter(|l| l.contains("\"report_reviewed\"") || l.contains("\"auto_commit")) {
@@ -91,6 +104,10 @@ pub(super) fn read_ledger(path: &Path) -> Ledger {
             _ => {}
         }
     }
+}
+
+/// The `report_verify` events in newly read lines: the last verdict per (executor id, packet) wins.
+fn add_verdicts(ledger: &mut Ledger, text: &str) {
     let map = std::sync::Arc::make_mut(&mut ledger.verdicts);
     for line in text.lines().filter(|l| l.contains("\"report_verify\"")) {
         let Ok(d) = serde_json::from_str::<Value>(line) else { continue };
@@ -103,5 +120,4 @@ pub(super) fn read_ledger(path: &Path) -> Ledger {
         let note = if verdict == "MISMATCH" && k > 0 { format!("{k} mismatch{}", if k == 1 { "" } else { "es" }) } else { String::new() };
         map.insert((sid, n), Verdict { verdict, note });
     }
-    seen(ledger)
 }

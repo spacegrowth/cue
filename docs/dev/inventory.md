@@ -899,7 +899,6 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |
 | `src-tauri/src/ipc/insights_tab.rs::summary` |  |  |
 | `src-tauri/src/ipc/sessions.rs::move_session_to_cue` |  |  |
-| `src-tauri/src/leads/ledger.rs::read_ledger` |  |  |
 | `src-tauri/src/leads/relay.rs::scan_relay` |  |  |
 | `src-tauri/src/leads/remote.rs::parse_remote` |  |  |
 | `src-tauri/src/leads/tests/scan.rs::relay_and_pilead_leads_own_their_executors` | test |  |
