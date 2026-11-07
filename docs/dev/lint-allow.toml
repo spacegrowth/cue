@@ -101,7 +101,7 @@ reason = "term::foreground asks a terminal's PTY master for its foreground proce
 [[lock_order]]
 from = "parked saves"
 to = "DB"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "parked saves"
@@ -121,12 +121,12 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "parked saves"
 to = "the hub's store"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "review queue saves"
 to = "DB"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "review queue saves"
@@ -136,7 +136,7 @@ reason = "db::open regroups projects by repo root (repos::repo_root) the first t
 [[lock_order]]
 from = "review queue saves"
 to = "the hub's store"
-reason = "saves.rs: a save made after the store is let go writes what the store holds now, under its collection's save lock (save lock, then a look at the store, then the database), so saves landing in either order never leave an older state; nothing takes a save lock under the store or the database"
+reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or one that couldn't start): the job is written where it's handed in, under the parked save lock and then the db writer's marks, before the database. With the writer running, a parked save only hands its job in. Nothing takes a save lock under the store or the database"
 
 [[lock_order]]
 from = "the hub's store"
