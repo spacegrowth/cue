@@ -1,3 +1,4 @@
+mod chaos;
 mod clock;
 mod config;
 mod actions;

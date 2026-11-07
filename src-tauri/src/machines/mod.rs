@@ -112,8 +112,11 @@ pub(crate) fn ssh_program() -> std::path::PathBuf {
     std::path::PathBuf::from("/usr/bin/ssh")
 }
 
-/// `ssh`, to be given its arguments.
+/// `ssh`, to be given its arguments; ssh's refusal while chaos has the line down (chaos/ssh.rs).
 fn ssh() -> Command {
+    if crate::chaos::ssh::down() {
+        return crate::chaos::ssh::refused();
+    }
     Command::new(ssh_program())
 }
 
@@ -165,7 +168,7 @@ pub fn end_streams(mark: &str) {
 }
 
 /// A line of `ps -o pid=,ppid=,command=`: pid, parent, command.
-fn ps_line(line: &str) -> Option<(i32, i32, String)> {
+pub(crate) fn ps_line(line: &str) -> Option<(i32, i32, String)> {
     let mut f = line.split_whitespace();
     let pid = f.next()?.parse().ok()?;
     let ppid = f.next()?.parse().ok()?;

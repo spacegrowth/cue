@@ -34,6 +34,9 @@ pub(crate) fn find_bin(name: &str) -> String {
 /// one that doesn't (iTerm busy, a tmux server not answering) would otherwise hold a send for good.
 pub(crate) fn capped(cmd: &mut Command, cap: std::time::Duration) -> std::io::Result<std::process::Output> {
     use std::io::Read;
+    if cmd.get_program().to_string_lossy().ends_with("tmux") {
+        crate::chaos::pause(crate::chaos::Knob::TmuxDelayMs);
+    }
     let mut child = cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn()?;
     // Read as it runs: a full pipe would stop it before it could exit.
     let drain = |p: Option<Box<dyn Read + Send>>| std::thread::spawn(move || { let mut b = vec![]; if let Some(mut p) = p { let _ = p.read_to_end(&mut b); } b });

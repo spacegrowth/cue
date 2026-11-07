@@ -46,7 +46,7 @@ static DB: Mutex<Option<Connection>> = Mutex::new(None);
 /// before then, so an outside write never reads as a lock bug in locks.log.
 const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
-fn path() -> std::path::PathBuf {
+pub(crate) fn path() -> std::path::PathBuf {
     crate::server::cue_dir().join("cue.db")
 }
 
