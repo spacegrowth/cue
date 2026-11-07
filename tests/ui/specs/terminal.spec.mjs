@@ -2,16 +2,8 @@
 // reading says so once and Resume lets typing through again, closing and resizing it, and a remote executor's
 // own terminal opening once from each way in.
 import { test, expect } from "./cue.mjs";
+import { openTerminal } from "./term.mjs";
 
-/** agent-relay's chat open and its terminal attached, its screen (the fake's permission menu) in the buffer. */
-async function openTerminal(page) {
-  await page.locator('.nrow[data-big="n1"]').click();
-  await page.locator('.tstrip[data-sid="relay"]').click();
-  await page.waitForFunction(() => {
-    const b = typeof termObj !== "undefined" && termObj?.buffer.active;
-    return b && Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString()).some((l) => l?.includes("Do you want to proceed?"));
-  });
-}
 /** What reached the terminal, joined, in the order term_write calls were made. */
 const written = async (cue) => (await cue.calls("term_write")).filter((c) => !("error" in c)).map((c) => c.args.data).join("");
 
