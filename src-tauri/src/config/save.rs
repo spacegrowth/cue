@@ -1,8 +1,8 @@
 //! Saving config.json. Settings are saved from many threads at once (the window's commands, ticks, hooks,
 //! hand-offs): each save is a read, a change and a write, all under one lock, so no other save lands
 //! between its read and its write and loses what it wrote; and the file is replaced whole, so neither a
-//! reader (`load`, the hook process) nor the next save ever sees half of one, which `load` would take for
-//! no settings at all.
+//! reader (the refresh in cache.rs, the hook process) nor the next save ever sees half of one, which it
+//! would take for no settings at all. What a save writes is kept in memory as it's written (cache.rs).
 
 use serde_json::{json, Value};
 
@@ -10,9 +10,10 @@ use serde_json::{json, Value};
 /// now and returns the key's new value (None: nothing to write) and what the caller wants back. Unchecked:
 /// a setting the window may save goes through `config::update`, which checks it as `config::set` does.
 pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>, R), String>) -> Result<R, String> {
-    static SAVING: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = crate::locking::lock(&SAVING, "config saves");
-    let mut c = super::load();
+    let _one = super::cache::hold_file();
+    let path = super::path();
+    // The file as it is now, not the settings in memory: a hand edit not yet refreshed isn't lost.
+    let mut c = super::cache::read_file(&path);
     let (value, out) = f(&c)?;
     let Some(value) = value else { return Ok(out) };
     let (section, name) = key.split_once('.').ok_or_else(|| format!("{key} isn't a dotted key"))?;
@@ -20,7 +21,8 @@ pub fn update_with<R>(key: &str, f: impl FnOnce(&Value) -> Result<(Option<Value>
         c[section] = json!({});
     }
     c[section][name] = value;
-    replace(&super::path(), &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
+    replace(&path, &(serde_json::to_string_pretty(&c).map_err(|e| e.to_string())? + "\n"))?;
+    super::cache::keep(&path, super::cache::stamp_of(&path), c);
     Ok(out)
 }
 

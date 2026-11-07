@@ -12,12 +12,14 @@ digraph locks {
   "actions STORE" -> "REPOS";
   "actions WATCH" -> "REPOS";
   "actions log" -> "WINDOWS";
+  "config file" -> "config in memory";
   "copies" -> "WINDOWS";
   "extensions log" -> "WINDOWS";
   "open_terms" -> "pty master";
   "the hub's store" -> "DB";
   "the hub's store" -> "INDEX";
   "the hub's store" -> "REPOS";
+  "the hub's store" -> "config in memory";
   "typing gate" -> "CLAUDE";
   "typing gate" -> "DB";
   "typing gate" -> "DECLARED";
@@ -27,6 +29,7 @@ digraph locks {
   "typing gate" -> "TOPS";
   "typing gate" -> "VERIFY";
   "typing gate" -> "caches";
+  "typing gate" -> "config in memory";
   "typing gate" -> "quiet sessions";
   "typing gate" -> "shown snapshot";
   "typing gate" -> "the hub's store";

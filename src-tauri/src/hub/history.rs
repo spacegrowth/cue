@@ -85,6 +85,7 @@ mod tests {
         let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("CUE_HOME", &dir);
         std::fs::write(dir.join("config.json"), r#"{"history":{"keep":10}}"#).unwrap();
+        crate::config::refresh();
         crate::db::reset();
         let now = now_ms();
         let item = |n: u64, at: u64| Item {

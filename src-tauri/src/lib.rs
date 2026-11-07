@@ -103,6 +103,8 @@ fn activate_app() {
 
 /// The agents' hook (see hook.rs): runs and returns; the caller exits.
 pub fn hook_main(args: &[String]) {
+    // Settings into memory once, as the app does at launch (config.rs load reads only memory).
+    config::refresh();
     hook::main(args)
 }
 
@@ -185,6 +187,8 @@ fn inherited_agent_var(k: &str, other_provider: bool) -> bool {
 compile_error!("the `e2e` feature puts a WebDriver server in the app: debug builds only");
 
 pub fn run() {
+    // Settings into memory before anything reads one (the window's size and zoom, below).
+    config::refresh();
     // Opened from the Finder or the Dock, an app gets no locale, and tmux without UTF-8 rewrites what it
     // prints (a tab in its answers as "_", "❯" as "_" in the terminal it draws). Cue and everything it
     // starts (tmux, agents, shells) get UTF-8, as they would from a terminal. Set before any thread starts.
@@ -245,6 +249,10 @@ pub fn run() {
             }
             let hub = Arc::new(Hub::new(Some(app.handle().clone())));
             app.manage(hub.clone());
+            // Settings kept current in memory (a hand edit of config.json, Login Items in System Settings): a
+            // change redraws the window.
+            let h = hub.clone();
+            config::watch(move || h.redraw());
             // A reboot killed every tmux pane: open each live session again (before the watcher, so a
             // stale pid can't drop it before its new pane is recorded).
             restore_sessions(&hub);

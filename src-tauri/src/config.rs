@@ -1,9 +1,13 @@
 //! config.json in Cue's data folder: every setting Cue has, shared with the Pi extension (which reads `pi.gate`).
-//! Missing keys mean defaults; writes merge, so a setting never clobbers the others.
+//! Missing keys mean defaults; writes merge, so a setting never clobbers the others. Settings are read from
+//! memory (cache.rs), kept current by saves and by `watch`.
 
 use serde_json::{json, Value};
+use std::sync::Arc;
 
+mod cache;
 pub mod login;
+pub mod mac;
 mod save;
 
 pub use save::update_with;
@@ -20,17 +24,64 @@ fn path() -> std::path::PathBuf {
     crate::server::cue_dir().join("config.json")
 }
 
-pub fn load() -> Value {
-    std::fs::read_to_string(path())
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}))
+/// Every setting, from memory: never a disk read, so it may be called anywhere, the hub's store held or not.
+/// No settings (`{}`) until `refresh` has read the file.
+pub fn load() -> Arc<Value> {
+    cache::current(&path())
+}
+
+/// Read config.json again if it changed on disk (a hand edit); true when the settings changed. Called before
+/// anything reads a setting (at launch, at the start of the hook process), then by `watch`.
+pub fn refresh() -> bool {
+    cache::refresh(&path())
+}
+
+/// How often config.json is looked at for a hand edit, and macOS asked what Settings shows (mac.rs).
+const FILE_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+const MAC_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+
+static ON_CHANGE: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+/// Keep the settings and what macOS says current, on a thread of its own: config.json looked at every couple of
+/// seconds, macOS asked now and every minute. `on_change` runs when either changed (the window redraws).
+pub fn watch(on_change: impl Fn() + Send + Sync + 'static) {
+    let _ = ON_CHANGE.set(Box::new(on_change));
+    std::thread::spawn(|| {
+        let mut asked: Option<std::time::Instant> = None;
+        loop {
+            if refresh() {
+                changed();
+            }
+            if asked.is_none_or(|at| at.elapsed() >= MAC_EVERY) {
+                mac::refresh_soon();
+                asked = Some(std::time::Instant::now());
+            }
+            std::thread::sleep(FILE_EVERY);
+        }
+    });
+}
+
+/// The settings or what macOS says changed: tell `watch`'s caller.
+fn changed() {
+    if let Some(f) = ON_CHANGE.get() {
+        f();
+    }
 }
 
 /// Every setting with its default filled in — what the Settings screen shows.
 pub fn effective() -> Value {
     let c = load();
+    let mut all = from_config(&c);
+    let mac = mac::facts();
+    // Login Items as macOS last said (System Settings → Login Items), asked off-thread (mac.rs).
+    all["login"] = json!({ "open": mac.login });
+    // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
+    all["sessions"] = json!({ "tmux": tmux_wanted(&c) && mac.tmux, "tmux_installed": mac.tmux, "terminal": mac.terminal });
+    all
+}
+
+/// The settings config.json alone says, with their defaults: `effective` but for what macOS says.
+fn from_config(c: &Value) -> Value {
     let b = |p: &str, d: bool| c.pointer(p).and_then(Value::as_bool).unwrap_or(d);
     let (ins, snooze) = (b("/insights/on", false), c.pointer("/insights/snooze").and_then(Value::as_u64).unwrap_or(0));
     let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
@@ -38,10 +89,6 @@ pub fn effective() -> Value {
     json!({
         "history": { "keep": history_keep() },
         "notify": { "finished": b("/notify/finished", true), "decisions": b("/notify/decisions", true), "cold": b("/notify/cold", true), "sound": crate::sounds::choice() },
-        // Read from macOS, so it matches System Settings → Login Items.
-        "login": { "open": login::enabled() },
-        // + New session runs it in Cue (tmux underneath; off: a terminal tab). Offered only when tmux is installed.
-        "sessions": { "tmux": tmux_sessions(), "tmux_installed": crate::terminal::focus::tmux_installed(), "terminal": crate::terminal::focus::terminal_name() },
         "agents": { "show_driven": b("/agents/show_driven", false) },
         // The voice Cue reads out in: "" the Mac's own, else a natural one ("af_heart"), downloaded in Settings → Voice.
         "voice": { "pick": c.pointer("/voice/pick").and_then(Value::as_str).unwrap_or("") },
@@ -137,8 +184,9 @@ pub fn usage_file() -> String {
     load().pointer("/usage/file").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).unwrap_or(USAGE_FILE_DEFAULT).to_string()
 }
 
+/// A switch in config.json, with its default: memory only (no ask of macOS).
 pub fn flag(pointer: &str) -> bool {
-    effective().pointer(pointer).and_then(Value::as_bool).unwrap_or(true)
+    from_config(&load()).pointer(pointer).and_then(Value::as_bool).unwrap_or(true)
 }
 
 /// Whether Claude Code itself compacts a session of `tokens` context left idle, just before its hour's cache
@@ -164,7 +212,11 @@ fn idle_compacts_in(settings: Option<&Value>, min_env: Option<&str>, tokens: u64
 /// New sessions run in Cue (in tmux, shown in Cue's own terminal) unless Settings says a terminal tab;
 /// only when tmux is installed.
 pub fn tmux_sessions() -> bool {
-    load().pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true) && crate::terminal::focus::tmux_installed()
+    tmux_wanted(&load()) && crate::terminal::focus::tmux_installed()
+}
+/// Settings say new sessions run in Cue (on unless turned off).
+fn tmux_wanted(c: &Value) -> bool {
+    c.pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true)
 }
 
 /// What a finished card shows when a Stop hook made the agent continue: "answer" | "last".
@@ -272,7 +324,9 @@ pub fn set(key: &str, value: Value) -> Result<(), String> {
         "actions.prompt" => crate::actions::set_prompt(value.as_str().ok_or("the prompt must be text")?).map(|_| ()),
         "login.open" => {
             let on = value.as_bool().ok_or("must be true or false")?;
-            login::set(on)?;
+            let set = login::set(on);
+            mac::refresh_soon();
+            set?;
             remember(key, json!(on))
         }
         _ => remember(key, checked(key, value)?),
@@ -690,6 +744,7 @@ mod tests {
         let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("CUE_HOME", &dir);
         std::fs::write(dir.join("config.json"), r#"{"history":{"keep":12}}"#).unwrap();
+        refresh();
         let writers: Vec<_> = (0..16).map(|i| std::thread::spawn(move || remember(&format!("many.k{i}"), json!(i)).unwrap())).collect();
         let reader = std::thread::spawn(|| (0..200).all(|_| load()["history"]["keep"] == 12));
         for w in writers {

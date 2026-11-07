@@ -185,6 +185,21 @@ from = "typing gate"
 to = "what the status list has cost"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
+[[lock_order]]
+from = "config file"
+to = "config in memory"
+reason = "a save or a refresh keeps what it wrote or read in memory under the file lock, so an older read can't land after a newer save; config in memory is a leaf"
+
+[[lock_order]]
+from = "the hub's store"
+to = "config in memory"
+reason = "settings are read under the store (context_keep, flag, moved); config in memory is a leaf, held only to clone an Arc"
+
+[[lock_order]]
+from = "typing gate"
+to = "config in memory"
+reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, settings read included"
+
 # External calls reachable while the hub's store is held, today. Phase 2 burns this list down (§2.3, §2.4).
 
 [[store_io]]
@@ -194,22 +209,10 @@ site = "hub::Hub::changed"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
 
 [[store_io]]
-holder = "hub::Hub::notify_full"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
 holder = "hub::activity::Hub::failed"
 effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::activity::Hub::on_event"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::activity::Hub::on_event"
@@ -226,12 +229,6 @@ reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after 
 [[store_io]]
 holder = "hub::asks::Hub::add_ask"
 effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::asks::Hub::add_ask"
-effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
 
@@ -240,12 +237,6 @@ holder = "hub::asks::Hub::answer_terminal"
 effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::asks::Hub::finish"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::asks::Hub::finish"
@@ -264,12 +255,6 @@ holder = "hub::asks::Hub::set_starred"
 effect = "db"
 site = "hub::asks::Hub::set_starred"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
-
-[[store_io]]
-holder = "hub::asks::Hub::terminal_ask_with"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::asks::Hub::terminal_ask_with"
@@ -298,44 +283,14 @@ reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() 
 [[store_io]]
 holder = "hub::send::Hub::interrupt"
 effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::send::Hub::interrupt"
-effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::send::Hub::prompt_from_peer"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::send::Hub::prompt_from_you"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::send::Hub::reply"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::send::Hub::reply"
 effect = "db"
 site = "hub::history::push_history"
 reason = "a SQLite write under the store; Phase 2 (§2.3) decides under write() and writes after the store is let go"
-
-[[store_io]]
-holder = "hub::send::Hub::send_saved"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::sessions::Hub::mark_state"
@@ -346,20 +301,8 @@ reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats f
 [[store_io]]
 holder = "hub::sessions::Hub::resumed"
 effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
-
-[[store_io]]
-holder = "hub::sessions::Hub::resumed"
-effect = "fs"
 site = "logs::live::find_root"
 reason = "a project lookup (Sessions::mark/new_item → live::repo_root) stats folders on a cache miss under the store; an automounted /home can stall it. Phase 2 (§2.4) caches it"
-
-[[store_io]]
-holder = "hub::sessions::Hub::started"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::sessions::Hub::started"
@@ -372,12 +315,6 @@ holder = "hub::sessions::Hub::sweep"
 effect = "fs"
 site = "hub::sessions::written_ms"
 reason = "a file stat under the store; Phase 2 (§2.3) moves it before or after the store"
-
-[[store_io]]
-holder = "hub::sessions::Hub::unparked"
-effect = "fs"
-site = "config::load"
-reason = "reads config.json for a setting under the store; Phase 2 (§2.4) reads settings from a cache"
 
 [[store_io]]
 holder = "hub::sessions::Hub::unparked"

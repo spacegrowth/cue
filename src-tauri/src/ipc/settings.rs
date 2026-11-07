@@ -27,8 +27,10 @@ pub(crate) async fn connect_agent(app: tauri::AppHandle, hub: State<'_, Arc<Hub>
 
 /// Settings rows that talking from anywhere (talk.rs) and an add-on add ([{ group, tab?, rows: [{ title, sub, art?,
 /// pick? }] }], `pick`: { id, value, options: [[value, label]] }).
+/// Fetched each time Settings opens, so macOS is asked again then what Settings shows (Open at login).
 #[tauri::command]
 pub(crate) async fn ext_settings() -> Result<serde_json::Value, String> {
+    crate::config::mac::refresh_soon();
     blocking(ext_settings_rows).await
 }
 
