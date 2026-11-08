@@ -55,6 +55,12 @@ CueBridge.area("settings", (w) => {
     },
     update_install: () => null,
     open_link: () => null,
+    // A markdown file a reply names, as ipc/docs.rs finds it: any .md under the session's folder, with a short text.
+    read_doc: ({ path, cwd }) => {
+      if (!/\.(md|markdown)$/i.test(path)) throw "Couldn't find it";
+      const full = path.startsWith("/") ? path : `${cwd}/${path}`;
+      return { path: full, text: `# ${full.split("/").pop()}\n\nThe plan, in three stages.\n\n## Stage 1\n\nPaper accounts only.`, modified_ms: w.now() - 120000 };
+    },
     image_data: () => `data:image/png;base64,${PIXEL}`,
     clipboard_image: () => null,
     copy_text: () => null,

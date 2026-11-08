@@ -288,7 +288,8 @@ function listenTell() {
 function listenNext() {
   const l = listening, cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
   if (sid === l.sid) l.all = readerReplies(cur.it, cur.s);
-  const all = l.reader && listenThen ? l.all || [] : [];
+  // A file read in the reader ends there: the session's replies aren't what comes after it.
+  const all = l.reader && listenThen && !l.key.startsWith("file:") ? l.all || [] : [];
   const next = all[all.findIndex((r) => r.key === l.key) + 1];
   if (!next) return listenStop();
   if (readerView?.key === l.key) readerView = { sid, key: next.key };
@@ -402,6 +403,6 @@ function listenPlayer(key) {
     <span class="dim ls-of" data-listen-of="1">${of} of ${l.n}</span>
     <span class="ls-track"><span class="ls-fill" style="width: ${Math.round((of / Math.max(1, l.n)) * 100)}%"></span></span>
     <span class="rd-seg ls-speeds">${LISTEN_SPEEDS.map((x, n) => `<button class="${n === listenSpeed ? "on" : ""}" data-listen-speed="${n}">${x}×</button>`).join("")}</span>
-    <label class="ls-then"><input type="checkbox" data-listen-then="1" ${listenThen ? "checked" : ""}/>Then the next reply</label>
+    ${key.startsWith("file:") ? "" : `<label class="ls-then"><input type="checkbox" data-listen-then="1" ${listenThen ? "checked" : ""}/>Then the next reply</label>`}
     <button class="btn" data-listen-stop="1">Stop</button></div>`;
 }

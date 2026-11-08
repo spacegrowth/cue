@@ -3,7 +3,8 @@
 // Read on a long reply: it fills the chat area in one column, larger type, ‹ › to its other replies, three
 // text sizes (remembered). Read-only on purpose: no box, so permissions, questions, the queue and the rest
 // stay in the chat alone. Reply goes to the chat's box; ‹ Chat (or Esc) back to the reply in the chat.
-let readerView = null;   // { sid, key }: the reply open in the reader; key as chatHtml's ("<sid>:<at_ms>")
+let readerView = null;   // { sid, key, file? }: the reply open in the reader, key as chatHtml's ("<sid>:<at_ms>"); or a
+                         // markdown file a reply named (file: { path, text, modified_ms }, key "file:<path>")
 const READER_SIZES = [15, 17, 20];
 let readerSize = 1;      // index into READER_SIZES
 try { const n = localStorage.getItem("cue.readerSize"); if (n != null && READER_SIZES[+n]) readerSize = +n; } catch {}
@@ -16,6 +17,8 @@ function readerReplies(it, s) {
 function readerViewed(sid, it, s) {
   if (!readerView) return null;
   if (readerView.sid !== sid) { readerView = null; return null; }
+  const f = readerView.file;
+  if (f) return { all: [{ key: readerView.key, text: f.text, at_ms: f.modified_ms }], at: 0, file: f };
   const all = readerReplies(it, s), at = all.findIndex((r) => r.key === readerView.key);
   return at < 0 ? null : { all, at };
 }
@@ -25,6 +28,18 @@ function openReader(sid, key) {
   readerView = { sid, key };
   renderMain();
 }
+/** A markdown file a reply named, in the reader: found from the session's folder (ipc/docs.rs read_doc: the
+ *  path as written, from the folders up to the repo's top, or by name), its session opened if it wasn't. */
+// SHORTCUT: the file is read once, when it's opened; a change on disk shows when it's opened again. Fine for reading
+// a doc; a watcher (or a re-read on focus) when someone edits one while it's open in Cue.
+function openDoc(sid, path) {
+  return invoke("read_doc", { path, cwd: sessionOf(sid)?.cwd || null }).then((f) => {
+    if (current()?.s?.session_id !== sid) setActive(null, sid);
+    readerView = { sid, key: `file:${f.path}`, file: f };
+    renderMain();
+  }, (err) => toast(String(err)));
+}
+const isDocPath = (p) => /\.(md|markdown)$/i.test(p);
 /** ‹ › (and ← →): the previous or next reply, if there is one. */
 function stepReader(dir) {
   const cur = current(), sid = cur?.s?.session_id || cur?.it?.session_id;
@@ -63,6 +78,7 @@ function copyReader() {
 /** The reader, in place of the chat: a bar (‹ Chat, ‹ n of m ›, text size, Copy, Reply), the reply in one
  *  column, and a foot only when the session is asking you something (then Back to chat answers it there). */
 function readerPane(sid, it, s, harness, rv) {
+  if (rv.file) return docPane(sid, it, rv);
   const r = rv.all[rv.at], n = rv.all.length;
   // The reader has the pane to itself (activePane leaves out the session's head, bar, tabs and terminal strip):
   // its one bar says which session it is, and that it's waiting in its terminal when it is (an amber Terminal, as
@@ -76,5 +92,17 @@ function readerPane(sid, it, s, harness, rv) {
   const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(stripStatus(r.text))}</div>${localImages(r.text)}</div>`;
   const asks = isPending(it) && it.kind !== "waiting";
   const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b>${it.kind === "question" ? "" : `<span class="dim"> · ${esc(verb(it))}</span>`}</span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";
+  return { bar, body, foot: listenPlayer(r.key) + foot };
+}
+/** A file in the reader: its name, text size, Listen, Copy, Open (in its app, as a click on it did before); the
+ *  file in one column, under where it is and when it last changed. Nothing to step to, no Reply (it's a file). */
+function docPane(sid, it, rv) {
+  const r = rv.all[0], f = rv.file, name = f.path.split("/").pop();
+  const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button><span class="proj rd-name rd-file">${esc(name)}</span><span class="grow"></span>
+    <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
+    ${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button><button class="btn" data-reader-open="${esc(f.path)}">Open</button></div>`;
+  const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(shortPath(f.path.replace(/^\/Users\/[^/]+/, "~")))}${f.modified_ms ? ` · changed ${ago(f.modified_ms)} ago` : ""}</div><div class="msg">${md(f.text)}</div></div>`;
+  const asks = isPending(it) && it.kind !== "waiting";
+  const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b></span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";
   return { bar, body, foot: listenPlayer(r.key) + foot };
 }

@@ -657,8 +657,10 @@ function linkify(h, base = null) {
   const keep = (html) => `\u0000${links.push(html) - 1}\u0000`;
   const a = (u, label) => `<a href="#" data-href="${u}">${label}</a>`;
   // A path opens on a click like a link: a document in its app, code as text, anything else shown in Finder
-  // (settings.rs how_to_open decides, from the real file).
-  const pa = (path, shown) => `<a href="#" data-path="${path}">${shown}</a>`;
+  // (settings.rs how_to_open decides, from the real file); a markdown file in Cue's reader (its session's, so
+  // it carries which session said it).
+  const sid = base?.sid ? ` data-sid="${esc(base.sid)}"` : "";
+  const pa = (path, shown) => `<a href="#" data-path="${path}"${sid}>${shown}</a>`;
   const remote = !!base?.machine;
   const trail = (raw) => raw.match(/[.,;:!?]+$/)?.[0] || "";
   let out = h.replace(/\[([^\]\n]+)\]\(((?:https?|file):\/\/[^\s)]+)\)/g, (_, label, u) => keep(a(u, label)))
@@ -676,6 +678,8 @@ function linkify(h, base = null) {
       if (/^[\w-]+(\.[\w-]+)+\//.test(p) && !/^\.\.?\//.test(p)) return m;   // example.com/page.html: a site, not a file here
       return pre + keep(pa(`${dir}/${p.replace(/^\.\//, "")}`, p)) + t;
     });
+    // A markdown file by name alone (HANDOFF.md, the plan.md): the reader finds which one (ipc/docs.rs).
+    out = out.replace(/(^|[^\w@/\\<.:\u0000-])([\w@+-][\w.@+-]*\.(?:md|markdown))(?=$|[^\w/])/g, (m, pre, p) => pre + keep(pa(`${dir}/${p}`, p)));
   }
   return out.replace(/\u0000(\d+)\u0000/g, (_, n) => links[n]);
 }
@@ -705,7 +709,7 @@ function runCode(btn) {
 function md(text, { runIn = null } = {}) {
   const out = [];
   const ses = runIn ? sessionOf(runIn) : null;   // its folder for relative paths; its machine (another: no paths)
-  const base = ses ? { cwd: ses.cwd, machine: ses.machine } : null;
+  const base = ses ? { cwd: ses.cwd, machine: ses.machine, sid: runIn } : null;
   const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base);
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {

@@ -120,6 +120,7 @@ const LISTEN_CLICKS = [
 const READER_CLICKS = [
   rule("[data-read]", (rd) => { const k = rd.dataset.read; openReader(k.slice(0, k.lastIndexOf(":")), k); }),
   rule("[data-reader-back]", () => closeReader()),
+  rule("[data-reader-open]", (ro) => invoke("open_link", { url: ro.dataset.readerOpen }).catch((err) => toast(`Couldn't open: ${err}`))),
   rule("[data-reader-term]", (rt) => { closeReader(); openTerm(rt.dataset.readerTerm); }),
   rule("[data-reader-reply]", () => replyFromReader()),
   rule("[data-reader-copy]", () => copyReader()),
@@ -150,7 +151,10 @@ function openPath(pl, e) {
   e.preventDefault();
   const sel = getSelection();
   if (!sel.isCollapsed && pl.contains(sel.anchorNode)) return;
-  return invoke("open_link", { url: pl.dataset.path }).catch((err) => toast(`Couldn't open: ${err}`));
+  // A markdown file: in the reader, for its session (one on this Mac; another's paths aren't linked at all).
+  const path = pl.dataset.path, sid = pl.dataset.sid || current()?.s?.session_id;
+  if (isDocPath(path) && sid && !sessionOf(sid)?.machine) return openDoc(sid, path);
+  return invoke("open_link", { url: path }).catch((err) => toast(`Couldn't open: ${err}`));
 }
 /** Screenshots a message points at, full size: the ones Cue could read. */
 function openLocalImages(llb) {
