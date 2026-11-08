@@ -165,8 +165,8 @@
     const sid = m.open;
     const it = itemFor(sid);
     const s = sessionOf(sid);
-    // The notch: its tabs, then In Cue and × at their right (one row; each tab's dot says what it's doing).
-    const head = NOTCH ? `<div class="m-head"><div class="m-tabs" data-tabs>${tabsHtml()}</div><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`
+    const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
+    const head = NOTCH ? `<div class="m-tabs" data-tabs>${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`
       : `<div class="m-bar" data-bar><div class="m-tabs" data-tabs>${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
     return `<div class="m-panel m-chat">${head}
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
