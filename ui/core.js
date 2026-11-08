@@ -619,6 +619,7 @@ function summary(it) {
     case "bash": return i.command || "bash";
     case "edit": case "multiedit": case "write": case "notebookedit": return `${it.tool_name} ${shortPath(i.file_path || i.path || "")}`;
     case "webfetch": return `Fetch ${i.url || ""}`;
+    case "exitplanmode": return typeof i.plan === "string" ? `Plan: ${plain(firstLine(i.plan))}` : "A plan to approve";
     default: return it.tool_name || "Request";
   }
 }
@@ -626,7 +627,7 @@ function verb(it) {
   if (it.kind === "question") return "asks";
   if (it.kind === "input") return it.tool_name ? `has a form for you from ${it.tool_name}` : "has a form for you";
   if (inTerminal(it)) return "asks in its terminal";
-  return { bash: "wants to run", edit: "wants to edit", multiedit: "wants to edit", write: "wants to write", webfetch: "wants to fetch" }[tool(it)] || `wants ${it.tool_name}`;
+  return { bash: "wants to run", edit: "wants to edit", multiedit: "wants to edit", write: "wants to write", webfetch: "wants to fetch", exitplanmode: "has a plan for you" }[tool(it)] || `wants ${it.tool_name}`;
 }
 function describeSuggestion(s) {
   const where = { session: "this session", localSettings: "this project, just you", projectSettings: "this project", userSettings: "everywhere" }[s.destination] || s.destination || "";
@@ -735,9 +736,7 @@ function md(text, { runIn = null } = {}) {
         } else if (r.kind === "table") {
           out.push(table(r.lines, inline));
         } else if (r.kind === "list") {
-          const ordered = /^\s*\d/.test(r.lines[0]);
-          const start = ordered ? parseInt(r.lines[0], 10) || 1 : 1;
-          out.push(`<${ordered ? `ol start="${start}"` : "ul"}>${r.lines.map((l) => `<li>${inline(l.replace(LIST, ""))}</li>`).join("")}</${ordered ? "ol" : "ul"}>`);
+          out.push(listHtml(r.lines, LIST, inline));
         } else if (r.kind === "head") {
           out.push(`<h4>${inline(r.lines[0].replace(/^#+\s/, "").replace(/\*\*/g, ""))}</h4>`);
         } else {
@@ -747,6 +746,22 @@ function md(text, { runIn = null } = {}) {
     }
   });
   return out.join("");
+}
+
+/** List lines as a list: numbered from its first item's number when that's numbered. A line indented further
+ *  than the list's first is part of a list inside the item above it (a "1." item's "   - " points stay its own,
+ *  not items 2, 3, 4 of the numbered list). */
+function listHtml(lines, LIST, inline) {
+  const indent = (l) => l.match(/^\s*/)[0].length;
+  const base = indent(lines[0]);
+  const items = [];
+  for (const l of lines) {
+    if (indent(l) > base && items.length) items.at(-1).sub.push(l);
+    else items.push({ text: l.replace(LIST, ""), sub: [] });
+  }
+  const ordered = /^\s*\d/.test(lines[0]);
+  const tag = ordered ? `ol start="${parseInt(lines[0], 10) || 1}"` : "ul";
+  return `<${tag}>${items.map((it) => `<li>${inline(it.text)}${it.sub.length ? listHtml(it.sub, LIST, inline) : ""}</li>`).join("")}</${ordered ? "ol" : "ul"}>`;
 }
 
 /** A stretch narrower than this share of the bar can't show its stripes (one stripe is about 3.5% of a Sessions card's

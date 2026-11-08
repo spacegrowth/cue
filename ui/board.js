@@ -278,6 +278,8 @@ function requestBody(it) {
     return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
   }
   if (t === "write") return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || i.path || ""))}</div><pre class="slab">${esc(i.content)}</pre>`;
+  // A plan to approve: the plan as written, not its JSON.
+  if (t === "exitplanmode" && typeof i.plan === "string") return `<div class="plan-body">${md(i.plan)}</div>`;
   return `<pre class="slab">${esc(JSON.stringify(i, null, 2))}</pre>`;
 }
 /** Send all answers: shown once every question has one (needed when any allow several picks). */
@@ -306,10 +308,11 @@ function decisionButtons(it) {
   if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button></div>`;
   const sugg = it.suggestions || [];
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
-  return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">Deny</button>
+  const plan = tool(it) === "exitplanmode";
+  return `<div class="row-btns"><button class="btn deny flex" data-act="deny" data-id="${esc(it.id)}">${plan ? "Keep planning" : "Deny"}</button>
     ${sugg.length ? `<span class="always">${menu}<button class="btn" data-act="menu" data-id="${esc(it.id)}">Always…</button></span>` : ""}
     <button class="btn" data-act="redirect" data-id="${esc(it.id)}">↪</button>
-    <button class="btn primary flex" data-act="allow" data-id="${esc(it.id)}">Allow</button></div>`;
+    <button class="btn primary flex" data-act="allow" data-id="${esc(it.id)}">${plan ? "Approve plan" : "Allow"}</button></div>`;
 }
 
 /** What the agent wrote after a Stop hook made it continue — collapsed under the real answer. */

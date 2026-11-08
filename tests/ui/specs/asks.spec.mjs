@@ -75,3 +75,28 @@ test("Later moves a finished turn to Need to decide", async ({ cue, page }) => {
   await card(page, "n2").locator("[data-park]").click();
   await cue.called("set_later", { sessionId: "det", on: true });
 });
+
+test("A plan to approve shows the plan as written, and Approve plan allows it", async ({ cue, page }) => {
+  await cue.change((st) => {
+    const it = st.items.find((x) => x.id === "n5");
+    it.tool_name = "ExitPlanMode";
+    it.tool_input = { plan: "# Ship the cart limit\n\n- Raise MAX_ITEMS to 25\n- Add a test", planFilePath: "/x/plan.md" };
+  });
+  const c = card(page, "n5");
+  await expect(c).toContainText("has a plan for you");
+  await expect(c).toContainText("Plan: Ship the cart limit");
+  await c.click();
+  const pane = page.locator(".active-pane");
+  await expect(pane.locator(".plan-body li")).toHaveCount(2);
+  await expect(pane).not.toContainText("planFilePath");
+  await expect(pane.locator('[data-act="deny"]')).toHaveText("Keep planning");
+  await pane.locator('[data-act="allow"]').click();
+  expect((await cue.called("respond", { id: "n5" })).args.decision).toEqual({ behavior: "allow" });
+});
+
+test("Indented points under a numbered item are a list of their own, not more numbers", async ({ page }) => {
+  const html = await page.evaluate(() => md("1. Shape: fine.\n2. Assumptions:\n   - one\n   - two\n3. Verify: ok."));
+  const box = await page.evaluate((h) => { const d = document.createElement("div"); d.innerHTML = h; return { top: [...d.querySelectorAll(":scope > ol > li")].map((li) => li.firstChild.textContent.trim()), sub: [...d.querySelectorAll("ol > li > ul > li")].map((li) => li.textContent) }; }, html);
+  expect(box.top).toEqual(["Shape: fine.", "Assumptions:", "Verify: ok."]);
+  expect(box.sub).toEqual(["one", "two"]);
+});

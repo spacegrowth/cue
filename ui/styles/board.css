@@ -146,3 +146,6 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .working .prompt { margin-top: 8px; font-size: 12px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .legend { font-size: 11.5px; color: var(--on-bg-muted); line-height: 1.5; }
 
+/* A plan to approve (ExitPlanMode): the plan as written, scrolled inside the card when long. */
+.plan-body { font-size: 13px; line-height: 1.5; max-height: 320px; overflow-y: auto; padding: 4px 2px; }
+.plan-body p, .plan-body ul, .plan-body ol, .plan-body .md-table, .plan-body .code-wrap { margin: 0 0 8px; }
