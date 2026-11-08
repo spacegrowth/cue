@@ -20,6 +20,23 @@ fn started(w: &World, message: &str) -> String {
     r["session_id"].as_str().unwrap().to_string()
 }
 
+/// Claude takes `text` (the message Cue handed it), and has written its conversation, as it does from its first
+/// message on: a resume finds it.
+fn takes(w: &World, sid: &str, text: &str) {
+    w.hosted_says(sid, HostedEvent::Taken { text: text.into() });
+    let log = w.hub().session_origin(sid).unwrap().transcript_path;
+    if !std::path::Path::new(&log).is_file() {
+        Transcript::at(&log).prompt(text);
+    }
+}
+
+/// A hosted session started with `message`, which Claude has taken (its turn under way): its id.
+fn running(w: &World, message: &str) -> String {
+    let sid = started(w, message);
+    takes(w, &sid, message);
+    sid
+}
+
 /// `sid` at the end of a turn that said `reply`.
 fn turn_ends(w: &World, sid: &str, reply: &str) {
     w.hosted_says(sid, HostedEvent::TurnEnded { text: reply.into(), failed: false, cost_usd: 0.25, unprompted: false });
@@ -57,7 +74,12 @@ fn a_new_hosted_session_starts_claude_with_no_terminal_and_hands_it_its_first_me
     assert!(o.hosted && o.agent_pid.is_some() && o.tmux_pane.is_empty());
     assert!(o.transcript_path.ends_with(&format!("{sid}.jsonl")), "{}", o.transcript_path);
     let s = w.snapshot();
-    assert_eq!((s.session(&sid)["name"].as_str(), s.state(&sid).as_str()), (Some("trial"), "working"));
+    assert_eq!(s.session(&sid)["name"], "trial");
+    assert_eq!(s.last_yours(&sid)["pending"], true, "handed over, not yet taken");
+    takes(&w, &sid, "fix the login");
+    let s = w.snapshot();
+    assert_eq!(s.state(&sid), "working");
+    assert!(s.last_yours(&sid)["pending"].is_null(), "taken");
 }
 
 #[test]
@@ -90,7 +112,7 @@ fn a_message_sent_to_an_idle_one_goes_to_it_directly_and_starts_a_turn_when_take
 #[test]
 fn a_message_sent_mid_turn_goes_at_once_and_is_taken_at_its_next_step() {
     let w = World::new();
-    let sid = started(&w, "long job");
+    let sid = running(&w, "long job");
     w.send_to(&sid, "also check the docs");
     assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "also check the docs".to_string())), "not kept in Cue: Claude reads it mid-turn");
     assert!(w.snapshot().session(&sid)["queued"].is_object(), "queued until it takes it");
@@ -102,7 +124,7 @@ fn a_message_sent_mid_turn_goes_at_once_and_is_taken_at_its_next_step() {
 #[test]
 fn a_turn_that_ends_is_a_finished_turn_card_with_its_cost() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     turn_ends(&w, &sid, "All done.");
     let s = w.snapshot();
     assert_eq!(s.state(&sid), "waiting");
@@ -113,7 +135,7 @@ fn a_turn_that_ends_is_a_finished_turn_card_with_its_cost() {
 #[test]
 fn a_permission_is_a_card_whose_answer_goes_back_to_the_session() {
     let w = World::new();
-    let sid = started(&w, "clean up");
+    let sid = running(&w, "clean up");
     w.hosted_says(&sid, ask(AskKind::Permission, "r1"));
     let s = w.snapshot();
     let card = s.card(&sid);
@@ -130,7 +152,7 @@ fn a_permission_is_a_card_whose_answer_goes_back_to_the_session() {
 #[test]
 fn an_mcp_servers_form_is_an_input_card_answered_with_what_you_filled_in() {
     let w = World::new();
-    let sid = started(&w, "sign me up");
+    let sid = running(&w, "sign me up");
     w.hosted_says(&sid, ask(AskKind::Input, "e1"));
     let card = w.snapshot().card(&sid).clone();
     assert_eq!((card["kind"].as_str(), card["tool_name"].as_str()), (Some("input"), Some("forms")));
@@ -144,7 +166,7 @@ fn an_mcp_servers_form_is_an_input_card_answered_with_what_you_filled_in() {
 #[test]
 fn a_card_that_goes_unanswered_is_a_denial_so_claude_never_waits_on_it() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     w.hosted_says(&sid, ask(AskKind::Question, "q1"));
     let id = w.snapshot().card(&sid)["id"].as_str().unwrap().to_string();
     w.hub().finish(&id, "gone", "dismissed");
@@ -156,7 +178,7 @@ fn a_card_that_goes_unanswered_is_a_denial_so_claude_never_waits_on_it() {
 #[test]
 fn stop_interrupts_it_directly_and_presses_nothing() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     w.ask(json!({ "type": "interrupt", "session_id": sid }));
     assert_eq!(w.hosted.interrupted(), vec![sid.clone()]);
     assert!(w.terminal.keys(&sid).is_empty());
@@ -165,7 +187,7 @@ fn stop_interrupts_it_directly_and_presses_nothing() {
 #[test]
 fn claude_exiting_mid_turn_leaves_it_paused_with_a_card_and_the_next_message_starts_it_again() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     w.hosted_says(&sid, ask(AskKind::Permission, "r1"));
     w.hosted.exits(&sid);
     w.hosted_says(&sid, HostedEvent::Exited { code: Some(3), during_turn: true, last_words: "fatal: out of memory\n".into() });
@@ -185,7 +207,7 @@ fn claude_exiting_mid_turn_leaves_it_paused_with_a_card_and_the_next_message_sta
 #[test]
 fn after_a_relaunch_it_is_paused_kept_and_resumed_by_your_next_message() {
     let mut w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     turn_ends(&w, &sid, "Done.");
     w.relaunch();
     let o = w.hub().session_origin(&sid).expect("still there after the relaunch");
@@ -203,7 +225,7 @@ fn after_a_relaunch_it_is_paused_kept_and_resumed_by_your_next_message() {
 #[test]
 fn close_ends_its_claude_and_the_session() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     turn_ends(&w, &sid, "Done.");
     end_session(w.hub(), &sid).unwrap();
     assert_eq!(w.hosted.closed(), vec![sid.clone()]);
@@ -213,7 +235,7 @@ fn close_ends_its_claude_and_the_session() {
 #[test]
 fn a_parked_hosted_session_resumes_hosted() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     turn_ends(&w, &sid, "Done.");
     park(w.hub(), &sid).unwrap();
     assert!(w.hub().parked(&sid).is_some());
@@ -247,7 +269,7 @@ fn move_to_cue_with_the_setting_on_resumes_a_terminal_session_hosted() {
 #[test]
 fn move_to_terminal_closes_it_and_resumes_it_in_a_tab_as_a_terminal_session() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     turn_ends(&w, &sid, "Done.");
     move_hosted_to_terminal(w.hub(), &sid).unwrap();
     assert_eq!(w.hosted.closed(), vec![sid.clone()]);
@@ -261,7 +283,7 @@ fn move_to_terminal_closes_it_and_resumes_it_in_a_tab_as_a_terminal_session() {
 #[test]
 fn its_card_isnt_taken_for_answered_in_a_terminal_it_doesnt_have() {
     let w = World::new();
-    let sid = started(&w, "clean up");
+    let sid = running(&w, "clean up");
     let log = Transcript::at(w.hub().session_origin(&sid).unwrap().transcript_path);
     log.tool_use("toolu_1", "Bash", json!({ "command": "rm -rf build" }));
     w.hosted_says(&sid, ask(AskKind::Permission, "r1"));
@@ -274,7 +296,7 @@ fn its_card_isnt_taken_for_answered_in_a_terminal_it_doesnt_have() {
 #[test]
 fn the_watcher_leaves_a_hosted_session_to_its_own_exit_report() {
     let w = World::new();
-    let sid = started(&w, "go");
+    let sid = running(&w, "go");
     // The stand-in's process ids are no real process's: to the watcher, its Claude looks dead.
     w.tick(false);
     assert!(w.hub().session_origin(&sid).is_some(), "not dropped: an exit is the session's to report, and it pauses it");
@@ -289,4 +311,42 @@ fn renaming_it_names_it_in_cue_and_types_nothing() {
     assert_eq!(row["name"], "cue-hosted-test");
     assert!(row["rename_error"].is_null(), "no notice that it couldn't be told: {row}");
     assert!(w.terminal.typed(&sid).is_empty());
+}
+
+#[test]
+fn one_paused_before_claude_wrote_anything_starts_new_under_its_id_not_a_resume_that_fails() {
+    let mut w = World::new();
+    let sid = started(&w, "");
+    w.relaunch();
+    w.send_to(&sid, "hello");
+    assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(Start::New(sid.clone())), "no conversation to resume yet");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "hello".to_string())));
+}
+
+#[test]
+fn a_message_claude_exits_before_taking_is_marked_not_sent() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    w.send_to(&sid, "and the docs?");
+    assert_eq!(w.snapshot().last_yours(&sid)["pending"], true);
+    w.hosted.exits(&sid);
+    w.hosted_says(&sid, HostedEvent::Exited { code: Some(1), during_turn: false, last_words: String::new() });
+    let last = w.snapshot().last_yours(&sid).clone();
+    assert_eq!((last["text"].as_str(), last["unsent"].as_bool()), (Some("and the docs?"), Some(true)), "Send again, not a message that silently went nowhere: {last}");
+}
+
+#[test]
+fn a_reply_to_its_card_goes_straight_to_it_and_settles_when_taken() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    let id = w.snapshot().card(&sid)["id"].as_str().unwrap().to_string();
+    let r = w.ask(json!({ "type": "reply", "id": id, "text": "next step", "images": [] }));
+    assert_eq!(r["detail"], "sent", "{r}");
+    assert!(w.snapshot().cards_of(&sid).is_empty(), "the card is answered");
+    assert_eq!(w.snapshot().last_yours(&sid)["pending"], true, "on its way until Claude takes it");
+    w.hosted_says(&sid, HostedEvent::Taken { text: "next step".into() });
+    assert!(w.snapshot().last_yours(&sid)["pending"].is_null());
+    assert_eq!(w.snapshot().state(&sid), "working");
 }

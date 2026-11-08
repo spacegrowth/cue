@@ -27,6 +27,16 @@ impl Sessions {
         }
     }
 
+    /// Every message of yours it hadn't taken yet, marked not sent (`why`): its agent is gone (a hosted session's
+    /// Claude exited), so none of them will be. Each bubble then offers Send again.
+    pub fn unsend_pending(&mut self, session_id: &str, why: &str) {
+        for e in self.0.get_mut(session_id).into_iter().flat_map(|s| s.thread.iter_mut()).filter(|e| e.role == "you" && e.pending) {
+            e.unsent = true;
+            e.pending = false;
+            record(e, format!("not taken: {why}"));
+        }
+    }
+
     /// Your message `text` to it was said by voice: the bubble says Cue added a line for the agent (or will, when
     /// it's still kept in Cue or queued in the agent's box).
     pub fn mark_voice(&mut self, session_id: &str, text: &str) {

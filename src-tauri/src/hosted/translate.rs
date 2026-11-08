@@ -74,8 +74,11 @@ impl Translator {
     fn turn_ended(&mut self, v: &Value) -> HostedEvent {
         let unprompted = !std::mem::replace(&mut self.prompted, false);
         self.in_turn = false;
+        // A turn that failed before saying anything ("No conversation found…") has its reason in `errors`.
+        let said = text(v, "result");
+        let errors = || v.get("errors").and_then(Value::as_array).map(|e| e.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("; ")).unwrap_or_default();
         HostedEvent::TurnEnded {
-            text: text(v, "result"),
+            text: if said.is_empty() { errors() } else { said },
             failed: v.get("is_error").and_then(Value::as_bool).unwrap_or(false),
             cost_usd: v.get("total_cost_usd").and_then(Value::as_f64).unwrap_or(0.0),
             unprompted,

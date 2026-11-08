@@ -26,11 +26,10 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, dir: &str, message: &str, name: &str, o
     let origin = Origin { session_id: sid.clone(), harness: "claude".into(), cwd: dir.to_string(), transcript_path: live::claude_transcript_path(dir, &sid).to_string_lossy().into_owned(), hosted: true, ..Default::default() };
     let origin = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args })?;
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-    h.started(origin, message, &paths, false);
+    h.started(origin, "", &[], false);
     h.name_new(&sid, name);
-    let first = crate::uploads::with_paths(message.trim(), saved);
-    if !first.trim().is_empty() {
-        h.hosted().send(&sid, &first)?;
+    if !message.trim().is_empty() || !paths.is_empty() {
+        h.send_to_hosted(&sid, message, saved, false)?;
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": "Started Claude Code, hosted in Cue" }))
 }

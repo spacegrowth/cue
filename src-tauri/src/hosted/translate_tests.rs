@@ -132,3 +132,11 @@ fn a_turn_is_under_way_from_your_message_to_its_end() {
     t.step(&wire::parse(r#"{"type":"result","subtype":"success","result":"hello","total_cost_usd":0.01}"#));
     assert!(!t.in_turn());
 }
+
+#[test]
+fn a_turn_that_fails_before_saying_anything_says_why() {
+    let mut t = Translator::default();
+    let line = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["No conversation found with session ID: x"],"total_cost_usd":0}"#;
+    let e = t.step(&crate::hosted::wire::parse(line));
+    assert!(matches!(&e[..], [HostedEvent::TurnEnded { text, failed: true, .. }] if text == "No conversation found with session ID: x"), "{e:?}");
+}

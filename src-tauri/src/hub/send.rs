@@ -262,9 +262,14 @@ impl Hub {
     /// A reply typed into the session's terminal (or handed over directly), then the card answered with
     /// whether the agent was seen to take it.
     fn type_reply(&self, it: Item, id: &str, sid: &str, text: &str, saved: &[crate::uploads::Saved], t0: u64) -> Result<String, String> {
+        if it.origin.hosted {
+            let said = self.send_to_hosted(sid, text, saved, false)?;
+            self.file_reply(it, id, text, saved, "");
+            return Ok(said);
+        }
         let cmd_before = command_before(&it.origin, text);
-        // Direct delivery when the session listens for it (Pi) or Cue hosts it; otherwise type into its terminal.
-        let direct = self.send_direct(sid, text, saved, false)?;
+        // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
+        let direct = self.send_direct(sid, text, saved, false);
         let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(sid, &it.origin, saved)?))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
         let mut submitted = self.took(sid, &it.origin, text, cmd_before, t0);
@@ -272,25 +277,32 @@ impl Hub {
             submitted = self.wait_active(sid, t0, 4000);
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
-        let pics = if saved.is_empty() { String::new() } else { format!(" + {} image{}", saved.len(), if saved.len() == 1 { "" } else { "s" }) };
-        let outcome = format!("replied: “{}”{pics}{}", first_line(text, 200), if submitted { "" } else { " (typed; didn't see it submit)" });
         self.write(|st| {
-            st.items.retain(|i| i.id != id);
             st.sessions.note_sent(sid, text, &paths, t0, crate::config::context_keep());
             st.sessions.note_delivery(sid, text, &delivery_step(&via, submitted));
         });
+        let seen = submitted;
         if !submitted && !direct {
             submitted = self.settle_typed(sid, &it.origin, text, cmd_before, t0);
         }
+        self.file_reply(it, id, text, saved, if seen { "" } else { " (typed; didn't see it submit)" });
+        Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
+    }
+
+    /// The card a reply answered, off the board and into History, saying what you replied (`note`: how it went).
+    fn file_reply(&self, it: Item, id: &str, text: &str, saved: &[crate::uploads::Saved], note: &str) {
+        let pics = if saved.is_empty() { String::new() } else { format!(" + {} image{}", saved.len(), if saved.len() == 1 { "" } else { "s" }) };
         let mut h = it;
-        h.images = paths;
+        h.images = saved.iter().map(|s| s.path.clone()).collect();
         h.status = "answered".into();
-        h.outcome = outcome;
+        h.outcome = format!("replied: “{}”{pics}{note}", first_line(text, 200));
         h.resolved_ms = Some(now_ms());
-        let answered = self.write(|st| push_history(st, h));
+        let answered = self.write(|st| {
+            st.items.retain(|i| i.id != id);
+            push_history(st, h)
+        });
         self.save_answered_with_draw(answered);
         self.changed();
-        Ok(if submitted { format!("sent via {via}") } else { format!("via {via}; Cue is watching for it to take it") })
     }
 
     /// Send a message to any live session — a working one included (the "say something" box).
@@ -383,6 +395,10 @@ impl Hub {
         let _typing = wait_turn(&gate)?;
         self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy, direct) = self.read(|st| Self::send_state(st, session_id))?;
+        // A hosted session takes a message at any time, mid-turn too: nothing to keep in Cue, nothing to press.
+        if origin.as_ref().is_some_and(|o| o.hosted) {
+            return self.send_to_hosted(session_id, typed, &saved, busy);
+        }
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.)
@@ -398,14 +414,10 @@ impl Hub {
         }
         let busy = busy && !now;
         let origin = origin.ok_or("that session is gone")?;
-        // Stopped before it answered, Claude Code hands the message it was on back to its box, and this one
-        // is typed after it: the two go as one. A blank line first keeps them apart (an empty box drops it).
-        // Its Stop button, a moment ago, does the same: the kept message sent right after goes apart too.
-        let escaped = self.read(|st| st.escaped.get(session_id).is_some_and(|t| mono_ms().saturating_sub(*t) < 30_000));
-        let apart = if (stopped || escaped) && origin.harness == "claude" { "\n\n" } else { "" };
+        let apart = self.apart(session_id, &origin, stopped);
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
-        let direct = self.send_direct(session_id, text, &saved, now)?;
+        let direct = self.send_direct(session_id, text, &saved, now);
         let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?)))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
@@ -432,6 +444,14 @@ impl Hub {
             return Ok(format!("via {via}; Cue is watching for it to take it"));
         }
         Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
+    }
+
+    /// What goes before a message typed into a Claude Code session just stopped (`stopped`: by Cue, to send this
+    /// now; or its Stop button a moment ago): Claude Code hands the message it was on back to its box, and this one
+    /// is typed after it, so the two would go as one. A blank line first keeps them apart (an empty box drops it).
+    fn apart(&self, session_id: &str, origin: &Origin, stopped: bool) -> &'static str {
+        let escaped = self.read(|st| st.escaped.get(session_id).is_some_and(|t| mono_ms().saturating_sub(*t) < 30_000));
+        if (stopped || escaped) && origin.harness == "claude" { "\n\n" } else { "" }
     }
 
     /// Stop a session's turn to send a message now: Esc, noted as Cue's own (not a turn you stopped), and a
@@ -504,18 +524,12 @@ impl Hub {
         h
     }
 
-    /// Hand a message (and saved images) to a session that listens directly (Pi) or that Cue hosts (started
-    /// again first if it's paused). Ok(false) if it's neither; an error if a hosted one couldn't take it.
-    fn send_direct(&self, session_id: &str, text: &str, saved: &[crate::uploads::Saved], now: bool) -> Result<bool, String> {
-        if let Some(origin) = self.hosted_origin(session_id) {
-            // Busy, it reads it at its next step: `now` changes nothing.
-            self.wake_hosted(&origin)?;
-            self.hosted().send(session_id, &crate::uploads::with_paths(text, saved))?;
-            return Ok(true);
-        }
+    /// Hand a message (and saved images) to a session that listens directly (Pi). False if none does. (A hosted
+    /// session's messages go by send_to_hosted.)
+    fn send_direct(&self, session_id: &str, text: &str, saved: &[crate::uploads::Saved], now: bool) -> bool {
         // now: Pi takes it as a "steer", read mid-turn, instead of a follow-up after the turn.
         let msg = json!({ "type": "reply", "text": text, "images": saved, "now": now });
-        Ok(self.read(|st| st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false)))
+        self.read(|st| st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false))
     }
 
     /// What a subscribed session said its commands are (see `session_commands`).
@@ -677,7 +691,7 @@ struct Watch {
 
 /// A message typed into a session mid-turn, queued: the agent reads it when it finishes its current step. The
 /// same message as the thread's copy (same time), so the chat shows it once, as queued.
-fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
+pub(super) fn queue_typed(st: &mut Store, session_id: &str, text: &str, paths: Vec<String>) {
     let at = st.sessions.thread(session_id).iter().rev().find(|e| e.role == "you").map(|e| e.at_ms).unwrap_or_else(now_ms);
     let q = crate::model::Exchange { role: "you".into(), text: text.to_string(), at_ms: at, images: paths, from: String::new(), unsent: false, pending: false, joined: false, delivery: vec![], voice: false, decision: false, status_ask: None };
     st.sessions.set_queued(session_id, Some(q));

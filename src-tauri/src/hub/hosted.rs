@@ -33,15 +33,48 @@ impl Hub {
     }
 
     /// `origin`'s conversation resumed hosted: on the model its log says it last used, with its MCP selection.
-    /// The origin it now runs as.
+    /// The origin it now runs as. One whose conversation was never written (Claude writes it with the first message
+    /// it takes) starts new under the same id: Claude can't resume what isn't there ("No conversation found").
     pub(crate) fn resume_hosted_as(&self, origin: &Origin) -> Result<Origin, String> {
         let sid = origin.session_id.as_str();
+        let log = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, sid) } else { origin.transcript_path.clone().into() };
+        let start = if log.is_file() { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
         args.extend(crate::logs::mcp::selection_flags(sid));
         // SHORTCUT: resumed in Claude's own default permission mode, not the one + New picked (it isn't kept), so a
         // session started on Auto asks more after a resume, never less. Keep the mode with the session (its record
         // or Origin) and pass it here when the trial says it matters.
-        self.run_hosted(origin, Start::Resume(sid.to_string()), &HostedStart { permissions: String::new(), args })
+        self.run_hosted(origin, start, &HostedStart { permissions: String::new(), args })
+    }
+
+    /// Your message to a hosted session. Noted in its chat as on its way before it goes (Claude can take it within
+    /// milliseconds), handed over (the session started again first if it's paused), then settled by Claude itself:
+    /// taken (`Taken`), or not sent if it couldn't be handed over or Claude exits first. Never waits on Claude.
+    /// `busy`: it's mid-turn, so it's queued until Claude reads it at its next step.
+    pub(crate) fn send_to_hosted(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool) -> Result<String, String> {
+        let text = typed.trim();
+        let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
+        self.write(|st| {
+            st.sessions.note_sent(sid, text, &paths, now_ms(), crate::config::context_keep());
+            st.sessions.set_pending(sid, text, true);
+            if busy {
+                super::send::queue_typed(st, sid, text, paths.clone());
+            }
+        });
+        self.changed();
+        let handed = self.hosted_origin(sid).ok_or_else(|| "that session is gone".to_string()).and_then(|o| {
+            self.wake_hosted(&o)?;
+            self.hosted().send(sid, &crate::uploads::with_paths(typed, saved))
+        });
+        self.write(|st| match &handed {
+            Ok(()) => st.sessions.note_delivery(sid, text, "handed to it directly"),
+            Err(e) => {
+                st.sessions.mark_unsent(sid, text, e);
+                st.sessions.set_queued(sid, None);
+            }
+        });
+        self.changed();
+        handed.map(|()| if busy { "queued: it reads this at its next step".into() } else { "sent".into() })
     }
 
     /// A paused hosted session started again on its conversation, with the model it last used and its MCP
@@ -157,7 +190,11 @@ impl Hub {
             self.finish(&id, "gone", "Claude Code exited");
         }
         let paused = Origin { agent_pid: None, ..origin };
-        self.write(|st| st.sessions.set_pid(&sid, None));
+        self.write(|st| {
+            st.sessions.set_pid(&sid, None);
+            st.sessions.unsend_pending(&sid, "Claude Code exited first");
+            st.sessions.set_queued(&sid, None);
+        });
         if during_turn {
             let why = last_words.lines().rev().find(|l| !l.trim().is_empty()).map(str::trim).unwrap_or("");
             let code = code.map_or("a signal".to_string(), |c| format!("code {c}"));
