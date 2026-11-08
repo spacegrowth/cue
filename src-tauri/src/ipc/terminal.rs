@@ -28,6 +28,18 @@ pub(crate) async fn speak_send(app: tauri::AppHandle, line: serde_json::Value) -
     blocking(move || crate::terminal::speak::send(app.clone(), &app.state::<crate::terminal::speak::Speak>(), &line)).await?
 }
 
+/// Listen started: whatever is playing (a video, music) paused while it reads (terminal/music.rs).
+#[tauri::command]
+pub(crate) async fn music_hold() -> Result<(), String> {
+    blocking(crate::terminal::music::hold).await
+}
+
+/// Listen is done: what it paused plays again.
+#[tauri::command]
+pub(crate) async fn music_release() -> Result<(), String> {
+    blocking(crate::terminal::music::release).await
+}
+
 /// What a session's terminal shows, for a session in tmux: Cue's view of a prompt it has no buttons for.
 #[tauri::command]
 pub(crate) async fn session_screen(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {

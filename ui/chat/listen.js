@@ -301,6 +301,7 @@ function listenPlay(sid, key, reader = false) {
   openMsgs.add(key);   // a folded reply opens to be read
   const cur = current();
   listening = { sid, key, i: 0, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [], follow: true };
+  invoke("music_hold").catch(() => {});   // what was playing (a video, music) pauses while it reads, and plays again at Stop
   renderMain();
   listenSay();
 }
@@ -338,6 +339,7 @@ function listenStop() {
   const was = listening;
   listening = null;
   listenUnmark();
+  if (was) invoke("music_release").catch(() => {});
   if (was) renderMain();
 }
 function listenFaster(n) {

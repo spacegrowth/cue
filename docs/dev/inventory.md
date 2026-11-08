@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 141 (3 sync) |
-| Lock declarations (static or field) | 98 |
-| Lock acquisitions | 225 |
+| `#[tauri::command]` | 143 (3 sync) |
+| Lock declarations (static or field) | 100 |
+| Lock acquisitions | 226 |
 | Lock-graph edges | 49 |
-| Spawn sites | 81 |
-| External calls: fs / db / process / notify / login / socket | 345 / 146 / 51 / 4 / 1 / 3 |
+| Spawn sites | 82 |
+| External calls: fs / db / process / notify / login / socket | 345 / 146 / 52 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -151,6 +151,8 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `dictate_start` | async | `ipc/terminal.rs::dictate_start` | ipc::blocking |
 | `dictate_stop` | async | `ipc/terminal.rs::dictate_stop` | ipc::blocking |
 | `speak_send` | async | `ipc/terminal.rs::speak_send` | ipc::blocking |
+| `music_hold` | async | `ipc/terminal.rs::music_hold` | ipc::blocking |
+| `music_release` | async | `ipc/terminal.rs::music_release` | ipc::blocking |
 | `session_screen` | async | `ipc/terminal.rs::session_screen` | ipc::with_hub |
 | `session_keys` | async | `ipc/terminal.rs::session_keys` | ipc::with_hub |
 | `term_open` | async | `ipc/terminal.rs::term_open` | ipc::with_hub |
@@ -269,6 +271,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `terminal/dictation.rs::Dictation.0` | `Mutex<Option<ChildStdin>>` | "dictation" (3 sites) |
 | `terminal/focus/agents.rs::FOUND` | `std::sync::OnceLock<Vec<String>>` | — |
 | `terminal/input.rs::START` | `OnceLock<Instant>` | — |
+| `terminal/music.rs::WORKER` | `OnceLock<Mutex<Sender<bool>>>` | — |
+| `terminal/music.rs::SEND` | `OnceLock<Option<SendCommand>>` | — |
 | `terminal/shells.rs::KEPT` | `std::sync::Mutex<BTreeSet<String>>` | "KEPT" (5 sites) |
 | `terminal/shells.rs::ON` | `OnceLock<()>` | — |
 | `terminal/speak.rs::Speak.0` | `Mutex<Option<ChildStdin>>` | "speak stdin" (2 sites) |
@@ -277,7 +281,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `terminal/term.rs::M` | `OnceLock<Mutex<Terms>>` | — |
 | `terminal/term.rs::P` | `OnceLock<String>` | — |
 
-Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (5 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
+Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
 
 ## Lock graph
 
@@ -415,6 +419,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/dictation.rs::start` | thread::spawn | 1 |
 | `terminal/focus/exec.rs::capped` | thread::spawn | 2 |
 | `terminal/input.rs::Input::new` | Builder::spawn | 1 |
+| `terminal/music.rs::send` | thread::spawn | 1 |
 | `terminal/shell.rs::wait_capped` | thread::spawn | 1 |
 | `terminal/shells.rs::watch` | thread::spawn | 1 |
 | `terminal/speak.rs::send` | thread::spawn | 1 |
@@ -871,7 +876,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (51)
+### process (52)
 
 | In | Call | Times |
 |---|---|---|
@@ -917,6 +922,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `terminal/focus/tmux.rs::foreground` | (program computed) | 1 |
 | `terminal/focus/tmux.rs::tmux_out` | (program computed) | 1 |
 | `terminal/focus/tmux.rs::tmux_screen` | (program computed) | 1 |
+| `terminal/music.rs::now_playing` | /usr/bin/osascript | 1 |
 | `terminal/shell.rs::run` | (program computed) | 1 |
 | `terminal/shell.rs::wait_capped` | /bin/kill | 1 |
 | `terminal/shells.rs::kept_foreground` | /bin/ps | 1 |
