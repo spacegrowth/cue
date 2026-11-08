@@ -487,6 +487,7 @@ impl Hub {
             session_id: o.session_id.clone(),
             harness: o.harness.clone(),
             name: String::new(),
+            generated: false,
             cwd: o.cwd.clone(),
             pid: o.agent_pid.unwrap_or(0),
             status: "idle".into(),

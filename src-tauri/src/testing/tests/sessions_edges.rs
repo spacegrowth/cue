@@ -15,7 +15,7 @@ fn running(ids: &[&str]) -> HashSet<String> {
 /// Session `sid` as Claude Code's registry lists it: running here, `status` since `since_ms`.
 fn listed(sid: &str, status: &str, since_ms: u64) -> crate::live::Quiet {
     let (session_id, harness, name, cwd, pid) = (sid.to_string(), "claude".to_string(), String::new(), format!("/work/{sid}"), std::process::id() as i32);
-    crate::live::Quiet { session_id, harness, name, cwd, pid, status: status.into(), waiting_for: "approve Bash".into(), since_ms }
+    crate::live::Quiet { session_id, harness, name, generated: false, cwd, pid, status: status.into(), waiting_for: "approve Bash".into(), since_ms }
 }
 
 /// Sweep this Mac with `live` as Claude Code's list, twice, past the wait for a missing session.

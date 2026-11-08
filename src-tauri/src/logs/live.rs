@@ -22,6 +22,9 @@ pub struct Quiet {
     pub harness: String,
     /// Its name ("login-fix", set with /rename or by Claude), else "".
     pub name: String,
+    /// The name is one Claude made up for the process (`nameSource: "derived"`, "cue-68"), not one anybody gave it.
+    #[serde(skip)]
+    pub generated: bool,
     pub cwd: String,
     pub pid: i32,
     /// "busy", "idle", or "waiting" (a prompt is open in its terminal), as Claude Code reports it.
@@ -60,6 +63,7 @@ fn scan_claude(dir: &Path) -> Vec<Quiet> {
                 session_id: Some(s("sessionId")).filter(|x| !x.is_empty())?,
                 harness: "claude".into(),
                 name: s("name"),
+                generated: s("nameSource") == "derived",
                 cwd: s("cwd"),
                 pid,
                 status: s("status"),

@@ -580,8 +580,11 @@ impl Hub {
 
     /// Every second: Claude Code's own names for its sessions here, to settle Cue's renames and follow
     /// the ones made in its terminal.
+    /// A hosted session's Claude is a new process each time it's started again, and each makes up a name of its own
+    /// ("cue-68", then "cue-ed"): only a name somebody gave it (/rename, or Claude naming its work) is followed.
     pub(super) fn sync_agent_names(&self) {
-        let listed: HashMap<String, String> = crate::live::claude().into_iter().map(|q| (q.session_id, q.name)).collect();
+        let hosted = |sid: &str| self.read(|st| st.sessions.origin(sid).is_some_and(|o| o.hosted));
+        let listed = names_to_follow(crate::live::claude(), hosted);
         if self.write(|st| st.sessions.sync_agent_names(&listed, now_ms())) {
             self.changed();
         }
@@ -604,6 +607,11 @@ impl Hub {
 /// A prompt open this long in a terminal before Cue makes a card for it: its own permission hook (which
 /// asks Cue at once) gets there first.
 const WAITING_GRACE_MS: u64 = 4_000;
+
+/// Claude Code's list as names Cue follows (session id → name): a hosted session's made-up ones left out.
+fn names_to_follow(listed: Vec<crate::live::Quiet>, hosted: impl Fn(&str) -> bool) -> HashMap<String, String> {
+    listed.into_iter().filter(|q| !(q.generated && hosted(&q.session_id))).map(|q| (q.session_id, q.name)).collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -674,7 +682,7 @@ mod tests {
         hub.dismiss_rename_error("cl");
         assert!(shown("cl").get("rename_error").is_none());
         // Claude, mid-turn: shown now, given to Claude Code when the turn ends; its old name doesn't win meanwhile.
-        crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "old".into(), cwd: "/x/cue".into(), pid: 1, status: "busy".into(), waiting_for: String::new(), since_ms: 0 }]);
+        crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "old".into(), generated: false, cwd: "/x/cue".into(), pid: 1, status: "busy".into(), waiting_for: String::new(), since_ms: 0 }]);
         hub.sync_agent_names();
         assert_eq!(shown("busy")["name"], "old", "Claude Code's name, Cue having none");
         hub.rename("busy", "later-name").unwrap();
@@ -683,7 +691,7 @@ mod tests {
         assert!(shown("busy").get("rename_error").is_none());
         // Claude Code renamed in its own terminal: Cue follows.
         hub.write(|st| st.sessions.take_rename("busy"));
-        crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "renamed-there".into(), cwd: "/x/cue".into(), pid: 1, status: "idle".into(), waiting_for: String::new(), since_ms: 0 }]);
+        crate::live::set_claude(vec![crate::live::Quiet { session_id: "busy".into(), harness: "claude".into(), name: "renamed-there".into(), generated: false, cwd: "/x/cue".into(), pid: 1, status: "idle".into(), waiting_for: String::new(), since_ms: 0 }]);
         hub.sync_agent_names();
         assert_eq!(shown("busy")["name"], "renamed-there");
         // Gone: an error, nothing changed.
@@ -761,7 +769,7 @@ mod tests {
         let origin = Origin { session_id: "s4".into(), harness: "claude".into(), ..Default::default() };
         let hub = Hub::new(None);
         hub.event(origin, "active", "use the docs server".into(), vec![], "");
-        let q = |status: &str, since_ms: u64| crate::live::Quiet { session_id: "s4".into(), harness: "claude".into(), name: String::new(), cwd: String::new(), pid: std::process::id() as i32, status: status.into(), waiting_for: "input needed".into(), since_ms };
+        let q = |status: &str, since_ms: u64| crate::live::Quiet { session_id: "s4".into(), harness: "claude".into(), name: String::new(), generated: false, cwd: String::new(), pid: std::process::id() as i32, status: status.into(), waiting_for: "input needed".into(), since_ms };
         // Just opened: its own permission hook may still be on the way. No card yet.
         crate::live::set_claude(vec![q("waiting", now_ms())]);
         hub.sync_live();
@@ -916,5 +924,16 @@ mod tests {
         assert_eq!(snap["projects"][&here]["name"], "cue", "a folder here is looked up");
         assert!(snap["branches"].get(&here).is_some());
         assert!(snap["projects"].get(there).is_none() && snap["branches"].get(there).is_none(), "{}", snap["branches"]);
+    }
+
+    #[test]
+    fn a_hosted_sessions_made_up_names_arent_followed_a_given_one_is() {
+        let q = |sid: &str, name: &str, generated: bool| crate::live::Quiet { session_id: sid.into(), harness: "claude".into(), name: name.into(), generated, cwd: "/x/cue".into(), pid: 1, status: "idle".into(), waiting_for: String::new(), since_ms: 0 };
+        let hosted = |sid: &str| sid == "h";
+        let got = super::names_to_follow(vec![q("h", "cue-68", true), q("t", "cue-e9", true)], hosted);
+        assert_eq!(got.get("h"), None, "a new process's made-up name: a hosted session keeps the name it has");
+        assert_eq!(got.get("t").map(String::as_str), Some("cue-e9"), "a terminal session's process lasts: shown as before");
+        let got = super::names_to_follow(vec![q("h", "login-fix", false)], hosted);
+        assert_eq!(got.get("h").map(String::as_str), Some("login-fix"), "a name it was given: followed");
     }
 }
