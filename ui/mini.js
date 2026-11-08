@@ -460,8 +460,10 @@
     // blinking when its few minutes in conversation are up (the box you're typing in isn't touched).
     setInterval(() => { if (m.shape !== "chat") paint(); else put(root.querySelector("[data-tabs]"), tabsHtml()); }, 60000);
     // Cue's window came forward or went back, maybe on another display: placed again, on that one.
-    await T.event.listen("mini-place", () => { m.sized = ""; fit(); });
-    await T.event.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerIn(); });
+    // These two are this window's own (a tab on each display): T.event.listen would hear every window's.
+    const own = T.webviewWindow?.getCurrentWebviewWindow?.() || T.event;
+    await own.listen("mini-place", () => { m.sized = ""; fit(); });
+    await own.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerIn(); });
   }
   boot();
 }
