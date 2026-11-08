@@ -38,9 +38,16 @@ test("a .md path in a reply opens in Read", async ({ cue, page }) => {
   await page.locator('.active-pane a[data-path$="/HANDOFF.md"]').click();
   await expect(page.locator(".rdv-head .rd-file")).toHaveText("HANDOFF.md");
   await expect(page.locator(".rdv-item .rdv-name")).toHaveText(["HANDOFF.md", "rollout-plan.md"]);
+  // Opened again, from Recent or from a chat, a file stays where it is: Recent is in the order you first opened them.
+  await page.locator('.rdv-list > .rdv-item [data-read-open]').nth(1).click();
+  await expect(page.locator(".rdv-head .rd-file")).toHaveText("rollout-plan.md");
+  await expect(page.locator(".rdv-list > .rdv-item .rdv-name")).toHaveText(["HANDOFF.md", "rollout-plan.md"]);
+  await page.locator('[data-view="board"]').click();
+  await page.locator('[data-view="read"]').click();
+  await expect(page.locator(".rdv-list > .rdv-item .rdv-name")).toHaveText(["HANDOFF.md", "rollout-plan.md"]);
   // Open hands the file to its app.
   await page.locator(".rdv-head [data-reader-open]").click();
-  await cue.called("open_link", { url: "/Users/me/code/agent-relay/HANDOFF.md" });
+  await cue.called("open_link", { url: "/Users/me/code/agent-relay/docs/rollout-plan.md" });
 });
 
 test("Sessions, as tiles, open from under Parked · Closed", async ({ cue, page }) => {
@@ -64,6 +71,12 @@ test("New docs: the newest .md files in this Mac's sessions' repos, at the foot 
   expect(call.args.folders).toContain("/Users/me/code/agent-relay");
   await item.click();
   await expect(page.locator(".rdv-head .rd-file")).toHaveText("plan.md");
+  // Marked where you picked it only: in New docs, not in Recent too (it's in Recent now, unmarked).
+  await expect(page.locator(".rdv-new .rdv-item.on")).toHaveCount(1);
+  await expect(page.locator(".rdv-list > .rdv-item.on")).toHaveCount(0);
+  await page.locator(".rdv-list > .rdv-item [data-read-open]").first().click();
+  await expect(page.locator(".rdv-list > .rdv-item.on")).toHaveCount(1);
+  await expect(page.locator(".rdv-new .rdv-item.on")).toHaveCount(0);
   await expect(page.locator("[data-read-back]")).toHaveText(/agent-relay chat/);
 });
 

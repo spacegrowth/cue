@@ -1,11 +1,12 @@
 // Cue UI — Read: markdown files you opened from a chat (a .md path in a reply, or in the mini window), one open at a
 // time with Listen, beside the ones you opened before and the open one's headings.
 // ---------- Read: Recent · the file · Contents ----------
-// Recent is the files you opened here, newest first (this window's storage: a list of paths, nothing copied). The
+// Recent is the files you opened here, newest first by when you first opened each (opening one again doesn't move
+// it), kept in this window's storage: a list of paths, nothing copied. The
 // file is read from disk each time it's opened, and again when Cue comes forward (an edit made meanwhile shows), by
 // read_doc (ipc/docs.rs). Opened from a session, its head has ‹ <session> chat back to it.
 const READ_KEEP = 40;
-let readDoc = null;       // { path, text, modified_ms, sid }: the file open in Read
+let readDoc = null;       // { path, text, modified_ms, sid, from }: the file open in Read; from "new" when picked in New docs
 let readTried = false;    // Read opened with nothing open: the newest of Recent asked for once
 let readRecent = [];      // [{ path, sid, project, at }], newest first
 try { readRecent = JSON.parse(localStorage.getItem("cue.readRecent") || "[]").filter((r) => r?.path); } catch {}
@@ -14,18 +15,20 @@ let readNewAt = 0;        // when they were last asked for
 const readKeyOf = (path) => `file:${path}`;
 const readName = (path) => String(path).split("/").pop();
 
+/** A file in Recent: one opened for the first time goes on top; one opened before stays where it is (the list never
+ *  moves under your clicks), its session kept up to date. */
 function readRemember(path, sid) {
   const was = readRecent.find((r) => r.path === path);
-  const project = (sid && sessionOf(sid)?.project) || was?.project || "";
-  readRecent = [{ path, sid: sid || was?.sid || null, project, at: now() }, ...readRecent.filter((r) => r.path !== path)].slice(0, READ_KEEP);
+  if (was) { if (sid) Object.assign(was, { sid, project: sessionOf(sid)?.project || was.project }); }
+  else readRecent = [{ path, sid: sid || null, project: (sid && sessionOf(sid)?.project) || "", at: now() }, ...readRecent].slice(0, READ_KEEP);
   try { localStorage.setItem("cue.readRecent", JSON.stringify(readRecent)); } catch {}
 }
 /** A file in Read: found from `cwd` when it's a session's (ipc/docs.rs read_doc: as written, from the folders up to
  *  its repo's top, or by name), remembered in Recent, its start in view. */
-function readOpen(path, sid = null, cwd = null) {
+function readOpen(path, sid = null, cwd = null, from = "") {
   return invoke("read_doc", { path, cwd }).then((f) => {
     if (readDoc?.path !== f.path) readPicked = null, readAt = 0;
-    readDoc = { ...f, sid };
+    readDoc = { ...f, sid, from };
     readRemember(f.path, sid);
     view = "read";
     sheet = null;
@@ -114,10 +117,10 @@ function readView() {
   if (!readDoc && !readTried && readRecent.length) { readTried = true; const r = readRecent[0]; queueMicrotask(() => readOpen(r.path, r.sid)); }
   const d = readDoc, key = d ? readKeyOf(d.path) : "";
   const list = readRecent.length
-    ? readRecent.map((r) => `<div class="rdv-item ${d?.path === r.path ? "on" : ""}"><button class="rdv-open" data-read-open="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc([r.project, `${ago(r.at)} ago`].filter(Boolean).join(" · "))}</span></button><button class="rdv-x" data-read-forget="${esc(r.path)}" aria-label="Take it off the list">×</button></div>`).join("")
+    ? readRecent.map((r) => `<div class="rdv-item ${d?.path === r.path && d.from !== "new" ? "on" : ""}"><button class="rdv-open" data-read-open="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc([r.project, `${ago(r.at)} ago`].filter(Boolean).join(" · "))}</span></button><button class="rdv-x" data-read-forget="${esc(r.path)}" aria-label="Take it off the list">×</button></div>`).join("")
     : `<div class="quiet-line">Files you open show here. Click a .md path in any reply.</div>`;
   // At the foot of the left: the newest docs in your sessions' repos, whether or not you opened them.
-  const fresh = readNew.length ? `<div class="rdv-new"><div class="col-head">NEW DOCS</div>${readNew.map((r) => `<div class="rdv-item ${readDoc?.path === r.path ? "on" : ""}"><button class="rdv-open" data-read-new="${esc(r.path)}" data-top="${esc(r.top)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readName(r.top)} · ${ago(r.created_ms)} ago`)}</span></button></div>`).join("")}</div>` : "";
+  const fresh = readNew.length ? `<div class="rdv-new"><div class="col-head">NEW DOCS</div>${readNew.map((r) => `<div class="rdv-item ${readDoc?.path === r.path && readDoc.from === "new" ? "on" : ""}"><button class="rdv-open" data-read-new="${esc(r.path)}" data-top="${esc(r.top)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readName(r.top)} · ${ago(r.created_ms)} ago`)}</span></button></div>`).join("")}</div>` : "";
   if (!d) return `<div class="rdv"><div class="rdv-list"><div class="col-head">RECENT</div>${list}${fresh}</div><div class="rdv-doc rdv-none"><div class="quiet-line">${readRecent.length ? "Opening…" : "Nothing open yet."}</div></div></div>`;
   const html = md(d.text, { pathsOf: d.sid && sessionOf(d.sid) ? d.sid : null, doc: true });
   const heads = readHeadings(html).filter((h) => h.lv > 0);

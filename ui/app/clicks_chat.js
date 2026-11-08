@@ -186,7 +186,7 @@ const CHAT_FOOT_CLICKS = [
 /** Read (read.js): Recent, the file's head, Contents. */
 const READ_CLICKS = [
   rule("[data-read-open]", (el) => { const r = readRecent.find((x) => x.path === el.dataset.readOpen); readOpen(el.dataset.readOpen, r?.sid || null); }),
-  rule("[data-read-new]", (el) => readOpen(el.dataset.readNew, readSidIn(el.dataset.top))),
+  rule("[data-read-new]", (el) => readOpen(el.dataset.readNew, readSidIn(el.dataset.top), null, "new")),
   rule("[data-read-forget]", (el) => readForget(el.dataset.readForget)),
   rule("[data-read-back]", () => readBack()),
   rule("[data-read-h]", (el) => readJump(+el.dataset.readH)),
