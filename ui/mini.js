@@ -40,11 +40,13 @@
     const shown = [...talk, ...rest].slice(0, most);
     return { shown };
   }
-  /** Sessions at work with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
+  /** Your last message to it, sent but not yet taken (the chat in Cue rings it): it counts as at work. */
+  const onItsWay = (s) => { const you = (s?.thread || []).filter((e) => e.role === "you").pop(); return !!you?.pending && now() - you.at_ms <= TALK_MS; };
+  /** Sessions at work (or about to be: a message of yours on its way) with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
    *  queued (it reads it when it finishes its current step). */
   function working() {
     const waiting = new Set(state.items.map((i) => i.session_id));
-    return state.sessions.filter((s) => s.state === "working" && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
+    return state.sessions.filter((s) => (s.state === "working" || onItsWay(s)) && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
   }
   /** The tabs, five at most: the sessions in conversation with you (one back within a few minutes of your message,
    *  or at work on what you said in the last few minutes), oldest first, then everything else newest first: what
@@ -122,7 +124,7 @@
   /** At work: what it's doing now, last in the chat, so its last reply isn't read as the answer to you. */
   function nowHtml(sid) {
     const s = sessionOf(sid);
-    if (s?.state !== "working") return "";
+    if (s?.state !== "working") return onItsWay(s) ? `<div class="m-now"><i class="m-dot work"></i><span class="m-now-what">On its way: waiting for it to take your message</span></div>` : "";
     return `<div class="m-now"><i class="m-dot work"></i><span class="m-now-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></div>`;
   }
   function askHtml(sid) {
@@ -226,8 +228,14 @@
   const go = (shape) => { if (m.shape !== shape) { m.shape = shape; paint(); } };
 
   // ---------- what you do ----------
-  /** The session the rail opens on: one that asks, else the first in Waiting's order, else the newest at work. */
-  const first = () => needs(Infinity).shown.find(asks)?.session_id || tabList()[0]?.sid;
+  /** The session the rail opens on: the one you wrote to last, if that was in the last few minutes (from here or
+   *  from Cue), else one that asks, else the first in Waiting's order, else the newest at work. */
+  function first() {
+    const tabs = tabList();
+    const lastAt = (sid) => (sessionOf(sid)?.thread || []).filter((e) => e.role === "you").pop()?.at_ms || 0;
+    const recent = tabs.map((t) => ({ sid: t.sid, at: lastAt(t.sid) })).filter((t) => now() - t.at <= TALK_MS).sort((a, b) => b.at - a.at)[0];
+    return recent?.sid || needs(Infinity).shown.find(asks)?.session_id || tabs[0]?.sid;
+  }
   /** Open a session's chat with the cursor in its box, ready to type (this window comes forward alone, not Cue's
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
