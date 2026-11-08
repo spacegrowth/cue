@@ -37,8 +37,6 @@ static ON: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::ne
 /// Where the mini window is now (as mini_shape placed it; width 0: hidden), for the pointer watch: kept here so
 /// it never asks the window (each ask is a round trip through the main thread).
 static FRAME: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
-/// The window's frame when a drag of its bar began (mini_drag; width 0: no drag).
-static DRAG_FROM: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
 /// You put the rail on a display yourself (dragged it there): it stays there instead of following the pointer.
 static PINNED: AtomicBool = AtomicBool::new(false);
 /// The pointer-watching thread is running (started once, with the first mini window).
@@ -269,7 +267,6 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool, at: O
     let scr = screen(&app, &win, mode).ok_or("no screen")?;
     let (w, h) = (w.clamp(1.0, scr.2), h.clamp(1.0, scr.3));
     let (x, y) = place(mode, scr, w, h, at.unwrap_or(1.0), left.unwrap_or(false));
-    store(&DRAG_FROM, (0.0, 0.0, 0.0, 0.0));
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
     // Moved and sized at once (its page animates what it shows).
@@ -295,32 +292,58 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool, at: O
     Ok(())
 }
 
-/// The rail's panel dragged by its bar: moved by (dx, dy) points from where it was when the drag began
-/// (`begin`). Let go, its page snaps it to a corner or tucks it away (mini_shape).
-#[tauri::command]
-pub(crate) async fn mini_drag(app: AppHandle, dx: f64, dy: f64, begin: bool) -> Result<(), String> {
-    let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
-    if begin {
-        store(&DRAG_FROM, load(&FRAME).ok_or("not shown")?);
-    }
-    let (x, y, w, h) = load(&DRAG_FROM).ok_or("no drag")?;
-    let to = (x + dx, y + dy, w, h);
-    store(&FRAME, to);
-    #[cfg(target_os = "macos")]
-    macos::frame(&win, to, primary_height(&win));
-    #[cfg(not(target_os = "macos"))]
-    win.set_position(tauri::LogicalPosition::new(to.0, to.1)).map_err(|e| e.to_string())?;
-    Ok(())
-}
+/// How often a drag follows the pointer (about two frames).
+#[cfg(target_os = "macos")]
+const DRAG_EVERY: std::time::Duration = std::time::Duration::from_millis(8);
 
-/// A drag let go: where the rail is now (`dropped`: its display, side and height), for its page to keep; it
-/// stays there from then on.
+/// The rail dragged by its tab or its bar: from the press until you let go, the window follows the pointer here
+/// (not a round trip from the page per step, which trailed it and could miss the release). Let go, it takes the
+/// nearer side edge of the display it's over, at that height, at once, and stays there: its place goes back
+/// (`at`, `left`, `display`) for the page to keep.
 #[tauri::command]
-pub(crate) async fn mini_drop(app: AppHandle) -> Result<Value, String> {
+pub(crate) async fn mini_drag(app: AppHandle) -> Result<Value, String> {
     let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
-    let frame = load(&FRAME).ok_or("not shown")?;
-    let all: Vec<_> = win.available_monitors().map_err(|e| e.to_string())?.iter().map(|m| (points(m), room(m))).collect();
-    dropped(&all, frame).ok_or_else(|| "no display".into())
+    let from = load(&FRAME).ok_or("not shown")?;
+    #[cfg(target_os = "macos")]
+    {
+        let main_h = primary_height(&win);
+        let p0 = macos::pointer();
+        let frame = tauri::async_runtime::spawn_blocking(move || {
+            let mut at = from;
+            let mut last = p0;
+            while macos::pressed() {
+                std::thread::sleep(DRAG_EVERY);
+                let p = macos::pointer();
+                if p == last || p.0 < -0.5 {
+                    continue;
+                }
+                last = p;
+                at = (from.0 + p.0 - p0.0, from.1 + p.1 - p0.1, from.2, from.3);
+                store(&FRAME, at);
+                macos::frame(&win, at, main_h);
+            }
+            at
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
+        let all: Vec<_> = win.available_monitors().map_err(|e| e.to_string())?.iter().map(|m| (points(m), room(m))).collect();
+        let to = dropped(&all, frame).ok_or("no display")?;
+        // Onto its edge now, as the page's next mini_shape would put it (so it doesn't sit where you let go first).
+        if let Some((d, r)) = all.iter().find(|(d, _)| serde_json::json!([d.0, d.1, d.2, d.3]) == to["display"]) {
+            set_on(*d);
+            PINNED.store(true, Ordering::SeqCst);
+            let (x, y) = place(Mode::Rail, *r, frame.2, frame.3, to["at"].as_f64().unwrap_or(1.0), to["left"].as_bool().unwrap_or(false));
+            store(&FRAME, (x, y, frame.2, frame.3));
+            macos::frame(&win, (x, y, frame.2, frame.3), main_h);
+        }
+        Ok(to)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = win;
+        dropped(&[], from).ok_or_else(|| "dragging isn't here yet".into())
+    }
 }
 
 /// The mini window takes the keyboard (you clicked into its box) or hands it back to the app you were in.

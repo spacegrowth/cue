@@ -17,7 +17,7 @@
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
-  // Where you put the rail (mini_drop): how far down its edge (0 top, 1 bottom), the left edge or the right, and
+  // Where you put the rail (mini_drag): how far down its edge (0 top, 1 bottom), the left edge or the right, and
   // on which display; kept in this window's own storage. Until you drag it: the right edge's foot.
   let pos = { at: 1, left: false, display: null };
   try { Object.assign(pos, JSON.parse(localStorage.getItem("cue.mini.pos") || "{}")); } catch {}
@@ -265,38 +265,26 @@
     if (e.button !== 0 || (!tab && e.target.closest("button"))) return;
     clearTimeout(m.timer);   // pressed on the tab: not a hover that opens it
     const x0 = e.screenX, y0 = e.screenY;
-    let moved = false, queued = null, busy = false;
-    const push = async () => {
-      if (busy || !queued) return;
-      busy = true;
-      const q = queued;
-      queued = null;
-      await invoke("mini_drag", q).catch(() => {});
-      busy = false;
-      push();
-    };
     const move = (ev) => {
-      const dx = ev.screenX - x0, dy = ev.screenY - y0;
-      if (!moved && Math.hypot(dx, dy) < 4) return;
-      if (!moved) { moved = true; m.dragging = true; document.body.classList.add("m-drag"); queued = { dx: 0, dy: 0, begin: true }; push(); }
-      queued = { dx, dy, begin: false };
-      push();
-    };
-    const up = () => {
+      if (Math.hypot(ev.screenX - x0, ev.screenY - y0) < 4) return;
+      // A drag, not a click: Cue moves the window with the pointer from here until you let go (mini_drag).
       window.removeEventListener("pointermove", move);
-      if (!moved) return;
-      window.addEventListener("click", (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
-      const settle = async () => {
-        if (busy || queued) return setTimeout(settle, 30);
-        const p = await invoke("mini_drop").catch(() => null);
+      window.removeEventListener("pointerup", up);
+      m.dragging = true;
+      document.body.classList.add("m-drag");
+      const eat = (c) => { c.stopPropagation(); c.preventDefault(); };
+      window.addEventListener("click", eat, { capture: true, once: true });
+      invoke("mini_drag").then((p) => {
         if (p && typeof p.at === "number") { pos = { at: p.at, left: !!p.left, display: p.display || null }; try { localStorage.setItem("cue.mini.pos", JSON.stringify(pos)); } catch {} }
+      }, () => {}).finally(() => {
         m.dragging = false;
         m.sized = "";
         drawn.delete(root);   // its arrow and side follow the edge it took
         paint();
-      };
-      settle();
+        setTimeout(() => window.removeEventListener("click", eat, { capture: true }), 300);
+      });
     };
+    const up = () => window.removeEventListener("pointermove", move);
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
   }

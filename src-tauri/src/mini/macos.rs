@@ -61,10 +61,15 @@ pub(super) fn key(w: &tauri::WebviewWindow, on: bool) {
                 }
             }
         } else {
-            // Out and back in: the window stops being key, and the app you're in has the keyboard again.
-            let _: () = msg_send![win, orderOut: std::ptr::null::<AnyObject>()];
-            let _: () = msg_send![win, orderFrontRegardless];
-            give_back(BEFORE.swap(0, Ordering::SeqCst));
+            // The app you were in active again, which takes the keyboard from this window. Never by ordering
+            // this window out and back: Cue was still the active app then, so AppKit made its main window key
+            // and brought it forward, over the app you were in. With no app to go back to, Cue steps back.
+            if !give_back(BEFORE.swap(0, Ordering::SeqCst)) {
+                let app: *mut AnyObject = msg_send![objc2::runtime::AnyClass::get(c"NSApplication").expect("AppKit"), sharedApplication];
+                if !app.is_null() {
+                    let _: () = msg_send![&*app, deactivate];
+                }
+            }
         }
     });
 }
@@ -84,16 +89,18 @@ unsafe fn frontmost_pid() -> i32 {
 }
 
 /// The app `pid` active again: Cue took its place while you typed.
-unsafe fn give_back(pid: i32) {
+/// False when there was none to go back to.
+unsafe fn give_back(pid: i32) -> bool {
     if pid <= 0 || pid == std::process::id() as i32 {
-        return;
+        return false;
     }
-    let Some(cls) = objc2::runtime::AnyClass::get(c"NSRunningApplication") else { return };
+    let Some(cls) = objc2::runtime::AnyClass::get(c"NSRunningApplication") else { return false };
     let app: *mut AnyObject = msg_send![cls, runningApplicationWithProcessIdentifier: pid];
-    if !app.is_null() {
-        // NSApplicationActivateAllWindows is not wanted: only its front window, as a click would.
-        let _: bool = msg_send![&*app, activateWithOptions: 0usize];
+    if app.is_null() {
+        return false;
     }
+    // NSApplicationActivateAllWindows is not wanted: only its front window, as a click would.
+    msg_send![&*app, activateWithOptions: 0usize]
 }
 
 /// Move and size the window to `(x, y, w, h)` (points, from the top left of the main display), at once: the
@@ -135,6 +142,17 @@ extern "C" {
     fn CGEventCreate(source: *const std::ffi::c_void) -> *mut std::ffi::c_void;
     fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
 }
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGEventSourceButtonState(state: i32, button: u32) -> bool;
+}
+
+/// The left mouse button is down now (any thread, no permission needed).
+pub(super) fn pressed() -> bool {
+    // kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft.
+    unsafe { CGEventSourceButtonState(0, 0) }
+}
+
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     fn CFRelease(cf: *const std::ffi::c_void);
