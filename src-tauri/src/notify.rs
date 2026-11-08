@@ -67,8 +67,9 @@ pub struct Note {
     pub watched: bool,
 }
 
-/// How long something new only blinks the mini window's dot (mini.js FRESH_MS) before it goes to Notification
-/// Center too: answered (or Cue brought forward) within it, it never does.
+/// How long Cue waits before something new goes to Notification Center: answered (or Cue brought forward)
+/// within it, it never does. Meanwhile a session you wrote to that came back blinks in the mini window
+/// (mini.js backToYou).
 pub const DOCK_FIRST: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// The notifications waiting out `DOCK_FIRST` before they're posted. Taken back: gone from here, so it's never
@@ -81,7 +82,7 @@ fn in_front(app: &tauri::AppHandle) -> bool {
     app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false))
 }
 
-/// `note` for you: the mini window's dot blinks first (the Dock never bounces), and only if it's still there a minute later (not answered, Cue not
+/// `note` for you: Cue waits first (the Dock never bounces), and only if it's still there a minute later (not answered, Cue not
 /// in front) does it go to Notification Center, with its sound. Nothing while Cue is in front of you. A turn
 /// you asked to be told about is posted at once, even with Cue in front. An unbundled dev binary gets the
 /// plugin's plain notification instead, which Cue can't take back.

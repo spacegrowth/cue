@@ -12,20 +12,19 @@
   const NOTCH = location.hash === "#notch";
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
+  const WIDTH = NOTCH ? { chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
   // The notch: the one the island grows out of (Cue measures it; a display without one gets Cue's own, as tall as
   // its menu bar), how far it widens either side when something needs you, and its shoulders' curve.
   const notch = { w: 185, h: 32, real: false };
   const PEEK = 46, SHOULDER = 14;
-  const FRESH_MS = 60000;              // a new card blinks the tab's dot this long, then Cue notifies
   const TAB_H = 76;                   // the rail's tab, tucked away
-  const HOVER_MS = 600, LEAVE_MS = 450, NOD_MS = 6000;
+  const HOVER_MS = 600, LEAVE_MS = 450;
   const root = document.getElementById("mini");
-  // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
+  // shape: quiet | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
   // The side edge Cue put this display's tab on (where you dragged it; Cue keeps that for each display and
   // says which side with each mini_shape): the arrow and the panel's side follow it.
   const pos = { left: false };
-  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, seen: null, nod: null, done: new Set(), note: "" };
+  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, done: new Set(), note: "", looked: new Set() };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -84,20 +83,21 @@
 
   /** The rail tucked away: a small tab at the edge, ‹ over a live dot, the dot red while a session asks, amber
    *  while one waits for your turn, breathing while sessions only work. */
-  /** Something in `shown` that needs you came in the last minute: its dot blinks (the rail's tab, the notch's
-   *  island), before Cue posts a notification about it (notify.rs DOCK_FIRST). Drawn again when that minute ends. */
-  function isFresh(shown) {
-    const newest = Math.max(0, ...shown.map((i) => i.created_ms || 0));
-    const fresh = now() - newest < FRESH_MS;
-    clearTimeout(m.freshT);
-    if (fresh) m.freshT = setTimeout(paint, FRESH_MS - (now() - newest) + 50);
-    return fresh;
+  /** Back to you: a session you sent a message to that came back to you in the last few minutes (talking), not
+   *  opened here since. The one thing that blinks (the rail's dot, the notch's right side), until you open it or
+   *  answer it; what merely waits never does. Drawn again when its few minutes are up. */
+  function backToYou() {
+    const back = needs(Infinity).shown.filter((it) => talking(it) && !m.looked.has(it.id));
+    clearTimeout(m.backT);
+    if (back.length) m.backT = setTimeout(paint, TALK_MS - (now() - Math.min(...back.map((i) => i.created_ms))) + 50);
+    return back;
   }
   function tuckHtml() {
     const { shown } = needs(Infinity);
-    const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
-    const fresh = isFresh(shown);
-    return `<button class="m-panel m-tuck ${cls}${fresh ? " fresh" : ""} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
+    const back = backToYou();
+    // Blinking, the dot is the session back to you (its color); else red while one asks, amber while one waits.
+    const cls = back.length ? dotCls(back[0]) : shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
+    return `<button class="m-panel m-tuck ${cls}${back.length ? " back" : ""} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
   /** The tabs across the chat's top (tabList's order); a session in conversation blinks. A click switches; each
    *  keeps what you typed in it. */
@@ -105,19 +105,19 @@
     return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-open="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
   }
   function islandHtml() {
+    // Left: what waits on you, counted, steady. Right: what you're talking to, the sessions back to you blinking
+    // (one dot each), then how many are at work.
+    const back = backToYou(), backIds = new Set(back.map((i) => i.id));
     const { shown } = needs();
-    const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
+    const waits = shown.filter((i) => !backIds.has(i.id));
+    const ask = waits.filter(asks).length, turn = waits.length - ask, busy = working().length;
     const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
+    const right = `${back.map((it) => `<span class="m-n back">${dot(it)}</span>`).join("")}${busy ? `<span class="m-n m-quiet"><i class="m-dot work"></i>${busy}</span>` : ""}`;
     // Nothing to show: just the notch (black on its black; on a display without one, Cue's own).
-    if (!left && !busy) return `<div class="m-panel m-island idle"></div>`;
-    return `<div class="m-panel m-island peek${shown.length && isFresh(shown) ? " fresh" : ""}"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing m-quiet">${busy ? `<i class="m-dot work"></i>${busy}` : ""}</span></div>`;
+    if (!left && !right) return `<div class="m-panel m-island idle"></div>`;
+    return `<div class="m-panel m-island peek"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing">${right}</span></div>`;
   }
-  function nodHtml() {
-    const it = state.items.find((i) => i.id === m.nod);
-    if (!it) return islandHtml();
-    return `<div class="m-panel m-nod" data-open="${esc(it.session_id)}"><div class="m-nod-top">${dot(it)}<b>${esc(name(it))}</b><span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span><span class="g"></span><span class="m-quiet">click to open</span></div>
-      <div class="m-quiet">${esc(asks(it) ? summary(it) : shapeOf(finishedText(it)) || "Finished. Your turn.")}</div></div>`;
-  }
+
 
   // ---------- the chat: the whole conversation, the ask on top, a box at the foot ----------
   const msg = (e, sid) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && e.text ? `<div class="m-agent msg">${md(e.text, { pathsOf: sid })}</div>` : "";
@@ -200,7 +200,7 @@
     // The notch's island: the notch's own size with nothing to show (black on its black), wider with its shoulders
     // when something needs you; what drops from it is as wide as WIDTH says, its shoulders either side.
     const w = !NOTCH ? WIDTH[m.shape] || WIDTH.quiet
-      : m.shape === "chat" || m.shape === "nod" ? WIDTH[m.shape] + 2 * SHOULDER
+      : m.shape === "chat" ? WIDTH[m.shape] + 2 * SHOULDER
       : root.querySelector(".m-island.peek") ? notch.w + 2 * (PEEK + SHOULDER) : notch.w;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
@@ -210,7 +210,7 @@
     m.sized = key;
     invoke("mini_shape", args).then((r) => { side(r); measured(r?.notch); repaint(); opened(); }, () => { m.sized = ""; opened(); });
   }
-  /** The notch's chat or nod, drawn shut, opens now that its window is its full size: it grows out of the notch
+  /** The notch's chat, drawn shut, opens now that its window is its full size: it grows out of the notch
    *  (mini.css .m-shut), on the next frames so the shut shape is painted first. */
   function opened() {
     if (!m.shut || m.leaving) return;
@@ -255,7 +255,6 @@
   }
   function shapeHtml() {
     if (m.shape === "chat" && m.open) return chatHtml();
-    if (m.shape === "nod") return nodHtml();
     return NOTCH ? islandHtml() : tuckHtml();
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
@@ -320,6 +319,7 @@
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
     m.open = sid;
+    for (const it of state.items) if (it.session_id === sid) m.looked.add(it.id);   // seen: it stops blinking
     invoke("mini_reading", { sessionId: sid }).catch(() => {});
     m.note = "";
     m.shape = "chat";
@@ -407,20 +407,6 @@
     m.sending = false;
     paint();
   }
-  /** A new card since the last state: the island nods with it for a few seconds; the rail's dot bounces. */
-  function arrivals() {
-    const ids = new Set(state.items.map((i) => i.id));
-    const all = m.seen ? state.items.filter((i) => !m.seen.has(i.id)).sort((a, b) => b.created_ms - a.created_ms) : [];
-    const fresh = all[0];
-    if (NOTCH && fresh && m.shape === "quiet") {
-      m.nod = fresh.id;
-      m.shape = "nod";
-      clearTimeout(m.nodT);
-      m.nodT = setTimeout(() => { if (m.shape === "nod") go("quiet"); }, NOD_MS);
-    }
-    m.seen = ids;
-  }
-
   function bind() {
     root.addEventListener("click", (e) => {
       const link = e.target.closest("a[data-href], a[data-path]");
@@ -472,7 +458,7 @@
     m.over = true;
     root.querySelector(".m-tuck")?.classList.add("over");
     clearTimeout(m.timer);
-    if (m.shape === "quiet" || m.shape === "nod") m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid); }, HOVER_MS);
+    if (m.shape === "quiet") m.timer = setTimeout(() => { const sid = first(); if (sid) openChat(sid); }, HOVER_MS);
   }
   /** Something typed in the open chat's box (kept: the chat doesn't fold under it). */
   const typing = () => !!root.querySelector("[data-box]")?.value.trim();
@@ -519,7 +505,6 @@
   function take(s) {
     state = s;
     theme();
-    arrivals();
     paint();
   }
 

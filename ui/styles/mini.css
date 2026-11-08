@@ -23,7 +23,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 /* In conversation with you (the last few minutes): its tab's dot blinks, plainly, until it drops into newest first. */
 .m-tab.talk .m-dot { animation: m-blink 1s steps(1, end) infinite; }
 @keyframes m-blink { 50% { opacity: .35; } }
-.m-tuck.fresh .m-live, .m-island.fresh .m-n .m-dot { animation: m-blink 1s steps(1, end) infinite; }   /* new in the last minute */
+/* Back to you (a session you wrote to came back): the whole dot blinks, on and off, until you open it. */
+.m-tuck.back .m-live, .m-island .m-n.back .m-dot { animation: m-call 1s steps(1, end) infinite; }
+@keyframes m-call { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .m-tab.talk .m-dot { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
 /* Your message not taken yet, as in Cue's chat (chat.css .cv-you.queued): no fill, a dim outline with a brighter
    arc going round it until it goes, and what's happening to it underneath. */
@@ -110,8 +112,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-wing { display: inline-flex; align-items: center; gap: 10px; }
 .m-n { display: inline-flex; align-items: center; gap: 5px; }
 .notch .m-island .m-dot { width: 8px; height: 8px; }
-.notch .m-nod { width: calc(100% - 2 * var(--sh)); padding: calc(var(--nh) + 10px) 20px 16px; border-radius: 0 0 24px 24px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
-.m-nod-top { display: flex; align-items: center; gap: 8px; }
 .notch .m-chat { width: var(--chat-w); border-radius: 0 0 28px 28px; padding-top: var(--nh); }
 .notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
 .notch .m-tabs, .notch .m-chat-head, .notch .m-foot { border-color: var(--line); }
@@ -122,11 +122,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 /* Opening: drawn shut (.m-shut: clipped to the notch's own size), then opened once the window is its full size
    (mini.js opened), so the black shape grows out of the notch with a little spring in a window that's already big
    enough. Closing: shut again, quicker, then the window is the island again. The shoulders show only open. */
-.notch .m-nod, .notch .m-chat { clip-path: inset(0 round 0 0 28px 28px); transition: clip-path .36s cubic-bezier(.2, 1.1, .3, 1); }
-.notch.m-shut .m-nod, .notch.m-shut .m-chat { clip-path: inset(0 calc(50% - var(--nw) / 2) calc(100% - var(--nh)) round 0 0 10px 10px); }
-.notch.m-leave .m-nod, .notch.m-leave .m-chat { transition: clip-path .2s cubic-bezier(.4, 0, 1, 1); }
+.notch .m-chat { clip-path: inset(0 round 0 0 28px 28px); transition: clip-path .36s cubic-bezier(.2, 1.1, .3, 1); }
+.notch.m-shut .m-chat { clip-path: inset(0 calc(50% - var(--nw) / 2) calc(100% - var(--nh)) round 0 0 10px 10px); }
+.notch.m-leave .m-chat { transition: clip-path .2s cubic-bezier(.4, 0, 1, 1); }
 .notch.m-shut #mini::before, .notch.m-shut #mini::after { opacity: 0; transition-delay: 0s; }
-@media (prefers-reduced-motion: reduce) { .notch .m-nod, .notch .m-chat { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .notch .m-chat { transition: none; } }
 
 
 /* Tabs across the chat's top: a session each, the open one on the panel. */

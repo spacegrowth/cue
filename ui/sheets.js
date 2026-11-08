@@ -518,7 +518,7 @@ function settingsSheet() {
     ${setRow("Project colors", "Each project gets a color of its own: its dot, and the window while it's picked at the top. Off, every project's dot is in the window's Color.", toggle("appearance.project", st.appearance?.project === true))}
     ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
-    ${setRow("Test", "The mini window's dot blinks first; still waiting a minute later, the notification comes (never while you're looking at it, here or in the mini window). This sends one now: if nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
+    ${setRow("Test", "Cue waits a minute: still waiting then, the notification comes (never while you're looking at it, here or in the mini window). This sends one now: if nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
     ${setRow("Finished", "A session finished its turn and is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
     ${setRow("Asks me", "A permission or a question.", toggle("notify.decisions", st.notify?.decisions ?? true))}
     ${setRow("Heads-ups", "A cache about to run out, a session with no new output, a background task that failed, a usage limit.", toggle("notify.cold", st.notify?.cold ?? true))}
