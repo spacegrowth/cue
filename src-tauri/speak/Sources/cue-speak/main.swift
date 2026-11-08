@@ -17,7 +17,8 @@
 // {"error": "…", "id"?}.
 //
 // It quits on its own after 100 sentences ({"bye": true}), and Cue starts a fresh one when it next needs it: on
-// macOS 26.4 and 26.5 an Apple bug breaks Kokoro after about 150 sentences in one process (FluidAudio #667).
+// macOS 26.4 and 26.5 an Apple bug breaks Kokoro after about 150 sentences in one process (FluidAudio #667). It
+// quits the same way after 3 minutes with nothing to do, so it isn't kept running (and holding the model) all day.
 import AVFoundation
 import FluidAudio
 import Foundation
@@ -77,15 +78,33 @@ final class Speaker {
   private var ticking: DispatchSourceTimer?
   /// The says, one after another: each waits for the one before it to be made and playing.
   private var says: Task<Void, Never>?
+  /// A voice being got, and when Cue last sent a line: idle (nothing asked, playing or coming) for `idleQuit`, it
+  /// quits ({"bye": true}, as after 100 sentences) and gives back its memory; Cue starts it again when it needs it.
+  private var getting = 0
+  private var lastHeard = Date()
+  private let idleQuit: TimeInterval = 180
 
   init() {
     engine.attach(player)
     engine.connect(player, to: engine.mainMixerNode, format: format)
+    idleCheck()
+  }
+
+  private func idleCheck() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+      MainActor.assumeIsolated {
+        if self.asked == nil, self.playing == nil, self.getting == 0, Date().timeIntervalSince(self.lastHeard) > self.idleQuit {
+          emit(["bye": true]); exit(0)
+        }
+        self.idleCheck()
+      }
+    }
   }
 
   /// A line from Cue, at once: a stop, pause or resume acts right away, a say while one is still being made too
   /// (that one is dropped).
   func heard(_ o: [String: Any]) {
+    lastHeard = Date()
     if o["status"] != nil {
       let d = onDisk()
       emit(["status": ["ready": engineHere(), "risky": risky, "have": engineHere() ? d.have : [], "mb": d.mb]])
@@ -113,6 +132,8 @@ final class Speaker {
   /// A voice: the first time, the engine with it (the model and the pronouncer, with how far along; the model is
   /// most of it); after that, just its 0.5 MB.
   private func get(_ voice: String) async {
+    getting += 1
+    defer { getting -= 1; lastHeard = Date() }
     do {
       if !engineHere() {
         try await KokoroAneResourceDownloader.ensureModels(progressHandler: { p in emit(["progress": p.fractionCompleted * 0.7]) })

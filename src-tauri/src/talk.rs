@@ -120,16 +120,25 @@ pub fn set(id: &str, value: &str) -> Result<(), String> {
         _ => return Err(format!("no setting {id}")),
     };
     std::fs::write(prefs_file(), p.to_string()).map_err(|e| e.to_string())?;
-    // Turned on or off: cue-voice takes the keys, or gives them back, now. NVIDIA's listening model picked: it
-    // gets it now (nothing is downloaded before it's picked).
+    // Turned on: cue-voice starts and takes the keys. Off: it gives them back and quits. NVIDIA's listening model
+    // picked: it gets it now (nothing is downloaded before it's picked).
+    if id == "talk" && value == "on" {
+        relaunch();
+    }
     let retell = match id {
         "talk" => Some(json!({ "talk": value == "on" })),
         "model" => Some(json!({ "model": value })),
         _ => None,
     };
-    if let (Some(line), Some(tx)) = (retell, crate::locking::lock(&RETELL, "talk retell").as_ref()) {
+    let mut running = crate::locking::lock(&RETELL, "talk retell");
+    if let (Some(line), Some(tx)) = (retell, running.as_ref()) {
         let _ = tx.send(line);
+        if id == "talk" && value != "on" {
+            let _ = tx.send(json!(END));
+            running.take();   // ending: turned on again before it's gone, a new one starts
+        }
     }
+    drop(running);
     Ok(())
 }
 
@@ -233,18 +242,6 @@ pub fn start(app: &tauri::App, hub: Arc<Hub>) {
     app.listen_any("state", move |e| {
         let _ = tx.send(Arc::new(e.payload().to_string()));
     });
-    let child = Command::new(&exe).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
-    let Ok(mut child) = child else { return };
-    let (Some(to), Some(from)) = (child.stdin.take(), child.stdout.take()) else { return };
-    let (lines, rx) = mpsc::unbounded_channel::<Value>();
-    std::thread::spawn(move || {
-        for line in BufReader::new(from).lines().map_while(Result::ok) {
-            if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                let _ = lines.send(v);
-            }
-        }
-        let _ = child.wait();
-    });
     // The window says which chat is open, and the swatch it wears (ui/app/render.js, when either changes).
     let (open_tx, open_rx) = watch::channel(None::<String>);
     app.listen_any("chat-open", move |e| {
@@ -257,8 +254,63 @@ pub fn start(app: &tauri::App, hub: Arc<Hub>) {
         }
         let _ = open_tx.send(v["sid"].as_str().map(str::to_string));
     });
-    tauri::async_runtime::spawn(run(app.handle().clone(), hub, live, open_rx, rx, to));
+    // cue-voice runs only while talking is on: off, it would only sit there. Turned on in Settings, it starts then.
+    let app = app.handle().clone();
+    *crate::locking::lock(&LAUNCH, "talk launch") = Some(Box::new(move || launch(&exe, app.clone(), hub.clone(), live.clone(), open_rx.clone())));
+    if prefs()["talk"] == true {
+        relaunch();
+    }
 }
+
+/// Starts cue-voice and the conversation with it (set up by `start`; None in a Cue without it).
+type Launch = Box<dyn Fn() + Send>;
+static LAUNCH: Mutex<Option<Launch>> = Mutex::new(None);
+
+/// cue-voice started, when it isn't running.
+fn relaunch() {
+    let running = crate::locking::lock(&RETELL, "talk retell").is_some();
+    if running {
+        return;
+    }
+    let go = crate::locking::lock(&LAUNCH, "talk launch");
+    if let Some(go) = go.as_ref() {
+        go();
+    }
+}
+
+fn launch(exe: &std::path::Path, app: tauri::AppHandle, hub: Arc<Hub>, live: watch::Receiver<Arc<String>>, open: watch::Receiver<Option<String>>) {
+    let child = Command::new(exe).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
+    let Ok(mut child) = child else { return };
+    let (Some(to), Some(from)) = (child.stdin.take(), child.stdout.take()) else { return };
+    let (lines, rx) = mpsc::unbounded_channel::<Value>();
+    std::thread::spawn(move || {
+        for line in BufReader::new(from).lines().map_while(Result::ok) {
+            if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                let _ = lines.send(v);
+            }
+        }
+        let _ = child.wait();
+    });
+    // Marked running now, not once the loop starts: a second switch-on in between doesn't start a second one.
+    let (btw_tx, btw_rx) = mpsc::unbounded_channel::<Value>();
+    *crate::locking::lock(&RETELL, "talk retell") = Some(btw_tx.clone());
+    tauri::async_runtime::spawn(run(app, hub, Link { live, open, from: rx, to, btw_tx, btw_rx }));
+}
+
+/// One run of cue-voice: what the window shows and has open, its lines and its stdin, and the way back to this
+/// run's loop for lines from outside it (`btw_*`: "by the way" answers, asked off the loop as they take a few
+/// seconds, and a setting's line, through RETELL).
+struct Link {
+    live: watch::Receiver<Arc<String>>,
+    open: watch::Receiver<Option<String>>,
+    from: mpsc::UnboundedReceiver<Value>,
+    to: ChildStdin,
+    btw_tx: mpsc::UnboundedSender<Value>,
+    btw_rx: mpsc::UnboundedReceiver<Value>,
+}
+
+/// The line that ends the conversation with cue-voice (talking turned off): its stdin closes and it quits.
+const END: &str = "end";
 
 /// Its rows in Settings → Voice, under Cue's own voice picker: the key, how the listening model is, reading out.
 pub fn settings() -> Option<Value> {
@@ -307,18 +359,23 @@ pub fn settings() -> Option<Value> {
 
 /// The conversation with cue-voice, and when it ends however it ends (cue-voice gone, Cue quitting), nothing it
 /// set stays: the sessions' notifications come back.
-async fn run(app: tauri::AppHandle, hub: Arc<Hub>, live: watch::Receiver<Arc<String>>, open: watch::Receiver<Option<String>>, from: mpsc::UnboundedReceiver<Value>, to: ChildStdin) {
-    run_loop(app, hub, live, open, from, to).await;
+async fn run(app: tauri::AppHandle, hub: Arc<Hub>, link: Link) {
+    let mine = link.btw_tx.clone();
+    run_loop(app, hub, link).await;
+    // Not running: turning talking on starts it again. Only its own: one started since (off, then on) stays.
+    let mut retell = crate::locking::lock(&RETELL, "talk retell");
+    if retell.as_ref().is_some_and(|tx| tx.same_channel(&mine)) {
+        retell.take();
+    }
+    drop(retell);
     crate::notify::quiet(Vec::new());
 }
 
-async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receiver<Arc<String>>, mut open: watch::Receiver<Option<String>>, mut from: mpsc::UnboundedReceiver<Value>, to: ChildStdin) {
-    // "By the way" answers, asked off this loop (they take a few seconds), come back here to be told.
-    let (btw_tx, mut btw_rx) = mpsc::unbounded_channel::<Value>();
+async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, link: Link) {
+    let Link { mut live, mut open, mut from, to, btw_tx, mut btw_rx } = link;
     // What you said, sent off this loop too (a remote session can take seconds): how it went comes back here.
     let (sent_tx, mut sent_rx) = mpsc::unbounded_channel::<(Turn, Result<String, String>)>();
-    let mut c = Conversation::new(app, hub, to, btw_tx.clone(), sent_tx);
-    *crate::locking::lock(&RETELL, "talk retell") = Some(btw_tx);   // a setting's line goes the same way
+    let mut c = Conversation::new(app, hub, to, btw_tx, sent_tx);
     loop {
         let told = tokio::select! {
             changed = live.changed() => {
@@ -328,7 +385,12 @@ async fn run_loop(app: tauri::AppHandle, hub: Arc<Hub>, mut live: watch::Receive
                 Ok(())
             }
             changed = open.changed() => { if changed.is_err() { return; } Ok(()) }
-            Some(out) = btw_rx.recv() => tell(&mut c.to, &out),
+            Some(out) = btw_rx.recv() => {
+                if out == END {
+                    return;   // `to` dropped: cue-voice's stdin closes and it quits
+                }
+                tell(&mut c.to, &out)
+            }
             Some((turn, reply)) = sent_rx.recv() => c.on_sent(turn, reply),
             line = from.recv() => {
                 let Some(line) = line else { return };

@@ -26,6 +26,21 @@ if CommandLine.arguments.dropFirst().first == "listen" { Dictate.run() }
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)   // no Dock icon, no menu: it's Cue's
+DispatchQueue.main.async { showAs("cue-voice") }
+
+/// The name Activity Monitor shows: an AppKit program inside Cue.app is otherwise named "Cue", a second Cue. Through
+/// LaunchServices' own call for it, unpublished (Chromium names its helpers the same way); gone in some macOS, the
+/// name stays "Cue" and nothing else changes.
+func showAs(_ name: String) {
+  typealias CurrentASN = @convention(c) () -> Unmanaged<CFTypeRef>?
+  typealias SetItem = @convention(c) (Int32, CFTypeRef, CFString, CFString, UnsafeMutableRawPointer?) -> OSStatus
+  let ls = dlopen("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/LaunchServices", RTLD_LAZY)
+  guard let asnFn = dlsym(ls, "_LSGetCurrentApplicationASN"), let setFn = dlsym(ls, "_LSSetApplicationInformationItem"),
+    let keyPtr = dlsym(ls, "_kLSDisplayNameKey"),
+    let asn = unsafeBitCast(asnFn, to: CurrentASN.self)()?.takeUnretainedValue() else { return }
+  let key = keyPtr.assumingMemoryBound(to: CFString.self).pointee
+  _ = unsafeBitCast(setFn, to: SetItem.self)(-2, asn, key, name as CFString, nil)   // -2: this login session
+}
 let voice = MainActor.assumeIsolated { Voice() }
 
 // Cue's lines. Its stdin closing (Cue quit) ends this too.
