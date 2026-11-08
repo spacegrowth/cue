@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// The first mini window's label (the notch's, or the rail's on the first display); the rail's others are
+/// The first mini window's label (on the first display, the notch's island or the rail's tab); the others are
 /// `mini-1`, `mini-2`, … (capabilities/default.json lets `mini*` call Cue).
 pub(crate) const LABEL: &str = "mini";
 
@@ -139,14 +139,9 @@ pub(crate) fn apply(app: &AppHandle) {
         return;
     }
     OPEN.store(want as u8, Ordering::SeqCst);
-    if want == Mode::Notch {
-        let primary = app.primary_monitor().ok().flatten().map(|m| points(&m)).unwrap_or_default();
-        if let Err(e) = open_window(app, LABEL, want, primary) {
-            eprintln!("[cue] mini window: {e}");
-        }
-    } else {
-        reconcile(app);
-    }
+    // One window on each display, the rail's tab or the notch's island: opening a chat on one folds any other
+    // (mini_reading), so only one is ever open.
+    reconcile(app);
     #[cfg(target_os = "macos")]
     if !FOLLOWING.swap(true, Ordering::SeqCst) {
         let app = app.clone();
@@ -170,12 +165,14 @@ fn displays(app: &AppHandle) -> Vec<(Rect, Rect)> {
     all
 }
 
-/// The rail: a window on each display there is now (one opened for a display that came, closed for one that
+/// The rail or the notch: a window on each display there is now (one opened for a display that came, closed for one that
 /// went), each told to place itself again. True when anything changed.
 fn reconcile(app: &AppHandle) -> bool {
-    if OPEN.load(Ordering::SeqCst) != Mode::Rail as u8 {
-        return false;
-    }
+    let mode = match OPEN.load(Ordering::SeqCst) {
+        m if m == Mode::Rail as u8 => Mode::Rail,
+        m if m == Mode::Notch as u8 => Mode::Notch,
+        _ => return false,
+    };
     let all = displays(app);
     // None while the displays sleep: the windows stay as they are, and are looked at again a few seconds on.
     if all.is_empty() {
@@ -194,7 +191,7 @@ fn reconcile(app: &AppHandle) -> bool {
             slots(|s| s.insert(label.clone(), Slot { display: *d, frame: None }));
             use tauri::Emitter;
             let _ = app.emit_to(label.as_str(), "mini-place", ());
-        } else if let Err(e) = open_window(app, &label, Mode::Rail, *d) {
+        } else if let Err(e) = open_window(app, &label, mode, *d) {
             eprintln!("[cue] mini window: {e}");
         }
     }
