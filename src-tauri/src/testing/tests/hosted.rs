@@ -183,6 +183,15 @@ fn send_now_on_a_kept_message_hands_it_over_and_stops_the_turn() {
     assert_eq!(w.hosted.interrupted(), [sid.clone()], "the turn it was on is stopped");
     let s = w.snapshot();
     assert!(s.session(&sid)["held"].is_null() && s.session(&sid)["queued"].is_null(), "it's reading it now: {}", s.session(&sid));
+    // The stopped turn ends as Claude ends one it was told to stop, and the next starts with the message: taken
+    // there, not seconds later when Claude repeats it, and the turn is about it.
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "[ede_diagnostic] stopped".into(), failed: true, cost_usd: 0.0, unprompted: false });
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    let s = w.snapshot();
+    let last = s.last_yours(&sid);
+    assert!(last["pending"].is_null(), "taken as its turn started: {last}");
+    assert_eq!(s.session(&sid)["prompt"], "do this instead");
+    assert_eq!(s.state(&sid), "working");
 }
 
 #[test]

@@ -74,6 +74,8 @@ function submitText(it) {
 }
 /** Say something to a live session from the Active pane (it may be mid-turn). */
 // now (Ctrl+Enter): if it's mid-turn, stop it first so this is handled right away.
+/** How the last message to `sid` went ("kept in Cue"), forgotten: it goes another way now. */
+const forgetSent = (sid) => { if (lastSent?.sid === sid) lastSent = null; };
 /** Send now (the button on a queued message, or ⌘↵ with nothing new typed): stopping the turn makes the
  *  agent read what you queued straight away. */
 function sendQueuedNow(sid) {
@@ -83,7 +85,7 @@ function sendQueuedNow(sid) {
 }
 /** Send now on the message Cue kept for a working session (its button, or ⌘↵ as for a queued one): it
  *  stops the turn and the message goes straight away. */
-const sendHeldNow = (sid) => invoke("send_held_now", { sessionId: sid }).then(() => toast("Sent now: it stopped its turn and reads your message next")).catch((e) => toast(`Couldn't send it now: ${e}`));
+const sendHeldNow = (sid) => forgetSent(sid) || invoke("send_held_now", { sessionId: sid }).then(() => toast("Sent now: it stopped its turn and reads your message next")).catch((e) => toast(`Couldn't send it now: ${e}`));
 /** ⌘↵ with nothing new typed: what's waiting to go (queued in its agent, or kept in Cue) goes now. False when there's nothing. */
 function sendWaitingNow(sid) {
   const s = sessionOf(sid);
@@ -97,6 +99,7 @@ const sendTo = (sid, now = false, key = `s:${sid}`) => state.restarting?.[sid] ?
 /** The message Cue kept for a working session, back into its box to change (before anything you've typed
  *  there since), images and all. */
 async function pullHeld(sid) {
+  forgetSent(sid);
   const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
   if (!h) return;
   const key = `s:${sid}`, d = draft(key);

@@ -199,15 +199,24 @@ impl Hub {
         self.changed();
     }
 
-    /// A turn began while it was idle: the oldest message of yours on its way is the one it read (Cue sends
+    /// A turn began: the oldest message of yours on its way is the one it read (Cue sends
     /// it nothing else), taken now rather than when it repeats it back with its first words, a second or more
     /// later. A turn a background task started finds none, and goes to work with its first step.
+    /// Still working to Cue, it's the turn after one Cue stopped for Send now: the message it reads now is the
+    /// one Cue sent, and the turn is about it.
     fn hosted_turn_started(&self, origin: Origin) {
         let sid = origin.session_id.clone();
-        let first = self.read(|st| if st.sessions.state(&sid).as_deref() == Some("working") { None } else { st.sessions.first_pending(&sid) });
-        if let Some(text) = first {
-            self.hosted_taken(origin, text);
+        let (first, working) = self.read(|st| (st.sessions.first_pending(&sid), st.sessions.state(&sid).as_deref() == Some("working")));
+        let Some(text) = first else { return };
+        if !working {
+            return self.hosted_taken(origin, text);
         }
+        self.write(|st| {
+            st.sessions.got_message(&sid, &text, "it started a turn with it");
+            st.sessions.set_queued(&sid, None);
+            st.sessions.set_prompt(&sid, &crate::sessions::unwrap_pasted(&text));
+        });
+        self.changed();
     }
 
     /// It's doing something: at work, if nothing of yours started that (a background task that finished
