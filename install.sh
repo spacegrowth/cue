@@ -131,14 +131,34 @@ launch_cue() {
   return 1
 }
 
+# Whether the built app is older than any of Cue's sources (a pull, an edit, the add-on's own): then it's rebuilt, so
+# re-running this after new code never installs an older Cue. What a build writes itself (target/, the helpers it
+# compiles, generated schemas) doesn't count.
+app_stale() {
+  local built="$APP_SRC/Contents/MacOS/cue"
+  [ -x "$built" ] || return 0
+  local ext=(); [ -d "$ROOT/src-tauri/ext/" ] && ext=("$ROOT/src-tauri/ext/")
+  [ -n "$(find "$ROOT/ui" "$ROOT/pi" "$ROOT/src-tauri" "${ext[@]}" \( -path "$ROOT/src-tauri/target*" -o -path "$ROOT/src-tauri/binaries" -o -path "$ROOT/src-tauri/gen" -o -path "$ROOT/src-tauri/ext" -o -name node_modules -o -name .build \) -prune -o -type f -newer "$built" -print -quit 2>/dev/null)" ]
+}
+
 install_app() {
-  if [ ! -d "$APP_SRC" ]; then
-    say "building Cue.app (first time takes a few minutes)…"
+  local what; what="$(git -C "$ROOT" log -1 --format='%h %s' 2>/dev/null || echo 'this folder')"
+  if app_stale; then
+    say "building Cue.app from $what (a few minutes)…"
+    rm -rf "$APP_SRC"
     # An optional add-on in src-tauri/ext/ (not part of this repo) is built in when it's there.
     local ext=""; [ -e "$ROOT/src-tauri/ext/mod.rs" ] && ext="--features ext"
     # Its own bundle settings (helper programs it ships beside Cue), when it has them.
     [ -n "$ext" ] && [ -e "$ROOT/src-tauri/ext/tauri.conf.json" ] && ext="$ext --config src-tauri/ext/tauri.conf.json"
-    (cd "$ROOT" && npm install --silent && npx tauri build --bundles app $ext >/dev/null)
+    # Judged by the app it makes, not its exit: without the release signing key the build ends with an error about
+    # update signatures after the app is made.
+    (cd "$ROOT" && npm install --silent && npx tauri build --bundles app $ext >/dev/null) || true
+    if [ ! -x "$APP_SRC/Contents/MacOS/cue" ]; then
+      echo "  the build didn't make Cue.app (run: npx tauri build --bundles app $ext, to see why)" >&2
+      exit 1
+    fi
+  else
+    say "Cue.app is already built from $what: installing it"
   fi
   wait_for_hosted_turns
   quit_cue
