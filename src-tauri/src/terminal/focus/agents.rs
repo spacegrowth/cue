@@ -5,7 +5,10 @@ use super::tmux::machine_of;
 use crate::model::Origin;
 use std::process::Command;
 
-/// Which agents this Mac can start (a login shell's PATH: the one your terminal has), asked once.
+/// Where agents are found besides your PATH, after it (your own copy wins): Codex as the ChatGPT app ships it.
+pub const AGENT_PATH: &str = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin";
+
+/// Which agents this Mac can start (a login shell's PATH: the one your terminal has, then AGENT_PATH), asked once.
 pub fn agents_installed() -> Vec<String> {
     static FOUND: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
     FOUND
@@ -13,7 +16,7 @@ pub fn agents_installed() -> Vec<String> {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
             ["claude", "pi", "codex"]
                 .into_iter()
-                .filter(|a| Command::new(&shell).args(["-lic", &format!("command -v {a}")]).output().map(|o| o.status.success() && !o.stdout.is_empty()).unwrap_or(false))
+                .filter(|a| Command::new(&shell).args(["-lic", &format!("PATH=\"$PATH:$CUE_AGENT_PATH\" command -v {a}")]).env("CUE_AGENT_PATH", AGENT_PATH).output().map(|o| o.status.success() && !o.stdout.is_empty()).unwrap_or(false))
                 .map(String::from)
                 .collect()
         })

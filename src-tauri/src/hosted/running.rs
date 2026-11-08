@@ -7,14 +7,23 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// What a session reports to, from its own thread.
-pub type Report = Box<dyn Fn(HostedEvent) + Send + Sync>;
+/// What a session reports to, from its own thread: each event with the conversation's id.
+pub type Report = Box<dyn Fn(&str, HostedEvent) + Send + Sync>;
+
+/// A session started: its process, and the conversation's id (the one it was started under, or the one the
+/// agent picked: Codex's) and file, when the agent says where it keeps it.
+#[derive(Clone, Debug)]
+pub struct Started {
+    pub pid: i32,
+    pub session_id: String,
+    pub transcript: Option<String>,
+}
 
 /// Starting, talking to and closing hosted sessions.
 pub trait Hosted: Send + Sync {
     /// Start (or resume, by `spec.start`) a session reporting to `report`: its process id. One already
     /// running under that id is closed first: two processes on one conversation would both write its transcript.
-    fn start(&self, spec: &Spec, report: Report) -> Result<i32, String>;
+    fn start(&self, spec: &Spec, report: Report) -> Result<Started, String>;
     fn send(&self, session_id: &str, text: &str) -> Result<(), String>;
     fn answer(&self, session_id: &str, request_id: &str, answer: &Answer) -> Result<(), String>;
     fn interrupt(&self, session_id: &str) -> Result<(), String>;
@@ -58,19 +67,18 @@ impl Running {
 }
 
 impl Hosted for Running {
-    fn start(&self, spec: &Spec, report: Report) -> Result<i32, String> {
-        let id = spec.start.session_id().to_string();
-        self.take_and_close(&id);
+    fn start(&self, spec: &Spec, report: Report) -> Result<Started, String> {
+        self.take_and_close(spec.start.session_id());
         let closing = Arc::new(AtomicBool::new(false));
         let quiet = closing.clone();
-        let session = Session::start(spec, move |e| {
+        let session = Session::start(spec, move |id, e| {
             if !(matches!(e, HostedEvent::Exited { .. }) && quiet.load(Ordering::SeqCst)) {
-                report(e);
+                report(id, e);
             }
         })?;
-        let pid = session.pid();
-        crate::locking::lock(&self.sessions, "hosted sessions").insert(id, Arc::new(Entry { session, closing }));
-        Ok(pid)
+        let started = Started { pid: session.pid(), session_id: session.session_id(), transcript: session.transcript() };
+        crate::locking::lock(&self.sessions, "hosted sessions").insert(started.session_id.clone(), Arc::new(Entry { session, closing }));
+        Ok(started)
     }
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {

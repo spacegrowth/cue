@@ -51,6 +51,7 @@ impl Start {
 pub enum Agent {
     Claude,
     Pi,
+    Codex,
 }
 
 impl Agent {
@@ -59,6 +60,7 @@ impl Agent {
         match harness {
             "claude" => Some(Agent::Claude),
             "pi" => Some(Agent::Pi),
+            "codex" => Some(Agent::Codex),
             _ => None,
         }
     }
@@ -68,6 +70,7 @@ impl Agent {
         match self {
             Agent::Claude => "claude",
             Agent::Pi => "pi",
+            Agent::Codex => "codex",
         }
     }
 
@@ -76,13 +79,15 @@ impl Agent {
         match self {
             Agent::Claude => "Claude Code",
             Agent::Pi => "Pi",
+            Agent::Codex => "Codex",
         }
     }
 
-    pub(super) fn protocol(self) -> Box<dyn super::protocol::Protocol> {
+    pub(super) fn protocol(self, spec: &Spec) -> Box<dyn super::protocol::Protocol> {
         match self {
             Agent::Claude => Box::<super::protocol::Claude>::default(),
             Agent::Pi => Box::<super::pi::Pi>::default(),
+            Agent::Codex => Box::new(super::codex::Codex::new(spec)),
         }
     }
 }
@@ -122,7 +127,8 @@ pub(super) fn command(spec: &Spec) -> Result<Command, String> {
             let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
             let mut c = Command::new(shell);
             // -l: your profile (PATH); -i: what your shell sets up for you. `$0` names it in `ps`.
-            let script = format!("cd -- \"$CUE_CWD\" && exec {} \"$@\"", spec.agent.program());
+            // Your PATH first, then where Cue also finds agents (Codex inside the ChatGPT app).
+            let script = format!("cd -- \"$CUE_CWD\" && PATH=\"$PATH:$CUE_AGENT_PATH\" exec {} \"$@\"", spec.agent.program());
             c.args(["-lic", &script, "cue-hosted"]).args(&args);
             c
         }
@@ -145,8 +151,12 @@ pub(super) fn arguments(spec: &Spec) -> Result<Vec<String>, String> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err(format!("“{id}” isn't a session id"));
     }
-    if spec.agent == Agent::Pi {
-        return pi_arguments(spec, id);
+    match spec.agent {
+        Agent::Pi => return pi_arguments(spec, id),
+        // Its conversation, model and permissions go in what Cue sends it (codex.rs); on the line only its own
+        // settings (`-c key=value`) from + New's flags.
+        Agent::Codex => return Ok(std::iter::once("app-server".to_string()).chain(spec.args.iter().cloned()).collect()),
+        Agent::Claude => {}
     }
     let (_, permission) = crate::focus::permission_flags("claude", &spec.permissions)?;
     let mut a: Vec<String> = HEADLESS.iter().chain(permission).map(|s| s.to_string()).collect();
@@ -179,7 +189,7 @@ fn environment(c: &mut Command, spec: &Spec) {
     for k in ["TMUX", "TMUX_PANE", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"] {
         c.env_remove(k);
     }
-    c.env(super::HOSTED_ENV, "1").env("CUE_CWD", &spec.cwd).env("SHELL_SESSIONS_DISABLE", "1");
+    c.env(super::HOSTED_ENV, "1").env("CUE_CWD", &spec.cwd).env("CUE_AGENT_PATH", crate::focus::AGENT_PATH).env("SHELL_SESSIONS_DISABLE", "1");
     if let Ok((Some((k, v)), _)) = crate::focus::permission_flags(spec.agent.program(), &spec.permissions) {
         c.env(k, v);
     }

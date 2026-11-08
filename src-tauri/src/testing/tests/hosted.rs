@@ -512,3 +512,28 @@ fn the_next_cue_ends_what_its_hosted_sessions_ran_as() {
     ended.sort();
     assert_eq!(ended, { let mut p = pids; p.sort(); p });
 }
+
+/// Codex picks a new conversation's id: the session is known by it from the start, with its rollout file, and its
+/// model goes in what Cue sends it rather than on its command line.
+#[test]
+fn codex_starts_hosted_under_the_id_it_picks_and_resumes_by_it() {
+    let mut w = World::new();
+    hosted_on(true);
+    let opts = StartOpts { hosted: true, perm: "edits".into(), extra: "--model gpt-6 -c model_reasoning_effort=high".into(), ..Default::default() };
+    let r = start_session_with(w.hub(), "codex", &w.home().to_string_lossy(), "add a test", "", &opts).unwrap();
+    let sid = r["session_id"].as_str().unwrap().to_string();
+    assert!(sid.starts_with("codex-"), "Codex's own id: {sid}");
+    let l = w.hosted.launched().pop().unwrap();
+    assert_eq!((l.agent, l.permissions.as_str()), (crate::hosted::Agent::Codex, "edits"));
+    assert_eq!(l.args, ["-c", "model_reasoning_effort=high"], "the model isn't an argument");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "add a test".to_string())));
+    let o = w.hub().session_origin(&sid).unwrap();
+    assert_eq!((o.harness.as_str(), o.transcript_path.as_str()), ("codex", format!("/codex/rollout-{sid}.jsonl").as_str()));
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "Added it.".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    w.settle();
+    assert_eq!(w.snapshot().card(&sid)["message"], "Added it.");
+    w.relaunch();
+    w.send_to(&sid, "and the docs");
+    assert_eq!(w.hosted.launched().pop().unwrap().start, Start::Resume(sid));
+}

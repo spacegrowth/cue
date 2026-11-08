@@ -53,9 +53,9 @@ fn its_tool_calls_and_their_results_pair_up_and_an_aborted_one_failed() {
 #[test]
 fn a_message_goes_as_a_prompt_that_steers_when_it_is_busy_and_stop_aborts() {
     let mut p = Pi::default();
-    let m: Value = serde_json::from_str(&p.message("add a test")).unwrap();
+    let m: Value = serde_json::from_str(&p.message("add a test")[0]).unwrap();
     assert_eq!((m["type"].as_str(), m["message"].as_str(), m["streamingBehavior"].as_str()), (Some("prompt"), Some("add a test"), Some("steer")));
-    let a: Value = serde_json::from_str(&p.interrupt()).unwrap();
+    let a: Value = serde_json::from_str(&p.interrupt()[0]).unwrap();
     assert_eq!(a["type"], "abort");
     assert_ne!(m["id"], a["id"]);
 }
@@ -63,10 +63,10 @@ fn a_message_goes_as_a_prompt_that_steers_when_it_is_busy_and_stop_aborts() {
 #[test]
 fn a_message_pi_turns_down_is_not_taken_with_why() {
     let mut p = Pi::default();
-    let m: Value = serde_json::from_str(&p.message("carry on")).unwrap();
+    let m: Value = serde_json::from_str(&p.message("carry on")[0]).unwrap();
     let ok = json!({ "id": m["id"], "type": "response", "command": "prompt", "success": true }).to_string();
     assert!(p.read(&ok).0.is_empty(), "accepted: its events say the rest");
-    let m: Value = serde_json::from_str(&p.message("and this")).unwrap();
+    let m: Value = serde_json::from_str(&p.message("and this")[0]).unwrap();
     let no = json!({ "id": m["id"], "type": "response", "command": "prompt", "success": false, "error": "No API key found for deepseek.\n\nUse /login to log in" }).to_string();
     match p.read(&no).0.as_slice() {
         [HostedEvent::NotTaken { text, why }] => assert_eq!((text.as_str(), why.as_str()), ("and this", "No API key found for deepseek.")),
@@ -82,17 +82,17 @@ fn a_dialog_is_a_card_answered_as_the_dialog_takes_it() {
     // A choice: a question with its options; the one you pick goes back.
     let a = ask(p.read(&line(json!({ "type": "extension_ui_request", "id": "d1", "method": "select", "title": "Which branch?", "options": ["main", "dev"] }))).0);
     assert_eq!((a.kind, a.input["questions"][0]["options"][1]["label"].as_str()), (AskKind::Question, Some("dev")));
-    let r: Value = serde_json::from_str(&p.answer("d1", &decision("allow", Some(json!({ "Which branch?": "dev" })))).unwrap()).unwrap();
+    let r: Value = serde_json::from_str(&p.answer("d1", &decision("allow", Some(json!({ "Which branch?": "dev" })))).unwrap()[0]).unwrap();
     assert_eq!((r["id"].as_str(), r["value"].as_str()), (Some("d1"), Some("dev")));
     assert!(p.answer("d1", &decision("allow", None)).is_err(), "answered once");
     // Yes or no.
     ask(p.read(&line(json!({ "type": "extension_ui_request", "id": "d2", "method": "confirm", "title": "Delete it?" }))).0);
-    let r: Value = serde_json::from_str(&p.answer("d2", &decision("allow", Some(json!({ "Delete it?": "No" })))).unwrap()).unwrap();
+    let r: Value = serde_json::from_str(&p.answer("d2", &decision("allow", Some(json!({ "Delete it?": "No" })))).unwrap()[0]).unwrap();
     assert_eq!(r["confirmed"], false);
     // A line to type: a form with one field; declined, it's cancelled.
     let a = ask(p.read(&line(json!({ "type": "extension_ui_request", "id": "d3", "method": "input", "title": "Ticket number?" }))).0);
     assert_eq!((a.kind, a.message.as_str()), (AskKind::Input, "Ticket number?"));
-    let r: Value = serde_json::from_str(&p.answer("d3", &Answer::Input { action: InputAction::Decline, content: Value::Null }).unwrap()).unwrap();
+    let r: Value = serde_json::from_str(&p.answer("d3", &Answer::Input { action: InputAction::Decline, content: Value::Null }).unwrap()[0]).unwrap();
     assert_eq!(r["cancelled"], true);
     // A status line asks nothing.
     assert!(p.read(&line(json!({ "type": "extension_ui_request", "id": "n1", "method": "setStatus", "text": "busy" }))).0.is_empty());

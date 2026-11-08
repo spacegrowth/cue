@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 141 (3 sync) |
 | Lock declarations (static or field) | 98 |
-| Lock acquisitions | 224 |
+| Lock acquisitions | 225 |
 | Lock-graph edges | 49 |
 | Spawn sites | 81 |
 | External calls: fs / db / process / notify / login / socket | 345 / 146 / 51 / 4 / 1 / 3 |
@@ -198,7 +198,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (4 sites) |
 | `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
 | `hosted/session.rs::Shared.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
-| `hosted/session.rs::Shared.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
+| `hosted/session.rs::Shared.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (3 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |

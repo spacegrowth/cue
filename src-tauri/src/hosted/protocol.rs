@@ -10,16 +10,30 @@ pub(super) trait Protocol: Send {
     /// One line of its output: what it means for Cue, and any lines to write back at once (a request it
     /// can't answer, refused).
     fn read(&mut self, line: &str) -> (Vec<HostedEvent>, Vec<String>);
-    /// Your message: taken at once when it's idle, at its next step when it's at work.
-    fn message(&mut self, text: &str) -> String;
+    /// Your message: taken at once when it's idle, at its next step when it's at work. Nothing yet when its
+    /// conversation isn't open: it goes once it is.
+    fn message(&mut self, text: &str) -> Vec<String>;
     /// Your answer to its request `request_id` (an `Ask`'s). Err when nothing waits for one under that id.
-    fn answer(&mut self, request_id: &str, a: &Answer) -> Result<String, String>;
+    fn answer(&mut self, request_id: &str, a: &Answer) -> Result<Vec<String>, String>;
     /// Stop what it's doing.
-    fn interrupt(&mut self) -> String;
+    fn interrupt(&mut self) -> Vec<String>;
     /// Whether a turn is under way.
     fn in_turn(&self) -> bool;
     /// Its process is gone: nothing waits for an answer any more.
     fn gone(&mut self);
+    /// The conversation's id, once the agent has said it, for one that picks its own (Codex); None: the one Cue
+    /// started it with.
+    fn session_id(&self) -> Option<String> {
+        None
+    }
+    /// Whether it's ready for your messages: its conversation is open (or it has none to open).
+    fn ready(&self) -> bool {
+        true
+    }
+    /// Where the agent keeps the conversation, once it has said so (Codex's rollout file).
+    fn transcript(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Claude Code (stream-json): translate.rs reads it, wire.rs writes it. A request's tool input is kept until
@@ -59,18 +73,18 @@ impl Protocol for Claude {
         (events, replies)
     }
 
-    fn message(&mut self, text: &str) -> String {
-        super::wire::user_message(text)
+    fn message(&mut self, text: &str) -> Vec<String> {
+        vec![super::wire::user_message(text)]
     }
 
-    fn answer(&mut self, request_id: &str, a: &Answer) -> Result<String, String> {
+    fn answer(&mut self, request_id: &str, a: &Answer) -> Result<Vec<String>, String> {
         let input = self.pending.remove(request_id).ok_or("that request isn't waiting for an answer (answered already?)")?;
-        Ok(super::wire::answer(request_id, a, &input))
+        Ok(vec![super::wire::answer(request_id, a, &input)])
     }
 
-    fn interrupt(&mut self) -> String {
+    fn interrupt(&mut self) -> Vec<String> {
         let id = self.request_id();
-        super::wire::interrupt(&id)
+        vec![super::wire::interrupt(&id)]
     }
 
     fn in_turn(&self) -> bool {

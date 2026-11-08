@@ -383,7 +383,7 @@ pub(crate) struct StartOpts {
     pub mcp: Option<Vec<String>>,
     /// Images with the first message (pasted or dropped into its box): saved, their paths typed after it.
     pub images: Vec<model::Upload>,
-    /// Hosted by Cue, with no terminal (Claude Code or Pi on this Mac, Settings → Cue-hosted sessions on).
+    /// Hosted by Cue, with no terminal (Claude Code, Pi or Codex on this Mac, Settings → Cue-hosted sessions on).
     pub hosted: bool,
 }
 
@@ -399,7 +399,7 @@ pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: 
     }
     if opts.hosted {
         let Some(hosted) = crate::hosted::Agent::named(agent).filter(|_| crate::config::hosted_on()) else {
-            return Err("only Claude Code and Pi can be hosted in Cue, with Settings → Cue-hosted sessions on".into());
+            return Err("only Claude Code, Pi and Codex can be hosted in Cue, with Settings → Cue-hosted sessions on".into());
         };
         return super::start_hosted(h, hosted, &dir, message, name, opts, &saved);
     }

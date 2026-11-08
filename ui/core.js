@@ -619,6 +619,7 @@ function summary(it) {
     case "bash": return i.command || "bash";
     case "edit": case "multiedit": case "write": case "notebookedit": return `${it.tool_name} ${shortPath(i.file_path || i.path || "")}`;
     case "webfetch": return `Fetch ${i.url || ""}`;
+    case "apply_patch": return `Edit ${shortPath(i.file_path || "")}${(i.files || []).length > 1 ? ` and ${i.files.length - 1} more` : ""}`;
     case "exitplanmode": return typeof i.plan === "string" ? `Plan: ${plain(firstLine(i.plan))}` : "A plan to approve";
     default: return it.tool_name || "Request";
   }
@@ -627,7 +628,7 @@ function verb(it) {
   if (it.kind === "question") return "asks";
   if (it.kind === "input") return it.tool_name ? `has a form for you from ${it.tool_name}` : "has a form for you";
   if (inTerminal(it)) return "asks in its terminal";
-  return { bash: "wants to run", edit: "wants to edit", multiedit: "wants to edit", write: "wants to write", webfetch: "wants to fetch", exitplanmode: "has a plan for you" }[tool(it)] || `wants ${it.tool_name}`;
+  return { bash: "wants to run", edit: "wants to edit", multiedit: "wants to edit", write: "wants to write", webfetch: "wants to fetch", apply_patch: "wants to edit", exitplanmode: "has a plan for you" }[tool(it)] || `wants ${it.tool_name}`;
 }
 function describeSuggestion(s) {
   const where = { session: "this session", localSettings: "this project, just you", projectSettings: "this project", userSettings: "everywhere" }[s.destination] || s.destination || "";

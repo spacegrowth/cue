@@ -24,10 +24,13 @@ const END_GRACE: Duration = Duration::from_secs(2);
 /// How long its output may stay open after the agent itself exited (its last lines still on their way) before
 /// whatever of its group holds it is ended.
 const DRAIN_GRACE: Duration = Duration::from_secs(1);
+/// How long an agent that opens its conversation itself (Codex) gets to say it's open before starting fails.
+const OPEN_GRACE: Duration = Duration::from_secs(30);
 /// How much of its error output is kept, for saying why it exited.
 const LAST_WORDS: usize = 20;
 
-type Sink = Arc<dyn Fn(HostedEvent) + Send + Sync>;
+/// Where its events go, each with the conversation's id (known only once it's open, for an agent that picks it).
+type Sink = Arc<dyn Fn(&str, HostedEvent) + Send + Sync>;
 
 pub struct Session {
     shared: Arc<Shared>,
@@ -37,6 +40,8 @@ struct Shared {
     pgid: i32,
     /// Which agent, for saying so.
     name: &'static str,
+    /// The id it was started under: the conversation's, unless the agent picks its own (its protocol's).
+    started_as: String,
     /// None once the session is closed.
     input: Mutex<Option<ChildStdin>>,
     /// What its lines mean. Never held while writing to it.
@@ -50,7 +55,7 @@ struct Shared {
 
 impl Session {
     /// Start the agent for `spec`; everything it does goes to `sink`, ending with `Exited`.
-    pub fn start(spec: &Spec, sink: impl Fn(HostedEvent) + Send + Sync + 'static) -> Result<Session, String> {
+    pub fn start(spec: &Spec, sink: impl Fn(&str, HostedEvent) + Send + Sync + 'static) -> Result<Session, String> {
         let name = spec.agent.name();
         let mut child = launch::command(spec)?.spawn().map_err(|e| format!("couldn't start {name}: {e}"))?;
         let (Some(input), Some(output), Some(errors)) = (child.stdin.take(), child.stdout.take(), child.stderr.take()) else {
@@ -59,8 +64,9 @@ impl Session {
         let shared = Arc::new(Shared {
             pgid: child.id() as i32,
             name,
+            started_as: spec.start.session_id().to_string(),
             input: Mutex::new(Some(input)),
-            protocol: Mutex::new(spec.agent.protocol()),
+            protocol: Mutex::new(spec.agent.protocol(spec)),
             last_words: Mutex::new(VecDeque::new()),
             ended: AtomicBool::new(false),
             gone: AtomicBool::new(false),
@@ -74,7 +80,32 @@ impl Session {
         for line in session.shared.speak(|p| p.opening()) {
             session.shared.write(&line)?;
         }
+        session.wait_open(name)?;
         Ok(session)
+    }
+
+    /// Until its conversation is open, for an agent that opens it itself: so its id is known when `start` returns.
+    fn wait_open(&self, name: &str) -> Result<(), String> {
+        let end = Instant::now() + OPEN_GRACE;
+        while !self.shared.speak(|p| p.ready()) {
+            if self.gone() || Instant::now() >= end {
+                let words = crate::locking::lock(&self.shared.last_words, "hosted session: last words").iter().cloned().collect::<Vec<_>>().join("\n");
+                self.close();
+                return Err(format!("{name} didn't open the conversation{}", if words.is_empty() { String::new() } else { format!(": {words}") }));
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        Ok(())
+    }
+
+    /// The conversation's id: the one it was started under, or the one the agent picked.
+    pub fn session_id(&self) -> String {
+        self.shared.session_id()
+    }
+
+    /// Where the agent keeps the conversation, when it says so.
+    pub fn transcript(&self) -> Option<String> {
+        self.shared.speak(|p| p.transcript())
     }
 
     /// Its process (the leader of its process group): what the processes it starts descend from.
@@ -84,20 +115,20 @@ impl Session {
 
     /// Your message. Taken at once when the agent is idle, at its next step when it's busy (`Taken` says when).
     pub fn send(&self, text: &str) -> Result<(), String> {
-        let line = self.shared.speak(|p| p.message(text));
-        self.shared.write(&line)
+        let lines = self.shared.speak(|p| p.message(text));
+        self.shared.write_lines(&lines)
     }
 
     /// Your answer to the request `request_id` (an `Ask`'s).
     pub fn answer(&self, request_id: &str, a: &Answer) -> Result<(), String> {
-        let line = self.shared.speak(|p| p.answer(request_id, a))?;
-        self.shared.write(&line)
+        let lines = self.shared.speak(|p| p.answer(request_id, a))?;
+        self.shared.write_lines(&lines)
     }
 
     /// Stop what it's doing: the running tool stops and the turn ends.
     pub fn interrupt(&self) -> Result<(), String> {
-        let line = self.shared.speak(|p| p.interrupt());
-        self.shared.write(&line)
+        let lines = self.shared.speak(|p| p.interrupt());
+        self.shared.write_lines(&lines)
     }
 
     /// Whether its process has exited.
@@ -134,8 +165,9 @@ impl Shared {
             for r in replies {
                 let _ = self.write(&r);
             }
+            let id = self.session_id();
             for e in events {
-                sink(e);
+                sink(&id, e);
             }
         }
         self.ended.store(true, Ordering::SeqCst);
@@ -147,12 +179,20 @@ impl Shared {
             p.in_turn()
         });
         let last_words = crate::locking::lock(&self.last_words, "hosted session: last words").iter().cloned().collect::<Vec<_>>().join("\n");
-        sink(HostedEvent::Exited { code, during_turn, last_words });
+        sink(&self.session_id(), HostedEvent::Exited { code, during_turn, last_words });
+    }
+
+    fn session_id(&self) -> String {
+        self.speak(|p| p.session_id()).unwrap_or_else(|| self.started_as.clone())
     }
 
     /// `f` with its protocol, let go before anything is written.
     fn speak<R>(&self, f: impl FnOnce(&mut dyn Protocol) -> R) -> R {
         f(crate::locking::lock(&self.protocol, "hosted session: protocol").as_mut())
+    }
+
+    fn write_lines(&self, lines: &[String]) -> Result<(), String> {
+        lines.iter().try_for_each(|l| self.write(l))
     }
 
     fn write(&self, line: &str) -> Result<(), String> {

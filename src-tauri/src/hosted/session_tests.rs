@@ -16,7 +16,7 @@ fn start(fake: &FakeClaude) -> (Session, Receiver<HostedEvent>) {
 fn start_as(fake: &FakeClaude, start: Start) -> (Session, Receiver<HostedEvent>) {
     let spec = Spec { agent: Agent::Claude, cwd: std::env::temp_dir(), start, permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()) };
     let (tx, rx) = channel();
-    let s = Session::start(&spec, move |e| {
+    let s = Session::start(&spec, move |_, e| {
         let _ = tx.send(e);
     })
     .unwrap();

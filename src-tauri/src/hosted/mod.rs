@@ -13,6 +13,7 @@
 //! None of this knows about the hub, the store or the window: a session reports through the function it was
 //! started with, and that's all whoever starts it needs.
 
+mod codex;
 mod launch;
 mod pi;
 mod protocol;
@@ -21,6 +22,8 @@ mod session;
 mod translate;
 mod wire;
 
+#[cfg(test)]
+mod codex_tests;
 #[cfg(test)]
 mod compat_tests;
 #[cfg(test)]
@@ -31,7 +34,7 @@ mod session_tests;
 mod translate_tests;
 
 pub use launch::{Agent, Program, Spec, Start};
-pub use running::{end_leftovers, Hosted, Report, Running};
+pub use running::{end_leftovers, Hosted, Report, Running, Started};
 pub use session::Session;
 
 use serde_json::Value;

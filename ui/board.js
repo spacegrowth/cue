@@ -278,6 +278,8 @@ function requestBody(it) {
     return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || ""))}</div>` + edits.map((e) => `<div class="diff"><pre class="del">− ${esc(e.old_string)}</pre><pre>+ ${esc(e.new_string)}</pre></div>`).join("");
   }
   if (t === "write") return `<div class="dim" style="font-size:12px">${esc(shortPath(i.file_path || i.path || ""))}</div><pre class="slab">${esc(i.content)}</pre>`;
+  // Codex's file change: the files, and the change to each as Codex wrote it.
+  if (t === "apply_patch") return `<div class="dim" style="font-size:12px">${esc((i.files || [i.file_path]).map(shortPath).join(", "))}</div><pre class="slab">${esc(i.patch || "")}</pre>`;
   // A plan to approve: the plan as written, not its JSON.
   if (t === "exitplanmode" && typeof i.plan === "string") return `<div class="plan-body">${md(i.plan)}</div>`;
   return `<pre class="slab">${esc(JSON.stringify(i, null, 2))}</pre>`;

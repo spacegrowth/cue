@@ -13,11 +13,12 @@ use std::sync::Arc;
 use tauri::State;
 
 /// + New session, hosted: `agent` started by Cue in `dir` with no terminal, its first message (and images)
-/// handed to it once it's up. Cue picks the id, so the session is in Active at once.
+/// handed to it once it's up. Its id is known when it has started (Cue's pick, or Codex's), so the session is in
+/// Active at once.
 pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str, name: &str, opts: &StartOpts, saved: &[crate::uploads::Saved]) -> Result<serde_json::Value, String> {
     let start = Start::fresh();
     let sid = start.session_id().to_string();
-    let mut args = flag_words(&opts.extra)?;
+    let (mut args, model) = model_apart(agent, flag_words(&opts.extra)?);
     // An MCP selection is Claude Code's (Pi has no MCP servers of its own).
     if let Some(names) = opts.mcp.as_ref().filter(|_| agent == Agent::Claude) {
         let path = crate::logs::mcp::selection_path(&sid);
@@ -27,7 +28,8 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
     // Claude Code's conversation is a file Cue can name now; Pi's is named by Pi when it starts.
     let transcript_path = if agent == Agent::Claude { live::claude_transcript_path(dir, &sid).to_string_lossy().into_owned() } else { String::new() };
     let origin = Origin { session_id: sid.clone(), harness: agent.program().into(), cwd: dir.to_string(), transcript_path, hosted: true, ..Default::default() };
-    let origin = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args })?;
+    let origin = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args, model })?;
+    let sid = origin.session_id.clone();
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
     h.started(origin, "", &[], false);
     h.name_new(&sid, name);
@@ -35,6 +37,26 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str,
         h.send_to_hosted(&sid, message, saved, false)?;
     }
     Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {}, hosted in Cue", agent.name()) }))
+}
+
+/// Codex takes its model in what Cue sends it, not as an argument: `--model x` / `-m x` taken out of + New's flags
+/// for it (the rest, its own settings as `-c key=value`, go on its command line). Other agents keep theirs.
+fn model_apart(agent: Agent, words: Vec<String>) -> (Vec<String>, Option<String>) {
+    if agent != Agent::Codex {
+        return (words, None);
+    }
+    let (mut rest, mut model) = (vec![], None);
+    let mut it = words.into_iter();
+    while let Some(w) = it.next() {
+        match w.as_str() {
+            "--model" | "-m" => model = it.next(),
+            _ => match w.strip_prefix("--model=") {
+                Some(m) => model = Some(m.to_string()),
+                None => rest.push(w),
+            },
+        }
+    }
+    (rest, model)
 }
 
 /// + New's extra flags, as the arguments they are. Taken word by word: a hosted session's Claude gets them

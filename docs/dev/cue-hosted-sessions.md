@@ -262,7 +262,7 @@ only what the extension can't tell: the process is up, a message was taken, it e
 (`ctx.ui.select` for the terminal half of its race) arrive as `extension_ui_request` and are left to Cue's card:
 answered `cancelled`, which the extension already treats as "no answer from the terminal".
 
-**H2. Codex, hosted.** `codex app-server` (JSON-RPC 2.0 over stdio, the channel Codex's own apps use; marked
+**H2. Codex, hosted** (built 2026-11-07: `hosted/codex.rs`; a session started hosted is known by Codex's thread id, its rollout file its transcript; + New's Ask is `untrusted`, so Codex asks whatever its config defaults to; fixtures recorded from Codex 0.166; live-tested start, command and file asks, mid-turn message, Cue restart and resume, Stop). `codex app-server` (JSON-RPC 2.0 over stdio, the channel Codex's own apps use; marked
 experimental, so the compat suite pins a version). `thread/start` (folder, model, approval policy and sandbox
 from + New's permission choice) or `thread/resume`; `turn/start` for a message, `turn/steer` mid-turn,
 `turn/interrupt` to stop. Its requests become cards: `item/commandExecution/requestApproval` (a command),

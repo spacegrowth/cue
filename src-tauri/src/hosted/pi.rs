@@ -127,21 +127,21 @@ impl Protocol for Pi {
         (events, vec![])
     }
 
-    fn message(&mut self, text: &str) -> String {
+    fn message(&mut self, text: &str) -> Vec<String> {
         let id = self.request_id();
         self.sent.insert(id.clone(), text.to_string());
-        json!({ "id": id, "type": "prompt", "message": text, "streamingBehavior": "steer" }).to_string()
+        vec![json!({ "id": id, "type": "prompt", "message": text, "streamingBehavior": "steer" }).to_string()]
     }
 
-    fn answer(&mut self, request_id: &str, a: &Answer) -> Result<String, String> {
+    fn answer(&mut self, request_id: &str, a: &Answer) -> Result<Vec<String>, String> {
         let (method, options) = self.dialogs.remove(request_id).ok_or("that request isn't waiting for an answer (answered already?)")?;
-        Ok(dialog_answer(request_id, &method, &options, a).to_string())
+        Ok(vec![dialog_answer(request_id, &method, &options, a).to_string()])
     }
 
-    fn interrupt(&mut self) -> String {
+    fn interrupt(&mut self) -> Vec<String> {
         self.stopped = self.in_turn;
         let id = self.request_id();
-        json!({ "id": id, "type": "abort" }).to_string()
+        vec![json!({ "id": id, "type": "abort" }).to_string()]
     }
 
     fn in_turn(&self) -> bool {

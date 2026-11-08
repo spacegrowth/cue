@@ -40,7 +40,7 @@ impl Real {
         a.extend(args.iter().map(|s| s.to_string()));
         let spec = Spec { agent: Agent::Claude, cwd: dir.clone(), start, permissions: String::new(), model: Some(MODEL.into()), args: a, program: Program::At(claude_with_real_home(&dir)) };
         let (tx, rx) = channel();
-        let session = Session::start(&spec, move |e| {
+        let session = Session::start(&spec, move |_, e| {
             let _ = tx.send(e);
         })
         .unwrap();

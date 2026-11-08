@@ -2,7 +2,7 @@
 //! session (started or resumed with what, sent, answered, stopped, closed) and fails a start when a test says
 //! so. What a session reports, a test hands the hub itself (`World::hosted_says`).
 
-use crate::hosted::{Agent, Answer, Hosted, Report, Spec, Start};
+use crate::hosted::{Agent, Answer, Hosted, Report, Spec, Start, Started};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
@@ -75,7 +75,8 @@ impl FakeHosted {
 }
 
 impl Hosted for FakeHosted {
-    fn start(&self, spec: &Spec, _report: Report) -> Result<i32, String> {
+    /// Codex picks a new conversation's id: the stand-in's is `codex-<n>`, its rollout file named by it.
+    fn start(&self, spec: &Spec, _report: Report) -> Result<Started, String> {
         if let Some(why) = crate::locking::lock(&self.refusal, "fake hosted refusal").clone() {
             return Err(why);
         }
@@ -85,8 +86,12 @@ impl Hosted for FakeHosted {
             l.push(launch);
             l.len() as i32
         };
-        crate::locking::lock(&self.running, "fake hosted running").insert(spec.start.session_id().to_string());
-        Ok(FIRST_PID + n)
+        let (session_id, transcript) = match (&spec.agent, &spec.start) {
+            (Agent::Codex, Start::New(_)) => (format!("codex-{n}"), Some(format!("/codex/rollout-codex-{n}.jsonl"))),
+            _ => (spec.start.session_id().to_string(), None),
+        };
+        crate::locking::lock(&self.running, "fake hosted running").insert(session_id.clone());
+        Ok(Started { pid: FIRST_PID + n, session_id, transcript })
     }
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {

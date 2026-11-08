@@ -118,14 +118,14 @@ function whereRow() {
   if (newMachine || (!tmux && !hostedOffered())) return "";
   const opts = [...(hostedOffered() ? [["hosted", "Hosted"]] : []), ...(tmux ? [[true, "Cue"]] : []), [false, termName()]];
   const cur = newHosted() ? "hosted" : newTmux() && tmux;
-  const hint = cur === "hosted" ? `no terminal: Cue talks to ${newAgent === "pi" ? "Pi" : "Claude Code"} directly, and every ask is a card` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
+  const hint = cur === "hosted" ? `no terminal: Cue talks to ${agentName(newAgent)} directly, and every ask is a card` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
   return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v === false ? TERM_ICON : CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
 }
 const OTHER = "other…";   // the drop-down's "Other…" entry's value: no model id has an ellipsis
 const RELOAD_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>`;
 let newWhere = { true: true, false: false, hosted: "hosted" }[remembered("newWhere")] ?? null;   // tmux or not, or hosted (null: Settings' default)
-/** + New can start a Claude Code or Pi session hosted by Cue, with no terminal: Settings → Cue-hosted sessions on, on this Mac. */
-const hostedOffered = () => !!state.settings?.hosted?.on && (newAgent === "claude" || newAgent === "pi") && !newMachine;
+/** + New can start a Claude Code, Pi or Codex session hosted by Cue, with no terminal: Settings → Cue-hosted sessions on, on this Mac. */
+const hostedOffered = () => !!state.settings?.hosted?.on && ["claude", "pi", "codex"].includes(newAgent) && !newMachine;
 const newHosted = () => hostedOffered() && newWhere === "hosted";
 const newTmux = () => (newWhere === "hosted" || newWhere == null ? !!state.settings?.sessions?.tmux : newWhere);
 const termName = () => state.settings?.sessions?.terminal || "Terminal";

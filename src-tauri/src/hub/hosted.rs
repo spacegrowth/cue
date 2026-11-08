@@ -13,10 +13,12 @@ use std::sync::Weak;
 /// What a hosted session's Claude starts with beyond its conversation.
 #[derive(Clone, Debug, Default)]
 pub struct HostedStart {
-    /// As + New session's Permissions names it; empty: Claude's own default.
+    /// As + New session's Permissions names it; empty: the agent's own default.
     pub permissions: String,
     /// More arguments (an MCP selection, a model), each whole.
     pub args: Vec<String>,
+    /// For an agent that takes its model in what Cue sends it rather than as an argument (Codex). None: its own.
+    pub model: Option<String>,
 }
 
 impl Hub {
@@ -26,10 +28,11 @@ impl Hub {
 
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
-        let spec = Spec { agent: Agent::named(&origin.harness).ok_or("Cue can only host Claude Code and Pi")?, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: None, args: with.args.clone(), program: Program::Agent };
+        let spec = Spec { agent: Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args: with.args.clone(), program: Program::Agent };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
-        let pid = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
-        Ok(Origin { agent_pid: Some(pid), hosted: true, ..origin.clone() })
+        let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
+        let transcript_path = started.transcript.unwrap_or_else(|| origin.transcript_path.clone());
+        Ok(Origin { agent_pid: Some(started.pid), hosted: true, session_id: started.session_id, transcript_path, ..origin.clone() })
     }
 
     /// `origin`'s conversation resumed hosted: on the model its log says it last used, with its MCP selection.
@@ -37,9 +40,10 @@ impl Hub {
     /// it takes) starts new under the same id: Claude can't resume what isn't there ("No conversation found").
     pub(crate) fn resume_hosted_as(&self, origin: &Origin) -> Result<Origin, String> {
         let sid = origin.session_id.as_str();
-        // Pi picks its session up by id, or starts it under that id if it was never written: nothing to choose.
-        if origin.harness == "pi" {
-            return self.run_hosted(origin, Start::Resume(sid.to_string()), &HostedStart { permissions: String::new(), args: vec![] });
+        // Pi and Codex pick their conversation up by its id (Pi starts it under that id if it was never written),
+        // each on the model it last used: nothing to choose.
+        if origin.harness != "claude" {
+            return self.run_hosted(origin, Start::Resume(sid.to_string()), &HostedStart::default());
         }
         let log = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, sid) } else { origin.transcript_path.clone().into() };
         let start = if log.is_file() { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
@@ -48,7 +52,7 @@ impl Hub {
         // SHORTCUT: resumed in Claude's own default permission mode, not the one + New picked (it isn't kept), so a
         // session started on Auto asks more after a resume, never less. Keep the mode with the session (its record
         // or Origin) and pass it here when the trial says it matters.
-        self.run_hosted(origin, start, &HostedStart { permissions: String::new(), args })
+        self.run_hosted(origin, start, &HostedStart { args, ..HostedStart::default() })
     }
 
     /// Your message to a hosted session. Noted in its chat as on its way before it goes (Claude can take it within
@@ -103,9 +107,9 @@ impl Hub {
     /// cost before this process (a resumed one counts its cost from zero).
     fn hosted_report(&self, origin: Origin, base: f64) -> Report {
         let hub: Option<Weak<Hub>> = self.shared().map(|h| Arc::downgrade(&h));
-        Box::new(move |e| {
+        Box::new(move |id, e| {
             if let Some(h) = hub.as_ref().and_then(Weak::upgrade) {
-                h.on_hosted(&origin, base, e);
+                h.on_hosted(&Origin { session_id: id.to_string(), ..origin.clone() }, base, e);
             }
         })
     }
