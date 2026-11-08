@@ -25,12 +25,14 @@ pub fn start_line(agent: &str, cwd: &str, session_id: &str, message: &str, name:
 }
 
 /// How much a new session may do without asking you (+ New session → Permissions), per agent, as its
-/// flags. "ask": as it normally does. Pi asks through Cue's own gate (Settings → Pi), so "skip" turns
+/// flags. "ask": asks before anything it isn't allowed, whatever your own default mode is (Claude's
+/// `defaultMode` in your settings could be "auto"); empty: as it normally does (a resume). Pi asks through Cue's own gate (Settings → Pi), so "skip" turns
 /// that off for this session alone.
 /// (A session Cue hosts takes the same flags: hosted::launch.)
 pub fn permission_flags(agent: &str, perm: &str) -> Result<(Option<(&'static str, &'static str)>, &'static [&'static str]), String> {
     // (a variable set for the program, flags after it)
     Ok(match (agent, perm) {
+        ("claude", "ask") => (None, &["--permission-mode", "default"]),
         (_, "ask" | "") => (None, &[]),
         ("claude", "auto") => (None, &["--permission-mode", "auto"]),
         ("claude", "edits") => (None, &["--permission-mode", "acceptEdits"]),
@@ -211,8 +213,8 @@ mod tests {
 
     #[test]
     fn a_start_line_quotes_everything_it_types() {
-        assert_eq!(start_line("claude", "/x/my repo", "S1", "fix it's bug", "bugfix").unwrap(), "cd '/x/my repo' && claude --session-id 'S1' -n 'bugfix' 'fix it'\\''s bug'");
-        assert_eq!(start_line("claude", "/x", "", "", "").unwrap(), "cd '/x' && claude");
+        assert_eq!(start_line("claude", "/x/my repo", "S1", "fix it's bug", "bugfix").unwrap(), "cd '/x/my repo' && claude --permission-mode default --session-id 'S1' -n 'bugfix' 'fix it'\\''s bug'");
+        assert_eq!(start_line("claude", "/x", "", "", "").unwrap(), "cd '/x' && claude --permission-mode default");
         assert_eq!(start_line("pi", "/x", "P1", "hello $(rm -rf ~)", "ignored").unwrap(), "cd '/x' && pi --session-id 'P1' 'hello $(rm -rf ~)'");
         assert_eq!(start_line("codex", "/x", "C1", "go", "").unwrap(), "cd '/x' && codex 'go'");
         assert!(start_line("bash", "/x", "", "", "").is_err());
@@ -229,7 +231,7 @@ mod tests {
         let mcp = vec!["--mcp-config".to_string(), "/a b/mcp/3f2a-91.json".to_string(), "--strict-mcp-config".to_string()];
         assert_eq!(resume_line_for_with("claude", "/x", "3f2a-91", &mcp).unwrap(), "cd '/x' && claude --resume '3f2a-91' '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config'");
         assert_eq!(resume_line_for_with("codex", "/x", "a91f", &mcp).unwrap(), "cd '/x' && codex resume 'a91f'");
-        assert_eq!(start_line_args("claude", "/x", "S1", "hi", "", "ask", "--verbose", &mcp).unwrap(), "cd '/x' && claude '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config' '--verbose' --session-id 'S1' 'hi'");
+        assert_eq!(start_line_args("claude", "/x", "S1", "hi", "", "ask", "--verbose", &mcp).unwrap(), "cd '/x' && claude --permission-mode default '--mcp-config' '/a b/mcp/3f2a-91.json' '--strict-mcp-config' '--verbose' --session-id 'S1' 'hi'");
     }
 
     #[test]
@@ -242,6 +244,9 @@ mod tests {
         // Pi asks through Cue's gate: skipping turns it off for this session only.
         assert_eq!(l("pi", "skip", "").unwrap(), "cd '/x' && CUE_PI_GATE=off pi");
         assert_eq!(l("pi", "ask", "").unwrap(), "cd '/x' && pi");
+        // Ask is ask, whatever your own default mode is (it may be "auto"); no mode given (a resume) is Claude's own.
+        assert_eq!(l("claude", "ask", "").unwrap(), "cd '/x' && claude --permission-mode default");
+        assert_eq!(l("claude", "", "").unwrap(), "cd '/x' && claude");
         assert!(l("pi", "plan", "").is_err(), "a mode the agent doesn't have");
         // Extra flags are words, quoted: never more shell.
         assert_eq!(l("claude", "", "; rm -rf ~").unwrap(), "cd '/x' && claude ';' 'rm' '-rf' '~'");
