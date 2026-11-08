@@ -219,11 +219,13 @@
     }
     fit();
   }
-  /** The newest reply in sight from its start (a long one reads from the top), else the end of the chat. */
+  /** The end of the chat: what it's doing now, under its last reply. Again on the next frame, once the window
+   *  has its full height and the reply its final layout (scrolled before that, it stopped short of the end). */
   function toLatest() {
-    const t = root.querySelector("[data-thread]");
-    const last = [...t.querySelectorAll(".m-agent")].pop();
-    t.scrollTop = last && last.offsetHeight > t.clientHeight ? last.offsetTop - t.offsetTop : t.scrollHeight;
+    const end = () => { const t = root.querySelector("[data-thread]"); if (t) t.scrollTop = t.scrollHeight; };
+    end();
+    requestAnimationFrame(() => { end(); requestAnimationFrame(end); });
+    setTimeout(end, 250);   // opened from the tab: the window grows to the panel's height a moment later
   }
   const go = (shape) => { if (m.shape !== shape) { m.shape = shape; paint(); } };
 
