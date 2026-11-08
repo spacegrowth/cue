@@ -350,7 +350,6 @@ function starEntry(s, open) {
 // In conversation: a card that came back within a few minutes of your last message to that session.
 // It leaves the group (back to its place, newest first) once it's sat that long unanswered, except
 // while it's open in Active, so it never moves under you.
-const TALK_MS = 5 * 60000;
 /** How soon after your message this card came back (ms), or null: not a conversation. */
 function talkGap(it) {
   if (it.back_ms) return null;   // you sent it to the back
@@ -368,9 +367,6 @@ const talking = (it) => talkGap(it) !== null && !talkStale(it);
 // as it waits. A card you moved to the bottom (↓) stays below the rest, in the order you moved them.
 const newestFirst = (a, b) => (!!a.back_ms - !!b.back_ms) || (a.back_ms ? a.back_ms - b.back_ms : b.created_ms - a.created_ms);
 const needsYou = () => { const all = [...groups().decide, ...groups().yours]; return [...all.filter(talking).sort((a, b) => a.created_ms - b.created_ms), ...all.filter((i) => !talking(i)).sort(newestFirst)]; };
-/** Working on what you said in the last few minutes: it stays in the conversation group while it works
- *  (a card like the others, saying "working"; its card stays under Working too); once it's worked longer, it's a job, and only in Working. */
-const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
 /** "3 agents": a session's agents, any kind (agents.js agentPill), beside its state, on any of its cards; a relay
  *  agent that needs you names itself instead. A click opens the session on its Agents tab (app/clicks_chat.js). A lead's crew
  *  line (cardCrew) has its count, so its card's pill only names one that needs you. `tree`: the card holds its tree. */

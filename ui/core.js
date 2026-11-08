@@ -36,6 +36,10 @@ const drafts = {};          // per item: { text, choices: { [question]: label | 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const now = () => Date.now() + clockSkew;
+/** In conversation: what you said in the last few minutes (Waiting's top group in Cue, the mini window's blinking tabs). */
+const TALK_MS = 5 * 60000;
+/** At work on what you said in the last few minutes: in conversation with you while it works. */
+const workingOnYours = (s) => { const you = (s.thread || []).filter((e) => e.role === "you").pop(); return !!you && now() - you.at_ms <= TALK_MS; };
 function ago(ms) {
   const s = Math.max(0, Math.round((now() - ms) / 1000));
   if (s < 60) return `${s}s`;

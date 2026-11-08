@@ -18,6 +18,10 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-tuck.work .m-live, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
 @media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
+/* In conversation with you (the last few minutes): its tab's dot blinks, plainly, until it drops into newest first. */
+.m-tab.talk .m-dot { animation: m-blink 1s steps(1, end) infinite; }
+@keyframes m-blink { 50% { opacity: .15; } }
+@media (prefers-reduced-motion: reduce) { .m-tab.talk .m-dot { animation: none; box-shadow: 0 0 0 2px var(--sel); } }
 .m-queued { opacity: .85; box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
 .m-queued .m-quiet { margin-top: 3px; font-size: 11px; }
 .m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }

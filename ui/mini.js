@@ -11,7 +11,6 @@
 {
   const NOTCH = location.hash === "#notch";
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
-  const TALK = 5 * 60000;             // in conversation: back within 5 minutes of your message (board.js TALK_MS)
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
   const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
   const TAB_H = 76;                   // the rail's tab, tucked away
@@ -27,9 +26,9 @@
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
   function talking(it) {
-    if (it.back_ms || now() - it.created_ms > TALK) return false;
+    if (it.back_ms || now() - it.created_ms > TALK_MS) return false;
     const you = (sessionOf(it.session_id)?.thread || []).filter((e) => e.role === "you" && e.at_ms <= it.created_ms).pop();
-    return !!you && it.created_ms - you.at_ms <= TALK;
+    return !!you && it.created_ms - you.at_ms <= TALK_MS;
   }
   const newest = (a, b) => (!!a.back_ms - !!b.back_ms) || (a.back_ms ? a.back_ms - b.back_ms : b.created_ms - a.created_ms);
   /** Conversations first (in the order they came back), then newest first; parked sessions' finished turns stay in Need to decide. */
@@ -46,6 +45,18 @@
   function working() {
     const waiting = new Set(state.items.map((i) => i.session_id));
     return state.sessions.filter((s) => s.state === "working" && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
+  }
+  /** The tabs, five at most: the sessions in conversation with you (one back within a few minutes of your message,
+   *  or at work on what you said in the last few minutes), oldest first, then everything else newest first: what
+   *  waits on you and what's at work, together. Each { sid, project, cls, talk }. */
+  function tabList() {
+    const items = needs(Infinity).shown.map((it) => ({ sid: it.session_id, project: it.project, cls: dotCls(it), talk: talking(it), at: it.created_ms, back: it.back_ms || 0 }));
+    const works = working().map((s) => ({ sid: s.session_id, project: s.project, cls: "work", talk: workingOnYours(s), at: (s.thread || []).filter((e) => e.role === "you").pop()?.at_ms || s.since_ms, back: 0 }));
+    const all = [...items, ...works];
+    const talk = all.filter((t) => t.talk).sort((a, b) => a.at - b.at);
+    // Sent to the back (↓) stays below the rest, as in Waiting.
+    const rest = all.filter((t) => !t.talk).sort((a, b) => (!!a.back - !!b.back) || (a.back ? a.back - b.back : b.at - a.at));
+    return [...talk, ...rest].slice(0, MAX);
   }
   const doing = (s) => s.doing || (s.prompt ? `› ${s.prompt}` : "working");
   const asks = (it) => it.kind !== "waiting";
@@ -72,13 +83,10 @@
     const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
     return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
-  /** Five tabs across the chat's top at most: what needs you (Waiting's order: in conversation, then newest
-   *  first), then the ones at work if there's room. A click switches; each keeps what you typed in it. */
+  /** The tabs across the chat's top (tabList's order); a session in conversation blinks. A click switches; each
+   *  keeps what you typed in it. */
   function tabsHtml() {
-    const tab = (sid, project, cls) => `<button class="m-tab ${sid === m.open ? "on" : ""}" data-open="${esc(sid)}"><i class="m-dot ${cls}"></i>${esc(nameOf(sid, project))}</button>`;
-    const waits = needs(MAX).shown.map((it) => tab(it.session_id, it.project, dotCls(it)));
-    const works = working().slice(0, Math.max(0, MAX - waits.length)).map((s) => tab(s.session_id, s.project, "work"));
-    return [...waits, ...works].join("");
+    return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-open="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
   }
   function islandHtml() {
     const { shown } = needs();
@@ -219,7 +227,7 @@
 
   // ---------- what you do ----------
   /** The session the rail opens on: one that asks, else the first in Waiting's order, else the newest at work. */
-  const first = () => { const { shown } = needs(Infinity); return (shown.find(asks) || shown[0])?.session_id || working()[0]?.session_id; };
+  const first = () => needs(Infinity).shown.find(asks)?.session_id || tabList()[0]?.sid;
   /** Open a session's chat with the cursor in its box, ready to type (this window comes forward alone, not Cue's
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
@@ -420,8 +428,9 @@
     await loadDrafts();
     take(await invoke("get_state"));
     await T.event.listen("state", (e) => take(e.payload));
-    // Ages move on with no new state: once a minute is enough for "4m".
-    setInterval(() => { if (m.shape !== "chat") paint(); }, 60000);
+    // Ages move on with no new state: once a minute is enough for "4m". In a chat, only its tabs: one stops
+    // blinking when its few minutes in conversation are up (the box you're typing in isn't touched).
+    setInterval(() => { if (m.shape !== "chat") paint(); else put(root.querySelector("[data-tabs]"), tabsHtml()); }, 60000);
     // Cue's window came forward or went back, maybe on another display: placed again, on that one.
     await T.event.listen("mini-place", () => { m.sized = ""; fit(); });
     await T.event.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerIn(); });
