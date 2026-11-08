@@ -343,6 +343,7 @@ fn turn_parts(entries: &[Value]) -> (Vec<Value>, bool) {
                 }
             }
             "attachment" if crate::logs::transcript::yours_mid_turn(e) => hooked = false,
+            "assistant" if crate::logs::transcript::placeholder_reply(e) => {}
             "assistant" => {
                 for t in assistant_texts(e).iter().map(|t| t.trim()).filter(|t| !t.is_empty()) {
                     parts.push(json!({ "text": t, "hooked": hooked }));

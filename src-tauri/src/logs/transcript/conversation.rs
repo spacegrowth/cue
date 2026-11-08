@@ -93,6 +93,7 @@ pub fn conversation_before(path: &str, before_ms: u64, limit: usize) -> Vec<Valu
             continue;
         }
         match e.get("type").and_then(Value::as_str) {
+            Some("assistant") if super::placeholder_reply(&e) => {}
             Some("assistant") => chat.reply = Some((at, text)),
             Some("user") => chat.said(&e, at, &text),
             _ => {}

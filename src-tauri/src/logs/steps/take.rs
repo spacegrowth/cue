@@ -28,6 +28,7 @@ impl Feed {
         match e.get("type").and_then(Value::as_str) {
             Some("attachment") => self.take_attachment(e, at),
             Some("user") => self.take_user(e, at),
+            Some("assistant") if crate::logs::transcript::placeholder_reply(e) => false,
             Some("assistant") => self.take_assistant(e, at),
             _ => false,
         }

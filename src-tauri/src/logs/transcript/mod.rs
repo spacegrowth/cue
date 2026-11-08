@@ -20,7 +20,7 @@ mod tests;
 pub use activity::activity_of;
 pub use conversation::{conversation_before, recent_context, status_asks};
 pub use queue::{is_message, prompt_since, queued_state, read_state, taken_mid_turn, Queued};
-pub use senders::{about, harness_text, is_stop_hook, peer_text, prompt_sender, queued_from_harness, teammate_messages, teammate_messages_after, yours_mid_turn, Sender};
+pub use senders::{about, harness_text, is_stop_hook, peer_text, placeholder_reply, prompt_sender, queued_from_harness, teammate_messages, teammate_messages_after, yours_mid_turn, Sender};
 pub use tools::{command_count, find_tool_use_id, has_result, waiting_tool_use};
 pub use turns::{compact_finished, interrupted_at, turn_ended_parts};
 

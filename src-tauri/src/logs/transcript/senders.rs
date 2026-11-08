@@ -79,6 +79,15 @@ pub fn is_stop_hook(e: &Value) -> bool {
         && content_blocks(e).iter().filter_map(|b| b.get("text").and_then(Value::as_str)).next().is_some_and(|t| t.trim_start().starts_with(STOP_HOOK_MARK))
 }
 
+/// A reply Claude Code wrote itself, not the model: "No response requested." filling in for a turn that was cut
+/// off (its process ended mid-step) when the conversation is resumed. Marked `<synthetic>`; nothing was said.
+/// Its error notices are synthetic too (a usage limit): those say something, so they stay.
+pub fn placeholder_reply(e: &Value) -> bool {
+    e.get("type").and_then(Value::as_str) == Some("assistant")
+        && e.pointer("/message/model").and_then(Value::as_str) == Some("<synthetic>")
+        && e.get("isApiErrorMessage").and_then(Value::as_bool) != Some(true)
+}
+
 /// Your message, taken into a running turn: Claude Code hands it over as a `queued_command` attachment, not
 /// a prompt entry. New work, so after a Stop hook's follow-up what the agent writes is an answer again.
 pub fn yours_mid_turn(e: &Value) -> bool {

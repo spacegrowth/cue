@@ -122,3 +122,27 @@ fn every_reader_of_a_hooked_turn_splits_it_the_same_way() {
     assert_eq!(card, want, "a turn read from the transcript");
     assert_eq!(stop, want, "Cue's Stop hook");
 }
+
+/// Resumed after a turn was cut off, Claude Code writes "No response requested." in the model's place: not a
+/// reply, so no reader shows it. Its usage-limit notice is synthetic too, and stays.
+#[test]
+fn claude_codes_placeholder_reply_is_not_a_reply() {
+    let filler = serde_json::json!({"type":"assistant","isApiErrorMessage":false,"message":{"model":"<synthetic>","content":[{"type":"text","text":"No response requested."}]}});
+    let limit = serde_json::json!({"type":"assistant","isApiErrorMessage":true,"error":"rate_limit","message":{"model":"<synthetic>","content":[{"type":"text","text":"You've hit your session limit"}]}});
+    let real = serde_json::json!({"type":"assistant","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}]}});
+    assert!(crate::logs::transcript::placeholder_reply(&filler));
+    assert!(!crate::logs::transcript::placeholder_reply(&limit));
+    assert!(!crate::logs::transcript::placeholder_reply(&real));
+    // The steps feed (the chat): a cut-off turn, resumed, then your next message and its real answer.
+    let log = [
+        r#"{"type":"summary","summary":"(the line a tail read skips)"}"#,
+        r#"{"type":"user","timestamp":"2026-11-08T03:42:30.000Z","message":{"role":"user","content":"build it"}}"#,
+        r#"{"type":"assistant","timestamp":"2026-11-08T03:42:38.643Z","isApiErrorMessage":false,"message":{"model":"<synthetic>","content":[{"type":"text","text":"No response requested."}]}}"#,
+        r#"{"type":"user","timestamp":"2026-11-08T03:42:38.768Z","message":{"role":"user","content":"why did the name change"}}"#,
+        r#"{"type":"assistant","timestamp":"2026-11-08T03:42:45.000Z","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"A new process each time."}]}}"#,
+    ]
+    .join("\n");
+    let f = feed_of(&format!("{log}\n"));
+    let said: Vec<String> = f.turns.iter().flat_map(|t| t.items.iter()).filter_map(|i| match i { Item::Say { text, .. } => Some(text.clone()), _ => None }).collect();
+    assert_eq!(said, vec!["A new process each time.".to_string()]);
+}
