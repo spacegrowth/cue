@@ -104,7 +104,7 @@
   }
 
   // ---------- the chat: the whole conversation, the ask on top, a box at the foot ----------
-  const msg = (e) => e.role === "you" ? `<div class="m-you">${esc(e.text)}</div>` : e.role === "agent" && e.text ? `<div class="m-agent msg">${md(e.text)}</div>` : "";
+  const msg = (e) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && e.text ? `<div class="m-agent msg">${md(e.text)}</div>` : "";
   function threadHtml(sid) {
     const it = itemFor(sid);
     const all = sessionOf(sid)?.thread || it?.thread || [];
@@ -117,14 +117,23 @@
   }
   /** Your messages still on their way, as the chat in Cue shows them: kept in Cue until the turn ends, or queued
    *  in the agent until it finishes its current step. */
+  /** Your message not taken yet, as the chat in Cue shows it: an outline with a ring going round it, and under
+   *  it what's happening to it (and its buttons). `cls`: pending (sent, not taken yet), queued or held. */
+  function youHtml(text, cls, note) {
+    return `<div class="m-you-wait ${cls}"><div class="m-you">${esc(text)}</div><div class="m-you-meta">${note}</div></div>`;
+  }
   function waitingHtml(s) {
-    const one = (m2, note) => m2?.text ? `<div class="m-you m-queued">${esc(m2.text)}<div class="m-quiet">${note}</div></div>` : "";
-    return one(s?.held, "Kept in Cue · it goes when this turn ends") + one(s?.queued, "Queued · it reads this when it finishes the current step");
+    if (!s) return "";
+    const sid = esc(s.session_id);
+    const why = s.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
+    const held = s.held?.text ? youHtml(s.held.text, "held", `${why ? `Couldn't send it: ${esc(why.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="m-qnow" data-held-edit="${sid}">Edit</button> · <button class="m-qnow" data-held-now="${sid}">Send now</button>`) : "";
+    const queued = s.queued?.text ? youHtml(s.queued.text, "queued", `Queued · it reads this when it finishes the current step · <button class="m-qnow" data-queued-now="${sid}">Send now</button>`) : "";
+    return held + queued;
   }
   /** At work: what it's doing now, last in the chat, so its last reply isn't read as the answer to you. */
   function nowHtml(sid) {
     const s = sessionOf(sid);
-    if (s?.state !== "working") return onItsWay(s) ? `<div class="m-now"><i class="m-dot work"></i><span class="m-now-what">On its way: waiting for it to take your message</span></div>` : "";
+    if (s?.state !== "working") return "";
     return `<div class="m-now"><i class="m-dot work"></i><span class="m-now-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></div>`;
   }
   function askHtml(sid) {
@@ -290,6 +299,17 @@
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
   }
+  /** The message Cue kept, back in the box to change (it doesn't go when the turn ends any more). */
+  async function heldEdit(sid) {
+    const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
+    if (!h) return;
+    const box = root.querySelector("[data-box]");
+    const typed = (box?.value || m.typed[sid] || "").trim();
+    m.typed[sid] = typed ? `${h.text}\n\n${typed}` : h.text;
+    if (box) { box.value = m.typed[sid]; box.focus(); }
+    keepDraft(sid);
+    paint();
+  }
   async function answer(id, behavior) {
     if (m.done.has(id)) return;   // one click: it can't go twice
     m.done.add(id);
@@ -344,6 +364,9 @@
       else if (t.dataset.deny) answer(t.dataset.deny, "deny");
       else if (t.dataset.send !== undefined) send();
       else if (t.dataset.phrase) sendPhrase(t.dataset.phrase);
+      else if (t.dataset.queuedNow) invoke("send_queued_now", { sessionId: t.dataset.queuedNow }).then(() => { m.note = "Sent now: it stopped its step and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
+      else if (t.dataset.heldNow) invoke("send_held_now", { sessionId: t.dataset.heldNow }).then(() => { m.note = "Sent now: it stopped its turn and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
+      else if (t.dataset.heldEdit) heldEdit(t.dataset.heldEdit);
       else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
     });
     root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
