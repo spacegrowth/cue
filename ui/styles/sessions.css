@@ -241,7 +241,12 @@
 .nf-dopt:hover { background: var(--panel-2); }
 .nf-dopt.on { background: var(--accent); color: var(--on-accent); }
 .nf-in:focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
-.nf-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.nf-acts { display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+/* In the pop-up, Start sits under the form, never scrolled away with it. */
+.nf-pop .nf-acts { flex: none; padding: 10px 16px 12px; border-top: 1px solid var(--line); }
+.nf-pop .nf-acts .grow { flex: 1; }
+.nf-name { height: 34px; font-size: 14px; }
+.nf-sum { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
 .nf-acts .btn { height: 28px; }
 
 /* Search history, grouped by session: its name once, then its matches indented under it. */

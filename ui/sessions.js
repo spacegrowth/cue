@@ -197,6 +197,9 @@ function newForm() {
   if ((newMachine ? remote?.tools : agentsAvail) && agents.length && !agents.includes(newAgent)) { newAgent = agents[0]; newPerm = savedPerm(newAgent); }
   const folders = nfFolders();
   const machines = machinesList || [];
+  const acts = `<div class="nf-acts">${nfFull ? "" : `<button class="btn" data-lv="nf-more">All options</button><span class="grow"></span>`}<button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${nfFull && bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>`;
+  const ran = (ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : "";
+  if (!nfFull) return `<div class="nf"><input class="nf-in nf-name" data-text="new-name" placeholder="Name, e.g. fix-login (optional)" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/><div class="nf-sum">${esc(nfSummary())}</div>${ran}</div>${acts}`;
   return `<div class="nf">
     <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add">+ Add</button></div>${extAddMenuHtml()}</div></div>
     ${nfAdding ? "" : machinePanel(newMachine)}
@@ -206,12 +209,21 @@ function newForm() {
     ${projLine()}
     ${newAgent === "claude" && !newMachine && draft("new-cwd").text.trim() ? `<div class="nf-row"><span class="nf-k">MCP</span><div class="nf-mcp">${mcpList(`f:${draft("new-cwd").text.trim()}`, true)}</div></div>` : ""}
     ${newAgent === "claude" ? modelRow() : ""}
-    ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
+    ${`<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>`}
     <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button><button class="icon-btn nf-attach nf-mic ${dictating?.key === "new-msg" ? "on" : ""}" data-mic="new-msg" aria-label="${dictating?.key === "new-msg" ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button></div>${draftChips("new-msg")}</div></div>
     ${whereRow()}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
-    <div class="nf-acts"><button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>${(ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : ""}</div>`;
+    ${ran}</div>${acts}`;
+}
+/** + New opens short: just a name, started with what you picked last time (this line says what that is).
+ *  All options shows the whole form. */
+let nfFull = false;
+function nfSummary() {
+  const where = newMachine ? machShort(newMachine) : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
+  const model = newAgent !== "claude" ? "" : newModel === "default" || !newModel ? "" : `${(modelsOf(newMachine) || []).find((m) => m.value === newModel)?.label || newModel}${newModel1m && !/\[.*\]$/.test(newModel) ? " 1M" : ""}`;
+  const perm = PERMS[newAgent]?.find(([v]) => v === newPerm)?.[1] || "";
+  return [agentName(newAgent), draft("new-cwd").text.trim() || "no folder yet", model, where, perm && `${perm}${newPerm === "skip" ? " (runs anything without asking)" : ""}`].filter(Boolean).join(" · ");
 }
 /** ↓ / ↑ in the drop-down: move the highlight, keeping it in view. */
 function stepLive(by) {
@@ -252,11 +264,12 @@ function lvToggle(d) {
 function lvNew(d) {
   if (d.spot) { sheet = lightbox = null; liveSpot = true; }
   liveOpen = newOpen = true;
+  nfFull = false;
   nfNewProj = projFilter && madeProject(projFilter) ? projFilter : "";
   draft("new-cwd").text = newMachine && !d.cwd ? draft("new-cwd").text || machineFolders(newMachine)[0] || "" : homeless(d.cwd || draft("new-cwd").text || machineFolders("")[0] || recentFolders()[0] || "");
   if (!agentsAvail) invoke("agents_installed").then((a) => { agentsAvail = a?.length ? a : ["claude"]; renderMain(); }, () => {});
   renderMain();
-  return document.querySelector('[data-text="new-msg"]')?.focus();
+  return document.querySelector('[data-text="new-name"]')?.focus();
 }
 /** + New → + Add machine: its field, or the extensions with a window of their own (a new container, say). */
 function lvMachineAdd() {
@@ -287,15 +300,15 @@ function afterNewSession(r) {
  *  (only once you changed a box; else its folder's, unpinned). */
 async function lvStart() {
   const cwd = draft("new-cwd").text.trim();
-  if (!cwd) return toast("Pick a folder first");
+  if (!cwd) { nfFull = true; renderMain(); return toast("Pick a folder first"); }
   endDictation("new-msg");
-  if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
+  if (nfFull && isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
   try {
     const typed = draft("new-flags").text.trim();
     const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
     const mk = `f:${cwd}`;
     const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted() });
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: nfFull ? draft("new-msg").text : "", name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted() });
     mcpPick.delete(mk);
     rememberFolder(newMachine, cwd);
     afterNewSession(r);
@@ -321,6 +334,7 @@ const LV_ACTS = {
   "proj-new-off": () => { nfNewProj = ""; renderMain(); },
   cancel: () => { endDictation("new-msg"); liveOpen = newOpen = false; nfNewProj = ""; closeFolders(); renderMain(); },
   start: lvStart,
+  "nf-more": () => { nfFull = true; renderMain(); document.querySelector('[data-text="new-name"]')?.focus(); },
 };
 async function lvAct(act, d) {
   if (Object.hasOwn(LV_ACTS, act)) return LV_ACTS[act](d);
