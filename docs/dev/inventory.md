@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 150 (3 sync) |
+| `#[tauri::command]` | 151 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 276 |
 | Lock-graph edges | 50 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 375 / 146 / 53 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 377 / 146 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -67,6 +67,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `mcp_set` | async | `ipc/chat.rs::mcp_set` | ipc::with_hub |
 | `mcp_for_folder` | async | `ipc/chat.rs::mcp_for_folder` | ipc::blocking |
 | `mcp_set_folder` | async | `ipc/chat.rs::mcp_set_folder` | ipc::blocking |
+| `folders_under` | async | `ipc/chat.rs::folders_under` | ipc::blocking |
 | `mcp_restart` | async | `ipc/chat.rs::mcp_restart` | ipc::with_hub |
 | `restart_session` | async | `ipc/chat.rs::restart_session` | ipc::with_hub |
 | `mcp_apply` | async | `ipc/chat.rs::mcp_apply` | ipc::with_hub |
@@ -453,7 +454,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (375)
+### fs (377)
 
 | In | Call | Times |
 |---|---|---|
@@ -557,6 +558,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/chat.rs::pi_log` | read_dir | 2 |
 | `ipc/chat.rs::run_crew_action` | create_dir_all | 1 |
 | `ipc/chat.rs::run_crew_action` | write | 1 |
+| `ipc/chat.rs::subfolders` | Path::is_dir | 1 |
+| `ipc/chat.rs::subfolders` | read_dir | 1 |
 | `ipc/docs.rs::read_doc` | metadata | 1 |
 | `ipc/docs.rs::read_doc` | read_to_string | 1 |
 | `ipc/docs.rs::recent_docs` | Path::exists | 1 |

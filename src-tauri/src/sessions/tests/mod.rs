@@ -68,3 +68,19 @@ fn a_hook_from_the_session_means_its_past_the_trust_question() {
     s.mark(&hook, "working", Some("hi"));
     assert!(s.asking_trust().is_empty());
 }
+
+#[test]
+fn a_failed_background_task_is_told_once_even_when_its_transcript_is_read_again() {
+    let mut sessions = Sessions::default();
+    sessions.mark(&origin("s1"), "working", None);
+    assert!(sessions.set_task_failed("s1", 100, "tests", "exit 1"));
+    assert!(!sessions.set_task_failed("s1", 100, "tests", "exit 1"));
+    // Its state changes (the line goes), then Cue reads the transcript again from the top (a restart): the same
+    // failure, and an older one before it, are no news.
+    sessions.mark(&origin("s1"), "waiting", None);
+    assert_eq!(get(&sessions, "s1").task_failed_ms, 0);
+    assert!(!sessions.set_task_failed("s1", 50, "build", "exit 2"));
+    assert!(!sessions.set_task_failed("s1", 100, "tests", "exit 1"));
+    // A new one is.
+    assert!(sessions.set_task_failed("s1", 200, "tests", "exit 1"));
+}

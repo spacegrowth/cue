@@ -65,6 +65,10 @@ pub struct Session {
     pub task_failed: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub task_failed_line: String,
+    /// The latest failure already said (its time), kept when the line above is cleared: Cue reads a transcript
+    /// again from the top after a restart, and each failure in it would otherwise be told again.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub task_told_ms: u64,
     /// What you sent while it was busy, until it picks it up (its next turn starts or ends).
     pub queued: Option<Exchange>,
     pub since_ms: u64,
@@ -228,6 +232,7 @@ impl Session {
             task_failed_ms: 0,
             task_failed: String::new(),
             task_failed_line: String::new(),
+            task_told_ms: 0,
             queued: None,
             cut_by_restart: false,
             name: String::new(),

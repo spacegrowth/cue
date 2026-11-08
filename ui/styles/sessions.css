@@ -246,7 +246,7 @@
 .nf-pop .nf-acts { flex: none; padding: 10px 16px 12px; border-top: 1px solid var(--line); }
 .nf-pop .nf-acts .grow { flex: 1; }
 /* The short form: the name with no box around it, then your three recent folders, the one it'll use filled. */
-.nf-in.nf-name, .nf-in.nf-name:focus { box-shadow: none; border-radius: 0; border-bottom: 1.5px dotted var(--muted); padding: 4px 0; height: 32px; font-size: 16px; font-weight: 600; background: none; }
+.nf-in.nf-name, .nf-in.nf-name:focus { box-shadow: none; border-radius: 0; border-bottom: 1px solid var(--line); padding: 4px 0; height: 32px; font-size: 16px; font-weight: 600; background: none; }
 .nf-in.nf-name:focus { border-bottom-color: var(--accent); }
 .nf-recent { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .nf-recent .nf-k { margin-right: 2px; }

@@ -172,8 +172,11 @@ impl Sessions {
     /// A background task of its failed after a while (`at_ms`: when): noted on the session. True when new.
     pub fn set_task_failed(&mut self, session_id: &str, at_ms: u64, desc: &str, line: &str) -> bool {
         match self.0.get_mut(session_id) {
-            Some(s) if s.task_failed_ms != at_ms => {
+            // Only one newer than any told before: the same failure read again (a restart reads the transcript
+            // anew; the line above may have been cleared since) isn't news.
+            Some(s) if at_ms > s.task_told_ms.max(s.task_failed_ms) => {
                 s.task_failed_ms = at_ms;
+                s.task_told_ms = at_ms;
                 s.task_failed = desc.to_string();
                 s.task_failed_line = line.to_string();
                 true
