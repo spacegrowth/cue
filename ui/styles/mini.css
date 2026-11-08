@@ -77,7 +77,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-agent table { border-collapse: collapse; font-size: 12px; }
 .m-agent th, .m-agent td { border-bottom: 1px solid var(--line); padding: 3px 10px 3px 0; text-align: left; }
 .m-agent blockquote { margin: 0 0 8px; padding-left: 10px; color: var(--muted); box-shadow: inset 2px 0 0 var(--line); }
-.m-agent a { color: inherit; }
+/* Links as Cue's chat shows them (chat.css .msg a): a web link underlined, a file path in the accent with no
+   underline until you point at it. */
+.m-agent a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.m-agent a[data-path] { text-decoration: none; cursor: pointer; }
+.m-agent a[data-path]:hover { text-decoration: underline; }
 .m-foot { flex: none; border-top: 1px solid var(--line); padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
 .m-box { width: 100%; resize: none; border: 0; border-radius: 10px; padding: 7px 10px; font: inherit; line-height: 19.5px; color: inherit; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); outline: none; overflow-y: auto; }
 .m-box:focus { box-shadow: 0 0 0 2px var(--sel), inset 0 0 0 1px var(--accent); }
