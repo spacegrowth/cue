@@ -14,9 +14,8 @@ const ACTS = {
   "load-transcript": (el) => loadOlder(el.dataset.sid, true),
   "open-settings": () => { sheet = sheet === "settings" ? null : "settings"; extSections = null; renderMain(); },
   // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
-  // Move to Cue / Move to hosted / Move to terminal: from a corner or from ⋯ (which closes).
-  "move-cue": (el) => { moreFor = handoffArm = null; return el.dataset.why ? toast(`Move to Cue: ${el.dataset.why}`) : moveToCue(el.dataset.sid); },
-  "move-term": (el) => { moreFor = handoffArm = null; renderMain(); return invoke("move_to_terminal", { sessionId: el.dataset.sid }).then(toast).catch((e) => toast(`Couldn't move it: ${e}`)); },
+  "move-cue": (el) => el.dataset.why ? toast(`Move to Cue: ${el.dataset.why}`) : moveToCue(el.dataset.sid),
+  "move-term": (el) => el.dataset.why ? toast(`Move to terminal: ${el.dataset.why}`) : invoke("move_to_terminal", { sessionId: el.dataset.sid }).then(toast).catch((e) => toast(`Couldn't move it: ${e}`)),
   "move-dismiss": () => { moving = null; renderMain(); },
   "delete-yes": () => deleteAnswer(true),
   "delete-no": () => deleteAnswer(false),

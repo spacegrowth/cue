@@ -338,7 +338,6 @@ function moreMenu(sid, s, closable = false) {
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
       ${restartItem(sid, s)}
-      ${placeItem(sid, s)}
       ${forkItem(sid, s)}
       ${later}${parkMenuItem(sid, s, closable)}
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
@@ -350,17 +349,6 @@ function restartItem(sid, s) {
   if (!s || !["claude", "codex", "pi"].includes(s.harness) || !s.cwd || crewOf(sid)?.role === "executor") return "";
   const busy = s.state === "working";
   return `<button data-restart="${esc(sid)}" ${busy ? "disabled" : ""}>Restart session<span>${busy ? "When this turn ends" : "Same conversation, fresh start: picks up new skills, MCP servers and settings"}</span></button>`;
-}
-/** ⋯ → where it runs, for a Claude Code session: Move to terminal for a hosted one (resumed in a terminal tab), Move
- *  to hosted for one in Cue's own terminal on this Mac with Cue-hosted sessions on (resumed with no terminal). Not
- *  while it works or asks you something: that would be cut off. */
-function placeItem(sid, s) {
-  if (s?.harness !== "claude") return "";
-  const why = s.state === "working" ? "When this turn ends" : s.state === "deciding" ? "Answer what it's asking first" : "";
-  const item = (act, label, what) => `<button data-act="${act}" data-sid="${esc(sid)}" ${why ? "disabled" : ""}>${label}<span>${why || what}</span></button>`;
-  if (s.hosted) return item("move-term", "Move to terminal", "Resumed in a terminal tab, as an ordinary terminal session");
-  if (inTmux(sid) && !s.machine && state.settings?.hosted?.on) return item("move-cue", "Move to hosted", "Resumed hosted in Cue, with no terminal");
-  return "";
 }
 /** ⋯ → Fork, for a Claude Code session: its conversation goes on as a new session too (forkBtw). */
 function forkItem(sid, s) {
