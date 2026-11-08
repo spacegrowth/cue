@@ -152,9 +152,15 @@ fn parse_env(ps: &str) -> HashMap<String, String> {
 
 /// A Claude session's transcript when Cue never got its path from a hook (a quiet session):
 /// `~/.claude/projects/<its folder, every character but letters and digits as "-">/<session id>.jsonl`.
+/// A session resumed from another folder keeps writing where it began, so any project folder holding
+/// its id is looked in next.
 pub fn claude_transcript(cwd: &str, session_id: &str) -> Option<String> {
     let p = claude_transcript_path(cwd, session_id);
-    p.is_file().then(|| p.to_string_lossy().into_owned())
+    if p.is_file() {
+        return Some(p.to_string_lossy().into_owned());
+    }
+    let projects = p.parent()?.parent()?;
+    super::transcript::find_claude_in(projects, session_id)
 }
 
 /// Where Claude Code writes a session's transcript, whether or not it's there (nothing is looked up).
@@ -219,9 +225,12 @@ mod tests {
         std::env::set_var("CLAUDE_CONFIG_DIR", &d);
         let found = claude_transcript("/Users/me/code/.agent-workspaces/data_provider", "S1");
         let missing = claude_transcript("/Users/me/code/.agent-workspaces/data_provider", "S2");
+        // Resumed from another folder, it still writes where it began.
+        let moved = claude_transcript("/Users/me/elsewhere", "S1");
         std::env::remove_var("CLAUDE_CONFIG_DIR");
         assert!(found.is_some_and(|p| p.ends_with("-Users-me-code--agent-workspaces-data-provider/S1.jsonl")));
         assert_eq!(missing, None);
+        assert!(moved.is_some_and(|p| p.ends_with("-Users-me-code--agent-workspaces-data-provider/S1.jsonl")));
         let _ = std::fs::remove_dir_all(&d);
     }
 }

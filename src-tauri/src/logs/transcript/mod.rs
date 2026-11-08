@@ -92,5 +92,13 @@ pub fn find_claude(session_id: &str) -> Option<String> {
         return None;
     }
     let home = std::env::var("HOME").ok()?;
-    std::fs::read_dir(format!("{home}/.claude/projects")).ok()?.flatten().map(|d| d.path().join(format!("{session_id}.jsonl"))).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
+    find_claude_in(&std::path::Path::new(&home).join(".claude/projects"), session_id)
+}
+
+/// `<projects>/<any folder>/<session id>.jsonl`, the first there is.
+pub fn find_claude_in(projects: &std::path::Path, session_id: &str) -> Option<String> {
+    if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return None;
+    }
+    std::fs::read_dir(projects).ok()?.flatten().map(|d| d.path().join(format!("{session_id}.jsonl"))).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
 }

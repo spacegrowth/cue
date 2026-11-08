@@ -635,8 +635,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/transcript/activity.rs::codex_activity` | metadata | 1 |
 | `logs/transcript/conversation.rs::conversation_before` | File::open | 1 |
 | `logs/transcript/conversation.rs::status_asks` | metadata | 1 |
-| `logs/transcript/mod.rs::find_claude` | Path::is_file | 1 |
-| `logs/transcript/mod.rs::find_claude` | read_dir | 1 |
+| `logs/transcript/mod.rs::find_claude_in` | Path::is_file | 1 |
+| `logs/transcript/mod.rs::find_claude_in` | read_dir | 1 |
 | `logs/transcript/mod.rs::read_from` | File::open | 1 |
 | `logs/transcript/mod.rs::read_from` | Path::metadata | 1 |
 | `logs/transcript/mod.rs::tail_offset` | metadata | 1 |
