@@ -8,18 +8,31 @@ use super::history::{first_line, push_history};
 /// permission notice (about six seconds after the prompt appears) plus the hook's way here.
 const ANSWERED_HERE_MS: u64 = 10_000;
 
+/// What an agent asks you: a card's kind ("permission", "question", "input"), the tool call it's about, Claude's
+/// own "always allow" choices, what was said before it, and the agent inside the session asking ("" for itself).
+pub struct NewAsk {
+    pub kind: String,
+    pub tool_name: String,
+    pub tool_input: Value,
+    pub suggestions: Value,
+    pub context: Vec<Ctx>,
+    pub agent_id: String,
+}
+
 impl Hub {
     /// A blocking request arrived. Returns its id and the receiver the connection waits on.
-    pub fn add_ask(
-        &self,
-        origin: Origin,
-        kind: String,
-        tool_name: String,
-        tool_input: Value,
-        suggestions: Value,
-        mut context: Vec<Ctx>,
-        agent_id: String,
-    ) -> (String, oneshot::Receiver<Reply>) {
+    pub fn add_ask(&self, origin: Origin, ask: NewAsk) -> (String, oneshot::Receiver<Reply>) {
+        self.open_ask(origin, ask, None).expect("an ask with no request id always opens a card")
+    }
+
+    /// The same, for an ask the agent names with its own `request_id` (a hosted session's): none when a card for
+    /// that request is already open (the same lines read again), so it's never asked twice.
+    pub(super) fn add_keyed_ask(&self, origin: Origin, request_id: &str, ask: NewAsk) -> Option<(String, oneshot::Receiver<Reply>)> {
+        self.open_ask(origin, ask, Some(request_id))
+    }
+
+    fn open_ask(&self, origin: Origin, ask: NewAsk, request_id: Option<&str>) -> Option<(String, oneshot::Receiver<Reply>)> {
+        let NewAsk { kind, tool_name, tool_input, suggestions, mut context, agent_id } = ask;
         // One of its agents asks: what it goes by, from the session's steps feed (read before the lock is taken).
         let agent_name = if agent_id.is_empty() || origin.transcript_path.is_empty() { String::new() } else { crate::steps::agent_name(&origin.transcript_path, &agent_id) };
         if context.is_empty() && !origin.transcript_path.is_empty() {
@@ -28,8 +41,12 @@ impl Hub {
         let scan_from = if origin.transcript_path.is_empty() { 0 } else { transcript::tail_offset(&origin.transcript_path) };
         let (tx, rx) = oneshot::channel();
         let (id, title) = self.write(|st| {
-            // A session asking for a decision is no longer "just waiting for you".
             let sid = origin.session_id.clone();
+            let open = |i: &Item| i.status == "pending" && i.origin.session_id == sid && i.request_id.as_deref() == request_id;
+            if request_id.is_some() && st.items.iter().any(open) {
+                return None;
+            }
+            // A session asking for a decision is no longer "just waiting for you".
             st.items.retain(|i| !(i.kind == "waiting" && i.origin.session_id == sid));
             st.sessions.mark(&origin, "deciding", None);
             let thread = st.sessions.thread(&sid);
@@ -41,6 +58,7 @@ impl Hub {
             it.context = context;
             it.agent_id = agent_id;
             it.agent_name = agent_name;
+            it.request_id = request_id.map(str::to_string);
             it.scan_from = scan_from;
             let asked = match it.kind.as_str() {
                 "question" => format!("asked: {}", summary(&it)),
@@ -51,13 +69,13 @@ impl Hub {
             let title = notify_title(&it);
             st.items.push(it);
             st.waiters.insert(id.clone(), tx);
-            (id, title)
-        });
+            Some((id, title))
+        })?;
         self.changed();
         if crate::config::flag("/notify/decisions") {
             self.notify(&id, &title.0, &title.1, "");
         }
-        (id, rx)
+        Some((id, rx))
     }
 
     /// Claude Code says a permission prompt is waiting in a session's terminal, one Cue has no card for
@@ -425,6 +443,23 @@ fn describe(d: &Decision) -> String {
 mod tests {
     use super::*;
 
+    fn bash(command: &str, agent_id: &str) -> NewAsk {
+        NewAsk { kind: "permission".into(), tool_name: "Bash".into(), tool_input: json!({ "command": command }), suggestions: json!([]), context: vec![], agent_id: agent_id.into() }
+    }
+
+    #[test]
+    fn an_ask_read_again_by_its_request_id_finds_its_open_card() {
+        let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let hub = Hub::new(None);
+        let origin = |sid: &str| Origin { session_id: sid.into(), harness: "pi".into(), ..Default::default() };
+        let (id, _rx) = hub.add_keyed_ask(origin("s1"), "r1", bash("rm -rf target", "")).expect("a card");
+        assert!(hub.add_keyed_ask(origin("s1"), "r1", bash("rm -rf target", "")).is_none(), "the same request: its card is open");
+        assert!(hub.add_keyed_ask(origin("s2"), "r1", bash("rm -rf target", "")).is_some(), "another session's request 1 is its own");
+        assert_eq!(hub.pending().iter().filter(|i| i.origin.session_id == "s1").count(), 1);
+        hub.finish(&id, "answered", "allowed");
+        assert!(hub.add_keyed_ask(origin("s1"), "r1", bash("rm -rf target", "")).is_some(), "answered: asking again is a new ask");
+    }
+
     #[test]
     fn a_rebuilt_session_gets_its_waiting_card_back_from_its_saved_thread() {
         let dir = std::env::temp_dir().join(format!("cue-wcard-{}", std::process::id()));
@@ -511,8 +546,8 @@ mod tests {
         ].join("\n") + "\n").unwrap();
         let origin = Origin { session_id: "s1".into(), harness: "claude".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
         let hub = Hub::new(None);
-        hub.add_ask(origin.clone(), "permission".into(), "Bash".into(), json!({"command": "rm -rf target"}), json!([]), vec![], "a7".into());
-        hub.add_ask(origin, "permission".into(), "Bash".into(), json!({"command": "ls"}), json!([]), vec![], String::new());
+        hub.add_ask(origin.clone(), bash("rm -rf target", "a7"));
+        hub.add_ask(origin, bash("ls", ""));
         let items = hub.pending();
         let mine: Vec<(&str, &str)> = items.iter().map(|i| (i.agent_id.as_str(), i.agent_name.as_str())).collect();
         assert_eq!(mine, [("a7", "Clean the build"), ("", "")], "the agent's ask carries its id and name; the session's own doesn't");
@@ -534,7 +569,7 @@ mod tests {
         std::fs::write(&path, call("tu1", "sleep 20")).unwrap();
         let origin = Origin { session_id: "s1".into(), harness: "claude".into(), transcript_path: path.to_string_lossy().into(), ..Default::default() };
         let hub = Hub::new(None);
-        let (id, _rx) = hub.add_ask(origin.clone(), "permission".into(), "Bash".into(), json!({"command": "sleep 20"}), json!([]), vec![], String::new());
+        let (id, _rx) = hub.add_ask(origin.clone(), bash("sleep 20", ""));
         hub.finish(&id, "answered", "allowed");
         // Claude Code's "needs your permission" notice, six seconds after the prompt appeared: after
         // your answer, naming the call you allowed (still running). Not a card.

@@ -299,6 +299,10 @@ pub struct Item {
     pub thread: Vec<Exchange>,
     #[serde(skip)]
     pub tool_use_id: Option<String>,
+    /// The agent's own id for what it asks (a hosted session's request), so the same ask arriving again finds its
+    /// open card instead of making a second one.
+    #[serde(skip)]
+    pub request_id: Option<String>,
     #[serde(skip)]
     pub scan_from: u64,
     /// Opened while the session sat at its prompt (a command's dialog, like /model's picker): answering

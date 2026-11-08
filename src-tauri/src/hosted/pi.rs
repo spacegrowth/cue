@@ -3,9 +3,11 @@
 //! session events and the dialogs its extensions open. Read leniently: events and fields this code doesn't know
 //! are left alone.
 //!
-//! Pi has no permission prompts of its own. Cue's Pi extension (pi/cue.ts) is its gate: hosted, it asks Cue over
-//! Cue's socket (a card, as for a terminal Pi), never a terminal. Any other extension's dialog (a choice, yes or
-//! no, a line to type) arrives here and becomes a card too: a question, or a form with one field.
+//! Pi has no permission prompts of its own. Cue's Pi extension (pi/cue.ts) is its gate: hosted, it asks through
+//! one of Pi's own dialogs (titled `cue:ask`, the ask as JSON, answered with the decision as JSON), so the ask
+//! arrives here with everything else Pi writes: a permission or question card, as for a terminal Pi. Any other
+//! extension's dialog (a choice, yes or no, a line to type) becomes a card too: a question, or a form with one
+//! field.
 
 use super::protocol::Protocol;
 use super::{Answer, Ask, AskKind, HostedEvent, InputAction};
@@ -14,6 +16,8 @@ use std::collections::HashMap;
 
 /// The dialogs Pi waits on an answer for; its other extension calls (a status line, a notice) ask nothing.
 const DIALOGS: [&str; 4] = ["select", "confirm", "input", "editor"];
+/// The title of the dialog Cue's extension asks with (its placeholder: the ask).
+const CUE_ASK: &str = "cue:ask";
 
 #[derive(Default)]
 pub(super) struct Pi {
@@ -28,8 +32,8 @@ pub(super) struct Pi {
     stopped: bool,
     /// What its replies cost so far, in dollars, since it started.
     cost: f64,
-    /// Dialogs waiting for your answer: their method and the choices offered, by request id.
-    dialogs: HashMap<String, (String, Vec<String>)>,
+    /// Dialogs waiting for your answer, by request id.
+    dialogs: HashMap<String, Dialog>,
     /// Your messages Pi hasn't said it accepted yet, by request id.
     sent: HashMap<String, String>,
     next_request: u64,
@@ -90,12 +94,16 @@ impl Pi {
         }
         let id = str_of(v, "id").unwrap_or_default();
         let title = str_of(v, "title").unwrap_or_else(|| "Pi asks you".into());
+        if let Some(ask) = (method == "input" && title == CUE_ASK).then(|| cue_ask(&id, v)).flatten() {
+            self.dialogs.insert(id, Dialog::Cue);
+            return vec![HostedEvent::Ask(ask)];
+        }
         let options: Vec<String> = match method.as_str() {
             "select" => v.get("options").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
             "confirm" => vec!["Yes".into(), "No".into()],
             _ => vec![],
         };
-        self.dialogs.insert(id.clone(), (method, options.clone()));
+        self.dialogs.insert(id.clone(), Dialog::Other { method, options: options.clone() });
         vec![HostedEvent::Ask(dialog_ask(id, title, &options))]
     }
 }
@@ -134,8 +142,11 @@ impl Protocol for Pi {
     }
 
     fn answer(&mut self, request_id: &str, a: &Answer) -> Result<Vec<String>, String> {
-        let (method, options) = self.dialogs.remove(request_id).ok_or("that request isn't waiting for an answer (answered already?)")?;
-        Ok(vec![dialog_answer(request_id, &method, &options, a).to_string()])
+        let reply = match self.dialogs.remove(request_id).ok_or("that request isn't waiting for an answer (answered already?)")? {
+            Dialog::Cue => cue_answer(request_id, a),
+            Dialog::Other { method, options } => dialog_answer(request_id, &method, &options, a),
+        };
+        Ok(vec![reply.to_string()])
     }
 
     fn interrupt(&mut self) -> Vec<String> {
@@ -152,6 +163,35 @@ impl Protocol for Pi {
         self.dialogs.clear();
         self.sent.clear();
     }
+}
+
+/// A dialog waiting for your answer.
+enum Dialog {
+    /// Cue's extension asking (its gate, or `ask_user`): answered with the decision.
+    Cue,
+    /// Another extension's: answered as its `method` takes it, from the choices it offered.
+    Other { method: String, options: Vec<String> },
+}
+
+/// What Cue's extension asks, from its dialog's placeholder: a permission for a tool call, or a question.
+fn cue_ask(id: &str, v: &Value) -> Option<Ask> {
+    let ask: Value = serde_json::from_str(&str_of(v, "placeholder")?).ok()?;
+    let kind = match str_of(&ask, "kind")?.as_str() {
+        "permission" => AskKind::Permission,
+        "question" => AskKind::Question,
+        _ => return None,
+    };
+    let input = ask.get("tool_input").cloned().unwrap_or(Value::Null);
+    Some(Ask { request_id: id.into(), kind, tool_name: str_of(&ask, "tool_name")?, input, suggestions: json!([]), agent_id: String::new(), tool_use_id: String::new(), server: String::new(), message: String::new(), form: Value::Null })
+}
+
+/// Your answer to Cue's extension: the decision as JSON (it reads anything else as a denial).
+fn cue_answer(id: &str, a: &Answer) -> Value {
+    let decision = match a {
+        Answer::Decision(d) => serde_json::to_value(d).unwrap_or(Value::Null),
+        _ => json!({ "behavior": "deny" }),
+    };
+    json!({ "type": "extension_ui_response", "id": id, "value": decision.to_string() })
 }
 
 /// A block of its reply: what it said, or a tool it called.

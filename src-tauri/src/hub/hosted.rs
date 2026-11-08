@@ -196,7 +196,9 @@ impl Hub {
             AskKind::Input => ("input", a.server.clone(), json!({ "server": a.server, "message": a.message, "form": a.form })),
         };
         let sid = origin.session_id.clone();
-        let (_, answer) = self.add_ask(origin, kind.into(), tool_name, tool_input, a.suggestions, vec![], a.agent_id);
+        let ask = NewAsk { kind: kind.into(), tool_name, tool_input, suggestions: a.suggestions, context: vec![], agent_id: a.agent_id };
+        // Its card is already open: the one waiting answers it.
+        let Some((_, answer)) = self.add_keyed_ask(origin, &a.request_id, ask) else { return };
         let hosted = self.ports.hosted.clone();
         let request_id = a.request_id;
         // Waiting for your answer is the card's to do, not the session's: its next lines keep coming meanwhile.

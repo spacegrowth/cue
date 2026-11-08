@@ -32,6 +32,7 @@ mod turn_end;
 mod usage;
 
 pub use history::{split_turn, summary};
+pub use asks::NewAsk;
 pub use hosted::HostedStart;
 
 /// What an open Ask connection is told.
@@ -280,6 +281,7 @@ impl Hub {
             resolved_ms: None,
             thread: vec![],
             tool_use_id: None,
+            request_id: None,
             scan_from: 0,
             at_prompt: false, agent_id: String::new(), agent_name: String::new(),
         }

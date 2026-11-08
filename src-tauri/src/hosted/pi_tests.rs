@@ -114,3 +114,27 @@ fn a_reply_that_failed_ends_the_turn_as_failed_with_why() {
     let es: Vec<HostedEvent> = [r#"{"type":"agent_start"}"#, r#"{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"401 invalid api key"}}"#, r#"{"type":"agent_settled"}"#].iter().flat_map(|l| p.read(l).0).collect();
     assert!(matches!(es.last(), Some(HostedEvent::TurnEnded { failed: true, text, unprompted: true, .. }) if text == "401 invalid api key"), "{es:?}");
 }
+
+#[test]
+fn cues_own_gate_asks_through_a_dialog_and_gets_the_decision_back() {
+    let mut p = Pi::default();
+    let gate = |id: &str, ask: Value| json!({ "type": "extension_ui_request", "id": id, "method": "input", "title": "cue:ask", "placeholder": ask.to_string() }).to_string();
+    let ask = |es: Vec<HostedEvent>| match es.into_iter().next() { Some(HostedEvent::Ask(a)) => a, e => panic!("{e:?}") };
+    let value = |lines: Vec<String>| -> Value { let r: Value = serde_json::from_str(&lines[0]).unwrap(); serde_json::from_str(r["value"].as_str().unwrap()).unwrap() };
+    // A gated command: a permission card for the tool call, not a form.
+    let a = ask(p.read(&gate("g1", json!({ "kind": "permission", "tool_name": "bash", "tool_input": { "command": "rm -rf target" } }))).0);
+    assert_eq!((a.kind, a.tool_name.as_str(), a.input["command"].as_str(), a.request_id.as_str()), (AskKind::Permission, "bash", Some("rm -rf target"), "g1"));
+    let d = value(p.answer("g1", &Answer::Decision(Decision { behavior: "deny".into(), message: Some("use cargo clean".into()), ..Default::default() })).unwrap());
+    assert_eq!((d["behavior"].as_str(), d["message"].as_str()), (Some("deny"), Some("use cargo clean")));
+    // Its ask_user: a question card; the answer goes back as the decision's answers.
+    let a = ask(p.read(&gate("g2", json!({ "kind": "question", "tool_name": "ask_user", "tool_input": { "questions": [{ "question": "Which?", "options": [{ "label": "A" }] }] } }))).0);
+    assert_eq!((a.kind, a.tool_name.as_str()), (AskKind::Question, "ask_user"));
+    let d = value(p.answer("g2", &decision("allow", Some(json!({ "Which?": "A" })))).unwrap());
+    assert_eq!(d["answers"]["Which?"], "A");
+    // Gone unanswered (a form's answer can't be one): a denial, so the gate never lets it through.
+    ask(p.read(&gate("g3", json!({ "kind": "permission", "tool_name": "bash", "tool_input": { "command": "sudo ls" } }))).0);
+    assert_eq!(value(p.answer("g3", &Answer::Input { action: InputAction::Cancel, content: Value::Null }).unwrap())["behavior"], "deny");
+    // Anything that only looks like it is another extension's dialog: a form, answered as typed.
+    let a = ask(p.read(&json!({ "type": "extension_ui_request", "id": "x1", "method": "input", "title": "cue:ask", "placeholder": "not json" }).to_string()).0);
+    assert_eq!(a.kind, AskKind::Input);
+}

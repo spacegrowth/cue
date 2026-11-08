@@ -5,7 +5,7 @@
 //! Every function here is blocking (the store's lock, transcript reads): the socket calls it on the
 //! blocking pool.
 
-use crate::hub::{Hub, Reply};
+use crate::hub::{Hub, NewAsk, Reply};
 use crate::logs::transcript::{self, Sender};
 use crate::model::{AgentCmd, ClientMsg, Origin, TurnPart};
 use crate::terminal::focus;
@@ -47,7 +47,7 @@ pub fn apply(hub: &Hub, msg: ClientMsg, peer: Option<i32>) -> Outcome {
     }
     match msg {
         ClientMsg::Ask { origin, kind, tool_name, tool_input, suggestions, context, agent_id } => {
-            let (id, answer) = hub.add_ask(origin, kind, tool_name, tool_input, suggestions, context, agent_id);
+            let (id, answer) = hub.add_ask(origin, NewAsk { kind, tool_name, tool_input, suggestions, context, agent_id });
             Outcome::Asked { id, answer }
         }
         ClientMsg::Event { origin, event, message, turn, driven_by, prompt_id, error_type, voice } => {

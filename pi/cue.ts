@@ -12,8 +12,9 @@
  *
  * If Cue isn't running, gated calls fall back to the terminal prompt alone.
  *
- * Hosted by Cue (CUE_HOSTED=1: Pi in RPC mode, no terminal), Cue reads the session's turns from Pi's own output,
- * so this extension doesn't report them; it asks Cue alone (there's no terminal to race), and waits for the answer.
+ * Hosted by Cue (CUE_HOSTED=1: Pi in RPC mode, no terminal), Cue reads the session's turns and dialogs from Pi's
+ * own output, so this extension doesn't report them, and it asks Cue alone through a dialog of Pi's (askHosted),
+ * not Cue's socket; there's no terminal to race.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -192,6 +193,22 @@ function askCue(ask: object) {
 
 const never = new Promise<never>(() => {});
 
+/**
+ * Hosted, Cue reads Pi's dialogs from its RPC output, so an ask goes as one of them, never over Cue's socket (a
+ * Pi on another machine can't reach it): an `input` dialog titled CUE_ASK with the ask as JSON in its
+ * placeholder. Cue answers with its decision as JSON; a dialog cancelled (or answered with anything else) is a
+ * denial.
+ */
+const CUE_ASK = "cue:ask";
+async function askHosted(ctx: ExtensionContext, ask: object): Promise<CueAnswer> {
+	const reply = await ctx.ui.input(CUE_ASK, JSON.stringify(ask));
+	try {
+		const d = JSON.parse(reply ?? "");
+		if (typeof d?.behavior === "string") return d;
+	} catch {}
+	return { behavior: "deny", message: "No answer from Cue" };
+}
+
 export default function (pi: ExtensionAPI) {
 	let lastAssistant = "";
 	// Everything Pi writes in this run; `hooked` once an extension pushed it to keep going after it
@@ -307,6 +324,11 @@ export default function (pi: ExtensionAPI) {
 		sendEvent(ctx, "doing", describeTool(event.toolName, event.input as any));
 		if (!needsGate(event.toolName, event.input, gateMode())) return undefined;
 
+		// Hosted: Cue is the only one to ask, and its card waits for you.
+		if (HOSTED) {
+			const d = await askHosted(ctx, { kind: "permission", tool_name: event.toolName, tool_input: event.input });
+			return d.behavior !== "deny" ? undefined : { block: true, reason: d.message || "Blocked in Cue" };
+		}
 		const cue = askCue({
 			kind: "permission",
 			tool_name: event.toolName,
@@ -316,19 +338,13 @@ export default function (pi: ExtensionAPI) {
 		});
 		const ac = new AbortController();
 		const summary = event.toolName === "bash" ? String((event.input as any).command) : `${event.toolName} ${(event.input as any).path ?? ""}`;
-		const fromTerminal = ctx.hasUI && !HOSTED
+		const fromTerminal = ctx.hasUI
 			? ctx.ui
 					.select(`Allow ${event.toolName}?\n\n  ${summary}`, ["Yes", "No"], { signal: ac.signal })
 					.then((c) => (c === undefined ? never : { who: "terminal", allow: c === "Yes" }))
 			: never;
 		const fromCue = cue.answer.then((d) => ({ who: "cue", allow: d.behavior !== "deny", message: d.message }));
 
-		// Hosted: Cue is the only one to ask, and its card waits for you.
-		if (HOSTED) {
-			const r = await fromCue;
-			cue.close();
-			return r.allow ? undefined : { block: true, reason: r.message ?? "Blocked in Cue" };
-		}
 		// No terminal UI and Cue is unreachable: nobody can approve, so block.
 		if (!ctx.hasUI) {
 			const timeout = new Promise<{ who: string; allow: boolean; message?: string }>((r) =>
@@ -364,15 +380,18 @@ export default function (pi: ExtensionAPI) {
 		executionMode: "sequential",
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const OTHER = "Type something…";
-			const cue = askCue({
-				kind: "question",
-				tool_name: "ask_user",
-				tool_input: { questions: [{ question: params.question, header: "", options: params.options, multiSelect: false }] },
-				context: lastAssistant ? [{ role: "assistant", text: lastAssistant }] : [],
-				...origin(ctx),
+			const question = { kind: "question", tool_name: "ask_user", tool_input: { questions: [{ question: params.question, header: "", options: params.options, multiSelect: false }] } };
+			const answered = (d: CueAnswer) =>
+				d.behavior === "deny" ? `(declined${d.message ? `: ${d.message}` : ""})` : (Object.values(d.answers ?? {})[0] ?? "");
+			const result = (answer: string, via: string) => ({
+				content: [{ type: "text" as const, text: `User answered: ${answer}` }],
+				details: { question: params.question, answer, via },
 			});
+			// Hosted: Cue is the only one to ask.
+			if (HOSTED) return result(answered(await askHosted(ctx, question)), "cue");
+			const cue = askCue({ ...question, context: lastAssistant ? [{ role: "assistant", text: lastAssistant }] : [], ...origin(ctx) });
 			const ac = new AbortController();
-			const fromTerminal: Promise<{ who: string; answer: string }> = ctx.hasUI && !HOSTED
+			const fromTerminal: Promise<{ who: string; answer: string }> = ctx.hasUI
 				? ctx.ui
 						.select(params.question, [...params.options.map((o) => o.label), OTHER], { signal: ac.signal })
 						.then(async (c) => {
@@ -382,18 +401,12 @@ export default function (pi: ExtensionAPI) {
 							return typed === undefined ? never : { who: "terminal", answer: typed };
 						})
 				: never;
-			const fromCue = cue.answer.then((d) => ({
-				who: "cue",
-				answer: d.behavior === "deny" ? `(declined${d.message ? `: ${d.message}` : ""})` : (Object.values(d.answers ?? {})[0] ?? ""),
-			}));
+			const fromCue = cue.answer.then((d) => ({ who: "cue", answer: answered(d) }));
 			const r = await Promise.race([fromCue, fromTerminal]);
 			ac.abort();
 			if (r.who === "terminal") cue.resolvedElsewhere(`answered “${r.answer}”`);
 			else cue.close();
-			return {
-				content: [{ type: "text", text: `User answered: ${r.answer}` }],
-				details: { question: params.question, answer: r.answer, via: r.who },
-			};
+			return result(r.answer, r.who);
 		},
 	});
 }

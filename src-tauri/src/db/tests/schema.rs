@@ -143,7 +143,7 @@ fn the_old_files_are_imported_once_and_kept_as_a_backup() {
     let it = Item {
         id: "h1".into(), kind: "permission".into(), origin: Origin { session_id: "s".into(), ..Default::default() }, project: "p".into(),
         tool_name: "Bash".into(), tool_input: json!({"command": "ls"}), suggestions: Value::Null, context: vec![], message: String::new(),
-        created_ms: 5, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(6), thread: vec![], tool_use_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), followup: String::new(), interrupted: false, back_ms: None, images: vec![],
+        created_ms: 5, status: "answered".into(), outcome: "allowed".into(), resolved_ms: Some(6), thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), followup: String::new(), interrupted: false, back_ms: None, images: vec![],
     };
     std::fs::write(dir.join("history.jsonl"), format!("{}\n", serde_json::to_string(&it).unwrap())).unwrap();
     let h = history(100);

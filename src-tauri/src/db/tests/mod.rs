@@ -156,7 +156,7 @@ fn live_sessions_cards_log_and_drafts_survive_a_reopen() {
     let card = Item {
         id: "w1".into(), kind: "waiting".into(), origin: Origin { session_id: "lead".into(), ..Default::default() }, project: "proj".into(),
         tool_name: String::new(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: "done".into(),
-        created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), followup: String::new(), interrupted: false, back_ms: None, images: vec![],
+        created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), followup: String::new(), interrupted: false, back_ms: None, images: vec![],
     };
     sync_live(&[session("lead", ""), session("exec", "its relay lead")], &[&card]);
     set_draft("s:lead", "half a thought", &json!([]));
