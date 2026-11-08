@@ -113,3 +113,29 @@ test("a lead's plan alone in its card has no rule above it", async ({ cue, page 
   await expect(foot).toHaveCount(1);
   expect(await foot.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("none");
 });
+
+test("a card brought into view from below the list's edge leaves no card cut in half at the list's top", async ({ cue, page }) => {
+  await cue.open("world-fifty-sessions");
+  const cut = await page.evaluate(async () => {
+    // Found again each time: a redraw replaces the list's elements.
+    const list = () => document.querySelector(".sec-sessions .sec-body");
+    const cards = () => [...list().querySelectorAll(":scope > .working[data-session]")];
+    const below = cards().filter((c) => c.getBoundingClientRect().bottom > list().getBoundingClientRect().bottom).map((c) => c.dataset.session);
+    // Each card below the fold in turn, as a reply moving it into Sessions would bring it into view.
+    const out = [];
+    for (const sid of below.slice(0, 6)) {
+      // From the list's top, fitted as a redraw fits it (board_motion.js markMore), as the next redraw fits it after.
+      list().scrollTop = 0;
+      markMore();
+      glideIntoView(list().querySelector(`:scope > [data-session="${sid}"]`));
+      await new Promise((r) => setTimeout(r, 400));
+      markMore();
+      const b = list().getBoundingClientRect(), a = list().querySelector(`:scope > [data-session="${sid}"]`).getBoundingClientRect();
+      const top = cards().find((c) => c.getBoundingClientRect().bottom > b.top + 1);
+      out.push({ sid, shown: a.top >= b.top - 1 && a.bottom <= b.bottom + 1, topCut: top.getBoundingClientRect().top < b.top - 1 });
+    }
+    return out;
+  });
+  expect(cut.length).toBeGreaterThan(0);
+  for (const c of cut) expect(c).toEqual({ sid: c.sid, shown: true, topCut: false });
+});

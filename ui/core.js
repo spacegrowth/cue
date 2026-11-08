@@ -852,8 +852,14 @@ function glideIntoView(el) {
   if (!sc) return;
   const a = el.getBoundingClientRect(), b = sc.getBoundingClientRect(), M = 12;
   // Cut off below: up, but never past its top. Cut off above: down to its top.
-  const delta = a.bottom + M > b.bottom ? Math.min(a.bottom + M - b.bottom, a.top - M - b.top) : a.top - M < b.top ? a.top - M - b.top : 0;
+  let delta = a.bottom + M > b.bottom ? Math.min(a.bottom + M - b.bottom, a.top - M - b.top) : a.top - M < b.top ? a.top - M - b.top : 0;
   if (Math.abs(delta) < 1) return;
+  // Down: on to where a card starts, so the one at the list's top isn't cut in half (it was, under the card you'd
+  // just replied to, until the list was drawn again). Never past this card's own top.
+  if (delta > 0) {
+    const tops = [...el.parentElement.children].map((c) => c.getBoundingClientRect().top - b.top).filter((t) => t >= delta - 1);
+    if (tops.length) delta = Math.min(Math.min(...tops), a.top - b.top);
+  }
   // Found again by its list and what it is (a redraw makes new elements).
   const list = el.closest(".sec, .col"), attr = ["data-session", "data-detail", "data-big"].find((n) => el.hasAttribute(n));
   const key = list && attr ? `.${[...list.classList].join(".")} [${attr}="${CSS.escape(el.getAttribute(attr))}"]` : null;
