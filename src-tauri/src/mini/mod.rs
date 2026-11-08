@@ -177,6 +177,7 @@ fn reconcile(app: &AppHandle) -> bool {
         return false;
     }
     let all = displays(app);
+    // None while the displays sleep: the windows stay as they are, and are looked at again a few seconds on.
     if all.is_empty() {
         return false;
     }
@@ -188,6 +189,7 @@ fn reconcile(app: &AppHandle) -> bool {
             continue;
         }
         changed = true;
+        eprintln!("[cue] mini window {label}: on the display at {},{} ({}×{})", d.0, d.1, d.2, d.3);
         if app.get_webview_window(&label).is_some() {
             slots(|s| s.insert(label.clone(), Slot { display: *d, frame: None }));
             use tauri::Emitter;
@@ -346,6 +348,16 @@ fn set_frame(win: &tauri::WebviewWindow, r: Rect) -> Result<(), String> {
 /// Placed on its own display where you put it there. Says which side that is (`left`), for the page.
 #[tauri::command]
 pub(crate) async fn mini_shape(app: AppHandle, window: tauri::WebviewWindow, w: f64, h: f64, show: bool) -> Result<Value, String> {
+    let r = shape(&app, &window, w, h, show);
+    if let Err(e) = &r {
+        eprintln!("[cue] mini window {}: couldn't place it: {e}", window.label());
+    }
+    r
+}
+
+fn shape(app: &AppHandle, window: &tauri::WebviewWindow, w: f64, h: f64, show: bool) -> Result<Value, String> {
+    let app = app.clone();
+    let window = window.clone();
     let label = window.label().to_string();
     let hide = |win: &tauri::WebviewWindow| {
         slots(|s| s.get_mut(&label).map(|x| x.frame = None));
