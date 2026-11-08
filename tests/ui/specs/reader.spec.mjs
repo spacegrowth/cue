@@ -104,3 +104,16 @@ test("Listen in Read scrolls the file along to the sentence it reads", async ({ 
   for (let i = 0; i < 40; i++) await page.locator('[data-listen-skip="1"]').click();
   await expect.poll(() => page.evaluate(() => document.querySelector(".rdv-scroll").scrollTop)).toBeGreaterThan(400);
 });
+
+test("Read keeps its place when Cue redraws (a session's update), and a file you open starts at its top", async ({ cue, page }) => {
+  const DOC = "# Long\n\n" + Array.from({ length: 80 }, (_, i) => `Paragraph ${i + 1}.`).join("\n\n");
+  await cue.open("board-waiting");
+  await cue.override("read_doc", ({ path }, d) => ({ path, text: d, modified_ms: 0 }), DOC);
+  await page.evaluate(() => readOpen("/x/long.md"));
+  await page.evaluate(() => { document.querySelector(".rdv-scroll").scrollTop = 1500; });
+  await cue.change(() => {});
+  await page.evaluate(() => renderMain());
+  expect(await page.evaluate(() => document.querySelector(".rdv-scroll").scrollTop)).toBe(1500);
+  await page.evaluate(() => readOpen("/x/other.md"));
+  expect(await page.evaluate(() => document.querySelector(".rdv-scroll").scrollTop)).toBe(0);
+});
