@@ -31,6 +31,7 @@ mod pi;
 mod protocol;
 mod running;
 mod session;
+mod tails;
 mod translate;
 mod wire;
 
@@ -54,6 +55,7 @@ mod translate_tests;
 pub use launch::{Agent, Program, Spec, Start};
 pub use hosts::Hosts;
 pub use running::{end_leftovers, Hosted, Report, Running, Started};
+pub use tails::{tail_running, tail_start, tail_stop};
 pub use session::Session;
 
 use serde_json::Value;

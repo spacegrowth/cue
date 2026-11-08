@@ -240,8 +240,8 @@ fn on_link(remotes: &Remotes, link: &Arc<HostLink>) -> Vec<Arc<Remote>> {
     crate::locking::lock(remotes, "hosts: sessions").values().filter(|r| Arc::ptr_eq(&r.link, link)).cloned().collect()
 }
 
-/// Once `link`'s dropped connection is back, its sessions attach again after what they've read, and what was held
-/// for them goes (`back`).
+/// Once `link`'s dropped connection is back, its sessions attach again after what they've read, what was held for
+/// them goes (`back`), and the files copied over it go on (tails.rs).
 pub(super) fn rejoin_when_back(link: &Arc<HostLink>, remotes: &Remotes) {
     let (all, me) = (Arc::downgrade(remotes), Arc::downgrade(link));
     link.on_back(move || {
@@ -249,6 +249,7 @@ pub(super) fn rejoin_when_back(link: &Arc<HostLink>, remotes: &Remotes) {
         for r in on_link(&all, &me) {
             back(&all, &r);
         }
+        super::tails::resume(&me);
     });
 }
 

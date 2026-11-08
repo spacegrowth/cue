@@ -67,9 +67,10 @@ impl Hub {
     /// `busy`: it's mid-turn, so it's queued until Claude reads it at its next step.
     pub(crate) fn send_to_hosted(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool) -> Result<String, String> {
         let text = typed.trim();
-        // One of Claude Code's own screens (/config, /login): a terminal opens it; the session never gets it.
-        if let Some(name) = self.terminal_command(sid, text) {
-            return self.open_terminal_command(sid, text, &name);
+        // One of its agent's own commands (/config, /login): a terminal opens it, or it's refused; the session never
+        // gets it (terminal_only.rs).
+        if let Some(done) = self.run_own_command(sid, text) {
+            return done;
         }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         self.write(|st| {

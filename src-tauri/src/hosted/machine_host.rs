@@ -1,6 +1,6 @@
 //! cue-host on another machine (docs/dev/cue-agent-host.md §3.4, §6). Cue.app carries cue-host built for Linux
 //! (x86_64, aarch64) and macOS (scripts/build-host.sh, in Contents/Resources/host-builds); the first time a machine
-//! hosts a session, Cue puts the one it needs at `~/.cue/bin/cue-host-<build>` there, checked against its SHA-256,
+//! hosts a session, Cue puts the one it needs at `~/.cue/bin/b-<build>/cue-host` there, checked against its SHA-256,
 //! and reaches it with `cue-host connect` over the machine's shared SSH connection. As on this Mac, each build has a
 //! folder of its own (`~/.cue/host/b-<build>`), so a Cue with fixed host code never sends a session to an older one.
 
@@ -15,9 +15,10 @@ fn build() -> &'static str {
     cue_host::proto::BUILD
 }
 
-/// cue-host's place on a machine, under your home there (each a path a shell there reads after `$HOME/`).
+/// cue-host's place on a machine, under your home there (each a path a shell there reads after `$HOME/`). The program
+/// is called `cue-host` there, as on this Mac, so it shows as that in `ps`; each build in a folder of its own.
 pub(super) fn bin() -> String {
-    format!(".cue/bin/cue-host-{}", build())
+    format!(".cue/bin/b-{}/cue-host", build())
 }
 
 pub(super) fn home() -> String {
@@ -141,7 +142,7 @@ mod tests {
 
     #[test]
     fn its_place_there_is_this_builds_under_your_home() {
-        assert_eq!(bin(), format!(".cue/bin/cue-host-{}", cue_host::proto::BUILD));
+        assert_eq!(bin(), format!(".cue/bin/b-{}/cue-host", cue_host::proto::BUILD), "named cue-host there, as on this Mac (a folder per build)");
         assert_eq!(home(), format!(".cue/host/b-{}", cue_host::proto::BUILD));
         assert_eq!(at_home(".cue/bin/x"), "\"$HOME/.cue/bin/x\"");
     }

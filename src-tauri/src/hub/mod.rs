@@ -29,6 +29,7 @@ mod sessions;
 mod shown;
 mod store_access;
 mod terminal_only;
+pub(crate) use terminal_only::Own;
 mod today;
 mod turn_end;
 mod usage;

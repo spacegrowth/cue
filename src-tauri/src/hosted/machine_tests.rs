@@ -180,7 +180,7 @@ fn a_session_on_a_machine_runs_under_cue_host_there_asks_and_is_answered() {
         assert_eq!(started.session_id, sid);
         // Cue put cue-host there, this build, and its Pi extension; the host runs from there.
         let placed = b.run("ls \"$HOME/.cue/bin\" \"$HOME/.cue/pi\"; ps -eo args | grep '[c]ue-host'");
-        assert!(placed.contains(&format!("cue-host-{}", cue_host::proto::BUILD)) && placed.contains("cue.ts"), "{placed}");
+        assert!(placed.contains(&format!("b-{}", cue_host::proto::BUILD)) && placed.contains("cue.ts"), "{placed}");
         assert!(placed.contains("serve --home"), "the host runs there: {placed}");
         hosts.send(&sid, "go").unwrap();
         let seen = until_event(&rx, |e| matches!(e, HostedEvent::Ask(_)));
@@ -268,7 +268,7 @@ fn a_host_that_dies_there_takes_its_agent_and_the_session_shows_paused() {
         hosts.start(&spec_on(b, start), r).unwrap();
         hosts.send(&sid, "go").unwrap();
         until_event(&rx, |e| matches!(e, HostedEvent::Taken { .. }));
-        b.exec("pkill -KILL -f '[c]ue-host-.* serve'");
+        b.exec("pkill -KILL -f '[c]ue-host serve'");
         let gone = until_event(&rx, |e| matches!(e, HostedEvent::Exited { .. }));
         assert!(matches!(gone.last(), Some(HostedEvent::Exited { .. })), "{gone:?}");
         until("paused", || !hosts.running(&sid));
@@ -295,8 +295,8 @@ fn a_folder_that_isnt_there_says_so_and_a_damaged_cue_host_there_is_put_back_who
         // Its host stopped, its program there damaged: the next Cue to use the machine puts it back whole.
         hosts.close_all();
         drop(hosts);
-        b.exec("pkill -KILL -f '[c]ue-host-.* serve'; true");
-        b.run(&format!("printf broken >\"$HOME/.cue/bin/cue-host-{}\"", cue_host::proto::BUILD));
+        b.exec("pkill -KILL -f '[c]ue-host serve'; true");
+        b.run(&format!("printf broken >\"$HOME/.cue/bin/b-{}/cue-host\"", cue_host::proto::BUILD));
         super::machine_host::forget_placed();
         let again = Cue::new();
         let hosts = again.hosts();
@@ -358,21 +358,168 @@ fn older_cue_host_builds_on_a_machine_are_cleared_once_they_run_nothing_and_left
         // host still running, with nothing to run (cc).
         let b_ = cue_host::proto::BUILD;
         b.run(&format!(
-            "cd \"$HOME/.cue\" && cp bin/cue-host-{b_} bin/cue-host-00000000000000aa && mkdir -p host/b-00000000000000bb && cp bin/cue-host-{b_} bin/cue-host-00000000000000cc && (setsid bin/cue-host-00000000000000cc serve --home \"$HOME/.cue/host/b-00000000000000cc\" </dev/null >/dev/null 2>&1 &) && sleep 0.5"
+            "cd \"$HOME/.cue\" && for x in aa cc; do mkdir -p bin/b-00000000000000$x && cp bin/b-{b_}/cue-host bin/b-00000000000000$x/; done && mkdir -p host/b-00000000000000bb && (setsid bin/b-00000000000000cc/cue-host serve --home \"$HOME/.cue/host/b-00000000000000cc\" </dev/null >/dev/null 2>&1 &) && sleep 0.5"
         ));
-        assert!(b.run("ps -eo args").contains("cue-host-00000000000000cc serve"));
+        let older = "b-00000000000000cc/cue-host serve";
+        assert!(b.run("ps -eo args").contains(older));
         let again = cue.hosts();
         let (r2, _rx2) = report();
         let back = again.reattach(&Spec { start: Start::Resume(sid.clone()), ..s }, r2).expect("its session, on this build's host");
         (back.go)();
         again.settled();
-        until("the older host stopped", || !b.run("ps -eo args").contains("cue-host-00000000000000cc serve"));
+        until("the older host stopped", || !b.run("ps -eo args").contains(older));
         let left = b.run("cd \"$HOME/.cue\" && ls bin host");
-        for gone in ["cue-host-00000000000000aa", "b-00000000000000bb", "cue-host-00000000000000cc", "b-00000000000000cc"] {
+        for gone in ["b-00000000000000aa", "b-00000000000000bb", "b-00000000000000cc"] {
             assert!(!left.contains(gone), "{gone} cleared: {left}");
         }
-        assert!(left.contains(&format!("cue-host-{b_}")) && left.contains(&format!("b-{b_}")), "this build's kept: {left}");
+        assert_eq!(left.matches(&format!("b-{b_}")).count(), 2, "this build's program and folder kept: {left}");
+        // Every host there shows as cue-host.
+        assert!(b.run("ps -eo comm").lines().any(|c| c.trim() == "cue-host"), "named cue-host in ps");
         assert!(again.running(&sid), "its session untouched");
         again.close(&sid);
     });
+}
+
+#[test]
+#[ignore = "needs Docker: scripts/test-machines.sh"]
+fn a_transcript_there_is_copied_over_the_cue_host_connection_with_nothing_lost_or_doubled_across_a_drop() {
+    on_each(|b| {
+        let cue = Cue::new();
+        let fake = FakeClaude::new();
+        let _agent = b.agent(&fake);
+        let hosts = cue.hosts();
+        let start = Start::fresh();
+        let sid = start.session_id().to_string();
+        let (r, _rx) = report();
+        hosts.start(&spec_on(b, start), r).unwrap();
+        let m = machines::get(&b.name).unwrap();
+        let remote = "/home/dev/transcript.jsonl";
+        b.run(&format!("printf 'one\\ntwo\\n' >{remote}"));
+        let copy = crate::machines::logs::local_copy(&m, remote);
+        assert!(!copy.is_empty());
+        let read = || std::fs::read_to_string(&copy).unwrap_or_default();
+        until("the start of it here", || read() == "one\ntwo\n");
+        b.run(&format!("printf 'three\\n' >>{remote}"));
+        until("what's added", || read() == "one\ntwo\nthree\n");
+        assert_eq!(b.run("ps -eo args | grep -c '[t]ail -c' || true").trim(), "0", "no tail -F session: over the one connection");
+        // The connection drops while more is written: once it's back, the rest comes, once.
+        b.drop_connection();
+        b.run(&format!("printf 'four\\nfive\\n' >>{remote}"));
+        until("the rest after the drop", || read() == "one\ntwo\nthree\nfour\nfive\n");
+        crate::machines::logs::stop(&m, remote);
+        hosts.close(&sid);
+    });
+}
+
+/// A real machine (`CUE_TEST_REAL_MACHINE`: an ssh host you can reach, with Claude Code signed in), reached with your
+/// own ssh and its config: the agent is the real Claude Code there, on Haiku, in a scratch folder removed after (with
+/// the test's conversation). It puts cue-host in ~/.cue there, as Cue does.
+fn real_machine() -> Option<(World, FakeSsh, String)> {
+    let host = std::env::var("CUE_TEST_REAL_MACHINE").ok()?;
+    let w = World::new();
+    let ssh = FakeSsh::new();
+    ssh.through("#!/bin/sh\nexec /usr/bin/ssh \"$@\"\n");
+    let m = machines::add(&host, "").unwrap();
+    Some((w, ssh, m.name))
+}
+
+#[test]
+#[ignore = "needs a real machine: CUE_TEST_REAL_MACHINE=<ssh host>"]
+fn live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart() {
+    let Some((_w, _ssh, name)) = real_machine() else { panic!("set CUE_TEST_REAL_MACHINE") };
+    let m = machines::get(&name).unwrap();
+    let run = |s: &str| machines::run(&m.host, s).unwrap_or_else(|e| panic!("{s}: {e}"));
+    let dir = format!("/tmp/cue-live-{}", std::process::id());
+    run(&format!("mkdir -p {dir}"));
+    let cue = Cue::new();
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let _scratch = Scratch { host: m.host.clone(), dir: dir.clone(), sid: sid.clone() };
+    let spec = Spec { agent: Agent::Claude, cwd: dir.clone().into(), start, permissions: String::new(), model: Some("haiku".into()), args: vec![], program: Program::Agent, machine: name.clone() };
+    let hosts = cue.hosts();
+    let (r, rx) = report();
+    let started = hosts.start(&spec, r).expect("started there");
+    eprintln!("-- started {} (pid {} there)", started.session_id, started.pid);
+    let long = Duration::from_secs(120);
+    let until_long = |rx: &std::sync::mpsc::Receiver<HostedEvent>, stop: &dyn Fn(&HostedEvent) -> bool| -> Vec<HostedEvent> {
+        let end = std::time::Instant::now() + long;
+        let mut seen = vec![];
+        loop {
+            let e = rx.recv_timeout(end.saturating_duration_since(std::time::Instant::now())).unwrap_or_else(|_| panic!("not in {long:?}; saw {seen:?}"));
+            let done = stop(&e);
+            seen.push(e);
+            if done {
+                return seen;
+            }
+        }
+    };
+    let allow_each = |hosts: &Hosts, rx: &std::sync::mpsc::Receiver<HostedEvent>, drop_after_first: bool| -> Vec<HostedEvent> {
+        let mut all = vec![];
+        let mut dropped = false;
+        loop {
+            let seen = until_long(rx, &|e| matches!(e, HostedEvent::Ask(_) | HostedEvent::TurnEnded { .. }));
+            let last = seen.last().cloned().unwrap();
+            all.extend(seen);
+            match last {
+                HostedEvent::Ask(a) => {
+                    eprintln!("-- asked: {} {}", a.tool_name, a.input);
+                    hosts.answer(&sid, &a.request_id, &super::hosts_tests::allow()).unwrap();
+                    if drop_after_first && !dropped {
+                        dropped = true;
+                        let out = Command::new("/usr/bin/ssh").args(["-o", "ControlPath=~/.ssh/cue-%C", "-O", "exit", &m.host]).output().unwrap();
+                        eprintln!("-- dropped the connection: {}", String::from_utf8_lossy(&out.stderr).trim());
+                    }
+                }
+                _ => return all,
+            }
+        }
+    };
+    // A command, asked about, answered from here.
+    hosts.send(&sid, "Run exactly this shell command and nothing else: echo cue-live-one. Then reply with its output only.").unwrap();
+    let first = allow_each(&hosts, &rx, false);
+    if let Some(HostedEvent::TurnEnded { text, .. }) = first.last().filter(|e| matches!(e, HostedEvent::TurnEnded { text, .. } if text.contains("authenticate"))) {
+        panic!("Claude Code on {} isn't signed in ({text}): sign in there (claude, then /login) and run this again", m.host);
+    }
+    assert!(first.iter().any(|e| matches!(e, HostedEvent::Ask(a) if a.tool_name == "Bash")), "it asked: {first:?}");
+    assert!(matches!(first.last(), Some(HostedEvent::TurnEnded { text, failed: false, .. }) if text.contains("cue-live-one")), "{:?}", first.last());
+    // A slow command, the connection dropped as it runs: the turn finishes there, and comes in once Cue is back.
+    hosts.send(&sid, "Run exactly this shell command and nothing else: sleep 6 && echo cue-live-two. Then reply with its output only.").unwrap();
+    let second = allow_each(&hosts, &rx, true);
+    assert!(matches!(second.last(), Some(HostedEvent::TurnEnded { text, failed: false, .. }) if text.contains("cue-live-two")), "{:?}", second.last());
+    // Cue quits and starts again: the session is picked up, its agent still running there.
+    hosts.close_all();
+    drop(hosts);
+    let again = cue.hosts();
+    let (r2, rx2) = report();
+    let back = again.reattach(&Spec { start: Start::Resume(sid.clone()), ..spec }, r2).expect("picked up");
+    assert_eq!(back.started.as_ref().map(|s| s.pid), Some(started.pid), "the same agent, not a new one");
+    (back.go)();
+    again.send(&sid, "Reply with the word picked-up and nothing else.").unwrap();
+    let third = until_long(&rx2, &|e| matches!(e, HostedEvent::TurnEnded { .. }));
+    assert!(matches!(third.last(), Some(HostedEvent::TurnEnded { text, .. }) if text.to_lowercase().contains("picked")), "{:?}", third.last());
+    // Every process of Cue's there says so.
+    let ps = run("ps -u \"$(id -u)\" -o comm=,args= | grep -E 'cue-host|cue-hosted' | grep -v grep; true");
+    eprintln!("-- Cue's processes there:\n{ps}");
+    assert!(ps.lines().any(|l| l.trim_start().starts_with("cue-host ") && l.contains(" serve ")), "the host shows as cue-host: {ps}");
+    again.close(&sid);
+}
+
+/// What the live test leaves on the machine, removed however it ends: its agent (by its session id, exactly), its
+/// scratch folder, and its conversation. cue-host stays (it leaves on its own when idle).
+struct Scratch {
+    host: String,
+    dir: String,
+    sid: String,
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let (dir, sid) = (&self.dir, &self.sid);
+        let projects = format!("${{CLAUDE_CONFIG_DIR:-$HOME/.claude}}/projects/{}", crate::logs::live::claude_project_folder(dir));
+        // Its agent ended first, and waited for: Claude Code writes its conversation once more as it goes.
+        let script = format!("ps=$(ps -u \"$(id -u)\" -o pid=,args= | grep -F -- '--session-id {sid}' | grep -v grep | awk '{{print $1}}'); [ -n \"$ps\" ] && kill $ps; i=0; while [ -n \"$ps\" ] && kill -0 $ps 2>/dev/null && [ $i -lt 50 ]; do sleep 0.1; i=$((i+1)); done; rm -rf {dir} \"{projects}\"; true");
+        if let Err(e) = machines::run(&self.host, &script) {
+            eprintln!("-- couldn't clean up on {}: {e}", self.host);
+        }
+    }
 }

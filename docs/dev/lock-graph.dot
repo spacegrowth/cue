@@ -11,9 +11,13 @@ digraph locks {
   "a session's feed" -> "WINDOWS";
   "a session's feed" -> "config in memory";
   "a session's feed" -> "copies";
+  "a session's feed" -> "machine tails";
+  "a session's feed" -> "machine tails: links";
   "actions STORE" -> "folder facts";
   "actions WATCH" -> "folder facts";
   "config file" -> "config in memory";
+  "copies" -> "machine tails";
+  "copies" -> "machine tails: links";
   "db writer's marks" -> "DB";
   "db writer's marks" -> "folder facts";
   "hosts: a session's outbox" -> "cue-host link: out";
@@ -45,6 +49,8 @@ digraph locks {
   "typing gate" -> "db writer's marks";
   "typing gate" -> "db writes";
   "typing gate" -> "folder facts";
+  "typing gate" -> "machine tails";
+  "typing gate" -> "machine tails: links";
   "typing gate" -> "mini reading";
   "typing gate" -> "parked saves";
   "typing gate" -> "quiet sessions";

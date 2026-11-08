@@ -14,7 +14,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -34,6 +34,8 @@ pub struct Host {
     /// When something last happened: a client came or went, a child exited.
     active: Mutex<Instant>,
     limit: u64,
+    /// The files being copied to clients (`tail`), by client and the client's name for each: set to stop one.
+    tails: Mutex<HashMap<(u64, String), Arc<AtomicBool>>>,
 }
 
 struct Session {
@@ -64,7 +66,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 impl Host {
     /// The host for `home`, with the sessions an earlier host there left (each ended with it, if it was running).
     pub fn new(home: &Path, limit: u64) -> Arc<Host> {
-        let host = Arc::new(Host { home: home.to_path_buf(), sessions: Mutex::default(), clients: AtomicUsize::new(0), next_client: AtomicU64::new(1), active: Mutex::new(Instant::now()), limit });
+        let host = Arc::new(Host { home: home.to_path_buf(), sessions: Mutex::default(), clients: AtomicUsize::new(0), next_client: AtomicU64::new(1), active: Mutex::new(Instant::now()), limit, tails: Mutex::default() });
         host.load();
         host
     }
@@ -135,6 +137,20 @@ impl Host {
             }
             Request::Close { session } => {
                 self.session(&session)?.close();
+                Ok(Value::Null)
+            }
+            Request::Tail { tail, path, from } => {
+                let stop = Arc::new(AtomicBool::new(false));
+                if let Some(was) = lock(&self.tails).insert((client, tail.clone()), stop.clone()) {
+                    was.store(true, Ordering::SeqCst);
+                }
+                crate::tail::follow(tail, path, from, to.clone(), stop);
+                Ok(Value::Null)
+            }
+            Request::Untail { tail } => {
+                if let Some(stop) = lock(&self.tails).remove(&(client, tail)) {
+                    stop.store(true, Ordering::SeqCst);
+                }
                 Ok(Value::Null)
             }
             Request::Forget { session } => {
@@ -279,6 +295,12 @@ impl Host {
         for s in lock(&self.sessions).values() {
             s.detach(n);
         }
+        lock(&self.tails).retain(|(c, _), stop| {
+            if *c == n {
+                stop.store(true, Ordering::SeqCst);
+            }
+            *c != n
+        });
         self.clients.fetch_sub(1, Ordering::SeqCst);
         self.touch();
     }

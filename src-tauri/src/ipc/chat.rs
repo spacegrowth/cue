@@ -34,6 +34,23 @@ pub(crate) async fn session_commands(hub: State<'_, Arc<Hub>>, session_id: Strin
 
 /// What session_commands answers with.
 fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
+    let mut v = listed(hub, session_id, fresh);
+    // Hosted: its agent's own commands that open a terminal, or that it doesn't have (hub/terminal_only.rs).
+    if hub.hosted_origin(session_id).is_some() {
+        for c in v["list"].as_array_mut().into_iter().flatten() {
+            let name = c["name"].as_str().unwrap_or_default().to_string();
+            match hub.own_command(session_id, &name, &format!("/{name}")) {
+                Some(crate::hub::Own::Terminal { .. }) => c["kind"] = "terminal".into(),
+                Some(crate::hub::Own::NotHosted) => c["kind"] = "unavailable".into(),
+                None => {}
+            }
+        }
+    }
+    v
+}
+
+/// The session's commands, as its agent has them.
+fn listed(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
     if fresh {
         commands::reread_all();
     }
@@ -55,13 +72,7 @@ fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
             None => return done(Some(vec![])),
         },
     };
-    let mut list = commands::for_folder(&cwd, &machine);
-    // Hosted: the commands only Claude Code's terminal has open a terminal (hub/terminal_only.rs).
-    if hub.hosted_origin(session_id).is_some() {
-        for c in list.iter_mut().flatten().filter(|c| hub.needs_terminal(session_id, &c.name)) {
-            c.kind = "terminal".into();
-        }
-    }
+    let list = commands::for_folder(&cwd, &machine);
     serde_json::json!({ "list": list, "reading": commands::reading(&cwd, &machine) })
 }
 

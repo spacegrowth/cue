@@ -24,7 +24,8 @@ use std::sync::Mutex;
 pub struct Cmd {
     pub name: String,
     /// "skill": it becomes a prompt (a turn starts, like a message). "command": Claude Code runs it itself.
-    /// "terminal": one of Claude Code's own screens, which a hosted session can't show: Cue opens it in a terminal.
+    /// In a hosted session (ipc/chat.rs): "terminal", one of its agent's own screens, which Cue opens in a terminal;
+    /// "unavailable", one of its agent's own commands a hosted session doesn't have (hub/terminal_only.rs).
     pub kind: String,
     pub desc: String,
     /// What it takes, in Claude Code's words ("[name]", "<model>"), else "".
@@ -270,6 +271,16 @@ fn from_setup(r: &Value) -> Vec<Cmd> {
             Some(Cmd { kind: if builtin { "command" } else { "skill" }.into(), desc: s(c, "description"), hint, args, name })
         })
         .collect()
+}
+
+/// Whether `/name` is one of Pi's own commands (not an extension's, a prompt template or a skill).
+pub fn pi_builtin(name: &str) -> bool {
+    for_pi(&[]).iter().any(|c| c.name == name)
+}
+
+/// Whether `/name` is one of Codex's own commands.
+pub fn codex_builtin(name: &str) -> bool {
+    for_codex().iter().any(|c| c.name == name)
 }
 
 /// A Pi session's "/" menu: Pi's own commands, then what its extension reported (its extensions'

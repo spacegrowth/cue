@@ -174,6 +174,8 @@ impl Remote {
                 return;
             }
             Event::Record { record } => record,
+            // A file copy's (tails.rs), never a session's.
+            Event::Tail { .. } => return,
         };
         if record.seq <= self.seq() {
             return;

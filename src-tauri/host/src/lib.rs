@@ -7,12 +7,14 @@
 //! - `child`: a session's process.
 //! - `server`: the sessions, and the clients attached to them.
 //! - `daemon`: reaching the host, starting it if it isn't running.
+//! - `tail`: a file copied to a client as it's written (a session's transcript, for Cue on another machine).
 
 pub mod child;
 pub mod daemon;
 pub mod log;
 pub mod proto;
 pub mod server;
+pub mod tail;
 
 use std::path::PathBuf;
 

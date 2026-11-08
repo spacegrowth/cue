@@ -635,3 +635,31 @@ fn one_of_claude_codes_own_screens_opens_in_a_terminal_tab_and_the_session_never
     w.send_to(&sid, "/compact");
     assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "/compact".to_string())));
 }
+
+/// A hosted `agent` session started by + New in the World's folder: its id.
+fn started_as(w: &World, agent: &str) -> String {
+    hosted_on(true);
+    let opts = StartOpts { hosted: true, ..Default::default() };
+    let r = start_session_with(w.hub(), agent, &w.home().to_string_lossy(), "", "trial", &opts).unwrap();
+    r["session_id"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn pis_and_codexs_own_commands_never_reach_the_model_sign_in_opens_a_terminal_and_the_rest_is_refused() {
+    let w = World::new();
+    let pi = started_as(&w, "pi");
+    let before = w.hosted.sent().len();
+    let said = w.send_to(&pi, "/login anthropic");
+    let tab = w.launcher.last();
+    assert_eq!((tab.line.as_str(), tab.dir.as_str()), ("pi --no-session", w.home().to_str().unwrap()), "Pi itself, in a terminal tab, to type it in");
+    assert!(said.to_string().contains("type /login anthropic there"), "{said}");
+    let refused = w.send_to(&pi, "/compact");
+    assert!(refused.to_string().contains("a hosted session doesn't have"), "{refused}");
+    assert_eq!(w.hosted.sent().len(), before, "neither went to Pi as a message");
+    w.send_to(&pi, "/pilead:mode");
+    assert_eq!(w.hosted.sent().last(), Some(&(pi.clone(), "/pilead:mode".to_string())), "an extension's command does");
+    let codex = started_as(&w, "codex");
+    w.send_to(&codex, "/login");
+    assert_eq!(w.launcher.last().line, "codex login");
+    assert!(w.send_to(&codex, "/model").to_string().contains("a hosted session doesn't have"));
+}

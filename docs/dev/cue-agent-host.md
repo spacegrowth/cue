@@ -213,7 +213,7 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 |---|---|---|
 | H3a | Pi's gate through RPC when hosted; `Item.request_id` and `add_ask` dedupe; protocol state rebuilt by replay (§12) | **built**: tests green; hosted Pi asks are cards with no socket |
 | H3b | `cue-host` + `Hosts`/`HostLink` on this Mac, behind `hosted.on` | **built**: Cue quit mid-turn with a card open, and again mid-command: the card comes back, the turn finishes; live with Claude Code, Pi and Codex |
-| H4a | Linux builds, install over SSH, `connect` and `tail` over the shared connection, remote hook skips hosted | **built** (§13; `tail` still by copies): survives killing the SSH connection mid-turn, in Docker on both architectures |
+| H4a | Linux builds, install over SSH, `connect` and `tail` over the shared connection, remote hook skips hosted | **built** (§13): survives killing the SSH connection mid-turn, in Docker on both architectures |
 | H4b | Pi and Codex remote, version checks, Settings → Machines wording | live on a real machine with all three |
 
 ## 11. What the review changed (from v1)
@@ -285,7 +285,7 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
   `SHA256SUMS`, `BUILD` and Cue's Pi extension (`cue-pi.ts`); Cue.app carries the folder (`Contents/Resources/
   host-builds`). `install.sh` and releases run it first; a release signs the macOS one and checks the Linux ones run.
 - **On a machine** (`hosted/machine_host.rs`, `on_machines.rs`). First use: `uname -sm`, the matching build sent with
-  `run_with_bytes`, its checksum checked there, moved into place (`~/.cue/bin/cue-host-<build>`, 0700); Cue's Pi
+  `run_with_bytes`, its checksum checked there, moved into place (`~/.cue/bin/b-<build>/cue-host`, 0700: named `cue-host` there as on this Mac, a folder per build); Cue's Pi
   extension beside it (`~/.cue/pi/cue.ts`). One `HostLink` per machine over `Dial::Machine`: ssh (the shared
   connection, no login shell: one that prints would corrupt the stream) running `connect`, which starts the host if
   none runs; made again with the same backoff when ssh ends. A host there of an older build is found the first time a
@@ -300,11 +300,21 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 - **`connect` relays with read/write, never `std::io::copy`.** On Linux that splices the host's socket into the pipe to
   sshd, holding the pipe's lock while it waits for the socket; sshd, reading that pipe on its one thread, then can't
   pass your input on either. Found by the Docker tests; it would hang every session on a real Linux machine.
-- **Transcripts** are still copied by `tail -F` sessions (machines/logs.rs), not a `tail` request on the host
-  connection (§9.1): fine at today's numbers; worth doing if a machine runs many sessions at once.
+- **Transcripts** (§9.1): a machine Cue is connected to copies each session's log (and its background agents' and
+  commands') over that one connection: `tail` / `untail` (host/src/tail.rs: looked at five times a second, whole
+  lines, a file not there yet waited for, one written over sent again from its start), written into the copy from
+  the byte it starts at, so nothing doubles after a reconnect; copies running over `tail -F` move onto the connection
+  when it's made (`machines/logs.rs` `onto_host`). A machine with no hosted session still copies by `tail -F`.
+- **Names.** On a machine the program is `~/.cue/bin/b-<build>/cue-host`, so it shows as `cue-host` in `ps`, as on
+  this Mac; its agents show as themselves (`claude`, `pi`, `codex`).
 - **Tests.** `scripts/test-machines.sh [--both]`: containers running sshd (reached through `docker exec … nc`, no port
   opened), cue-host put there by Cue, the tests' fake Claude as the agent; a turn with an ask; a connection dropped
   mid-turn (nothing lost or doubled, a message sent meanwhile arrives once); Cue quitting with an ask open; the host
   killed there; a damaged program replaced; a lost session picked up; older builds cleared.
+- **Live** (`CUE_TEST_REAL_MACHINE=<ssh host>`, the ignored `live_on_a_real_machine…` test: real Claude Code on
+  Haiku in a scratch folder, removed after with its conversation): on a Linux x86_64 box, cue-host was put there and
+  ran (`ps`: `cue-host`), Claude Code started under it and answered over the connection; that answer was that its
+  sign-in there had expired, so the ask, the drop mid-command and the restart still wait for a run once it's signed in.
+  Pi and Codex aren't installed there: Docker (with the fake agent) covers them.
 - Not yet: version checks of the agents there before a start (a Claude Code too old for hosting exits at once, and
-  Cue shows what it said), and a live run on a real Linux machine with Claude Code, Pi and Codex.
+  Cue shows what it said).

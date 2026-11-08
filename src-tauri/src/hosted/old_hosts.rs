@@ -73,22 +73,22 @@ pub(super) fn stop(h: &OldHost) {
 fn stop_there(pid: i32, build: &str) -> String {
     let b = build.chars().filter(char::is_ascii_hexdigit).collect::<String>();
     let kill = if pid > 1 { format!("kill {pid} 2>/dev/null; i=0; while kill -0 {pid} 2>/dev/null && [ $i -lt 20 ]; do sleep 0.1; i=$((i+1)); done; kill -9 {pid} 2>/dev/null; ") } else { String::new() };
-    format!("{kill}rm -rf \"$HOME/.cue/host/b-{b}\" \"$HOME/.cue/bin/cue-host-{b}\"; true")
+    format!("{kill}rm -rf \"$HOME/.cue/host/b-{b}\" \"$HOME/.cue/bin/b-{b}\"; true")
 }
 
 /// The hosts of other builds on machine `host` (`m_name`, for saying so) that still run: each reached through its own
 /// program there (`connect --only-running`, never starting one). A build's folder whose host doesn't answer is
 /// cleared with its program; so is a program whose build has no folder.
 pub(super) fn find_there(host: &str, m_name: &str, current: &str) -> Vec<OldHost> {
-    let listed = crate::machines::run(host, "cd \"$HOME/.cue\" 2>/dev/null || exit 0; ls -d host/b-* bin/cue-host-* 2>/dev/null; true").unwrap_or_default();
+    let listed = crate::machines::run(host, "cd \"$HOME/.cue\" 2>/dev/null || exit 0; ls -d host/b-* bin/b-* 2>/dev/null; true").unwrap_or_default();
     let builds_of = |prefix: &str| -> Vec<String> { listed.lines().filter_map(|l| l.trim().strip_prefix(prefix)).filter(|b| !b.is_empty() && b.chars().all(|c| c.is_ascii_hexdigit()) && *b != current).map(str::to_string).collect() };
-    let (homes, programs) = (builds_of("host/b-"), builds_of("bin/cue-host-"));
+    let (homes, programs) = (builds_of("host/b-"), builds_of("bin/b-"));
     let mut found = vec![];
     for b in programs.iter().filter(|b| !homes.contains(b)) {
-        let _ = crate::machines::run(host, &format!("rm -f \"$HOME/.cue/bin/cue-host-{b}\""));
+        let _ = crate::machines::run(host, &format!("rm -rf \"$HOME/.cue/bin/b-{b}\""));
     }
     for b in homes {
-        let script = format!("exec \"$HOME/.cue/bin/cue-host-{b}\" connect --only-running --home \"$HOME/.cue/host/b-{b}\"");
+        let script = format!("exec \"$HOME/.cue/bin/b-{b}/cue-host\" connect --only-running --home \"$HOME/.cue/host/b-{b}\"");
         let ssh = host.to_string();
         let dial = super::conn::Dial::Machine { home: PathBuf::from(format!("{m_name}:~/.cue/host/b-{b}")), command: Box::new(move || crate::machines::direct_command(&ssh, &script)), once: true };
         match HostLink::over(dial).and_then(|link| hello(&link).map(|h| (link, h))) {

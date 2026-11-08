@@ -37,6 +37,7 @@ impl OnMachines {
             return Err(format!("cue-host on {} didn't answer ({e}{said})", m.name));
         }
         rejoin_when_back(&link, remotes);
+        super::tails::known(name, &link);
         // Another thread may have made one meanwhile: theirs is kept (and this one closed, outside the lock).
         let theirs = {
             let mut all = crate::locking::lock(&self.links, "machine hosts: links");
@@ -51,7 +52,11 @@ impl OnMachines {
                 link.shut();
                 Ok(l)
             }
-            None => Ok(link),
+            None => {
+                // Its logs being copied over SSH sessions of their own come over this connection from now on.
+                crate::machines::logs::onto_host(&m);
+                Ok(link)
+            }
         }
     }
 

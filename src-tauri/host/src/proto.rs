@@ -52,6 +52,12 @@ pub enum Request {
     Close { session: String },
     /// Its log dropped (Cue closed or deleted the session for good). Closes it first if it runs.
     Forget { session: String },
+    /// The file at `path` from byte `from` on, then what's added to it as it's written, as `Event::Tail` events under
+    /// `tail` (Cue's name for this copy), whole lines only, until `untail` or this connection ends. A file that
+    /// isn't there yet is waited for; one that shrinks (written over) is sent again from its start. A session's
+    /// transcript, copied to Cue over this one connection instead of an SSH session each.
+    Tail { tail: String, path: String, from: u64 },
+    Untail { tail: String },
 }
 
 /// A session, as `hello` lists it.
@@ -117,6 +123,9 @@ pub enum Event {
     Record { #[serde(flatten)] record: Record },
     /// The log no longer has what comes after `after`: it starts at `from` (dropped for size).
     Gap { from: u64 },
+    /// More of a tailed file (`Request::Tail`): whole lines, starting at byte `at` of it. `at` 0 after the file was
+    /// written over: what Cue has is to be replaced.
+    Tail { at: u64, data: String },
 }
 
 impl FromHost {

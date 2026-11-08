@@ -281,7 +281,7 @@ tmux goes.
 
 **H4. Other machines. Built 2026-11-08** (`docs/dev/cue-agent-host.md` §13). A session on a machine runs under
 cue-host there, as on this Mac: Cue carries cue-host for Linux (x86_64, aarch64, static) and macOS
-(`scripts/build-host.sh`, in Cue.app), puts it at `~/.cue/bin/cue-host-<build>` on first use (checksum-checked), and
+(`scripts/build-host.sh`, in Cue.app), puts it at `~/.cue/bin/b-<build>/cue-host` on first use (so it shows as `cue-host` in `ps`, as on this Mac) (checksum-checked), and
 reaches it with `cue-host connect` over the machine's shared SSH connection. Quitting Cue, a dropped connection or the
 Mac sleeping no longer stops a turn there: Cue reconnects, catches up on what it said, asks again what still waits, and
 sends what you typed meanwhile. + New → a machine → Runs in: Hosted; Move to hosted for a session in tmux there; Move
@@ -289,7 +289,7 @@ to terminal takes one back to tmux there. Pi there gets Cue's extension (its gat
 machine's hook script leaves hosted agents alone. Tested against Linux in Docker on both architectures
 (`scripts/test-machines.sh`), which found a deadlock in `connect` under sshd (fixed: §13).
 
-**H5. What only a terminal does. Built 2026-11-08** for Claude Code:
+**H5. What only a terminal does. Built 2026-11-08:**
 - *Full-screen commands and signing in* (`/config`, `/login`, `/theme`, …: what Claude reports as
   `terminal_slash_commands`, plus sign-in and its own settings screens, which headless never offers): sent to a hosted
   session, Cue opens `claude /<command>` in a terminal tab in its folder (on its machine, over SSH) instead; the `/`
@@ -300,7 +300,12 @@ machine's hook script leaves hosted agents alone. Tested against Linux in Docker
 - *The folder-trust dialog* (headless never asks): + New asks "Trust this folder?" before hosting Claude Code in a folder
   it isn't trusted in, once per folder (Claude Code's own trust on this Mac counts; on a machine, Cue's list,
   `hosted.trusted`).
-- Not done: Pi's and Codex's own sign-in and settings screens (`pi auth`, `codex login`), not yet checked headless.
+- *Pi and Codex* (checked headless: Pi's RPC mode, and even its terminal given a command as it starts, takes `/login`
+  or `/hotkeys` for a message to the model). Pi's sign-in and settings (`/login`, `/logout`, `/settings`,
+  `/scoped-models`, `/hotkeys`, `/changelog`, `/trust`) open Pi in a terminal tab, Cue saying which to type there;
+  Codex's `/login` and `/logout` run `codex login` / `codex logout` there. Their other own commands act on the session,
+  which a hosted one can't do from Cue's box yet: refused, saying so (Move to terminal), never sent to the model; the
+  `/` menu marks them "not hosted". Extensions' commands, prompt templates and skills go to the session as before.
 
 **H6. Remove Cue's terminal.** Hosted becomes how every session starts and `hosted.on` goes away. Removed: the
 tmux panel and its code, `Runs in`, Move to Cue (a terminal session comes into Cue hosted), the add-on's screen

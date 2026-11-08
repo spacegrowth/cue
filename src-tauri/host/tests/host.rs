@@ -312,3 +312,64 @@ fn a_child_started_with_inherit_gets_the_hosts_environment_with_cues_over_it_and
     assert_eq!(outs(&c.records_until("inh", exited)), [format!("home={home_here} cue=given")], "the host's HOME, Cue's variable");
     assert_eq!(outs(&c.records_until("own", exited)), ["home=none cue=given"], "exactly what Cue gave");
 }
+
+impl Client {
+    /// The text of `tail`'s events since the last call, as Cue would put it together (an event at 0 replaces what came
+    /// before it), until `done` says so (or 10 s go by).
+    fn tailed_until(&mut self, tail: &str, done: impl Fn(&str) -> bool) -> String {
+        let mut got = String::new();
+        let take = |e: FromHost, got: &mut String| {
+            if let FromHost::Event { session, event: cue_host::proto::Event::Tail { at, data } } = e {
+                if session == tail {
+                    if at == 0 {
+                        got.clear();
+                    }
+                    got.push_str(&data);
+                }
+            }
+        };
+        for e in std::mem::take(&mut self.events) {
+            take(e, &mut got);
+        }
+        let until = Instant::now() + Duration::from_secs(10);
+        while !done(&got) {
+            match self.lines.recv_timeout(until.saturating_duration_since(Instant::now())) {
+                Ok(e) => take(e, &mut got),
+                Err(_) => panic!("timed out; got {got:?}"),
+            }
+        }
+        got
+    }
+}
+
+#[test]
+fn a_tailed_file_comes_over_as_it_is_written_whole_lines_only_and_again_when_written_over() {
+    let h = home("tail");
+    serve(&h, Duration::from_secs(600));
+    let mut c = Client::new(&h);
+    let file = h.join("transcript.jsonl");
+    // Not there yet: waited for.
+    c.ask(json!({ "op": "tail", "tail": "t1", "path": file, "from": 0 })).unwrap();
+    std::fs::write(&file, "one\ntwo\nhal").unwrap();
+    assert_eq!(c.tailed_until("t1", |t| t == "one\ntwo\n"), "one\ntwo\n", "a half-written line waits");
+    let mut f = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
+    std::io::Write::write_all(&mut f, b"f done\nthree\n").unwrap();
+    assert_eq!(c.tailed_until("t1", |t| t.ends_with("three\n")), "half done\nthree\n", "only what's new, the half line whole now");
+    // Written over, shorter: from its start again.
+    std::fs::write(&file, "new\n").unwrap();
+    assert_eq!(c.tailed_until("t1", |t| t == "new\n"), "new\n");
+    // From a point: only what's after it. (Added to, as a transcript is: writing the file anew empties it first,
+    // which the host rightly takes for written over.)
+    c.ask(json!({ "op": "tail", "tail": "t2", "path": file, "from": 4 })).unwrap();
+    std::io::Write::write_all(&mut std::fs::OpenOptions::new().append(true).open(&file).unwrap(), b"more\n").unwrap();
+    assert_eq!(c.tailed_until("t2", |t| t.contains("more")), "more\n");
+    // Stopped: nothing more comes.
+    c.ask(json!({ "op": "untail", "tail": "t1" })).unwrap();
+    c.ask(json!({ "op": "untail", "tail": "t2" })).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    c.events.clear();
+    let mut f = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
+    std::io::Write::write_all(&mut f, b"unseen\n").unwrap();
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(c.lines.try_iter().all(|e| !matches!(e, FromHost::Event { event: cue_host::proto::Event::Tail { .. }, .. })), "untailed: nothing comes");
+}

@@ -294,3 +294,33 @@ reason = "hosted::remote: a session's lines are written to the host under its ou
 from = "hosts: a session's outbox"
 to = "cue-host link: waiting"
 reason = "hosted::remote: as for cue-host link: out (a request's answer is waited for under the outbox; the link's reader never takes it)"
+
+[[lock_order]]
+from = "a session's feed"
+to = "machine tails"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+
+[[lock_order]]
+from = "a session's feed"
+to = "machine tails: links"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+
+[[lock_order]]
+from = "copies"
+to = "machine tails"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+
+[[lock_order]]
+from = "copies"
+to = "machine tails: links"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+
+[[lock_order]]
+from = "typing gate"
+to = "machine tails"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"
+
+[[lock_order]]
+from = "typing gate"
+to = "machine tails: links"
+reason = "hosted::tails: starting or looking at a transcript copy over a machine's cue-host connection (machines/logs.rs) reads and writes these two maps only; they are leaves (nothing is taken under them, and the request goes on a thread of its own)"

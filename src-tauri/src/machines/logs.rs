@@ -1,7 +1,8 @@
 //! A session's log on a machine (Claude Code's transcript, Codex's rollout log), copied to this Mac as it's
-//! written: one `tail -F` over the machine's shared SSH connection, its output straight into a file in Cue's
-//! data folder. The session then points at the copy, so everything Cue reads from a log on this Mac (the
-//! chat's steps, context, who sent a prompt, an answer given in the terminal) works the same for it. New
+//! written: over the machine's cue-host connection when Cue has one (a session is hosted there), else one `tail -F`
+//! over the machine's shared SSH connection, its output straight into a file in Cue's data folder. The session then
+//! points at the copy, so everything Cue reads from a log on this Mac (the chat's steps, context, who sent a prompt,
+//! an answer given in the terminal) works the same for it. New
 //! lines arrive within tens of milliseconds. The hooks still say when things happen and ask permission.
 //!
 //! Each copy keeps the machine's path beside it (`<copy>.from`), so when Cue launches it picks the copies of
@@ -10,13 +11,39 @@ use crate::machines::{self, Machine};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Child;
+
+/// What keeps a copy going: the machine's cue-host connection, when Cue has one (a session is hosted there:
+/// hosted/tails.rs), else a `tail -F` over an SSH session of its own.
+enum Copier {
+    Host(String),
+    Ssh(Child),
+}
+
+impl Copier {
+    fn running(&mut self) -> bool {
+        match self {
+            Copier::Host(id) => crate::hosted::tail_running(id),
+            Copier::Ssh(ch) => matches!(ch.try_wait(), Ok(None)),
+        }
+    }
+
+    fn end(self) {
+        match self {
+            Copier::Host(id) => crate::hosted::tail_stop(&id),
+            Copier::Ssh(mut ch) => {
+                let _ = ch.kill();
+                let _ = ch.wait();
+            }
+        }
+    }
+}
 use std::sync::{Mutex, OnceLock};
 
 /// What each copy runs on the machine, after this mark ("cue-copy" tells these ssh processes apart).
 const MARK: &str = "# cue-copy";
 
-fn copies() -> &'static Mutex<HashMap<String, Child>> {
-    static C: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
+fn copies() -> &'static Mutex<HashMap<String, Copier>> {
+    static C: OnceLock<Mutex<HashMap<String, Copier>>> = OnceLock::new();
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -47,7 +74,7 @@ pub fn local_copy(m: &Machine, remote: &str) -> String {
     let Some(path) = local_path(m, remote) else { return String::new() };
     let key = path.to_string_lossy().to_string();
     let mut c = crate::locking::lock(copies(), "copies");
-    let running = c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None)));
+    let running = c.get_mut(&key).is_some_and(Copier::running);
     // On from what the copy already has (all of it the first time): starting over would empty it first, and with
     // the machine offline (Cue launched away from it) every chat from there would be blank until it next spoke.
     if !running && start_after(m, remote, &path).map(|ch| c.insert(key.clone(), ch)).is_err() {
@@ -65,7 +92,7 @@ pub fn copy_helper(copy: &str, agent_id: &str) {
     let Some((m, remote, local)) = helper_paths(copy, agent_id) else { return };
     let key = local.to_string_lossy().to_string();
     let mut c = crate::locking::lock(copies(), "copies");
-    if c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None))) {
+    if c.get_mut(&key).is_some_and(Copier::running) {
         return;
     }
     if let Ok(ch) = start_after(&m, &remote, &local) {
@@ -97,7 +124,7 @@ pub fn copy_task(copy: &str, task_id: &str, remote_out: &str) -> Option<PathBuf>
     }
     let key = local.to_string_lossy().to_string();
     let mut c = crate::locking::lock(copies(), "copies");
-    if c.get_mut(&key).is_some_and(|ch| matches!(ch.try_wait(), Ok(None))) {
+    if c.get_mut(&key).is_some_and(Copier::running) {
         return Some(local);
     }
     let ch = start(&m, remote_out, &local).ok()?;
@@ -179,9 +206,8 @@ fn end(local: &Path) {
         let mut c = crate::locking::lock(copies(), "copies");
         c.remove(&*local.to_string_lossy())
     };
-    if let Some(mut ch) = gone {
-        let _ = ch.kill();
-        let _ = ch.wait();
+    if let Some(copier) = gone {
+        copier.end();
     }
 }
 
@@ -198,25 +224,47 @@ fn from_file(copy: &Path) -> PathBuf {
 }
 
 /// The whole log, then each line as it's written, into `path` (started over each time).
-fn start(m: &Machine, remote: &str, path: &PathBuf) -> Result<Child, String> {
+fn start(m: &Machine, remote: &str, path: &PathBuf) -> Result<Copier, String> {
     std::fs::create_dir_all(path.parent().ok_or("no folder")?).map_err(|e| e.to_string())?;
-    let out = std::fs::File::create(path).map_err(|e| e.to_string())?;
     std::fs::write(from_file(path), remote).map_err(|e| e.to_string())?;
+    if let Some(id) = crate::hosted::tail_start(&m.name, remote, path, false) {
+        return Ok(Copier::Host(id));
+    }
+    let out = std::fs::File::create(path).map_err(|e| e.to_string())?;
     let script = format!("{MARK}\nexec tail -c +1 -F {}", machines::shq(remote));
-    machines::stream_command(&m.host, &script).stdout(out).spawn().map_err(|e| e.to_string())
+    machines::stream_command(&m.host, &script).stdout(out).spawn().map(Copier::Ssh).map_err(|e| e.to_string())
 }
 
 /// Like `start`, but keeps what an earlier copy of `remote` got and copies on from there: a background agent its
 /// session sends a message to writes on to the same log, and the chat is partway through the copy.
-fn start_after(m: &Machine, remote: &str, path: &PathBuf) -> Result<Child, String> {
+fn start_after(m: &Machine, remote: &str, path: &PathBuf) -> Result<Copier, String> {
     let have = std::fs::metadata(path).map(|md| md.len()).unwrap_or(0);
     if have == 0 {
         return start(m, remote, path);
     }
-    let out = std::fs::OpenOptions::new().append(true).open(path).map_err(|e| e.to_string())?;
     std::fs::write(from_file(path), remote).map_err(|e| e.to_string())?;
+    if let Some(id) = crate::hosted::tail_start(&m.name, remote, path, true) {
+        return Ok(Copier::Host(id));
+    }
+    let out = std::fs::OpenOptions::new().append(true).open(path).map_err(|e| e.to_string())?;
     let script = format!("{MARK}\nexec tail -c +{} -F {}", have + 1, machines::shq(remote));
-    machines::stream_command(&m.host, &script).stdout(out).spawn().map_err(|e| e.to_string())
+    machines::stream_command(&m.host, &script).stdout(out).spawn().map(Copier::Ssh).map_err(|e| e.to_string())
+}
+
+/// Machine `m`'s host can be reached now (Cue connected to it): its copies running over SSH sessions of their own
+/// move onto that connection, each going on from where its file ends.
+pub fn onto_host(m: &Machine) {
+    let dir = crate::server::cue_dir().join("machines").join(dir_name(m));
+    let mine: Vec<String> = crate::locking::lock(copies(), "copies").iter().filter(|(k, c)| matches!(c, Copier::Ssh(_)) && Path::new(k).starts_with(&dir)).map(|(k, _)| k.clone()).collect();
+    for key in mine {
+        let local = PathBuf::from(&key);
+        let Ok(remote) = std::fs::read_to_string(from_file(&local)) else { continue };
+        let Some(id) = crate::hosted::tail_start(&m.name, remote.trim(), &local, true) else { return };
+        let was = crate::locking::lock(copies(), "copies").insert(key, Copier::Host(id));
+        if let Some(old) = was {
+            old.end();
+        }
+    }
 }
 
 /// Stop copying `remote` (its session ended). The copy stays until Cue forgets the session.
