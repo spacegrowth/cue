@@ -16,7 +16,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 147 (3 sync) |
 | Lock declarations (static or field) | 112 |
-| Lock acquisitions | 264 |
+| Lock acquisitions | 263 |
 | Lock-graph edges | 50 |
 | Spawn sites | 86 |
 | External calls: fs / db / process / notify / login / socket | 362 / 146 / 53 / 4 / 1 / 3 |
@@ -275,7 +275,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `notify.rs::QUIET` | `std::sync::Mutex<Vec<String>>` | "quiet sessions" (2 sites) |
 | `notify.rs::READING` | `std::sync::Mutex<Vec<(String,String)>>` | "mini reading" (2 sites) |
 | `notify.rs::JOBS` | `std::sync::OnceLock<std::sync::mpsc::Sender<Job>>` | — |
-| `notify.rs::BOUNCING` | `std::sync::Mutex<Vec<String>>` | "dock bounce" (6 sites) |
+| `notify.rs::BOUNCING` | `std::sync::Mutex<Vec<String>>` | "dock bounce" (5 sites) |
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
 | `sounds.rs::PLAYING` | `std::sync::Mutex<Option<std::process::Child>>` | "PLAYING" (1 sites) |
 | `statuslist.rs::SEEN` | `Mutex<Option<(u64,Value)>>` | "what the status list has cost" (1 sites) |

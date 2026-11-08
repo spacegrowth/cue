@@ -13,6 +13,7 @@
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
   const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
+  const FRESH_MS = 60000;              // a new card blinks the tab's dot this long, then Cue notifies
   const TAB_H = 76;                   // the rail's tab, tucked away
   const HOVER_MS = 600, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
@@ -79,10 +80,20 @@
 
   /** The rail tucked away: a small tab at the edge, ‹ over a live dot, the dot red while a session asks, amber
    *  while one waits for your turn, breathing while sessions only work. */
+  /** Something in `shown` that needs you came in the last minute: its dot blinks (the rail's tab, the notch's
+   *  island), before Cue posts a notification about it (notify.rs DOCK_FIRST). Drawn again when that minute ends. */
+  function isFresh(shown) {
+    const newest = Math.max(0, ...shown.map((i) => i.created_ms || 0));
+    const fresh = now() - newest < FRESH_MS;
+    clearTimeout(m.freshT);
+    if (fresh) m.freshT = setTimeout(paint, FRESH_MS - (now() - newest) + 50);
+    return fresh;
+  }
   function tuckHtml() {
     const { shown } = needs(Infinity);
     const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
-    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
+    const fresh = isFresh(shown);
+    return `<button class="m-panel m-tuck ${cls}${fresh ? " fresh" : ""} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
   /** The tabs across the chat's top (tabList's order); a session in conversation blinks. A click switches; each
    *  keeps what you typed in it. */
@@ -93,7 +104,7 @@
     const { shown } = needs();
     const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
     const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
-    return `<div class="m-panel m-island"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing m-quiet">${busy ? `<i class="m-dot work"></i>${busy}` : ""}</span></div>`;
+    return `<div class="m-panel m-island${shown.length && isFresh(shown) ? " fresh" : ""}"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing m-quiet">${busy ? `<i class="m-dot work"></i>${busy}` : ""}</span></div>`;
   }
   function nodHtml() {
     const it = state.items.find((i) => i.id === m.nod);

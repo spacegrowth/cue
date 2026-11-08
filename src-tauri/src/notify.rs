@@ -67,21 +67,13 @@ pub struct Note {
     pub watched: bool,
 }
 
-/// How long Cue's Dock icon bounces for something new before it goes to Notification Center too: answered (or
-/// Cue brought forward) within it, it never does.
+/// How long something new only blinks the mini window's dot (mini.js FRESH_MS) before it goes to Notification
+/// Center too: answered (or Cue brought forward) within it, it never does.
 pub const DOCK_FIRST: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// The notifications bouncing the Dock now, waiting out `DOCK_FIRST` before they're posted. Taken back: gone
-/// from here, so it's never posted; none left: the Dock stops.
+/// The notifications waiting out `DOCK_FIRST` before they're posted. Taken back: gone from here, so it's never
+/// posted.
 static BOUNCING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-
-/// The Dock icon bouncing (`on`) until Cue comes forward, or stopped.
-fn dock(app: &tauri::AppHandle, on: bool) {
-    use tauri::Manager;
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.request_user_attention(on.then_some(tauri::UserAttentionType::Critical));
-    }
-}
 
 /// Cue is the window in front of you: what's new is on screen already.
 fn in_front(app: &tauri::AppHandle) -> bool {
@@ -89,7 +81,7 @@ fn in_front(app: &tauri::AppHandle) -> bool {
     app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false))
 }
 
-/// `note` for you: the Dock bounces first, and only if it's still there a minute later (not answered, Cue not
+/// `note` for you: the mini window's dot blinks first (the Dock never bounces), and only if it's still there a minute later (not answered, Cue not
 /// in front) does it go to Notification Center, with its sound. Nothing while Cue is in front of you. A turn
 /// you asked to be told about is posted at once, even with Cue in front. An unbundled dev binary gets the
 /// plugin's plain notification instead, which Cue can't take back.
@@ -111,19 +103,15 @@ pub fn show(app: tauri::AppHandle, note: Note) {
         if !crate::locking::lock(&BOUNCING, "dock bounce").iter().any(|i| *i == note.id) {
             return;   // taken back already
         }
-        dock(&app, true);
         std::thread::spawn(move || {
             std::thread::sleep(DOCK_FIRST);
             later(move || {
-                let (still, none_left) = {
+                let still = {
                     let mut b = crate::locking::lock(&BOUNCING, "dock bounce");
                     let still = b.iter().any(|i| *i == note.id);
                     b.retain(|i| *i != note.id);
-                    (still, b.is_empty())
+                    still
                 };
-                if none_left {
-                    dock(&app, false);
-                }
                 if still && !in_front(&app) {
                     post_now(&app, note);
                 }
@@ -141,8 +129,7 @@ fn post_now(app: &tauri::AppHandle, note: Note) {
     }
 }
 
-/// Notifications `ids` taken back: one still bouncing the Dock is never posted, and the Dock stops once none
-/// is; one already up comes out of Notification Center, on its thread (`later`), after every post handed in
+/// Notifications `ids` taken back: one still waiting is never posted; one already up comes out of Notification Center, on its thread (`later`), after every post handed in
 /// before, so one posted a moment ago is never left up because its taking back went first.
 pub fn take_back(ids: Vec<String>) {
     if ids.is_empty() {
@@ -150,14 +137,6 @@ pub fn take_back(ids: Vec<String>) {
     }
     crate::locking::lock(&BOUNCING, "dock bounce").retain(|i| !ids.contains(i));
     later(move || remove(&ids));
-}
-
-/// The Dock stopped when nothing's bouncing it any more (after `take_back`; needs the app, which it hasn't).
-pub fn settle(app: &tauri::AppHandle) {
-    if crate::locking::lock(&BOUNCING, "dock bounce").is_empty() {
-        let app = app.clone();
-        later(move || dock(&app, false));
-    }
 }
 
 #[cfg(target_os = "macos")]

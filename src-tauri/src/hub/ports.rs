@@ -41,7 +41,6 @@ impl Notes for Center {
 
     fn take_back(&self, ids: Vec<String>) {
         crate::notify::take_back(ids);
-        crate::notify::settle(&self.0);
     }
 }
 

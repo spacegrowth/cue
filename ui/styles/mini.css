@@ -22,6 +22,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 /* In conversation with you (the last few minutes): its tab's dot blinks, plainly, until it drops into newest first. */
 .m-tab.talk .m-dot { animation: m-blink 1s steps(1, end) infinite; }
 @keyframes m-blink { 50% { opacity: .35; } }
+.m-tuck.fresh .m-live, .m-island.fresh .m-n .m-dot { animation: m-blink 1s steps(1, end) infinite; }   /* new in the last minute */
 @media (prefers-reduced-motion: reduce) { .m-tab.talk .m-dot { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
 /* Your message not taken yet, as in Cue's chat (chat.css .cv-you.queued): no fill, a dim outline with a brighter
    arc going round it until it goes, and what's happening to it underneath. */
