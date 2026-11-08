@@ -49,7 +49,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-age { font: 11px var(--mono); opacity: .7; }
 
 /* ---------- the chat (both shapes) ---------- */
-.m-chat { display: flex; flex-direction: column; height: var(--cap, 440px); overflow: hidden; box-sizing: border-box; }
+/* The chat is its window's full width, fixed (mini.js sets --chat-w): never wider (a long line wraps or scrolls
+   inside), and not laid out at the tab's width in the moment before the window grows. */
+.m-chat { width: var(--chat-w, 100%); flex: none; display: flex; flex-direction: column; height: var(--cap, 440px); overflow: hidden; box-sizing: border-box; }
 .m-now { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
 .m-now-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-chat-head { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; flex: none; border-bottom: 1px solid var(--line); }
@@ -57,7 +59,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-ask { margin: 10px 12px 0; padding: 9px 11px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--deny); display: flex; flex-direction: column; gap: 7px; flex: none; }
 .m-cmd { font: 12px/1.45 var(--mono); background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 7px 10px; white-space: pre-wrap; word-break: break-word; max-height: 96px; overflow: auto; user-select: text; -webkit-user-select: text; }
 .m-acts { display: flex; gap: 8px; }
-.m-thread { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 10px 16px; display: flex; flex-direction: column; gap: 9px; user-select: text; -webkit-user-select: text; }
+.m-thread { overflow-wrap: anywhere; flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 10px 16px; display: flex; flex-direction: column; gap: 9px; user-select: text; -webkit-user-select: text; }
 .m-you { align-self: flex-end; max-width: 85%; background: var(--panel-2); border-radius: 10px; padding: 7px 10px; white-space: pre-wrap; }
 .m-agent p, .m-agent ul, .m-agent ol, .m-agent .md-table, .m-agent .code-wrap { margin: 0 0 8px; }
 .m-agent ul, .m-agent ol { padding-left: 18px; }
@@ -122,8 +124,8 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-tuck.work .m-live { background: var(--sel); }
 .m-tuck.turn .m-live { background: #d99a3a; }
 .m-tuck.ask .m-live { background: #e8907f; }
-.m-tuck.turn, .m-tuck.ask { animation: m-nudge .5s cubic-bezier(.2, .9, .3, 1.12); }
-@keyframes m-nudge { from { transform: translateX(10px); } }
+.m-tuck.turn, .m-tuck.ask { animation: m-nudge .45s cubic-bezier(.22, 1, .36, 1); }   /* a soft lean out, no bounce */
+@keyframes m-nudge { from { transform: translateX(6px); } }
 
 /* Out: the panel where the tab was, its bar on top (the tabs, ⤢ and ⇥), dragged by that bar. */
 .rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px 0 0 14px; box-shadow: inset 0 0 0 1px var(--line); }
@@ -135,10 +137,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 14px; }
 .m-pipbtn:hover { opacity: 1; background: color-mix(in srgb, var(--ink) 9%, transparent); }
 body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
-/* It springs out of the edge, and slides back into it tucked away. */
-.rail.m-enter .m-chat { animation: m-spring .42s cubic-bezier(.2, .9, .3, 1.12); }
-@keyframes m-spring { from { transform: translateX(calc(100% + 12px)); } }
-.rail.m-leave .m-chat { transform: translateX(calc(100% + 12px)); transition: transform .22s ease-in; }
+/* It eases out from the edge a short way as it fades in, settling without overshoot; it leaves the same way,
+   quicker. A short travel reads as calm; the full width in a fraction of a second read as a jolt. */
+.rail.m-enter .m-chat { animation: m-spring .24s cubic-bezier(.22, 1, .36, 1); }
+@keyframes m-spring { from { transform: translateX(24px); opacity: 0; } }
+.rail.m-leave .m-chat { transform: translateX(16px); opacity: 0; transition: transform .16s cubic-bezier(.4, 0, 1, 1), opacity .16s; }
 @media (prefers-reduced-motion: reduce) { .rail.m-enter .m-chat, .m-tuck { animation: none; } .rail.m-leave .m-chat { transition: none; } }
 
 /* On the left edge: the same, mirrored (› to come out, the panel springs out rightwards). */
@@ -146,8 +149,8 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 .side-left .m-tuck { padding: 0 6px 0 0; border-radius: 0 12px 12px 0; clip-path: inset(0 6px 0 0 round 0 12px 12px 0); }
 .side-left .m-tuck.over, .side-left .m-tuck:hover { clip-path: inset(0 round 0 12px 12px 0); }
 .side-left .m-tuck.turn, .side-left .m-tuck.ask { animation-name: m-nudge-r; }
-@keyframes m-nudge-r { from { transform: translateX(-10px); } }
+@keyframes m-nudge-r { from { transform: translateX(-6px); } }
 .rail.side-left .m-chat { border-radius: 0 14px 14px 0; }
 .rail.side-left.m-enter .m-chat { animation-name: m-spring-r; }
-@keyframes m-spring-r { from { transform: translateX(calc(-100% - 12px)); } }
-.rail.side-left.m-leave .m-chat { transform: translateX(calc(-100% - 12px)); }
+@keyframes m-spring-r { from { transform: translateX(-24px); opacity: 0; } }
+.rail.side-left.m-leave .m-chat { transform: translateX(-16px); }

@@ -14,7 +14,7 @@
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
   const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
   const TAB_H = 76;                   // the rail's tab, tucked away
-  const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
+  const HOVER_MS = 600, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
   // The side edge Cue put this display's tab on (where you dragged it; Cue keeps that for each display and
@@ -179,6 +179,7 @@
     const p = root.querySelector(".m-panel");
     const cap = Math.round(screen.height * CAP);
     document.documentElement.style.setProperty("--cap", `${cap}px`);
+    document.documentElement.style.setProperty("--chat-w", `${WIDTH.chat}px`);
     const w = WIDTH[m.shape] || WIDTH.quiet;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
@@ -207,7 +208,7 @@
     if (m.shape !== m.drawnShape && m.shape !== "quiet") {
       m.entering = true;
       clearTimeout(m.enterT);
-      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, NOTCH ? 200 : 450);
+      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, NOTCH ? 200 : 300);
     }
     m.drawnShape = m.shape;
     const drawnOpen = m.drawnOpen;
@@ -258,6 +259,7 @@
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
     m.open = sid;
+    invoke("mini_reading", { sessionId: sid }).catch(() => {});
     m.note = "";
     m.shape = "chat";
     paint();
@@ -269,12 +271,12 @@
     if (m.shape !== "chat" || m.leaving) return;
     if (giveBack && m.keyed) invoke("mini_key", { on: false }).catch(() => {});
     m.keyed = false;
-    const fold = () => { m.leaving = false; document.body.classList.remove("m-leave"); m.open = null; go("quiet"); };
+    const fold = () => { m.leaving = false; document.body.classList.remove("m-leave"); m.open = null; invoke("mini_reading", { sessionId: null }).catch(() => {}); go("quiet"); };
     if (NOTCH) return fold();
     // The rail's panel slides back into the edge first; then the window is the tab again.
     m.leaving = true;
     document.body.classList.add("m-leave");
-    setTimeout(fold, 220);
+    setTimeout(fold, 160);
   }
   /** The rail dragged anywhere, the tab or the panel by its bar (the window itself moves, mini_drag): let go, it
    *  takes the nearer side edge of the display it's over, at that height, and stays there from then on. A drag is
