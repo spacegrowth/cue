@@ -52,16 +52,17 @@
     return state.sessions.filter((s) => (s.state === "working" || onItsWay(s)) && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
   }
   /** The tabs, five at most: the sessions in conversation with you (one back within a few minutes of your message,
-   *  or at work on what you said in the last few minutes), oldest first, then everything else newest first: what
-   *  waits on you and what's at work, together. Each { sid, project, cls, talk }. */
+   *  or at work on what you said in the last few minutes), oldest first, then what waits on you, then what's at
+   *  work, each newest first. Each { sid, project, cls, talk }. */
   function tabList() {
     const items = needs(Infinity).shown.map((it) => ({ sid: it.session_id, project: it.project, cls: dotCls(it), talk: talking(it), at: it.created_ms, back: it.back_ms || 0 }));
     const works = working().map((s) => ({ sid: s.session_id, project: s.project, cls: "work", talk: workingOnYours(s), at: (s.thread || []).filter((e) => e.role === "you").pop()?.at_ms || s.since_ms, back: 0 }));
     const all = [...items, ...works];
     const talk = all.filter((t) => t.talk).sort((a, b) => a.at - b.at);
     // Sent to the back (↓) stays below the rest, as in Waiting.
-    const rest = all.filter((t) => !t.talk).sort((a, b) => (!!a.back - !!b.back) || (a.back ? a.back - b.back : b.at - a.at));
-    return [...talk, ...rest].slice(0, MAX);
+    const rest = (list) => list.filter((t) => !t.talk).sort((a, b) => (!!a.back - !!b.back) || (a.back ? a.back - b.back : b.at - a.at));
+    // In conversation first, then what waits on you, then what's only at work.
+    return [...talk, ...rest(items), ...rest(works)].slice(0, MAX);
   }
   const doing = (s) => s.doing || (s.prompt ? `› ${s.prompt}` : "working");
   const asks = (it) => it.kind !== "waiting";
