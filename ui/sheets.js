@@ -2,10 +2,10 @@
 // "Move to Cue" in progress: a dialog over the window says what's happening, step by step, and the screen
 // behind it stays as it is (the session vanishes from the lists while it's ended and resumed). When it's
 // done the moved session is the selected one; its terminal stays closed until you open it.
-let moving = null;   // { sid, name, harness, project, step, err, at, last }
+let moving = null;   // { sid, name, harness, project, step, err, at, last, hosted }
 function movingDialog() {
   const m = moving;
-  const steps = ["Ending it in its tab", "Resuming it in Cue: loading the conversation", "Ready"];
+  const steps = m.hosted ? ["Ending it in its terminal", "Resuming it hosted: loading the conversation", "Ready"] : ["Ending it in its tab", "Resuming it in Cue: loading the conversation", "Ready"];
   const secs = Math.round((now() - m.at) / 1000);
   return `<div class="move-scrim"><div class="move-dialog" role="dialog" aria-live="polite">${m.err
     ? `<div class="move-title">Couldn't move ${esc(m.name || m.project)} to Cue</div><div class="move-err">${esc(m.err)}</div><div class="row-btns"><span class="grow"></span><button class="btn primary" data-act="move-dismiss">OK</button></div>`
@@ -18,12 +18,15 @@ async function moveToCue(sid) {
   const s = sessionOf(sid) || (q && { name: bareName(q.name) || baseName(q.cwd), harness: q.harness, project: q.project || projOf(q.cwd) });
   if (!s || moving) return;
   if (quietOpen === sid) quietOpen = null;   // it opens in Active as it moves
-  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "" };
+  // With hosting on it comes back hosted (from a terminal app's tab or from Cue's own terminal), with no screen to watch.
+  const hosted = !!state.settings?.hosted?.on;
+  const arrived = () => hosted ? !!sessionOf(sid)?.hosted : inTmux(sid);
+  moving = { sid, name: s.name, harness: s.harness, project: s.project, step: 0, err: null, at: now(), last: "", hosted };
   renderMain();
   // Every second: the clock, and once it's in its new window, that window's last line.
   const watch = setInterval(async () => {
     if (!moving || moving.sid !== sid) return clearInterval(watch);
-    if (inTmux(sid)) {
+    if (!hosted && inTmux(sid)) {
       moving.step = Math.max(moving.step, 1);
       try { const sc = await invoke("session_screen", { sessionId: sid }); moving.last = (sc.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) || "").slice(0, 120); } catch {}
     }
@@ -33,7 +36,7 @@ async function moveToCue(sid) {
     await invoke("move_to_cue", { sessionId: sid });
     clearInterval(watch);
     moving.step = 2; renderMain();
-    for (let n = 0; n < 40 && !inTmux(sid); n++) await new Promise((r) => setTimeout(r, 100));
+    for (let n = 0; n < 40 && !arrived(); n++) await new Promise((r) => setTimeout(r, 100));
     moving = null;
     if (sessionOf(sid)) setActive(null, sid); else renderMain();
   } catch (e) {
@@ -243,7 +246,7 @@ const setRow = (title, sub, control) => `<div class="set-row"><div class="set-te
 /** Settings → Agents' New sessions: where they run, and the hosted trial. */
 const newSessionRows = (st) => `
     ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
-    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is a card, and a message goes the moment you send it. Move to Cue brings a terminal session in this way. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}`;
+    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is a card, and a message goes the moment you send it. Move to Cue brings a terminal app's session in this way, and Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}`;
 /** Settings → General's Color: All projects' swatches (core.js projBtn's), so the window's color can be picked here too. */
 const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a

@@ -129,3 +129,31 @@ fn move_to_cue_that_cant_open_its_window_leaves_the_session_running_where_it_was
     assert_eq!(move_session_to_cue(w.hub(), "a"), Err("tmux couldn't open a window".to_string()));
     assert!(agent.running() && pane_of(&w, "a").is_empty());
 }
+
+#[test]
+fn move_to_cue_with_hosting_on_takes_a_session_from_cues_own_terminal_into_hosting() {
+    let w = World::new();
+    crate::config::set("hosted.on", serde_json::json!(true)).unwrap();
+    let agent = AgentProcess::start();
+    let a = w.session("t").in_folder(w.home()).in_tmux("%990").running_as(agent.pid);
+    a.transcript().prompt("go").assistant("Done.").turn_end();
+    a.prompt("go").stop("Done.");
+    w.hub().name_new("t", "mine");
+    assert_eq!(move_session_to_cue(w.hub(), "t").unwrap(), "Moved to Cue: hosted here now");
+    assert!(!agent.running(), "the one in Cue's terminal ended first");
+    assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(crate::hosted::Start::Resume("t".into())));
+    let o = w.hub().session_origin("t").unwrap();
+    assert!(o.hosted && o.tmux_pane.is_empty(), "hosted, its pane gone with it");
+    assert_eq!(w.snapshot().session("t")["name"], "mine");
+    // Already hosted: nothing more to move.
+    assert_eq!(move_session_to_cue(w.hub(), "t").unwrap_err(), "it's already hosted in Cue");
+}
+
+#[test]
+fn move_to_cue_with_hosting_on_leaves_a_session_on_another_machine_where_it_is() {
+    let w = World::new();
+    crate::config::set("hosted.on", serde_json::json!(true)).unwrap();
+    w.session("m").in_folder(w.home()).in_tmux("%991").on_machine("box").prompt("go").stop("Done.");
+    assert_eq!(move_session_to_cue(w.hub(), "m").unwrap_err(), "Cue hosts sessions on this Mac only, for now");
+    assert!(w.hosted.launched().is_empty());
+}

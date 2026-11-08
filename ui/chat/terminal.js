@@ -34,8 +34,8 @@ function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
   if (s.hosted) return hostedTab(sid, s);
-  // In Cue: the same corner opens (or closes) its terminal above the box.
-  if (inTmux(sid)) return `<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">${termSid === sid ? "Close" : "Open"} ${s.machine ? esc(machShort(s.machine)) : "Cue"} <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button>`;
+  // In Cue: the same corner opens (or closes) its terminal above the box; with hosting on, Move to hosted too.
+  if (inTmux(sid)) return `<span class="tplace">${hostBtn(sid, s)}<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">${termSid === sid ? "Close" : "Open"} ${s.machine ? esc(machShort(s.machine)) : "Cue"} <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button></span>`;
   // A terminal app's: its tab, and for Claude Code, Move to Cue (resumed in Cue's terminal).
   return `<span class="tplace">${moveBtn(sid, s.harness, s.state, "tplace-btn move")}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
 }
@@ -56,6 +56,14 @@ function moveBtn(sid, harness, st, cls) {
     : st === "deciding" ? "Answer what it's asking first"
     : "";
   return `<button class="${cls}" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to Cue</button>`;
+}
+/** Move to hosted, for a Claude Code session in Cue's own terminal on this Mac with Settings → Cue-hosted sessions
+ *  on: ended there and resumed hosted, with no terminal (Move to Cue does it; the backend picks hosted). Greyed
+ *  while it works or asks you something, as Move to Cue is. */
+function hostBtn(sid, s) {
+  if (s.harness !== "claude" || s.machine || !state.settings?.hosted?.on) return "";
+  const why = s.state === "working" ? "Available once it finishes what it's doing (or Stop it)" : s.state === "deciding" ? "Answer what it's asking first" : "";
+  return `<button class="tplace-btn move" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to hosted</button>`;
 }
 /** "Open in iTerm ↗": where a terminal-app session's own tab is, for the places that have no reply box. */
 const openInLabel = (s) => `Open in ${esc(s ? termAppName(s) : "its terminal")} <span aria-hidden="true">↗</span>`;

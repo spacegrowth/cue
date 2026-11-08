@@ -635,7 +635,8 @@ pub(crate) async fn run_line(hub: State<'_, Arc<Hub>>, session_id: Option<String
 }
 
 /// "Move to Cue": a Claude Code session in a terminal tab, ended (its tab closed with it) and resumed in
-/// Cue's tmux session, where its terminal shows in Cue. Idle sessions only: the conversation comes back
+/// Cue's tmux session, where its terminal shows in Cue; with Settings → Cue-hosted sessions on, resumed hosted
+/// instead, which a session in Cue's own terminal can be too. Idle sessions only: the conversation comes back
 /// whole (claude --resume), but anything mid-turn would be cut off. Shell state in the old tab is gone.
 #[tauri::command]
 pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
@@ -645,10 +646,10 @@ pub(crate) async fn move_to_cue(hub: State<'_, Arc<Hub>>, session_id: String) ->
 pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
     // Settings → Cue-hosted sessions on: it comes back hosted, with no terminal (ipc/hosted.rs).
     if crate::config::hosted_on() {
-        let origin = movable_origin(h, session_id, false)?;
+        let origin = movable_origin(h, session_id, MoveTo::Hosted)?;
         return super::move_into_hosted(h, origin, || end_session(h, session_id));
     }
-    let origin = movable_origin(h, session_id, true)?;
+    let origin = movable_origin(h, session_id, MoveTo::Tmux)?;
     let cwd = origin.cwd.clone();
     let name = h.session_name(session_id);
     let star = h.session_star(session_id);   // its record goes with the old process: the star comes back on the new one
@@ -701,16 +702,30 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
 
 /// The session, when it can be moved to Cue: an idle Claude Code session here, outside Cue's tmux and not
 /// hosted already, not a relay lead, in a folder Cue knows. `tmux`: it's moving into Cue's tmux.
-fn movable_origin(h: &Arc<Hub>, session_id: &str, tmux: bool) -> Result<model::Origin, String> {
-    if tmux && !focus::tmux_installed() {
+/// Where Move to Cue resumes a session.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MoveTo {
+    /// In Cue's terminal.
+    Tmux,
+    /// Hosted, with no terminal (from a terminal tab or from Cue's own terminal).
+    Hosted,
+}
+
+fn movable_origin(h: &Arc<Hub>, session_id: &str, to: MoveTo) -> Result<model::Origin, String> {
+    if to == MoveTo::Tmux && !focus::tmux_installed() {
         return Err("tmux isn't installed".into());
     }
     let origin = h.live_origin(session_id).ok_or("that session is gone")?;
     if origin.harness != "claude" {
         return Err("only a Claude Code session can be resumed in Cue".into());
     }
-    if !origin.tmux_pane.is_empty() || origin.hosted {
-        return Err("it already runs in Cue".into());
+    if origin.hosted {
+        return Err("it's already hosted in Cue".into());
+    }
+    match to {
+        MoveTo::Tmux if !origin.tmux_pane.is_empty() => return Err("it already runs in Cue".into()),
+        MoveTo::Hosted if !origin.machine.is_empty() => return Err("Cue hosts sessions on this Mac only, for now".into()),
+        _ => {}
     }
     if leads::close_plan(session_id).is_some() {
         return Err("a relay lead: close it through relay, then resume it in Cue".into());
