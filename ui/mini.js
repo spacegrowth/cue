@@ -11,7 +11,7 @@
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const TALK = 5 * 60000;             // in conversation: back within 5 minutes of your message (board.js TALK_MS)
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 18, chat: 438 };   // the rail's chat: 420 + its dot
+  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 260, chat: 420 };   // the rail: its strip, then the chat under it
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
@@ -58,12 +58,18 @@
   // ---------- drawing ----------
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
 
-  /** The rail: one small dot, the most urgent state's: red while something asks, striped while something waits
-   *  for your turn, breathing while sessions only work, faint grey while nothing runs. */
-  function markHtml() {
-    const { shown } = needs();
-    const cls = shown.some(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";   // idle: nothing runs
-    return `<div class="m-panel m-mark"><i class="m-dot ${cls}"></i></div>`;
+  /** The rail: a dark strip at the screen's edge, drawn as the terminal's dock over a reply box was: a live dot,
+   *  the most urgent thing in words, its detail in mono as a terminal's last line, how many need you. Red while
+   *  a session asks, amber while one waits for your turn, plain while sessions only work. */
+  function stripHtml() {
+    const { shown } = needs(Infinity);
+    const ask = shown.find(asks), turn = shown[0], busy = working();
+    const [cls, label, detail] = ask ? ["ask", `${name(ask)} asks`, summary(ask)]
+      : turn ? ["turn", `${name(turn)} · your turn`, shapeOf(finishedText(turn)) || plain(firstLine(finishedText(turn)))]
+      : busy.length ? ["work", `${busy.length} working`, doing(busy[0])]
+      : ["idle", "Nothing running", ""];
+    const count = shown.length > 1 ? `<span class="m-strip-n">${shown.length}</span>` : "";
+    return `<div class="m-strip ${cls}"><span class="m-strip-live"></span><span class="m-strip-lbl">${esc(label)}</span><span class="m-strip-last">${esc(detail)}</span>${count}</div>`;
   }
   /** Five tabs across the chat's top at most: what needs you (Waiting's order: in conversation, then newest
    *  first), then the ones at work if there's room. A click switches; each keeps what you typed in it. */
@@ -162,10 +168,10 @@
     invoke("mini_shape", args).catch(() => { m.sized = ""; });
   }
   function shapeHtml() {
-    if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-pair">${chatHtml()}${markHtml()}</div>`;
+    if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-col">${stripHtml()}${chatHtml()}</div>`;
     if (m.shape === "nod") return nodHtml();
     if (NOTCH) return islandHtml();
-    return markHtml();
+    return `<div class="m-panel m-col">${stripHtml()}</div>`;
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {
@@ -191,8 +197,8 @@
       root.querySelector("[data-send]").disabled = m.sending;
       root.querySelector(".m-foot-row .m-quiet").textContent = m.note || "⇧↵ new line";
       put(root.querySelector("[data-tabs]"), tabsHtml());
-      const mark = root.querySelector(".m-pair > .m-mark");
-      if (mark && mark.outerHTML !== markHtml()) mark.outerHTML = markHtml();
+      const strip = root.querySelector(".m-col > .m-strip");
+      if (strip && strip.outerHTML !== stripHtml()) strip.outerHTML = stripHtml();
     } else {
       const html = shapeHtml();
       if (drawn.get(root) !== html) {
@@ -212,8 +218,9 @@
   const go = (shape) => { if (m.shape !== shape) { m.shape = shape; paint(); } };
 
   // ---------- what you do ----------
-  /** The session the rail opens on when you hover it: the first in Waiting's order, else the newest at work. */
-  const first = () => needs(1).shown[0]?.session_id || working()[0]?.session_id;
+  /** The session the rail opens on when you hover it: the one its strip names (stripHtml): one that asks, else
+   *  the first in Waiting's order, else the newest at work. */
+  const first = () => { const { shown } = needs(Infinity); return (shown.find(asks) || shown[0])?.session_id || working()[0]?.session_id; };
   /** Open a session's chat with the cursor in its box, ready to type (this window comes forward alone, not Cue's
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {

@@ -14,9 +14,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.work { background: var(--work); }
 .m-dot.idle { background: var(--line); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
-.m-mark .m-dot.work, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
+.m-strip.work .m-strip-live, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
-@media (prefers-reduced-motion: reduce) { .m-mark .m-dot.work, .m-tab .m-dot.work { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .m-strip.work .m-strip-live, .m-tab .m-dot.work { animation: none; } }
 .m-queued { opacity: .85; box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
 .m-queued .m-quiet { margin-top: 3px; font-size: 11px; }
 .m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
@@ -29,8 +29,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-btn:disabled { opacity: .45; cursor: default; }
 
 /* ---------- the rail ---------- */
-.rail .m-pair { display: flex; align-items: flex-start; gap: 0; }   /* the mark stays at the top, where it was */
-.rail .m-pair > .m-chat { width: 420px; flex: none; }
 .m-age { font: 11px var(--mono); opacity: .7; }
 .rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; border: 1.5px solid var(--bg); }
 
@@ -89,13 +87,27 @@ body.mini { overflow: hidden; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { .m-enter .m-panel { animation: none; } }
 
 
-/* The rail: one small dot at the edge, the most urgent state's. */
-.rail .m-mark { width: 18px; height: 18px; display: grid; place-items: center; }
-.rail .m-mark .m-dot { width: 12px; height: 12px; box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 1px 4px rgba(0,0,0,.35); }
-.rail .m-mark .m-dot.turn { box-shadow: 0 0 0 1.5px var(--sel), 0 0 0 3px rgba(255,255,255,.9), 0 1px 4px rgba(0,0,0,.35); background-color: var(--bg); }
-.rail .m-pair > .m-mark { width: 18px; flex: none; }
 /* Tabs across the chat's top: a session each, the open one on the panel. */
 .m-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
 .m-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px 8px 0 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .m-tab:hover { color: var(--ink); }
 .m-tab.on { color: var(--ink); font-weight: 650; background: var(--panel-2); }
+
+/* The rail: a dark strip at the screen's edge, as the terminal's dock over a reply box was (terminal.css .tdock):
+   rounded on its left, flat against the edge; the chat grows down out of it, the strip staying its header. */
+.rail .m-col { display: flex; flex-direction: column; }
+.m-strip { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--slab); color: var(--on-slab); font: 600 11.5px var(--sans); flex: none; cursor: default; }
+.m-strip-live { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); flex: none; }
+.m-strip-lbl { flex: none; white-space: nowrap; }
+.m-strip-last { font: 11.5px var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.m-strip-n { font: 700 10.5px var(--mono); background: color-mix(in srgb, var(--on-slab) 18%, transparent); border-radius: 999px; padding: 1px 7px; flex: none; }
+.m-strip.ask { background: color-mix(in srgb, #c0503e 45%, var(--slab)); }
+.m-strip.ask .m-strip-live { background: #e8907f; }
+.m-strip.turn { background: color-mix(in srgb, #d99a3a 32%, var(--slab)); }
+.m-strip.turn .m-strip-live { background: #d99a3a; }
+.m-strip.work .m-strip-live { background: var(--sel); }
+.m-strip.idle .m-strip-live { background: color-mix(in srgb, var(--on-slab) 35%, transparent); }
+.m-strip.idle { opacity: .8; }
+/* Open: the strip is the chat's header, square under it. */
+.rail .m-col > .m-strip + .m-chat { border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; height: calc(var(--cap, 440px) - 30px); }
+.rail .m-col > .m-strip:has(+ .m-chat) { border-radius: 12px 0 0 0; }
