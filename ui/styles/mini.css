@@ -27,10 +27,8 @@ body.mini { overflow: hidden; font-size: 13px; }
 /* In conversation with you (the last few minutes): its tab's dot blinks, plainly, until it drops into newest first. */
 .m-tab.talk .m-dot { animation: m-blink 1s steps(1, end) infinite; }
 @keyframes m-blink { 50% { opacity: .35; } }
-/* Back to you (a session you wrote to came back): the whole dot blinks, on and off, until you open it. */
-.m-island .m-n.back .m-dot { background: var(--accent); }   /* full and bright while it blinks */
-.m-tuck.back .m-live, .m-island .m-n.back .m-dot { animation: m-call 1s steps(1, end) infinite; }
-@keyframes m-call { 50% { opacity: 0; } }
+/* At work, at the notch and on the rail's tab: the dot blinks, as in the tabs. A blink is always work. */
+.m-island .m-dot.work, .m-tuck.work .m-live { animation: m-blink 1s steps(1, end) infinite; }
 @media (prefers-reduced-motion: reduce) { .m-tab.talk .m-dot { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
 /* Your message not taken yet, as in Cue's chat (chat.css .cv-you.queued): no fill, a dim outline with a brighter
    arc going round it until it goes, and what's happening to it underneath. */

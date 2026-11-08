@@ -24,7 +24,7 @@
   // The side edge Cue put this display's tab on (where you dragged it; Cue keeps that for each display and
   // says which side with each mini_shape): the arrow and the panel's side follow it.
   const pos = { left: false };
-  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, done: new Set(), note: "", looked: new Set() };
+  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -85,21 +85,10 @@
 
   /** The rail tucked away: a small tab at the edge, ‹ over a live dot, the dot red while a session asks, amber
    *  while one waits for your turn, breathing while sessions only work. */
-  /** Back to you: a session you sent a message to that came back to you in the last few minutes (talking), not
-   *  opened here since. The one thing that blinks (the rail's dot, the notch's right side), until you open it or
-   *  answer it; what merely waits never does. Drawn again when its few minutes are up. */
-  function backToYou() {
-    const back = needs(Infinity).shown.filter((it) => talking(it) && !m.looked.has(it.id));
-    clearTimeout(m.backT);
-    if (back.length) m.backT = setTimeout(paint, TALK_MS - (now() - Math.min(...back.map((i) => i.created_ms))) + 50);
-    return back;
-  }
   function tuckHtml() {
     const { shown } = needs(Infinity);
-    const back = backToYou();
-    // Blinking, the dot is the session back to you (its color); else red while one asks, amber while one waits.
-    const cls = back.length ? dotCls(back[0]) : shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
-    return `<button class="m-panel m-tuck ${cls}${back.length ? " back" : ""} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
+    const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
+    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
   /** The tabs across the chat's top (tabList's order); a session in conversation blinks. A click switches; each
    *  keeps what you typed in it. */
@@ -107,14 +96,12 @@
     return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-open="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
   }
   function islandHtml() {
-    // Left: what waits on you, counted, steady. Right: what's at work, and the dot next to its number blinks
-    // while a session you wrote to is back to you.
-    const back = backToYou(), backIds = new Set(back.map((i) => i.id));
+    // Left: what waits on you, counted, steady. Right: how many are at work, its dot blinking (a blink is always
+    // work, as in the tabs; your turn never blinks).
     const { shown } = needs();
-    const waits = shown.filter((i) => !backIds.has(i.id));
-    const ask = waits.filter(asks).length, turn = waits.length - ask, busy = working().length;
+    const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
     const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
-    const right = busy || back.length ? `<span class="m-n${back.length ? " back" : " m-quiet"}"><i class="m-dot work"></i>${busy || ""}</span>` : "";
+    const right = busy ? `<span class="m-n m-quiet"><i class="m-dot work"></i>${busy}</span>` : "";
     // Nothing to show: just the notch (black on its black; on a display without one, Cue's own).
     if (!left && !right) return `<div class="m-panel m-island idle"></div>`;
     return `<div class="m-panel m-island peek"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing">${right}</span></div>`;
@@ -321,7 +308,6 @@
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
     m.open = sid;
-    for (const it of state.items) if (it.session_id === sid) m.looked.add(it.id);   // seen: it stops blinking
     invoke("mini_reading", { sessionId: sid }).catch(() => {});
     m.note = "";
     m.shape = "chat";
