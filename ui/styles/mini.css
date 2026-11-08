@@ -98,7 +98,10 @@ body.mini { overflow: hidden; font-size: 13px; }
 /* The shoulders: the window is the shape and a shoulder's width either side; they're drawn in its corners. */
 .notch:not(.s-quiet) #mini, .notch .m-island.peek { --shl: radial-gradient(circle at 0 100%, transparent calc(var(--sh) - .5px), #000 var(--sh));
   --shr: radial-gradient(circle at 100% 100%, transparent calc(var(--sh) - .5px), #000 var(--sh)); }
-.notch:not(.s-quiet) #mini { background: var(--shl) 0 0 / var(--sh) var(--sh) no-repeat, var(--shr) 100% 0 / var(--sh) var(--sh) no-repeat; }
+.notch #mini { position: relative; }
+.notch:not(.s-quiet) #mini::before, .notch:not(.s-quiet) #mini::after { content: ""; position: absolute; top: 0; width: var(--sh); height: var(--sh); transition: opacity .12s .24s; }
+.notch:not(.s-quiet) #mini::before { left: 0; background: var(--shl); }
+.notch:not(.s-quiet) #mini::after { right: 0; background: var(--shr); }
 .notch .m-island.peek::before, .notch .m-island.peek::after { content: ""; position: absolute; top: 0; width: var(--sh); height: var(--sh); }
 .notch .m-island.peek::before { left: calc(-1 * var(--sh)); background: var(--shl); }
 .notch .m-island.peek::after { right: calc(-1 * var(--sh)); background: var(--shr); }
@@ -109,16 +112,21 @@ body.mini { overflow: hidden; font-size: 13px; }
 .notch .m-island .m-dot { width: 8px; height: 8px; }
 .notch .m-nod { width: calc(100% - 2 * var(--sh)); padding: calc(var(--nh) + 10px) 20px 16px; border-radius: 0 0 24px 24px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
 .m-nod-top { display: flex; align-items: center; gap: 8px; }
-.notch .m-chat { width: calc(var(--chat-w) - 2 * var(--sh)); border-radius: 0 0 28px 28px; padding-top: var(--nh); }
+.notch .m-chat { width: var(--chat-w); border-radius: 0 0 28px 28px; padding-top: var(--nh); }
 .notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
 .notch .m-tabs, .notch .m-chat-head, .notch .m-foot { border-color: var(--line); }
+/* More tabs than fit: they scroll sideways, the last fading out at the edge rather than cut. */
+.notch .m-tabs { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 .notch .m-box { background: var(--panel-2); box-shadow: none; }
 
-/* Opening: it grows out of the notch, from the notch's own size to its full size with a little spring; the
-   window is already its full size (see-through), so only the black shape moves. The shoulders show once open. */
-.notch.m-enter .m-nod, .notch.m-enter .m-chat { animation: n-open .34s cubic-bezier(.2, 1.12, .32, 1); }
-@keyframes n-open { from { clip-path: inset(0 calc(50% - var(--nw) / 2) calc(100% - var(--nh)) round 0 0 10px 10px); } to { clip-path: inset(0 round 0 0 28px 28px); } }
-@media (prefers-reduced-motion: reduce) { .notch.m-enter .m-nod, .notch.m-enter .m-chat { animation: none; } }
+/* Opening: drawn shut (.m-shut: clipped to the notch's own size), then opened once the window is its full size
+   (mini.js opened), so the black shape grows out of the notch with a little spring in a window that's already big
+   enough. Closing: shut again, quicker, then the window is the island again. The shoulders show only open. */
+.notch .m-nod, .notch .m-chat { clip-path: inset(0 round 0 0 28px 28px); transition: clip-path .36s cubic-bezier(.2, 1.1, .3, 1); }
+.notch.m-shut .m-nod, .notch.m-shut .m-chat { clip-path: inset(0 calc(50% - var(--nw) / 2) calc(100% - var(--nh)) round 0 0 10px 10px); }
+.notch.m-leave .m-nod, .notch.m-leave .m-chat { transition: clip-path .2s cubic-bezier(.4, 0, 1, 1); }
+.notch.m-shut #mini::before, .notch.m-shut #mini::after { opacity: 0; transition-delay: 0s; }
+@media (prefers-reduced-motion: reduce) { .notch .m-nod, .notch .m-chat { transition: none; } }
 
 
 /* Tabs across the chat's top: a session each, the open one on the panel. */

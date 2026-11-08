@@ -206,9 +206,15 @@
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
     const args = { w, h, show: true };
     const key = JSON.stringify(args);
-    if (key === m.sized) return;   // the same size and place: nothing to move
+    if (key === m.sized) return opened();   // the same size and place: nothing to move
     m.sized = key;
-    invoke("mini_shape", args).then((r) => { side(r); measured(r?.notch); repaint(); }, () => { m.sized = ""; });
+    invoke("mini_shape", args).then((r) => { side(r); measured(r?.notch); repaint(); opened(); }, () => { m.sized = ""; opened(); });
+  }
+  /** The notch's chat or nod, drawn shut, opens now that its window is its full size: it grows out of the notch
+   *  (mini.css .m-shut), on the next frames so the shut shape is painted first. */
+  function opened() {
+    if (!m.shut || m.leaving) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => { m.shut = false; document.body.classList.remove("m-shut"); }));
   }
   /** The notch Cue measured on this display: the island takes its size (drawn again when it changed). */
   function measured(n) {
@@ -255,15 +261,20 @@
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {
     // A new shape slides in (mini.css .m-enter); a redraw of the same one doesn't move.
+    // The notch's opens out of the notch instead: drawn shut (the notch's size), opened once the window has its
+    // new size (fit: opened), so the shape grows in a window already big enough rather than jumping with it.
     if (m.shape !== m.drawnShape && m.shape !== "quiet") {
-      m.entering = true;
-      clearTimeout(m.enterT);
-      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, NOTCH ? 380 : 300);   // the notch's opening (mini.css n-open) runs .34 s
+      if (NOTCH) m.shut = m.shut || !m.drawnShape || m.drawnShape === "quiet";
+      else {
+        m.entering = true;
+        clearTimeout(m.enterT);
+        m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, 300);
+      }
     }
     m.drawnShape = m.shape;
     const drawnOpen = m.drawnOpen;
     m.drawnOpen = m.open;
-    document.body.className = `mini ${NOTCH ? "notch" : "rail"}${pos.left ? " side-left" : ""} s-${m.shape}${m.entering ? " m-enter" : ""}${m.dragging ? " m-drag" : ""}`;
+    document.body.className = `mini ${NOTCH ? "notch" : "rail"}${pos.left ? " side-left" : ""} s-${m.shape}${m.entering ? " m-enter" : ""}${m.shut ? " m-shut" : ""}${m.leaving ? " m-leave" : ""}${m.dragging ? " m-drag" : ""}`;
     const box = root.querySelector("[data-box]");
     // The same session's chat, redrawn: only its ask, its messages and the dots (the box you're typing in stays).
     // Another session (a dot clicked): drawn whole.
@@ -321,12 +332,13 @@
     if (m.shape !== "chat" || m.leaving) return;
     if (giveBack && m.keyed) invoke("mini_key", { on: false }).catch(() => {});
     m.keyed = false;
-    const fold = () => { m.leaving = false; document.body.classList.remove("m-leave"); m.open = null; invoke("mini_reading", { sessionId: null }).catch(() => {}); go("quiet"); };
-    if (NOTCH) return fold();
-    // The rail's panel slides back into the edge first; then the window is the tab again.
+    const fold = () => { m.leaving = false; m.shut = false; document.body.classList.remove("m-leave", "m-shut"); m.open = null; invoke("mini_reading", { sessionId: null }).catch(() => {}); go("quiet"); };
+    // It goes back first (the rail's panel into the edge, the notch's chat into the notch); then the window is the
+    // tab or the island again.
     m.leaving = true;
-    document.body.classList.add("m-leave");
-    setTimeout(fold, 160);
+    if (NOTCH) m.shut = true;
+    document.body.classList.add("m-leave", ...(NOTCH ? ["m-shut"] : []));
+    setTimeout(fold, NOTCH ? 220 : 160);
   }
   /** The rail dragged anywhere, the tab or the panel by its bar (the window itself moves, mini_drag): let go, it
    *  takes the nearer side edge of the display it's over, at that height, and stays there from then on. A drag is
