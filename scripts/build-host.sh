@@ -1,7 +1,7 @@
 #!/bin/bash
 # cue-host for the machines Cue reaches over SSH (docs/dev/cue-agent-host.md §3.4), into src-tauri/host-builds/:
 #   cue-host-linux-x86_64, cue-host-linux-aarch64   static (musl), cross-built here with Rust's own linker
-#   cue-host-darwin                                  Apple silicon + Intel
+#   cue-host-darwin                                  Apple silicon + Intel (also binaries/cue-host-*: this Mac's own)
 #   BUILD                                            the host build they are (host/build.rs's fingerprint)
 #   cue-pi.ts                                        Cue's Pi extension (pi/cue.ts), for Pi on a machine
 #   SHA256SUMS                                       what Cue checks a copy on a machine against
@@ -57,6 +57,13 @@ fi
 # Signing changes the file, so sums are taken after; a build signed before is signed again (the same identity, or
 # a release's over a local one).
 if [ -n "$SIGN" ]; then codesign --force --options runtime --timestamp --sign "$SIGN" "$OUT/cue-host-darwin"; fi
+# This Mac's own host: next to Cue's program in Cue.app (tauri.conf.json externalBin), so it shows as cue-host, not
+# as a second "cue". One per chip type, and both in one, as the bundler wants them; from the build above, so it is
+# this build.
+lipo -thin arm64 -output binaries/cue-host-aarch64-apple-darwin "$OUT/cue-host-darwin"
+lipo -thin x86_64 -output binaries/cue-host-x86_64-apple-darwin "$OUT/cue-host-darwin"
+cp "$OUT/cue-host-darwin" binaries/cue-host-universal-apple-darwin
+chmod 755 binaries/cue-host-*
 # Cue's Pi extension goes with it: Pi's gate, put on a machine whose Pi doesn't have it (hosted/machine_host.rs).
 cp "$ROOT/pi/cue.ts" "$OUT/cue-pi.ts"
 (cd "$OUT" && shasum -a 256 cue-host-* cue-pi.ts >SHA256SUMS)

@@ -99,12 +99,19 @@ impl Ports {
     }
 }
 
-/// Hosted sessions through cue-host: Cue's own program run as `cue host serve`, each build of the host in a folder of
-/// its own under Cue's data folder's `host/` (an older one there finishes what it runs, then goes: hosted/old_hosts.rs).
+/// Hosted sessions through cue-host: the cue-host program next to Cue's own in Cue.app (so it shows as cue-host),
+/// else Cue's own program run as `cue host serve` (a build without it: `cargo run`, tests); each build of the host in
+/// a folder of its own under Cue's data folder's `host/` (an older one there finishes what it runs, then goes:
+/// hosted/old_hosts.rs).
 fn hosts() -> crate::hosted::Hosts {
     let root = crate::server::cue_dir().join("host");
     let home = root.join(format!("b-{}", cue_host::proto::BUILD));
-    let me = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    let serve = vec![me, "host".into(), "serve".into(), "--home".into(), home.to_string_lossy().into_owned()];
+    let me = std::env::current_exe().unwrap_or_default();
+    let own = me.parent().map(|d| d.join("cue-host")).filter(|p| p.is_file());
+    let mut serve: Vec<String> = match own {
+        Some(host) => vec![host.to_string_lossy().into_owned()],
+        None => vec![me.to_string_lossy().into_owned(), "host".into()],
+    };
+    serve.extend(["serve".into(), "--home".into(), home.to_string_lossy().into_owned()]);
     crate::hosted::Hosts::new(root, home, serve, crate::server::cue_dir().join("host-seen"))
 }

@@ -7,16 +7,18 @@
 //! - `child`: a session's process.
 //! - `server`: the sessions, and the clients attached to them.
 //! - `daemon`: reaching the host, starting it if it isn't running.
+//! - `tail`: a file copied to a client as it's written (a session's transcript, for Cue on another machine).
 
 pub mod child;
 pub mod daemon;
 pub mod log;
 pub mod proto;
 pub mod server;
+pub mod tail;
 
 use std::path::PathBuf;
 
-/// `cue-host serve|connect [--only-running]|version [--home DIR]` (Cue runs it as `cue host …`). `serve`: the program and arguments that
+/// `cue-host serve|connect [--only-running]|version [--home DIR]` (Cue.app carries it; without it, Cue runs it as `cue host …`). `serve`: the program and arguments that
 /// run `serve`, for `connect` to start one. Returns the exit code.
 pub fn main_with(args: &[String], serve: impl Fn(&std::path::Path) -> Vec<String>) -> i32 {
     let home = args.windows(2).find(|w| w[0] == "--home").map(|w| PathBuf::from(&w[1])).unwrap_or_else(default_home);
