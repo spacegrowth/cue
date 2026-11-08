@@ -382,8 +382,9 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-schip.st-empty .cv-spop { min-width: 0; }   /* the switch alone: one line */
 .st-note { margin-top: 2px; color: var(--muted); font-size: 12px; }   /* on, no list yet: when it starts */
 .st-toggle ~ .st-note { width: 0; min-width: 100%; }   /* notes under the switch wrap to the card's width, never widen it */
-.cv-schip.st-empty .st-ring .trk { stroke: var(--muted); }
-.cv-schip.st-off .cv-schip-btn { opacity: 0.45; }
+.st-check { flex: none; stroke: var(--ink); }   /* on, no list yet */
+.cv-schip.st-off .st-check { stroke: var(--muted); }
+.cv-schip.st-off .cv-schip-btn { opacity: 0.55; }
 /* The list above the chat, under the tabs (status_panel.js): one line in the theme's own color (the window behind the
    panes, with its text); a click slides the list down over the chat. The list's own rules are reused as they are: inside
    .st-inv the tokens they read are the theme's. */

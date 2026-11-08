@@ -101,3 +101,15 @@ assert.ok(body(parseStatus("x\n**Where we are**\n→ ∥ solo\n○ b"), { sid: "
 assert.ok(off.includes("about half a cent each") && onBody.includes("Total in Settings → Progress"), "under the switch: what it costs, where the total is");
 assert.ok(!statusChipHtml(a, "k", false).includes("half a cent"), "not on a ring that isn't a session's own");
 console.log("status.test.js: ok");
+
+// No list yet: a checklist icon, not an empty ring (muted while off for the session); a list: the ring and its count.
+{
+  const none = parseStatus("Just words.");
+  const off = statusChipHtml(none, "k", false, { sid: "s1", on: false, shown: true });
+  assert.ok(off.includes('class="st-check"') && !off.includes("st-ring"), "off: the checklist");
+  assert.ok(off.includes("st-off"), "off: muted");
+  const waiting = statusChipHtml(none, "k", false, { sid: "s1", on: true, shown: true });
+  assert.ok(waiting.includes('class="st-check"') && !waiting.includes("st-off"), "on, no list yet: the checklist in full ink");
+  const listed = statusChipHtml(parseStatus(`Done.\n\n${list}`), "k", false, { sid: "s1", on: true, shown: true });
+  assert.ok(listed.includes("st-ring") && !listed.includes("st-check") && listed.includes("1/3"), "a list: the ring and its count");
+}

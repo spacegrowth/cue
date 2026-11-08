@@ -86,6 +86,12 @@ function statusRing(done, now, total) {
   return `<svg class="st-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" stroke-width="${w}" aria-hidden="true">${circle("trk")}${circle("now", arc(done + now))}${circle("done", arc(done))}</svg>`;
 }
 
+/** The list's icon before a list is in: a checklist, so it reads as one (an empty ring didn't). Muted while it's off for
+ *  the session, full ink while it's on and the first list is still to come (chat.css .st-check). */
+function statusChecklist() {
+  return `<svg class="st-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5l1.6 1.6L8.5 5M4 12.5l1.6 1.6 2.9-3.1M4 18.5h4.5M11.5 7h8.5M11.5 13h8.5M11.5 18.5h8.5"/></svg>`;
+}
+
 /** What a list shows, in its parts, for the ring's card and the panel above the chat (status_panel.js) alike:
  *  `list` the track and what it waits on, `relay` relay's and the background agents' buttons for the line (a session's
  *  own list only), `toggle` the session's switch, `starts` when tracking starts (on, no list yet), `cost` what it costs. `listed`: there is a list
@@ -124,7 +130,7 @@ function statusParts(status, sw = null) {
 function statusChipHtml(status, key, open = statusPop?.key === key, sw = null) {
   const p = statusParts(status, sw), total = status.items.length;
   if (!p.listed && !sw) return "";
-  const ring = p.listed ? `${statusRing(p.done, p.now, total)}${p.done}/${total}` : statusRing(0, 0, 1);
+  const ring = p.listed ? `${statusRing(p.done, p.now, total)}${p.done}/${total}` : statusChecklist();
   if (p.listed && sw) {
     const label = `Status list, ${p.done} of ${total} done: ${sw.shown ? "put it away" : "show it"}`;
     return `<div class="cv-schip"><button class="cv-schip-btn" data-act="status-panel" data-sid="${esc(sw.sid)}" aria-pressed="${!!sw.shown}" aria-label="${label}">${ring}</button></div>`;
