@@ -234,7 +234,9 @@ impl Hub {
         let saved = crate::uploads::save(images)?;
         // The card is stale (the session went on to another turn since): typed now, the reply would land
         // mid-turn and could be lost. Kept in Cue instead, as the box does, and sent when the turn ends.
-        let busy = self.read(|st| (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid) && !it.origin.hosted);
+        let busy = self.read(|st| (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid));
+        // A hosted one only while its Claude runs (paused, the reply starts a turn).
+        let busy = busy && (!it.origin.hosted || self.hosted().running(&sid));
         if busy {
             return Ok(self.keep_reply(it, id, &sid, text, &saved));
         }
@@ -403,19 +405,14 @@ impl Hub {
         let _typing = wait_turn(&gate)?;
         self.set_later(session_id, false); // you wrote to it: decided
         let (origin, busy, direct) = self.read(|st| Self::send_state(st, session_id))?;
-        // A hosted session takes a message at any time, mid-turn too: nothing to keep in Cue, nothing to press.
         if origin.as_ref().is_some_and(|o| o.hosted) {
-            // Mid-turn only if its Claude runs: a paused one starts a turn with this message.
-            let busy = busy && self.hosted().running(session_id);
-            return self.send_to_hosted(session_id, typed, &saved, busy);
+            return self.send_saved_hosted(session_id, typed, &saved, busy, now);
         }
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn
         // ends, so until then it's yours to take back (Esc, Edit) or send now. (In the terminal's own queue
         // only Claude Code could give it back.)
         if busy && !now && !direct && origin.is_some() {
-            self.write(|st| st.sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect()));
-            self.changed();
-            return Ok("kept in Cue: it goes when this turn ends".into());
+            return Ok(self.keep(session_id, typed, &saved));
         }
         // ⌘↵ while it works: its turn stopped first, so this goes now rather than queued.
         let stopped = now && busy && !direct;
@@ -456,6 +453,24 @@ impl Hub {
         Ok(if busy { format!("queued via {via}: it reads this when it finishes its current step") } else { format!("sent via {via}") })
     }
 
+    /// A hosted session can take a message mid-turn, but once handed over it can't be taken back: so mid-turn
+    /// Cue keeps it, as for a terminal (Esc, Edit), and `now` hands it into the turn without stopping it (it
+    /// reads it at its next step). Mid-turn only if its Claude runs: a paused one starts a turn with this.
+    fn send_saved_hosted(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, now: bool) -> Result<String, String> {
+        let busy = busy && self.hosted().running(session_id);
+        if busy && !now {
+            return Ok(self.keep(session_id, typed, saved));
+        }
+        self.send_to_hosted(session_id, typed, saved, busy)
+    }
+
+    /// A message kept in Cue for a working session, sent when its turn ends.
+    fn keep(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved]) -> String {
+        self.write(|st| st.sessions.hold(session_id, typed, saved.iter().map(|s| s.path.clone()).collect()));
+        self.changed();
+        "kept in Cue: it goes when this turn ends".into()
+    }
+
     /// What goes before a message typed into a Claude Code session just stopped (`stopped`: by Cue, to send this
     /// now; or its Stop button a moment ago): Claude Code hands the message it was on back to its box, and this one
     /// is typed after it, so the two would go as one. A blank line first keeps them apart (an empty box drops it).
@@ -487,7 +502,8 @@ impl Hub {
         Ok((origin, busy, direct))
     }
 
-    /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
+    /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first; a hosted one
+    /// takes it into the turn instead). If it
     /// can't be sent it's kept again, so nothing you wrote is lost.
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
         let h = self.write(|st| st.sessions.take_held(session_id)).ok_or("nothing kept for it")?;

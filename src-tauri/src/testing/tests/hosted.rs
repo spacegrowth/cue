@@ -121,14 +121,15 @@ fn a_message_to_an_idle_one_is_taken_when_its_turn_starts() {
     assert_eq!(s.state(&sid), "working");
     let last = s.last_yours(&sid);
     assert!(last["pending"].is_null() && last["unsent"].is_null(), "taken (both are left out when false): {last}");
-    // A second message, sent before it repeats the first: still on its way when that repeat comes.
+    // A second message, sent before it repeats the first: kept in Cue (it's mid-turn), and the repeat of the
+    // first takes nothing else.
     w.send_to(&sid, "and the docs");
     w.hosted_says(&sid, HostedEvent::Taken { text: "add a test".into() });
     let s = w.snapshot();
-    assert!(s.session(&sid)["queued"].is_object(), "the second is still queued: {}", s.session(&sid));
-    assert_eq!(s.last_yours(&sid)["pending"], true);
+    assert_eq!(s.session(&sid)["held"]["text"], "and the docs", "{}", s.session(&sid));
+    assert!(s.session(&sid)["queued"].is_null());
     let yours = s.thread(&sid).into_iter().filter(|(r, _)| r == "you").count();
-    assert_eq!(yours, 2, "{:?}", s.thread(&sid));
+    assert_eq!(yours, 1, "{:?}", s.thread(&sid));
 }
 
 /// A background task that finished starts a turn of its own: nothing of yours is on its way, nothing changes.
@@ -143,12 +144,43 @@ fn a_turn_nothing_of_yours_started_takes_nothing() {
     assert_eq!(w.snapshot().state(&sid), "working");
 }
 
+/// Once handed to Claude a message can't be taken back: mid-turn Cue keeps it (Esc or Edit brings it back to
+/// the box), and it goes when the turn ends.
 #[test]
-fn a_message_sent_mid_turn_goes_at_once_and_is_taken_at_its_next_step() {
+fn a_message_sent_mid_turn_is_kept_in_cue_and_goes_when_the_turn_ends() {
+    let w = World::new();
+    let sid = running(&w, "long job");
+    let before = w.hosted.sent().len();
+    w.send_to(&sid, "also check the docs");
+    assert_eq!(w.hosted.sent().len(), before, "not handed to Claude yet");
+    assert_eq!(w.snapshot().session(&sid)["held"]["text"], "also check the docs");
+    turn_ends(&w, &sid, "Done.");
+    w.settle();
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "also check the docs".to_string())), "sent as the turn ended");
+    assert!(w.snapshot().session(&sid)["held"].is_null());
+}
+
+#[test]
+fn a_message_kept_mid_turn_can_be_taken_back() {
+    let w = World::new();
+    let sid = running(&w, "long job");
+    let before = w.hosted.sent().len();
+    w.send_to(&sid, "never mind");
+    assert_eq!(w.hub().unhold(&sid).map(|e| e.text).as_deref(), Some("never mind"));
+    turn_ends(&w, &sid, "Done.");
+    w.settle();
+    assert_eq!(w.hosted.sent().len(), before, "nothing went");
+}
+
+/// Send now on a kept message hands it into the running turn (read at its next step), without stopping it.
+#[test]
+fn send_now_on_a_kept_message_hands_it_into_the_turn_without_stopping_it() {
     let w = World::new();
     let sid = running(&w, "long job");
     w.send_to(&sid, "also check the docs");
-    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "also check the docs".to_string())), "not kept in Cue: Claude reads it mid-turn");
+    w.hub().send_held(&sid, true).unwrap();
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "also check the docs".to_string())));
+    assert!(w.hosted.interrupted().is_empty(), "the turn wasn't stopped");
     assert!(w.snapshot().session(&sid)["queued"].is_object(), "queued until it takes it");
     w.hosted_says(&sid, HostedEvent::Taken { text: "also check the docs".into() });
     assert!(w.snapshot().session(&sid)["queued"].is_null());
