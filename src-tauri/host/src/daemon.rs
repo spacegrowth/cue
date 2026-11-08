@@ -104,13 +104,31 @@ pub fn serve(home: &Path) -> std::io::Result<()> {
 /// `connect` for a client that talks through this process's input and output (over SSH): bytes copied both ways
 /// until either side ends.
 pub fn pipe(home: &Path, serve: &[String]) -> std::io::Result<()> {
-    let s = connect(home, serve)?;
+    // No `serve`: only a host already running is reached (an older one, let finish what it runs).
+    let s = if serve.is_empty() { UnixStream::connect(socket(home))? } else { connect(home, serve)? };
     let mut to_host = s.try_clone()?;
     let mut from_host = s;
     std::thread::spawn(move || {
-        let _ = std::io::copy(&mut std::io::stdin().lock(), &mut to_host);
+        let _ = relay(&mut std::io::stdin().lock(), &mut to_host);
         let _ = to_host.shutdown(std::net::Shutdown::Write);
     });
-    std::io::copy(&mut from_host, &mut std::io::stdout().lock())?;
-    Ok(())
+    relay(&mut from_host, &mut std::io::stdout().lock())
+}
+
+/// Bytes from `from` to `to` as they come, until `from` ends. A plain read and write, never `std::io::copy`: on Linux
+/// that splices a socket into a pipe, and the kernel holds the pipe's lock while it waits for the socket, so sshd,
+/// reading the other end of that pipe on its one thread, waits on the lock and stops relaying your input as well:
+/// nothing moves either way.
+fn relay(from: &mut impl std::io::Read, to: &mut impl std::io::Write) -> std::io::Result<()> {
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = match from.read(&mut buf) {
+            Ok(0) => return Ok(()),
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        to.write_all(&buf[..n])?;
+        to.flush()?;
+    }
 }

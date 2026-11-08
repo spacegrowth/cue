@@ -285,8 +285,11 @@ function hostRow() {
   const now = !h.reachable
     ? `Not running${h.inside_cue ? `: ${n(h.inside_cue, "hosted session runs", "hosted sessions run")} inside Cue meanwhile, and quitting Cue ends ${h.inside_cue === 1 ? "it" : "them"}` : ""}.`
     : `Running ${n(h.running, "session", "sessions")}${older ? `; an older cue-host finishes ${n(older, "more", "more")}, then stops` : ""}.`;
-  const btn = `<button class="btn ${hostArm ? "deny" : ""}" data-act="host-restart">${hostArm ? "Click again to end every hosted agent" : "Restart cue-host"}</button>`;
-  return setRow("cue-host", `Keeps hosted sessions running when Cue quits or updates. ${now} Restart ends every hosted agent (a turn under way is cut off); each session comes back paused and resumes with your next message.`, btn);
+  // Machines Cue has reached this run: each one's cue-host, and what it runs.
+  const there = (h.machines || []).map((m) => `${m.machine}: ${m.reachable ? n(m.running, "session", "sessions") : "not reachable now (its sessions carry on there)"}`);
+  const machines = there.length ? ` On your machines: ${there.join("; ")}.` : "";
+  const btn = `<button class="btn ${hostArm ? "deny" : ""}" data-act="host-restart">${hostArm ? "Click again to end every hosted agent on this Mac" : "Restart cue-host"}</button>`;
+  return setRow("cue-host", `Keeps hosted sessions running when Cue quits or updates. ${now}${machines} Restart ends every hosted agent on this Mac (a turn under way is cut off); each session comes back paused and resumes with your next message.`, btn);
 }
 /** Restart cue-host: the first click arms it, the second does it. */
 function hostRestart() {

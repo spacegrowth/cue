@@ -295,3 +295,20 @@ fn connect_starts_a_host_when_none_runs_and_finds_the_running_one_after() {
     // SAFETY: ends the host this test started.
     unsafe { libc::kill(pid, libc::SIGTERM) };
 }
+
+#[test]
+fn a_child_started_with_inherit_gets_the_hosts_environment_with_cues_over_it_and_without_only_cues() {
+    let h = home("inherit");
+    serve(&h, Duration::from_secs(600));
+    let mut c = Client::new(&h);
+    let script = "echo \"home=${HOME:-none} cue=${CUE_X:-none}\"";
+    let env = vec![("CUE_X".to_string(), "given".to_string()), ("PATH".to_string(), "/usr/bin:/bin".to_string())];
+    c.ask(json!({ "op": "start", "session": "inh", "argv": ["/bin/sh", "-c", script], "env": env, "cwd": "/tmp", "meta": {}, "inherit": true })).unwrap();
+    c.ask(json!({ "op": "start", "session": "own", "argv": ["/bin/sh", "-c", script], "env": env, "cwd": "/tmp", "meta": {} })).unwrap();
+    for s in ["inh", "own"] {
+        c.ask(json!({ "op": "attach", "session": s, "after": 0 })).unwrap();
+    }
+    let home_here = std::env::var("HOME").unwrap();
+    assert_eq!(outs(&c.records_until("inh", exited)), [format!("home={home_here} cue=given")], "the host's HOME, Cue's variable");
+    assert_eq!(outs(&c.records_until("own", exited)), ["home=none cue=given"], "exactly what Cue gave");
+}

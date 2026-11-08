@@ -66,7 +66,7 @@ fn same_after_replay(make: impl Fn() -> Box<dyn Protocol>, fixture: &str, answer
 }
 
 fn codex(start: Start) -> Box<dyn Protocol> {
-    Box::new(Codex::new(&Spec { agent: Agent::Codex, cwd: "/work/demo".into(), start, permissions: String::new(), model: None, args: vec![], program: Program::Agent }))
+    Box::new(Codex::new(&Spec { agent: Agent::Codex, cwd: "/work/demo".into(), start, permissions: String::new(), model: None, args: vec![], program: Program::Agent, machine: String::new() }))
 }
 
 #[test]

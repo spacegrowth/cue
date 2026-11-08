@@ -24,6 +24,7 @@ use std::sync::Mutex;
 pub struct Cmd {
     pub name: String,
     /// "skill": it becomes a prompt (a turn starts, like a message). "command": Claude Code runs it itself.
+    /// "terminal": one of Claude Code's own screens, which a hosted session can't show: Cue opens it in a terminal.
     pub kind: String,
     pub desc: String,
     /// What it takes, in Claude Code's words ("[name]", "<model>"), else "".

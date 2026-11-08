@@ -38,16 +38,27 @@ fn host(name: &str) -> Place {
 
 /// A host serving `dir` (in this process).
 fn serve_at(dir: &Path) {
+    serve_on(dir, &dir.join("host.sock"));
+}
+
+/// A host keeping its sessions in `dir`, listening on `sock`.
+fn serve_on(dir: &Path, sock: &Path) {
     std::fs::create_dir_all(dir).unwrap();
-    let sock = dir.join("host.sock");
-    let listener = UnixListener::bind(&sock).unwrap();
+    let listener = UnixListener::bind(sock).unwrap();
     let h = cue_host::server::Host::new(dir, cue_host::log::LIMIT);
+    let sock = sock.to_path_buf();
     std::thread::spawn(move || h.serve(listener, &sock, Duration::from_secs(600)));
 }
 
 /// A Cue's hosted sessions through that host (the host is running: nothing to start it with).
 fn cue(p: &Place) -> Hosts {
     cue_at(p, &p.home)
+}
+
+/// A Cue whose connection to its host is made again when it drops, as the app's is (the host is running, so the
+/// program that would start one is never run).
+fn cue_coming_back(p: &Place) -> Hosts {
+    Hosts::new(p.root.clone(), p.home.clone(), vec!["/usr/bin/false".into()], p.seen.clone())
 }
 
 /// A Cue whose own build's host lives in `home` (under the same root).
@@ -62,10 +73,10 @@ fn until_logged(p: &Place, sid: &str, needle: &str) {
 }
 
 fn spec(fake: &FakeClaude, start: Start) -> Spec {
-    Spec { agent: Agent::Claude, cwd: std::env::temp_dir(), start, permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()) }
+    Spec { agent: Agent::Claude, cwd: std::env::temp_dir(), start, permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()), machine: String::new() }
 }
 
-fn report() -> (Report, Receiver<HostedEvent>) {
+pub(super) fn report() -> (Report, Receiver<HostedEvent>) {
     let (tx, rx) = channel();
     let r: Report = Box::new(move |_, e| {
         let _ = tx.send(e);
@@ -73,7 +84,7 @@ fn report() -> (Report, Receiver<HostedEvent>) {
     (r, rx)
 }
 
-fn until_event(rx: &Receiver<HostedEvent>, stop: impl Fn(&HostedEvent) -> bool) -> Vec<HostedEvent> {
+pub(super) fn until_event(rx: &Receiver<HostedEvent>, stop: impl Fn(&HostedEvent) -> bool) -> Vec<HostedEvent> {
     let end = Instant::now() + Duration::from_secs(10);
     let mut seen = vec![];
     loop {
@@ -86,27 +97,27 @@ fn until_event(rx: &Receiver<HostedEvent>, stop: impl Fn(&HostedEvent) -> bool) 
     }
 }
 
-fn init(sid: &str) -> serde_json::Value {
+pub(super) fn init(sid: &str) -> serde_json::Value {
     json!({ "type": "system", "subtype": "init", "session_id": sid, "model": "claude-haiku-5-5" })
 }
 
-fn echo(text: &str) -> serde_json::Value {
+pub(super) fn echo(text: &str) -> serde_json::Value {
     json!({ "type": "user", "isReplay": true, "message": { "content": text } })
 }
 
-fn said(text: &str) -> serde_json::Value {
+pub(super) fn said(text: &str) -> serde_json::Value {
     json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": text }] } })
 }
 
-fn bash_ask(id: &str) -> serde_json::Value {
+pub(super) fn bash_ask(id: &str) -> serde_json::Value {
     json!({ "type": "control_request", "request_id": id, "request": { "subtype": "can_use_tool", "tool_name": "Bash", "input": { "command": "ls" }, "tool_use_id": "t1" } })
 }
 
-fn result(text: &str) -> serde_json::Value {
+pub(super) fn result(text: &str) -> serde_json::Value {
     json!({ "type": "result", "subtype": "success", "result": text, "total_cost_usd": 0.01 })
 }
 
-fn allow() -> Answer {
+pub(super) fn allow() -> Answer {
     Answer::Decision(Decision { behavior: "allow".into(), ..Default::default() })
 }
 
@@ -332,4 +343,55 @@ fn restarting_the_host_ends_every_agent_saying_so_and_the_next_session_starts_on
     let (next, _, _rx2) = running_session(&hosts, &fake2);
     assert!(hosts.running(&next));
     hosts.close(&next);
+}
+
+/// How many times `fake` was sent `text` as a message.
+fn heard_times(fake: &FakeClaude, text: &str) -> usize {
+    fake.heard().iter().filter(|v| v["message"]["content"] == text).count()
+}
+
+#[test]
+fn a_message_sent_while_the_connection_to_the_host_is_down_is_held_and_gets_there_once_when_its_back() {
+    let p = host("held");
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let fake = FakeClaude::new().wait_for("go").say(init(&sid)).say(echo("go")).say(result("done"));
+    let hosts = cue_coming_back(&p);
+    let (r, rx) = report();
+    hosts.start(&spec(&fake, start), r).unwrap();
+    hosts.drop_connection();
+    until("the connection is down", || !hosts.connected());
+    assert!(hosts.running(&sid), "not known while it's down: taken as running, so nothing starts a second one");
+    hosts.send(&sid, "go").expect("held, not refused");
+    assert_eq!(heard_times(&fake, "go"), 0, "not there yet");
+    let seen = until_event(&rx, |e| matches!(e, HostedEvent::TurnEnded { .. }));
+    assert!(seen.contains(&HostedEvent::Taken { text: "go".into() }), "{seen:?}");
+    assert!(hosts.connected(), "made again");
+    assert_eq!(heard_times(&fake, "go"), 1, "once");
+    // And after it, as before.
+    hosts.send(&sid, "more").unwrap();
+    until("the next one gets there too", || heard_times(&fake, "more") == 1);
+    hosts.close(&sid);
+}
+
+#[test]
+fn a_host_that_comes_back_without_the_session_pauses_it_and_says_what_was_held_wasnt_taken() {
+    let p = host("lost");
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let fake = FakeClaude::new().wait_for("go");
+    let hosts = cue_coming_back(&p);
+    let (r, rx) = report();
+    hosts.start(&spec(&fake, start), r).unwrap();
+    // The host dies with the connection, and the next one Cue reaches (in the same place) never ran it.
+    hosts.drop_connection();
+    until("the connection is down", || !hosts.connected());
+    let sock = p.home.join("host.sock");
+    std::fs::remove_file(&sock).unwrap();
+    serve_on(&p.root.join("b-fresh"), &sock);
+    hosts.send(&sid, "go").expect("held, not refused");
+    let seen = until_event(&rx, |e| matches!(e, HostedEvent::Exited { .. }));
+    assert!(seen.iter().any(|e| matches!(e, HostedEvent::NotTaken { text, .. } if text == "go")), "{seen:?}");
+    assert!(!hosts.running(&sid), "paused: a message starts it again");
+    assert_eq!(heard_times(&fake, "go"), 0);
 }

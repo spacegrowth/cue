@@ -152,6 +152,8 @@ install_app() {
     [ -n "$ext" ] && [ -e "$ROOT/src-tauri/ext/tauri.conf.json" ] && ext="$ext --config src-tauri/ext/tauri.conf.json"
     # Judged by the app it makes, not its exit: without the release signing key the build ends with an error about
     # update signatures after the app is made.
+    # cue-host for other machines first: Cue.app carries it.
+    "$ROOT/scripts/build-host.sh" >/dev/null || { echo "  couldn't build cue-host for other machines (run scripts/build-host.sh to see why)" >&2; exit 1; }
     (cd "$ROOT" && npm install --silent && npx tauri build --bundles app $ext >/dev/null) || true
     if [ ! -x "$APP_SRC/Contents/MacOS/cue" ]; then
       echo "  the build didn't make Cue.app (run: npx tauri build --bundles app $ext, to see why)" >&2

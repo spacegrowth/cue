@@ -2,7 +2,8 @@
 //! password or key: it uses your own SSH (keys, an agent, ~/.ssh/config), always non-interactively, and
 //! shares one connection per machine (OpenSSH's ControlMaster). When a machine needs a login, Cue opens
 //! `ssh` in a terminal tab and you log in there yourself; from then on Cue uses the connection you opened.
-//! It never installs anything there: it uses the agents you installed, and says how to install the rest.
+//! It installs no agent there: it uses the agents you installed, and says how to install the rest. What it puts
+//! there is its own: its hooks, and for a session it hosts there, cue-host in ~/.cue (hosted/machine_host.rs).
 
 pub(crate) mod hooks;
 pub(crate) mod logs;
@@ -487,7 +488,7 @@ pub fn tmux_path(host: &str) -> Option<String> {
 }
 
 /// ssh running the script in /bin/sh, no login shell: for a script that names its programs by full path.
-fn direct_command(host: &str, script: &str) -> Command {
+pub(crate) fn direct_command(host: &str, script: &str) -> Command {
     let mut c = ssh();
     c.args(shared()).args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-T", host, &format!("exec /bin/sh -c {}", shq(script))]);
     c

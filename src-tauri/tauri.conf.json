@@ -65,7 +65,8 @@
     ],
     "resources": {
       "../pi/cue.ts": "pi/cue.ts",
-      "../extensions/": "extensions/"
+      "../extensions/": "extensions/",
+      "host-builds/": "host-builds/"
     }
   }
 }

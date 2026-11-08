@@ -417,3 +417,34 @@ fn an_event_from_a_machine_reaches_cue_as_the_macs_hook_would_send_it_placed_on_
     assert_eq!(parse(r#"@@1700000000-42 {"event":"stop","input":{}}"#).unwrap().0, "1700000000-42");
     assert!(parse("@@../../x {}").is_none(), "an id is digits and a dash");
 }
+
+#[test]
+fn a_hosted_agents_events_stay_on_the_machine_except_the_status_lists() {
+    let home = std::env::temp_dir().join(format!("cue-hook-hosted-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    std::fs::create_dir_all(home.join(".cue/in")).unwrap();
+    std::fs::write(home.join(".cue/status-on"), "s-on\n").unwrap();
+    let hosted = |args: &[&str], input: &str| {
+        let mut c = Command::new("/bin/sh").arg("-c").arg(SCRIPT).arg("cue-hook").args(args).env("HOME", &home).env("CUE_HOSTED", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        c.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        let t = std::time::Instant::now();
+        let out = String::from_utf8_lossy(&c.wait_with_output().unwrap().stdout).to_string();
+        (out, t.elapsed())
+    };
+    let written = || std::fs::read_dir(home.join(".cue/in")).unwrap().flatten().map(|f| std::fs::read_to_string(f.path()).unwrap()).collect::<Vec<_>>();
+    // A permission ask, a turn's end, a prompt in a session with no list: nothing for Cue, no wait (Cue asks it
+    // itself, over cue-host).
+    for (args, input) in [(&["permission", "claude"][..], r#"{"session_id":"s-on","tool_name":"Bash"}"#), (&["stop", "claude"][..], r#"{"session_id":"s-off"}"#), (&["prompt", "claude"][..], r#"{"session_id":"s-off","prompt":"hi"}"#)] {
+        let (out, took) = hosted(args, input);
+        assert_eq!(out, "");
+        assert!(took < Duration::from_secs(1), "{args:?} never waits");
+    }
+    assert!(written().is_empty(), "nothing handed to Cue: {:?}", written());
+    // A prompt in a session with the list on still goes, marked hosted (Cue answers only its list; not watching here,
+    // so no wait).
+    hosted(&["prompt", "claude"], r#"{"session_id":"s-on","prompt":"hi"}"#);
+    let w = written();
+    assert_eq!(w.len(), 1);
+    assert!(w[0].contains(r#""hosted":"1""#), "{}", w[0]);
+    let _ = std::fs::remove_dir_all(&home);
+}

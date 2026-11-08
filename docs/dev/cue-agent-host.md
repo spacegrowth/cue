@@ -213,7 +213,7 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 |---|---|---|
 | H3a | Pi's gate through RPC when hosted; `Item.request_id` and `add_ask` dedupe; protocol state rebuilt by replay (§12) | **built**: tests green; hosted Pi asks are cards with no socket |
 | H3b | `cue-host` + `Hosts`/`HostLink` on this Mac, behind `hosted.on` | **built**: Cue quit mid-turn with a card open, and again mid-command: the card comes back, the turn finishes; live with Claude Code, Pi and Codex |
-| H4a | Linux builds, install over SSH, `connect` and `tail` over the shared connection, remote hook skips hosted | a hosted Claude session on a Linux machine survives killing the SSH connection mid-turn |
+| H4a | Linux builds, install over SSH, `connect` and `tail` over the shared connection, remote hook skips hosted | **built** (§13; `tail` still by copies): survives killing the SSH connection mid-turn, in Docker on both architectures |
 | H4b | Pi and Codex remote, version checks, Settings → Machines wording | live on a real machine with all three |
 
 ## 11. What the review changed (from v1)
@@ -267,5 +267,44 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
   every hosted agent ended, its exit reported (the session comes back paused, and your next message starts it on a
   fresh host), then every host. So a host bug never outlives the next install for new sessions, and never at all
   once restarted.
-- Not yet: `tail` (H4), version checks between Cue and an older host (the protocol is at version 1), `write` dedupe
-  by `msg` is in the host but Cue doesn't resend after a reconnect yet (a send during a drop is refused, saying so).
+- **Nothing lost to a dropped connection** (2026-11-08). Each line Cue writes to a session carries an id of Cue's
+  (`msg`), and lines go through the session's outbox in order (`hosted/remote.rs`). One that doesn't get there, or
+  whose answer doesn't come back, is held while the connection is made again, then sent again under the same id once
+  it's back (the host skips an id it has written, so the agent never reads it twice); later lines wait behind it.
+  `HostLink::try_request` says which it was (`Failed::Unreachable` / `Refused`). A host that comes back without the
+  session (it died, and Cue reached a fresh one) took the agent with it: the session is let go and said to have exited
+  (it shows paused; your next message starts it), and messages held for it are said not taken, so the window marks
+  them unsent instead of leaving them on their way.
+- Not yet: `tail` (H4), version checks between Cue and an older host (the protocol is at version 1; needed once a
+  release changes it).
+
+## 13. As built (H4, other machines, 2026-11-08)
+
+- **Builds.** `scripts/build-host.sh` cross-builds cue-host for Linux x86_64 and aarch64 on the Mac (musl, linked by
+  rust-lld, no Docker or C toolchain needed) and for macOS (both chips), into `src-tauri/host-builds/` with
+  `SHA256SUMS`, `BUILD` and Cue's Pi extension (`cue-pi.ts`); Cue.app carries the folder (`Contents/Resources/
+  host-builds`). `install.sh` and releases run it first; a release signs the macOS one and checks the Linux ones run.
+- **On a machine** (`hosted/machine_host.rs`, `on_machines.rs`). First use: `uname -sm`, the matching build sent with
+  `run_with_bytes`, its checksum checked there, moved into place (`~/.cue/bin/cue-host-<build>`, 0700); Cue's Pi
+  extension beside it (`~/.cue/pi/cue.ts`). One `HostLink` per machine over `Dial::Machine`: ssh (the shared
+  connection, no login shell: one that prints would corrupt the stream) running `connect`, which starts the host if
+  none runs; made again with the same backoff when ssh ends. A host there of an older build is found the first time a
+  session there is picked up (`connect --only-running`, never starting one), let finish, then stopped by its pid there
+  and cleared with its program; a folder whose host is gone, or a program with no folder, is cleared (never one whose
+  host still runs).
+- **The agent's command there** (`launch::for_machine`): `/bin/sh` sources `~/.cue/env.sh` (your login shell's
+  environment, as Cue keeps it for every call), goes to the folder (`~` is home there), and runs the agent found on
+  that PATH. The host gives it its own environment under Cue's few variables (`start`'s `inherit`).
+- **A session Cue lost sight of** (the machine couldn't be reached when Cue started): the next message's start finds it
+  running there and picks it up, never a second agent beside it.
+- **`connect` relays with read/write, never `std::io::copy`.** On Linux that splices the host's socket into the pipe to
+  sshd, holding the pipe's lock while it waits for the socket; sshd, reading that pipe on its one thread, then can't
+  pass your input on either. Found by the Docker tests; it would hang every session on a real Linux machine.
+- **Transcripts** are still copied by `tail -F` sessions (machines/logs.rs), not a `tail` request on the host
+  connection (§9.1): fine at today's numbers; worth doing if a machine runs many sessions at once.
+- **Tests.** `scripts/test-machines.sh [--both]`: containers running sshd (reached through `docker exec … nc`, no port
+  opened), cue-host put there by Cue, the tests' fake Claude as the agent; a turn with an ask; a connection dropped
+  mid-turn (nothing lost or doubled, a message sent meanwhile arrives once); Cue quitting with an ask open; the host
+  killed there; a damaged program replaced; a lost session picked up; older builds cleared.
+- Not yet: version checks of the agents there before a start (a Claude Code too old for hosting exits at once, and
+  Cue shows what it said), and a live run on a real Linux machine with Claude Code, Pi and Codex.

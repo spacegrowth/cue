@@ -15,8 +15,15 @@ id="$(date +%s)-$$"
 echo "$id $1 ${TMUX_PANE:-}" >>"$d/hook.log" 2>/dev/null
 # The event (a prompt, a command about to run) is yours alone: the file is readable by you only.
 input=$(cat)
+# A session cue-host runs for Cue (CUE_HOSTED): Cue hears all of it from the session directly, so only the status
+# list's part (below) runs for it, and only in a session with the list on.
+if [ -n "${CUE_HOSTED:-}" ]; then
+  case "$1" in prompt|stop) ;; *) exit 0 ;; esac
+  hsid=$(printf '%s' "$input" | tr -d '\n' | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p')
+  [ -n "$hsid" ] && grep -qxF "$hsid" "$d/status-on" 2>/dev/null || exit 0
+fi
 ( umask 077; {
-  printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}"
+  printf '{"event":"%s","harness":"%s","pane":"%s","tmux":"%s","hosted":"%s","input":' "$1" "$2" "${TMUX_PANE:-}" "${TMUX:+1}" "${CUE_HOSTED:+1}"
   printf '%s' "$input"
   printf '}\n'
 } >"$d/in/$id.tmp" ) 2>/dev/null && mv "$d/in/$id.tmp" "$d/in/$id.json"

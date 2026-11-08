@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 151 (3 sync) |
-| Lock declarations (static or field) | 111 |
-| Lock acquisitions | 276 |
-| Lock-graph edges | 50 |
-| Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 377 / 146 / 53 / 4 / 1 / 4 |
+| Lock declarations (static or field) | 118 |
+| Lock acquisitions | 292 |
+| Lock-graph edges | 52 |
+| Spawn sites | 90 |
+| External calls: fs / db / process / notify / login / socket | 383 / 146 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -207,14 +207,20 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hosted/driver.rs::Driver.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
 | `hosted/driver.rs::Driver.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
-| `hosted/host_link.rs::HostLink.out` | `Mutex<Option<UnixStream>>` | "cue-host link: out" (4 sites) |
-| `hosted/host_link.rs::HostLink.waiting` | `Mutex<HashMap<u64,Sender<Result<Value,String>>>>` | "cue-host link: waiting" (5 sites) |
+| `hosted/host_link.rs::HostLink.out` | `Mutex<Option<Box<dynWrite+Send>>>` | "cue-host link: out" (3 sites) |
+| `hosted/host_link.rs::HostLink.end` | `Mutex<Option<Box<dynFn()+Send+Sync>>>` | "cue-host link: end" (2 sites) |
+| `hosted/host_link.rs::HostLink.waiting` | `Mutex<HashMap<u64,Sender<Result<Value,Failed>>>>` | "cue-host link: waiting" (5 sites) |
 | `hosted/host_link.rs::HostLink.routes` | `Mutex<HashMap<String,Route>>` | "cue-host link: routes" (3 sites) |
 | `hosted/host_link.rs::HostLink.on_back` | `Mutex<Option<Box<dynFn()+Send+Sync>>>` | "cue-host link: on back" (2 sites) |
 | `hosted/hosts.rs::Hosts.link` | `Mutex<Option<Arc<HostLink>>>` | "hosts: link" (5 sites) |
 | `hosted/hosts.rs::Hosts.failed_at` | `Mutex<Option<Instant>>` | "hosts: link tried" (3 sites) |
+| `hosted/machine_host.rs::P` | `OnceLock<Mutex<HashSet<String>>>` | — |
+| `hosted/on_machines.rs::OnMachines.links` | `Mutex<HashMap<String,Arc<HostLink>>>` | "machine hosts: links" (4 sites) |
+| `hosted/on_machines.rs::OnMachines.looked` | `Mutex<HashSet<String>>` | "machine hosts: looked" (1 sites) |
+| `hosted/remote.rs::RUN` | `std::sync::OnceLock<u128>` | — |
 | `hosted/remote.rs::Remote.cursor` | `Mutex<Cursor>` | "hosts: a session's cursor" (3 sites) |
 | `hosted/remote.rs::Remote.queue` | `Mutex<Option<Sender<Event>>>` | — |
+| `hosted/remote.rs::Remote.outbox` | `Mutex<VecDeque<Pending>>` | "hosts: a session's outbox" (3 sites) |
 | `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (5 sites) |
 | `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
@@ -283,7 +289,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `sounds.rs::PLAYING` | `std::sync::Mutex<Option<std::process::Child>>` | "PLAYING" (1 sites) |
 | `statuslist.rs::SEEN` | `Mutex<Option<(u64,Value)>>` | "what the status list has cost" (1 sites) |
 | `talk.rs::STATUS` | `Mutex<Value>` | "talk status" (2 sites) |
-| `talk.rs::RETELL` | `Mutex<Option<mpsc::UnboundedSender<Value>>>` | "talk retell" (2 sites) |
+| `talk.rs::RETELL` | `Mutex<Option<mpsc::UnboundedSender<Value>>>` | "talk retell" (4 sites) |
+| `talk.rs::LAUNCH` | `Mutex<Option<Launch>>` | "talk launch" (2 sites) |
 | `talk.rs::OWN` | `std::sync::Mutex<(f64,f64)>` | "talk own hue" (2 sites) |
 | `tasks.rs::TRACKS` | `Mutex<Option<HashMap<String,Track>>>` | "what each session is about" (1 sites) |
 | `tasks.rs::TOTAL` | `Mutex<Option<Total>>` | "what About has cost" (2 sites) |
@@ -300,7 +307,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `terminal/term.rs::M` | `OnceLock<Mutex<Terms>>` | — |
 | `terminal/term.rs::P` | `OnceLock<String>` | — |
 
-Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (5 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (7 sites), "hosts: sessions" (7 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
+Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (5 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "machine hosts placed" (2 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
 
 ## Lock graph
 
@@ -322,6 +329,8 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "config file" | "config in memory" |  | `config/cache.rs::refresh` → `config/cache.rs::kept_stamp`, takes it |
 | "db writer's marks" | "DB" |  | `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "db writer's marks" | "folder facts" |  | `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "hosts: a session's outbox" | "cue-host link: out" |  | `hosted/remote.rs::Remote::put` → `hosted/remote.rs::Remote::flush_locked` → `hosted/host_link.rs::HostLink::try_request`, takes it |
+| "hosts: a session's outbox" | "cue-host link: waiting" |  | `hosted/remote.rs::Remote::put` → `hosted/remote.rs::Remote::flush_locked` → `hosted/host_link.rs::HostLink::try_request`, takes it |
 | "open_terms" | "pty master" |  | `terminal/term.rs::foreground`, takes it |
 | "parked saves" | "DB" |  | `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt`, takes it |
 | "parked saves" | "db writer's marks" |  | `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write`, takes it |
@@ -345,7 +354,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "caches" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `terminal/keys.rs::Terminals::dialog_on` → `terminal/focus/screen.rs::dialog_on` → `terminal/focus/screen.rs::screen_of` → `terminal/focus/tmux.rs::session_screen` → `machines/mod.rs::tmux` → `machines/mod.rs::tmux_path`, takes it |
 | "typing gate" | "config file" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `hub/mod.rs::settle_projects` → `config.rs::update` → `config/save.rs::update_with` → `config/save.rs::save` → `config/cache.rs::hold_file`, takes it |
 | "typing gate" | "config in memory" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/mod.rs::Hub::snapshot` → `hub/mod.rs::Hub::build_snapshot` → `config.rs::folders_put` → `config.rs::load` → `config/cache.rs::current`, takes it |
-| "typing gate" | "copies" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `terminal/focus/lines.rs::model_args` → `logs/steps/queries.rs::model_of` → `logs/steps/queries.rs::caught_up` → `logs/steps/queries.rs::catch_up_shared` → `logs/steps/reading.rs::Feed::apply` → `logs/steps/reading.rs::Feed::put` → `logs/steps/feed.rs::Feed::put_log` → `logs/steps/take.rs::Feed::take` → `logs/steps/take.rs::Feed::take_user` → `logs/steps/take.rs::Feed::finish` → `logs/steps/background.rs::Feed::add_helper` → `logs/steps/background.rs::Feed::add_agent` → `machines/logs.rs::copy_helper`, takes it |
+| "typing gate" | "copies" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `machines/logs.rs::local_copy`, takes it |
 | "typing gate" | "db writer's marks" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write`, takes it |
 | "typing gate" | "db writes" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand`, takes it |
 | "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
@@ -379,6 +388,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `config.rs::watch` | thread::spawn | 1 |
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
+| `hosted/conn.rs::machine` | thread::spawn | 2 |
 | `hosted/host_link.rs::HostLink::lost` | thread::spawn | 1 |
 | `hosted/host_link.rs::HostLink::open` | thread::spawn | 1 |
 | `hosted/hosts.rs::Hosts::listen` | thread::spawn | 1 |
@@ -406,7 +416,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/steps/background.rs::Feed::close_scripts` | thread::spawn | 1 |
 | `logs/steps/background.rs::Feed::helper_finished` | thread::spawn | 1 |
 | `logs/turns.rs::start` | Builder::spawn | 1 |
-| `machines/hooks/events.rs::handle` | thread::spawn | 2 |
+| `machines/hooks/events.rs::answer_status_list` | thread::spawn | 1 |
+| `machines/hooks/events.rs::handle` | thread::spawn | 1 |
 | `machines/hooks/setup.rs::push_status_on` | thread::spawn | 1 |
 | `machines/hooks/watch.rs::new_session_seen` | thread::spawn | 1 |
 | `machines/hooks/watch.rs::stream` | thread::spawn | 1 |
@@ -437,9 +448,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `talk.rs::Conversation::ask_by_the_way` | tokio::spawn | 1 |
 | `talk.rs::Conversation::on_line` | task::spawn_blocking | 1 |
 | `talk.rs::Conversation::on_line` | tokio::spawn | 1 |
+| `talk.rs::launch` | async_runtime::spawn | 1 |
+| `talk.rs::launch` | thread::spawn | 1 |
 | `talk.rs::send` | task::spawn_blocking | 1 |
-| `talk.rs::start` | async_runtime::spawn | 1 |
-| `talk.rs::start` | thread::spawn | 1 |
 | `tasks.rs::start` | thread::spawn | 1 |
 | `tasks.rs::turn_ended` | thread::spawn | 1 |
 | `terminal/dictation.rs::start` | thread::spawn | 1 |
@@ -454,7 +465,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (377)
+### fs (383)
 
 | In | Call | Times |
 |---|---|---|
@@ -531,6 +542,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hook.rs::put_executable` | write | 1 |
 | `hook.rs::read_tail` | File::open | 1 |
 | `hook.rs::read_tail` | Path::metadata | 1 |
+| `hosted/machine_host.rs::carried` | Path::is_dir | 1 |
+| `hosted/machine_host.rs::expected_sum` | read_to_string | 2 |
+| `hosted/machine_host.rs::put` | read | 1 |
 | `hosted/old_hosts.rs::clear` | remove_dir_all | 2 |
 | `hosted/old_hosts.rs::clear` | remove_file | 1 |
 | `hosted/old_hosts.rs::find` | Path::exists | 1 |
@@ -546,6 +560,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/remote.rs::Cursor::save` | write | 1 |
 | `hub/activity.rs::written_ms` | metadata | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
+| `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | read_dir | 4 |
 | `ipc/chat.rs::mcp_apply_clear_for` | read | 1 |
@@ -724,6 +739,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `machines/logs.rs::start_after` | metadata | 1 |
 | `machines/logs.rs::start_after` | write | 1 |
 | `machines/logs.rs::task_paths` | metadata | 1 |
+| `machines/logs.rs::written_there` | read_to_string | 1 |
 | `mini/mod.rs::place_of` | read | 1 |
 | `mini/mod.rs::set_place` | write | 1 |
 | `notify.rs::log` | OpenOptions::new | 1 |
@@ -969,7 +985,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |
 | `talk.rs::dictation` | (program computed) | 1 |
-| `talk.rs::start` | (program computed) | 1 |
+| `talk.rs::launch` | (program computed) | 1 |
 | `terminal/dictation.rs::start` | (program computed) | 1 |
 | `terminal/focus/agents.rs::agents_installed` | (program computed) | 1 |
 | `terminal/focus/apps.rs::activate_app` | open | 1 |
@@ -1009,7 +1025,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | In | Call | Times |
 |---|---|---|
 | `hook.rs::connect` | UnixStream::connect | 1 |
-| `hosted/host_link.rs::HostLink::open` | UnixStream::connect | 1 |
+| `hosted/conn.rs::Dial::open` | UnixStream::connect | 1 |
 | `server/mod.rs::serve` | UnixListener::bind | 1 |
 | `server/mod.rs::serve` | UnixStream::connect | 1 |
 

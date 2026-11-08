@@ -219,12 +219,17 @@ function onKey(e) {
   if (!KEY_STEPS.some((step) => step(e))) keyBoard(e);
 }
 /** While Cue asks whether to delete a session: Esc is no, Enter yes, before a terminal under it takes the key. While
- *  it asks whether to quit when that ends sessions: Esc keeps it open (quitting takes a click). */
+ *  it asks whether to quit when that ends sessions: Esc keeps it open (quitting takes a click). Esc says no to trusting a folder. */
 function keyDeleteAsk(e) {
   if (quitAsk && e.key === "Escape") {
     e.preventDefault();
     e.stopPropagation();
     return quitAnswer(false);
+  }
+  if (trustAsk && e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    return trustAnswer(false);
   }
   if (!deleteAsk || (e.key !== "Escape" && e.key !== "Enter")) return;
   e.preventDefault();

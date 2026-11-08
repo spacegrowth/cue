@@ -63,6 +63,13 @@ impl FakeSsh {
         self
     }
 
+    /// Every ssh Cue runs is `program` instead (a script), until this FakeSsh goes: real ssh with a config of the
+    /// test's own, say, to reach a test's container (hosted/machine_tests.rs).
+    pub fn through(&self, program: &str) -> &Self {
+        std::fs::write(self.dir.join("ssh"), program).unwrap();
+        self
+    }
+
     /// `host` can't be reached any more.
     pub fn unplug(&self, host: &str) {
         let _ = std::fs::remove_file(self.dir.join("hosts").join(host));

@@ -38,7 +38,7 @@ impl Real {
     fn start_in(dir: PathBuf, settings: Value, start: Start, args: &[&str]) -> Real {
         let mut a = vec!["--setting-sources".into(), "local".into(), "--strict-mcp-config".into(), "--settings".into(), settings.to_string()];
         a.extend(args.iter().map(|s| s.to_string()));
-        let spec = Spec { agent: Agent::Claude, cwd: dir.clone(), start, permissions: String::new(), model: Some(MODEL.into()), args: a, program: Program::At(claude_with_real_home(&dir)) };
+        let spec = Spec { agent: Agent::Claude, cwd: dir.clone(), start, permissions: String::new(), model: Some(MODEL.into()), args: a, program: Program::At(claude_with_real_home(&dir)), machine: String::new() };
         let (tx, rx) = channel();
         let session = Session::start(&spec, move |_, e| {
             let _ = tx.send(e);

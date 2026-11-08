@@ -195,8 +195,13 @@ pub fn claude_transcript_path(cwd: &str, session_id: &str) -> PathBuf {
     // Claude names the folder after the real path (a folder reached through a link, as /var is /private/var, files
     // under where it really is).
     let real = std::fs::canonicalize(cwd).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| cwd.to_string());
-    let dir: String = real.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
-    claude_sessions_dir().with_file_name("projects").join(dir).join(format!("{session_id}.jsonl"))
+    claude_sessions_dir().with_file_name("projects").join(claude_project_folder(&real)).join(format!("{session_id}.jsonl"))
+}
+
+/// The folder Claude Code keeps a project's conversations in, under its `projects/`, for the folder at `real` (its
+/// real path): every character but a letter or digit a `-`.
+pub fn claude_project_folder(real: &str) -> String {
+    real.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
 }
 
 #[cfg(test)]

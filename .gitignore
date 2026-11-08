@@ -21,3 +21,6 @@ src-tauri/voice/.build/
 
 # UI test screenshots (tests/ui/specs): the latest run's; the baselines are tests/ui/baseline
 tests/ui/shots/
+
+# cue-host for other machines (scripts/build-host.sh), carried in Cue.app
+src-tauri/host-builds/

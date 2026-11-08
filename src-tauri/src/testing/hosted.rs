@@ -14,6 +14,8 @@ pub struct HostedLaunch {
     pub cwd: String,
     pub permissions: String,
     pub args: Vec<String>,
+    /// The machine it runs on (empty: this Mac).
+    pub machine: String,
 }
 
 #[derive(Default)]
@@ -87,7 +89,7 @@ impl Hosted for FakeHosted {
         if let Some(why) = crate::locking::lock(&self.refusal, "fake hosted refusal").clone() {
             return Err(why);
         }
-        let launch = HostedLaunch { agent: spec.agent, start: spec.start.clone(), cwd: spec.cwd.to_string_lossy().into_owned(), permissions: spec.permissions.clone(), args: spec.args.clone() };
+        let launch = HostedLaunch { agent: spec.agent, start: spec.start.clone(), cwd: spec.cwd.to_string_lossy().into_owned(), permissions: spec.permissions.clone(), args: spec.args.clone(), machine: spec.machine.clone() };
         let n = {
             let mut l = crate::locking::lock(&self.launched, "fake hosted launches");
             l.push(launch);

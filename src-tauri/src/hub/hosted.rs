@@ -28,10 +28,15 @@ impl Hub {
 
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
-        let spec = Spec { agent: Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args: with.args.clone(), program: Program::Agent };
+        let spec = Spec { agent: Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args: with.args.clone(), program: Program::Agent, machine: origin.machine.clone() };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
-        let transcript_path = started.transcript.unwrap_or_else(|| origin.transcript_path.clone());
+        let transcript_path = match started.transcript {
+            // On a machine, the agent's own file is there: Cue reads its copy here (machines/logs.rs).
+            Some(there) if !origin.machine.is_empty() => crate::machines::get(&origin.machine).map(|m| crate::machines::logs::local_copy(&m, &there)).filter(|c| !c.is_empty()).unwrap_or_else(|| origin.transcript_path.clone()),
+            Some(here) => here,
+            None => origin.transcript_path.clone(),
+        };
         Ok(Origin { agent_pid: Some(started.pid), hosted: true, session_id: started.session_id, transcript_path, ..origin.clone() })
     }
 
@@ -46,7 +51,8 @@ impl Hub {
             return self.run_hosted(origin, Start::Resume(sid.to_string()), &HostedStart::default());
         }
         let log = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, sid) } else { origin.transcript_path.clone().into() };
-        let start = if log.is_file() { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
+        let written = if origin.machine.is_empty() { log.is_file() } else { written_on_machine(origin) };
+        let start = if written { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
         args.extend(crate::logs::mcp::selection_flags(sid));
         // SHORTCUT: resumed in Claude's own default permission mode, not the one + New picked (it isn't kept), so a
@@ -61,6 +67,10 @@ impl Hub {
     /// `busy`: it's mid-turn, so it's queued until Claude reads it at its next step.
     pub(crate) fn send_to_hosted(&self, sid: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool) -> Result<String, String> {
         let text = typed.trim();
+        // One of Claude Code's own screens (/config, /login): a terminal opens it; the session never gets it.
+        if let Some(name) = self.terminal_command(sid, text) {
+            return self.open_terminal_command(sid, text, &name);
+        }
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         self.write(|st| {
             st.sessions.note_yours(sid, text, &paths, crate::config::context_keep());
@@ -72,7 +82,9 @@ impl Hub {
         self.changed();
         let handed = self.hosted_origin(sid).ok_or_else(|| "that session is gone".to_string()).and_then(|o| {
             self.wake_hosted(&o)?;
-            self.hosted().send(sid, &crate::uploads::with_paths(typed, saved))
+            // On a machine, its images copied there first, so the paths in the message open there.
+            let there = crate::uploads::on_machine(&o.machine, saved, &|_, _| {})?;
+            self.hosted().send(sid, &crate::uploads::with_paths(typed, &there))
         });
         self.write(|st| match &handed {
             Ok(()) => st.sessions.note_delivery(sid, text, "handed to it directly"),
@@ -105,7 +117,7 @@ impl Hub {
         let hosted: Vec<Origin> = self.read(|st| st.sessions.all().into_iter().map(|s| s.origin).filter(|o| o.hosted).collect());
         for o in hosted {
             let Some(agent) = Agent::named(&o.harness) else { continue };
-            let spec = Spec { agent, cwd: o.cwd.clone().into(), start: Start::Resume(o.session_id.clone()), permissions: String::new(), model: None, args: vec![], program: Program::Agent };
+            let spec = Spec { agent, cwd: o.cwd.clone().into(), start: Start::Resume(o.session_id.clone()), permissions: String::new(), model: None, args: vec![], program: Program::Agent, machine: o.machine.clone() };
             // Costs aren't kept across restarts: this run's count from zero, as a resumed one's does.
             let Some(back) = self.hosted().reattach(&spec, self.hosted_report(o.clone(), 0.0)) else { continue };
             // Its process noted first: what it reports next (an ask again, what it said meanwhile) finds it.
@@ -176,7 +188,7 @@ impl Hub {
             }
             HostedEvent::Exited { code, during_turn, last_words } => self.hosted_exited(origin, code, during_turn, &last_words),
             HostedEvent::Refused { subtype, .. } => eprintln!("cue: hosted session {} asked for a “{subtype}”, which Cue can't answer: refused", o.session_id),
-            HostedEvent::Started { .. } => {}
+            HostedEvent::Started { terminal_only, .. } => self.note_terminal_only(&origin.session_id, terminal_only),
         }
     }
 
@@ -307,4 +319,15 @@ fn given(input: bool, reply: Result<Reply, oneshot::error::RecvError>) -> Given 
         (false, Ok(Reply::Cancel(why))) => Given::Decision(Decision { behavior: "deny".into(), message: Some(format!("Not answered in Cue: {why}")), ..Default::default() }),
         (false, Err(_)) => Given::Decision(Decision { behavior: "deny".into(), message: Some("Cue stopped waiting for an answer".into()), ..Default::default() }),
     }
+}
+
+/// Whether a session on a machine has a conversation there to resume. Its log here is a copy: anything in the copy
+/// says so; an empty or missing one is asked of the machine (the copy can lag behind). One the machine can't be asked
+/// about is taken to be there (it ran: a terminal session moved in, say), so a resume, not a second conversation.
+fn written_on_machine(origin: &Origin) -> bool {
+    if std::fs::metadata(&origin.transcript_path).is_ok_and(|m| m.len() > 0) {
+        return true;
+    }
+    let Some(m) = crate::machines::get(&origin.machine) else { return true };
+    origin.transcript_path.is_empty() || crate::machines::logs::written_there(&m, &origin.transcript_path).unwrap_or(true)
 }

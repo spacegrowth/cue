@@ -119,7 +119,10 @@ impl Host {
     fn apply(self: &Arc<Self>, req: Request, client: u64, to: &Sender<String>) -> Result<Value, String> {
         match req {
             Request::Hello { .. } => Ok(serde_json::to_value(self.hello()).unwrap_or_default()),
-            Request::Start { session, argv, env, cwd, meta } => self.start(&session, &argv, &env, &cwd, meta).map(|(pid, after)| json!({ "pid": pid, "after": after })),
+            Request::Start { session, argv, env, cwd, meta, inherit } => {
+                let env = if inherit { inherited(&env) } else { env };
+                self.start(&session, &argv, &env, &cwd, meta).map(|(pid, after)| json!({ "pid": pid, "after": after }))
+            }
             Request::Write { session, line, msg } => self.session(&session)?.write(&line, msg).map(|wrote| json!({ "written": wrote })),
             Request::Attach { session, after } => {
                 self.session(&session)?.attach(after, client, to.clone());
@@ -400,4 +403,9 @@ fn same_user(s: &UnixStream) -> bool {
     };
     // SAFETY: getuid has no failure.
     uid == unsafe { libc::getuid() }
+}
+
+/// The host's own environment with `given` over it.
+fn inherited(given: &[(String, String)]) -> Vec<(String, String)> {
+    std::env::vars().filter(|(k, _)| !given.iter().any(|(g, _)| g == k)).chain(given.iter().cloned()).collect()
 }

@@ -1,4 +1,8 @@
 fn main() {
+    // cue-host for other machines, which Cue.app carries (tauri.conf.json resources): scripts/build-host.sh builds
+    // it. The folder made empty when it hasn't run (a fresh checkout, the tests), so the app still builds; such a
+    // build says it can't host sessions on machines (hosted/machine_host.rs).
+    std::fs::create_dir_all("host-builds").expect("host-builds/");
     // cue-listen, the dictation helper (Swift: Apple's speech API has no Rust binding). Tauri ships it
     // inside Cue.app next to the main binary, from binaries/<name>-<target triple>.
     println!("cargo:rerun-if-changed=listen/main.swift");

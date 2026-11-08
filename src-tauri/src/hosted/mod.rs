@@ -18,11 +18,14 @@
 //! started with, and that's all whoever starts it needs.
 
 mod codex;
+mod conn;
 mod driver;
 mod host_link;
 mod hosts;
 mod launch;
+mod machine_host;
 mod old_hosts;
+mod on_machines;
 mod remote;
 mod pi;
 mod protocol;
@@ -37,6 +40,8 @@ mod codex_tests;
 mod compat_tests;
 #[cfg(test)]
 mod hosts_tests;
+#[cfg(test)]
+mod machine_tests;
 #[cfg(test)]
 mod pi_tests;
 #[cfg(test)]

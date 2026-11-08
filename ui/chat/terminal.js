@@ -60,11 +60,11 @@ function moveBtn(sid, harness, st, cls) {
     : "";
   return `<button class="${cls}" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to Cue</button>`;
 }
-/** Move to hosted, for a Claude Code session in Cue's own terminal on this Mac with Settings → Cue-hosted sessions
- *  on: ended there and resumed hosted, with no terminal (Move to Cue does it; the backend picks hosted). Greyed
- *  while it works or asks you something, as Move to Cue is. */
+/** Move to hosted, for a Claude Code session in Cue's own terminal (on this Mac, or tmux on a machine) with Settings →
+ *  Cue-hosted sessions on: ended there and resumed hosted where it was, with no terminal (Move to Cue does it; the
+ *  backend picks hosted). Greyed while it works or asks you something, as Move to Cue is. */
 function hostBtn(sid, s) {
-  if (s.harness !== "claude" || s.machine || !state.settings?.hosted?.on) return "";
+  if (s.harness !== "claude" || !state.settings?.hosted?.on) return "";
   const why = s.state === "working" ? "Available once it finishes what it's doing (or Stop it)" : s.state === "deciding" ? "Answer what it's asking first" : "";
   return `<button class="tplace-btn move" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to hosted</button>`;
 }

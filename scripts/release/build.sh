@@ -65,6 +65,8 @@ build_app() {
   # Build paths (this Mac's home folder) are written into the app for error messages: rewrite them.
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME/.cargo=/cargo --remap-path-prefix=$ROOT=/cue --remap-path-prefix=$HOME=/home"
   say "building (both chip types; a few minutes)…"
+  # cue-host for other machines, carried in the app; its macOS program signed as the app is.
+  scripts/build-host.sh --check --sign "$IDENTITY"
   npx tauri build --target universal-apple-darwin --bundles app --config "$config"
   APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Cue.app"
 }

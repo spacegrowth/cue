@@ -112,20 +112,30 @@ function modelRow() {
   return `<div class="nf-row"><span class="nf-k">Model</span><div class="nf-where"><select class="nf-in nf-sel" id="new-model" data-model aria-label="Model">${opts.map((m) => `<option value="${esc(m.value)}" ${m.value === pick ? "selected" : ""}>${esc(m.label || m.value)}</option>`).join("")}</select>${typed}${big}${reload}<span class="nf-hint">${esc(hint)}</span></div></div>`;
 }
 /** + New's Runs in: hosted by Cue (Settings → Cue-hosted sessions on), Cue's own terminal (tmux installed), or a
- *  terminal tab. Shown when there's a choice. */
+ *  terminal tab. On a machine: hosted there by cue-host, or tmux there (Cue's terminal over SSH). Shown when there's
+ *  a choice. */
 function whereRow() {
+  if (newMachine) return machineWhereRow();
   const tmux = !!state.settings?.sessions?.tmux_installed;
-  if (newMachine || (!tmux && !hostedOffered())) return "";
+  if (!tmux && !hostedOffered()) return "";
   const opts = [...(hostedOffered() ? [["hosted", "Hosted"]] : []), ...(tmux ? [[true, "Cue"]] : []), [false, termName()]];
   const cur = newHosted() ? "hosted" : newTmux() && tmux;
   const hint = cur === "hosted" ? `no terminal: Cue talks to ${agentName(newAgent)} directly, and every ask is a card` : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
   return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v === false ? TERM_ICON : CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
 }
+/** Runs in, on a machine: hosted there (cue-host, which Cue puts there) or tmux there. */
+function machineWhereRow() {
+  if (!hostedOffered()) return "";
+  const cur = newHosted() ? "hosted" : true;
+  const hint = cur === "hosted" ? `no terminal: it runs on that machine under cue-host (Cue puts it in ~/.cue there), every ask a card, and it carries on if Cue quits or the connection drops` : "in tmux there, shown in Cue's terminal";
+  return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[["hosted", "Hosted"], [true, "Cue"]].map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
+}
 const OTHER = "other…";   // the drop-down's "Other…" entry's value: no model id has an ellipsis
 const RELOAD_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>`;
 let newWhere = { true: true, false: false, hosted: "hosted" }[remembered("newWhere")] ?? null;   // tmux or not, or hosted (null: Settings' default)
-/** + New can start a Claude Code, Pi or Codex session hosted by Cue, with no terminal: Settings → Cue-hosted sessions on, on this Mac. */
-const hostedOffered = () => !!state.settings?.hosted?.on && ["claude", "pi", "codex"].includes(newAgent) && !newMachine;
+/** + New can start a Claude Code, Pi or Codex session hosted by Cue, with no terminal: Settings → Cue-hosted sessions
+ *  on, on this Mac or a machine (there by cue-host). */
+const hostedOffered = () => !!state.settings?.hosted?.on && ["claude", "pi", "codex"].includes(newAgent);
 const newHosted = () => hostedOffered() && newWhere === "hosted";
 const newTmux = () => (newWhere === "hosted" || newWhere == null ? !!state.settings?.sessions?.tmux : newWhere);
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
@@ -232,7 +242,7 @@ function newForm() {
   return `<div class="nf">
     <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add">+ Add</button></div>${extAddMenuHtml()}</div></div>
     ${nfAdding ? "" : machinePanel(newMachine)}
-    ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there; it sets up its hooks for the agents it finds.</span></div></div>` : ""}
+    ${nfAdding ? `<div class="nf-row nf-note"><span></span><div class="nf-addm"><div class="mc-add"><input class="nf-in mono" data-text="mc-host" placeholder="user@host or SSH alias" spellcheck="false" autocomplete="off" value="${esc(draft("mc-host").text)}"/><button class="btn primary small" data-mach="add">Add</button><button class="btn small" data-lv="machine-add">Cancel</button></div><span class="nf-hint wrap">Cue uses your own SSH (keys, agent, config) and never asks for a password. If it needs a login, you log in once in a terminal tab Cue opens. It installs nothing there but its hooks for the agents it finds, and, if you host a session there, one small program of its own (cue-host, in ~/.cue).</span></div></div>` : ""}
     <div class="nf-row"><span class="nf-k">Agent</span><div class="seg">${agents.map((a) => `<button class="${newAgent === a ? "on" : ""}" data-lv="agent" data-agent="${a}">${esc(agentName(a))}</button>`).join("")}</div></div>
     <div class="nf-row"><span class="nf-k">Folder</span><div class="nf-fwrap"><input class="nf-in mono" data-text="new-cwd" placeholder="${newMachine ? `~/code/… on ${esc(machShort(newMachine))}` : "~/development/…"}" spellcheck="false" autocomplete="off" value="${esc(draft("new-cwd").text)}"/>${folders.length ? `<button class="nf-fbtn" data-lv="folders" aria-label="Recent folders">▾</button>` : ""}${folderDrop(folders)}</div></div>
     ${projLine()}
@@ -264,7 +274,7 @@ function projectAtFolder(f) {
   return (state.sessions.find(same) || (state.live || []).find(same) || (state.history || []).find(same))?.project || baseName(f);
 }
 function nfSummary(withFolder = true) {
-  const where = newMachine ? machShort(newMachine) : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
+  const where = newMachine ? `${newHosted() ? "Hosted on " : ""}${machShort(newMachine)}` : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
   const model = newAgent !== "claude" ? "" : newModel === "default" || !newModel ? "" : `${(modelsOf(newMachine) || []).find((m) => m.value === newModel)?.label || newModel}${newModel1m && !/\[.*\]$/.test(newModel) ? " 1M" : ""}`;
   const perm = PERMS[newAgent]?.find(([v]) => v === newPerm)?.[1] || "";
   return [agentName(newAgent), withFolder && (draft("new-cwd").text.trim() || "no folder yet"), model, where, perm && `${perm}${newPerm === "skip" ? " (runs anything without asking)" : ""}`].filter(Boolean).join(" · ");
@@ -342,7 +352,7 @@ function afterNewSession(r) {
 }
 /** + New's Start: a "!" line runs in the folder; else the session starts, with the MCP servers you picked for it
  *  (only once you changed a box; else its folder's, unpinned). */
-async function lvStart() {
+async function lvStart(_d, trust = false) {
   const cwd = draft("new-cwd").text.trim().replace(/(.)\/+$/, "$1");
   if (!cwd) { nfFull = true; renderMain(); return toast("Pick a folder first"); }
   endDictation("new-msg");
@@ -352,11 +362,32 @@ async function lvStart() {
     const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
     const mk = `f:${cwd}`;
     const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-    const r = await invoke("new_session", { agent: newAgent, cwd, message: nfFull ? draft("new-msg").text : "", name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted() });
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: nfFull ? draft("new-msg").text : "", name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted(), trust });
     mcpPick.delete(mk);
     rememberFolder(newMachine, cwd);
     afterNewSession(r);
-  } catch (e) { toast(`Couldn't start it: ${e}`); }
+  } catch (e) {
+    // Hosted Claude Code in a folder it hasn't been trusted in: Cue asks, as its terminal would (ipc/hosted.rs).
+    if (String(e).startsWith(UNTRUSTED)) { trustAsk = { dir: String(e).slice(UNTRUSTED.length), machine: newMachine }; return renderMain(); }
+    toast(`Couldn't start it: ${e}`);
+  }
+}
+/** Hosted Claude Code never asks "Do you trust the files in this folder?" (it has no terminal), so Cue does, before
+ *  its first session in a folder: Trust and start, or not. */
+const UNTRUSTED = "untrusted folder: ";
+let trustAsk = null;   // { dir, machine }
+function trustDialog() {
+  const t = trustAsk, where = t.machine ? ` on ${esc(machShort(t.machine))}` : "";
+  return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="trust-title">
+    <div class="move-title" id="trust-title">Trust this folder?</div>
+    <div class="end-text"><span class="mono">${esc(homeless(t.dir))}</span>${where}. Claude Code will read, edit and run files in it, and a folder's own settings can run commands. In a terminal it asks this first; hosted, it has no terminal to ask in, so Cue asks, once per folder.</div>
+    <div class="row-btns"><span class="grow"></span><button class="btn" data-act="trust-cancel">Cancel <kbd>Esc</kbd></button><button class="btn primary" data-act="trust-start">Trust and start</button></div>
+  </div></div>`;
+}
+function trustAnswer(yes) {
+  trustAsk = null;
+  renderMain();
+  if (yes) lvStart(null, true);
 }
 /** The live list's and + New's buttons (data-lv), by name, each with the button's data. */
 const LV_ACTS = {

@@ -150,10 +150,14 @@ fn move_to_cue_with_hosting_on_takes_a_session_from_cues_own_terminal_into_hosti
 }
 
 #[test]
-fn move_to_cue_with_hosting_on_leaves_a_session_on_another_machine_where_it_is() {
+fn move_to_cue_with_hosting_on_hosts_a_session_on_another_machine_on_that_machine() {
     let w = World::new();
     crate::config::set("hosted.on", serde_json::json!(true)).unwrap();
+    crate::machines::add("box", "").unwrap();
     w.session("m").in_folder(w.home()).in_tmux("%991").on_machine("box").prompt("go").stop("Done.");
-    assert_eq!(move_session_to_cue(w.hub(), "m").unwrap_err(), "Cue hosts sessions on this Mac only, for now");
-    assert!(w.hosted.launched().is_empty());
+    assert_eq!(move_session_to_cue(w.hub(), "m").unwrap(), "Moved: hosted on box now");
+    let l = w.hosted.launched().last().cloned().expect("started hosted");
+    assert_eq!((l.start, l.machine.as_str()), (crate::hosted::Start::Resume("m".into()), "box"), "resumed there, on its machine");
+    let o = w.hub().session_origin("m").unwrap();
+    assert!(o.hosted && o.tmux_pane.is_empty() && o.machine == "box", "{o:?}");
 }

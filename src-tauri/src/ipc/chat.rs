@@ -55,7 +55,13 @@ fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
             None => return done(Some(vec![])),
         },
     };
-    let list = commands::for_folder(&cwd, &machine);
+    let mut list = commands::for_folder(&cwd, &machine);
+    // Hosted: the commands only Claude Code's terminal has open a terminal (hub/terminal_only.rs).
+    if hub.hosted_origin(session_id).is_some() {
+        for c in list.iter_mut().flatten().filter(|c| hub.needs_terminal(session_id, &c.name)) {
+            c.kind = "terminal".into();
+        }
+    }
     serde_json::json!({ "list": list, "reading": commands::reading(&cwd, &machine) })
 }
 

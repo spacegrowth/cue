@@ -16,6 +16,8 @@ digraph locks {
   "config file" -> "config in memory";
   "db writer's marks" -> "DB";
   "db writer's marks" -> "folder facts";
+  "hosts: a session's outbox" -> "cue-host link: out";
+  "hosts: a session's outbox" -> "cue-host link: waiting";
   "open_terms" -> "pty master";
   "parked saves" -> "DB";
   "parked saves" -> "db writer's marks";

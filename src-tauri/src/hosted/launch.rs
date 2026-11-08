@@ -23,6 +23,8 @@ pub struct Spec {
     /// More arguments of Cue's own (an MCP selection, say), each passed whole.
     pub args: Vec<String>,
     pub program: Program,
+    /// The machine it runs on (+ New → Machine), by name; empty: this Mac.
+    pub machine: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -169,6 +171,39 @@ pub(super) fn for_host(spec: &Spec) -> Result<HostCommand, String> {
     Ok(HostCommand { argv, env: env.into_iter().collect(), cwd })
 }
 
+/// What /bin/sh runs on a machine to start an agent (`for_machine`): your environment there, the session's folder
+/// (`~` your home there), Cue's Pi extension for a Pi that doesn't have it installed (its gate), then the agent.
+const MACHINE_SCRIPT: &str = r#"[ -r "$HOME/.cue/env.sh" ] && . "$HOME/.cue/env.sh"
+case $CUE_CWD in "~"|"~/"*) CUE_CWD="$HOME${CUE_CWD#\~}" ;; esac
+cd -- "$CUE_CWD" || { echo "$CUE_CWD isn't a folder there" >&2; exit 1; }
+if [ -n "${CUE_PI_EXTENSION:-}" ] && [ ! -e "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/cue.ts" ] && [ -r "$HOME/$CUE_PI_EXTENSION" ]; then
+  set -- -e "$HOME/$CUE_PI_EXTENSION" "$@"
+fi
+exec "$CUE_AGENT" "$@""#;
+
+/// `spec`'s command for cue-host on its machine, where Cue knows neither the environment nor where the agent is: run
+/// by /bin/sh, which takes your environment there as Cue keeps it (`~/.cue/env.sh`, your login shell's: PATH, nvm…;
+/// machines/mod.rs), goes to its folder (`~` there is your home there) and runs the agent found on that PATH. The host
+/// adds its own environment underneath (`inherit`).
+pub(super) fn for_machine(spec: &Spec) -> Result<HostCommand, String> {
+    let args = arguments(spec)?;
+    let program = match &spec.program {
+        Program::Agent => spec.agent.program().to_string(),
+        #[cfg(test)]
+        Program::At(path) => path.to_string_lossy().into_owned(),
+    };
+    let script = MACHINE_SCRIPT;
+    let argv: Vec<String> = ["/bin/sh", "-c", script, "cue-hosted"].into_iter().map(String::from).chain(args).collect();
+    let mut env = vec![(super::HOSTED_ENV.to_string(), "1".to_string()), ("CUE_CWD".into(), spec.cwd.to_string_lossy().into_owned()), ("CUE_AGENT".into(), program), ("SHELL_SESSIONS_DISABLE".into(), "1".into())];
+    if spec.agent == Agent::Pi {
+        env.push(("CUE_PI_EXTENSION".into(), super::machine_host::PI_EXTENSION.into()));
+    }
+    if let Ok((Some((k, v)), _)) = crate::focus::permission_flags(spec.agent.program(), &spec.permissions) {
+        env.push((k.to_string(), v.to_string()));
+    }
+    Ok(HostCommand { argv, env, cwd: "/".into() })
+}
+
 /// The agent's arguments for `spec`.
 pub(super) fn arguments(spec: &Spec) -> Result<Vec<String>, String> {
     let id = spec.start.session_id();
@@ -224,7 +259,7 @@ mod tests {
     use super::*;
 
     fn spec(start: Start) -> Spec {
-        Spec { agent: Agent::Claude, cwd: "/tmp".into(), start, permissions: String::new(), model: None, args: vec![], program: Program::Agent }
+        Spec { agent: Agent::Claude, cwd: "/tmp".into(), start, permissions: String::new(), model: None, args: vec![], program: Program::Agent, machine: String::new() }
     }
 
     #[test]
@@ -276,6 +311,45 @@ mod tests {
         assert_eq!(get(crate::hosted::HOSTED_ENV), Some("1"), "marked hosted");
         assert!(get("TMUX").is_none() && get("CLAUDECODE").is_none(), "nothing that would make it think it's inside another session");
         assert_eq!(get("HOME").map(str::to_string), std::env::var("HOME").ok(), "and the rest of Cue's own");
+    }
+
+    /// The command `for_machine` gives the host, run here with HOME at a scratch folder standing in for the machine
+    /// (its `.cue/env.sh` putting a stand-in agent on PATH): what the agent was started with, and where.
+    fn run_on_machine(home: &std::path::Path, s: &Spec) -> String {
+        let HostCommand { argv, env, cwd } = for_machine(s).unwrap();
+        assert_eq!(cwd, "/");
+        let out = Command::new(&argv[0]).args(&argv[1..]).env_clear().env("HOME", home).env("PATH", "/usr/bin:/bin").envs(env).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr)
+    }
+
+    #[test]
+    fn on_a_machine_the_agent_runs_with_your_environment_there_in_its_folder_found_on_your_path() {
+        let home = std::env::temp_dir().join(format!("cue-machine-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".cue/pi")).unwrap();
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::create_dir_all(home.join("my work")).unwrap();
+        std::fs::write(home.join(".cue/env.sh"), format!("export PATH='{}/bin:/usr/bin:/bin'\nexport FROM_ENV=yes\n", home.display())).unwrap();
+        for agent in ["claude", "pi"] {
+            let fake = home.join("bin").join(agent);
+            std::fs::write(&fake, "#!/bin/sh\necho \"$(basename \"$0\") in $PWD env=$FROM_ENV hosted=$CUE_HOSTED args=$*\"\n").unwrap();
+            std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        }
+        let s = Spec { cwd: "~/my work".into(), ..spec(Start::New("0f0e-11".into())) };
+        let said = run_on_machine(&home, &s);
+        assert!(said.starts_with(&format!("claude in {}/my work env=yes hosted=1 args=-p ", home.display())), "{said}");
+        assert!(said.contains("--session-id 0f0e-11"), "{said}");
+        // Pi, without Cue's extension installed there: loaded from where Cue put it (its gate).
+        std::fs::write(home.join(".cue/pi/cue.ts"), "// gate").unwrap();
+        let pi = Spec { agent: Agent::Pi, ..s.clone() };
+        assert!(run_on_machine(&home, &pi).contains(&format!("args=-e {}/.cue/pi/cue.ts --mode rpc", home.display())));
+        // With it installed there, Pi loads that one itself: not twice.
+        std::fs::create_dir_all(home.join(".pi/agent/extensions")).unwrap();
+        std::fs::write(home.join(".pi/agent/extensions/cue.ts"), "// gate").unwrap();
+        assert!(run_on_machine(&home, &pi).contains("args=--mode rpc"));
+        let gone = Spec { cwd: "~/nowhere".into(), ..s };
+        assert!(run_on_machine(&home, &gone).contains("isn't a folder there"));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

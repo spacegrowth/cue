@@ -10,7 +10,7 @@ use crate::model::Decision;
 use serde_json::{json, Value};
 
 fn spec(start: Start, permissions: &str) -> Spec {
-    Spec { agent: Agent::Codex, cwd: "/work/demo".into(), start, permissions: permissions.into(), model: None, args: vec![], program: Program::Agent }
+    Spec { agent: Agent::Codex, cwd: "/work/demo".into(), start, permissions: permissions.into(), model: None, args: vec![], program: Program::Agent, machine: String::new() }
 }
 
 /// The protocol after the recorded run, and every event it made.

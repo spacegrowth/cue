@@ -279,16 +279,28 @@ stops a turn: on launch the app reconnects, rebuilds each session's state from t
 waits, and carries on with what it said meanwhile. This is what tmux gave terminal sessions; it had to exist before
 tmux goes.
 
-**H4. Other machines.** Today a session on a machine runs in tmux there over SSH. Hosted: the agent's stdio
-runs over SSH (`ssh <host> 'cd <folder> && claude -p …'`), the same clients on top. Without a host on that
-machine, a dropped connection or Cue quitting pauses the session (resumed from its saved conversation on your
-next message; a turn in progress is cut off). Open: whether to run the agent host on the machine too (it would
-need Cue's binary there) or accept pausing.
+**H4. Other machines. Built 2026-11-08** (`docs/dev/cue-agent-host.md` §13). A session on a machine runs under
+cue-host there, as on this Mac: Cue carries cue-host for Linux (x86_64, aarch64, static) and macOS
+(`scripts/build-host.sh`, in Cue.app), puts it at `~/.cue/bin/cue-host-<build>` on first use (checksum-checked), and
+reaches it with `cue-host connect` over the machine's shared SSH connection. Quitting Cue, a dropped connection or the
+Mac sleeping no longer stops a turn there: Cue reconnects, catches up on what it said, asks again what still waits, and
+sends what you typed meanwhile. + New → a machine → Runs in: Hosted; Move to hosted for a session in tmux there; Move
+to terminal takes one back to tmux there. Pi there gets Cue's extension (its gate) unless it has it installed. The
+machine's hook script leaves hosted agents alone. Tested against Linux in Docker on both architectures
+(`scripts/test-machines.sh`), which found a deadlock in `connect` under sshd (fixed: §13).
 
-**H5. What only a terminal does.** Each one gets a replacement or is judged not needed, before H6:
-full-screen slash commands (`terminal_slash_commands` from Claude's `init`: `/config`, `/login`, …), signing in,
-seeing the raw screen when something looks stuck, a folder-trust dialog (headless doesn't ask), Pi and Codex
-equivalents.
+**H5. What only a terminal does. Built 2026-11-08** for Claude Code:
+- *Full-screen commands and signing in* (`/config`, `/login`, `/theme`, …: what Claude reports as
+  `terminal_slash_commands`, plus sign-in and its own settings screens, which headless never offers): sent to a hosted
+  session, Cue opens `claude /<command>` in a terminal tab in its folder (on its machine, over SSH) instead; the `/`
+  menu marks them "opens a terminal" (`hub/terminal_only.rs`). Never on the session's conversation.
+- *Seeing the raw screen when something looks stuck*: judged not needed. Its raw lines are protocol JSON, of use only
+  in debugging Cue (cue-host keeps them all in the session's log); for you, the chat shows what it's doing, Stop stops
+  it, and an agent that exits says why.
+- *The folder-trust dialog* (headless never asks): + New asks "Trust this folder?" before hosting Claude Code in a folder
+  it isn't trusted in, once per folder (Claude Code's own trust on this Mac counts; on a machine, Cue's list,
+  `hosted.trusted`).
+- Not done: Pi's and Codex's own sign-in and settings screens (`pi auth`, `codex login`), not yet checked headless.
 
 **H6. Remove Cue's terminal.** Hosted becomes how every session starts and `hosted.on` goes away. Removed: the
 tmux panel and its code, `Runs in`, Move to Cue (a terminal session comes into Cue hosted), the add-on's screen

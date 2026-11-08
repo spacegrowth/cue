@@ -16,15 +16,22 @@ pub mod server;
 
 use std::path::PathBuf;
 
-/// `cue-host serve|connect [--home DIR]` (Cue runs it as `cue host …`). `serve`: the program and arguments that
+/// `cue-host serve|connect [--only-running]|version [--home DIR]` (Cue runs it as `cue host …`). `serve`: the program and arguments that
 /// run `serve`, for `connect` to start one. Returns the exit code.
 pub fn main_with(args: &[String], serve: impl Fn(&std::path::Path) -> Vec<String>) -> i32 {
     let home = args.windows(2).find(|w| w[0] == "--home").map(|w| PathBuf::from(&w[1])).unwrap_or_else(default_home);
     let done = match args.first().map(String::as_str) {
         Some("serve") => daemon::serve(&home),
+        // `--only-running`: never starting one (Cue reaching an older build's host on a machine).
+        Some("connect") if args.iter().any(|a| a == "--only-running") => daemon::pipe(&home, &[]),
         Some("connect") => daemon::pipe(&home, &serve(&home)),
+        // Which build it is, so a copy on a machine can be checked against the one Cue carries.
+        Some("version") => {
+            println!("{} {}", proto::VERSION, proto::BUILD);
+            Ok(())
+        }
         _ => {
-            eprintln!("usage: cue-host serve|connect [--home DIR]");
+            eprintln!("usage: cue-host serve|connect [--only-running]|version [--home DIR]");
             return 2;
         }
     };

@@ -25,10 +25,19 @@ pub struct Envelope {
 pub enum Request {
     /// Who's there: the host's version and pid, and every session it has (running or not).
     Hello { version: u32 },
-    /// Start a child under `session`: `argv` run in `cwd` with exactly `env`. `meta` is Cue's, kept and given back
-    /// by `hello` (which agent it is, how it was started), so a Cue that comes back knows what it's reading. An id
-    /// already running is refused, never restarted: a turn is never cut off by a second start.
-    Start { session: String, argv: Vec<String>, env: Vec<(String, String)>, cwd: String, meta: Value },
+    /// Start a child under `session`: `argv` run in `cwd` with exactly `env`, or with `inherit`, the host's own
+    /// environment with `env` over it (on another machine, where Cue doesn't know the environment). `meta` is Cue's,
+    /// kept and given back by `hello` (which agent it is, how it was started), so a Cue that comes back knows what
+    /// it's reading. An id already running is refused, never restarted: a turn is never cut off by a second start.
+    Start {
+        session: String,
+        argv: Vec<String>,
+        env: Vec<(String, String)>,
+        cwd: String,
+        meta: Value,
+        #[serde(default)]
+        inherit: bool,
+    },
     /// A line to the child's input. `msg`: Cue's own id for it, so a line sent again after a reconnect isn't
     /// written twice (the last few are remembered).
     Write { session: String, line: String, msg: Option<String> },

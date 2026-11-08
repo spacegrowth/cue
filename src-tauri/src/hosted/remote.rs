@@ -1,13 +1,16 @@
 //! One session cue-host runs, as Cue sees it (hosts.rs): its driver, which host it's on, the last record Cue handled
-//! of it (`Cursor`, on disk), and its records handled in order.
+//! of it (`Cursor`, on disk), its records handled in order, and the lines on their way to it (`Pending`): each with
+//! an id of Cue's, so one sent again after a dropped connection reaches the agent once (the host skips an id it has
+//! written), held while the connection is being made again and sent, in order, once it's back.
 
 use super::driver::{Driver, Logged, Sink};
-use super::host_link::HostLink;
+use super::host_link::{Failed, HostLink};
 use super::running::Report;
 use cue_host::proto::{Event, What};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
@@ -30,6 +33,22 @@ pub(super) fn logged(w: What) -> Option<Logged> {
     }
 }
 
+/// A line on its way to the host: Cue's id for it, and the message of yours it carries, if any (said not taken
+/// should it never get there).
+struct Pending {
+    msg: String,
+    line: String,
+    text: Option<String>,
+}
+
+/// An id no other line of this Cue's has: this run's (its start, in nanoseconds) and a count.
+fn next_msg() -> String {
+    static RUN: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+    static N: AtomicU64 = AtomicU64::new(0);
+    let run = RUN.get_or_init(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    format!("{run:x}-{}", N.fetch_add(1, Ordering::SeqCst))
+}
+
 /// One session the host runs.
 pub(super) struct Remote {
     /// What the host knows it by: the id it was started under.
@@ -43,12 +62,14 @@ pub(super) struct Remote {
     pub(super) closing: AtomicBool,
     /// Its records, to its own thread.
     pub(super) queue: Mutex<Option<Sender<Event>>>,
+    /// Lines not yet with the host, oldest first. Held while they're sent, so lines go in the order they were given.
+    outbox: Mutex<VecDeque<Pending>>,
 }
 
 impl Remote {
     pub(super) fn new(host_id: &str, driver: Driver, link: Arc<HostLink>, seen: &Path) -> Remote {
         let cursor = Cursor { path: seen.join(format!("{host_id}.json")), session: host_id.to_string(), seq: 0 };
-        Remote { host_id: host_id.to_string(), driver, link, cursor: Mutex::new(cursor), running: AtomicBool::new(false), pid: AtomicI32::new(0), closing: AtomicBool::new(false), queue: Mutex::new(None) }
+        Remote { host_id: host_id.to_string(), driver, link, cursor: Mutex::new(cursor), running: AtomicBool::new(false), pid: AtomicI32::new(0), closing: AtomicBool::new(false), queue: Mutex::new(None), outbox: Mutex::default() }
     }
 
     pub(super) fn seq(&self) -> u64 {
@@ -67,13 +88,70 @@ impl Remote {
     }
 
     /// Its records after what's been read, from the host, as they come.
-    pub(super) fn attach(&self) -> Result<(), String> {
-        self.link.request(json!({ "op": "attach", "session": self.host_id, "after": self.seq() })).map(|_| ())
+    pub(super) fn attach(&self) -> Result<(), Failed> {
+        self.link.try_request(json!({ "op": "attach", "session": self.host_id, "after": self.seq() })).map(|_| ())
     }
 
+    /// Lines of Cue's own (an answer, a stop, a reply to the agent) to the agent.
     pub(super) fn write_lines(&self, lines: &[String]) -> Result<(), String> {
-        for line in lines {
-            self.link.request(json!({ "op": "write", "session": self.host_id, "line": line }))?;
+        self.put(lines, None)
+    }
+
+    /// Your message to the agent. Ok once it's with the host, or held until the connection is back.
+    pub(super) fn send_message(&self, text: &str) -> Result<(), String> {
+        self.put(&self.driver.message(text), Some(text))
+    }
+
+    /// `lines` after any still waiting, then as many sent as can be. Err when the host refused them (or can't be
+    /// reached and won't be again): what was waiting before them is said not taken, and these are the caller's to say.
+    fn put(&self, lines: &[String], text: Option<&str>) -> Result<(), String> {
+        let sent = {
+            let mut out = crate::locking::lock(&self.outbox, "hosts: a session's outbox");
+            out.extend(lines.iter().map(|l| Pending { msg: next_msg(), line: l.clone(), text: text.map(str::to_string) }));
+            self.flush_locked(&mut out)
+        };
+        let Err((why, dropped)) = sent else { return Ok(()) };
+        self.not_taken(dropped.into_iter().filter(|t| Some(t.as_str()) != text), &why);
+        Err(why)
+    }
+
+    /// What's waiting sent, now the connection is back. Any the host refuses are said not taken.
+    pub(super) fn flush(&self) {
+        let sent = self.flush_locked(&mut crate::locking::lock(&self.outbox, "hosts: a session's outbox"));
+        if let Err((why, dropped)) = sent {
+            eprintln!("cue: couldn't hand {} what was waiting for it: {why}", self.host_id);
+            self.not_taken(dropped, &why);
+        }
+    }
+
+    /// Nothing waiting goes any more (the session is gone with its host): each message of yours in it said not taken.
+    pub(super) fn drop_pending(&self, why: &str) {
+        let dropped = texts(crate::locking::lock(&self.outbox, "hosts: a session's outbox").drain(..));
+        self.not_taken(dropped, why);
+    }
+
+    /// Reported with the outbox let go: whoever hears it may send again.
+    fn not_taken(&self, texts: impl IntoIterator<Item = String>, why: &str) {
+        for t in texts {
+            self.driver.not_taken(&t, why);
+        }
+    }
+
+    /// The lines waiting, sent in order. Ok when they're all with the host, or held for a connection that's coming
+    /// back (the first one sent again then, under the same id: if it got there before, the host skips it). Err with
+    /// why and the messages that were waiting, all dropped, when the host refused one or won't be reached again.
+    fn flush_locked(&self, out: &mut VecDeque<Pending>) -> Result<(), (String, Vec<String>)> {
+        while let Some(p) = out.front() {
+            match self.link.try_request(json!({ "op": "write", "session": self.host_id, "line": p.line, "msg": p.msg })) {
+                Ok(_) => {
+                    out.pop_front();
+                }
+                Err(Failed::Unreachable(e)) if self.link.comes_back() => {
+                    eprintln!("cue: {} line(s) for {} held until cue-host is back ({e})", out.len(), self.host_id);
+                    return Ok(());
+                }
+                Err(e) => return Err((e.to_string(), texts(out.drain(..)))),
+            }
         }
         Ok(())
     }
@@ -108,7 +186,7 @@ impl Remote {
                 }
             }
             What::Err(line) => self.driver.error_line(line),
-            What::In(line) => self.driver.speak(|p| p.wrote(&line)),
+            What::In(line) => self.driver.wrote(&line),
             What::Exited(code) => {
                 self.running.store(false, Ordering::SeqCst);
                 if !self.closing.load(Ordering::SeqCst) {
@@ -118,6 +196,17 @@ impl Remote {
         }
         self.set_cursor(record.seq);
     }
+}
+
+/// The messages of yours among `lines`, each once.
+fn texts(lines: impl Iterator<Item = Pending>) -> Vec<String> {
+    let mut seen: Vec<String> = vec![];
+    for t in lines.filter_map(|p| p.text) {
+        if !seen.contains(&t) {
+            seen.push(t);
+        }
+    }
+    seen
 }
 
 /// The last record Cue handled of a session the host runs, kept on disk with the conversation's id, so a Cue that

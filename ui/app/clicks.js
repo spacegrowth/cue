@@ -21,6 +21,8 @@ const ACTS = {
   "delete-no": () => deleteAnswer(false),
   "quit-go": () => quitAnswer(true),
   "quit-keep": () => quitAnswer(false),
+  "trust-start": () => trustAnswer(true),
+  "trust-cancel": () => trustAnswer(false),
   "host-restart": () => hostRestart(),
   resend: (el) => invoke("send_to_session", { sessionId: el.dataset.sid, text: el.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`)),
   "ran-again": (el) => ranAct(el, (who, r) => runLine(who, r.line, r.cwd, r.machine)),

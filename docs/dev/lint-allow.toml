@@ -284,3 +284,13 @@ reason = "the typing gate is held while a message is typed, by design (hub/send.
 from = "typing gate"
 to = "db writes"
 reason = "the typing gate is held while a message is typed, by design (hub/send.rs wait_turn); the draw a reply asks for hands its save to the writer's queue: a lock held for a push"
+
+[[lock_order]]
+from = "hosts: a session's outbox"
+to = "cue-host link: out"
+reason = "hosted::remote: a session's lines are written to the host under its outbox, so they go in the order they were given; the link's locks are leaves and never take an outbox"
+
+[[lock_order]]
+from = "hosts: a session's outbox"
+to = "cue-host link: waiting"
+reason = "hosted::remote: as for cue-host link: out (a request's answer is waited for under the outbox; the link's reader never takes it)"

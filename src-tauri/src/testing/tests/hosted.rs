@@ -617,3 +617,21 @@ fn quitting_names_the_sessions_cue_runs_itself_mid_turn_first_and_not_those_the_
     turn_ends(&w, &busy, "Done.");
     assert!(w.hub().ends_with_cue().iter().all(|e| !e.mid_turn), "its turn over, nothing is cut off");
 }
+
+#[test]
+fn one_of_claude_codes_own_screens_opens_in_a_terminal_tab_and_the_session_never_gets_it() {
+    let w = World::new();
+    let sid = started(&w, "");
+    w.hosted_says(&sid, HostedEvent::Started { session_id: sid.clone(), model: "opus".into(), slash_commands: vec!["compact".into()], terminal_only: vec!["statusline".into()] });
+    let before = w.hosted.sent().len();
+    for (typed, name) in [("/config", "config"), ("/login", "login"), ("/statusline", "statusline")] {
+        w.send_to(&sid, typed);
+        let tab = w.launcher.last();
+        assert_eq!((tab.line.as_str(), tab.name.as_str()), (format!("claude '{typed}'").as_str(), format!("/{name}").as_str()), "a terminal tab of its own, in the session's folder");
+        assert_eq!(tab.dir, w.home().to_string_lossy());
+    }
+    assert_eq!(w.hosted.sent().len(), before, "none of them went to the session");
+    // An ordinary command still goes to it.
+    w.send_to(&sid, "/compact");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "/compact".to_string())));
+}

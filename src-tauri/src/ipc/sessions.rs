@@ -351,8 +351,8 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
 /// optional first message and name. Cue picks the session id, so it knows the session at once (it
 /// opens in Active, ready to type into). Returns the id.
 #[tauri::command]
-pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>, hosted: Option<bool>) -> Result<serde_json::Value, String> {
-    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false) };
+pub(crate) async fn new_session(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, agent: String, cwd: String, message: String, name: String, tmux: Option<bool>, perm: Option<String>, extra: Option<String>, machine: Option<String>, mcp: Option<Vec<String>>, images: Option<Vec<model::Upload>>, hosted: Option<bool>, trust: Option<bool>) -> Result<serde_json::Value, String> {
+    let opts = StartOpts { tmux, perm: perm.unwrap_or_default(), extra: extra.unwrap_or_default(), machine: machine.unwrap_or_default(), mcp, images: images.unwrap_or_default(), hosted: hosted.unwrap_or(false), trust: trust.unwrap_or(false) };
     let res = with_hub(&hub, move |h| start_session_with(&h, &agent, &cwd, &message, &name, &opts))
         .await?;
     // Cue stays in front: the terminal tab opened behind it.
@@ -375,7 +375,7 @@ pub(crate) struct StartOpts {
     pub tmux: Option<bool>,
     pub perm: String,
     pub extra: String,
-    /// A machine from + New → Machine to run it on (empty: this Mac). Always in tmux there.
+    /// A machine from + New → Machine to run it on (empty: this Mac): in tmux there, or hosted by cue-host there.
     pub machine: String,
     /// The MCP servers it runs with (a Claude Code session on this Mac): written as its selection
     /// (logs/mcp.rs) under the id Cue picks, and passed as `--mcp-config <file> --strict-mcp-config`.
@@ -383,12 +383,20 @@ pub(crate) struct StartOpts {
     pub mcp: Option<Vec<String>>,
     /// Images with the first message (pasted or dropped into its box): saved, their paths typed after it.
     pub images: Vec<model::Upload>,
-    /// Hosted by Cue, with no terminal (Claude Code, Pi or Codex on this Mac, Settings → Cue-hosted sessions on).
+    /// Hosted by Cue, with no terminal (Claude Code, Pi or Codex, Settings → Cue-hosted sessions on).
     pub hosted: bool,
+    /// You said you trust the folder (Cue asked, as Claude Code's terminal would: ipc/hosted.rs `trusted`).
+    pub trust: bool,
 }
 
 pub(crate) fn start_session_with(h: &Arc<Hub>, agent: &str, cwd: &str, message: &str, name: &str, opts: &StartOpts) -> Result<serde_json::Value, String> {
     let saved = crate::uploads::save(&opts.images)?;
+    if !opts.machine.is_empty() && opts.hosted {
+        let Some(hosted) = crate::hosted::Agent::named(agent).filter(|_| crate::config::hosted_on()) else {
+            return Err("only Claude Code, Pi and Codex can be hosted, with Settings → Cue-hosted sessions on".into());
+        };
+        return super::start_hosted(h, hosted, cwd.trim(), message, name, opts, &saved);
+    }
     if !opts.machine.is_empty() {
         return start_on_machine(h, agent, cwd, message, name, opts, &saved);
     }
@@ -724,7 +732,6 @@ fn movable_origin(h: &Arc<Hub>, session_id: &str, to: MoveTo) -> Result<model::O
     }
     match to {
         MoveTo::Tmux if !origin.tmux_pane.is_empty() => return Err("it already runs in Cue".into()),
-        MoveTo::Hosted if !origin.machine.is_empty() => return Err("Cue hosts sessions on this Mac only, for now".into()),
         _ => {}
     }
     if leads::close_plan(session_id).is_some() {

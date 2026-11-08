@@ -52,6 +52,11 @@ impl Driver {
         self.speak(|p| p.opening())
     }
 
+    /// A line Cue wrote to it: its protocol told.
+    pub fn wrote(&self, line: &str) {
+        self.speak(|p| p.wrote(line));
+    }
+
     /// One line of its output: its events reported, and the lines to write back at once.
     pub fn read(&self, line: &str) -> Vec<String> {
         let (events, replies) = self.speak(|p| p.read(line));
@@ -95,7 +100,7 @@ impl Driver {
                     let (events, _) = self.speak(|p| p.read(&line));
                     asked.extend(events.into_iter().filter_map(|e| if let HostedEvent::Ask(a) = e { Some(a) } else { None }));
                 }
-                Logged::In(line) => self.speak(|p| p.wrote(&line)),
+                Logged::In(line) => self.wrote(&line),
                 Logged::Err(line) => self.error_line(line),
             }
         }
@@ -108,6 +113,11 @@ impl Driver {
         for a in asks {
             (self.sink)(&id, HostedEvent::Ask(a));
         }
+    }
+
+    /// A message of yours it will never get, and why (the lines carrying it couldn't be handed over).
+    pub fn not_taken(&self, text: &str, why: &str) {
+        (self.sink)(&self.session_id(), HostedEvent::NotTaken { text: text.to_string(), why: why.to_string() });
     }
 
     pub fn message(&self, text: &str) -> Vec<String> {

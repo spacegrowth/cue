@@ -28,6 +28,7 @@ mod send;
 mod sessions;
 mod shown;
 mod store_access;
+mod terminal_only;
 mod today;
 mod turn_end;
 mod usage;
@@ -90,6 +91,8 @@ struct Store {
     subscribed: HashMap<String, (Origin, u64)>,
     /// The commands each subscribed session reported (its "/" menu), as Cue shows them.
     agent_commands: HashMap<String, Vec<crate::commands::Cmd>>,
+    /// The commands each hosted Claude Code session said only its terminal has (terminal_only.rs).
+    terminal_only: HashMap<String, Vec<String>>,
     /// The plan's usage from the status line (None until a status line forwards it).
     rates: Option<crate::usage::Rates>,
     /// Limits already announced (scope + reset), so each one notifies once going out and once coming back.
@@ -222,7 +225,8 @@ impl Hub {
         st.history = kept_history::History::new(crate::db::history(crate::config::history_keep()));
         st.answers = crate::db::answers_since(now_ms().saturating_sub(crate::db::DAY_MS));
         let (sessions, waiting) = crate::db::live();
-        let left: Vec<i32> = sessions.iter().filter(|s| s.origin.hosted).filter_map(|s| s.origin.agent_pid).collect();
+        // This Mac's only: a session on a machine has its machine's process id.
+        let left: Vec<i32> = sessions.iter().filter(|s| s.origin.hosted && s.origin.machine.is_empty()).filter_map(|s| s.origin.agent_pid).collect();
         ports.hosted.end_left(&left);
         st.sessions.restore(sessions);
         st.items = waiting;

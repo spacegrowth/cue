@@ -185,6 +185,13 @@ fn end(local: &Path) {
     }
 }
 
+/// Whether the machine's own file behind copy `copy` has anything in it, asked there (a copy can lag behind it, or
+/// not be there yet). None when that can't be asked (no note of where it's from, the machine not reached).
+pub fn written_there(m: &Machine, copy: &str) -> Option<bool> {
+    let remote = std::fs::read_to_string(from_file(Path::new(copy))).ok()?;
+    machines::run(&m.host, &format!("[ -s {} ] && echo yes; true", machines::shq(remote.trim()))).ok().map(|o| o.contains("yes"))
+}
+
 /// Where a copy notes the machine's path it copies.
 fn from_file(copy: &Path) -> PathBuf {
     PathBuf::from(format!("{}.from", copy.display()))
