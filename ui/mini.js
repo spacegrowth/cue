@@ -384,12 +384,13 @@
     m.sending = true;
     paint();
     try {
-      const said = it ? await invoke("reply", { id: it.id, text }) : await invoke("send_to_session", { sessionId: sid, text });
+      // Sent: nothing to say under the box (the thread shows your message and whether it's been taken).
+      await (it ? invoke("reply", { id: it.id, text }) : invoke("send_to_session", { sessionId: sid, text }));
       m.typed[sid] = "";
       m.images[sid] = [];
       box.value = "";
       keepDraft(sid);
-      m.note = typeof said === "string" && said ? said : `Sent to ${nameOf(sid, sessionOf(sid)?.project)}`;
+      m.note = "";
     } catch (e) {
       m.note = String(e);
     }
