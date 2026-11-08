@@ -121,7 +121,8 @@ impl Hub {
                 if failed {
                     self.failed(origin, "error", &text);
                 } else {
-                    self.event(origin, "stopped", text, vec![], &driver);
+                    let turn = turn_parts(&origin.transcript_path, &text);
+                    self.event(origin, "stopped", text, turn, &driver);
                 }
             }
             HostedEvent::Exited { code, during_turn, last_words } => self.hosted_exited(origin, code, during_turn, &last_words),
@@ -216,6 +217,16 @@ impl Hub {
             self.changed();
         }
     }
+}
+
+/// What it wrote this turn, from its transcript, as a terminal session's Stop hook reports it: so the answer
+/// shows, and what a Stop hook of yours sent it back to write (a checklist) folds away under it.
+fn turn_parts(transcript: &str, last: &str) -> Vec<crate::model::TurnPart> {
+    if transcript.is_empty() {
+        return vec![];
+    }
+    let p = json!({ "transcript_path": transcript, "last_assistant_message": last });
+    crate::hook::final_turn(&p).into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect()
 }
 
 /// Your answer to a card, as the session takes it. An MCP form: accepted with what you filled in (allow),

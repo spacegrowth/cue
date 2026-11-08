@@ -166,6 +166,25 @@ fn a_turn_that_ends_is_a_finished_turn_card_with_its_cost() {
     assert_eq!(w.hub().session_cost(&sid).unwrap_or(0.25), 0.25);
 }
 
+/// A Stop hook of yours sent it back to work (a checklist): the card shows the answer it gave before that,
+/// and the hook's follow-up folds away under it, as for a terminal session.
+#[test]
+fn a_stop_hooks_follow_up_folds_under_the_answer() {
+    let w = World::new();
+    let sid = running(&w, "fix the token expiry");
+    let log = w.hub().session_origin(&sid).unwrap().transcript_path;
+    Transcript::at(&log)
+        .assistant("Done: expiry fixed.")
+        .entry(json!({ "type": "system", "subtype": "stop_hook_summary", "hookCount": 1 }))
+        .entry(json!({ "type": "user", "isMeta": true, "message": { "role": "user", "content": "Stop hook feedback:\n[bash rules-check-stop.sh]: Unaudited edits this turn." } }))
+        .assistant("1. SHAPE: fine.");
+    turn_ends(&w, &sid, "1. SHAPE: fine.");
+    let s = w.snapshot();
+    let card = s.card(&sid);
+    assert_eq!(card["message"], "Done: expiry fixed.");
+    assert_eq!(card["followup"], "1. SHAPE: fine.");
+}
+
 #[test]
 fn a_permission_is_a_card_whose_answer_goes_back_to_the_session() {
     let w = World::new();
