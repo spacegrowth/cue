@@ -63,6 +63,9 @@ pub enum HostedEvent {
     ToolResult { id: String, output: Value, failed: bool, agent: Option<String> },
     /// A background agent or task started, moved on or finished: Claude's own event, kept whole.
     Task { what: String, detail: Value },
+    /// The plan's usage, as the status line reports it (`five_hour` / `seven_day`, each with
+    /// `used_percentage` and `resets_at` in seconds): a hosted session has no status line to say it.
+    Rates(Value),
     /// It needs an answer from you before it goes on (`Session::answer`).
     Ask(Ask),
     /// A turn is over. `unprompted`: nothing of yours started it (a background task that finished did).

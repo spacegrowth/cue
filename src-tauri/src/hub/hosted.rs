@@ -129,6 +129,7 @@ impl Hub {
                 self.changed();
             }
             HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
+            HostedEvent::Rates(rl) => self.set_rates(&rl),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
             HostedEvent::TurnEnded { text, failed, cost_usd, .. } => {
                 self.set_cost(&origin.session_id, base + cost_usd);

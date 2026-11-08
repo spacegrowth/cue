@@ -7,6 +7,28 @@ use super::wire::Inbound;
 use super::{Ask, AskKind, HostedEvent};
 use serde_json::Value;
 
+/// A `rate_limit_event`'s windows as the status line's `rate_limits` (utilization 0–1 → a percentage).
+/// It carries `unifiedWindows` with both; an older one only the window it's about (`rateLimitType`).
+/// None when it says no numbers.
+fn rates(v: &Value) -> Option<HostedEvent> {
+    if v.get("type").and_then(Value::as_str) != Some("rate_limit_event") {
+        return None;
+    }
+    let info = v.get("rate_limit_info")?;
+    let window = |w: &Value| -> Option<Value> {
+        let pct = w.get("utilization")?.as_f64()? * 100.0;
+        Some(serde_json::json!({ "used_percentage": pct, "resets_at": w.get("resetsAt").and_then(Value::as_u64) }))
+    };
+    let mut rl = serde_json::Map::new();
+    for k in ["five_hour", "seven_day"] {
+        let w = info.pointer(&format!("/unifiedWindows/{k}")).or_else(|| (info.get("rateLimitType").and_then(Value::as_str) == Some(k)).then_some(info));
+        if let Some(w) = w.and_then(window) {
+            rl.insert(k.to_string(), w);
+        }
+    }
+    (!rl.is_empty()).then(|| HostedEvent::Rates(Value::Object(rl)))
+}
+
 /// Claude's tool for questions with choices, and the one a sandboxed command asks network access through.
 const QUESTION_TOOL: &str = "AskUserQuestion";
 const NETWORK_TOOL: &str = "SandboxNetworkAccess";
@@ -44,7 +66,8 @@ impl Translator {
             Inbound::User(v) => self.user(v),
             Inbound::Result(v) => vec![self.turn_ended(v)],
             Inbound::Request { id, request } => vec![ask(id, request)],
-            Inbound::Response(_) | Inbound::Other(_) | Inbound::Text(_) => vec![],
+            Inbound::Other(v) => rates(v).into_iter().collect(),
+            Inbound::Response(_) | Inbound::Text(_) => vec![],
         }
     }
 

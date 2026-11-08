@@ -137,6 +137,21 @@ fn a_request_of_an_unknown_kind_is_refused_and_lines_it_doesnt_know_are_skipped(
 }
 
 #[test]
+fn a_rate_limit_event_reports_the_plans_usage_as_the_status_line_would() {
+    let es = events(include_str!("fixtures/resume.jsonl"));
+    let rates: Vec<_> = es.iter().filter_map(|e| if let HostedEvent::Rates(v) = e { Some(v) } else { None }).collect();
+    assert_eq!(rates.len(), 1, "{es:?}");
+    assert_eq!(rates[0]["five_hour"]["used_percentage"].as_f64().map(f64::round), Some(28.0));
+    assert_eq!(rates[0]["five_hour"]["resets_at"], 1794078000);
+    assert_eq!(rates[0]["seven_day"]["resets_at"], 1794668400);
+    // One that only names its own window still says that one.
+    let mut t = Translator::default();
+    let es = t.step(&wire::parse(r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1794078000,"rateLimitType":"five_hour","utilization":0.5}}"#));
+    let [HostedEvent::Rates(v)] = es.as_slice() else { panic!("{es:?}") };
+    assert_eq!((v["five_hour"]["used_percentage"].as_f64(), v.get("seven_day")), (Some(50.0), None));
+}
+
+#[test]
 fn a_turn_is_under_way_from_your_message_to_its_end() {
     let mut t = Translator::default();
     assert!(!t.in_turn());
