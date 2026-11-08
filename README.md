@@ -35,13 +35,13 @@ the card either way.
   in its corner. Off until you turn it on (Settings → Voice). What you say is written down on your Mac,
   by Apple's recognizer or, if you pick it, NVIDIA's Parakeet (Apple silicon), so nothing you say leaves it.
 - **Mini window** — Cue at the edge of your screen while you work in another app (Settings → General →
-  Mini window: Right edge or Notch). At the right edge it works like picture in picture: a small dark tab
-  tucked into the edge at its top or bottom corner, its dot red while something asks, amber when it's your
-  turn, breathing while sessions work, with how many need you. Point at it (or click) and a dark panel springs
-  out with the chat, ready to type: tabs across its top for the first five in the Waiting column's order (in
-  conversation first, then newest first), the whole chat (code, tables, earlier messages), your quick phrases,
-  Allow or Deny an ask, ⤢ to open it in Cue, ⇥ to tuck it away. Drag its top bar to the other corner, or off
-  the edge to tuck it. It steps aside while Cue's own window is in front. Off until you turn it on.
+  Mini window: Right edge or Notch). At the right edge it works like picture in picture, in Cue's theme: a
+  small tab tucked into the edge, its dot red while something asks, amber when it's your turn, breathing while
+  sessions work. Point at it (or click) and a panel springs out with the chat, ready to type: tabs across its
+  top for the first five in the Waiting column's order (in conversation first, then newest first), the whole
+  chat (code, tables, earlier messages), your quick phrases, Allow or Deny an ask, ⤢ to open it in Cue, ⇥ to
+  tuck it away. Drag the tab, or the panel by its top bar, up or down the edge and it stays there; drag the
+  panel off the edge to tuck it. It steps aside while Cue's own window is in front. Off until you turn it on.
 - **Listen and Read** — Listen reads a reply out loud, in your Mac's voice or a natural voice that runs
   on your Mac (Settings → Voice); Read opens a long reply full width.
 - **Insights** — what your sessions cost, by day and by model, and the part that was avoidable: caches

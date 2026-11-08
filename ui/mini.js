@@ -1,6 +1,6 @@
 // Cue mini window — Cue at the edge of your screen while you work in another app (Settings → Mini window).
 // One page, two shapes: the rail on the right edge (#rail: picture in picture, as Cue's floating terminal was, a
-// small tab tucked into the edge at its top or bottom corner that springs out into a dark panel) and the dark
+// small tab tucked into the edge, as high as you dragged it, that springs out into a panel) and the dark
 // island at the notch (#notch). Both show
 // what needs you in the Waiting column's order (in conversation first, then newest first), five at most, and
 // open any of them into its whole chat with a box to answer it. The window's size follows what it shows
@@ -18,9 +18,9 @@
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
-  // corner: the rail's corner of the right edge ("top" or "bottom"), kept in this window's own storage.
-  let corner = "bottom";
-  try { corner = localStorage.getItem("cue.mini.corner") === "top" ? "top" : "bottom"; } catch {}
+  // at: how far down the right edge the rail sits (0 top, 1 bottom: mini_drop), kept in this window's own storage.
+  let at = 1;
+  try { const v = parseFloat(localStorage.getItem("cue.mini.at")); if (v >= 0 && v <= 1) at = v; } catch {}
   const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
@@ -65,12 +65,11 @@
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
 
   /** The rail tucked away: a small tab at the edge, ‹ over a live dot, the dot red while a session asks, amber
-   *  while one waits for your turn, breathing while sessions only work; how many need you under it. */
+   *  while one waits for your turn, breathing while sessions only work. */
   function tuckHtml() {
     const { shown } = needs(Infinity);
     const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
-    const n = shown.length > 1 ? `<span class="m-tuck-n">${shown.length}</span>` : "";
-    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">‹</span><i class="m-live"></i>${n}</button>`;
+    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">‹</span><i class="m-live"></i></button>`;
   }
   /** Five tabs across the chat's top at most: what needs you (Waiting's order: in conversation, then newest
    *  first), then the ones at work if there's room. A click switches; each keeps what you typed in it. */
@@ -164,7 +163,7 @@
     const w = WIDTH[m.shape] || WIDTH.quiet;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
-    const args = { w, h, show: true, corner: NOTCH ? "top" : corner };
+    const args = { w, h, show: true, at: NOTCH ? 0 : at };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
@@ -242,23 +241,26 @@
     document.body.classList.add("m-leave");
     setTimeout(fold, 220);
   }
-  /** The rail's panel dragged by its bar (the window itself moves, mini_drag): let go, it springs to the right
-   *  edge's top or bottom corner, whichever way it went, or, pushed off the right edge, tucks away there. */
-  function dragBar(e) {
-    if (e.button !== 0 || e.target.closest("button")) return;
-    const x0 = e.screenX, y0 = e.screenY, h = window.innerHeight, w = window.innerWidth;
+  /** The rail dragged, the tab or the panel by its bar (the window itself moves, mini_drag): let go, it stays at
+   *  that height on the right edge from then on. The tab moves only up and down; the panel pushed off the right
+   *  edge tucks away there. A drag is never a click: the tab doesn't open under it. */
+  function drag(e, tab) {
+    if (e.button !== 0 || (!tab && e.target.closest("button"))) return;
+    clearTimeout(m.timer);   // pressed on the tab: not a hover that opens it
+    const x0 = e.screenX, y0 = e.screenY, w = window.innerWidth;
     let moved = false, queued = null, busy = false;
     const push = async () => {
       if (busy || !queued) return;
       busy = true;
-      const q = queued; queued = null;
+      const q = queued;
+      queued = null;
       await invoke("mini_drag", q).catch(() => {});
       busy = false;
       push();
     };
     const move = (ev) => {
-      const dx = ev.screenX - x0, dy = ev.screenY - y0;
-      if (!moved && Math.hypot(dx, dy) < 5) return;
+      const dx = tab ? 0 : ev.screenX - x0, dy = ev.screenY - y0;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
       if (!moved) { moved = true; m.dragging = true; document.body.classList.add("m-drag"); queued = { dx: 0, dy: 0, begin: true }; push(); }
       queued = { dx, dy, begin: false };
       push();
@@ -266,14 +268,17 @@
     const up = (ev) => {
       window.removeEventListener("pointermove", move);
       if (!moved) return;
-      m.dragging = false;
+      window.addEventListener("click", (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
       document.body.classList.remove("m-drag");
-      const dx = ev.screenX - x0, dy = ev.screenY - y0;
-      if (dy < -h / 3) corner = "top";
-      else if (dy > h / 3) corner = "bottom";
-      try { localStorage.setItem("cue.mini.corner", corner); } catch {}
-      queued = null;
-      const settle = () => { if (busy) return setTimeout(settle, 30); m.sized = ""; if (dx > w / 3) closeChat(); else fit(); };
+      const off = !tab && ev.screenX - x0 > w / 3;
+      const settle = async () => {
+        if (busy || queued) return setTimeout(settle, 30);
+        const v = await invoke("mini_drop").catch(() => null);
+        if (typeof v === "number") { at = v; try { localStorage.setItem("cue.mini.at", String(at)); } catch {} }
+        m.dragging = false;
+        m.sized = "";
+        if (off) closeChat(); else fit();
+      };
       settle();
     };
     window.addEventListener("pointermove", move);
@@ -351,7 +356,7 @@
     document.body.addEventListener("mouseenter", () => pointerIn());
     document.body.addEventListener("mouseleave", () => pointerOut());
     root.addEventListener("mousemove", () => pointerIn());
-    root.addEventListener("pointerdown", (e) => { if (e.target.closest("[data-bar]")) dragBar(e); });
+    root.addEventListener("pointerdown", (e) => { if (e.target.closest("[data-out]")) drag(e, true); else if (e.target.closest("[data-bar]")) drag(e, false); });
   }
   /** The pointer came over the mini window (the rail's dot, the notch's island): after a short pause the chat
    *  opens, on the session a new card nodded for, else the first in Waiting's order, the cursor in its box. */
