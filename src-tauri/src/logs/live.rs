@@ -59,6 +59,9 @@ fn scan_claude(dir: &Path) -> Vec<Quiet> {
             }
             let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("").to_string();
             let ms = |k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
+            if throwaway(pid, ms("startedAt")) {
+                return None;
+            }
             Some(Quiet {
                 session_id: Some(s("sessionId")).filter(|x| !x.is_empty())?,
                 harness: "claude".into(),
@@ -74,6 +77,30 @@ fn scan_claude(dir: &Path) -> Vec<Quiet> {
         .collect();
     out.sort_by_key(|q| (q.since_ms, q.pid));
     out
+}
+
+/// Registry pids known to be (true) or not to be a throwaway run, by pid and when it started.
+static THROWAWAY: Mutex<Option<HashMap<i32, (u64, bool)>>> = Mutex::new(None);
+
+/// A Claude run that keeps no session (`--no-session-persistence`): Cue's own helpers (the slash-command
+/// list, btw, catch-up, the status list) and anyone else's. Claude lists it like a session, under its
+/// folder or, for a fork, the session it forked; it isn't one, so it never becomes a card. Its command
+/// line is read once per process.
+fn throwaway(pid: i32, started: u64) -> bool {
+    let known = crate::locking::lock(&THROWAWAY, "throwaway runs").as_ref().and_then(|m| m.get(&pid).copied());
+    if let Some((_, is)) = known.filter(|(at, _)| *at == started) {
+        return is;
+    }
+    let args = std::process::Command::new("/bin/ps").args(["-ww", "-o", "args=", "-p", &pid.to_string()]).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let is = args.split_whitespace().any(|a| a == "--no-session-persistence");
+    let mut cache = crate::locking::lock(&THROWAWAY, "throwaway runs");
+    let map = cache.get_or_insert_with(HashMap::new);
+    // Pids come and go: forget them all once there are many (each is read again, once).
+    if map.len() > 512 {
+        map.clear();
+    }
+    map.insert(pid, (started, is));
+    is
 }
 
 /// Re-read Claude's registry. True when the list changed (so the window should redraw).
@@ -213,6 +240,21 @@ mod tests {
         assert!(scan_claude(&d).is_empty(), "half a record names no session");
         std::fs::write(d.join(format!("{me}.json")), &whole).unwrap();
         assert_eq!(scan_claude(&d).iter().map(|q| q.session_id.as_str()).collect::<Vec<_>>(), ["S1"]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A run that keeps no session (Cue's btw, its slash-command reader) is listed by Claude, but isn't one.
+    #[test]
+    fn a_run_that_keeps_no_session_is_not_listed() {
+        let d = tmp("throwaway");
+        let mut helper = std::process::Command::new("/bin/sh").args(["-c", "sleep 30; :", "sh", "--no-session-persistence"]).spawn().unwrap();
+        let (me, other) = (std::process::id(), helper.id());
+        std::fs::write(d.join(format!("{me}.json")), format!(r#"{{"pid":{me},"sessionId":"S1","cwd":"/x","status":"idle","kind":"interactive","startedAt":1}}"#)).unwrap();
+        std::fs::write(d.join(format!("{other}.json")), format!(r#"{{"pid":{other},"sessionId":"S1","cwd":"/tmp","status":"busy","kind":"interactive","startedAt":2}}"#)).unwrap();
+        let got = scan_claude(&d);
+        let _ = helper.kill();
+        let _ = helper.wait();
+        assert_eq!(got.iter().map(|q| q.pid).collect::<Vec<_>>(), [me as i32], "only the real session");
         let _ = std::fs::remove_dir_all(&d);
     }
 

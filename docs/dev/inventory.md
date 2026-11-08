@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 145 (3 sync) |
-| Lock declarations (static or field) | 102 |
-| Lock acquisitions | 234 |
+| Lock declarations (static or field) | 103 |
+| Lock acquisitions | 236 |
 | Lock-graph edges | 50 |
 | Spawn sites | 83 |
-| External calls: fs / db / process / notify / login / socket | 354 / 146 / 52 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 354 / 146 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -241,6 +241,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `logs/about.rs::READING` | `Mutex<Option<HashSet<String>>>` | "about READING" (3 sites) |
 | `logs/archive.rs::INDEX` | `Mutex<Option<HashMap<String,(u64,Entry)>>>` | "archive INDEX" (4 sites) |
 | `logs/live.rs::CLAUDE` | `Mutex<Vec<Quiet>>` | "CLAUDE" (2 sites) |
+| `logs/live.rs::THROWAWAY` | `Mutex<Option<HashMap<i32,(u64,bool)>>>` | "throwaway runs" (2 sites) |
 | `logs/repos.rs::Folders.known` | `Mutex<Known>` | "folder facts" (4 sites) |
 | `logs/repos.rs::FOLDERS` | `LazyLock<Folders>` | — |
 | `logs/steps/history.rs::HISTORY` | `Mutex<Option<HashMap<String,(Arc<Mutex<Feed>>,Instant)>>>` | "HISTORY" (2 sites) |
@@ -890,7 +891,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (52)
+### process (53)
 
 | In | Call | Times |
 |---|---|---|
@@ -919,6 +920,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `leads/verify.rs::verify_reported` | (program computed) | 1 |
 | `lib.rs::activate_app` | open | 1 |
 | `logs/live.rs::origin_of` | /bin/ps | 1 |
+| `logs/live.rs::throwaway` | /bin/ps | 1 |
 | `logs/live.rs::tty_of` | /bin/ps | 1 |
 | `machines/mod.rs::end_streams` | /bin/ps | 1 |
 | `machines/mod.rs::ssh` | (program computed) | 1 |
