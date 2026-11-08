@@ -153,7 +153,7 @@
       : `<div class="m-bar" data-bar><div class="m-tabs" data-tabs>${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
     return `<div class="m-panel m-chat">${head}
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
-      <div class="m-foot">${quickHtml()}<textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
+      <div class="m-foot">${NOTCH ? "" : quickHtml()}<textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
   }
 
@@ -161,8 +161,8 @@
    *  second) doesn't rebuild it under the pointer, which reset the cursor each time. */
   const drawn = new WeakMap();   // element -> the html it was last given
   const put = (el, html) => { if (el && drawn.get(el) !== html) { el.innerHTML = html; drawn.set(el, html); } };
-  /** Your quick phrases (Settings, the same list as Cue's chat): a click adds one after what you've typed and
-   *  sends it at once, as in Cue (chat/compose.js sendPhrase). */
+  /** Your quick phrases (Settings, the same list as Cue's chat), on the rail only (the notch keeps to the box): a
+   *  click adds one after what you've typed and sends it at once, as in Cue (chat/compose.js sendPhrase). */
   const quickHtml = () => {
     const list = state.settings?.quick?.phrases || [];
     return list.length ? `<div class="m-quick">${list.map((p) => `<button class="m-qp" data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}</div>` : "";
@@ -187,7 +187,23 @@
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
-    invoke("mini_shape", args).then((r) => side(r), () => { m.sized = ""; });
+    invoke("mini_shape", args).then((r) => { side(r); repaint(); }, () => { m.sized = ""; });
+  }
+  /** Drawn again once the window has its new size. The page is see-through and WebKit doesn't always paint what a
+   *  grown window newly shows: the chat stayed empty until you scrolled it. A scroll of a pixel and back (and a
+   *  touch of the panel's opacity) is what makes it paint, as your scroll did. */
+  function repaint() {
+    const p = root.querySelector(".m-panel");
+    if (!p) return;
+    p.style.opacity = "0.999";
+    requestAnimationFrame(() => {
+      p.style.opacity = "";
+      const t = root.querySelector("[data-thread]");
+      if (!t) return;
+      const y = t.scrollTop, atEnd = t.scrollHeight - y - t.clientHeight < 24;
+      t.scrollTop = y > 0 ? y - 1 : y + 1;
+      requestAnimationFrame(() => { t.scrollTop = atEnd ? t.scrollHeight : y; });
+    });
   }
   /** The side Cue says the tab is on: drawn again when that changed (its arrow, the panel's side). */
   function side(r) {

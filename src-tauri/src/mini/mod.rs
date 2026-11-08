@@ -7,7 +7,7 @@
 //!
 //! The rail is one window per display (`mini`, `mini-1`, …), each its own page. The one on the display Cue's
 //! own window is on steps aside while that window is in front; the others stay. The notch is one window, on
-//! the main display.
+//! the main display, and always shown, Cue's window in front or not.
 //!
 //! The window never takes the app forward: a click in it leaves the app you're in active (macos.rs), and it
 //! takes the keyboard only while you're typing in its box.
@@ -378,10 +378,11 @@ fn shape(app: &AppHandle, window: &tauri::WebviewWindow, w: f64, h: f64, show: b
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {label} {w}×{h} at {x},{y}");
     set_frame(&window, (x, y, w, h))?;
-    // Not on the display where Cue's own window is in front (it would only repeat it). Shown without ever
-    // taking the keyboard: Tauri's show() makes it the key window, and when that ran each time Cue's window
-    // came forward, the two took focus from each other and you couldn't type in Cue.
-    if MAIN_FRONT.load(Ordering::SeqCst) && main_display(&app) == Some(display) {
+    // The rail isn't on the display where Cue's own window is in front (it would only repeat it); the notch is
+    // always there, Cue in front or not. Shown without ever taking the keyboard: Tauri's show() makes it the
+    // key window, and when that ran each time Cue's window came forward, the two took focus from each other and
+    // you couldn't type in Cue.
+    if mode == Mode::Rail && MAIN_FRONT.load(Ordering::SeqCst) && main_display(&app) == Some(display) {
         hide(&window)?;
         return Ok(serde_json::json!({ "left": p.left }));
     }
@@ -482,10 +483,13 @@ pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>,
     Ok(())
 }
 
-/// Cue's own window came to the front (the mini window on its display steps aside) or went back (every mini
-/// window places itself again, so that one comes back).
+/// Cue's own window came to the front (the rail on its display steps aside; the notch stays) or went back (every
+/// mini window places itself again, so that one comes back).
 pub(crate) fn main_focused(app: &AppHandle, focused: bool) {
     MAIN_FRONT.store(focused, Ordering::SeqCst);
+    if focused && OPEN.load(Ordering::SeqCst) == Mode::Notch as u8 {
+        return;
+    }
     if focused {
         let Some(on) = main_display(app) else { return };
         let here: Vec<String> = slots(|s| s.iter().filter(|(_, x)| x.display == on).map(|(l, _)| l.clone()).collect());
