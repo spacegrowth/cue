@@ -510,6 +510,8 @@
     // These two are this window's own (a tab on each display): T.event.listen would hear every window's.
     const own = T.webviewWindow?.getCurrentWebviewWindow?.() || T.event;
     await own.listen("mini-place", () => { m.sized = ""; fit(); });
+    // Another display's mini window opened a chat: this one folds its own (only one open at a time).
+    await own.listen("mini-fold", () => closeChat(false));
     await own.listen("mini-pointer", (e) => { if (e.payload.out) pointerOut(); else pointerIn(); });
   }
   boot();

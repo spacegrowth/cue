@@ -483,9 +483,18 @@ pub(crate) async fn mini_key(window: tauri::WebviewWindow, on: bool) -> Result<(
 }
 
 /// The session whose chat this mini window shows now (None: folded): nothing about it is notified meanwhile.
+/// Opened: the other displays' mini windows fold theirs, so only one chat is ever open.
 #[tauri::command]
-pub(crate) async fn mini_reading(window: tauri::WebviewWindow, session_id: Option<String>) -> Result<(), String> {
+pub(crate) async fn mini_reading(app: AppHandle, window: tauri::WebviewWindow, session_id: Option<String>) -> Result<(), String> {
+    use tauri::Emitter;
+    let opened = session_id.as_deref().is_some_and(|s| !s.is_empty());
     crate::notify::reading(window.label(), session_id);
+    if opened {
+        let others: Vec<String> = slots(|s| s.keys().filter(|l| *l != window.label()).cloned().collect());
+        for other in others {
+            let _ = app.emit_to(other.as_str(), "mini-fold", ());
+        }
+    }
     Ok(())
 }
 
