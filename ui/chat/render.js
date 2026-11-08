@@ -2,15 +2,16 @@
 /** One turn's steps, between your message and its reply. `live`: the turn it's working on now;
  *  `latest`: the newest turn (open by default, so you see what led to its reply). `part`: when you
  *  wrote mid-turn, the turn is drawn in parts around your messages ({ from, to } ms); only the first
- *  part has the header (its count is the whole turn's). */
-function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set()) {
+ *  part has the header (its count is the whole turn's). `replied`: the chat has its reply (false when you
+ *  cut it off: its last words then stay here, or they'd be nowhere). */
+function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infinity }, said = new Set(), replied = true) {
   const mode = stepsMode();
   // What a Stop hook made it do goes in its own fold at the end (hookFold); the rest is the turn.
   const hooked = turn.items.filter((x) => hookedPart(turn, x) && (x.t !== "say" || !said.has(String(x.text || "").trim())));
   let kept = turn.items.filter((x) => !hookedPart(turn, x));
   // A finished turn's last words are its reply, already in the chat; so are words the chat shows as a
   // reply mid-turn: not twice.
-  if (!live) { let end = kept.length; while (end && kept[end - 1].t === "say") end--; kept = kept.slice(0, end); }
+  if (!live && replied) { let end = kept.length; while (end && kept[end - 1].t === "say") end--; kept = kept.slice(0, end); }
   kept = kept.filter((x) => x.t !== "say" || !said.has(String(x.text || "").trim()));
   const steps = kept.filter((x) => x.t === "step");
   const first = part.from === -Infinity;
@@ -23,7 +24,11 @@ function stepsBlock(sid, turn, live, latest, part = { from: -Infinity, to: Infin
   const count = `${steps.length}${turn.more ? "+" : ""} step${steps.length === 1 ? "" : "s"}`;
   const bk = `t:${turn.at_ms}:${part.from}`;
   const head = `<div class="stx-head" data-key="head"><button class="stx-fold" data-turn-fold="${esc(key)}" data-open="${open ? 1 : 0}">${live ? `<span class="dot-live"></span>` : `<span class="stx-tri">${open ? "▾" : "▸"}</span>`}<b>${live ? `Working · ${count}` : count}</b>${open ? "" : `<span class="stx-sum"> · ${esc(turnSummary(steps))}</span>`}</button>${open ? `<button class="stx-all" data-turn-all="${esc(key)}">${all ? "Show less" : "Show all"}</button>` : ""}</div>`;
-  if (!open) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
+  // Folded, only the steps go: what it said to you stays in the chat (a fold never hides its words).
+  if (!open) {
+    const says = items.filter(([x]) => x.t === "say").map(([x, i]) => `<div class="stx-say msg" data-key="${esc(itemKey(turn, x, i))}">${md(x.text)}</div>`).join("");
+    return first || fold || says ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${says}${fold}</div>` : "";
+  }
   if (!items.length) return first || fold ? `<div class="stx" data-key="${esc(bk)}">${first ? head : ""}${fold}</div>` : "";
   let body = "", run = [], runKey = "";
   // A run of steps is keyed by its first step: a paragraph between steps starts the next run.
@@ -68,11 +73,16 @@ function withSteps(sid, s, ex, rows, extra = []) {
     .filter((t) => (t.items.at(-1)?.at_ms ?? t.at_ms) >= first || (!ex.length && t === lastTurn))
     .flatMap((t) => {
       const start = t.items[0]?.at_ms ?? t.at_ms, end = t.items.at(-1)?.at_ms ?? start;
+      const next = turns[turns.indexOf(t) + 1]?.at_ms ?? Infinity;
+      const replied = ex.some((e) => e.role === "agent" && e.at_ms >= start && e.at_ms < next);
+      // Open: the newest turn, and while that one works, the one before it too: the turn you were just
+      // reading doesn't fold the moment your next message starts another.
+      const latest = t === lastTurn || (s?.state === "working" && t === turns.at(-2));
       const cuts = ex.map((e) => e.at_ms).filter((a) => a > start && a <= end);
       const bounds = [-Infinity, ...cuts, Infinity];
       return cuts.concat([null]).map((_, k) => ({
         at: k === 0 ? start : cuts[k - 1] + 0.5,
-        html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", t === lastTurn, { from: bounds[k], to: bounds[k + 1] }, said),
+        html: stepsBlock(sid, t, t === lastTurn && s?.state === "working", latest, { from: bounds[k], to: bounds[k + 1] }, said, replied),
       }));
     })
     .concat(extra)
