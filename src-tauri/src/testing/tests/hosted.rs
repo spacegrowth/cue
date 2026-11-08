@@ -279,3 +279,14 @@ fn the_watcher_leaves_a_hosted_session_to_its_own_exit_report() {
     w.tick(false);
     assert!(w.hub().session_origin(&sid).is_some(), "not dropped: an exit is the session's to report, and it pauses it");
 }
+
+#[test]
+fn renaming_it_names_it_in_cue_and_types_nothing() {
+    let w = World::new();
+    let sid = started(&w, "");
+    assert_eq!(w.hub().rename(&sid, "cue-hosted-test"), Ok("Renamed".to_string()));
+    let row = w.snapshot().session(&sid).clone();
+    assert_eq!(row["name"], "cue-hosted-test");
+    assert!(row["rename_error"].is_null(), "no notice that it couldn't be told: {row}");
+    assert!(w.terminal.typed(&sid).is_empty());
+}

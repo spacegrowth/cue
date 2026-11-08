@@ -527,6 +527,10 @@ impl Hub {
         if name.is_empty() {
             return Ok("Name cleared in Cue".into());
         }
+        // A hosted session has no terminal to type /rename into: Cue's name is its name (Move to terminal keeps it).
+        if origin.hosted {
+            return Ok("Renamed".into());
+        }
         match harness.as_str() {
             "pi" => {
                 let sent = self.read(|st| st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "rename", "name": name })).is_ok()).unwrap_or(false));
