@@ -20,6 +20,21 @@ pub fn is_quiet(session_id: &str) -> bool {
     q.iter().any(|s| s == session_id)
 }
 
+/// The session each mini window has its chat open on (by window): you're reading it, so nothing about it
+/// bounces the Dock or is posted.
+static READING: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+pub fn reading(window: &str, session_id: Option<String>) {
+    let mut r = crate::locking::lock(&READING, "mini reading");
+    r.retain(|(w, _)| w != window);
+    if let Some(s) = session_id.filter(|s| !s.is_empty()) {
+        r.push((window.to_string(), s));
+    }
+}
+pub fn is_read(session_id: &str) -> bool {
+    let r = crate::locking::lock(&READING, "mini reading");
+    r.iter().any(|(_, s)| s == session_id)
+}
+
 /// A job for Notification Center (posting, taking back): each is an XPC round trip to macOS's notification
 /// service, which can be slow to answer, and whoever changed Cue's state (a hook's connection, the window's
 /// command, a tick) mustn't wait on it. They run on one thread of their own, in the order handed in, so a
@@ -52,29 +67,96 @@ pub struct Note {
     pub watched: bool,
 }
 
-/// `note` posted, on Notification Center's thread (`later`): not while Cue is the window in front of you
-/// (the item is on screen already), unless it's watched. An unbundled dev binary gets the plugin's plain
-/// notification instead, which Cue can't take back.
+/// How long Cue's Dock icon bounces for something new before it goes to Notification Center too: answered (or
+/// Cue brought forward) within it, it never does.
+pub const DOCK_FIRST: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The notifications bouncing the Dock now, waiting out `DOCK_FIRST` before they're posted. Taken back: gone
+/// from here, so it's never posted; none left: the Dock stops.
+static BOUNCING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// The Dock icon bouncing (`on`) until Cue comes forward, or stopped.
+fn dock(app: &tauri::AppHandle, on: bool) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.request_user_attention(on.then_some(tauri::UserAttentionType::Critical));
+    }
+}
+
+/// Cue is the window in front of you: what's new is on screen already.
+fn in_front(app: &tauri::AppHandle) -> bool {
+    use tauri::Manager;
+    app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false))
+}
+
+/// `note` for you: the Dock bounces first, and only if it's still there a minute later (not answered, Cue not
+/// in front) does it go to Notification Center, with its sound. Nothing while Cue is in front of you. A turn
+/// you asked to be told about is posted at once, even with Cue in front. An unbundled dev binary gets the
+/// plugin's plain notification instead, which Cue can't take back.
 pub fn show(app: tauri::AppHandle, note: Note) {
+    if note.watched {
+        return later(move || post_now(&app, note));
+    }
+    // Noted here, not on the thread: one taken back before that thread gets to it is never posted.
+    {
+        let mut b = crate::locking::lock(&BOUNCING, "dock bounce");
+        b.retain(|i| *i != note.id);
+        b.push(note.id.clone());
+    }
     later(move || {
-        use tauri::Manager;
-        use tauri_plugin_notification::NotificationExt;
-        let Note { id, title, body, category, watched } = note;
-        if !watched && app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && w.is_visible().unwrap_or(false)) {
+        if in_front(&app) {
+            crate::locking::lock(&BOUNCING, "dock bounce").retain(|i| *i != note.id);
             return;
         }
-        let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
-        if !post_sound(&id, &title, &body, &category, &sound) {
-            let _ = app.notification().builder().title(&title).body(&body).show();
+        if !crate::locking::lock(&BOUNCING, "dock bounce").iter().any(|i| *i == note.id) {
+            return;   // taken back already
         }
+        dock(&app, true);
+        std::thread::spawn(move || {
+            std::thread::sleep(DOCK_FIRST);
+            later(move || {
+                let (still, none_left) = {
+                    let mut b = crate::locking::lock(&BOUNCING, "dock bounce");
+                    let still = b.iter().any(|i| *i == note.id);
+                    b.retain(|i| *i != note.id);
+                    (still, b.is_empty())
+                };
+                if none_left {
+                    dock(&app, false);
+                }
+                if still && !in_front(&app) {
+                    post_now(&app, note);
+                }
+            });
+        });
     });
 }
 
-/// Notifications `ids` taken back out of Notification Center, on its thread (`later`): after every post
-/// handed in before, so one posted a moment ago is never left up because its taking back went first.
+fn post_now(app: &tauri::AppHandle, note: Note) {
+    use tauri_plugin_notification::NotificationExt;
+    let Note { id, title, body, category, watched } = note;
+    let sound = if watched { crate::sounds::TADA.to_string() } else { crate::sounds::choice() };
+    if !post_sound(&id, &title, &body, &category, &sound) {
+        let _ = app.notification().builder().title(&title).body(&body).show();
+    }
+}
+
+/// Notifications `ids` taken back: one still bouncing the Dock is never posted, and the Dock stops once none
+/// is; one already up comes out of Notification Center, on its thread (`later`), after every post handed in
+/// before, so one posted a moment ago is never left up because its taking back went first.
 pub fn take_back(ids: Vec<String>) {
-    if !ids.is_empty() {
-        later(move || remove(&ids));
+    if ids.is_empty() {
+        return;
+    }
+    crate::locking::lock(&BOUNCING, "dock bounce").retain(|i| !ids.contains(i));
+    later(move || remove(&ids));
+}
+
+/// The Dock stopped when nothing's bouncing it any more (after `take_back`; needs the app, which it hasn't).
+pub fn settle(app: &tauri::AppHandle) {
+    if crate::locking::lock(&BOUNCING, "dock bounce").is_empty() {
+        let app = app.clone();
+        later(move || dock(&app, false));
     }
 }
 

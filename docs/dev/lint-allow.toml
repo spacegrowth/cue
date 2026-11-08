@@ -225,6 +225,11 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 
 [[lock_order]]
 from = "typing gate"
+to = "mini reading"
+reason = "as quiet sessions: a leaf lock read while a card is notified under the typing gate (hub/send.rs wait_turn); nothing is taken under it"
+
+[[lock_order]]
+from = "typing gate"
 to = "quiet sessions"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 

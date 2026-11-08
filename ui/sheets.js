@@ -494,10 +494,10 @@ function settingsSheet() {
     ${setRow("Project colors", "Each project gets a color of its own: its dot, and the window while it's picked at the top. Off, every project's dot is in the window's Color.", toggle("appearance.project", st.appearance?.project === true))}
     ${setRow("Text size", "Everything in the window, bigger or smaller. ⌘+ and ⌘− step through these, ⌘0 goes back to Default.", seg("appearance.zoom", st.appearance?.zoom ?? 1, ZOOMS))}
     <div class="set-group">Notifications</div>
-    ${setRow("Test", "Sends one macOS notification now. If nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
-    ${setRow("When an agent finishes its turn", "Tells you which session is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
-    ${setRow("When an agent needs a decision", "Permissions and questions.", toggle("notify.decisions", st.notify?.decisions ?? true))}
-    ${setRow("Before a cache runs out", "10 minutes before a session waiting on you would have to write its whole conversation again.", toggle("notify.cold", st.notify?.cold ?? true))}
+    ${setRow("Test", "Cue's Dock icon bounces first; still waiting a minute later, the notification comes (never while you're looking at it, here or in the mini window). This sends one now: if nothing appears, check System Settings → Notifications → Cue.", `<button class="btn" data-act="test-notify">Send a test notification</button>`)}
+    ${setRow("Finished", "A session finished its turn and is waiting on you.", toggle("notify.finished", st.notify?.finished ?? true))}
+    ${setRow("Asks me", "A permission or a question.", toggle("notify.decisions", st.notify?.decisions ?? true))}
+    ${setRow("Heads-ups", "A cache about to run out, a session with no new output, a background task that failed, a usage limit.", toggle("notify.cold", st.notify?.cold ?? true))}
     ${setRow("Sound", "What every notification plays. Click one to hear it.", seg("notify.sound", st.notify?.sound ?? "pluck", SOUNDS))}
     <div class="set-group">Mac</div>
     ${setRow("Mini window", "Cue at the edge of your screen while you work in another app: what needs you, newest first, and its whole chat with a box to answer it. It steps aside while this window is in front.", seg("mini.mode", st.mini?.mode ?? "off", [["off", "Off"], ["rail", "Right edge"], ["notch", "Notch"]]))}

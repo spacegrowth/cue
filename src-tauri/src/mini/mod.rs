@@ -462,6 +462,13 @@ pub(crate) async fn mini_key(window: tauri::WebviewWindow, on: bool) -> Result<(
     Ok(())
 }
 
+/// The session whose chat this mini window shows now (None: folded): nothing about it is notified meanwhile.
+#[tauri::command]
+pub(crate) async fn mini_reading(window: tauri::WebviewWindow, session_id: Option<String>) -> Result<(), String> {
+    crate::notify::reading(window.label(), session_id);
+    Ok(())
+}
+
 /// Cue's own window, on a session's chat (the mini window's ⤢) or as it was (Open Cue).
 #[tauri::command]
 pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>) -> Result<(), String> {

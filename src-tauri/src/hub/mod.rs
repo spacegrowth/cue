@@ -551,11 +551,13 @@ impl Hub {
     fn notify_card(&self, id: &str, title: &str, body: &str, category: &str, watched: bool, mutable: bool) {
         // A finished turn of a session something else is telling you about already (notify::quiet): not twice.
         // Anything that needs you (a permission, a question) and a turn you asked to be told about still come.
-        if mutable && !watched && category.starts_with("turn") {
-            let sid = self.read(|st| st.items.iter().find(|i| i.id == id).map(|i| i.origin.session_id.clone()));
-            if sid.is_some_and(|s| crate::notify::is_quiet(&s)) {
-                return;
-            }
+        let sid = self.read(|st| st.items.iter().find(|i| i.id == id).map(|i| i.origin.session_id.clone()));
+        if mutable && !watched && category.starts_with("turn") && sid.as_deref().is_some_and(crate::notify::is_quiet) {
+            return;
+        }
+        // Its chat open in a mini window: you're reading it already.
+        if sid.as_deref().is_some_and(crate::notify::is_read) {
+            return;
         }
         let note = crate::notify::Note { id: id.to_string(), title: title.to_string(), body: body.to_string(), category: category.to_string(), watched };
         // Noted as notified with the post handed in, under one lock: a draw either sees neither, or sees it

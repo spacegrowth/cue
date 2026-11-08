@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 143 (3 sync) |
-| Lock declarations (static or field) | 100 |
-| Lock acquisitions | 226 |
-| Lock-graph edges | 49 |
-| Spawn sites | 82 |
-| External calls: fs / db / process / notify / login / socket | 345 / 146 / 52 / 4 / 1 / 3 |
+| `#[tauri::command]` | 145 (3 sync) |
+| Lock declarations (static or field) | 102 |
+| Lock acquisitions | 234 |
+| Lock-graph edges | 50 |
+| Spawn sites | 83 |
+| External calls: fs / db / process / notify / login / socket | 354 / 146 / 52 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -84,6 +84,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `status_session` | async | `ipc/chat.rs::status_session` | ipc::with_hub |
 | `background_session` | async | `ipc/chat.rs::background_session` | ipc::with_hub |
 | `focus_session_id` | async | `ipc/chat.rs::focus_session_id` | ipc::with_hub |
+| `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
 | `move_to_terminal` | async | `ipc/hosted.rs::move_to_terminal` | ipc::with_hub |
 | `insight_state` | async | `ipc/insights.rs::insight_state` | ipc::with_hub |
 | `insight_host_skills` | async | `ipc/insights.rs::insight_host_skills` | ipc::blocking |
@@ -172,6 +173,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `mini_shape` | async | `mini/mod.rs::mini_shape` | — |
 | `mini_drag` | async | `mini/mod.rs::mini_drag` | async_runtime::spawn_blocking |
 | `mini_key` | async | `mini/mod.rs::mini_key` | — |
+| `mini_reading` | async | `mini/mod.rs::mini_reading` | — |
 | `mini_open_in_cue` | async | `mini/mod.rs::mini_open_in_cue` | — |
 
 ## Locks
@@ -259,7 +261,9 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `mini/mod.rs::SLOTS` | `Mutex<Option<HashMap<String,Slot>>>` | "mini windows" (1 sites) |
 | `mini/mod.rs::PLACES` | `Mutex<Option<HashMap<String,Place>>>` | "mini places" (2 sites) |
 | `notify.rs::QUIET` | `std::sync::Mutex<Vec<String>>` | "quiet sessions" (2 sites) |
+| `notify.rs::READING` | `std::sync::Mutex<Vec<(String,String)>>` | "mini reading" (2 sites) |
 | `notify.rs::JOBS` | `std::sync::OnceLock<std::sync::mpsc::Sender<Job>>` | — |
+| `notify.rs::BOUNCING` | `std::sync::Mutex<Vec<String>>` | "dock bounce" (6 sites) |
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
 | `sounds.rs::PLAYING` | `std::sync::Mutex<Option<std::process::Child>>` | "PLAYING" (1 sites) |
 | `statuslist.rs::SEEN` | `Mutex<Option<(u64,Value)>>` | "what the status list has cost" (1 sites) |
@@ -330,6 +334,7 @@ An edge A → B: B is taken (here or in something called) while A is held. Also 
 | "typing gate" | "db writer's marks" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write`, takes it |
 | "typing gate" | "db writes" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand`, takes it |
 | "typing gate" | "folder facts" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn` → `hub/saves.rs::Hub::hand_writes` → `hub/live_writes.rs::LiveWrites::hand` → `hub/live_writes.rs::LiveWrites::write` → `hub/live_writes.rs::save_live` → `db/live.rs::save_live` → `db/mod.rs::with` → `db/mod.rs::attempt` → `db/schema.rs::open` → `db/schema.rs::set_up` → `db/schema.rs::migrate` → `db/schema.rs::regroup_projects` → `logs/repos.rs::first_look` → `logs/repos.rs::Folders::first_look`, takes it |
+| "typing gate" | "mini reading" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_read`, takes it |
 | "typing gate" | "parked saves" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Hub::start_drawing` → `hub/redraw.rs::Hub::draw` → `hub/redraw.rs::Hub::save_live` → `hub/saves.rs::Hub::hand_in_parked_turn`, takes it |
 | "typing gate" | "quiet sessions" |  | `hub/send.rs::Hub::reply` → `hub/send.rs::Hub::type_reply` → `hub/hosted.rs::Hub::send_to_hosted` → `hub/hosted.rs::Hub::wake_hosted` → `hub/hosted.rs::Hub::resume_hosted_as` → `hub/hosted.rs::Hub::run_hosted` → `hub/hosted.rs::Hub::hosted_report` → `hub/hosted.rs::Hub::on_hosted` → `hub/hosted.rs::Hub::hosted_turn_started` → `hub/hosted.rs::Hub::hosted_taken` → `hub/events.rs::Hub::event` → `hub/events.rs::Hub::event_in` → `hub/events.rs::Hub::on_event` → `hub/asks.rs::Hub::terminal_ask_with` → `hub/mod.rs::Hub::notify` → `hub/mod.rs::Hub::notify_card` → `notify.rs::is_quiet`, takes it |
 | "typing gate" | "redraw wanted" |  | `hub/send.rs::Hub::reply` → `hub/asks.rs::Hub::set_later` → `hub/redraw.rs::Hub::changed` → `hub/redraw.rs::Redraws::mark`, takes it |
@@ -393,6 +398,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `notify.rs::compact` | thread::spawn | 1 |
 | `notify.rs::later` | Builder::spawn | 1 |
 | `notify.rs::send` | thread::spawn | 1 |
+| `notify.rs::show` | thread::spawn | 1 |
 | `quit.rs::on_signals` | async_runtime::spawn | 2 |
 | `safe_git.rs::on_machine` | thread::spawn | 1 |
 | `server/mod.rs::handle` | tokio::spawn | 1 |
@@ -428,7 +434,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (345)
+### fs (354)
 
 | In | Call | Times |
 |---|---|---|
@@ -519,6 +525,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/chat.rs::pi_log` | read_dir | 2 |
 | `ipc/chat.rs::run_crew_action` | create_dir_all | 1 |
 | `ipc/chat.rs::run_crew_action` | write | 1 |
+| `ipc/docs.rs::read_doc` | metadata | 1 |
+| `ipc/docs.rs::read_doc` | read_to_string | 1 |
+| `ipc/docs.rs::resolve_doc` | Path::exists | 1 |
+| `ipc/docs.rs::resolve_doc` | Path::is_dir | 1 |
+| `ipc/docs.rs::resolve_doc` | Path::is_file | 2 |
+| `ipc/docs.rs::search` | Path::is_dir | 1 |
+| `ipc/docs.rs::search` | Path::is_file | 1 |
+| `ipc/docs.rs::search` | read_dir | 1 |
 | `ipc/insights_tab.rs::relay_on` | read | 1 |
 | `ipc/sessions.rs::delete_transcript` | Path::exists | 1 |
 | `ipc/sessions.rs::delete_transcript` | Path::is_dir | 1 |

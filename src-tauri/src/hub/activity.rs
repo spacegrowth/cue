@@ -135,7 +135,8 @@ impl Hub {
         if stuck && q.was != at {
             self.write(|st| st.sessions.set_stuck(sid, at));
             self.changed();
-            if crate::config::flag("/notify/decisions") {
+            if crate::config::flag("/notify/cold") {   // a heads-up, not a decision
+
                 let what = if q.doing.is_empty() { "Thinking".to_string() } else { q.doing.trim_end_matches('…').to_string() };
                 self.notify_about(&format!("stuck-{sid}"), &format!("{} · no new output for {}m", q.name, now.saturating_sub(at) / 60_000), &format!("{what}. If it's waiting for input, it's in its terminal."));
             }
@@ -195,7 +196,8 @@ impl Hub {
             return;
         }
         self.changed();
-        if crate::config::flag("/notify/decisions") {
+        if crate::config::flag("/notify/cold") {   // a heads-up, not a decision
+
             for (sid, project, desc, line) in told {
                 self.notify_about(&format!("task-failed-{sid}"), &format!("{project}: background task failed"), &(if line.is_empty() { desc } else { line }));
             }

@@ -43,6 +43,7 @@ digraph locks {
   "typing gate" -> "db writer's marks";
   "typing gate" -> "db writes";
   "typing gate" -> "folder facts";
+  "typing gate" -> "mini reading";
   "typing gate" -> "parked saves";
   "typing gate" -> "quiet sessions";
   "typing gate" -> "redraw wanted";
