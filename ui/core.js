@@ -706,10 +706,12 @@ function runCode(btn) {
   const line = codeText(btn).split("\n").map((l) => l.replace(/^\$ /, "")).join("\n").trim();
   if (line) runLine(btn.dataset.runCode, line);
 }
-function md(text, { runIn = null } = {}) {
+function md(text, { runIn = null, pathsOf = null } = {}) {
   const out = [];
-  const ses = runIn ? sessionOf(runIn) : null;   // its folder for relative paths; its machine (another: no paths)
-  const base = ses ? { cwd: ses.cwd, machine: ses.machine, sid: runIn } : null;
+  // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
+  // whose paths these are, with no Run on its commands (the mini window).
+  const sid = runIn || pathsOf, ses = sid ? sessionOf(sid) : null;
+  const base = ses ? { cwd: ses.cwd, machine: ses.machine, sid } : null;
   const inline = (s) => linkify(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>"), base);
   const blocks = String(text ?? "").replace(/\r/g, "").split(/```/);
   blocks.forEach((chunk, i) => {

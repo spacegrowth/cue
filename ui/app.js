@@ -88,6 +88,8 @@ async function boot() {
   await T.event.listen("select", (e) => {
     // "s:<session>": that session's chat, whether or not a card of it waits.
     if (e.payload.startsWith("s:")) return setActive(null, e.payload.slice(2));
+    // "d:{sid, path}": a markdown file a reply named, in that session's reader (a link in the mini window).
+    if (e.payload.startsWith("d:")) { const d = JSON.parse(e.payload.slice(2)); return openDoc(d.sid, d.path); }
     if (e.payload !== "usage") return setActive(e.payload);
     const s = limitedSessions().sort((a, b) => a.since_ms - b.since_ms)[0];
     if (s) setActive(null, s.session_id);

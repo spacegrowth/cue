@@ -30,8 +30,6 @@ function openReader(sid, key) {
 }
 /** A markdown file a reply named, in the reader: found from the session's folder (ipc/docs.rs read_doc: the
  *  path as written, from the folders up to the repo's top, or by name), its session opened if it wasn't. */
-// SHORTCUT: the file is read once, when it's opened; a change on disk shows when it's opened again. Fine for reading
-// a doc; a watcher (or a re-read on focus) when someone edits one while it's open in Cue.
 function openDoc(sid, path) {
   return invoke("read_doc", { path, cwd: sessionOf(sid)?.cwd || null }).then((f) => {
     if (current()?.s?.session_id !== sid) setActive(null, sid);
@@ -39,6 +37,18 @@ function openDoc(sid, path) {
     renderMain();
   }, (err) => toast(String(err)));
 }
+/** The file open in the reader, read again when Cue comes forward: an edit made meanwhile (by you, or by a session)
+ *  shows. Not while Listen reads it: its sentences would move under it. */
+function refreshDoc() {
+  const f = readerView?.file, at = readerView;
+  if (!f || listening?.key === at.key) return;
+  invoke("read_doc", { path: f.path, cwd: null }).then((g) => {
+    if (readerView !== at || g.modified_ms === f.modified_ms) return;
+    readerView = { ...at, file: g };
+    renderMain();
+  }, () => {});
+}
+addEventListener("focus", refreshDoc);
 const isDocPath = (p) => /\.(md|markdown)$/i.test(p);
 /** ‹ › (and ← →): the previous or next reply, if there is one. */
 function stepReader(dir) {

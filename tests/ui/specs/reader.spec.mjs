@@ -16,7 +16,12 @@ test("a .md path in a reply opens in the reader", async ({ cue, page }) => {
   await expect(page.locator(".rd-head .rd-file")).toHaveText("rollout-plan.md");
   await expect(page.locator(".rd .msg h4").first()).toHaveText("rollout-plan.md");
   expect(await cue.calls("open_link")).toEqual([]);
+  // Edited meanwhile: Cue coming forward reads it again.
+  await cue.override("read_doc", ({ path }) => ({ path, text: "# rollout-plan.md\n\nStage 2 moved to Monday.", modified_ms: Date.now() }));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.locator(".rd .msg")).toContainText("Stage 2 moved to Monday.");
   // Back, then the bare name links too.
+  await cue.override("read_doc", ({ path, cwd }) => ({ path: path.startsWith("/") ? path : `${cwd}/${path}`, text: "# HANDOFF.md", modified_ms: 0 }));
   await page.locator("[data-reader-back]").click();
   await page.locator('.active-pane a[data-path$="/HANDOFF.md"]').click();
   await expect(page.locator(".rd-head .rd-file")).toHaveText("HANDOFF.md");

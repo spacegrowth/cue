@@ -103,7 +103,7 @@
   }
 
   // ---------- the chat: the whole conversation, the ask on top, a box at the foot ----------
-  const msg = (e) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && e.text ? `<div class="m-agent msg">${md(e.text)}</div>` : "";
+  const msg = (e, sid) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && e.text ? `<div class="m-agent msg">${md(e.text, { pathsOf: sid })}</div>` : "";
   function threadHtml(sid) {
     const it = itemFor(sid);
     const all = sessionOf(sid)?.thread || it?.thread || [];
@@ -112,7 +112,7 @@
     const q = s?.queued?.text?.trim() || "";
     const isQueued = (e) => !!q && e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === q || (q.length >= 20 && e.text.includes(q)));
     const msgs = (all.length ? all : it ? [{ role: "agent", text: finishedText(it) }] : []).filter((e) => !isQueued(e));
-    return (msgs.map(msg).join("") || `<div class="m-quiet">Nothing said yet.</div>`) + waitingHtml(s) + nowHtml(sid);
+    return (msgs.map((e) => msg(e, sid)).join("") || `<div class="m-quiet">Nothing said yet.</div>`) + waitingHtml(s) + nowHtml(sid);
   }
   /** Your messages still on their way, as the chat in Cue shows them: kept in Cue until the turn ends, or queued
    *  in the agent until it finishes its current step. */
@@ -362,7 +362,14 @@
   function bind() {
     root.addEventListener("click", (e) => {
       const link = e.target.closest("a[data-href], a[data-path]");
-      if (link) { e.preventDefault(); invoke("open_link", { url: link.dataset.href || link.dataset.path }).catch(() => {}); return; }
+      if (link) {
+        e.preventDefault();
+        // A markdown file: in Cue's reader, for the session that named it (as a click in Cue's own chat does).
+        const path = link.dataset.path, sid = link.dataset.sid;
+        if (path && sid && /\.(md|markdown)$/i.test(path)) invoke("mini_open_in_cue", { sessionId: sid, doc: path }).catch(() => {});
+        else invoke("open_link", { url: link.dataset.href || path }).catch(() => {});
+        return;
+      }
       const t = e.target.closest("button, [data-open]");
       if (!t) return;
       if (t.dataset.out !== undefined) { clearTimeout(m.timer); const sid = first(); if (sid) openChat(sid); }

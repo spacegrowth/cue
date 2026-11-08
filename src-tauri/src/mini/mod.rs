@@ -469,10 +469,16 @@ pub(crate) async fn mini_reading(window: tauri::WebviewWindow, session_id: Optio
     Ok(())
 }
 
-/// Cue's own window, on a session's chat (the mini window's ⤢) or as it was (Open Cue).
+/// Cue's own window, on a session's chat (the mini window's ⤢) or as it was (Open Cue); with `doc`, a markdown
+/// file a reply named, open in its reader (a link clicked in the mini window).
 #[tauri::command]
-pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>) -> Result<(), String> {
-    crate::show_main(&app, session_id.filter(|s| !s.is_empty()).map(|s| format!("s:{s}")));
+pub(crate) async fn mini_open_in_cue(app: AppHandle, session_id: Option<String>, doc: Option<String>) -> Result<(), String> {
+    let sid = session_id.filter(|s| !s.is_empty());
+    let id = match (&sid, doc) {
+        (Some(s), Some(path)) => Some(format!("d:{}", serde_json::json!({ "sid": s, "path": path }))),
+        _ => sid.map(|s| format!("s:{s}")),
+    };
+    crate::show_main(&app, id);
     Ok(())
 }
 
