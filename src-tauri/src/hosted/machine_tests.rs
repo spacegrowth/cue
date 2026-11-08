@@ -475,7 +475,9 @@ fn live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connect
         }
     };
     // A command, asked about, answered from here.
-    hosts.send(&sid, "Run exactly this shell command and nothing else: echo cue-live-one. Then reply with its output only.").unwrap();
+    // Commands that write (touch): Claude Code asks about those whatever it's set to allow (it runs echo and printf
+    // without asking), in the test's scratch folder.
+    hosts.send(&sid, "Run exactly this shell command and nothing else: touch one.txt && printf 'cue-live-one\\n'. Then reply with its output only.").unwrap();
     let first = allow_each(&hosts, &rx, false);
     if let Some(HostedEvent::TurnEnded { text, .. }) = first.last().filter(|e| matches!(e, HostedEvent::TurnEnded { text, .. } if text.contains("authenticate"))) {
         panic!("Claude Code on {} isn't signed in ({text}): sign in there (claude, then /login) and run this again", m.host);
@@ -483,7 +485,7 @@ fn live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connect
     assert!(first.iter().any(|e| matches!(e, HostedEvent::Ask(a) if a.tool_name == "Bash")), "it asked: {first:?}");
     assert!(matches!(first.last(), Some(HostedEvent::TurnEnded { text, failed: false, .. }) if text.contains("cue-live-one")), "{:?}", first.last());
     // A slow command, the connection dropped as it runs: the turn finishes there, and comes in once Cue is back.
-    hosts.send(&sid, "Run exactly this shell command and nothing else: sleep 6 && echo cue-live-two. Then reply with its output only.").unwrap();
+    hosts.send(&sid, "Run exactly this shell command and nothing else: touch two.txt && sleep 6 && printf 'cue-live-two\\n'. Then reply with its output only.").unwrap();
     let second = allow_each(&hosts, &rx, true);
     assert!(matches!(second.last(), Some(HostedEvent::TurnEnded { text, failed: false, .. }) if text.contains("cue-live-two")), "{:?}", second.last());
     // Cue quits and starts again: the session is picked up, its agent still running there.
