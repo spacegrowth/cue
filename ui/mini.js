@@ -201,12 +201,32 @@
     } else {
       const html = shapeHtml();
       if (drawn.get(root) !== html) {
+        const was = root.querySelector("[data-tabs]")?.scrollLeft || 0;
         root.innerHTML = html;
         drawn.set(root, html);
+        const tabs = root.querySelector("[data-tabs]");
+        if (tabs) tabs.scrollLeft = was;   // another tab picked: the bar stays where you'd scrolled it
         if (m.shape === "chat") toLatest();
       }
     }
+    tabsInView();
     fit();
+  }
+  /** The tab bar scrolls sideways when its tabs don't fit (a trackpad's swipe, or a mouse wheel: bind). The open
+   *  tab is always in view, and an end with more tabs past it fades. */
+  function tabsInView() {
+    const el = root.querySelector("[data-tabs]");
+    if (!el) return;
+    const on = el.querySelector(".m-tab.on");
+    if (on && on.dataset.open !== m.tabsShown) {
+      m.tabsShown = on.dataset.open;
+      on.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    fades(el);
+  }
+  function fades(el) {
+    el.classList.toggle("more-left", el.scrollLeft > 1);
+    el.classList.toggle("more-right", el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }
   /** The newest reply in sight from its start (a long one reads from the top), else the end of the chat. */
   function toLatest() {
@@ -356,6 +376,14 @@
     document.body.addEventListener("mouseenter", () => pointerIn());
     document.body.addEventListener("mouseleave", () => pointerOut());
     root.addEventListener("mousemove", () => pointerIn());
+    // A mouse wheel's up and down scrolls the tab bar sideways; a trackpad's sideways swipe already does.
+    root.addEventListener("wheel", (e) => {
+      const el = e.target.closest("[data-tabs]");
+      if (!el || el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    }, { passive: false });
+    root.addEventListener("scroll", (e) => { if (e.target.matches?.("[data-tabs]")) fades(e.target); }, true);
     root.addEventListener("pointerdown", (e) => { if (e.target.closest("[data-out]")) drag(e, true); else if (e.target.closest("[data-bar]")) drag(e, false); });
   }
   /** The pointer came over the mini window (the rail's dot, the notch's island): after a short pause the chat

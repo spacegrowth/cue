@@ -113,7 +113,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-bar { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 8px; flex: none; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
 .m-bar .m-tabs { border: 0; padding: 0; flex: 1; min-width: 0; gap: 2px; scrollbar-width: none; }
 .m-bar .m-tabs::-webkit-scrollbar { display: none; }
-.m-bar .m-tab { height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+/* More tabs past an end: that end fades (mini.js fades). */
+.m-tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
+.m-tabs.more-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px); mask-image: linear-gradient(to right, transparent, #000 32px); }
+.m-tabs.more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
+.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .m-bar .m-tab:hover { opacity: .9; background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .m-bar .m-tab.on { opacity: 1; background: color-mix(in srgb, var(--ink) 11%, transparent); font-weight: 600; }
 .m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 14px; }
