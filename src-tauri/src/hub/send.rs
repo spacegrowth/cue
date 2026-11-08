@@ -454,14 +454,19 @@ impl Hub {
     }
 
     /// A hosted session can take a message mid-turn, but once handed over it can't be taken back: so mid-turn
-    /// Cue keeps it, as for a terminal (Esc, Edit), and `now` hands it into the turn without stopping it (it
-    /// reads it at its next step). Mid-turn only if its Claude runs: a paused one starts a turn with this.
+    /// Cue keeps it, as for a terminal (Esc, Edit). `now` (⌘↵, Send now) hands it over and stops the turn, as
+    /// Send now on a queued one does, so it reads it straight away. Mid-turn only if its Claude runs: a paused
+    /// one starts a turn with this.
     fn send_saved_hosted(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, now: bool) -> Result<String, String> {
         let busy = busy && self.hosted().running(session_id);
         if busy && !now {
             return Ok(self.keep(session_id, typed, saved));
         }
-        self.send_to_hosted(session_id, typed, saved, busy)
+        let said = self.send_to_hosted(session_id, typed, saved, busy)?;
+        if busy {
+            return self.send_queued_now(session_id);
+        }
+        Ok(said)
     }
 
     /// A message kept in Cue for a working session, sent when its turn ends.
@@ -502,8 +507,7 @@ impl Hub {
         Ok((origin, busy, direct))
     }
 
-    /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first; a hosted one
-    /// takes it into the turn instead). If it
+    /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
     /// can't be sent it's kept again, so nothing you wrote is lost.
     pub fn send_held(&self, session_id: &str, now: bool) -> Result<String, String> {
         let h = self.write(|st| st.sessions.take_held(session_id)).ok_or("nothing kept for it")?;

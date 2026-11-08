@@ -419,7 +419,7 @@
       else if (t.dataset.send !== undefined) send();
       else if (t.dataset.phrase) sendPhrase(t.dataset.phrase);
       else if (t.dataset.queuedNow) invoke("send_queued_now", { sessionId: t.dataset.queuedNow }).then(() => { m.note = "Sent now: it stopped its step and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
-      else if (t.dataset.heldNow) invoke("send_held_now", { sessionId: t.dataset.heldNow }).then(() => { m.note = sessionOf(t.dataset.heldNow)?.hosted ? "Sent: it reads it at its next step" : "Sent now: it stopped its turn and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
+      else if (t.dataset.heldNow) invoke("send_held_now", { sessionId: t.dataset.heldNow }).then(() => { m.note = "Sent now: it stopped its turn and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
       else if (t.dataset.heldEdit) heldEdit(t.dataset.heldEdit);
       else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
     });

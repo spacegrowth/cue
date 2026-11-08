@@ -172,19 +172,17 @@ fn a_message_kept_mid_turn_can_be_taken_back() {
     assert_eq!(w.hosted.sent().len(), before, "nothing went");
 }
 
-/// Send now on a kept message hands it into the running turn (read at its next step), without stopping it.
+/// Send now (⌘↵) on a kept message: it's handed over and the turn stopped, so it reads it straight away.
 #[test]
-fn send_now_on_a_kept_message_hands_it_into_the_turn_without_stopping_it() {
+fn send_now_on_a_kept_message_hands_it_over_and_stops_the_turn() {
     let w = World::new();
     let sid = running(&w, "long job");
-    w.send_to(&sid, "also check the docs");
+    w.send_to(&sid, "do this instead");
     w.hub().send_held(&sid, true).unwrap();
-    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "also check the docs".to_string())));
-    assert!(w.hosted.interrupted().is_empty(), "the turn wasn't stopped");
-    assert!(w.snapshot().session(&sid)["queued"].is_object(), "queued until it takes it");
-    w.hosted_says(&sid, HostedEvent::Taken { text: "also check the docs".into() });
-    assert!(w.snapshot().session(&sid)["queued"].is_null());
-    assert_eq!(w.snapshot().state(&sid), "working", "the same turn goes on");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "do this instead".to_string())));
+    assert_eq!(w.hosted.interrupted(), [sid.clone()], "the turn it was on is stopped");
+    let s = w.snapshot();
+    assert!(s.session(&sid)["held"].is_null() && s.session(&sid)["queued"].is_null(), "it's reading it now: {}", s.session(&sid));
 }
 
 #[test]

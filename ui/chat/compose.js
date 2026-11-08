@@ -82,9 +82,8 @@ function sendQueuedNow(sid) {
     .catch((e) => toast(`Couldn't send it now: ${e}`));
 }
 /** Send now on the message Cue kept for a working session (its button, or ⌘↵ as for a queued one): it
- *  stops the turn and the message goes straight away. A hosted one isn't stopped: it reads it at its next step. */
-const heldNowNote = (sid) => sessionOf(sid)?.hosted ? "Sent: it reads your message at its next step" : "Sent now: it stopped its turn and reads your message next";
-const sendHeldNow = (sid) => { const note = heldNowNote(sid); invoke("send_held_now", { sessionId: sid }).then(() => toast(note)).catch((e) => toast(`Couldn't send it now: ${e}`)); };
+ *  stops the turn and the message goes straight away. */
+const sendHeldNow = (sid) => invoke("send_held_now", { sessionId: sid }).then(() => toast("Sent now: it stopped its turn and reads your message next")).catch((e) => toast(`Couldn't send it now: ${e}`));
 /** ⌘↵ with nothing new typed: what's waiting to go (queued in its agent, or kept in Cue) goes now. False when there's nothing. */
 function sendWaitingNow(sid) {
   const s = sessionOf(sid);
