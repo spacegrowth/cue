@@ -29,26 +29,20 @@ function termAppName(s) {
   return { "iTerm.app": "iTerm", Apple_Terminal: "Terminal", WezTerm: "WezTerm", ghostty: "Ghostty", vscode: "VS Code", kitty: "kitty" }[t] || (s?.kitty_window_id ? "kitty" : s?.wezterm_pane ? "WezTerm" : "its terminal");
 }
 /** Where a session runs, set into its reply box's top right corner: a terminal app's (a click goes to its
- *  tab); for Cue's own terminal, nothing but Move to hosted (the strip above the box opens it). */
+ *  tab); nothing for Cue's own terminal (the strip above the box opens it). */
 function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
   if (s.hosted) return hostedTab(sid, s);
-  // In Cue: its terminal opens from the strip above the box; the corner has only Move to hosted (hosting on).
-  if (inTmux(sid)) {
-    const host = hostBtn(sid, s);
-    return host ? `<span class="tplace">${host}</span>` : "";
-  }
+  // In Cue: its terminal opens from the strip above the box (Move to hosted is in ⋯).
+  if (inTmux(sid)) return "";
   // A terminal app's: its tab, and for Claude Code, Move to Cue (resumed in Cue's terminal).
   return `<span class="tplace">${moveBtn(sid, s.harness, s.state, "tplace-btn move")}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
 }
-/** A hosted session's corner (no terminal to open): paused while its Claude isn't running (your next message
- *  starts it again), and Move to terminal, which resumes it in a terminal tab as an ordinary session. Greyed
- *  while it works or asks you something; a click says why. */
+/** A hosted session's corner (no terminal to open): paused while its agent isn't running (your next message starts
+ *  it again). Move to terminal is in ⋯ (placeItem). */
 function hostedTab(sid, s) {
-  const why = s.state === "working" ? "Available once it finishes what it's doing (or Stop it)" : s.state === "deciding" ? "Answer what it's asking first" : "";
-  const paused = s.agent_pid ? "" : `<span class="tplace-note">Paused · your next message resumes it</span>`;
-  return `<span class="tplace">${paused}<button class="tplace-btn" data-act="move-term" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}"` : ""}>Move to terminal</button></span>`;
+  return s.agent_pid ? "" : `<span class="tplace"><span class="tplace-note">Paused · your next message resumes it</span></span>`;
 }
 /** Move to Cue, for a Claude Code session in a terminal app's tab: ended there, resumed in Cue's terminal.
  *  Shown even when it can't run yet, greyed, and a click says why, so it never just isn't there. */
@@ -59,14 +53,6 @@ function moveBtn(sid, harness, st, cls) {
     : st === "deciding" ? "Answer what it's asking first"
     : "";
   return `<button class="${cls}" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to Cue</button>`;
-}
-/** Move to hosted, for a Claude Code session in Cue's own terminal on this Mac with Settings → Cue-hosted sessions
- *  on: ended there and resumed hosted, with no terminal (Move to Cue does it; the backend picks hosted). Greyed
- *  while it works or asks you something, as Move to Cue is. */
-function hostBtn(sid, s) {
-  if (s.harness !== "claude" || s.machine || !state.settings?.hosted?.on) return "";
-  const why = s.state === "working" ? "Available once it finishes what it's doing (or Stop it)" : s.state === "deciding" ? "Answer what it's asking first" : "";
-  return `<button class="tplace-btn move" data-act="move-cue" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}" title="${esc(why)}"` : ``}>Move to hosted</button>`;
 }
 /** "Open in iTerm ↗": where a terminal-app session's own tab is, for the places that have no reply box. */
 const openInLabel = (s) => `Open in ${esc(s ? termAppName(s) : "its terminal")} <span aria-hidden="true">↗</span>`;
