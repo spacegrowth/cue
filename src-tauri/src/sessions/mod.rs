@@ -73,6 +73,10 @@ pub struct Session {
     pub segments: Vec<Segment>,
     /// The last few exchanges (how many: Settings → Context).
     pub thread: Vec<Exchange>,
+    /// A hosted session whose turn ended because Cue quit (restarted, reinstalled) mid-turn: "stopped", but not by
+    /// you, and the chat says so. Cleared by its next state.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cut_by_restart: bool,
     /// The name you gave it in Cue ("" = none: Cue shows the project).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
@@ -225,6 +229,7 @@ impl Session {
             task_failed: String::new(),
             task_failed_line: String::new(),
             queued: None,
+            cut_by_restart: false,
             name: String::new(),
             rename_pending: false,
             claude_name: None,
@@ -286,6 +291,7 @@ impl Session {
 
     /// It entered `state` at `now`: a new state drops what only held for the old one.
     fn enter_state(&mut self, state: &str, now: u64) {
+        self.cut_by_restart = false;
         if self.state != state {
             self.stuck_ms = 0;
             self.task_failed_ms = 0;
@@ -418,6 +424,7 @@ impl Sessions {
                 s.origin.agent_pid = None;
                 if matches!(s.state.as_str(), "working" | "deciding" | "agent") {
                     s.state = "stopped".into();
+                    s.cut_by_restart = true;
                 }
             }
             if !s.origin.session_id.is_empty() {

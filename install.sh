@@ -5,6 +5,8 @@
 #   ./install.sh --app      just the app
 #   ./install.sh --uninstall
 #
+# Cue's hosted sessions mid-turn are waited for first (quitting Cue ends them): CUE_INSTALL_WAIT=<seconds>, 0 for none.
+#
 # Safe to re-run. Your ~/.claude/settings.json is backed up before it's touched, and only
 # Cue's own hook entries are added or removed — your other hooks stay as they are.
 set -euo pipefail
@@ -56,6 +58,38 @@ gone() {
   for _ in $(seq 1 "$n"); do kill -0 "$@" 2>/dev/null || return 0; sleep 0.1; done
   return 1
 }
+# The hosted sessions mid-turn, other than the one running this (if it is one): "<id> <name>" a line. Quitting Cue
+# ends every session it hosts, and a turn under way is lost, so an install waits for these. Asked over Cue's socket;
+# nothing when Cue isn't running.
+hosted_turns() {
+  /usr/bin/python3 -I - "$CUE_HOME/cue.sock" "${CLAUDE_CODE_SESSION_ID:-}" <<'PY' 2>/dev/null || true
+import json, socket, sys
+sock, me = sys.argv[1], sys.argv[2]
+s = socket.socket(socket.AF_UNIX); s.settimeout(3); s.connect(sock); s.sendall(b'{"type":"list"}\n')
+buf = b""
+while b"\n" not in buf:
+    chunk = s.recv(65536)
+    if not chunk: break
+    buf += chunk
+for x in json.loads(buf.split(b"\n")[0]).get("sessions", []):
+    if x.get("hosted") and x.get("agent_pid") and x.get("state") == "working" and x.get("session_id") != me:
+        print(x["session_id"], x.get("name") or x.get("project") or "")
+PY
+}
+
+# Wait for the hosted sessions' turns to end before quitting Cue: up to CUE_INSTALL_WAIT seconds (10 minutes unless
+# told), then it goes ahead. CUE_INSTALL_WAIT=0 doesn't wait.
+wait_for_hosted_turns() {
+  local limit="${CUE_INSTALL_WAIT:-600}" waited=0 busy
+  while [ "$waited" -lt "$limit" ]; do
+    busy=$(hosted_turns)
+    [ -z "$busy" ] && return 0
+    [ "$waited" -eq 0 ] && say "waiting for Cue's hosted sessions to finish their turns (quitting Cue would end them):" && echo "$busy" | sed 's/^[^ ]* /    /'
+    sleep 3; waited=$((waited + 3))
+  done
+  say "still mid-turn after ${limit}s: installing anyway (that turn ends; its next message starts it again)"
+}
+
 # Ask Cue to quit and wait until it has (opening a new copy mid-shutdown fails with error -600).
 quit_cue() {
   local pids; pids=$(cue_pids)
@@ -103,6 +137,7 @@ install_app() {
     [ -n "$ext" ] && [ -e "$ROOT/src-tauri/ext/tauri.conf.json" ] && ext="$ext --config src-tauri/ext/tauri.conf.json"
     (cd "$ROOT" && npm install --silent && npx tauri build --bundles app $ext >/dev/null)
   fi
+  wait_for_hosted_turns
   quit_cue
   mkdir -p "$HOME/Applications"
   rm -rf "$HOME/Applications/Cue.app"

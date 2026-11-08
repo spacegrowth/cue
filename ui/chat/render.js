@@ -262,6 +262,8 @@ function whereNow(it, s) {
     const tail = l.scope === "all" ? "Cue will tell you when it resets." : "Switch models with /model to keep going.";
     return `<div class="cv-status limit"><span class="lim-dot"></span><span><b>${head}</b>${when}. ${what} didn't run. ${tail}</span></div>`;
   }
+  // Cue quit (restarted, reinstalled) while a session it hosts was mid-turn: that turn ended there, not by you.
+  if (s?.state === "stopped" && s.cut_by_restart) return `<div class="cv-status">Cue restarted mid-turn, so that turn ended · your next message starts it again</div>`;
   if (s?.state === "stopped") return `<div class="cv-status">Stopped by you · it's at its prompt</div>`;
   if (!s && it && !isPending(it)) return `<div class="cv-status">This session has ended.</div>`;
   return "";

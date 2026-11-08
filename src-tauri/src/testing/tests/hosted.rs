@@ -246,9 +246,12 @@ fn restarted_mid_turn_a_message_starts_it_rather_than_queueing() {
     assert_eq!(w.snapshot().state(&sid), "working");
     w.relaunch();
     assert_ne!(w.snapshot().state(&sid), "working", "its turn ended with the Cue that ran it");
+    assert_eq!(w.snapshot().session(&sid)["cut_by_restart"], true, "the chat says Cue ended it, not you");
     w.ask(json!({ "type": "send_to", "session_id": sid, "text": "what are you doing" }));
     assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(Start::Resume(sid.clone())));
     assert!(w.snapshot().session(&sid)["queued"].is_null(), "not queued: nothing is working on a turn");
+    takes(&w, &sid, "what are you doing");
+    assert!(w.snapshot().session(&sid)["cut_by_restart"].is_null(), "at work again: the note goes");
 }
 
 /// Stop, or Send now, while Claude is starting up with your message next in its input: nothing is interrupted
