@@ -46,19 +46,36 @@ with open(path, "w") as f:
 EOF
 }
 
+# Cue's PIDs. "cue$": the app itself. Hooks run the same binary with arguments ("cue hook …") and must
+# survive (an agent may be waiting on one for your answer). -a: pgrep leaves out its own ancestors,
+# and run from a session Cue started (a hosted one), Cue is one of them.
+cue_pids() { pgrep -a -f "Cue.app/Contents/MacOS/cue$" || true; }
+# Wait up to $1 tenths of a second for these PIDs ($2…) to be gone.
+gone() {
+  local n=$1; shift
+  for _ in $(seq 1 "$n"); do kill -0 "$@" 2>/dev/null || return 0; sleep 0.1; done
+  return 1
+}
 # Ask Cue to quit and wait until it has (opening a new copy mid-shutdown fails with error -600).
 quit_cue() {
+  local pids; pids=$(cue_pids)
+  [ -n "$pids" ] || return 0
   osascript -e 'quit app "Cue"' 2>/dev/null || true
-  # "cue$": the app itself. Hooks run the same binary with arguments ("cue hook …") and must
-  # survive (an agent may be waiting on one for your answer).
-  for _ in $(seq 1 50); do pgrep -q -f "Cue.app/Contents/MacOS/cue$" || return 0; sleep 0.1; done
-  pkill -f "Cue.app/Contents/MacOS/cue$" || true
+  # Quitting can take a while (hosted sessions wait for their Claude to exit). Past that, these exact
+  # PIDs are stopped, and the script waits until they're gone: a dying Cue still counts as running.
+  gone 100 $pids && return 0
+  kill $pids 2>/dev/null || true
+  gone 50 $pids && return 0
+  kill -9 $pids 2>/dev/null || true
+  gone 20 $pids || true
 }
 
 # Start the installed Cue and make sure it is running. Right after a quit-and-replace, Launch
 # Services can refuse the first open (error -609, "connection invalid") and the app silently stays
 # down, so the open is retried until the process is seen.
 launch_cue() {
+  # Only a Cue that wasn't running before counts as started.
+  local before; before=" $(cue_pids | tr '\n' ' ') "
   for _ in 1 2 3 4 5 6; do
     # A clean environment, as the Dock or Finder starts it: `open` passes on this shell's own, and one
     # inside tmux (an agent's terminal, an action's) would leave Cue thinking it's in tmux too, so every
@@ -66,7 +83,9 @@ launch_cue() {
     env -i HOME="$HOME" USER="$USER" LOGNAME="${LOGNAME:-$USER}" SHELL="${SHELL:-/bin/zsh}" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-en_US.UTF-8}" PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
       open "$HOME/Applications/Cue.app" 2>/dev/null || true
     for _ in $(seq 1 20); do
-      pgrep -q -f "Cue.app/Contents/MacOS/cue$" && { say "Cue is running"; return 0; }
+      for p in $(cue_pids); do
+        case "$before" in *" $p "*) ;; *) say "Cue is running"; return 0 ;; esac
+      done
       sleep 0.25
     done
   done
