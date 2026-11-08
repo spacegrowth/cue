@@ -16,7 +16,7 @@
   // The notch: the one the island grows out of (Cue measures it; a display without one gets Cue's own, as tall as
   // its menu bar), how far it widens either side when something needs you, and its shoulders' curve.
   const notch = { w: 185, h: 32, real: false };
-  const PEEK = 46, SHOULDER = 14;
+  const PEEK = 60, SHOULDER = 14;
   const TAB_H = 76;                   // the rail's tab, tucked away
   const HOVER_MS = 600, LEAVE_MS = 450;
   const root = document.getElementById("mini");
