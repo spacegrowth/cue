@@ -171,3 +171,41 @@ pub(super) fn pointer() -> (f64, f64) {
         (p.x, p.y)
     }
 }
+
+/// The notch on the display at `(x, w, h)` (points, as Cue's displays are given): its width and the height of the
+/// strip it sits in (the display's top inset), or `None` when the display has none (an external display, a Mac
+/// without one, or a notched one in a mode that keeps the menu bar below the camera). Asked of AppKit on the
+/// main thread; `None` too when it doesn't answer within half a second.
+pub(super) fn notch(w: &tauri::WebviewWindow, (x, w_pt, h_pt): (f64, f64, f64)) -> Option<(f64, f64)> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = w.run_on_main_thread(move || unsafe {
+        let _ = tx.send(notch_here(x, w_pt, h_pt));
+    });
+    rx.recv_timeout(std::time::Duration::from_millis(500)).ok().flatten()
+}
+
+unsafe fn notch_here(x: f64, w_pt: f64, h_pt: f64) -> Option<(f64, f64)> {
+    let cls = objc2::runtime::AnyClass::get(c"NSScreen")?;
+    let screens: *mut AnyObject = msg_send![cls, screens];
+    if screens.is_null() {
+        return None;
+    }
+    let n: usize = msg_send![&*screens, count];
+    for i in 0..n {
+        let s: *mut AnyObject = msg_send![&*screens, objectAtIndex: i];
+        let f: objc2_foundation::NSRect = msg_send![&*s, frame];
+        if (f.origin.x - x).abs() > 1.0 || (f.size.width - w_pt).abs() > 1.0 || (f.size.height - h_pt).abs() > 1.0 {
+            continue;
+        }
+        let inset: objc2_foundation::NSEdgeInsets = msg_send![&*s, safeAreaInsets];
+        if inset.top <= 0.0 {
+            return None;
+        }
+        // The menu bar's two halves either side of the camera: the notch is the gap between them.
+        let l: objc2_foundation::NSRect = msg_send![&*s, auxiliaryTopLeftArea];
+        let r: objc2_foundation::NSRect = msg_send![&*s, auxiliaryTopRightArea];
+        let width = r.origin.x - (l.origin.x + l.size.width);
+        return (width > 0.0).then_some((width, inset.top));
+    }
+    None
+}

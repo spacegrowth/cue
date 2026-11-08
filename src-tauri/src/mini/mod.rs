@@ -391,7 +391,26 @@ fn shape(app: &AppHandle, window: &tauri::WebviewWindow, w: f64, h: f64, show: b
     macos::show_quietly(&window);
     #[cfg(not(target_os = "macos"))]
     window.show().map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({ "left": p.left }))
+    if mode != Mode::Notch {
+        return Ok(serde_json::json!({ "left": p.left }));
+    }
+    Ok(serde_json::json!({ "left": false, "notch": notch_of(&app, &window, display) }))
+}
+
+/// A display without a notch gets one of Cue's own, this wide, as tall as its menu bar.
+const OWN_NOTCH_W: f64 = 185.0;
+
+/// The notch the island grows out of on `display`: { w, h, real }. A display without one (an external display, a
+/// Mac without one, a notched one set to keep the menu bar below the camera) gets Cue's own, drawn at its top as
+/// tall as its menu bar.
+fn notch_of(app: &AppHandle, window: &tauri::WebviewWindow, display: Rect) -> Value {
+    #[cfg(target_os = "macos")]
+    if let Some((w, h)) = macos::notch(window, (display.0, display.2, display.3)) {
+        return serde_json::json!({ "w": w, "h": h, "real": true });
+    }
+    let _ = window;
+    let menu_bar = displays(app).iter().find(|(d, _)| *d == display).map(|(d, r)| r.1 - d.1).filter(|h| (20.0..=44.0).contains(h)).unwrap_or(24.0);
+    serde_json::json!({ "w": OWN_NOTCH_W, "h": menu_bar, "real": false })
 }
 
 /// How often a drag follows the pointer (about two frames).

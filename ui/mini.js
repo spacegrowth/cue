@@ -12,7 +12,11 @@
   const NOTCH = location.hash === "#notch";
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
+  const WIDTH = NOTCH ? { nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
+  // The notch: the one the island grows out of (Cue measures it; a display without one gets Cue's own, as tall as
+  // its menu bar), how far it widens either side when something needs you, and its shoulders' curve.
+  const notch = { w: 185, h: 32, real: false };
+  const PEEK = 46, SHOULDER = 14;
   const FRESH_MS = 60000;              // a new card blinks the tab's dot this long, then Cue notifies
   const TAB_H = 76;                   // the rail's tab, tucked away
   const HOVER_MS = 600, LEAVE_MS = 450, NOD_MS = 6000;
@@ -104,7 +108,9 @@
     const { shown } = needs();
     const ask = shown.filter(asks).length, turn = shown.length - ask, busy = working().length;
     const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
-    return `<div class="m-panel m-island${shown.length && isFresh(shown) ? " fresh" : ""}"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing m-quiet">${busy ? `<i class="m-dot work"></i>${busy}` : ""}</span></div>`;
+    // Nothing to show: just the notch (black on its black; on a display without one, Cue's own).
+    if (!left && !busy) return `<div class="m-panel m-island idle"></div>`;
+    return `<div class="m-panel m-island peek${shown.length && isFresh(shown) ? " fresh" : ""}"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing m-quiet">${busy ? `<i class="m-dot work"></i>${busy}` : ""}</span></div>`;
   }
   function nodHtml() {
     const it = state.items.find((i) => i.id === m.nod);
@@ -191,14 +197,31 @@
     const cap = Math.round(screen.height * CAP);
     document.documentElement.style.setProperty("--cap", `${cap}px`);
     document.documentElement.style.setProperty("--chat-w", `${WIDTH.chat}px`);
-    const w = WIDTH[m.shape] || WIDTH.quiet;
+    // The notch's island: the notch's own size with nothing to show (black on its black), wider with its shoulders
+    // when something needs you; what drops from it is as wide as WIDTH says, its shoulders either side.
+    const w = !NOTCH ? WIDTH[m.shape] || WIDTH.quiet
+      : m.shape === "chat" || m.shape === "nod" ? WIDTH[m.shape] + 2 * SHOULDER
+      : root.querySelector(".m-island.peek") ? notch.w + 2 * (PEEK + SHOULDER) : notch.w;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
     const args = { w, h, show: true };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
-    invoke("mini_shape", args).then((r) => { side(r); repaint(); }, () => { m.sized = ""; });
+    invoke("mini_shape", args).then((r) => { side(r); measured(r?.notch); repaint(); }, () => { m.sized = ""; });
+  }
+  /** The notch Cue measured on this display: the island takes its size (drawn again when it changed). */
+  function measured(n) {
+    if (!NOTCH || !n || (n.w === notch.w && n.h === notch.h && n.real === notch.real)) return;
+    Object.assign(notch, { w: Math.round(n.w), h: Math.round(n.h), real: !!n.real });
+    const s = document.documentElement.style;
+    s.setProperty("--nw", `${notch.w}px`);
+    s.setProperty("--nh", `${notch.h}px`);
+    s.setProperty("--peek", `${PEEK}px`);
+    s.setProperty("--sh", `${SHOULDER}px`);
+    m.sized = "";
+    drawn.delete(root);
+    paint();
   }
   /** Drawn again once the window has its new size. The page is see-through and WebKit doesn't always paint what a
    *  grown window newly shows: the chat stayed empty until you scrolled it. A scroll of a pixel and back (and a
@@ -235,7 +258,7 @@
     if (m.shape !== m.drawnShape && m.shape !== "quiet") {
       m.entering = true;
       clearTimeout(m.enterT);
-      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, NOTCH ? 200 : 300);
+      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, NOTCH ? 380 : 300);   // the notch's opening (mini.css n-open) runs .34 s
     }
     m.drawnShape = m.shape;
     const drawnOpen = m.drawnOpen;
@@ -472,7 +495,8 @@
     box.style.height = `${Math.min(box.scrollHeight, line * most + 14)}px`;
   }
   function theme() {
-    const mode = state.settings?.appearance?.mode ?? "system";
+    // The notch is always Cue's dark theme (in your Color), light mode or not: it hangs from the notch.
+    const mode = NOTCH ? "dark" : state.settings?.appearance?.mode ?? "system";
     if (mode === "system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.dataset.theme = mode;
     // Cue's window's Color, as All projects wears it (core.js projTheme), not a project picked in Cue's window:
