@@ -60,6 +60,9 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .foot { padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel-2); display: flex; gap: 8px; align-items: stretch; }
 .foot > .btn { height: auto; }
 .link { font-size: 12px; font-weight: 650; color: var(--accent); margin-top: 6px; }
+/* Under Parked · Closed, on the board's own color: every session, as tiles (board.js shelfDrawer). */
+.shelf-all { display: block; text-align: left; font-size: 12px; font-weight: 650; color: var(--on-bg-muted); padding: 6px 4px 4px; }
+.shelf-all:hover { color: var(--on-bg); }
 
 .decide { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .slab { background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 9px 10px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; margin: 0; }

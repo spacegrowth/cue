@@ -297,11 +297,11 @@ function listenNext() {
   renderMain();
   listenSay();
 }
-function listenPlay(sid, key, reader = false) {
+function listenPlay(sid, key, reader = false, from = 0) {
   if (!window.speechSynthesis && !kokoroOn()) return toast("This Mac can't read it out");
   openMsgs.add(key);   // a folded reply opens to be read
   const cur = current();
-  listening = { sid, key, i: 0, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [], follow: true };
+  listening = { sid, key, i: from, n: 0, playing: true, reader, all: cur ? readerReplies(cur.it, cur.s) : [], follow: true };
   invoke("music_hold").catch(() => {});   // what was playing (a video, music) pauses while it reads, and plays again at Stop
   renderMain();
   listenSay();
@@ -388,7 +388,7 @@ function listenBtn(key) {
 function listenLine(sid) {
   const l = listening;
   if (!l || !sid) return "";
-  const where = l.sid === sid ? `sentence <span data-listen-of="1">${Math.min(l.i + 1, l.n)} of ${l.n}</span>` : `<button class="ls-where" data-listen-open="${esc(l.sid)}">${esc(nameOf(l.sid, sessionOf(l.sid)?.project))}</button>`;
+  const where = l.key.startsWith("file:") ? `<button class="ls-where" data-view="read">${esc(l.key.split("/").pop())}</button>` : l.sid === sid ? `sentence <span data-listen-of="1">${Math.min(l.i + 1, l.n)} of ${l.n}</span>` : `<button class="ls-where" data-listen-open="${esc(l.sid)}">${esc(nameOf(l.sid, sessionOf(l.sid)?.project))}</button>`;
   return `<div class="ls-line" data-key="listen"><b>${l.playing ? "Listening" : "Paused"}</b><span class="dim"> · ${where}${listenSpeed ? ` · ${LISTEN_SPEEDS[listenSpeed]}×` : ""}</span><span class="grow"></span>
     <button class="btn" data-listen-toggle="1" aria-label="${l.playing ? "Pause" : "Go on"}">${l.playing ? PAUSE_ICON : PLAY_ICON}</button><button class="btn" data-listen-stop="1">Stop</button></div>`;
 }

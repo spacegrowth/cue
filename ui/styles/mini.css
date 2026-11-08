@@ -21,15 +21,16 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-tag.ask { background: var(--deny); color: #fff; }
 .m-tag.work { background: var(--panel-2); color: var(--muted); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
-.m-tuck.work .m-live, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
+.m-tuck.work .m-live { animation: m-breathe 2.4s ease-in-out infinite; }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
-@media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
-/* In conversation with you (the last few minutes): its tab's dot blinks, plainly, until it drops into newest first. */
-.m-tab.talk .m-dot { animation: m-blink 1s steps(1, end) infinite; }
+/* The tabs: at work, a full dot that blinks; your turn in conversation (the last few minutes), a full dot, steady;
+ *  your turn otherwise, the striped dot. */
+.m-tab .m-dot.work { animation: m-blink 1s steps(1, end) infinite; }
 @keyframes m-blink { 50% { opacity: .35; } }
+.m-tab.talk .m-dot.turn { background: var(--accent); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
 /* At work, at the notch and on the rail's tab: the dot blinks, as in the tabs. A blink is always work. */
 .m-island .m-dot.work, .m-tuck.work .m-live { animation: m-blink 1s steps(1, end) infinite; }
-@media (prefers-reduced-motion: reduce) { .m-tab.talk .m-dot { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
 /* Your message not taken yet, as in Cue's chat (chat.css .cv-you.queued): no fill, a dim outline with a brighter
    arc going round it until it goes, and what's happening to it underneath. */
 .m-you-wait { align-self: flex-end; max-width: 85%; display: flex; flex-direction: column; align-items: flex-end; }

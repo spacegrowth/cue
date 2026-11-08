@@ -73,6 +73,74 @@ pub(crate) fn resolve_doc(path: &str, cwd: Option<&str>) -> Option<PathBuf> {
     search(&top, &rel)
 }
 
+/// The markdown files made most recently in the repos of `folders` (each session's folder on this Mac; its repo's
+/// top when it's in one), newest first, at most `limit`: Read's "New docs". Each with its repo's top, and when it
+/// was made and last changed. Searched as `search` does (hidden, built and fetched folders skipped, so far deep and no further).
+#[tauri::command]
+pub(crate) async fn recent_docs(folders: Vec<String>, limit: Option<usize>) -> Result<Vec<serde_json::Value>, String> {
+    blocking(move || {
+        let mut tops: Vec<PathBuf> = Vec::new();
+        for f in folders {
+            let dir = PathBuf::from(f.trim_end_matches('/'));
+            if !dir.is_absolute() || !dir.is_dir() {
+                continue;
+            }
+            let top = dir.ancestors().find(|d| d.join(".git").exists()).map(Path::to_path_buf).unwrap_or(dir);
+            // One repo once, and not again inside another listed one.
+            if !tops.iter().any(|t| top.starts_with(t)) {
+                tops.retain(|t| !t.starts_with(&top));
+                tops.push(top);
+            }
+        }
+        let mut found: Vec<(u64, u64, PathBuf, &PathBuf)> = Vec::new();
+        for top in &tops {
+            walk_docs(top, &mut |p, meta| {
+                let ms = |t: std::io::Result<std::time::SystemTime>| t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0);
+                // Made: its birth time; a disk that keeps none, when it last changed.
+                let changed = ms(meta.modified());
+                let made = match ms(meta.created()) { 0 => changed, c => c };
+                found.push((made, changed, p, top));
+            });
+        }
+        found.sort_by(|a, b| b.0.cmp(&a.0));
+        Ok(found.into_iter().take(limit.unwrap_or(10)).map(|(made, changed, p, top)| serde_json::json!({ "path": p.to_string_lossy(), "top": top.to_string_lossy(), "created_ms": made, "modified_ms": changed })).collect())
+    }).await?
+}
+
+/// Every markdown file under `top`, as far as a search goes (MAX_DEPTH, MAX_ENTRIES, SKIP_DIRS and hidden folders).
+fn walk_docs(top: &Path, each: &mut dyn FnMut(PathBuf, std::fs::Metadata)) {
+    let mut seen = 0usize;
+    let mut level = vec![top.to_path_buf()];
+    for _ in 0..=MAX_DEPTH {
+        let mut next = Vec::new();
+        for dir in level {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for e in entries.flatten() {
+                seen += 1;
+                if seen > MAX_ENTRIES {
+                    return;
+                }
+                let name = e.file_name();
+                let s = name.to_string_lossy();
+                let Ok(kind) = e.file_type() else { continue };
+                if kind.is_dir() {
+                    if !s.starts_with('.') && !SKIP_DIRS.contains(&s.as_ref()) {
+                        next.push(e.path());
+                    }
+                } else if kind.is_file() && is_doc(&s) {
+                    if let Ok(meta) = e.metadata() {
+                        each(e.path(), meta);
+                    }
+                }
+            }
+        }
+        if next.is_empty() {
+            return;
+        }
+        level = next;
+    }
+}
+
 /// A file under `top` whose path ends in `rel` (all of it), else one with its name; the shallowest wins.
 fn search(top: &Path, rel: &Path) -> Option<PathBuf> {
     let name = rel.file_name()?.to_os_string();
@@ -153,6 +221,21 @@ mod tests {
         assert_eq!(resolve_doc("app/src/main.rs", Some(c)), None);
         assert_eq!(resolve_doc("nope.md", Some(c)), None);
         assert_eq!(resolve_doc("x/README.md", Some(c)), None);
+        std::fs::remove_dir_all(&top).ok();
+    }
+
+    #[test]
+    fn new_docs_are_the_repos_newest() {
+        let top = tree();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(top.join("docs/newest.md"), "# New").unwrap();
+        let sub = top.join("app/src").to_string_lossy().to_string();
+        let got = tauri::async_runtime::block_on(recent_docs(vec![sub, top.to_string_lossy().to_string()], Some(2))).unwrap();
+        let names: Vec<String> = got.iter().map(|v| v["path"].as_str().unwrap().rsplit('/').next().unwrap().to_string()).collect();
+        // Newest first, the repo searched once (both folders are in it), node_modules never.
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[0], "newest.md");
+        assert!(!names.contains(&"README.md".to_string()));
         std::fs::remove_dir_all(&top).ok();
     }
 }

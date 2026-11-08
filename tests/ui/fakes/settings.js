@@ -55,6 +55,11 @@ CueBridge.area("settings", (w) => {
     },
     update_install: () => null,
     open_link: () => null,
+    // Music paused while Listen reads (and let go after): nothing to pause here.
+    music_hold: () => null,
+    music_release: () => null,
+    // Read's New docs: none unless a test gives some.
+    recent_docs: () => [],
     // A markdown file a reply names, as ipc/docs.rs finds it: any .md under the session's folder, with a short text.
     read_doc: ({ path, cwd }) => {
       if (!/\.(md|markdown)$/i.test(path)) throw "Couldn't find it";

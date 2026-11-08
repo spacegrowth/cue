@@ -101,7 +101,7 @@ function flipVoiceList() {
   if (on) list.scrollTop = on.offsetTop - 44;
 }
 const LISTEN_CLICKS = [
-  rule("[data-listen]", (ls) => { const k = ls.dataset.listen; return listening?.key === k ? listenToggle() : listenPlay(k.slice(0, k.lastIndexOf(":")), k, !!ls.dataset.listenReader); }),
+  rule("[data-listen]", (ls) => { const k = ls.dataset.listen; return listening?.key === k ? listenToggle() : listenPlay(k.slice(0, k.lastIndexOf(":")), k, !!ls.dataset.listenReader, ls.closest(".rdv-head") ? readListenFrom() : 0); }),
   rule("[data-listen-toggle]", () => listenToggle()),
   rule("[data-listen-stop]", () => listenStop()),
   rule("[data-listen-skip]", (lk) => listenSkip(+lk.dataset.listenSkip)),
@@ -180,4 +180,13 @@ const CHAT_FOOT_CLICKS = [
   rule("[data-follow]", (fo) => { flipIn(openFollow, fo.dataset.follow); renderMain(); }),
   rule("[data-act=interrupt]", (stop) => interrupt(stop.dataset.sid)),
   rule("[data-act=send-to]", (el) => sendTo(el.dataset.sid)),
+];
+
+/** Read (read.js): Recent, the file's head, Contents. */
+const READ_CLICKS = [
+  rule("[data-read-open]", (el) => { const r = readRecent.find((x) => x.path === el.dataset.readOpen); readOpen(el.dataset.readOpen, r?.sid || null); }),
+  rule("[data-read-new]", (el) => readOpen(el.dataset.readNew, readSidIn(el.dataset.top))),
+  rule("[data-read-forget]", (el) => readForget(el.dataset.readForget)),
+  rule("[data-read-back]", () => readBack()),
+  rule("[data-read-h]", (el) => readJump(+el.dataset.readH)),
 ];

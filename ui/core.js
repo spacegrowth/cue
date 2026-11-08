@@ -706,7 +706,7 @@ function runCode(btn) {
   const line = codeText(btn).split("\n").map((l) => l.replace(/^\$ /, "")).join("\n").trim();
   if (line) runLine(btn.dataset.runCode, line);
 }
-function md(text, { runIn = null, pathsOf = null } = {}) {
+function md(text, { runIn = null, pathsOf = null, doc = false } = {}) {
   const out = [];
   // Its folder for relative paths, its machine (another: no paths): the session it runs in, or (pathsOf) only
   // whose paths these are, with no Run on its commands (the mini window).
@@ -734,6 +734,8 @@ function md(text, { runIn = null, pathsOf = null } = {}) {
       for (const l of para.split("\n").filter((x) => x.trim())) {
         const kind = QUOTE.test(l) ? "quote" : TABLE.test(l) ? "table" : LIST.test(l) ? "list" : /^#{1,4}\s/.test(l) || /^\*\*[^*]+\*\*:?$/.test(l.trim()) ? "head" : "text";
         const last = runs.at(-1);
+        // In Read (doc), a wrapped line under a list item goes on with that item, as Markdown has it.
+        if (doc && last?.kind === "list" && kind === "text") { last.lines[last.lines.length - 1] += ` ${l.trim()}`; continue; }
         if (last && last.kind === kind && kind !== "head") last.lines.push(l);
         else runs.push({ kind, lines: [l] });
       }
@@ -745,9 +747,12 @@ function md(text, { runIn = null, pathsOf = null } = {}) {
         } else if (r.kind === "list") {
           out.push(listHtml(r.lines, LIST, inline));
         } else if (r.kind === "head") {
-          out.push(`<h4>${inline(r.lines[0].replace(/^#+\s/, "").replace(/\*\*/g, ""))}</h4>`);
+          // A file in Read (doc): its level kept (# 1, ## 2…; a bold line 0), for its size and its Contents.
+          const lv = doc ? ` class="dh${r.lines[0].match(/^#+/)?.[0].length || 0}"` : "";
+          out.push(`<h4${lv}>${inline(r.lines[0].replace(/^#+\s/, "").replace(/\*\*/g, ""))}</h4>`);
         } else {
-          out.push(`<p>${r.lines.map(inline).join("<br>")}</p>`);
+          // A file's lines wrap where its writer wrapped them: in Read (doc) a paragraph flows, as Markdown has it.
+          out.push(`<p>${r.lines.map(inline).join(doc ? " " : "<br>")}</p>`);
         }
       }
     }

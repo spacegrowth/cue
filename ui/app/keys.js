@@ -203,6 +203,7 @@ function keyBoard(e) {
   if (sheet) return;
   if (e.key === "n") return goNext();
   // In the reader, Space reads it out, or pauses; ← → step through the session's replies.
+  if (view === "read" && readDoc && e.key === " ") { e.preventDefault(); return listening ? listenToggle() : document.querySelector(".rdv-head [data-listen-reader]")?.click(); }
   if (readerShown() && e.key === " ") { e.preventDefault(); return listening ? listenToggle() : document.querySelector("[data-listen-reader]")?.click(); }
   if (readerShown() && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); return stepReader(e.key === "ArrowRight" ? 1 : -1); }
   // ← → step through the chip you clicked (Waiting if you haven't).

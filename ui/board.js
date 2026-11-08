@@ -402,6 +402,8 @@ function shelfDrawer(isOpen) {
     body = rows.length ? rows.map((r) => parkedRow(r, isOpen(r.session_id))).join("")
       : `<div class="quiet-line">${tab === "parked" ? "Nothing parked. Park (in a session's ⋯ menu) stops it and keeps it here." : closedList || state.ended?.length ? "Nothing closed in the last 30 days." : "Looking…"}</div>`;
   }
+  // Every session, as tiles (sessions.js), the way All history sits under Recently answered.
+  if (open) body += `<button class="shelf-all" data-lv="all">All sessions →</button>`;
   return `<div class="sec sec-drawer sec-parked ${open ? "" : "shut"}"><div class="col-head fold-head shelf-head"><button class="fold-arrow" data-fold="parked" aria-expanded="${open}" aria-label="${open ? "Fold" : "Open"}">${open ? "▾" : "▸"}</button>${word("parked", "PARKED", ps.length)}<span class="shelf-sep">·</span>${word("closed", "CLOSED", closedHere?.length)}</div>${open ? `<div class="sec-body">${body}</div>` : ""}</div>`;
 }
 /** PARKED or CLOSED in the heading: opens the drawer on that list; the one already showing folds it. */

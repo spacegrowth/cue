@@ -1,0 +1,48 @@
+/* Read (read.js): one panel, as All history is; Recent down the left, the file in the middle (the reader's look,
+   chat.css .rd), its headings down the right. */
+.rdv { margin-top: 14px; flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr) 230px; background: var(--panel); color: var(--ink); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.rdv.no-toc { grid-template-columns: 240px minmax(0, 1fr); }
+.rdv .col-head { color: var(--muted); padding: 14px 14px 8px; }
+.rdv-list, .rdv-toc { min-height: 0; overflow-y: auto; background: var(--panel-2); display: flex; flex-direction: column; padding-bottom: 12px; }
+.rdv-list { border-right: 1px solid var(--line); }
+/* New docs sit at the foot of the left, under Recent (read.js). */
+.rdv-new { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+.rdv-toc { border-left: 1px solid var(--line); }
+.rdv .quiet-line { color: var(--muted); padding: 4px 14px; }
+
+.rdv-item { display: flex; align-items: center; margin: 0 6px; border-radius: 8px; }
+.rdv-item:hover { background: color-mix(in srgb, var(--line) 55%, transparent); }
+.rdv-item.on { background: var(--sel); color: var(--on-sel); }
+.rdv-open { flex: 1; min-width: 0; text-align: left; padding: 6px 8px; display: flex; flex-direction: column; align-items: stretch; gap: 1px; color: inherit; }
+.rdv-name { font: 600 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-sub { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-item.on .rdv-sub { color: inherit; opacity: 0.75; }
+.rdv-x { flex: none; width: 22px; height: 22px; margin-right: 4px; border-radius: 6px; color: var(--muted); font-size: 15px; line-height: 1; opacity: 0; }
+.rdv-item:hover .rdv-x { opacity: 1; }
+.rdv-x:hover { background: var(--panel); color: var(--ink); }
+
+.rdv-doc { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.rdv-doc.rdv-none { align-items: center; justify-content: center; }
+.rdv-head { padding: 12px 18px 8px; gap: 6px; border-bottom: 1px solid var(--line); }
+/* The file's name, and under it its folder and when it last changed, quiet; both cut short before the buttons are. */
+.rdv-title { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; margin-left: 4px; line-height: 1.25; }
+.rdv-title .rd-file { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-where { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv .rd { padding-top: 22px; }
+.rdv-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 40px; }
+.rdv-doc > .ls-player { flex: none; }
+
+/* A file's headings keep their level (md doc: dh1 = #, dh2 = ##, …; dh0 a bold line). */
+.rdv .msg h4.dh1 { font-size: 1.55em; line-height: 1.25; margin: 0.4em 0 0.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--line); }
+.rdv .msg h4.dh2 { font-size: 1.3em; line-height: 1.3; margin: 1.3em 0 0.45em; padding-bottom: 0.2em; border-bottom: 1px solid var(--line); }
+.rdv .msg h4.dh3 { font-size: 1.12em; margin: 1.1em 0 0.35em; }
+.rdv .msg h4.dh4 { font-size: 1em; margin: 1em 0 0.3em; }
+
+.rdv-h { display: block; width: calc(100% - 12px); margin: 0 6px; text-align: left; padding: 5px 8px; border-radius: 7px; font-size: 12.5px; line-height: 1.35; color: var(--ink); }
+.rdv-h:hover { background: color-mix(in srgb, var(--line) 55%, transparent); }
+.rdv-h.l1 { font-weight: 650; }
+.rdv-h.l3 { padding-left: 20px; color: var(--muted); }
+.rdv-h.l4 { padding-left: 32px; color: var(--muted); }
+.rdv-h.on { background: var(--sel); color: var(--on-sel); font-weight: 650; }
+/* The file: wider than the reader in a chat, but a line stays readable on a big window, with room either side. */
+.rdv .rd { max-width: 54em; margin: 0 auto; }

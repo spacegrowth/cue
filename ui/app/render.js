@@ -62,11 +62,11 @@ function topBarHtml(counts) {
   return `<div class="top" data-tauri-drag-region><span class="wordmark" data-tauri-drag-region role="img" aria-label="Cue">${CUE_MARK}</span><span class="hchips"><button class="hchip new-chip" data-lv="new" data-spot="1">+ New</button>${counts}${liveChip()}${projChip()}</span><span class="grow" data-tauri-drag-region></span>${updateCard()}<span class="grow" data-tauri-drag-region></span>
       <button class="top-btn icon" data-act="open-search" aria-label="Find (⌘K)">${SEARCH_ICON}</button>
       ${usageChip()}${shellsBtn()}${extPanelBtn()}
-      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "sessions" ? "on" : ""}" data-view="sessions">Sessions</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="sv-term ${view === "terminal" ? "on" : ""}" data-view="terminal">Terminal<span class="sh-live ${shellsLive()}">${shellsLive() === "done" ? "✓" : ""}</span></button></div>
+      <div class="switch-view"><button class="${view === "board" ? "on" : ""}" data-view="board">Board</button><button class="${view === "read" ? "on" : ""}" data-view="read">Read</button><button class="${view === "insights" ? "on" : ""}" data-view="insights">Insights</button><button class="sv-term ${view === "terminal" ? "on" : ""}" data-view="terminal">Terminal<span class="sh-live ${shellsLive()}">${shellsLive() === "done" ? "✓" : ""}</span></button></div>
       <button class="top-btn icon" data-act="open-settings" title="Settings" aria-label="Settings">${GEAR_ICON}</button></div>`;
 }
 /** The view picked in the header. */
-const viewHtml = () => (view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "terminal" ? shellView() : boardView());
+const viewHtml = () => (view === "history" ? historyView() : view === "insights" ? insightsTabView() : view === "sessions" ? sessionsView() : view === "read" ? readView() : view === "terminal" ? shellView() : boardView());
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window, an action's output. */
 function overlaysHtml() {

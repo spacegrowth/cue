@@ -90,7 +90,8 @@
     const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
     return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
-  /** The tabs across the chat's top (tabList's order); a session in conversation blinks. A click switches; each
+  /** The tabs across the chat's top (tabList's order): a dot that blinks while it works, full while it's your turn in
+   *  conversation, striped while it's your turn otherwise (mini.css). A click switches; each
    *  keeps what you typed in it. */
   function tabsHtml() {
     return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-open="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");

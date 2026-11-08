@@ -39,7 +39,7 @@ const SCREENS = {
   "insights": { scenario: "board-waiting", setup: (p) => p.locator('[data-view="insights"]').click(), done: (p) => p.waitForFunction(() => CueBridge.called("insights_summary").some((c) => "result" in c)) },
   "shelf-parked": { scenario: "parked-ended", setup: (p) => p.locator('[data-shelf="parked"]').click(), done: (p) => p.locator('.prow.parked[data-session="guide"]').waitFor() },
   "shelf-closed": { scenario: "parked-ended", setup: (p) => p.locator('[data-shelf="closed"]').click(), done: (p) => p.locator('.prow.closed[data-session="lost2"]').waitFor() },
-  "sessions-view": { scenario: "parked-ended", setup: (p) => p.locator('[data-view="sessions"]').click(), done: (p) => p.locator('[data-sid="q2"]').first().waitFor() },
+  "sessions-view": { scenario: "parked-ended", setup: async (p) => { await p.locator('[data-shelf="parked"]').click(); await p.locator('.sec-parked [data-lv="all"]').click(); }, done: (p) => p.locator('[data-sid="q2"]').first().waitFor() },
   "narrowest-window": { scenario: "board-waiting", viewport: NARROWEST, done: (p) => p.locator('[data-big="n6"]').first().waitFor() },
 };
 

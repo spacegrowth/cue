@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 149 (3 sync) |
+| `#[tauri::command]` | 150 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 276 |
 | Lock-graph edges | 50 |
 | Spawn sites | 88 |
-| External calls: fs / db / process / notify / login / socket | 369 / 146 / 53 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 375 / 146 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -85,6 +85,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `background_session` | async | `ipc/chat.rs::background_session` | ipc::with_hub |
 | `focus_session_id` | async | `ipc/chat.rs::focus_session_id` | ipc::with_hub |
 | `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
+| `recent_docs` | async | `ipc/docs.rs::recent_docs` | ipc::blocking |
 | `move_to_terminal` | async | `ipc/hosted.rs::move_to_terminal` | ipc::with_hub |
 | `quit_check` | async | `ipc/hosted.rs::quit_check` | ipc::with_hub |
 | `quit_now` | async | `ipc/hosted.rs::quit_now` | — |
@@ -452,7 +453,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (369)
+### fs (375)
 
 | In | Call | Times |
 |---|---|---|
@@ -558,12 +559,18 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `ipc/chat.rs::run_crew_action` | write | 1 |
 | `ipc/docs.rs::read_doc` | metadata | 1 |
 | `ipc/docs.rs::read_doc` | read_to_string | 1 |
+| `ipc/docs.rs::recent_docs` | Path::exists | 1 |
+| `ipc/docs.rs::recent_docs` | Path::is_dir | 1 |
 | `ipc/docs.rs::resolve_doc` | Path::exists | 1 |
 | `ipc/docs.rs::resolve_doc` | Path::is_dir | 1 |
 | `ipc/docs.rs::resolve_doc` | Path::is_file | 2 |
 | `ipc/docs.rs::search` | Path::is_dir | 1 |
 | `ipc/docs.rs::search` | Path::is_file | 1 |
 | `ipc/docs.rs::search` | read_dir | 1 |
+| `ipc/docs.rs::walk_docs` | Path::is_dir | 1 |
+| `ipc/docs.rs::walk_docs` | Path::is_file | 1 |
+| `ipc/docs.rs::walk_docs` | Path::metadata | 1 |
+| `ipc/docs.rs::walk_docs` | read_dir | 1 |
 | `ipc/insights_tab.rs::relay_on` | read | 1 |
 | `ipc/sessions.rs::delete_transcript` | Path::exists | 1 |
 | `ipc/sessions.rs::delete_transcript` | Path::is_dir | 1 |
