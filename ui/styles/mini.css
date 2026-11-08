@@ -1,4 +1,5 @@
-/* Cue mini window (mini.html): the rail on the right edge, or the island at the notch. The window is exactly
+/* Cue mini window (mini.html): the rail on the right edge (picture in picture: a tab tucked into the edge, a dark
+   panel out), or the island at the notch. The window is exactly
    the size of what it shows (mini.js fit), so the page itself is see-through and each shape draws its own panel.
    The rail wears Cue's colors (moss list, the chat on panel); the notch is dark all the way, as the notch is. */
 html, body.mini { background: transparent; height: auto; }
@@ -14,9 +15,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-dot.work { background: var(--work); }
 .m-dot.idle { background: var(--line); }
 /* A session at work: its dot breathes on the rail and at the notch (still under reduced motion). */
-.m-strip.work .m-strip-live, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
+.m-tuck.work .m-live, .m-tab .m-dot.work { animation: m-breathe 2.4s ease-in-out infinite; }
 @keyframes m-breathe { 50% { opacity: .6; } }   /* a gentle breath, not a blink */
-@media (prefers-reduced-motion: reduce) { .m-strip.work .m-strip-live, .m-tab .m-dot.work { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
 .m-queued { opacity: .85; box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
 .m-queued .m-quiet { margin-top: 3px; font-size: 11px; }
 .m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
@@ -30,7 +31,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 
 /* ---------- the rail ---------- */
 .m-age { font: 11px var(--mono); opacity: .7; }
-.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px; border: 1.5px solid var(--bg); }
 
 /* ---------- the chat (both shapes) ---------- */
 .m-chat { display: flex; flex-direction: column; height: var(--cap, 440px); overflow: hidden; box-sizing: border-box; }
@@ -80,9 +80,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 
 /* A new shape (the list, the chat) slides in from the edge it grows out of; the window itself is already its new
    size (see-through), so only the panel moves. Not for redraws of the same shape. */
-.m-enter .m-panel { animation: m-in .16s ease-out; }
-.rail.m-enter .m-panel { --from: translateX(14px); }
-.notch.m-enter .m-panel { --from: translateY(-10px); }
+.notch.m-enter .m-panel { animation: m-in .16s ease-out; --from: translateY(-10px); }
 @keyframes m-in { from { opacity: 0; transform: var(--from, none); } }
 @media (prefers-reduced-motion: reduce) { .m-enter .m-panel { animation: none; } }
 
@@ -93,21 +91,42 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-tab:hover { color: var(--ink); }
 .m-tab.on { color: var(--ink); font-weight: 650; background: var(--panel-2); }
 
-/* The rail: a dark strip at the screen's edge, as the terminal's dock over a reply box was (terminal.css .tdock):
-   rounded on its left, flat against the edge; the chat grows down out of it, the strip staying its header. */
-.rail .m-col { display: flex; flex-direction: column; }
-.m-strip { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--slab); color: var(--on-slab); font: 600 11.5px var(--sans); flex: none; cursor: default; }
-.m-strip-live { width: 7px; height: 7px; border-radius: 50%; background: var(--sel); flex: none; }
-.m-strip-lbl { flex: none; white-space: nowrap; }
-.m-strip-last { font: 11.5px var(--mono); opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
-.m-strip-n { font: 700 10.5px var(--mono); background: color-mix(in srgb, var(--on-slab) 18%, transparent); border-radius: 999px; padding: 1px 7px; flex: none; }
-.m-strip.ask { background: color-mix(in srgb, #c0503e 45%, var(--slab)); }
-.m-strip.ask .m-strip-live { background: #e8907f; }
-.m-strip.turn { background: color-mix(in srgb, #d99a3a 32%, var(--slab)); }
-.m-strip.turn .m-strip-live { background: #d99a3a; }
-.m-strip.work .m-strip-live { background: var(--sel); }
-.m-strip.idle .m-strip-live { background: color-mix(in srgb, var(--on-slab) 35%, transparent); }
-.m-strip.idle { opacity: .8; }
-/* Open: the strip is the chat's header, square under it. */
-.rail .m-col > .m-strip + .m-chat { border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; height: calc(var(--cap, 440px) - 30px); }
-.rail .m-col > .m-strip:has(+ .m-chat) { border-radius: 12px 0 0 0; }
+/* The rail, as the floating terminal was (picture in picture): dark all the way, in Cue's Color's slab. */
+.rail { --panel: var(--slab); --ink: var(--on-slab); --panel-2: color-mix(in srgb, var(--on-slab) 11%, var(--slab));
+  --line: color-mix(in srgb, var(--on-slab) 14%, var(--slab)); --muted: color-mix(in srgb, var(--on-slab) 62%, var(--slab)); }
+.rail #mini { justify-content: flex-end; }
+.rail .m-btn:not(.deny) { background: var(--sel); color: var(--on-sel); }
+.rail .m-agent pre, .rail .m-cmd { background: color-mix(in srgb, #000 30%, var(--slab)); }
+.rail .m-box { background: color-mix(in srgb, #000 22%, var(--slab)); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Tucked away: a small tab flat against the edge at its corner, ‹ and a live dot (a count under it when more
+   than one needs you). Its left 6px are hidden until it's pointed at: it grows out of the edge, its right side
+   never leaving it. The whole tab is the one target that brings the panel out. */
+.m-tuck { width: 36px; height: 76px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 0 0 6px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--slab); color: var(--on-slab);
+  clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: clip-path .2s; font-size: 18px; line-height: 1; }
+.m-tuck.over, .m-tuck:hover { clip-path: inset(0 round 12px 0 0 12px); }
+.m-live { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--on-slab) 30%, transparent); }
+.m-tuck.work .m-live { background: var(--sel); }
+.m-tuck.turn .m-live { background: #d99a3a; }
+.m-tuck.ask .m-live { background: #e8907f; }
+.m-tuck-n { font: 700 10px var(--mono); opacity: .8; }
+.m-tuck.turn, .m-tuck.ask { animation: m-nudge .5s cubic-bezier(.2, .9, .3, 1.12); }
+@keyframes m-nudge { from { transform: translateX(10px); } }
+
+/* Out: the dark panel at the corner, its bar on top (the tabs, ⤢ and ⇥), dragged by that bar. */
+.rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px 0 0 14px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07); }
+.m-bar { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 8px; flex: none; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
+.m-bar .m-tabs { border: 0; padding: 0; flex: 1; min-width: 0; gap: 2px; scrollbar-width: none; }
+.m-bar .m-tabs::-webkit-scrollbar { display: none; }
+.m-bar .m-tab { height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.m-bar .m-tab:hover { opacity: .9; background: color-mix(in srgb, var(--on-slab) 8%, transparent); }
+.m-bar .m-tab.on { opacity: 1; background: color-mix(in srgb, var(--on-slab) 14%, transparent); font-weight: 600; }
+.m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 14px; }
+.m-pipbtn:hover { opacity: 1; background: color-mix(in srgb, var(--on-slab) 10%, transparent); }
+body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
+/* It springs out of the edge, and slides back into it tucked away. */
+.rail.m-enter .m-chat { animation: m-spring .42s cubic-bezier(.2, .9, .3, 1.12); }
+@keyframes m-spring { from { transform: translateX(calc(100% + 12px)); } }
+.rail.m-leave .m-chat { transform: translateX(calc(100% + 12px)); transition: transform .22s ease-in; }
+@media (prefers-reduced-motion: reduce) { .rail.m-enter .m-chat, .m-tuck { animation: none; } .rail.m-leave .m-chat { transition: none; } }

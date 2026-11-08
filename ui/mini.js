@@ -1,5 +1,7 @@
 // Cue mini window — Cue at the edge of your screen while you work in another app (Settings → Mini window).
-// One page, two shapes: the rail on the right edge (#rail) and the dark island at the notch (#notch). Both show
+// One page, two shapes: the rail on the right edge (#rail: picture in picture, as Cue's floating terminal was, a
+// small tab tucked into the edge at its top or bottom corner that springs out into a dark panel) and the dark
+// island at the notch (#notch). Both show
 // what needs you in the Waiting column's order (in conversation first, then newest first), five at most, and
 // open any of them into its whole chat with a box to answer it. The window's size follows what it shows
 // (mini_shape); it takes the keyboard only once you click into its box (mini_key), and gives it back after.
@@ -11,10 +13,14 @@
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
   const TALK = 5 * 60000;             // in conversation: back within 5 minutes of your message (board.js TALK_MS)
   const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
-  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 260, chat: 420 };   // the rail: its strip, then the chat under it
+  const WIDTH = NOTCH ? { quiet: 260, nod: 500, chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
+  const TAB_H = 76;                   // the rail's tab, tucked away
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
+  // corner: the rail's corner of the right edge ("top" or "bottom"), kept in this window's own storage.
+  let corner = "bottom";
+  try { corner = localStorage.getItem("cue.mini.corner") === "top" ? "top" : "bottom"; } catch {}
   const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
@@ -58,18 +64,13 @@
   // ---------- drawing ----------
   const dot = (it, extra = "") => `<i class="m-dot ${dotCls(it)} ${extra}"></i>`;
 
-  /** The rail: a dark strip at the screen's edge, drawn as the terminal's dock over a reply box was: a live dot,
-   *  the most urgent thing in words, its detail in mono as a terminal's last line, how many need you. Red while
-   *  a session asks, amber while one waits for your turn, plain while sessions only work. */
-  function stripHtml() {
+  /** The rail tucked away: a small tab at the edge, ‹ over a live dot, the dot red while a session asks, amber
+   *  while one waits for your turn, breathing while sessions only work; how many need you under it. */
+  function tuckHtml() {
     const { shown } = needs(Infinity);
-    const ask = shown.find(asks), turn = shown[0], busy = working();
-    const [cls, label, detail] = ask ? ["ask", `${name(ask)} asks`, summary(ask)]
-      : turn ? ["turn", `${name(turn)} · your turn`, shapeOf(finishedText(turn)) || plain(firstLine(finishedText(turn)))]
-      : busy.length ? ["work", `${busy.length} working`, doing(busy[0])]
-      : ["idle", "Nothing running", ""];
-    const count = shown.length > 1 ? `<span class="m-strip-n">${shown.length}</span>` : "";
-    return `<div class="m-strip ${cls}"><span class="m-strip-live"></span><span class="m-strip-lbl">${esc(label)}</span><span class="m-strip-last">${esc(detail)}</span>${count}</div>`;
+    const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
+    const n = shown.length > 1 ? `<span class="m-tuck-n">${shown.length}</span>` : "";
+    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">‹</span><i class="m-live"></i>${n}</button>`;
   }
   /** Five tabs across the chat's top at most: what needs you (Waiting's order: in conversation, then newest
    *  first), then the ones at work if there's room. A click switches; each keeps what you typed in it. */
@@ -130,7 +131,9 @@
     const it = itemFor(sid);
     const s = sessionOf(sid);
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
-    return `<div class="m-panel m-chat"><div class="m-tabs" data-tabs>${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>
+    const head = NOTCH ? `<div class="m-tabs" data-tabs>${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`
+      : `<div class="m-bar" data-bar><div class="m-tabs" data-tabs>${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
+    return `<div class="m-panel m-chat">${head}
       <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
       <div class="m-foot">${quickHtml()}<textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
       <div class="m-foot-row"><span class="m-quiet">${esc(m.note || "⇧↵ new line")}</span><span class="g"></span><button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div></div></div>`;
@@ -160,18 +163,17 @@
     document.documentElement.style.setProperty("--cap", `${cap}px`);
     const w = WIDTH[m.shape] || WIDTH.quiet;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
-    const h = m.shape === "chat" ? cap : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
-    const args = { w, h, show: true };
+    const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
+    const args = { w, h, show: true, corner: NOTCH ? "top" : corner };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
     invoke("mini_shape", args).catch(() => { m.sized = ""; });
   }
   function shapeHtml() {
-    if (m.shape === "chat" && m.open) return NOTCH ? chatHtml() : `<div class="m-panel m-col">${stripHtml()}${chatHtml()}</div>`;
+    if (m.shape === "chat" && m.open) return chatHtml();
     if (m.shape === "nod") return nodHtml();
-    if (NOTCH) return islandHtml();
-    return `<div class="m-panel m-col">${stripHtml()}</div>`;
+    return NOTCH ? islandHtml() : tuckHtml();
   }
   /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
   function paint() {
@@ -179,12 +181,12 @@
     if (m.shape !== m.drawnShape && m.shape !== "quiet") {
       m.entering = true;
       clearTimeout(m.enterT);
-      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, 200);
+      m.enterT = setTimeout(() => { m.entering = false; document.body.classList.remove("m-enter"); }, NOTCH ? 200 : 450);
     }
     m.drawnShape = m.shape;
     const drawnOpen = m.drawnOpen;
     m.drawnOpen = m.open;
-    document.body.className = `mini ${NOTCH ? "notch" : "rail"} s-${m.shape}${m.entering ? " m-enter" : ""}`;
+    document.body.className = `mini ${NOTCH ? "notch" : "rail"} s-${m.shape}${m.entering ? " m-enter" : ""}${m.dragging ? " m-drag" : ""}`;
     const box = root.querySelector("[data-box]");
     // The same session's chat, redrawn: only its ask, its messages and the dots (the box you're typing in stays).
     // Another session (a dot clicked): drawn whole.
@@ -197,8 +199,6 @@
       root.querySelector("[data-send]").disabled = m.sending;
       root.querySelector(".m-foot-row .m-quiet").textContent = m.note || "⇧↵ new line";
       put(root.querySelector("[data-tabs]"), tabsHtml());
-      const strip = root.querySelector(".m-col > .m-strip");
-      if (strip && strip.outerHTML !== stripHtml()) strip.outerHTML = stripHtml();
     } else {
       const html = shapeHtml();
       if (drawn.get(root) !== html) {
@@ -218,8 +218,7 @@
   const go = (shape) => { if (m.shape !== shape) { m.shape = shape; paint(); } };
 
   // ---------- what you do ----------
-  /** The session the rail opens on when you hover it: the one its strip names (stripHtml): one that asks, else
-   *  the first in Waiting's order, else the newest at work. */
+  /** The session the rail opens on: one that asks, else the first in Waiting's order, else the newest at work. */
   const first = () => { const { shown } = needs(Infinity); return (shown.find(asks) || shown[0])?.session_id || working()[0]?.session_id; };
   /** Open a session's chat with the cursor in its box, ready to type (this window comes forward alone, not Cue's
    *  main one; the keyboard goes back to the app you were in when it folds). */
@@ -233,11 +232,52 @@
   /** Fold the chat back to the notch or the rail; `giveBack`: hand the keyboard back too (not needed when it
    *  already went, by a click outside). What you typed is kept for when you open it again. */
   function closeChat(giveBack = true) {
-    if (m.shape !== "chat") return;
-    m.open = null;
+    if (m.shape !== "chat" || m.leaving) return;
     if (giveBack && m.keyed) invoke("mini_key", { on: false }).catch(() => {});
     m.keyed = false;
-    go("quiet");
+    const fold = () => { m.leaving = false; document.body.classList.remove("m-leave"); m.open = null; go("quiet"); };
+    if (NOTCH) return fold();
+    // The rail's panel slides back into the edge first; then the window is the tab again.
+    m.leaving = true;
+    document.body.classList.add("m-leave");
+    setTimeout(fold, 220);
+  }
+  /** The rail's panel dragged by its bar (the window itself moves, mini_drag): let go, it springs to the right
+   *  edge's top or bottom corner, whichever way it went, or, pushed off the right edge, tucks away there. */
+  function dragBar(e) {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    const x0 = e.screenX, y0 = e.screenY, h = window.innerHeight, w = window.innerWidth;
+    let moved = false, queued = null, busy = false;
+    const push = async () => {
+      if (busy || !queued) return;
+      busy = true;
+      const q = queued; queued = null;
+      await invoke("mini_drag", q).catch(() => {});
+      busy = false;
+      push();
+    };
+    const move = (ev) => {
+      const dx = ev.screenX - x0, dy = ev.screenY - y0;
+      if (!moved && Math.hypot(dx, dy) < 5) return;
+      if (!moved) { moved = true; m.dragging = true; document.body.classList.add("m-drag"); queued = { dx: 0, dy: 0, begin: true }; push(); }
+      queued = { dx, dy, begin: false };
+      push();
+    };
+    const up = (ev) => {
+      window.removeEventListener("pointermove", move);
+      if (!moved) return;
+      m.dragging = false;
+      document.body.classList.remove("m-drag");
+      const dx = ev.screenX - x0, dy = ev.screenY - y0;
+      if (dy < -h / 3) corner = "top";
+      else if (dy > h / 3) corner = "bottom";
+      try { localStorage.setItem("cue.mini.corner", corner); } catch {}
+      queued = null;
+      const settle = () => { if (busy) return setTimeout(settle, 30); m.sized = ""; if (dx > w / 3) closeChat(); else fit(); };
+      settle();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
   }
   async function answer(id, behavior) {
     if (m.done.has(id)) return;   // one click: it can't go twice
@@ -285,7 +325,8 @@
       if (link) { e.preventDefault(); invoke("open_link", { url: link.dataset.href || link.dataset.path }).catch(() => {}); return; }
       const t = e.target.closest("button, [data-open]");
       if (!t) return;
-      if (t.dataset.open !== undefined) openChat(t.dataset.open);
+      if (t.dataset.out !== undefined) { clearTimeout(m.timer); const sid = first(); if (sid) openChat(sid); }
+      else if (t.dataset.open !== undefined) openChat(t.dataset.open);
       else if (t.dataset.cue !== undefined) invoke("mini_open_in_cue", { sessionId: t.dataset.cue || null }).catch(() => {});
       else if (t.dataset.close !== undefined) closeChat();
       else if (t.dataset.allow) answer(t.dataset.allow, "allow");
@@ -310,12 +351,14 @@
     document.body.addEventListener("mouseenter", () => pointerIn());
     document.body.addEventListener("mouseleave", () => pointerOut());
     root.addEventListener("mousemove", () => pointerIn());
+    root.addEventListener("pointerdown", (e) => { if (e.target.closest("[data-bar]")) dragBar(e); });
   }
   /** The pointer came over the mini window (the rail's dot, the notch's island): after a short pause the chat
    *  opens, on the session a new card nodded for, else the first in Waiting's order, the cursor in its box. */
   function pointerIn() {
     if (m.over) return;
     m.over = true;
+    root.querySelector(".m-tuck")?.classList.add("over");
     clearTimeout(m.timer);
     if (m.shape === "quiet" || m.shape === "nod") m.timer = setTimeout(() => { const sid = m.nod ? state.items.find((i) => i.id === m.nod)?.session_id || first() : first(); if (sid) openChat(sid); }, HOVER_MS);
   }
@@ -324,8 +367,9 @@
   /** It left: an open chat with nothing typed in it folds, the keyboard back to the app you were in. With
    *  something typed it stays (Send, Esc or a click outside). */
   function pointerOut() {
-    if (!m.over) return;
+    if (!m.over || m.dragging) return;
     m.over = false;
+    root.querySelector(".m-tuck")?.classList.remove("over");
     clearTimeout(m.timer);
     if (m.shape === "chat" && !typing()) m.timer = setTimeout(() => { if (!typing()) closeChat(true); }, LEAVE_MS);
   }

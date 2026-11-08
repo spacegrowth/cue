@@ -1,7 +1,8 @@
 //! The mini window: Cue at the edge of your screen while you work in another app, so a session that needs you
 //! can be read and answered without bringing the whole window forward. Settings → Mini window picks its shape:
-//! Off, the right edge (a rail: a hairline, dots for what waits on you, a drawer with the chat) or the notch (a
-//! dark island that drops the same list and chat). The page is `ui/mini.html`; it gets the same `state` the
+//! Off, the right edge (the rail: a small tab tucked into the screen's right edge at its top or bottom corner,
+//! that slides out into a panel with the chat, as picture in picture does) or the notch (a dark island that
+//! drops the same chat). The page is `ui/mini.html`; it gets the same `state` the
 //! window gets and calls the same commands (reply, respond), so nothing here knows about sessions.
 //!
 //! The window never takes the app forward: a click in it leaves the app you're in active (macos.rs), and it
@@ -36,6 +37,8 @@ static ON: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::ne
 /// Where the mini window is now (as mini_shape placed it; width 0: hidden), for the pointer watch: kept here so
 /// it never asks the window (each ask is a round trip through the main thread).
 static FRAME: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+/// The window's frame when a drag of its bar began (mini_drag; width 0: no drag).
+static DRAG_FROM: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
 /// The pointer-watching thread is running (started once, with the first mini window).
 static FOLLOWING: AtomicBool = AtomicBool::new(false);
 
@@ -196,39 +199,51 @@ fn points(m: &tauri::Monitor) -> (f64, f64, f64, f64) {
     (p.x as f64 / s, p.y as f64 / s, z.width as f64 / s, z.height as f64 / s)
 }
 
-/// The display the mini window goes on: the notch's island on the main display (the built-in one, with the
-/// notch); the rail on the display your pointer settled on last (`follow`), until then the one Cue's own window
-/// is on, else the main display.
-fn screen(app: &AppHandle, w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64, f64, f64, f64)> {
-    let main = w.primary_monitor().ok().flatten().map(|m| points(&m));
-    if mode == Mode::Notch {
-        return main;
-    }
-    let cue = app.get_webview_window("main").and_then(|m| m.current_monitor().ok().flatten()).map(|m| points(&m));
-    on().or(cue).or(main)
+/// A display's room for windows (without the menu bar and the Dock): left, top, width, height, in points.
+fn room(m: &tauri::Monitor) -> (f64, f64, f64, f64) {
+    let s = m.scale_factor();
+    let a = m.work_area();
+    (a.position.x as f64 / s, a.position.y as f64 / s, a.size.width as f64 / s, a.size.height as f64 / s)
 }
 
-/// Room kept free above and below the rail's panels: the menu bar, then a margin.
-const RAIL_TOP: f64 = 37.0 + 24.0;
-const RAIL_BOTTOM: f64 = 24.0;
+/// The room the mini window goes in: the notch's island on the main display, at its very top (the built-in
+/// one, with the notch); the rail in the room (no menu bar, no Dock) of the display your pointer settled on last
+/// (`follow`), until then the one Cue's own window is on, else the main display.
+fn screen(app: &AppHandle, w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64, f64, f64, f64)> {
+    let main = w.primary_monitor().ok().flatten();
+    if mode == Mode::Notch {
+        return main.map(|m| points(&m));
+    }
+    let settled = on().and_then(|d| w.available_monitors().ok()?.into_iter().find(|m| points(m) == d));
+    let cue = app.get_webview_window("main").and_then(|m| m.current_monitor().ok().flatten());
+    settled.or(cue).or(main).map(|m| room(&m))
+}
 
-/// Where a mini window of this size goes. The rail: against the right edge, its top always on the same line
-/// (a third of the way down), whatever it shows, so it never moves: the dots, the list and the chat all grow
-/// down from there (up only if the chat wouldn't fit below). The notch's island: centred at the top.
-fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64) -> (f64, f64) {
-    match mode {
-        Mode::Notch => (x + (sw - w) / 2.0, y),
-        _ => {
-            let top = (sh / 3.0).min(sh - RAIL_BOTTOM - h).max(RAIL_TOP);
-            (x + sw - w, y + top)
-        }
+/// The rail's distance from the room's top or bottom edge, at its corner.
+const RAIL_MARGIN: f64 = 12.0;
+
+/// Which of the right edge's corners the rail sits at.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Corner {
+    Top,
+    Bottom,
+}
+
+/// Where a mini window of this size goes. The rail: flat against the right edge at its corner, tucked or out,
+/// so the tab and the panel share that corner and never move (the panel grows down from the top corner, or up
+/// from the bottom one). The notch's island: centred at the top.
+fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64, corner: Corner) -> (f64, f64) {
+    match (mode, corner) {
+        (Mode::Notch, _) => (x + (sw - w) / 2.0, y),
+        (_, Corner::Top) => (x + sw - w, y + RAIL_MARGIN),
+        (_, Corner::Bottom) => (x + sw - w, (y + sh - RAIL_MARGIN - h).max(y)),
     }
 }
 
 /// The page's size for what it shows now (a hairline, the dots, the list, the drawer), in points. `show`
 /// false hides it (nothing to show).
 #[tauri::command]
-pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Result<(), String> {
+pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool, corner: Option<String>) -> Result<(), String> {
     let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
     if !show {
         store(&FRAME, (0.0, 0.0, 0.0, 0.0));
@@ -237,7 +252,9 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
     let mode = if OPEN.load(Ordering::SeqCst) == Mode::Notch as u8 { Mode::Notch } else { Mode::Rail };
     let scr = screen(&app, &win, mode).ok_or("no screen")?;
     let (w, h) = (w.clamp(1.0, scr.2), h.clamp(1.0, scr.3));
-    let (x, y) = place(mode, scr, w, h);
+    let corner = if corner.as_deref() == Some("top") { Corner::Top } else { Corner::Bottom };
+    let (x, y) = place(mode, scr, w, h, corner);
+    store(&DRAG_FROM, (0.0, 0.0, 0.0, 0.0));
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
     // Moved and sized at once (its page animates what it shows).
@@ -260,6 +277,24 @@ pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool) -> Re
     macos::show_quietly(&win);
     #[cfg(not(target_os = "macos"))]
     win.show().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The rail's panel dragged by its bar: moved by (dx, dy) points from where it was when the drag began
+/// (`begin`). Let go, its page snaps it to a corner or tucks it away (mini_shape).
+#[tauri::command]
+pub(crate) async fn mini_drag(app: AppHandle, dx: f64, dy: f64, begin: bool) -> Result<(), String> {
+    let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
+    if begin {
+        store(&DRAG_FROM, load(&FRAME).ok_or("not shown")?);
+    }
+    let (x, y, w, h) = load(&DRAG_FROM).ok_or("no drag")?;
+    let to = (x + dx, y + dy, w, h);
+    store(&FRAME, to);
+    #[cfg(target_os = "macos")]
+    macos::frame(&win, to, primary_height(&win));
+    #[cfg(not(target_os = "macos"))]
+    win.set_position(tauri::LogicalPosition::new(to.0, to.1)).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -311,25 +346,20 @@ mod tests {
     }
 
     #[test]
-    fn the_rail_keeps_one_top_whatever_it_shows() {
-        let top = |w, h| place(Mode::Rail, SCREEN, w, h).1;
-        assert_eq!(top(4.0, 200.0), 982.0 / 3.0);
-        assert_eq!(top(28.0, 130.0), 982.0 / 3.0, "dots");
-        assert_eq!(top(320.0, 300.0), 982.0 / 3.0, "the list");
-        assert_eq!(top(448.0, 442.0), 982.0 / 3.0, "the chat, at its cap");
-        assert_eq!(place(Mode::Rail, SCREEN, 28.0, 130.0).0, 1512.0 - 28.0, "against the right edge");
+    fn the_rail_sits_flat_against_the_right_edge_at_its_corner_tucked_or_out() {
+        let tab = place(Mode::Rail, SCREEN, 36.0, 76.0, Corner::Bottom);
+        let panel = place(Mode::Rail, SCREEN, 420.0, 440.0, Corner::Bottom);
+        assert_eq!(tab, (1512.0 - 36.0, 982.0 - RAIL_MARGIN - 76.0));
+        assert_eq!(panel, (1512.0 - 420.0, 982.0 - RAIL_MARGIN - 440.0), "the panel grows up from the same corner");
+        assert_eq!(place(Mode::Rail, SCREEN, 36.0, 76.0, Corner::Top), (1512.0 - 36.0, RAIL_MARGIN));
+        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 440.0, Corner::Top).1, RAIL_MARGIN, "and down from the top one");
     }
 
     #[test]
-    fn the_rail_goes_up_only_when_it_wouldnt_fit_below_and_never_under_the_menu_bar() {
-        assert_eq!(place(Mode::Rail, SCREEN, 448.0, 800.0).1, 982.0 - RAIL_BOTTOM - 800.0);
-        assert_eq!(place(Mode::Rail, SCREEN, 448.0, 982.0).1, RAIL_TOP);
-    }
-
-    #[test]
-    fn on_a_display_left_of_or_above_another_it_still_takes_that_displays_own_right_edge() {
+    fn the_rail_never_leaves_its_room_and_takes_another_displays_own_edge() {
+        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 982.0, Corner::Bottom).1, 0.0);
         let external = (1800.0, -567.0, 3008.0, 1692.0);
-        assert_eq!(place(Mode::Rail, external, 28.0, 130.0), (1800.0 + 3008.0 - 28.0, -567.0 + 1692.0 / 3.0));
+        assert_eq!(place(Mode::Rail, external, 36.0, 76.0, Corner::Top), (1800.0 + 3008.0 - 36.0, -567.0 + RAIL_MARGIN));
     }
 
     /// Placing or showing the mini window never takes the keyboard (Cue's own window lost it at once, every
@@ -377,6 +407,6 @@ mod tests {
 
     #[test]
     fn the_notch_island_is_centred_at_the_top() {
-        assert_eq!(place(Mode::Notch, SCREEN, 560.0, 324.0), (476.0, 0.0));
+        assert_eq!(place(Mode::Notch, SCREEN, 560.0, 324.0, Corner::Top), (476.0, 0.0));
     }
 }
