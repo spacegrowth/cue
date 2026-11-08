@@ -271,6 +271,7 @@ function requestBody(it) {
     const yours = typed.length ? `<div class="typed-answer">Your answer: “${esc(typed.join(", "))}”</div>` : "";
     return `<div class="qtabs">${tabs}<span class="qcount">${cur + 1} of ${qs.length}</span></div><div class="qtext">${esc(q.question)}${q.multiSelect ? `<span class="dim"> · pick any</span>` : ""}</div>${opts(q, cur)}${yours}<div class="row-btns">${nav}${submitAnswers(it)}</div>`;
   }
+  if (it.kind === "input") return formBody(it);
   if (t === "bash") return `<div class="code-wrap"><pre class="slab"><span class="ps">$ </span>${esc(i.command)}</pre>${COPY_BTN}</div>`;
   if (t === "edit" || t === "multiedit") {
     const edits = t === "multiedit" ? i.edits || [] : [{ old_string: i.old_string, new_string: i.new_string }];
@@ -301,6 +302,7 @@ function decisionButtons(it) {
   if (inTerminal(it) && inTmux(it.session_id)) return `<div class="row-btns"><span class="dim">It's waiting in its terminal: answer it there.</span><span class="grow"></span><button class="btn primary" data-act="term-open" data-sid="${esc(it.session_id)}">Answer in terminal</button></div>`;
   if (inTerminal(it)) return `<div class="row-btns"><span class="dim">Cue can't answer this one: answer it in its terminal.</span><span class="grow"></span><button class="btn primary" data-act="go" data-id="${esc(it.id)}">${openInLabel(sessionOf(it.session_id))}</button></div>`;
   if (redirectFor === it.id) return `<div class="row-btns">${field(it, it.kind === "question" ? (questions(it).length > 1 ? `Your own answer to question ${stepOf(it) + 1}…` : "Your own answer…") : "Tell it what to do instead…", it.kind === "question" ? (questions(it).length > 1 && questions(it).filter((q) => !isAnswered(it, q)).length > 1 ? "Next" : "Send") : "Redirect")}</div>`;
+  if (it.kind === "input") return formButtons(it);
   if (it.kind === "question") return `<div class="row-btns"><button class="btn deny" data-act="deny" data-id="${esc(it.id)}">Decline</button><button class="btn" data-act="redirect" data-id="${esc(it.id)}">Type answer…</button></div>`;
   const sugg = it.suggestions || [];
   const menu = menuFor === it.id && sugg.length ? `<div class="menu">${sugg.map((s, n) => { const x = describeSuggestion(s); return `<button data-always="${n}" data-id="${esc(it.id)}"><div>${esc(x.title)}</div><div class="sub">${esc(x.where)}</div></button>`; }).join("")}</div>` : "";
@@ -446,7 +448,7 @@ function needRow(it, ghost, open = false) {
   if (ghost) {
     const h = state.history.find((x) => x.id === it.id);
     return `<div class="nrow ghost ${ghost === "fresh" ? "fresh" : ""} ${ghosts.get(it.id)?.soft ? "soft" : ""}" data-detail="${esc(it.id)}"><div class="nrow-top">${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}</div>
-      <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : "picked up in the terminal")}</div></div>`;
+      <div class="nrow-done ${h ? outcomeClass(h) : ""}">✓ ${esc(h ? outcomeText(h) : cleared.has(it.id) ? "cleared" : sessionOf(it.session_id)?.hosted ? "picked up" : "picked up in the terminal")}</div></div>`;
   }
   const q = it.kind === "question" ? questions(it) : [];
   let quick = "";

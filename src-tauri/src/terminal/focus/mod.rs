@@ -43,6 +43,9 @@ pub fn focus(o: &Origin) -> Result<String, String> {
     if !o.machine.is_empty() {
         return Err(format!("It runs on {}: open its terminal in Cue (Runs in Cue, over the reply box)", o.machine));
     }
+    if o.hosted {
+        return Err("it's hosted in Cue, with no terminal: Move to terminal (over its reply box) gives it one".into());
+    }
     if !o.tmux_pane.is_empty() {
         return focus_tmux(&o.tmux_pane);
     }

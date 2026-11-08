@@ -240,6 +240,10 @@ const SOUNDS = [["pluck", "Pluck"], ["chime", "Chime"], ["rise", "Rise"], ["glas
 const seg = (key, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${JSON.stringify(v) === JSON.stringify(cur) ? "on" : ""}" data-set="${key}" data-val='${esc(JSON.stringify(v))}'>${esc(l)}</button>`).join("")}</div>`;
 const toggle = (key, on) => `<button class="toggle ${on ? "on" : ""}" data-set="${key}" data-val="${!on}" role="switch" aria-checked="${on}" aria-label="${esc(key)}"><span></span></button>`;
 const setRow = (title, sub, control) => `<div class="set-row"><div class="set-text"><div class="set-title">${title}</div>${sub ? `<div class="set-sub">${sub}</div>` : ""}</div>${control}</div>`;
+/** Settings → Agents' New sessions: where they run, and the hosted trial. */
+const newSessionRows = (st) => `
+    ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
+    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is a card, and a message goes the moment you send it. Move to Cue brings a terminal session in this way. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}`;
 /** Settings → General's Color: All projects' swatches (core.js projBtn's), so the window's color can be picked here too. */
 const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a
@@ -502,7 +506,7 @@ function settingsSheet() {
     ${agentRows()}
     ${extRows()}
     <div class="set-group">New sessions</div>
-    ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
+    ${newSessionRows(st)}
     <div class="set-group">Pi</div>
     ${setRow("Ask me before", "Pi doesn't ask on its own; Cue's extension adds the prompt.", seg("pi.gate", st.pi?.gate ?? "dangerous", [["dangerous", "Risky commands"], ["all", "Every command & edit"], ["off", "Never"]]))}
     <div class="set-group">Agents driving agents</div>

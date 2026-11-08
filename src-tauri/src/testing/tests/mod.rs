@@ -9,6 +9,7 @@ mod db_faults;
 mod db_history;
 mod db_open;
 mod handoffs;
+mod hosted;
 mod insights;
 mod launching;
 mod machine_stream;

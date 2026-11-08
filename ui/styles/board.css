@@ -75,6 +75,11 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .typed-answer { font-size: 12.5px; font-weight: 650; color: var(--accent); }
 .qtext { font-size: 13px; font-weight: 650; }
 .opts { display: flex; flex-direction: column; gap: 4px; }
+/* An MCP server's form (a hosted session's input card): one labelled field a row. */
+.form-fields { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 4px; }
+.form-row { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.form-row label { font-weight: 600; }
+.form-row .dim { font-size: 11.5px; }
 .opt { min-height: 30px; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel-2); text-align: left; font-size: 12px; font-weight: 650; }
 .opt:hover { border-color: var(--accent); }
 .opt.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }

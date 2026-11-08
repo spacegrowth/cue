@@ -2,7 +2,7 @@
 //! agents it starts (`FakeLauncher`), its follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
 //! agent index are process-wide): it holds the database's and the index's test locks for its life.
 
-use super::{Agent, Deferred, FakeLauncher, FakeNotes, FakeTerminal, FakeWindow, Snap};
+use super::{Agent, Deferred, FakeHosted, FakeLauncher, FakeNotes, FakeTerminal, FakeWindow, Snap};
 use crate::clock::fake::Fake;
 use crate::hub::ports::{Later, Ports};
 use crate::hub::Hub;
@@ -65,6 +65,7 @@ pub struct World {
     client: Client,
     pub terminal: Arc<FakeTerminal>,
     pub launcher: Arc<FakeLauncher>,
+    pub hosted: Arc<FakeHosted>,
     pub notes: Arc<FakeNotes>,
     pub window: Arc<FakeWindow>,
     later: Arc<Deferred>,
@@ -104,8 +105,8 @@ impl World {
         let fakes = Fakes::default();
         let later = Arc::default();
         let hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
-        let Fakes { terminal, launcher, notes, window } = fakes;
-        let w = Self { client: Client { hub, clock }, terminal, launcher, notes, window, later, home, thinking_ms: Default::default(), _index: index, _db: db };
+        let Fakes { terminal, launcher, hosted, notes, window } = fakes;
+        let w = Self { client: Client { hub, clock }, terminal, launcher, hosted, notes, window, later, home, thinking_ms: Default::default(), _index: index, _db: db };
         w.agents_take_what_is_typed();
         w
     }
@@ -118,10 +119,18 @@ impl World {
         self.settle();
         self.client.hub.save_live();
         let later = Arc::new(Deferred::default());
-        let fakes = Fakes { terminal: self.terminal.clone(), launcher: self.launcher.clone(), notes: self.notes.clone(), window: self.window.clone() };
+        // Its hosted sessions' Claudes ended with it.
+        crate::hosted::Hosted::close_all(&*self.hosted);
+        let fakes = Fakes { terminal: self.terminal.clone(), launcher: self.launcher.clone(), hosted: self.hosted.clone(), notes: self.notes.clone(), window: self.window.clone() };
         self.client.hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
         self.later = later;
         self.agents_take_what_is_typed();
+    }
+
+    /// What hosted session `sid` reports, handed to the hub as its session would (hub/hosted.rs).
+    pub fn hosted_says(&self, sid: &str, e: crate::hosted::HostedEvent) {
+        let origin = self.hub().hosted_origin(sid).unwrap_or_else(|| crate::model::Origin { session_id: sid.into(), harness: "claude".into(), hosted: true, ..Default::default() });
+        self.hub().on_hosted(&origin, 0.0, e);
     }
 
     /// Agents take `ms` to answer from here on: each reply, ask or error an Agent reports comes that long after
@@ -260,6 +269,7 @@ impl World {
 struct Fakes {
     terminal: Arc<FakeTerminal>,
     launcher: Arc<FakeLauncher>,
+    hosted: Arc<FakeHosted>,
     notes: Arc<FakeNotes>,
     window: Arc<FakeWindow>,
 }
@@ -267,7 +277,7 @@ struct Fakes {
 impl Fakes {
     /// The hub's ports: these, and its follow-up work held for the World to run.
     fn ports(&self, later: &Arc<Deferred>) -> Ports {
-        Ports { keys: self.terminal.clone(), launcher: self.launcher.clone(), notes: self.notes.clone(), window: self.window.clone(), later: Later::Deferred(later.clone()) }
+        Ports { keys: self.terminal.clone(), launcher: self.launcher.clone(), hosted: self.hosted.clone(), notes: self.notes.clone(), window: self.window.clone(), later: Later::Deferred(later.clone()) }
     }
 }
 

@@ -112,6 +112,8 @@ pub(crate) fn on_run_event(handle: &tauri::AppHandle, event: RunEvent) {
             // What changed since the last draw is saved before Cue goes.
             if let Some(hub) = handle.try_state::<Arc<hub::Hub>>() {
                 hub.save_live_and_wait();
+                // The sessions Cue hosts end with it (their conversations stay: each comes back paused).
+                hub.hosted().close_all();
             }
         }
         RunEvent::Reopen { .. } => {

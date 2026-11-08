@@ -15,6 +15,7 @@ const ACTS = {
   "open-settings": () => { sheet = sheet === "settings" ? null : "settings"; extSections = null; renderMain(); },
   // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
   "move-cue": (el) => el.dataset.why ? toast(`Move to Cue: ${el.dataset.why}`) : moveToCue(el.dataset.sid),
+  "move-term": (el) => el.dataset.why ? toast(`Move to terminal: ${el.dataset.why}`) : invoke("move_to_terminal", { sessionId: el.dataset.sid }).then(toast).catch((e) => toast(`Couldn't move it: ${e}`)),
   "move-dismiss": () => { moving = null; renderMain(); },
   "delete-yes": () => deleteAnswer(true),
   "delete-no": () => deleteAnswer(false),
@@ -33,6 +34,7 @@ function ranAct(el, run) {
 
 /** data-act buttons on a card (data-id): what they do to its item. */
 const ITEM_ACTS = {
+  "form-send": (it) => formSend(it),
   "submit-answers": (it) => { const a = answersFor(it); return a && respond(it, { behavior: "allow", answers: a }); },
   back: (it) => invoke("send_to_back", { id: it.id }).catch((e) => toast(`Couldn't move it to the bottom: ${e}`)),
   allow: (it) => allow(it),

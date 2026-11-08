@@ -111,10 +111,23 @@ function modelRow() {
   const reload = `<button class="nf-reload" data-lv="models-reload" aria-label="Reload the model list" ${modelsReading ? "disabled" : ""}>${RELOAD_ICON}</button>`;
   return `<div class="nf-row"><span class="nf-k">Model</span><div class="nf-where"><select class="nf-in nf-sel" id="new-model" data-model aria-label="Model">${opts.map((m) => `<option value="${esc(m.value)}" ${m.value === pick ? "selected" : ""}>${esc(m.label || m.value)}</option>`).join("")}</select>${typed}${big}${reload}<span class="nf-hint">${esc(hint)}</span></div></div>`;
 }
+/** + New's Runs in: hosted by Cue (Settings → Cue-hosted sessions on), Cue's own terminal (tmux installed), or a
+ *  terminal tab. Shown when there's a choice. */
+function whereRow() {
+  const tmux = !!state.settings?.sessions?.tmux_installed;
+  if (newMachine || (!tmux && !hostedOffered())) return "";
+  const opts = [...(hostedOffered() ? [["hosted", "Hosted"]] : []), ...(tmux ? [[true, "Cue"]] : []), [false, termName()]];
+  const cur = newHosted() ? "hosted" : newTmux() && tmux;
+  const hint = cur === "hosted" ? "no terminal: Cue talks to Claude Code directly, and every ask is a card" : cur ? "its terminal opens in Cue; it keeps running if Cue quits" : tmux ? "a tab there, kept running by tmux underneath" : "a tab there";
+  return `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v === false ? TERM_ICON : CUE_MARK_SM}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${hint}</span></div></div>`;
+}
 const OTHER = "other…";   // the drop-down's "Other…" entry's value: no model id has an ellipsis
 const RELOAD_ICON = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>`;
-let newWhere = { true: true, false: false }[remembered("newWhere")] ?? null;   // tmux or not (null: Settings' default)
-const newTmux = () => newWhere ?? !!state.settings?.sessions?.tmux;
+let newWhere = { true: true, false: false, hosted: "hosted" }[remembered("newWhere")] ?? null;   // tmux or not, or hosted (null: Settings' default)
+/** + New can start a Claude Code session hosted by Cue, with no terminal: Settings → Cue-hosted sessions on, on this Mac. */
+const hostedOffered = () => !!state.settings?.hosted?.on && newAgent === "claude" && !newMachine;
+const newHosted = () => hostedOffered() && newWhere === "hosted";
+const newTmux = () => (newWhere === "hosted" || newWhere == null ? !!state.settings?.sessions?.tmux : newWhere);
 const termName = () => state.settings?.sessions?.terminal || "Terminal";
 /** + New session: which machine (this Mac, or one from + New → Machine). Remembered. */
 let newMachine = (() => { try { return localStorage.getItem("cue.newMachine") || ""; } catch { return ""; } })();
@@ -195,7 +208,7 @@ function newForm() {
     ${newAgent === "claude" ? modelRow() : ""}
     ${newAgent === "claude" ? `<div class="nf-row"><span class="nf-k">Name</span><input class="nf-in" data-text="new-name" placeholder="optional, e.g. fix-login" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/></div>` : ""}
     <div class="nf-row top"><span class="nf-k">Message</span><div class="nf-msg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in" data-text="new-msg" rows="3" placeholder="optional: what it should start on (paste or drop images too)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button><button class="icon-btn nf-attach nf-mic ${dictating?.key === "new-msg" ? "on" : ""}" data-mic="new-msg" aria-label="${dictating?.key === "new-msg" ? "Stop dictating" : "Dictate"}">${MIC_ICON}</button></div>${draftChips("new-msg")}</div></div>
-    ${state.settings?.sessions?.tmux_installed && !newMachine ? `<div class="nf-row"><span class="nf-k">Runs in</span><div class="nf-where"><div class="seg">${[[true, "Cue"], [false, termName()]].map(([v, l]) => `<button class="${newTmux() === v ? "on" : ""} with-icon" data-lv="where" data-tmux="${v}">${v ? CUE_MARK_SM : TERM_ICON}${esc(l)}</button>`).join("")}</div><span class="nf-hint">${newTmux() ? "its terminal opens in Cue; it keeps running if Cue quits" : "a tab there, kept running by tmux underneath"}</span></div></div>` : ""}
+    ${whereRow()}
     <div class="nf-row"><span class="nf-k">Permissions</span><div class="nf-where"><div class="seg">${PERMS[newAgent].map(([v, l]) => `<button class="${newPerm === v ? "on" : ""} ${v === "skip" ? "danger" : ""}" data-lv="perm" data-perm="${v}">${esc(l)}</button>`).join("")}</div></div></div>${newPerm === "skip" ? `<div class="nf-row nf-note"><span></span><span class="nf-hint warn">Runs anything without asking you</span></div>` : ""}
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
     <div class="nf-acts"><button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>${(ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : ""}</div>`;
@@ -282,7 +295,7 @@ async function lvStart() {
     const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
     const mk = `f:${cwd}`;
     const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images });
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: newAgent === "claude" ? draft("new-name").text : "", tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted() });
     mcpPick.delete(mk);
     rememberFolder(newMachine, cwd);
     afterNewSession(r);
@@ -294,7 +307,7 @@ const LV_ACTS = {
   all: () => { liveOpen = newOpen = false; view = "sessions"; renderMain(); },
   new: lvNew,
   agent: (d) => { newAgent = d.agent; remember("newAgent", newAgent); newPerm = savedPerm(newAgent); renderMain(); },
-  where: (d) => { newWhere = d.tmux === "true"; remember("newWhere", String(newWhere)); renderMain(); },
+  where: (d) => { newWhere = d.tmux === "hosted" ? "hosted" : d.tmux === "true"; remember("newWhere", String(newWhere)); renderMain(); },
   "machine-add": lvMachineAdd,
   machine: (d) => { nfAdding = false; setNewMachine(d.machine || ""); draft("new-cwd").text = newMachine ? machineFolders(newMachine)[0] || "" : machineFolders("")[0] || homeless(recentFolders()[0] || ""); renderMain(); },
   perm: (d) => { newPerm = d.perm; remember(`newPerm.${newAgent}`, newPerm); renderMain(); },

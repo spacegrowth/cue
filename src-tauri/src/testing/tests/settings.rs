@@ -42,6 +42,7 @@ fn round_trips() -> Vec<(&'static str, Value, Value)> {
         same("insights.snooze", json!(1_800_000_000_000u64)),
         same("insights.skills", json!({"|claude": "handoff"})),
         same("tips.on", json!(false)),
+        same("hosted.on", json!(true)),
         same("updates.beta", json!(true)),
         same("actions.prompt", json!("Set my actions up.")),
         same("voice.pick", json!("af_heart")),

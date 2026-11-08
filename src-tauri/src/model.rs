@@ -94,6 +94,9 @@ pub struct Origin {
     pub kitty_listen_on: String,
     /// The machine it runs on (+ New → Machine), reached over SSH; empty for this Mac.
     pub machine: String,
+    /// A session Cue hosts (docs/dev/cue-hosted-sessions.md): Claude Code started by Cue with no terminal,
+    /// its messages, answers and Stop handed to it directly (hub/hosted.rs). No tab to go to, nothing to type into.
+    pub hosted: bool,
 }
 
 /// Every message a client sends on the socket. One JSON object per line.

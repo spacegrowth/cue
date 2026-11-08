@@ -212,8 +212,9 @@ fn compat_a_message_sent_mid_turn_is_taken_in_that_turn_and_an_interrupt_stops_i
 #[test]
 #[ignore = "real Claude: CUE_CLAUDE_COMPAT=1"]
 fn compat_a_resume_keeps_the_conversation_in_the_same_transcript() {
-    let Some(mut r) = Real::start("resume", quiet(), Start::fresh(), &[]) else { return };
-    let id = r.s().session_id().to_string();
+    let start = Start::fresh();
+    let id = start.session_id().to_string();
+    let Some(mut r) = Real::start("resume", quiet(), start, &[]) else { return };
     r.turn("Remember the word MANGO. Reply with just OK.", allow);
     r.close();
     let file = r.transcripts().join(format!("{id}.jsonl"));

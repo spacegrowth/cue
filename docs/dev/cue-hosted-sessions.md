@@ -1,7 +1,8 @@
 # Cue-hosted sessions — design
 
-Status (2026-11-07): **M1 built** on branch `hosted-m1` (the session client and its tests, §4.1, §5); M2, the hub
-wiring, is next.
+Status (2026-11-07): **M1 and M2 built** on branch `hosted-m1`: the session client (§4.1) and its wiring into the
+hub and the window (§4.2–4.4), behind a setting that is off by default (§3). Next: a few days of daily use with it
+on (§8).
 
 ## 1. What and why
 
@@ -69,6 +70,20 @@ separate agent host yet; the owner's call, 2026-11-07). A hosted session survive
 **Not in v1:** the agent host process (§8 M4), remote machines, Codex/Pi, starting relay executors as hosted
 sessions, removing the built-in terminal panel. Terminal sessions keep working exactly as today throughout.
 
+**Behind a setting, off by default.** Hosted sessions ship as a trial you turn on: Settings → *Cue-hosted
+sessions*, stored as `hosted.on` in config.json (missing means off). Turned off, Cue behaves exactly as it does
+without this work: no `Cue-hosted session` under `+ New`, and Move to Cue resumes into Cue's tmux as today. Turned
+on, `+ New` offers it and Move to Cue resumes as hosted. The switch only decides how *new* sessions start: turning
+it off changes nothing about hosted sessions you already have: they keep working, paused ones resume hosted, and
+Move to terminal is always there to turn one into a terminal session (the transcript is the same file either way,
+so nothing is lost). Both paths
+stay fully working for the whole trial; the setting becomes the default only after a few days of daily use hold
+up, and only after that does M5 retire anything.
+
+**The agent host comes back.** v1 leaves it out on purpose, not for good: M4 is the planned return, taken up as
+soon as Cue restarts (updates, crashes) interrupting running turns are felt in daily use. The `Hosted` port
+(§4.2) is the seam that move goes through, so the hub doesn't change when it happens.
+
 ## 4. Architecture
 
 ### 4.1 `src-tauri/src/hosted/` — the Claude session client (new, standalone)
@@ -103,20 +118,24 @@ ended, so a session is over when Claude is.
 ### 4.2 The seam: a `Hosted` port beside `Keys` and `Launcher`
 
 Phase 4 put terminals behind ports (`terminal::keys::Keys`, `terminal::launch::Launcher`, in `hub/ports.rs`).
-Hosted sessions get a third:
+Hosted sessions get a third, `hosted::Hosted` (built in M2, `hosted/running.rs`):
 
 ```rust
 pub trait Hosted: Send + Sync {
-    fn start(&self, spec: HostedSpec) -> Result<Origin, String>;   // new conversation
-    fn resume(&self, session_id: &str) -> Result<(), String>;      // after a Cue restart or an exit
+    fn start(&self, spec: &Spec, report: Report) -> Result<i32, String>; // new or resumed (spec.start); its pid
     fn send(&self, session_id: &str, text: &str) -> Result<(), String>;
-    fn answer(&self, session_id: &str, request_id: &str, a: Answer) -> Result<(), String>;
+    fn answer(&self, session_id: &str, request_id: &str, answer: &Answer) -> Result<(), String>;
     fn interrupt(&self, session_id: &str) -> Result<(), String>;
-    fn close(&self, session_id: &str);
+    fn close(&self, session_id: &str);        // returns once it's gone; its exit isn't reported
+    fn running(&self, session_id: &str) -> bool;
+    fn close_all(&self);                      // Cue quitting
 }
 ```
 
-`testing::World` gets a fake (records sends and answers, emits scripted `HostedEvent`s), like the other ports.
+`Running` is the real one (sessions by id; starting one already running closes it first, so two processes never
+share a conversation). `testing::FakeHosted` stands in for it in the World: it records starts, sends, answers,
+stops and closes, and a test hands the hub what a session reports with `World::hosted_says`. The report function
+holds the hub weakly, so a session never keeps the hub alive.
 
 ### 4.3 Into the hub: the same doors hooks use
 
@@ -132,9 +151,17 @@ equivalent hook message uses today, so turn handling, cards, Insights, voice and
 | `TurnEnded` | `stopped` event with the final text (`unprompted` turns treated like any finished turn) |
 | `Exited` | `end` event; during a turn: a card saying it stopped and offering Resume |
 
-`Origin` gets one explicit field, `hosted: bool`. It decides only three things: replies go through
-`Hosted::send` instead of `Keys`, Escape goes through `Hosted::interrupt`, and Go to tab / the terminal panel
-aren't offered. None of today's terminal code changes for terminal sessions.
+As built (`hub/hosted.rs`): `Taken` while idle is an `active` event (the turn starts; the message was noted in
+the chat when Cue sent it, so it isn't noted twice), mid-turn it settles the queued message. `Said`, tool calls
+and tasks mark an idle session working (an unprompted turn). A failed turn goes through `failed`, as an API error
+does. Each ask's answer waits on a thread of its own, so the session's next lines keep coming meanwhile; a card
+that goes without an answer is a denial saying why (a form: dismissed), so Claude never waits on Cue.
+
+`Origin` gets one explicit field, `hosted: bool`. It decides: messages, replies and Stop go through the port
+instead of `Keys` (sent at once even mid-turn, since Claude reads them at its next step; nothing is held in Cue);
+Go to tab, the terminal strip and Move to Cue aren't offered (the reply box's corner says Paused when it is, and
+offers Move to terminal); Claude Code's own list of running sessions (which only has terminal ones) never ends
+it. None of today's terminal code changes for terminal sessions.
 
 **Cue's own hooks:** a hosted session still runs your hooks (relay's, the iTerm status hook, …), and they see
 `CUE_HOSTED=1` (compat suite). Cue's `cue-hook` would report the same events twice, so when it's set the hook
@@ -143,23 +170,28 @@ still runs. Built in M1 (`hook.rs`).
 
 ### 4.4 Lifecycle
 
-- **Start:** `+ New → Cue-hosted session` (folder, model; your normal settings and permission mode apply).
-  Cue picks the session id up front (`--session-id`).
+- **Start:** + New → Runs in → **Hosted** (offered with the setting on, for Claude Code on this Mac), with the
+  folder, MCP servers, model, permissions and flags + New already has. Cue picks the session id up front
+  (`--session-id`). Flags are passed word by word (no shell reads them), so a quoted flag is refused.
 - **Cue quits:** stdin closed, process group ended. A turn in progress is lost; the conversation isn't.
-- **Cue starts:** hosted sessions that hadn't ended show as *paused* in the Board. The first message you send
-  resumes them (`--resume`), not before: resuming re-reads the conversation (cache cost), so nothing is resumed
-  that you don't use.
-- **Claude exits unexpectedly:** `Exited` → card with Resume. Garbage or unknown lines are logged, never fatal.
+- **Paused:** a hosted session records a process only while one runs. After a Cue restart, or when Claude exits,
+  it stays in the Board, paused. The first message you send resumes it (`--resume`, on the model it last used
+  and its MCP selection), not before: resuming re-reads the conversation (cache cost), so nothing is resumed
+  that you don't use. It resumes in Claude's own default permission mode (the one + New picked isn't kept yet).
+- **Claude exits unexpectedly:** `Exited` → its asks finish as gone; mid-turn, the turn ends with a card saying
+  why (its last words); it's paused. Garbage or unknown lines are logged, never fatal.
+- **Close, Park, Resume:** as for any session; a parked or closed hosted session resumes hosted.
 - **Unprompted turns:** a background task finishing can start a turn with no message from you; it shows up as
   any finished turn does.
 - **Move to Cue** (a terminal session's button) keeps its rule: offered once the session isn't working, it
-  ends the session in its tab, then resumes it, as a hosted session from M2 on (in Cue's tmux until then). The
+  ends the session in its tab, then resumes it as a hosted session with the setting on (in Cue's tmux off). The
   terminal copy must be gone first: two processes on one conversation would both write its transcript.
   Its history needs no conversion: a terminal session and a hosted one write the same transcript file in the
   same format, so the earlier turns render from the transcript as a terminal session's chat does today, and the
   new ones arrive live (and are appended to that file too). Compat suite: a resume appends to the same file.
-- **Move to terminal** (the reverse, the escape hatch): a hosted session that isn't working is closed and
-  resumed with `claude --resume <id>` in a new iTerm tab, where it becomes an ordinary terminal session.
+- **Move to terminal** (the reverse, the escape hatch, in the reply box's corner): a hosted session that isn't
+  working or asking is closed and resumed with `claude --resume <id>` in a terminal tab, where it becomes an
+  ordinary terminal session (its name and chat stay).
 
 ### 4.5 Isolation (lessons from 2026-11-06)
 
@@ -185,8 +217,11 @@ still runs. Built in M1 (`hook.rs`).
    seeing `CUE_HOSTED`, always allow, a named agent's ask. Run on each Claude Code update and before a release
    that touches `hosted/`:
    `CUE_CLAUDE_COMPAT=1 cargo test --lib hosted::compat -- --ignored --test-threads=3`
-4. **Hub wiring (M2):** `World` cases for every row of the §4.3 table, plus the stability plan's matrix rows
-   for asks and sending, run with a hosted origin.
+4. **Hub wiring (M2, built, `testing/tests/hosted.rs`, 16 cases):** the setting off; + New hosted (and one that
+   won't start); a message idle and mid-turn; a finished turn; a permission, a form and a card left unanswered;
+   Stop; Claude exiting mid-turn, paused, resumed by the next message; a relaunch (paused, kept, resumed); Close;
+   Park and Resume; Move to Cue into hosted; Move to terminal. The window: `tests/preview.html?hosted=1` (the form
+   card, + New's Hosted) and `?hosted=paused`.
 
 ## 6. Plain-language summary of what changes for you
 
@@ -205,7 +240,7 @@ its split hub (`hub/events.rs`, `hub/asks.rs`, `hub/send.rs`).
 | | What | When | Done when |
 |---|---|---|---|
 | **M1** | `hosted/` client, fake `claude`, fixtures, compatibility suite, `cue-hook` skip; settle the teammate question | **done 2026-11-07** (branch `hosted-m1`) | fixture + lifecycle tests green; compat suite green on 2.1.319 |
-| **M2** | `Hosted` port + World fake, hub wiring (§4.3), `input` card, `+ New → Cue-hosted session`, paused/resume | next (Phase 4 has merged) | World cases green; one real day of daily use with no answer-in-terminal card on a hosted session |
+| **M2** | `Hosted` port + World fake, hub wiring (§4.3), `input` card, `+ New → Cue-hosted session`, paused/resume, all behind the `hosted.on` setting (§3) | **built 2026-11-07**; the trial is next | World cases green, with the setting off and on; a few days of daily use with it on and no answer-in-terminal card on a hosted session; then the owner decides whether it becomes the default |
 | **M3** | relay executors as hosted sessions (relay asks Cue to start them instead of opening iTerm tabs) | after M2 holds up | an executor packet runs end to end hosted |
 | **M4** | the agent host: processes move out of the app so a Cue restart or update no longer stops running work | when restarts interrupting work are felt | Cue restart mid-turn: the turn finishes, the app picks it back up |
 | **M5** | retire the built-in terminal panel and Cue's own tmux, once nothing in daily use needs them | last | — |
@@ -217,7 +252,8 @@ its split hub (`hub/events.rs`, `hub/asks.rs`, `hub/send.rs`).
 2. ~~Always allow.~~ Settled in M1: the rule goes where its suggestion's `destination` says (`localSettings`:
    the folder's `.claude/settings.local.json`) and holds. Open for M2: whether the button names that place.
 3. **Terminal-only slash commands.** `init` lists them (`terminal_slash_commands`). The `/` menu should hide
-   or grey them for hosted sessions. Which daily-use ones are affected?
+   or grey them for hosted sessions (not done in M2: the menu is the folder's, as for a terminal session).
+   Which daily-use ones are affected?
 4. **Codex and Pi** (checked 2026-11-07, from their docs and Pi 0.87.1's `--help`; Codex wasn't installed):
    both can be hosted the same way later. Codex: `codex app-server` (JSON-RPC over stdio: `turn/start`,
    `turn/steer` mid-turn, approval requests answered accept / accept for session / decline, `turn/interrupt`,
@@ -226,3 +262,6 @@ its split hub (`hub/events.rs`, `hub/asks.rs`, `hub/send.rs`).
    `extension_ui_request`. Not in v1.
 5. **Cost of resuming.** Resuming after a Cue restart re-reads the conversation. Insights already counts
    "cache written again"; hosted resumes should be counted the same way.
+6. **Left for after the trial (M2 doesn't do them):** keep the permission mode a session was started with, so a
+   resume uses it; send images as images rather than as paths in the text; pass the session's name to Claude
+   (`-n`); say which file an "always allow" writes to.

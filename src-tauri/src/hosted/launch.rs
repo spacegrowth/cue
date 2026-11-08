@@ -50,6 +50,7 @@ pub enum Program {
     /// `claude`, through your login shell.
     Claude,
     /// This program, run directly with the same arguments (the tests' stand-in for Claude).
+    #[cfg(test)]
     At(PathBuf),
 }
 
@@ -81,6 +82,7 @@ pub(super) fn command(spec: &Spec) -> Result<Command, String> {
             c.args(["-lic", "cd -- \"$CUE_CWD\" && exec claude \"$@\"", "cue-hosted"]).args(&args);
             c
         }
+        #[cfg(test)]
         Program::At(path) => {
             let mut c = Command::new(path);
             c.args(&args);

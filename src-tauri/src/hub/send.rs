@@ -234,7 +234,7 @@ impl Hub {
         let saved = crate::uploads::save(images)?;
         // The card is stale (the session went on to another turn since): typed now, the reply would land
         // mid-turn and could be lost. Kept in Cue instead, as the box does, and sent when the turn ends.
-        let busy = self.read(|st| (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid));
+        let busy = self.read(|st| (st.sessions.state(&sid).as_deref() == Some("working") || st.sessions.compacting_since(&sid) > 0) && !st.subscribers.contains_key(&sid) && !it.origin.hosted);
         if busy {
             return Ok(self.keep_reply(it, id, &sid, text, &saved));
         }
@@ -263,8 +263,8 @@ impl Hub {
     /// whether the agent was seen to take it.
     fn type_reply(&self, it: Item, id: &str, sid: &str, text: &str, saved: &[crate::uploads::Saved], t0: u64) -> Result<String, String> {
         let cmd_before = command_before(&it.origin, text);
-        // Direct delivery when the session listens for it (Pi); otherwise type into its terminal.
-        let direct = self.send_direct(sid, text, saved, false);
+        // Direct delivery when the session listens for it (Pi) or Cue hosts it; otherwise type into its terminal.
+        let direct = self.send_direct(sid, text, saved, false)?;
         let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&it.origin, &crate::uploads::with_paths(text, &self.images_there(sid, &it.origin, saved)?))? };
         // The agent reports a new turn (Claude: UserPromptSubmit, Pi: agent_start) once it submits.
         let mut submitted = self.took(sid, &it.origin, text, cmd_before, t0);
@@ -345,13 +345,23 @@ impl Hub {
         Ok(format!("stopped via {via}"))
     }
 
-    /// Stop or send-now, told to a session that listens directly (Pi) if one does: whether it was, and where
-    /// the session's terminal is otherwise.
+    /// Stop or send-now, told to a session that listens directly (Pi) or that Cue hosts: whether it was, and
+    /// where the session's terminal is otherwise. A hosted one is never pressed Esc for (it has no terminal);
+    /// paused, it has nothing to stop.
     fn interrupt_direct(&self, session_id: &str) -> (Option<Origin>, bool) {
-        self.read(|st| {
+        let (origin, direct) = self.read(|st| {
             let direct = st.subscribers.get(session_id).map(|(_, tx)| tx.send(json!({ "type": "interrupt" })).is_ok()).unwrap_or(false);
             (st.sessions.origin(session_id), direct)
-        })
+        });
+        if origin.as_ref().is_some_and(|o| o.hosted) {
+            if self.hosted().running(session_id) {
+                if let Err(e) = self.hosted().interrupt(session_id) {
+                    eprintln!("cue: couldn't stop hosted session {session_id}: {e}");
+                }
+            }
+            return (origin, true);
+        }
+        (origin, direct)
     }
 
     /// `now`: if it's mid-turn, interrupt it first so this is handled right away (Ctrl+Enter).
@@ -395,7 +405,7 @@ impl Hub {
         let apart = if (stopped || escaped) && origin.harness == "claude" { "\n\n" } else { "" };
         let cmd_before = command_before(&origin, typed);
         let t0 = now_ms();
-        let direct = self.send_direct(session_id, text, &saved, now);
+        let direct = self.send_direct(session_id, text, &saved, now)?;
         let via = if direct { "the session directly".to_string() } else { self.keys().type_into(&origin, &format!("{apart}{}", crate::uploads::with_paths(typed, &self.images_there(session_id, &origin, &saved)?)))? };
         // At its prompt it should take this (as a reply does); if not, Enter once more, then flag it.
         let mut submitted = busy || direct || self.took(session_id, &origin, typed, cmd_before, t0);
@@ -442,7 +452,9 @@ impl Hub {
             return Err("it's asking you something first: answer that, then send".to_string());
         }
         let busy = state.as_deref() == Some("working") || st.sessions.compacting_since(session_id) > 0;
-        Ok((st.sessions.origin(session_id), busy, st.subscribers.contains_key(session_id)))
+        let origin = st.sessions.origin(session_id);
+        let direct = st.subscribers.contains_key(session_id) || origin.as_ref().is_some_and(|o| o.hosted);
+        Ok((origin, busy, direct))
     }
 
     /// Send the message kept for a session: when its turn ends, or now (`now`: stop the turn first). If it
@@ -492,11 +504,18 @@ impl Hub {
         h
     }
 
-    /// Hand a message (and saved images) to a session that listens directly (Pi). False if none does.
-    fn send_direct(&self, session_id: &str, text: &str, saved: &[crate::uploads::Saved], now: bool) -> bool {
+    /// Hand a message (and saved images) to a session that listens directly (Pi) or that Cue hosts (started
+    /// again first if it's paused). Ok(false) if it's neither; an error if a hosted one couldn't take it.
+    fn send_direct(&self, session_id: &str, text: &str, saved: &[crate::uploads::Saved], now: bool) -> Result<bool, String> {
+        if let Some(origin) = self.hosted_origin(session_id) {
+            // Busy, it reads it at its next step: `now` changes nothing.
+            self.wake_hosted(&origin)?;
+            self.hosted().send(session_id, &crate::uploads::with_paths(text, saved))?;
+            return Ok(true);
+        }
         // now: Pi takes it as a "steer", read mid-turn, instead of a follow-up after the turn.
         let msg = json!({ "type": "reply", "text": text, "images": saved, "now": now });
-        self.read(|st| st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false))
+        Ok(self.read(|st| st.subscribers.get(session_id).map(|(_, tx)| tx.send(msg).is_ok()).unwrap_or(false)))
     }
 
     /// What a subscribed session said its commands are (see `session_commands`).

@@ -100,6 +100,8 @@ fn from_config(c: &Value) -> Value {
         "insights": { "on": ins, "handoff": ins, "cache": ins, "queue": ins && b("/insights/queue", true), "ahead": ins && snooze <= now_ms, "snooze": snooze, "skills": c.pointer("/insights/skills").cloned().unwrap_or_else(|| json!({})) },
         // Tips (ui/tips.js): a key or command now and then on the line under the chat; on until turned off.
         "tips": { "on": b("/tips/on", true) },
+        // Cue-hosted sessions (hub/hosted.rs): a trial, off until you turn it on.
+        "hosted": { "on": b("/hosted/on", false) },
         // Updates (ipc/updates.rs): from the beta channel when `beta` is on; off until you turn it on.
         "updates": { "beta": beta_updates_in(c) },
         // About (tasks.rs, Settings → Summaries): `on` shows the About tab, a followed session's About and Now and its
@@ -218,6 +220,12 @@ fn idle_compacts_in(settings: Option<&Value>, min_env: Option<&str>, tokens: u64
 pub fn tmux_sessions() -> bool {
     tmux_wanted(&load()) && crate::terminal::focus::tmux_installed()
 }
+/// Settings → Cue-hosted sessions: + New and Move to Cue can start Claude Code hosted by Cue, with no terminal
+/// (docs/dev/cue-hosted-sessions.md). A trial: off until you turn it on.
+pub fn hosted_on() -> bool {
+    load().pointer("/hosted/on").and_then(Value::as_bool).unwrap_or(false)
+}
+
 /// Settings say new sessions run in Cue (on unless turned off).
 fn tmux_wanted(c: &Value) -> bool {
     c.pointer("/sessions/tmux").and_then(Value::as_bool).unwrap_or(true)
@@ -328,7 +336,7 @@ pub fn history_keep() -> usize {
 
 /// The settings the window may save. A key it saves that isn't here fails as "unknown setting" (the test
 /// below reads the window's scripts for every key they save).
-pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions", "mini.mode"];
+pub(crate) const ALLOWED: &[&str] = &["history.keep", "notify.finished", "notify.decisions", "notify.cold", "notify.sound", "pi.gate", "appearance.mode", "appearance.zoom", "appearance.project", "context.keep", "turn.mode", "agents.show_driven", "login.open", "quick.phrases", "steps.mode", "setup.done", "usage.file", "usage.claude", "sessions.tmux", "project.colors", "project.all", "project.hue", "project.pins", "project.names", "project.moves", "project.folders", "project.made", "insights.on", "insights.queue", "insights.snooze", "insights.skills", "tips.on", "updates.beta", "actions.prompt", "voice.pick", "tasks.on", "tasks.auto", "status.on", "status.sessions", "background.sessions", "mini.mode", "hosted.on"];
 
 /// Set one dotted key ("history.keep", "notify.finished", "pi.gate"), keeping everything else.
 pub fn set(key: &str, value: Value) -> Result<(), String> {

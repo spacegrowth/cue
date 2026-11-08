@@ -370,10 +370,11 @@ impl Hub {
     /// sessions (`live`) on this Mac (`machine` "") or on one of your machines. Missing for
     /// GONE_AFTER_MS, with its conversation untouched that long, a session is ended in Cue, cards and
     /// all: a tab closed while Cue wasn't looking, a machine restarted, a session Cue lost track of.
-    /// `live` None: the machine couldn't be reached; its sessions are marked so, not ended.
+    /// `live` None: the machine couldn't be reached; its sessions are marked so, not ended. Not hosted
+    /// sessions: that list never has them (it's of terminal sessions), and Cue knows when their process ends.
     pub fn sweep(&self, machine: &str, live: Option<&HashSet<String>>) {
         let now = now_ms();
-        let mine: Vec<(String, String)> = self.read(|st| st.sessions.all().into_iter().filter(|s| s.origin.machine == machine && s.origin.harness == "claude").map(|s| (s.origin.session_id, s.origin.transcript_path)).collect());
+        let mine: Vec<(String, String)> = self.read(|st| st.sessions.all().into_iter().filter(|s| s.origin.machine == machine && s.origin.harness == "claude" && !s.origin.hosted).map(|s| (s.origin.session_id, s.origin.transcript_path)).collect());
         // Its conversation written to lately: looked at with the store let go (a stat can be slow).
         let judged: Vec<(String, bool)> = mine.into_iter().map(|(sid, transcript)| (sid, written_ms(&transcript).is_some_and(|at| now.saturating_sub(at) < GONE_AFTER_MS))).collect();
         let (gone, reach_changed) = self.write(|st| Self::missing_now(st, machine, live, &judged, now));

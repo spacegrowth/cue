@@ -223,6 +223,16 @@ function previewWorld(q, now) {
   if (q.has("starred")) state.sessions.slice(0, 5).forEach((x, n) => (x.starred_ms = now - (50 - n) * M));
   // ?held=1: the working order-engine session has a message kept in Cue, open in Active.
   if (q.has("held")) { const x = state.sessions.find((y) => y.project === "order-engine"); if (x) { x.held = { role: "you", text: "also keep the old broker session open while you test", at_ms: now - M, images: [] }; prefs["cue.spot"] = { sid: x.session_id, view: "board" }; } }
+  // ?hosted=1: Settings → Cue-hosted sessions on, and a hosted session asking you to fill in an MCP server's form;
+  // ?hosted=paused: a hosted one paused (its Claude ended with the last Cue; your next message resumes it).
+  if (q.get("hosted")) {
+    state.settings.hosted = { on: true };
+    state.sessions.push({ ...sess("form", "signup", "claude", "deciding", 1, [seg("working", 5, 1), seg("waiting", 1)]), hosted: true, agent_pid: 4242 });
+    state.sessions.push({ ...sess("nap", "billing", "claude", "waiting", 30, [seg("working", 40, 30), seg("waiting", 30)]), hosted: true, thread: [{ role: "you", text: "Add the proration test.", at_ms: now - 40 * M }, { role: "agent", text: "Added `test_proration_midcycle`; it passes.", at_ms: now - 30 * M }] });
+    const form = { type: "object", required: ["email"], properties: { email: { type: "string", title: "Email" }, format: { type: "string", title: "Format", enum: ["pdf", "csv"] }, weekly: { type: "boolean", title: "Every week", description: "sent on Mondays" } } };
+    state.items.push({ id: "n7", kind: "input", harness: "claude", session_id: "form", cwd: "/x/signup", project: "signup", tool_name: "reports", tool_input: { server: "reports", message: "Where should the usage report go?", form }, suggestions: [], context: [], created_ms: now - 20000, status: "pending", outcome: "" });
+    prefs["cue.spot"] = { sid: q.get("hosted") === "paused" ? "nap" : "form", view: "board" };
+  }
   // Two sessions run on other machines (+ New → Machine): one name shortened, one short already.
   for (const x of [...state.sessions, ...state.items]) x.machine = { pipe: "me@my-long-ubuntu-box.lan", det: "build-box", det2: "build-box", plr: "build-box", rlead: "build-box" }[x.session_id] || "";
   if (q.get("setup")) state.connections = { claude: { ok: false, present: true }, codex: { ok: false, present: true }, pi: { ok: true, present: true } };

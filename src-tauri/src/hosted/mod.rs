@@ -8,11 +8,13 @@
 //! - `translate`: those lines as the few things Cue cares about (`HostedEvent`).
 //! - `launch`: how a session is started or resumed.
 //! - `session`: one running Claude: its process, its input, the requests waiting for an answer.
+//! - `running`: the sessions running now, by id, behind the `Hosted` port the hub uses (hub/ports.rs).
 //!
 //! None of this knows about the hub, the store or the window: a session reports through the function it was
 //! started with, and that's all whoever starts it needs.
 
 mod launch;
+mod running;
 mod session;
 mod translate;
 mod wire;
@@ -25,6 +27,7 @@ mod session_tests;
 mod translate_tests;
 
 pub use launch::{Program, Spec, Start};
+pub use running::{Hosted, Report, Running};
 pub use session::Session;
 
 use serde_json::Value;

@@ -309,7 +309,9 @@ fn settle_the_gone(hub: &Hub) {
             hub.drop_session(&sid);
         }
     }
-    for it in hub.pending() {
+    // A hosted session's asks: its session finishes them when Claude exits, and only Cue answers them (it has
+    // no terminal), so neither a dead process nor its transcript is theirs to settle here.
+    for it in hub.pending().into_iter().filter(|i| !i.origin.hosted) {
         if let Some(pid) = it.origin.agent_pid {
             if pid > 0 && !alive(pid) {
                 if it.kind == "waiting" {

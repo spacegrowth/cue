@@ -30,12 +30,16 @@ digraph locks {
   "the hub's store" -> "folder facts";
   "typing gate" -> "CLAUDE";
   "typing gate" -> "DB";
+  "typing gate" -> "FEEDS";
   "typing gate" -> "INDEX";
   "typing gate" -> "LEDGER";
   "typing gate" -> "VERIFY";
+  "typing gate" -> "WINDOWS";
+  "typing gate" -> "a session's feed";
   "typing gate" -> "caches";
   "typing gate" -> "config file";
   "typing gate" -> "config in memory";
+  "typing gate" -> "copies";
   "typing gate" -> "db writer's marks";
   "typing gate" -> "db writes";
   "typing gate" -> "folder facts";

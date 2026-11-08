@@ -255,7 +255,8 @@ impl Session {
     /// An event came from it: take what that tells about where it runs and how far it has started.
     fn heard_from(&mut self, origin: &Origin) {
         // Newer events carry the freshest terminal info (a resumed session may be in a new tab).
-        if !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
+        // A hosted session's comes from Cue itself, always whole.
+        if origin.hosted || !origin.tty.is_empty() || !origin.tmux_pane.is_empty() || !origin.iterm_session_id.is_empty() {
             self.origin = origin.clone();
         }
         // A hook reached Cue (only hooks know the transcript): Claude Code runs none until the trust
@@ -410,10 +411,21 @@ impl Sessions {
 
     /// Put saved sessions back after a restart. The watcher drops any whose agent has since exited.
     pub fn restore(&mut self, saved: Vec<Session>) {
-        for s in saved {
+        for mut s in saved {
+            // A hosted session's Claude ended with the Cue that ran it: it comes back paused.
+            if s.origin.hosted {
+                s.origin.agent_pid = None;
+            }
             if !s.origin.session_id.is_empty() {
                 self.0.insert(s.origin.session_id.clone(), s);
             }
+        }
+    }
+
+    /// A hosted session's process: the one it runs as now, or None (paused).
+    pub fn set_pid(&mut self, session_id: &str, pid: Option<i32>) {
+        if let Some(s) = self.0.get_mut(session_id) {
+            s.origin.agent_pid = pid;
         }
     }
 

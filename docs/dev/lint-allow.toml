@@ -155,6 +155,26 @@ reason = "a session's project (Sessions::mark → project_of_origin → repos::r
 
 [[lock_order]]
 from = "typing gate"
+to = "FEEDS"
+reason = "the typing gate is taken first and held while a message is sent, by design (hub/send.rs wait_turn); a paused hosted session is started again under it (hub/hosted.rs wake_hosted), so a second message waits for that, and the model it resumes on is read from its log (logs::steps), whose locks never take a typing gate"
+
+[[lock_order]]
+from = "typing gate"
+to = "WINDOWS"
+reason = "the typing gate is taken first and held while a message is sent, by design (hub/send.rs wait_turn); a paused hosted session is started again under it (hub/hosted.rs wake_hosted), so a second message waits for that, and the model it resumes on is read from its log (logs::steps), whose locks never take a typing gate"
+
+[[lock_order]]
+from = "typing gate"
+to = "a session's feed"
+reason = "the typing gate is taken first and held while a message is sent, by design (hub/send.rs wait_turn); a paused hosted session is started again under it (hub/hosted.rs wake_hosted), so a second message waits for that, and the model it resumes on is read from its log (logs::steps), whose locks never take a typing gate"
+
+[[lock_order]]
+from = "typing gate"
+to = "copies"
+reason = "the typing gate is taken first and held while a message is sent, by design (hub/send.rs wait_turn); a paused hosted session is started again under it (hub/hosted.rs wake_hosted), so a second message waits for that, and the model it resumes on is read from its log (logs::steps), whose locks never take a typing gate"
+
+[[lock_order]]
+from = "typing gate"
 to = "CLAUDE"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); typing into iTerm reads Claude Code's running list for the agent's tty (focus/apps.rs current_tty). Seen since the hub types through terminal::keys, which the check follows"
 

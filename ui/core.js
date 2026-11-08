@@ -608,6 +608,7 @@ const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/[`
 function summary(it) {
   const i = it.tool_input || {};
   if (it.kind === "question") return questions(it)[0]?.question || "Question";
+  if (it.kind === "input") return it.tool_input?.message || "A form to fill in";
   if (it.kind === "waiting") return firstLine(finishedText(it));
   if (inTerminal(it) && !it.tool_name) return it.message || "Asking in its terminal";
   switch (tool(it)) {
@@ -619,6 +620,7 @@ function summary(it) {
 }
 function verb(it) {
   if (it.kind === "question") return "asks";
+  if (it.kind === "input") return it.tool_name ? `has a form for you from ${it.tool_name}` : "has a form for you";
   if (inTerminal(it)) return "asks in its terminal";
   return { bash: "wants to run", edit: "wants to edit", multiedit: "wants to edit", write: "wants to write", webfetch: "wants to fetch" }[tool(it)] || `wants ${it.tool_name}`;
 }

@@ -30,6 +30,8 @@
 .tplace .tplace-btn { position: static; border-radius: 0; }
 .tplace .tplace-btn:first-child { border-bottom-left-radius: 8px; }
 .tplace .tplace-btn:last-child { border-top-right-radius: 8px; }
+/* A hosted session paused (its Claude isn't running): said beside Move to terminal, quietly, in the corner's shape. */
+.tplace-note { height: 22px; padding: 0 10px; display: flex; align-items: center; font-size: 11px; white-space: nowrap; color: var(--muted); background: var(--panel); border-bottom-left-radius: 8px; box-shadow: 0 0 0 1px var(--line); }
 .tplace-btn.move { background: color-mix(in srgb, var(--accent) 78%, var(--panel)); }
 .tplace-btn:disabled { opacity: .7; cursor: default; }
 /* Move to Cue when it can't run yet: there, faded; a click says why. */

@@ -15,6 +15,7 @@ mod cache_tick;
 mod events;
 mod hand_off;
 mod history;
+mod hosted;
 mod kept_history;
 mod live_writes;
 pub(crate) mod ports;
@@ -31,6 +32,7 @@ mod turn_end;
 mod usage;
 
 pub use history::{split_turn, summary};
+pub use hosted::HostedStart;
 
 /// What an open Ask connection is told.
 pub enum Reply {
@@ -343,9 +345,10 @@ impl Hub {
         self.read(|st| st.items.clone())
     }
 
-    /// (session id, agent pid) for every live session — the watcher drops the ones whose agent exited.
+    /// (session id, agent pid) for every live session — the watcher drops the ones whose agent exited. Not the
+    /// hosted ones: their session says when Claude exits, and leaves them paused rather than gone (hub/hosted.rs).
     pub fn session_pids(&self) -> Vec<(String, i32)> {
-        self.read(|st| st.sessions.pids())
+        self.read(|st| st.sessions.all().into_iter().filter(|s| !s.origin.hosted).filter_map(|s| s.origin.agent_pid.map(|p| (s.origin.session_id, p))).collect())
     }
 
     /// The window's state as last built, or built now if nothing is current (the first ask, or after a change

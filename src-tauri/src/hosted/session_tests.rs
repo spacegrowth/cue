@@ -10,7 +10,11 @@ use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
 
 fn start(fake: &FakeClaude) -> (Session, Receiver<HostedEvent>) {
-    let spec = Spec { cwd: std::env::temp_dir(), start: Start::fresh(), permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()) };
+    start_as(fake, Start::fresh())
+}
+
+fn start_as(fake: &FakeClaude, start: Start) -> (Session, Receiver<HostedEvent>) {
+    let spec = Spec { cwd: std::env::temp_dir(), start, permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()) };
     let (tx, rx) = channel();
     let s = Session::start(&spec, move |e| {
         let _ = tx.send(e);
@@ -51,11 +55,13 @@ fn heard_with(fake: &FakeClaude, what: &str, pick: impl Fn(&Value) -> bool) -> V
 #[test]
 fn it_starts_headless_marked_hosted_outside_any_tmux_and_sets_up_first() {
     let fake = FakeClaude::new();
-    let (s, _rx) = start(&fake);
+    let start = Start::fresh();
+    let id = start.session_id().to_string();
+    let (_s, _rx) = start_as(&fake, start);
     heard_with(&fake, "the setup request", |v| v["request"]["subtype"] == "initialize");
     assert_eq!(fake.heard()[0]["request"]["subtype"], "initialize", "set up before anything else");
     let args = fake.args();
-    assert!(args.windows(2).any(|w| w[0] == "--session-id" && w[1] == s.session_id()), "{args:?}");
+    assert!(args.windows(2).any(|w| w[0] == "--session-id" && w[1] == id), "{args:?}");
     assert_eq!(fake.env(), ("1".to_string(), String::new()), "CUE_HOSTED set, TMUX not");
 }
 

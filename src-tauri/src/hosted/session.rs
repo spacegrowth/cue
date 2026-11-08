@@ -35,7 +35,6 @@ pub struct Session {
 }
 
 struct Shared {
-    session_id: String,
     pgid: i32,
     /// None once the session is closed.
     input: Mutex<Option<ChildStdin>>,
@@ -57,7 +56,6 @@ impl Session {
             return Err("Claude Code started without its input and output".into());
         };
         let shared = Arc::new(Shared {
-            session_id: spec.start.session_id().to_string(),
             pgid: child.id() as i32,
             input: Mutex::new(Some(input)),
             pending: Mutex::new(HashMap::new()),
@@ -76,8 +74,9 @@ impl Session {
         Ok(session)
     }
 
-    pub fn session_id(&self) -> &str {
-        &self.shared.session_id
+    /// Its process (the leader of its process group): what the processes it starts descend from.
+    pub fn pid(&self) -> i32 {
+        self.shared.pgid
     }
 
     /// Your message. Taken at once when Claude is idle, at its next step when it's busy (`Taken` says when).
