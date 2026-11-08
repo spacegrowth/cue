@@ -100,7 +100,7 @@ body.mini { overflow: hidden; font-size: 13px; }
    counts in the wings, never under the camera. Hovered: the notch grows down and out into the chat. Concave
    shoulders where it meets the top, as the notch's own corners curve. Text in the dark theme's ink, colour only
    on the dots and the main button. Sizes from the notch Cue measured (mini.js measured: --nw, --nh). */
-.notch { --nw: 185px; --nh: 32px; --peek: 60px; --sh: 14px;
+.notch { --nw: 185px; --nh: 32px; --peek: 68px; --sh: 14px;
   --panel: #000; --panel-2: #1c1c1c; --line: #2a2a2a; --slab: #161616; --on-slab: var(--ink);
   --work: color-mix(in srgb, var(--accent) 75%, #000); }
 .notch #mini { justify-content: center; }
