@@ -41,10 +41,6 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-you-meta { margin: 3px 2px 0; font-size: 11px; color: var(--muted); text-align: right; }
 .m-qnow { border: 0; background: none; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line); cursor: pointer; }
 .m-qnow:hover { text-decoration-color: currentColor; }
-.m-tag { font: 600 10px var(--mono); letter-spacing: .12em; border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
-.m-tag.turn { background: var(--sel); color: var(--on-sel); }
-.m-tag.ask { background: var(--deny); color: #fff; }
-.m-tag.work { background: var(--panel-2); color: var(--muted); }
 .m-link { font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; }
 .m-btn { font-size: 12px; font-weight: 650; border-radius: 8px; padding: 5px 12px; background: var(--accent); color: var(--on-accent); }
 .m-btn.deny { background: transparent; color: var(--deny); box-shadow: inset 0 0 0 1px var(--line); }
@@ -59,8 +55,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-chat { width: var(--chat-w, 100%); flex: none; display: flex; flex-direction: column; height: var(--cap, 440px); overflow: hidden; box-sizing: border-box; }
 .m-now { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
 .m-now-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.m-chat-head { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; flex: none; border-bottom: 1px solid var(--line); }
-.m-chat-head .m-link { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+/* The notch's top row: its tabs, In Cue and × at their right. */
+.m-head { display: flex; align-items: center; gap: 6px; padding-right: 12px; flex: none; border-bottom: 1px solid var(--line); }
+.m-head .m-tabs { flex: 1; min-width: 0; border-bottom: 0; }
 .m-ask { margin: 10px 12px 0; padding: 9px 11px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--deny); display: flex; flex-direction: column; gap: 7px; flex: none; }
 .m-cmd { font: 12px/1.45 var(--mono); background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 7px 10px; white-space: pre-wrap; word-break: break-word; max-height: 96px; overflow: auto; user-select: text; -webkit-user-select: text; }
 .m-acts { display: flex; gap: 8px; }
@@ -83,7 +80,11 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-quick { display: flex; flex-wrap: wrap; gap: 6px; }
 .m-qp { font-size: 12px; background: var(--panel-2); border-radius: 999px; padding: 3px 10px; }
 .m-qp:hover { background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
-.m-foot-row { display: flex; align-items: center; gap: 8px; }
+/* The box with Send at its right; under them, only when there's something to say, what happened to a send. */
+.m-send { display: flex; align-items: flex-end; gap: 8px; }
+.m-send .m-box { flex: 1; min-width: 0; width: auto; }
+.m-send .m-btn { flex: none; height: 33.5px; }
+.m-note:empty { display: none; }
 .m-quiet { font-size: 12px; color: var(--muted); }
 
 /* ---------- the notch: the notch itself opens, all one black shape ---------- */
@@ -113,8 +114,8 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-n { display: inline-flex; align-items: center; gap: 5px; }
 .notch .m-island .m-dot { width: 8px; height: 8px; }
 .notch .m-chat { width: var(--chat-w); border-radius: 0 0 28px 28px; padding-top: var(--nh); }
-.notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
-.notch .m-tabs, .notch .m-chat-head, .notch .m-foot { border-color: var(--line); }
+.notch .m-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
+.notch .m-head, .notch .m-foot { border-color: var(--line); }
 /* More tabs than fit: they scroll sideways, the last fading out at the edge rather than cut. */
 .notch .m-tabs { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 .notch .m-box { background: var(--panel-2); box-shadow: none; }
