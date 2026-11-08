@@ -87,14 +87,23 @@ pub struct Ports {
 impl Ports {
     /// The real ones; notifications and window events only with an app to send them from.
     pub fn real(app: Option<&tauri::AppHandle>) -> Self {
-        let (notes, window): (Arc<dyn Notes>, Arc<dyn Window>) = match app {
+        let (notes, window, hosted): (Arc<dyn Notes>, Arc<dyn Window>, Arc<dyn Hosted>) = match app {
             Some(a) => {
                 // Before any hosted session is started again: none left by a Cue that was stopped runs on beside it.
                 crate::hosted::end_leftovers();
-                (Arc::new(Center(a.clone())), Arc::new(AppWindow(a.clone())))
+                (Arc::new(Center(a.clone())), Arc::new(AppWindow(a.clone())), Arc::new(hosts()))
             }
-            None => (Arc::new(Nowhere), Arc::new(NoWindow)),
+            // Without the app (tests, the hook): Cue's own children, never a host started for a test binary.
+            None => (Arc::new(Nowhere), Arc::new(NoWindow), Arc::new(Running::default())),
         };
-        Self { keys: Arc::new(Terminals), launcher: Arc::new(Tabs), hosted: Arc::new(Running::default()), notes, window, later: Later::Threads }
+        Self { keys: Arc::new(Terminals), launcher: Arc::new(Tabs), hosted, notes, window, later: Later::Threads }
     }
+}
+
+/// Hosted sessions through cue-host: Cue's own program run as `cue host serve`, its home in Cue's data folder.
+fn hosts() -> crate::hosted::Hosts {
+    let home = crate::server::cue_dir().join("host");
+    let me = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let serve = vec![me, "host".into(), "serve".into(), "--home".into(), home.to_string_lossy().into_owned()];
+    crate::hosted::Hosts::new(home, serve, crate::server::cue_dir().join("host-seen"))
 }

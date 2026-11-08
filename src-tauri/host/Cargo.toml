@@ -1,0 +1,20 @@
+[package]
+name = "cue-host"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Keeps Cue's hosted agents running whether or not Cue is (docs/dev/cue-agent-host.md)"
+
+# The host: a library Cue runs as `cue host …` on this Mac, and a program of its own (`cue-host`) for other
+# machines. Nothing of Tauri or the app: it must build alone, for Linux too.
+[lib]
+name = "cue_host"
+
+[[bin]]
+name = "cue-host"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"

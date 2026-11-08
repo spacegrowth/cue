@@ -69,6 +69,17 @@ const render = () => { try { renderMain(); } catch (e) { showRenderError(e); } }
 window.addEventListener("error", (e) => showRenderError(e.error || e.message));
 window.addEventListener("unhandledrejection", (e) => showRenderError(e.reason));
 
+/** What the app itself says (the menu, its server, quitting, updates). */
+async function listenApp() {
+  // ⌘W (the menu's Close): inside Cue's terminal, the tab you're in; elsewhere the window hides.
+  await T.event.listen("close-key", () => closeKey());
+  await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
+  // Quitting (⌘Q, the Dock) when it would end sessions Cue runs itself: it asks (startup/window.rs).
+  await T.event.listen("quit-ask", (e) => { quitAsk = { why: "quit", list: e.payload || [] }; renderMain(); });
+  // Which Cue this is (for Settings), without asking GitHub.
+  T.app?.getVersion().then((v) => { upd = { ...upd, current: v }; }, () => {});
+  await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });
+}
 async function boot() {
   await loadDrafts();
   bindMain();
@@ -97,14 +108,9 @@ async function boot() {
   await T.event.listen("term", (e) => { onTermOutput(e.payload); onShellOutput(e.payload); });
   await T.event.listen("shell", (e) => onShellEvent(e.payload));
   restoreShells();   // the shells still running in tmux, back in their tabs
-  // ⌘W (the menu's Close): inside Cue's terminal, the tab you're in; elsewhere the window hides.
-  await T.event.listen("close-key", () => closeKey());
-  await T.event.listen("server-error", (e) => toast(`Cue can't listen: ${e.payload}`));
+  await listenApp();
   moveOldParked();
   moveOldStars();
-  // Which Cue this is (for Settings), without asking GitHub.
-  T.app?.getVersion().then((v) => { upd = { ...upd, current: v }; }, () => {});
-  await T.event.listen("update-ready", (e) => { upd = { ...upd, version: e.payload.version, notes: e.payload.notes || "", status: "found", offer: true }; renderMain(); });
   setInterval(render, 15000); // keep ages and bars moving
   // The open session's steps: every 0.5 s while it works, else every 2 s (only new lines are read;
   // nothing new answers with just a version).

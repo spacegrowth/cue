@@ -540,3 +540,21 @@ fn codex_starts_hosted_under_the_id_it_picks_and_resumes_by_it() {
     w.send_to(&sid, "and the docs");
     assert_eq!(w.hosted.launched().pop().unwrap().start, Start::Resume(sid));
 }
+
+/// Quitting asks first only when it would end something: sessions Cue runs itself, mid-turn first by their names.
+/// Those cue-host runs go on without Cue, so they aren't named.
+#[test]
+fn quitting_names_the_sessions_cue_runs_itself_mid_turn_first_and_not_those_the_host_runs() {
+    let w = World::new();
+    assert!(w.hub().ends_with_cue().is_empty(), "nothing hosted: nothing to ask");
+    let idle = started(&w, "");
+    let busy = running(&w, "go");
+    let hosted = running(&w, "and you");
+    w.hosted.under_host(&hosted);
+    let ends = w.hub().ends_with_cue();
+    let seen: Vec<(&str, bool)> = ends.iter().map(|e| (e.session_id.as_str(), e.mid_turn)).collect();
+    assert_eq!(seen, [(busy.as_str(), true), (idle.as_str(), false)], "{ends:?}");
+    assert!(ends.iter().all(|e| !e.name.is_empty()), "each has a name to show: {ends:?}");
+    turn_ends(&w, &busy, "Done.");
+    assert!(w.hub().ends_with_cue().iter().all(|e| !e.mid_turn), "its turn over, nothing is cut off");
+}

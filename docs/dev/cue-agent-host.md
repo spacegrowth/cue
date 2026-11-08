@@ -1,6 +1,6 @@
 # The agent host — design
 
-Status: **v2, 2026-11-07, not built.** Steps H3 (this Mac) and H4 (other machines) of `cue-hosted-sessions.md`
+Status: **v2, 2026-11-07; H3 (this Mac) built 2026-11-08, see §12 for how it differs from this plan.** Steps H3 (this Mac) and H4 (other machines) of `cue-hosted-sessions.md`
 §9. v1 was reviewed independently against the code; §11 lists what the review changed.
 
 ## 1. Problem
@@ -38,7 +38,7 @@ Non-goals: agents for anyone but you; machines without SSH; a general process ma
 
 ```
  Cue app                                                         agent host (one per machine)
- hub ─ Hosted port ─ Hosts (router, by machine) ─ HostClient ──► socket | ssh <machine> cue-agent-host connect
+ hub ─ Hosted port ─ Hosts (router, by machine) ─ HostClient ──► socket | ssh <machine> cue-host connect
          per session: Protocol (claude / pi / codex)                ├─ child: claude -p …        raw lines, seq'd
                                                                     ├─ child: pi --mode rpc       and kept on disk
                                                                     └─ child: codex app-server
@@ -52,7 +52,7 @@ version means a Cue update, never a host update, and the host's own protocol alm
 
 ### 3.1 Code
 
-- `crates/agent-host` (new, binary `cue-agent-host`): the host. Process supervision (today's
+- `host/` (new, binary `cue-host`): the host. Process supervision (today's
   `hosted/session.rs` process half: spawn in a session and process group of its own, close → grace → TERM →
   KILL, drain, last words), the per-session line log, the socket server, `connect`. Depends on `serde_json`,
   `libc`. No Tauri, nothing from the app. Built for macOS (inside Cue.app, codesigned with it) and for Linux
@@ -65,7 +65,7 @@ version means a Cue update, never a host update, and the host's own protocol alm
 
 - Home: `~/.cue/host/` on a machine, Cue's data folder `host/` on this Mac (0700). Holds `host.sock` (0600),
   `host.pid`, `host.lock`, `host.log`, `sessions/<id>/log.jsonl`.
-- **Started on demand.** `cue-agent-host connect` connects to `host.sock`; if nothing answers (no socket, or a
+- **Started on demand.** `cue-host connect` connects to `host.sock`; if nothing answers (no socket, or a
   stale one whose `host.pid` isn't alive) it takes `host.lock`, checks again, starts `serve` (double fork,
   `setsid`, **every inherited fd closed** so sshd never waits on it, stdio to `host.log`), waits for the socket,
   then copies bytes between its own stdio and the socket. The server checks the peer's uid
@@ -88,8 +88,8 @@ for an update.
 ### 3.4 Installing on a machine
 
 On first hosted use of a machine: `uname -sm`, pick the build, send it with `machines::run_with_bytes` over the
-shared connection to `~/.cue/bin/cue-agent-host-<version>` (temporary name, then `mv`, `chmod 700`), verify its
-SHA-256 (`sha256sum`, or `shasum -a 256` on a Mac), point `~/.cue/bin/cue-agent-host` at it; remove old
+shared connection to `~/.cue/bin/cue-host-<version>` (temporary name, then `mv`, `chmod 700`), verify its
+SHA-256 (`sha256sum`, or `shasum -a 256` on a Mac), point `~/.cue/bin/cue-host` at it; remove old
 versions no host of theirs runs. Settings → Machines says Cue puts this one program in `~/.cue/bin` (the owner
 agreed). A machine where it can't go (no build for its architecture, read-only home) keeps tmux sessions and
 isn't offered Hosted.
@@ -154,7 +154,7 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 
 ## 6. Other machines
 
-- The machine's shared SSH connection (ControlMaster) carries `ssh <machine> ~/.cue/bin/cue-agent-host connect`.
+- The machine's shared SSH connection (ControlMaster) carries `ssh <machine> ~/.cue/bin/cue-host connect`.
   One SSH session per machine carries everything: sessions, and transcript copies (`tail`), instead of one
   `tail -F` session per transcript (sshd allows 10 sessions per connection by default, already shared with the
   watcher).
@@ -211,8 +211,8 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 
 | | what | done when |
 |---|---|---|
-| H3a | Pi's gate through RPC when hosted; `Item.request_id` and `add_ask` dedupe; `Protocol` snapshot/restore | tests green; hosted Pi asks are cards with no socket |
-| H3b | `cue-agent-host` + `Hosts`/`HostClient` on this Mac, behind `hosted.on` | Cue restart mid-turn: the turn finishes and shows after relaunch; live with all three agents |
+| H3a | Pi's gate through RPC when hosted; `Item.request_id` and `add_ask` dedupe; protocol state rebuilt by replay (§12) | **built**: tests green; hosted Pi asks are cards with no socket |
+| H3b | `cue-host` + `Hosts`/`HostLink` on this Mac, behind `hosted.on` | **built**: Cue quit mid-turn with a card open, and again mid-command: the card comes back, the turn finishes; live with Claude Code, Pi and Codex |
 | H4a | Linux builds, install over SSH, `connect` and `tail` over the shared connection, remote hook skips hosted | a hosted Claude session on a Linux machine survives killing the SSH connection mid-turn |
 | H4b | Pi and Codex remote, version checks, Settings → Machines wording | live on a real machine with all three |
 
@@ -228,3 +228,34 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 - Per-machine routing (`Hosts`, `Spec.machine`) made explicit; `FakeHosted` changes.
 - Daemon details: close inherited fds, unlink before idle exit, peer uid, `-lc`.
 - Cost base and `Protocol` state saved with the cursor; transcripts over one connection; size-bounded log.
+
+## 12. As built (H3, 2026-11-08)
+
+- **Name and shape.** The host is `cue-host`, a crate of its own (`src-tauri/host/`: `proto`, `log`, `child`,
+  `server`, `daemon`; no Tauri) built as a library and a program. On this Mac Cue runs it as its own program in host
+  mode, `cue host serve --home <Cue's data folder>/host`, so nothing new goes into Cue.app; the standalone
+  `cue-host` program is for other machines (H4). Started on demand by Cue (`daemon::connect`), double-forked into a
+  session of its own, so it outlives Cue, an update of Cue.app (its program file can be replaced under it) and
+  `install.sh` (which matches only Cue's own process).
+- **No protocol snapshot: replay.** Instead of saving each `Protocol`'s state with the cursor, the host also logs what
+  Cue writes (`in` records), and a Cue that starts again reads the current run's records up to its cursor (`read`)
+  and replays them through a fresh `Protocol` (the agent's lines through `read`, Cue's through `wrote`) with nothing
+  reported. The protocol ends as it was (`hosted/replay_tests.rs` checks this against each agent's recorded run);
+  asks it still waits on (`waits_on`) are cards again. No per-agent serialisation to keep in step.
+- **No `rekey`.** Cue keeps, per host session, its cursor and the conversation's id (`host-seen/<host id>.json`), so a
+  Codex session known by its thread id is found under the id it was started with.
+- **Reattach in two steps** (`Hosted::reattach` → `Reattached { started, go }`): the catch-up is silent, the hub notes
+  the process (and "working" if mid-turn), then `go` raises the waiting asks and attaches for what came after, so
+  nothing reported finds the session without its process.
+- **Records are handled on a thread per session**, never on the connection's, because what they set off can write to
+  the session and that write's answer comes over the connection.
+- **Fallback.** While the host can't be reached, sessions started meanwhile run as Cue's own children as before
+  (`Running`); it's tried again before each start, at most every 30 s. Those end if Cue quits, so ⌘Q, a quit from the
+  Dock or at logout (`ExitRequested` with no code) and an in-app update ask first, naming them, mid-turn ones marked
+  (`hub/quitting.rs`, the window's quit dialog: Keep Cue open / Quit anyway). Without the app (tests) sessions always
+  run as Cue's own children.
+- **Housekeeping.** A session's log and Cue's cursor for it are dropped after 30 days with nothing new. Cost isn't
+  kept across restarts (it never was), so a picked-up session counts its run from zero, as a resumed one does.
+- **`install.sh`** no longer waits for hosted turns when the host's socket is up (they carry on).
+- Not yet: `tail` (H4), version checks between Cue and an older host (the protocol is at version 1), `write` dedupe
+  by `msg` is in the host but Cue doesn't resend after a reconnect yet (a send during a drop is refused, saying so).

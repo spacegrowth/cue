@@ -8,12 +8,19 @@
 //! - `translate`: those lines as the few things Cue cares about (`HostedEvent`).
 //! - `launch`: how a session is started or resumed.
 //! - `session`: one running Claude: its process, its input, the requests waiting for an answer.
-//! - `running`: the sessions running now, by id, behind the `Hosted` port the hub uses (hub/ports.rs).
+//! - `running`: the sessions running now, by id, behind the `Hosted` port the hub uses (hub/ports.rs), as Cue's
+//!   own children.
+//! - `driver`: a session's lines made sense of, wherever it runs.
+//! - `host_link`, `hosts`: the sessions run by cue-host (host/), which keeps them running across Cue restarts:
+//!   what the hub uses, with `running` for when the host can't be reached.
 //!
 //! None of this knows about the hub, the store or the window: a session reports through the function it was
 //! started with, and that's all whoever starts it needs.
 
 mod codex;
+mod driver;
+mod host_link;
+mod hosts;
 mod launch;
 mod pi;
 mod protocol;
@@ -27,14 +34,19 @@ mod codex_tests;
 #[cfg(test)]
 mod compat_tests;
 #[cfg(test)]
+mod hosts_tests;
+#[cfg(test)]
 mod pi_tests;
+#[cfg(test)]
+mod replay_tests;
 #[cfg(test)]
 mod session_tests;
 #[cfg(test)]
 mod translate_tests;
 
 pub use launch::{Agent, Program, Spec, Start};
-pub use running::{end_leftovers, Hosted, Report, Running, Started};
+pub use hosts::Hosts;
+pub use running::{end_leftovers, Hosted, Reattached, Report, Running, Started};
 pub use session::Session;
 
 use serde_json::Value;

@@ -45,6 +45,28 @@ async function moveToCue(sid) {
     renderMain();
   }
 }
+// Quitting (⌘Q) or an update would end sessions Cue runs itself (cue-host couldn't be reached when they started):
+// a dialog says which, those mid-turn first, before anything goes (hub/quitting.rs).
+let quitAsk = null;   // { why: "quit" | "update", list: [{ session_id, name, mid_turn }] }
+function quitDialog() {
+  const q = quitAsk, n = q.list.length, one = n === 1, mid = q.list.some((x) => x.mid_turn);
+  const doing = q.why === "update" ? "Installing the update restarts Cue, which ends" : "Quitting ends";
+  const rows = q.list.map((x) => `<li>${esc(x.name)}${x.mid_turn ? `<span class="quit-mid">mid-turn</span>` : ""}</li>`).join("");
+  return `<div class="move-scrim"><div class="move-dialog end-dialog" role="alertdialog" aria-labelledby="quit-title">
+    <div class="move-title" id="quit-title">${one ? "A session runs" : `${n} sessions run`} inside Cue</div>
+    <div class="end-text">cue-host, which keeps sessions running when Cue quits, couldn't be reached when ${one ? "it" : "they"} started, so Cue runs ${one ? "it" : "them"} itself. ${doing} ${one ? "it" : "them"}${mid ? ", cutting off a turn under way" : ""}; ${one ? "it comes back paused, and your next message resumes it" : "each comes back paused, and your next message to it resumes it"}.</div>
+    <ul class="quit-list">${rows}</ul>
+    <div class="row-btns"><span class="grow"></span><button class="btn deny" data-act="quit-go">${q.why === "update" ? "Install anyway" : "Quit anyway"}</button><button class="btn primary" data-act="quit-keep">Keep Cue open <kbd>Esc</kbd></button></div>
+  </div></div>`;
+}
+async function quitAnswer(go) {
+  const q = quitAsk;
+  quitAsk = null;
+  renderMain();
+  if (!go || !q) return;
+  if (q.why === "update") return installUpdate(true);
+  invoke("quit_now").catch((e) => toast(`Couldn't quit: ${e}`));
+}
 let searchVisible = [];        // result indexes in screen order (↓ / ↑ walk these)
 let searchLive = [], searchFound = [];   // running sessions (matched here) and what Cue's log found (asked for)
 const searchMore = new Set();  // sessions whose every match you asked to see
@@ -297,8 +319,10 @@ async function checkUpdate() {
   catch (e) { upd = { ...upd, status: `error:${e}` }; }
   renderMain();
 }
-/** Install and restart. */
-async function installUpdate() {
+/** Install and restart; first, unless `anyway`, asking when that would end sessions Cue runs itself. */
+async function installUpdate(anyway = false) {
+  const ends = anyway ? [] : await invoke("quit_check").catch(() => []);
+  if (ends.length) { quitAsk = { why: "update", list: ends }; return renderMain(); }
   upd = { ...upd, status: "installing" };
   renderMain();
   try { await invoke("update_install"); } catch (e) { upd = { ...upd, status: `error:${e}` }; renderMain(); }

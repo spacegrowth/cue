@@ -163,6 +163,26 @@ impl Protocol for Pi {
         self.dialogs.clear();
         self.sent.clear();
     }
+
+    fn wrote(&mut self, line: &str) {
+        let Ok(v) = serde_json::from_str::<Value>(line) else { return };
+        let id = str_of(&v, "id").unwrap_or_default();
+        self.next_request = self.next_request.max(super::protocol::numbered(Some(&id)));
+        match v.get("type").and_then(Value::as_str).unwrap_or_default() {
+            "prompt" => {
+                self.sent.insert(id, str_of(&v, "message").unwrap_or_default());
+            }
+            "abort" => self.stopped = self.in_turn,
+            "extension_ui_response" => {
+                self.dialogs.remove(&id);
+            }
+            _ => {}
+        }
+    }
+
+    fn waits_on(&self, request_id: &str) -> bool {
+        self.dialogs.contains_key(request_id)
+    }
 }
 
 /// A dialog waiting for your answer.

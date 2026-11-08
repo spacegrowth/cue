@@ -5,7 +5,8 @@
 #   ./install.sh --app      just the app
 #   ./install.sh --uninstall
 #
-# Cue's hosted sessions mid-turn are waited for first (quitting Cue ends them): CUE_INSTALL_WAIT=<seconds>, 0 for none.
+# Cue's hosted sessions mid-turn are waited for first when Cue runs them itself (quitting Cue ends them; under cue-host
+# they carry on): CUE_INSTALL_WAIT=<seconds>, 0 for none.
 #
 # Safe to re-run. Your ~/.claude/settings.json is backed up before it's touched, and only
 # Cue's own hook entries are added or removed — your other hooks stay as they are.
@@ -78,9 +79,11 @@ PY
 }
 
 # Wait for the hosted sessions' turns to end before quitting Cue: up to CUE_INSTALL_WAIT seconds (10 minutes unless
-# told), then it goes ahead. CUE_INSTALL_WAIT=0 doesn't wait.
+# told), then it goes ahead. CUE_INSTALL_WAIT=0 doesn't wait. Not when cue-host runs them (its socket is up): they
+# carry on while Cue quits and the new Cue picks them up.
 wait_for_hosted_turns() {
   local limit="${CUE_INSTALL_WAIT:-600}" waited=0 busy
+  if [ -S "$CUE_HOME/host/host.sock" ]; then return 0; fi
   while [ "$waited" -lt "$limit" ]; do
     busy=$(hosted_turns)
     [ -z "$busy" ] && return 0

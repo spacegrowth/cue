@@ -728,6 +728,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "block2",
+ "cue-host",
  "jsonwebtoken",
  "libc",
  "objc2",
@@ -747,6 +748,15 @@ dependencies = [
  "tokio",
  "vt100",
  "xtask",
+]
+
+[[package]]
+name = "cue-host"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

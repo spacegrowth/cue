@@ -145,6 +145,30 @@ pub(super) fn command(spec: &Spec) -> Result<Command, String> {
     Ok(c)
 }
 
+/// A command as cue-host runs it: the program and its arguments, the whole environment it gets, and its folder.
+pub(super) struct HostCommand {
+    pub argv: Vec<String>,
+    pub env: Vec<(String, String)>,
+    pub cwd: String,
+}
+
+/// `spec`'s command for cue-host: its environment is Cue's own with what `command` sets and removes, spelled out,
+/// so the host runs exactly that, whatever its own environment.
+pub(super) fn for_host(spec: &Spec) -> Result<HostCommand, String> {
+    let c = command(spec)?;
+    let text = |s: &std::ffi::OsStr| s.to_string_lossy().into_owned();
+    let argv: Vec<String> = std::iter::once(c.get_program()).chain(c.get_args()).map(text).collect();
+    let mut env: std::collections::BTreeMap<String, String> = std::env::vars().collect();
+    for (k, v) in c.get_envs() {
+        match v {
+            Some(v) => env.insert(text(k), text(v)),
+            None => env.remove(&text(k)),
+        };
+    }
+    let cwd = c.get_current_dir().map_or_else(|| spec.cwd.to_string_lossy().into_owned(), |d| d.to_string_lossy().into_owned());
+    Ok(HostCommand { argv, env: env.into_iter().collect(), cwd })
+}
+
 /// The agent's arguments for `spec`.
 pub(super) fn arguments(spec: &Spec) -> Result<Vec<String>, String> {
     let id = spec.start.session_id();
@@ -238,6 +262,20 @@ mod tests {
         let gate = c.get_envs().find(|(k, _)| *k == "CUE_PI_GATE").and_then(|(_, v)| v.map(|v| v.to_string_lossy().to_string()));
         assert_eq!(gate.as_deref(), Some("off"));
         assert!(arguments(&Spec { permissions: "plan".into(), ..s }).is_err(), "Pi has no plan mode");
+    }
+
+    #[test]
+    fn for_the_host_it_is_the_same_command_with_its_whole_environment_spelled_out() {
+        let s = spec(Start::New("0f0e-11".into()));
+        let HostCommand { argv, env, cwd } = for_host(&s).unwrap();
+        let c = command(&s).unwrap();
+        assert_eq!(argv[0], c.get_program().to_string_lossy());
+        assert_eq!(&argv[1..], c.get_args().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>().as_slice());
+        assert_eq!(cwd, "/tmp");
+        let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
+        assert_eq!(get(crate::hosted::HOSTED_ENV), Some("1"), "marked hosted");
+        assert!(get("TMUX").is_none() && get("CLAUDECODE").is_none(), "nothing that would make it think it's inside another session");
+        assert_eq!(get("HOME").map(str::to_string), std::env::var("HOME").ok(), "and the rest of Cue's own");
     }
 
     #[test]

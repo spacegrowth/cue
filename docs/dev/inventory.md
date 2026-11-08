@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 145 (3 sync) |
-| Lock declarations (static or field) | 103 |
-| Lock acquisitions | 236 |
+| `#[tauri::command]` | 147 (3 sync) |
+| Lock declarations (static or field) | 112 |
+| Lock acquisitions | 264 |
 | Lock-graph edges | 50 |
-| Spawn sites | 83 |
-| External calls: fs / db / process / notify / login / socket | 354 / 146 / 53 / 4 / 1 / 3 |
+| Spawn sites | 86 |
+| External calls: fs / db / process / notify / login / socket | 362 / 146 / 53 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -86,6 +86,8 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `focus_session_id` | async | `ipc/chat.rs::focus_session_id` | ipc::with_hub |
 | `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
 | `move_to_terminal` | async | `ipc/hosted.rs::move_to_terminal` | ipc::with_hub |
+| `quit_check` | async | `ipc/hosted.rs::quit_check` | ipc::with_hub |
+| `quit_now` | async | `ipc/hosted.rs::quit_now` | — |
 | `insight_state` | async | `ipc/insights.rs::insight_state` | ipc::with_hub |
 | `insight_host_skills` | async | `ipc/insights.rs::insight_host_skills` | ipc::blocking |
 | `handoff_sent` | async | `ipc/insights.rs::handoff_sent` | ipc::with_hub |
@@ -199,10 +201,19 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `db/handoffs.rs::Kept.kept` | `Mutex<Option<(u64,std::time::Instant,T)>>` | "a kept db answer" (2 sites) |
 | `db/mod.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
-| `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (4 sites) |
+| `hosted/driver.rs::Driver.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
+| `hosted/driver.rs::Driver.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
+| `hosted/host_link.rs::HostLink.out` | `Mutex<Option<UnixStream>>` | "cue-host link: out" (3 sites) |
+| `hosted/host_link.rs::HostLink.waiting` | `Mutex<HashMap<u64,Sender<Result<Value,String>>>>` | "cue-host link: waiting" (5 sites) |
+| `hosted/host_link.rs::HostLink.routes` | `Mutex<HashMap<String,Route>>` | "cue-host link: routes" (3 sites) |
+| `hosted/host_link.rs::HostLink.on_back` | `Mutex<Option<Box<dynFn()+Send+Sync>>>` | "cue-host link: on back" (2 sites) |
+| `hosted/hosts.rs::Hosts.link` | `Mutex<Option<Arc<HostLink>>>` | "hosts: link" (2 sites) |
+| `hosted/hosts.rs::Hosts.failed_at` | `Mutex<Option<std::time::Instant>>` | "hosts: link tried" (2 sites) |
+| `hosted/hosts.rs::Hosts.remotes` | `Arc<Mutex<HashMap<String,Arc<Remote>>>>` | "hosts: sessions" (6 sites) |
+| `hosted/hosts.rs::Remote.cursor` | `Mutex<Cursor>` | "hosts: a session's cursor" (3 sites) |
+| `hosted/hosts.rs::Remote.queue` | `Mutex<Option<Sender<Event>>>` | "hosts: a session's queue" (2 sites) |
+| `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (5 sites) |
 | `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
-| `hosted/session.rs::Shared.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
-| `hosted/session.rs::Shared.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (3 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.worker` | `OnceLock<bool>` | — |
@@ -365,6 +376,9 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `config.rs::watch` | thread::spawn | 1 |
 | `config/mac.rs::Kept::refresh_soon` | thread::spawn | 1 |
 | `extensions.rs::run_program` | thread::spawn | 1 |
+| `hosted/host_link.rs::HostLink::lost` | thread::spawn | 1 |
+| `hosted/host_link.rs::HostLink::open` | thread::spawn | 1 |
+| `hosted/hosts.rs::Hosts::listen` | thread::spawn | 1 |
 | `hosted/running.rs::Running::close_all` | thread::spawn | 1 |
 | `hosted/session.rs::Session::start` | thread::spawn | 1 |
 | `hosted/session.rs::keep_last_words` | thread::spawn | 1 |
@@ -435,7 +449,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (354)
+### fs (362)
 
 | In | Call | Times |
 |---|---|---|
@@ -512,6 +526,14 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hook.rs::put_executable` | write | 1 |
 | `hook.rs::read_tail` | File::open | 1 |
 | `hook.rs::read_tail` | Path::metadata | 1 |
+| `hosted/hosts.rs::Cursor::find` | read | 1 |
+| `hosted/hosts.rs::Cursor::find` | read_dir | 1 |
+| `hosted/hosts.rs::Cursor::prune` | Path::metadata | 1 |
+| `hosted/hosts.rs::Cursor::prune` | read_dir | 1 |
+| `hosted/hosts.rs::Cursor::prune` | remove_file | 1 |
+| `hosted/hosts.rs::Cursor::save` | create_dir_all | 1 |
+| `hosted/hosts.rs::Cursor::save` | rename | 1 |
+| `hosted/hosts.rs::Cursor::save` | write | 1 |
 | `hub/activity.rs::written_ms` | metadata | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |

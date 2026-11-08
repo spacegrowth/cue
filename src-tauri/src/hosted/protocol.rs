@@ -21,6 +21,12 @@ pub(super) trait Protocol: Send {
     fn in_turn(&self) -> bool;
     /// Its process is gone: nothing waits for an answer any more.
     fn gone(&mut self);
+    /// A line Cue wrote to it, read back from the host's log (Cue started again and reads what it missed): what
+    /// writing it changed here, as `message`, `answer`, `interrupt` and `opening` change it when they make it.
+    /// Replaying the log (its lines through `read`, Cue's through this) leaves the protocol as it was.
+    fn wrote(&mut self, line: &str);
+    /// Whether request `request_id` (an `Ask`'s) still waits for an answer.
+    fn waits_on(&self, request_id: &str) -> bool;
     /// The conversation's id, once the agent has said it, for one that picks its own (Codex); None: the one Cue
     /// started it with.
     fn session_id(&self) -> Option<String> {
@@ -94,4 +100,26 @@ impl Protocol for Claude {
     fn gone(&mut self) {
         self.pending.clear();
     }
+
+    fn wrote(&mut self, line: &str) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { return };
+        match v.get("type").and_then(serde_json::Value::as_str) {
+            Some("control_request") => self.next_request = self.next_request.max(numbered(v["request_id"].as_str())),
+            Some("control_response") => {
+                if let Some(id) = v.pointer("/response/request_id").and_then(serde_json::Value::as_str) {
+                    self.pending.remove(id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn waits_on(&self, request_id: &str) -> bool {
+        self.pending.contains_key(request_id)
+    }
+}
+
+/// N, from a request id of Cue's ("cue-N"); 0 for any other.
+pub(super) fn numbered(id: Option<&str>) -> u64 {
+    id.and_then(|i| i.strip_prefix("cue-")).and_then(|n| n.parse().ok()).unwrap_or(0)
 }

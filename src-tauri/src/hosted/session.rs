@@ -1,16 +1,15 @@
 //! One hosted agent (Claude Code, Pi): started from a `Spec`, it reports everything as `HostedEvent`s to the
 //! function it was started with, on a thread of its own, until it exits. Your messages, answers and interrupts
-//! go to its input. What its lines mean, and how Cue's are spelled, is its `Protocol`'s (protocol.rs); this is
-//! the process.
+//! go to its input. What its lines mean, and how Cue's are spelled, is its `Driver`'s (driver.rs); this is the
+//! process, run as Cue's own child (cue-host runs it otherwise: hosts.rs).
 //!
 //! Its process runs in a group of its own: closing the session closes its input (the agent finishes and exits),
 //! then, if it's still there after a grace, ends the group, so nothing it started outlives it. When the agent
 //! exits by itself while something it started still holds its output open (a background command), that
 //! leftover is ended too: the session is over when the agent is, not when its last child lets go.
 
-use super::protocol::Protocol;
+use super::driver::{Driver, Sink};
 use super::{launch, Answer, HostedEvent, Spec};
-use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,12 +24,7 @@ const END_GRACE: Duration = Duration::from_secs(2);
 /// whatever of its group holds it is ended.
 const DRAIN_GRACE: Duration = Duration::from_secs(1);
 /// How long an agent that opens its conversation itself (Codex) gets to say it's open before starting fails.
-const OPEN_GRACE: Duration = Duration::from_secs(30);
-/// How much of its error output is kept, for saying why it exited.
-const LAST_WORDS: usize = 20;
-
-/// Where its events go, each with the conversation's id (known only once it's open, for an agent that picks it).
-type Sink = Arc<dyn Fn(&str, HostedEvent) + Send + Sync>;
+pub(super) const OPEN_GRACE: Duration = Duration::from_secs(30);
 
 pub struct Session {
     shared: Arc<Shared>,
@@ -38,15 +32,10 @@ pub struct Session {
 
 struct Shared {
     pgid: i32,
-    /// Which agent, for saying so.
-    name: &'static str,
-    /// The id it was started under: the conversation's, unless the agent picks its own (its protocol's).
-    started_as: String,
+    /// Its lines made sense of, and its events reported.
+    driver: Driver,
     /// None once the session is closed.
     input: Mutex<Option<ChildStdin>>,
-    /// What its lines mean. Never held while writing to it.
-    protocol: Mutex<Box<dyn Protocol>>,
-    last_words: Mutex<VecDeque<String>>,
     /// Its output has ended.
     ended: AtomicBool,
     /// Its output has ended and its exit is known: the session is over.
@@ -61,51 +50,26 @@ impl Session {
         let (Some(input), Some(output), Some(errors)) = (child.stdin.take(), child.stdout.take(), child.stderr.take()) else {
             return Err(format!("{name} started without its input and output"));
         };
-        let shared = Arc::new(Shared {
-            pgid: child.id() as i32,
-            name,
-            started_as: spec.start.session_id().to_string(),
-            input: Mutex::new(Some(input)),
-            protocol: Mutex::new(spec.agent.protocol(spec)),
-            last_words: Mutex::new(VecDeque::new()),
-            ended: AtomicBool::new(false),
-            gone: AtomicBool::new(false),
-        });
+        let sink: Sink = Arc::new(sink);
+        let shared = Arc::new(Shared { pgid: child.id() as i32, driver: Driver::new(spec, sink), input: Mutex::new(Some(input)), ended: AtomicBool::new(false), gone: AtomicBool::new(false) });
         let errors = keep_last_words(shared.clone(), errors);
         let exit = wait_for_exit(shared.clone(), child);
-        let sink: Sink = Arc::new(sink);
         let reader = shared.clone();
-        std::thread::spawn(move || reader.read(output, exit, errors, &sink));
+        std::thread::spawn(move || reader.read(output, exit, errors));
         let session = Session { shared };
-        for line in session.shared.speak(|p| p.opening()) {
-            session.shared.write(&line)?;
-        }
-        session.wait_open(name)?;
+        session.shared.write_lines(&session.shared.driver.opening())?;
+        wait_open(&session.shared.driver, || session.gone()).inspect_err(|_| session.close())?;
         Ok(session)
-    }
-
-    /// Until its conversation is open, for an agent that opens it itself: so its id is known when `start` returns.
-    fn wait_open(&self, name: &str) -> Result<(), String> {
-        let end = Instant::now() + OPEN_GRACE;
-        while !self.shared.speak(|p| p.ready()) {
-            if self.gone() || Instant::now() >= end {
-                let words = crate::locking::lock(&self.shared.last_words, "hosted session: last words").iter().cloned().collect::<Vec<_>>().join("\n");
-                self.close();
-                return Err(format!("{name} didn't open the conversation{}", if words.is_empty() { String::new() } else { format!(": {words}") }));
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        Ok(())
     }
 
     /// The conversation's id: the one it was started under, or the one the agent picked.
     pub fn session_id(&self) -> String {
-        self.shared.session_id()
+        self.shared.driver.session_id()
     }
 
     /// Where the agent keeps the conversation, when it says so.
     pub fn transcript(&self) -> Option<String> {
-        self.shared.speak(|p| p.transcript())
+        self.shared.driver.transcript()
     }
 
     /// Its process (the leader of its process group): what the processes it starts descend from.
@@ -115,20 +79,17 @@ impl Session {
 
     /// Your message. Taken at once when the agent is idle, at its next step when it's busy (`Taken` says when).
     pub fn send(&self, text: &str) -> Result<(), String> {
-        let lines = self.shared.speak(|p| p.message(text));
-        self.shared.write_lines(&lines)
+        self.shared.write_lines(&self.shared.driver.message(text))
     }
 
     /// Your answer to the request `request_id` (an `Ask`'s).
     pub fn answer(&self, request_id: &str, a: &Answer) -> Result<(), String> {
-        let lines = self.shared.speak(|p| p.answer(request_id, a))?;
-        self.shared.write_lines(&lines)
+        self.shared.write_lines(&self.shared.driver.answer(request_id, a)?)
     }
 
     /// Stop what it's doing: the running tool stops and the turn ends.
     pub fn interrupt(&self) -> Result<(), String> {
-        let lines = self.shared.speak(|p| p.interrupt());
-        self.shared.write_lines(&lines)
+        self.shared.write_lines(&self.shared.driver.interrupt())
     }
 
     /// Whether its process has exited.
@@ -159,36 +120,17 @@ impl Drop for Session {
 
 impl Shared {
     /// Its output, line by line, until it ends; then its exit, after its error output is read to the end.
-    fn read(&self, output: impl Read, exit: JoinHandle<Option<i32>>, errors: JoinHandle<()>, sink: &Sink) {
+    fn read(&self, output: impl Read, exit: JoinHandle<Option<i32>>, errors: JoinHandle<()>) {
         for line in BufReader::new(output).lines().map_while(Result::ok) {
-            let (events, replies) = self.speak(|p| p.read(&line));
-            for r in replies {
+            for r in self.driver.read(&line) {
                 let _ = self.write(&r);
-            }
-            let id = self.session_id();
-            for e in events {
-                sink(&id, e);
             }
         }
         self.ended.store(true, Ordering::SeqCst);
         let code = exit.join().ok().flatten();
         let _ = errors.join();
         self.gone.store(true, Ordering::SeqCst);
-        let during_turn = self.speak(|p| {
-            p.gone();
-            p.in_turn()
-        });
-        let last_words = crate::locking::lock(&self.last_words, "hosted session: last words").iter().cloned().collect::<Vec<_>>().join("\n");
-        sink(&self.session_id(), HostedEvent::Exited { code, during_turn, last_words });
-    }
-
-    fn session_id(&self) -> String {
-        self.speak(|p| p.session_id()).unwrap_or_else(|| self.started_as.clone())
-    }
-
-    /// `f` with its protocol, let go before anything is written.
-    fn speak<R>(&self, f: impl FnOnce(&mut dyn Protocol) -> R) -> R {
-        f(crate::locking::lock(&self.protocol, "hosted session: protocol").as_mut())
+        self.driver.exited(code);
     }
 
     fn write_lines(&self, lines: &[String]) -> Result<(), String> {
@@ -198,7 +140,7 @@ impl Shared {
     fn write(&self, line: &str) -> Result<(), String> {
         let mut input = crate::locking::lock(&self.input, "hosted session: input");
         let Some(w) = input.as_mut() else { return Err("the session is closed".into()) };
-        w.write_all(line.as_bytes()).and_then(|_| w.write_all(b"\n")).and_then(|_| w.flush()).map_err(|e| format!("{} isn't taking input: {e}", self.name))
+        w.write_all(line.as_bytes()).and_then(|_| w.write_all(b"\n")).and_then(|_| w.flush()).map_err(|e| format!("{} isn't taking input: {e}", self.driver.name))
     }
 
     fn wait_gone(&self, limit: Duration) -> bool {
@@ -242,15 +184,25 @@ fn wait_until(flag: &AtomicBool, limit: Duration) -> bool {
     true
 }
 
-/// Its error output read to the end on a thread of its own, the last LAST_WORDS lines kept.
+/// Its error output read to the end on a thread of its own, its last lines kept.
 fn keep_last_words(shared: Arc<Shared>, errors: impl Read + Send + 'static) -> JoinHandle<()> {
     std::thread::spawn(move || {
         for line in BufReader::new(errors).lines().map_while(Result::ok) {
-            let mut kept = crate::locking::lock(&shared.last_words, "hosted session: last words");
-            if kept.len() == LAST_WORDS {
-                kept.pop_front();
-            }
-            kept.push_back(line);
+            shared.driver.error_line(line);
         }
     })
+}
+
+/// Until its conversation is open, for an agent that opens it itself (Codex): so its id is known when starting
+/// returns. Err with what it said, once it's `gone` or OPEN_GRACE has gone by.
+pub(super) fn wait_open(driver: &Driver, gone: impl Fn() -> bool) -> Result<(), String> {
+    let end = Instant::now() + OPEN_GRACE;
+    while !driver.ready() {
+        if gone() || Instant::now() >= end {
+            let words = driver.last_words();
+            return Err(format!("{} didn't open the conversation{}", driver.name, if words.is_empty() { String::new() } else { format!(": {words}") }));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    Ok(())
 }

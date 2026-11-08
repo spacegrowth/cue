@@ -20,6 +20,8 @@ const ACTS = {
   "move-dismiss": () => { moving = null; renderMain(); },
   "delete-yes": () => deleteAnswer(true),
   "delete-no": () => deleteAnswer(false),
+  "quit-go": () => quitAnswer(true),
+  "quit-keep": () => quitAnswer(false),
   resend: (el) => invoke("send_to_session", { sessionId: el.dataset.sid, text: el.dataset.resend, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't send: ${x}`)),
   "ran-again": (el) => ranAct(el, (who, r) => runLine(who, r.line, r.cwd, r.machine)),
   // The line and what it printed, as the card shows them.

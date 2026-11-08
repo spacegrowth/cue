@@ -148,3 +148,16 @@ mod tests {
         assert!(flag_words("--append-system-prompt 'be brief'").is_err());
     }
 }
+
+/// What quitting Cue would end now (hub/quitting.rs): asked before ⌘Q goes through and before an update restarts Cue.
+#[tauri::command]
+pub(crate) async fn quit_check(hub: State<'_, Arc<Hub>>) -> Result<Vec<crate::hub::EndsWithCue>, String> {
+    with_hub(&hub, |h| h.ends_with_cue()).await
+}
+
+/// Quit, having been told what it ends (the window's quit dialog: Quit anyway).
+#[tauri::command]
+pub(crate) async fn quit_now(app: tauri::AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}

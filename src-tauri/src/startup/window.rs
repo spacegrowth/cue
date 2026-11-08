@@ -77,13 +77,36 @@ pub(super) fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Men
 /// Quit Cue (⌘Q), or pass Close (⌘W) to the window.
 pub(super) fn on_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
-        "app-quit" => app.exit(0),
+        "app-quit" => quit_asked(app),
         "app-close" => {
             use tauri::Emitter;
             let _ = app.emit_to("main", "close-key", ());
         }
         _ => {}
     }
+}
+
+/// ⌘Q: Cue quits, unless that would end sessions it runs itself (`asks_before_quitting`).
+fn quit_asked(app: &tauri::AppHandle) {
+    if !asks_before_quitting(app) {
+        app.exit(0);
+    }
+}
+
+/// Quitting would end sessions Cue runs itself (cue-host couldn't be reached when they started): the window comes
+/// forward and asks, naming them (hub/quitting.rs), and true. False: nothing would end, quit away.
+fn asks_before_quitting(app: &tauri::AppHandle) -> bool {
+    let ends = app.try_state::<Arc<hub::Hub>>().map(|h| h.ends_with_cue()).unwrap_or_default();
+    if ends.is_empty() {
+        return false;
+    }
+    use tauri::Emitter;
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    let _ = app.emit_to("main", "quit-ask", ends);
+    true
 }
 
 /// Closing the window keeps Cue running (it must stay up to receive requests). The mini window steps aside
@@ -106,13 +129,21 @@ pub(super) fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
 /// Cue quitting, or opened again from the Dock.
 pub(crate) fn on_run_event(handle: &tauri::AppHandle, event: RunEvent) {
     match event {
+        // Quit from the Dock, or at logout (Cue's own exits carry a code, ⌘Q asks in quit_asked): held, and the
+        // window asks, when it would end sessions Cue runs itself.
+        RunEvent::ExitRequested { code: None, api, .. } => {
+            if asks_before_quitting(handle) {
+                api.prevent_exit();
+            }
+        }
         // Actions run without tmux are Cue's own children: they end with it.
         RunEvent::Exit => {
             actions::end_plain();
             // What changed since the last draw is saved before Cue goes.
             if let Some(hub) = handle.try_state::<Arc<hub::Hub>>() {
                 hub.save_live_and_wait();
-                // The sessions Cue hosts end with it (their conversations stay: each comes back paused).
+                // Hosted sessions cue-host runs go on (the next Cue picks them up); any run as Cue's own children end
+                // with it (their conversations stay: each comes back paused).
                 hub.hosted().close_all();
             }
         }

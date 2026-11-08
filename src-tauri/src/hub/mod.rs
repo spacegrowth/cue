@@ -20,6 +20,7 @@ mod kept_history;
 mod live_writes;
 pub(crate) mod ports;
 mod projects;
+mod quitting;
 mod redraw;
 mod reviews;
 mod saves;
@@ -34,6 +35,7 @@ mod usage;
 pub use history::{split_turn, summary};
 pub use asks::NewAsk;
 pub use hosted::HostedStart;
+pub use quitting::EndsWithCue;
 
 /// What an open Ask connection is told.
 pub enum Reply {

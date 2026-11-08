@@ -17,6 +17,8 @@ pub struct Started {
     pub pid: i32,
     pub session_id: String,
     pub transcript: Option<String>,
+    /// Mid-turn (a session picked up after Cue started again, at work while Cue was away).
+    pub in_turn: bool,
 }
 
 /// Starting, talking to and closing hosted sessions.
@@ -36,6 +38,22 @@ pub trait Hosted: Send + Sync {
     /// The processes hosted sessions ran as under a Cue that's gone, ended if they still run on their own (that
     /// Cue was killed before it could close them): before any is started again, so two never share a conversation.
     fn end_left(&self, pids: &[i32]);
+    /// The sessions that end if Cue quits: those it runs as its own children (cue-host couldn't be reached when they
+    /// started), by the conversation's id.
+    fn in_cue(&self) -> Vec<String>;
+    /// A session started under an earlier Cue that cue-host kept, picked up again. None: the host has nothing for it
+    /// (the way back is a new start).
+    fn reattach(&self, _spec: &Spec, _report: Report) -> Option<Reattached> {
+        None
+    }
+}
+
+/// A session picked up from cue-host: its process when it still runs (`started`), and `go`, which reports the asks
+/// it still waits on and then what it said while no Cue was there and says from now on, to the session's report.
+/// Called once whoever picked it up has noted its process, so nothing reported finds it without one.
+pub struct Reattached {
+    pub started: Option<Started>,
+    pub go: Box<dyn FnOnce() + Send>,
 }
 
 struct Entry {
@@ -76,7 +94,7 @@ impl Hosted for Running {
                 report(id, e);
             }
         })?;
-        let started = Started { pid: session.pid(), session_id: session.session_id(), transcript: session.transcript() };
+        let started = Started { pid: session.pid(), session_id: session.session_id(), transcript: session.transcript(), in_turn: false };
         crate::locking::lock(&self.sessions, "hosted sessions").insert(started.session_id.clone(), Arc::new(Entry { session, closing }));
         Ok(started)
     }
@@ -99,6 +117,10 @@ impl Hosted for Running {
 
     fn running(&self, session_id: &str) -> bool {
         self.get(session_id).is_ok()
+    }
+
+    fn in_cue(&self) -> Vec<String> {
+        crate::locking::lock(&self.sessions, "hosted sessions").iter().filter(|(_, e)| !e.session.gone()).map(|(id, _)| id.clone()).collect()
     }
 
     fn end_left(&self, pids: &[i32]) {

@@ -11,7 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # xtask: the source inventory and lints (docs/dev/inventory.md), a dev-only tool run by `cargo run -p xtask`
 # and by `cargo test` (locking/lint.rs). Not a default member: `cargo build` and `tauri build` never build it.
 [workspace]
-members = ["xtask"]
+members = ["xtask", "host"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -26,6 +26,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt-multi-thread", "signal"] }
 libc = "0.2"
+# The host that keeps hosted agents running across Cue restarts (host/; Cue runs it as `cue host …`).
+cue-host = { path = "host" }
 base64 = "0.22"
 # The built-in terminal: a pseudo-terminal Cue attaches to a session's tmux with.
 portable-pty = "0.9"

@@ -26,12 +26,19 @@ pub struct FakeHosted {
     closed: Mutex<Vec<String>>,
     ended: Mutex<Vec<i32>>,
     refusal: Mutex<Option<String>>,
+    /// Sessions run by cue-host (they go on when Cue quits); the rest are Cue's own children.
+    in_host: Mutex<HashSet<String>>,
 }
 
 /// The process ids the stand-in hands out: none a real process has (they're past the system's largest).
 const FIRST_PID: i32 = 9_000_000;
 
 impl FakeHosted {
+    /// Session `id` runs under cue-host: it doesn't end when Cue quits.
+    pub fn under_host(&self, id: &str) {
+        crate::locking::lock(&self.in_host, "fake hosted under the host").insert(id.into());
+    }
+
     /// Process ids Cue asked to end as left by the Cue before it.
     pub fn ended_left(&self) -> Vec<i32> {
         crate::locking::lock(&self.ended, "fake hosted leftovers").clone()
@@ -91,7 +98,7 @@ impl Hosted for FakeHosted {
             _ => (spec.start.session_id().to_string(), None),
         };
         crate::locking::lock(&self.running, "fake hosted running").insert(session_id.clone());
-        Ok(Started { pid: FIRST_PID + n, session_id, transcript })
+        Ok(Started { pid: FIRST_PID + n, session_id, transcript, in_turn: false })
     }
 
     fn send(&self, session_id: &str, text: &str) -> Result<(), String> {
@@ -123,6 +130,12 @@ impl Hosted for FakeHosted {
 
     fn end_left(&self, pids: &[i32]) {
         crate::locking::lock(&self.ended, "fake hosted leftovers").extend_from_slice(pids);
+    }
+
+    /// As Cue's own children: every one running ends with Cue (`in_host` takes them out).
+    fn in_cue(&self) -> Vec<String> {
+        let host = crate::locking::lock(&self.in_host, "fake hosted under the host").clone();
+        crate::locking::lock(&self.running, "fake hosted running").iter().filter(|s| !host.contains(*s)).cloned().collect()
     }
 
     fn close_all(&self) {

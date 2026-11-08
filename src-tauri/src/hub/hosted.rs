@@ -98,6 +98,28 @@ impl Hub {
         Ok(())
     }
 
+    /// Hosted sessions an earlier Cue left running under cue-host, picked up (at launch): each gets its process
+    /// back and, mid-turn, shows as working again; what it said while Cue was away comes in as it would have, and
+    /// an ask it still waits on is a card again.
+    pub(crate) fn reattach_hosted(&self) {
+        let hosted: Vec<Origin> = self.read(|st| st.sessions.all().into_iter().map(|s| s.origin).filter(|o| o.hosted).collect());
+        for o in hosted {
+            let Some(agent) = Agent::named(&o.harness) else { continue };
+            let spec = Spec { agent, cwd: o.cwd.clone().into(), start: Start::Resume(o.session_id.clone()), permissions: String::new(), model: None, args: vec![], program: Program::Agent };
+            // Costs aren't kept across restarts: this run's count from zero, as a resumed one's does.
+            let Some(back) = self.hosted().reattach(&spec, self.hosted_report(o.clone(), 0.0)) else { continue };
+            // Its process noted first: what it reports next (an ask again, what it said meanwhile) finds it.
+            if let Some(started) = &back.started {
+                self.write(|st| st.sessions.set_pid(&o.session_id, Some(started.pid)));
+                if started.in_turn {
+                    self.mark_state(&Origin { agent_pid: Some(started.pid), ..o.clone() }, "working");
+                }
+            }
+            (back.go)();
+        }
+        self.changed();
+    }
+
     /// The session's origin when Cue hosts it.
     pub(crate) fn hosted_origin(&self, session_id: &str) -> Option<Origin> {
         self.read(|st| st.sessions.origin(session_id)).filter(|o| o.hosted)

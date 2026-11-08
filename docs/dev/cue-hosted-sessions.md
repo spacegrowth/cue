@@ -272,11 +272,12 @@ session's id is known once `thread/start` answers. Codex's hooks skip a hosted C
 Claude). Cue finds `codex` on the login shell's PATH, else inside the ChatGPT app
 (`/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`).
 
-**H3. The agent host (was M4).** A small process of its own (`cue agent-host`, the same binary, like `cue
-hook`) owns every hosted agent process and talks to the app over a socket in Cue's data folder. The app's
-`Running` becomes its client behind the same `Hosted` port, so the hub doesn't change. Quitting or updating Cue
-no longer stops a turn: on launch the app reconnects, gets each session's state and what it said meanwhile, and
-carries on. This is what tmux gave terminal sessions; it has to exist before tmux goes.
+**H3. The agent host (was M4). Built 2026-11-08** (`docs/dev/cue-agent-host.md`, §12 for how it came out). cue-host
+(`cue host`, the same binary, like `cue hook`) owns every hosted agent process and talks to the app over a socket in
+Cue's data folder; the app's `Hosts` is its client behind the same `Hosted` port. Quitting or updating Cue no longer
+stops a turn: on launch the app reconnects, rebuilds each session's state from the host's log, asks again what still
+waits, and carries on with what it said meanwhile. This is what tmux gave terminal sessions; it had to exist before
+tmux goes.
 
 **H4. Other machines.** Today a session on a machine runs in tmux there over SSH. Hosted: the agent's stdio
 runs over SSH (`ssh <host> 'cd <folder> && claude -p …'`), the same clients on top. Without a host on that

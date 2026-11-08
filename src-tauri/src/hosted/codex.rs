@@ -275,6 +275,37 @@ impl Protocol for Codex {
         self.asked.clear();
     }
 
+    fn wrote(&mut self, line: &str) {
+        let Ok(v) = serde_json::from_str::<Value>(line) else { return };
+        match (v.get("id"), v.get("method").and_then(Value::as_str)) {
+            // A request of Cue's: what it was, so Codex's answer to it is read as it was then.
+            (Some(id), Some(method)) => {
+                let Some(n) = id.as_u64() else { return };
+                self.next_request = self.next_request.max(n);
+                let what = match method {
+                    "initialize" => Asked::Setup,
+                    "thread/start" | "thread/resume" => Asked::Open,
+                    "turn/start" | "turn/steer" => Asked::Message(v.pointer("/params/input/0/text").and_then(Value::as_str).unwrap_or_default().to_string()),
+                    "turn/interrupt" => {
+                        self.stopped = true;
+                        Asked::Other
+                    }
+                    _ => Asked::Other,
+                };
+                self.asked.insert(n, what);
+            }
+            // Cue's answer to a request of Codex's.
+            (Some(id), None) => {
+                self.waiting.remove(&id.to_string());
+            }
+            _ => {}
+        }
+    }
+
+    fn waits_on(&self, request_id: &str) -> bool {
+        self.waiting.contains_key(request_id)
+    }
+
     fn session_id(&self) -> Option<String> {
         self.thread.clone()
     }
