@@ -105,14 +105,14 @@
     return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-open="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
   }
   function islandHtml() {
-    // Left: what waits on you, counted, steady. Right: what you're talking to, the sessions back to you blinking
-    // (one dot each), then how many are at work.
+    // Left: what waits on you, counted, steady. Right: what's at work, and the dot next to its number blinks
+    // while a session you wrote to is back to you.
     const back = backToYou(), backIds = new Set(back.map((i) => i.id));
     const { shown } = needs();
     const waits = shown.filter((i) => !backIds.has(i.id));
     const ask = waits.filter(asks).length, turn = waits.length - ask, busy = working().length;
     const left = `${ask ? `<span class="m-n">${dot({ kind: "ask" })}${ask}</span>` : ""}${turn ? `<span class="m-n">${dot({ kind: "waiting" })}${turn}</span>` : ""}`;
-    const right = `${back.map((it) => `<span class="m-n back">${dot(it)}</span>`).join("")}${busy ? `<span class="m-n m-quiet"><i class="m-dot work"></i>${busy}</span>` : ""}`;
+    const right = busy || back.length ? `<span class="m-n${back.length ? " back" : " m-quiet"}"><i class="m-dot work"></i>${busy || ""}</span>` : "";
     // Nothing to show: just the notch (black on its black; on a display without one, Cue's own).
     if (!left && !right) return `<div class="m-panel m-island idle"></div>`;
     return `<div class="m-panel m-island peek"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing">${right}</span></div>`;

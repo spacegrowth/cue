@@ -28,7 +28,7 @@ body.mini { overflow: hidden; font-size: 13px; }
 .m-tab.talk .m-dot { animation: m-blink 1s steps(1, end) infinite; }
 @keyframes m-blink { 50% { opacity: .35; } }
 /* Back to you (a session you wrote to came back): the whole dot blinks, on and off, until you open it. */
-.m-island .m-n.back .m-dot.turn { background: var(--accent); box-shadow: none; }   /* a full dot, not the waiting one */
+.m-island .m-n.back .m-dot { background: var(--accent); }   /* full and bright while it blinks */
 .m-tuck.back .m-live, .m-island .m-n.back .m-dot { animation: m-call 1s steps(1, end) infinite; }
 @keyframes m-call { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .m-tab.talk .m-dot { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
