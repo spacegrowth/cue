@@ -17,10 +17,9 @@
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
-  // Where you put the rail (mini_drag): how far down its edge (0 top, 1 bottom), the left edge or the right, and
-  // on which display; kept in this window's own storage. Until you drag it: the right edge's foot.
-  let pos = { at: 1, left: false, display: null };
-  try { Object.assign(pos, JSON.parse(localStorage.getItem("cue.mini.pos") || "{}")); } catch {}
+  // The side edge Cue put this display's tab on (where you dragged it; Cue keeps that for each display and
+  // says which side with each mini_shape): the arrow and the panel's side follow it.
+  const pos = { left: false };
   const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
@@ -183,11 +182,19 @@
     const w = WIDTH[m.shape] || WIDTH.quiet;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
-    const args = { w, h, show: true, at: NOTCH ? 0 : pos.at, left: !NOTCH && pos.left, display: NOTCH ? null : pos.display };
+    const args = { w, h, show: true };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
-    invoke("mini_shape", args).catch(() => { m.sized = ""; });
+    invoke("mini_shape", args).then((r) => side(r), () => { m.sized = ""; });
+  }
+  /** The side Cue says the tab is on: drawn again when that changed (its arrow, the panel's side). */
+  function side(r) {
+    const left = !NOTCH && !!r?.left;
+    if (left === pos.left) return;
+    pos.left = left;
+    drawn.delete(root);
+    paint();
   }
   function shapeHtml() {
     if (m.shape === "chat" && m.open) return chatHtml();
@@ -286,7 +293,7 @@
       const eat = (c) => { c.stopPropagation(); c.preventDefault(); };
       window.addEventListener("click", eat, { capture: true, once: true });
       invoke("mini_drag").then((p) => {
-        if (p && typeof p.at === "number") { pos = { at: p.at, left: !!p.left, display: p.display || null }; try { localStorage.setItem("cue.mini.pos", JSON.stringify(pos)); } catch {} }
+        side(p);
       }, () => {}).finally(() => {
         m.dragging = false;
         m.sized = "";

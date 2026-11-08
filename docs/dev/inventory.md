@@ -15,11 +15,11 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | What | Count |
 |---|---|
 | `#[tauri::command]` | 141 (3 sync) |
-| Lock declarations (static or field) | 96 |
-| Lock acquisitions | 223 |
+| Lock declarations (static or field) | 98 |
+| Lock acquisitions | 226 |
 | Lock-graph edges | 49 |
 | Spawn sites | 81 |
-| External calls: fs / db / process / notify / login / socket | 343 / 146 / 49 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 345 / 146 / 49 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -254,6 +254,8 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `machines/hooks/watch.rs::SEEN` | `Mutex<Option<(HashSet<String>,HashMap<String,Instant>)>>` | "seen sessions" (1 sites) |
 | `machines/logs.rs::C` | `OnceLock<Mutex<HashMap<String,Child>>>` | — |
 | `machines/mod.rs::C` | `std::sync::OnceLock<std::sync::Mutex<Caches>>` | — |
+| `mini/mod.rs::SLOTS` | `Mutex<Option<HashMap<String,Slot>>>` | "mini windows" (1 sites) |
+| `mini/mod.rs::PLACES` | `Mutex<Option<HashMap<String,Place>>>` | "mini places" (2 sites) |
 | `notify.rs::QUIET` | `std::sync::Mutex<Vec<String>>` | "quiet sessions" (2 sites) |
 | `notify.rs::JOBS` | `std::sync::OnceLock<std::sync::mpsc::Sender<Job>>` | — |
 | `notify.rs::APP` | `OnceLock<AppHandle>` | — |
@@ -421,7 +423,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (343)
+### fs (345)
 
 | In | Call | Times |
 |---|---|---|
@@ -661,6 +663,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `machines/logs.rs::start_after` | metadata | 1 |
 | `machines/logs.rs::start_after` | write | 1 |
 | `machines/logs.rs::task_paths` | metadata | 1 |
+| `mini/mod.rs::place_of` | read | 1 |
+| `mini/mod.rs::set_place` | write | 1 |
 | `notify.rs::log` | OpenOptions::new | 1 |
 | `safe_git.rs::git_bin` | Path::is_file | 1 |
 | `server/mod.rs::move_from_old_folder` | Path::exists | 1 |

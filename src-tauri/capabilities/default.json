@@ -4,7 +4,8 @@
   "description": "The main window and the mini window",
   "windows": [
     "main",
-    "mini"
+    "mini",
+    "mini-*"
   ],
   "permissions": [
     "core:default",
