@@ -237,6 +237,37 @@ fn stop_interrupts_it_directly_and_presses_nothing() {
     assert!(w.terminal.keys(&sid).is_empty());
 }
 
+/// Cue stopped mid-turn (a reinstall): the session comes back paused at its prompt, not still working, so your
+/// next message starts it with a turn of its own instead of sitting as queued behind one that's gone.
+#[test]
+fn restarted_mid_turn_a_message_starts_it_rather_than_queueing() {
+    let mut w = World::new();
+    let sid = running(&w, "go");
+    assert_eq!(w.snapshot().state(&sid), "working");
+    w.relaunch();
+    assert_ne!(w.snapshot().state(&sid), "working", "its turn ended with the Cue that ran it");
+    w.ask(json!({ "type": "send_to", "session_id": sid, "text": "what are you doing" }));
+    assert_eq!(w.hosted.launched().last().map(|l| l.start.clone()), Some(Start::Resume(sid.clone())));
+    assert!(w.snapshot().session(&sid)["queued"].is_null(), "not queued: nothing is working on a turn");
+}
+
+/// Stop, or Send now, while Claude is starting up with your message next in its input: nothing is interrupted
+/// (that would end the turn your message starts before it begins).
+#[test]
+fn stop_while_it_starts_up_doesnt_end_the_turn_your_message_starts() {
+    let mut w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    w.relaunch();
+    w.ask(json!({ "type": "send_to", "session_id": sid, "text": "next" }));
+    w.ask(json!({ "type": "interrupt", "session_id": sid }));
+    assert!(w.hosted.interrupted().is_empty(), "Claude hasn't started a turn yet: {:?}", w.hosted.interrupted());
+    // Once it has, Stop stops it.
+    takes(&w, &sid, "next");
+    w.ask(json!({ "type": "interrupt", "session_id": sid }));
+    assert_eq!(w.hosted.interrupted(), vec![sid.clone()]);
+}
+
 #[test]
 fn claude_exiting_mid_turn_leaves_it_paused_with_a_card_and_the_next_message_starts_it_again() {
     let w = World::new();

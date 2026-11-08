@@ -61,9 +61,10 @@ quit_cue() {
   local pids; pids=$(cue_pids)
   [ -n "$pids" ] || return 0
   osascript -e 'quit app "Cue"' 2>/dev/null || true
-  # Quitting can take a while (hosted sessions wait for their Claude to exit). Past that, these exact
+  # Quitting can take a while: Cue closes the Claudes it hosts (up to ~7 s), and one stopped before that
+  # leaves them running on their own (Cue ends any it finds on its next start). Past 30 s, these exact
   # PIDs are stopped, and the script waits until they're gone: a dying Cue still counts as running.
-  gone 100 $pids && return 0
+  gone 300 $pids && return 0
   kill $pids 2>/dev/null || true
   gone 50 $pids && return 0
   kill -9 $pids 2>/dev/null || true

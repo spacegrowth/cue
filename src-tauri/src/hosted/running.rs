@@ -105,3 +105,57 @@ impl Hosted for Running {
         }
     }
 }
+
+/// Hosted Claudes a Cue that's gone left running: Cue was stopped before it could close them (killed, or it
+/// crashed). Each goes on to the end of its turn, its input gone, and a message to its session would start a
+/// second one on the same conversation. Ended as Cue starts, by exact process id, before any is resumed.
+pub fn end_leftovers() {
+    let Ok(out) = std::process::Command::new("/bin/ps").args(["-axwwE", "-o", "pid=,ppid=,command="]).output() else { return };
+    for pid in leftovers(&String::from_utf8_lossy(&out.stdout)) {
+        eprintln!("cue: ending hosted Claude {pid}, left running by a Cue that's gone");
+        // SAFETY: a plain signal to one process id.
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+    }
+}
+
+/// From `ps -axwwE -o pid=,ppid=,command=`: the hosted Claudes whose Cue is gone. Only Claude itself as Cue
+/// starts it (headless, asking Cue over its input), marked by Cue, and adopted by launchd (its Cue ended):
+/// whatever a hosted Claude ran inherits the mark, and a background job of one is never matched.
+fn leftovers(ps: &str) -> Vec<i32> {
+    ps.lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            let pid: i32 = w.next()?.parse().ok()?;
+            let ppid: i32 = w.next()?.parse().ok()?;
+            let words: Vec<&str> = w.collect();
+            let claude = words.first().is_some_and(|c| *c == "claude" || c.ends_with("/claude"));
+            let hosted = words.windows(2).any(|p| p == ["--permission-prompt-tool", "stdio"]) && words.windows(2).any(|p| p == ["--input-format", "stream-json"]);
+            let marked = words.iter().any(|x| *x == format!("{}=1", super::HOSTED_ENV));
+            (ppid == 1 && claude && hosted && marked).then_some(pid)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::leftovers;
+
+    #[test]
+    fn only_a_hosted_claude_whose_cue_is_gone_is_a_leftover() {
+        let hosted = "claude -p --input-format stream-json --output-format stream-json --verbose --permission-prompts host --permission-prompt-tool stdio --resume abc";
+        let ps = [
+            format!("  101     1 {hosted} HOME=/u CUE_HOSTED=1 PATH=/bin"),
+            // Its Cue still runs: Cue's own.
+            format!("  102   900 {hosted} CUE_HOSTED=1"),
+            // Not Cue's: an editor's Claude, headless the same way.
+            format!("  103     1 {hosted} HOME=/u"),
+            // Something a hosted Claude ran, left behind: inherits the mark, never matched.
+            "  104     1 /bin/bash -c nohup ./install.sh --permission-prompt-tool stdio --input-format stream-json CUE_HOSTED=1".to_string(),
+            // A Claude in a terminal.
+            "  105     1 claude --resume abc CUE_HOSTED=1".to_string(),
+            format!("  106     1 /opt/homebrew/bin/claude -p --input-format stream-json --permission-prompt-tool stdio CUE_HOSTED=1"),
+        ]
+        .join("\n");
+        assert_eq!(leftovers(&ps), vec![101, 106]);
+    }
+}

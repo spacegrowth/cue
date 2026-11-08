@@ -87,7 +87,11 @@ impl Ports {
     /// The real ones; notifications and window events only with an app to send them from.
     pub fn real(app: Option<&tauri::AppHandle>) -> Self {
         let (notes, window): (Arc<dyn Notes>, Arc<dyn Window>) = match app {
-            Some(a) => (Arc::new(Center(a.clone())), Arc::new(AppWindow(a.clone()))),
+            Some(a) => {
+                // Before any hosted session is started again: none left by a Cue that was stopped runs on beside it.
+                crate::hosted::end_leftovers();
+                (Arc::new(Center(a.clone())), Arc::new(AppWindow(a.clone())))
+            }
             None => (Arc::new(Nowhere), Arc::new(NoWindow)),
         };
         Self { keys: Arc::new(Terminals), launcher: Arc::new(Tabs), hosted: Arc::new(Running::default()), notes, window, later: Later::Threads }

@@ -366,7 +366,10 @@ impl Hub {
             (st.sessions.origin(session_id), direct)
         });
         if origin.as_ref().is_some_and(|o| o.hosted) {
-            if self.hosted().running(session_id) {
+            // Only a turn under way is stopped. Claude starting up (a paused session woken by your message) has
+            // your message next in its input: an interrupt now would end the turn it starts before it begins.
+            let mid_turn = self.read(|st| st.sessions.state(session_id).as_deref() == Some("working"));
+            if mid_turn && self.hosted().running(session_id) {
                 if let Err(e) = self.hosted().interrupt(session_id) {
                     eprintln!("cue: couldn't stop hosted session {session_id}: {e}");
                 }
@@ -397,6 +400,8 @@ impl Hub {
         let (origin, busy, direct) = self.read(|st| Self::send_state(st, session_id))?;
         // A hosted session takes a message at any time, mid-turn too: nothing to keep in Cue, nothing to press.
         if origin.as_ref().is_some_and(|o| o.hosted) {
+            // Mid-turn only if its Claude runs: a paused one starts a turn with this message.
+            let busy = busy && self.hosted().running(session_id);
             return self.send_to_hosted(session_id, typed, &saved, busy);
         }
         // Working, and Cue would type it into its terminal: Cue keeps it instead and sends it when the turn

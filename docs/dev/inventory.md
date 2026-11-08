@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 226 |
 | Lock-graph edges | 49 |
 | Spawn sites | 81 |
-| External calls: fs / db / process / notify / login / socket | 345 / 146 / 49 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 345 / 146 / 50 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -871,7 +871,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (49)
+### process (50)
 
 | In | Call | Times |
 |---|---|---|
@@ -889,6 +889,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hook.rs::ps` | /bin/ps | 1 |
 | `hook.rs::tty_of_pane` | (program computed) | 1 |
 | `hosted/launch.rs::command` | (program computed) | 1 |
+| `hosted/running.rs::end_leftovers` | /bin/ps | 1 |
 | `ipc/chat.rs::run_crew_action` | /usr/bin/open | 1 |
 | `ipc/chat.rs::run_crew_action` | open | 1 |
 | `ipc/settings.rs::copy_text` | /usr/bin/pbcopy | 1 |

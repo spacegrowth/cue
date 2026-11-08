@@ -412,9 +412,13 @@ impl Sessions {
     /// Put saved sessions back after a restart. The watcher drops any whose agent has since exited.
     pub fn restore(&mut self, saved: Vec<Session>) {
         for mut s in saved {
-            // A hosted session's Claude ended with the Cue that ran it: it comes back paused.
+            // A hosted session's Claude ended with the Cue that ran it: it comes back paused, at its prompt (a turn it
+            // was in ended there too), so a message to it starts a turn rather than waiting behind one.
             if s.origin.hosted {
                 s.origin.agent_pid = None;
+                if matches!(s.state.as_str(), "working" | "deciding" | "agent") {
+                    s.state = "stopped".into();
+                }
             }
             if !s.origin.session_id.is_empty() {
                 self.0.insert(s.origin.session_id.clone(), s);

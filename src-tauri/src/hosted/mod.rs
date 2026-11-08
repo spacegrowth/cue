@@ -27,7 +27,7 @@ mod session_tests;
 mod translate_tests;
 
 pub use launch::{Program, Spec, Start};
-pub use running::{Hosted, Report, Running};
+pub use running::{end_leftovers, Hosted, Report, Running};
 pub use session::Session;
 
 use serde_json::Value;
