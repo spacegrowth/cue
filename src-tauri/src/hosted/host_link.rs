@@ -1,7 +1,8 @@
 //! Cue's connection to cue-host (crates host/: the program that keeps hosted agents running across Cue restarts):
 //! requests answered in order of their ids, and each attached session's records handed to its route as they come.
 //! A connection that drops is made again (the host started again if it's gone), with a pause that grows from 1 s
-//! to 30 s; `on_back` is told, so the sessions attach again after what they've read.
+//! to 30 s; `on_back` is told, so the sessions attach again after what they've read. A link to an older host
+//! (`existing`: one Cue lets finish what it runs, never starts) isn't made again.
 
 use cue_host::proto::{Event, FromHost};
 use serde_json::{json, Value};
@@ -35,6 +36,8 @@ pub struct HostLink {
     connected: AtomicBool,
     /// Making the connection again (one at a time).
     retrying: AtomicBool,
+    /// Done with: a connection that drops isn't made again (Restart cue-host, or a host being let go).
+    shut: AtomicBool,
     /// Told once a dropped connection is made again.
     on_back: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
@@ -42,9 +45,27 @@ pub struct HostLink {
 impl HostLink {
     /// A link to the host in `home`, connected now (starting the host if it isn't running).
     pub fn connect(home: PathBuf, serve: Vec<String>) -> Result<Arc<HostLink>, String> {
-        let link = Arc::new(HostLink { home, serve, out: Mutex::new(None), waiting: Mutex::default(), routes: Mutex::default(), next: AtomicU64::new(1), connected: AtomicBool::new(false), retrying: AtomicBool::new(false), on_back: Mutex::new(None) });
+        let link = Arc::new(HostLink { home, serve, out: Mutex::new(None), waiting: Mutex::default(), routes: Mutex::default(), next: AtomicU64::new(1), connected: AtomicBool::new(false), retrying: AtomicBool::new(false), shut: AtomicBool::new(false), on_back: Mutex::new(None) });
         link.open().map_err(|e| format!("couldn't reach cue-host: {e}"))?;
         Ok(link)
+    }
+
+    /// A link to a host already running in `home`, never starting one, and not made again once it drops.
+    pub fn existing(home: PathBuf) -> Result<Arc<HostLink>, String> {
+        HostLink::connect(home, vec![])
+    }
+
+    /// Where the host it reaches lives.
+    pub fn home(&self) -> &std::path::Path {
+        &self.home
+    }
+
+    /// Done with it: the connection closed, and not made again.
+    pub fn shut(&self) {
+        self.shut.store(true, Ordering::SeqCst);
+        if let Some(s) = crate::locking::lock(&self.out, "cue-host link: out").as_ref() {
+            let _ = s.shutdown(std::net::Shutdown::Both);
+        }
     }
 
     /// Who to tell when a dropped connection is back.
@@ -57,7 +78,8 @@ impl HostLink {
     }
 
     fn open(self: &Arc<Self>) -> std::io::Result<()> {
-        let stream = cue_host::daemon::connect(&self.home, &self.serve)?;
+        // A host Cue only lets finish (`existing`) is reached where it is, never started.
+        let stream = if self.serve.is_empty() { UnixStream::connect(cue_host::daemon::socket(&self.home))? } else { cue_host::daemon::connect(&self.home, &self.serve)? };
         let input = stream.try_clone()?;
         *crate::locking::lock(&self.out, "cue-host link: out") = Some(stream);
         self.connected.store(true, Ordering::SeqCst);
@@ -106,6 +128,10 @@ impl HostLink {
         let waiting: Vec<_> = crate::locking::lock(&self.waiting, "cue-host link: waiting").drain().map(|(_, tx)| tx).collect();
         for tx in waiting {
             let _ = tx.send(Err("Cue lost its connection to cue-host".into()));
+        }
+        // Done with, or an older host Cue only lets finish: not made again (its sessions are let go: hosts.rs drain).
+        if self.shut.load(Ordering::SeqCst) || self.serve.is_empty() {
+            return;
         }
         if self.retrying.swap(true, Ordering::SeqCst) {
             return;

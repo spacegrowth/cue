@@ -192,13 +192,30 @@ pub fn claude_transcript(cwd: &str, session_id: &str) -> Option<String> {
 
 /// Where Claude Code writes a session's transcript, whether or not it's there (nothing is looked up).
 pub fn claude_transcript_path(cwd: &str, session_id: &str) -> PathBuf {
-    let dir: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    // Claude names the folder after the real path (a folder reached through a link, as /var is /private/var, files
+    // under where it really is).
+    let real = std::fs::canonicalize(cwd).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| cwd.to_string());
+    let dir: String = real.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     claude_sessions_dir().with_file_name("projects").join(dir).join(format!("{session_id}.jsonl"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_conversation_in_a_folder_reached_through_a_link_is_found_where_claude_files_it() {
+        let d = std::env::temp_dir().join(format!("cue-linked-{}", std::process::id()));
+        let real = d.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = d.join("link");
+        let _ = std::os::unix::fs::symlink(&real, &link);
+        let via_link = claude_transcript_path(&link.to_string_lossy(), "S1");
+        let direct = claude_transcript_path(&real.to_string_lossy(), "S1");
+        assert_eq!(via_link, direct, "named after the real path, as Claude names it");
+        assert!(via_link.to_string_lossy().ends_with("-real/S1.jsonl"), "{}", via_link.display());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn reads_the_terminal_from_ps() {

@@ -161,3 +161,16 @@ pub(crate) async fn quit_now(app: tauri::AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
 }
+
+/// cue-host as Settings → Agents shows it: reachable, its build, the sessions it runs, older hosts still finishing.
+#[tauri::command]
+pub(crate) async fn host_status(hub: State<'_, Arc<Hub>>) -> Result<serde_json::Value, String> {
+    with_hub(&hub, |h| h.hosted().host_status()).await
+}
+
+/// Restart cue-host (Settings → Agents): every hosted agent ended (each session comes back paused and resumes with
+/// your next message), and every host, for one that misbehaves.
+#[tauri::command]
+pub(crate) async fn host_restart(hub: State<'_, Arc<Hub>>) -> Result<String, String> {
+    with_hub(&hub, |h| h.hosted().restart_host()).await?
+}

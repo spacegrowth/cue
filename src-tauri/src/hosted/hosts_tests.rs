@@ -8,15 +8,22 @@ use crate::model::Decision;
 use crate::testing::{until, FakeClaude};
 use serde_json::json;
 use std::os::unix::net::UnixListener;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
 
-/// A host serving a folder of the test's own (short: a socket's path must fit in 104 bytes), and where Cue keeps
-/// what it has read.
+/// Hosts under a folder of the test's own (short: a socket's path must fit in 104 bytes): the one of Cue's own build
+/// in `home` (`b-now`), serving; and where Cue keeps what it has read. All of it removed when the test ends.
 struct Place {
+    root: PathBuf,
     home: PathBuf,
     seen: PathBuf,
+}
+
+impl Drop for Place {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
 }
 
 fn host(name: &str) -> Place {
@@ -24,18 +31,34 @@ fn host(name: &str) -> Place {
     let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let root = PathBuf::from(format!("/tmp/ch-{name}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    let home = root.join("h");
-    std::fs::create_dir_all(&home).unwrap();
-    let sock = home.join("host.sock");
+    let home = root.join("b-now");
+    serve_at(&home);
+    Place { seen: root.join("seen"), root, home }
+}
+
+/// A host serving `dir` (in this process).
+fn serve_at(dir: &Path) {
+    std::fs::create_dir_all(dir).unwrap();
+    let sock = dir.join("host.sock");
     let listener = UnixListener::bind(&sock).unwrap();
-    let h = cue_host::server::Host::new(&home, cue_host::log::LIMIT);
+    let h = cue_host::server::Host::new(dir, cue_host::log::LIMIT);
     std::thread::spawn(move || h.serve(listener, &sock, Duration::from_secs(600)));
-    Place { home, seen: root.join("seen") }
 }
 
 /// A Cue's hosted sessions through that host (the host is running: nothing to start it with).
 fn cue(p: &Place) -> Hosts {
-    Hosts::new(p.home.clone(), vec![], p.seen.clone())
+    cue_at(p, &p.home)
+}
+
+/// A Cue whose own build's host lives in `home` (under the same root).
+fn cue_at(p: &Place, home: &Path) -> Hosts {
+    Hosts::new(p.root.clone(), home.to_path_buf(), vec![], p.seen.clone())
+}
+
+/// Until the host's log for session `sid` has `needle` (something the agent did while no Cue was there).
+fn until_logged(p: &Place, sid: &str, needle: &str) {
+    let log = p.home.join("sessions").join(sid).join("log.jsonl");
+    until(&format!("{needle} in {}", log.display()), || std::fs::read_to_string(&log).is_ok_and(|l| l.contains(needle)));
 }
 
 fn spec(fake: &FakeClaude, start: Start) -> Spec {
@@ -159,8 +182,8 @@ fn what_it_said_while_no_cue_was_there_comes_in_once_cue_is_back_and_an_answered
     first.answer(&sid, "r1", &allow()).unwrap();
     first.close_all();
     drop(first);
-    // Its turn ends while no Cue is there.
-    std::thread::sleep(Duration::from_millis(2500));
+    // Its turn ends while no Cue is there (the host has kept the end of it).
+    until_logged(&p, &sid, r#"\"type\":\"result\""#);
     let again = cue(&p);
     let (r2, rx2) = report();
     let back = again.reattach(&Spec { start: Start::Resume(sid.clone()), ..s }, r2).expect("its agent still runs");
@@ -186,7 +209,7 @@ fn a_session_that_ended_while_cue_was_away_says_so_and_isnt_running() {
     until_event(&rx, |e| matches!(e, HostedEvent::Taken { .. }));
     first.close_all();
     drop(first);
-    std::thread::sleep(Duration::from_millis(2000));
+    until_logged(&p, &sid, r#""exited":4"#);
     let again = cue(&p);
     let (r2, rx2) = report();
     let back = again.reattach(&Spec { start: Start::Resume(sid.clone()), ..s.clone() }, r2).expect("it has records Cue hasn't read");
@@ -196,7 +219,11 @@ fn a_session_that_ended_while_cue_was_away_says_so_and_isnt_running() {
     assert_eq!((code, during_turn), (Some(4), true));
     assert!(last_words.contains("fatal: gone"), "{last_words}");
     assert!(!again.running(&sid));
-    // Read to its end: the next Cue has nothing to pick up.
+    // Read to its end (where Cue has read to is kept just after each record is handled): the next Cue has nothing
+    // to pick up.
+    let last = std::fs::read_to_string(p.home.join("sessions").join(&sid).join("log.jsonl")).unwrap().lines().count() as u64;
+    let read_to = || std::fs::read_to_string(p.seen.join(format!("{sid}.json"))).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v["seq"].as_u64());
+    until("Cue's place kept at the end", || read_to() == Some(last));
     let (r3, _rx3) = report();
     assert!(cue(&p).reattach(&Spec { start: Start::Resume(sid), ..s }, r3).is_none());
 }
@@ -214,4 +241,95 @@ fn a_session_running_under_the_host_isnt_ended_as_a_leftover() {
     std::thread::sleep(Duration::from_millis(300));
     assert!(hosts.running(&sid), "the host's: left alone");
     hosts.close(&sid);
+}
+
+/// A session `fake` runs, started through `hosts` with a message taken: its id, and where it reports.
+fn running_session(hosts: &Hosts, fake: &FakeClaude) -> (String, Spec, Receiver<HostedEvent>) {
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let s = spec(fake, start);
+    let (r, rx) = report();
+    hosts.start(&s, r).unwrap();
+    (sid, s, rx)
+}
+
+fn sessions_in(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dir.join("sessions")).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+    v.sort();
+    v
+}
+
+#[test]
+fn after_an_update_a_session_on_the_older_host_is_picked_up_new_ones_go_to_the_new_host_and_the_old_one_goes_once_empty() {
+    let p = host("upd");
+    let old_home = p.root.join("b-old");
+    serve_at(&old_home);
+    // The Cue before the update, whose host was the old build's: a session on it, then Cue quits.
+    let fake = FakeClaude::new();
+    let before = cue_at(&p, &old_home);
+    let (old_sid, old_spec, _rx) = running_session(&before, &fake);
+    before.close_all();
+    drop(before);
+    // The updated Cue: its own build's host is `b-now`; the old one is found and kept for what it runs.
+    let after = cue(&p);
+    let (r, _rx2) = report();
+    let back = after.reattach(&Spec { start: Start::Resume(old_sid.clone()), ..old_spec }, r).expect("picked up from the older host");
+    assert!(back.started.is_some());
+    (back.go)();
+    after.settled();
+    assert!(old_home.exists(), "it still runs a session: kept");
+    assert_eq!(after.host_status()["older"].as_array().map(Vec::len), Some(1));
+    // A new session goes to the new build's host, never the old one.
+    let fake2 = FakeClaude::new();
+    let (new_sid, _, _rx3) = running_session(&after, &fake2);
+    assert_eq!(sessions_in(&p.home), [new_sid.clone()]);
+    assert_eq!(sessions_in(&old_home), [old_sid.clone()]);
+    // A message still reaches the session on the old host.
+    after.send(&old_sid, "still there?").unwrap();
+    until("the old host's session hears it", || fake.heard().iter().any(|v| v["message"]["content"] == "still there?"));
+    // Its agent ends: the old host runs nothing, and goes (its folder with it).
+    after.close(&old_sid);
+    after.settled();
+    assert!(!old_home.exists(), "the older host's folder is cleared once it runs nothing");
+    assert_eq!(after.host_status()["older"].as_array().map(Vec::len), Some(0));
+    assert!(after.running(&new_sid), "the new host's session is untouched");
+    after.close(&new_sid);
+}
+
+#[test]
+fn the_first_host_from_before_builds_is_let_go_too_its_files_cleared_and_the_newer_folders_left() {
+    let p = host("legacy");
+    // The first host lived in the root itself.
+    serve_at(&p.root);
+    let fake = FakeClaude::new();
+    let before = Hosts::new(p.root.clone(), p.root.clone(), vec![], p.seen.clone());
+    let (sid, _, _rx) = running_session(&before, &fake);
+    before.close_all();
+    drop(before);
+    let after = cue(&p);
+    assert_eq!(after.host_status()["older"].as_array().map(Vec::len), Some(1), "found in the root");
+    // Cue doesn't know its session any more (never picked up): settling closes it, and the host goes.
+    after.settled();
+    until("its agent closed", || !p.root.join("host.sock").exists());
+    assert!(!p.root.join("sessions").join(&sid).exists(), "its logs are gone");
+    assert!(p.home.join("host.sock").exists(), "the new build's host is untouched");
+    assert_eq!(after.host_status()["older"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
+fn restarting_the_host_ends_every_agent_saying_so_and_the_next_session_starts_on_a_fresh_host() {
+    let p = host("restart");
+    let fake = FakeClaude::new();
+    let hosts = cue(&p);
+    let (sid, _, rx) = running_session(&hosts, &fake);
+    let said = hosts.restart_host().unwrap();
+    assert!(said.contains("1 session ended"), "{said}");
+    assert!(matches!(until_event(&rx, |e| matches!(e, HostedEvent::Exited { .. })).pop(), Some(HostedEvent::Exited { .. })), "its exit is reported: it shows paused");
+    assert!(!hosts.running(&sid));
+    // The in-process host isn't ended by a signal (it's this test): a fresh one would be started; here the same
+    // one is reached again for the next session.
+    let fake2 = FakeClaude::new();
+    let (next, _, _rx2) = running_session(&hosts, &fake2);
+    assert!(hosts.running(&next));
+    hosts.close(&next);
 }

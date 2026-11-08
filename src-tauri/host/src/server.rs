@@ -148,7 +148,7 @@ impl Host {
     pub fn hello(&self) -> Hello {
         let mut sessions: Vec<SessionInfo> = lock(&self.sessions).values().map(|s| s.info()).collect();
         sessions.sort_by(|a, b| a.session.cmp(&b.session));
-        Hello { version: VERSION, pid: std::process::id() as i32, sessions }
+        Hello { version: VERSION, build: crate::proto::BUILD.to_string(), pid: std::process::id() as i32, sessions }
     }
 
     /// A child for `id`: refused while one runs under that id; one that has run before carries its log on. Its pid,

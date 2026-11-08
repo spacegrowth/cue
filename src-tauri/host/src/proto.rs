@@ -8,6 +8,9 @@ use serde_json::Value;
 
 /// This protocol's version: `hello` carries it both ways.
 pub const VERSION: u32 = 1;
+/// This host's build: a fingerprint of its sources (build.rs). A Cue built with other host code starts a host of
+/// its own build for new sessions and lets this one finish what it runs.
+pub const BUILD: &str = env!("CUE_HOST_BUILD");
 
 /// A request, with the id its response carries back.
 #[derive(Debug, Deserialize, Serialize)]
@@ -63,6 +66,9 @@ pub struct SessionInfo {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Hello {
     pub version: u32,
+    /// Its build (`BUILD`); empty from a host from before builds were told.
+    #[serde(default)]
+    pub build: String,
     pub pid: i32,
     pub sessions: Vec<SessionInfo>,
 }

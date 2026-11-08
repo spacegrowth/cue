@@ -13,12 +13,27 @@ use std::time::{Duration, Instant};
 
 static N: AtomicU64 = AtomicU64::new(0);
 
-fn home(name: &str) -> PathBuf {
-    // Short: a socket's path must fit in 104 bytes.
+/// A folder of the test's own, removed when the test ends. Short: a socket's path must fit in 104 bytes.
+struct Home(PathBuf);
+
+impl std::ops::Deref for Home {
+    type Target = PathBuf;
+    fn deref(&self) -> &PathBuf {
+        &self.0
+    }
+}
+
+impl Drop for Home {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn home(name: &str) -> Home {
     let d = PathBuf::from(format!("/tmp/ch-{}-{}-{}", name, std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Home(d)
 }
 
 /// A host serving `home` on a thread, idle after `idle`.

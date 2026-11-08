@@ -10,46 +10,59 @@
 //! Cue keeps, per session, the last record it handled (`seen/`). Started again, it reads the current run's records
 //! up to there with nothing reported (`Driver::catch_up`: the protocol as it was, and each ask still waiting
 //! reported again, its card having gone with the Cue that had it), then attaches for what came after.
+//!
+//! New sessions always go to the host of Cue's own build (`home`); hosts of other builds still running agents are
+//! let finish them, then stopped (old_hosts.rs). Restart cue-host ends them all at once (`restart_host`).
 
-use super::driver::{Driver, Logged, Sink};
+use super::driver::Driver;
 use super::host_link::HostLink;
+use super::old_hosts::{self, OldHost};
+use super::remote::{logged, sink, Cursor, Remote};
 use super::running::{Hosted, Reattached, Report, Running, Started};
 use super::session::wait_open;
 use super::{launch, Answer, Spec};
-use cue_host::proto::{Event, Hello, Record, What};
+use cue_host::proto::{Event, Record};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
-
-/// How long a session's place is kept with nothing read: as long as the host keeps its log.
-const FORGOTTEN: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 3600);
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 /// How often a host that couldn't be reached is tried again (before a session starts).
-const RETRY_EVERY: std::time::Duration = std::time::Duration::from_secs(30);
+const RETRY_EVERY: Duration = Duration::from_secs(30);
+/// How often older hosts are looked at, to stop each once it runs nothing.
+const DRAIN_EVERY: Duration = Duration::from_secs(15);
+
+type Remotes = Arc<Mutex<HashMap<String, Arc<Remote>>>>;
+type Olds = Arc<Mutex<Vec<OldHost>>>;
 
 pub struct Hosts {
+    /// Where the host of Cue's own build lives, and how to start it there.
     home: PathBuf,
     serve: Vec<String>,
     /// None while the host can't be reached: sessions started meanwhile run as Cue's own children (`in_cue`).
     link: Mutex<Option<Arc<HostLink>>>,
     /// When reaching it was last tried and failed.
-    failed_at: Mutex<Option<std::time::Instant>>,
+    failed_at: Mutex<Option<Instant>>,
+    /// Hosts of other builds, finishing what they run.
+    old: Olds,
     direct: Running,
-    /// The sessions run by the host, by the conversation's id.
-    remotes: Arc<Mutex<HashMap<String, Arc<Remote>>>>,
+    /// The sessions run by a host, by the conversation's id.
+    remotes: Remotes,
     /// Where each session's last handled record is kept.
     seen: PathBuf,
 }
 
 impl Hosts {
-    /// Through the host in `home` (started with `serve` if it isn't running), keeping what's been read in `seen`.
-    /// While it can't be reached, sessions run as Cue's own children, as before the host, and it's tried again.
-    pub fn new(home: PathBuf, serve: Vec<String>, seen: PathBuf) -> Hosts {
+    /// Through the host of Cue's own build in `home` (started with `serve` if it isn't running), with hosts of other
+    /// builds under `root` let finish; what's been read kept in `seen`. While it can't be reached, sessions run as
+    /// Cue's own children, as before the host, and it's tried again.
+    pub fn new(root: PathBuf, home: PathBuf, serve: Vec<String>, seen: PathBuf) -> Hosts {
         Cursor::prune(&seen);
-        let hosts = Hosts { home, serve, link: Mutex::new(None), failed_at: Mutex::new(None), direct: Running::default(), remotes: Arc::default(), seen };
+        let old: Olds = Arc::new(Mutex::new(old_hosts::find(&root, &home)));
+        let hosts = Hosts { home, serve, link: Mutex::new(None), failed_at: Mutex::new(None), old, direct: Running::default(), remotes: Arc::default(), seen };
         hosts.link();
         hosts
     }
@@ -65,12 +78,11 @@ impl Hosts {
         }
         match HostLink::connect(self.home.clone(), self.serve.clone()) {
             Ok(l) => {
-                // Back after a dropped connection: each session attaches again after what it has read.
-                let all = Arc::downgrade(&self.remotes);
+                // Back after a dropped connection: its sessions attach again after what they've read.
+                let (all, me) = (Arc::downgrade(&self.remotes), Arc::downgrade(&l));
                 l.on_back(move || {
-                    let Some(all) = all.upgrade() else { return };
-                    let list: Vec<Arc<Remote>> = crate::locking::lock(&all, "hosts: sessions").values().cloned().collect();
-                    for r in list {
+                    let (Some(all), Some(me)) = (all.upgrade(), me.upgrade()) else { return };
+                    for r in on_link(&all, &me) {
                         if let Err(e) = r.attach() {
                             eprintln!("cue: couldn't attach {} again: {e}", r.host_id);
                         }
@@ -81,18 +93,20 @@ impl Hosts {
             }
             Err(e) => {
                 eprintln!("cue: {e}; hosted sessions run inside Cue until it can be reached");
-                *crate::locking::lock(&self.failed_at, "hosts: link tried") = Some(std::time::Instant::now());
+                *crate::locking::lock(&self.failed_at, "hosts: link tried") = Some(Instant::now());
                 None
             }
         }
     }
 
-    fn remote(&self, session_id: &str) -> Option<Arc<Remote>> {
-        crate::locking::lock(&self.remotes, "hosts: sessions").get(session_id).cloned()
+    /// Every host Cue is connected to: its own build's first, then older ones.
+    fn links(&self) -> Vec<Arc<HostLink>> {
+        let current = crate::locking::lock(&self.link, "hosts: link").clone();
+        current.into_iter().chain(crate::locking::lock(&self.old, "hosts: older hosts").iter().map(|o| o.link.clone())).collect()
     }
 
-    fn hello(link: &HostLink) -> Result<Hello, String> {
-        serde_json::from_value(link.request(json!({ "op": "hello", "version": cue_host::proto::VERSION }))?).map_err(|e| e.to_string())
+    fn remote(&self, session_id: &str) -> Option<Arc<Remote>> {
+        crate::locking::lock(&self.remotes, "hosts: sessions").get(session_id).cloned()
     }
 
     /// The session's records go to its own thread, handled in order, and come from the host from now on.
@@ -112,10 +126,7 @@ impl Hosts {
 
     /// The session under `session_id` taken out: the host stops sending its records here.
     fn drop_remote(&self, session_id: &str) -> Option<Arc<Remote>> {
-        let r = crate::locking::lock(&self.remotes, "hosts: sessions").remove(session_id)?;
-        r.link.unroute(&r.host_id);
-        crate::locking::lock(&r.queue, "hosts: a session's queue").take();
-        Some(r)
+        take_remote(&self.remotes, session_id)
     }
 
     fn start_hosted(&self, link: &Arc<HostLink>, spec: &Spec, report: Report) -> Result<Started, String> {
@@ -143,12 +154,64 @@ impl Hosts {
         crate::locking::lock(&self.remotes, "hosts: sessions").insert(session_id.clone(), r.clone());
         Ok(Started { pid, session_id, transcript: r.driver.transcript(), in_turn: false })
     }
+
+    /// Looking at the older hosts every DRAIN_EVERY until none is left (each stopped once it runs nothing).
+    fn watch_old(&self) {
+        let (old, remotes): (Weak<Mutex<Vec<OldHost>>>, Weak<Mutex<HashMap<String, Arc<Remote>>>>) = (Arc::downgrade(&self.old), Arc::downgrade(&self.remotes));
+        std::thread::spawn(move || loop {
+            std::thread::sleep(DRAIN_EVERY);
+            let (Some(old), Some(remotes)) = (old.upgrade(), remotes.upgrade()) else { return };
+            if drain(&old, &remotes) == 0 {
+                return;
+            }
+        });
+    }
 }
 
-/// `report` as a driver's sink.
-fn sink(report: Report) -> Sink {
-    let report: Arc<Report> = Arc::new(report);
-    Arc::new(move |id, e| report(id, e))
+/// The sessions on `link`.
+fn on_link(remotes: &Remotes, link: &Arc<HostLink>) -> Vec<Arc<Remote>> {
+    crate::locking::lock(remotes, "hosts: sessions").values().filter(|r| Arc::ptr_eq(&r.link, link)).cloned().collect()
+}
+
+fn take_remote(remotes: &Remotes, session_id: &str) -> Option<Arc<Remote>> {
+    let r = crate::locking::lock(remotes, "hosts: sessions").remove(session_id)?;
+    r.link.unroute(&r.host_id);
+    crate::locking::lock(&r.queue, "hosts: a session's queue").take();
+    Some(r)
+}
+
+/// Every session on `link` let go. `gone`: its host went with them (it died): each still running is said to have
+/// exited, so it shows paused and a message starts it on the current host.
+fn let_go(remotes: &Remotes, link: &Arc<HostLink>, gone: bool) {
+    let all: Vec<(String, Arc<Remote>)> = crate::locking::lock(remotes, "hosts: sessions").iter().filter(|(_, r)| Arc::ptr_eq(&r.link, link)).map(|(k, r)| (k.clone(), r.clone())).collect();
+    for (id, r) in all {
+        take_remote(remotes, &id);
+        if gone && r.running.swap(false, Ordering::SeqCst) {
+            r.driver.exited(None);
+        }
+    }
+}
+
+/// The older hosts looked at once: each that's gone, or runs nothing any more, let go (and stopped, and its folder
+/// cleared). How many are left.
+fn drain(old: &Olds, remotes: &Remotes) -> usize {
+    // Asked outside the list's lock: each is a question to a host.
+    let links: Vec<Arc<HostLink>> = crate::locking::lock(old, "hosts: older hosts").iter().map(|o| o.link.clone()).collect();
+    for link in links {
+        if link.connected() && old_hosts::busy(&link) {
+            continue;
+        }
+        let gone = !link.connected();
+        let_go(remotes, &link, gone);
+        let mut all = crate::locking::lock(old, "hosts: older hosts");
+        if let Some(i) = all.iter().position(|o| Arc::ptr_eq(&o.link, &link)) {
+            let o = all.remove(i);
+            drop(all);
+            eprintln!("cue: an older cue-host (pid {}) runs nothing any more: stopped", o.pid);
+            old_hosts::stop(&o);
+        }
+    }
+    crate::locking::lock(old, "hosts: older hosts").len()
 }
 
 impl Hosted for Hosts {
@@ -196,7 +259,7 @@ impl Hosted for Hosts {
         }
     }
 
-    /// Cue quitting: the agents the host runs go on (that's what it's for); only those run as Cue's own end.
+    /// Cue quitting: the agents the hosts run go on (that's what they're for); only those run as Cue's own end.
     fn close_all(&self) {
         let all: Vec<String> = crate::locking::lock(&self.remotes, "hosts: sessions").keys().cloned().collect();
         for id in all {
@@ -205,28 +268,29 @@ impl Hosted for Hosts {
         self.direct.close_all();
     }
 
-    /// Only those run as Cue's own children: the host's go on without it.
+    /// Only those run as Cue's own children: the hosts' go on without it.
     fn in_cue(&self) -> Vec<String> {
         self.direct.in_cue()
     }
 
-    /// Those processes, of a Cue that's gone, still running on their own: not the host's (they're meant to run on).
+    /// Those processes, of a Cue that's gone, still running on their own: not any host's (they're meant to run on).
     fn end_left(&self, pids: &[i32]) {
-        let hosts: Vec<i32> = self.link().as_deref().and_then(|l| Hosts::hello(l).ok()).map(|h| h.sessions.iter().filter_map(|s| s.pid).collect()).unwrap_or_default();
+        let hosts: Vec<i32> = self.links().iter().filter_map(|l| old_hosts::hello(l).ok()).flat_map(|h| h.sessions.into_iter().filter_map(|s| s.pid)).collect();
         let left: Vec<i32> = pids.iter().copied().filter(|p| !hosts.contains(p)).collect();
         self.direct.end_left(&left);
     }
 
-    /// A session the host ran for an earlier Cue, picked up: its current run's records up to where that Cue had
-    /// read, read again with nothing reported. Then (`go`) each ask it still waits on reported again, and what came
-    /// after, as it comes. None when the host has nothing for it (never run there, or it ended and every record was
-    /// read).
+    /// A session a host ran for an earlier Cue (this build's host or an older one), picked up: its current run's
+    /// records up to where that Cue had read, read again with nothing reported. Then (`go`) each ask it still waits
+    /// on reported again, and what came after, as it comes. None when no host has anything for it.
     fn reattach(&self, spec: &Spec, report: Report) -> Option<Reattached> {
-        let link = self.link()?;
+        self.link();
         let sid = spec.start.session_id().to_string();
         let (host_id, cursor) = Cursor::find(&self.seen, &sid)?;
-        let hello = Hosts::hello(&link).inspect_err(|e| eprintln!("cue: cue-host didn't say what it runs: {e}")).ok()?;
-        let info = hello.sessions.into_iter().find(|s| s.session == host_id)?;
+        let (link, info) = self.links().into_iter().find_map(|l| {
+            let info = old_hosts::hello(&l).ok()?.sessions.into_iter().find(|s| s.session == host_id)?;
+            Some((l, info))
+        })?;
         if !info.running && cursor >= info.last_seq {
             return None;
         }
@@ -253,151 +317,72 @@ impl Hosted for Hosts {
         });
         Some(Reattached { started, go })
     }
-}
 
-/// A kept record as the driver reads it back; an exit isn't one (a run that ended is never caught up on).
-fn logged(w: What) -> Option<Logged> {
-    match w {
-        What::Out(l) => Some(Logged::Out(l)),
-        What::Err(l) => Some(Logged::Err(l)),
-        What::In(l) => Some(Logged::In(l)),
-        What::Exited(_) => None,
-    }
-}
-
-/// One session the host runs.
-struct Remote {
-    /// What the host knows it by: the id it was started under.
-    host_id: String,
-    driver: Driver,
-    link: Arc<HostLink>,
-    cursor: Mutex<Cursor>,
-    running: AtomicBool,
-    pid: AtomicI32,
-    /// Closed on purpose: its exit isn't reported (whoever closed it knows).
-    closing: AtomicBool,
-    /// Its records, to its own thread.
-    queue: Mutex<Option<Sender<Event>>>,
-}
-
-impl Remote {
-    fn new(host_id: &str, driver: Driver, link: Arc<HostLink>, seen: &Path) -> Remote {
-        let cursor = Cursor { path: seen.join(format!("{host_id}.json")), session: host_id.to_string(), seq: 0 };
-        Remote { host_id: host_id.to_string(), driver, link, cursor: Mutex::new(cursor), running: AtomicBool::new(false), pid: AtomicI32::new(0), closing: AtomicBool::new(false), queue: Mutex::new(None) }
-    }
-
-    fn seq(&self) -> u64 {
-        crate::locking::lock(&self.cursor, "hosts: a session's cursor").seq
-    }
-
-    fn set_cursor(&self, seq: u64) {
-        crate::locking::lock(&self.cursor, "hosts: a session's cursor").set(seq);
-    }
-
-    /// Known by the conversation's id now (Codex picks its own once it's open).
-    fn named(&self, session_id: &str) {
-        let mut c = crate::locking::lock(&self.cursor, "hosts: a session's cursor");
-        c.session = session_id.to_string();
-        c.save();
-    }
-
-    /// Its records after what's been read, from the host, as they come.
-    fn attach(&self) -> Result<(), String> {
-        self.link.request(json!({ "op": "attach", "session": self.host_id, "after": self.seq() })).map(|_| ())
-    }
-
-    fn write_lines(&self, lines: &[String]) -> Result<(), String> {
-        for line in lines {
-            self.link.request(json!({ "op": "write", "session": self.host_id, "line": line }))?;
-        }
-        Ok(())
-    }
-
-    fn close(&self) {
-        self.closing.store(true, Ordering::SeqCst);
-        if let Err(e) = self.link.request(json!({ "op": "close", "session": self.host_id })) {
-            eprintln!("cue: couldn't close {} in cue-host: {e}", self.host_id);
-        }
-    }
-
-    /// One record, once: its line made sense of (and any reply written), Cue's own line read back, its exit said.
-    fn handle(&self, e: Event) {
-        let record = match e {
-            Event::Gap { from } => {
-                if self.seq() + 1 < from {
-                    eprintln!("cue: cue-host no longer has {}'s records before {from}", self.host_id);
-                    self.set_cursor(from - 1);
-                }
-                return;
-            }
-            Event::Record { record } => record,
-        };
-        if record.seq <= self.seq() {
-            return;
-        }
-        match record.what {
-            What::Out(line) => {
-                let replies = self.driver.read(&line);
-                if let Err(e) = self.write_lines(&replies) {
-                    eprintln!("cue: couldn't reply to {}: {e}", self.host_id);
-                }
-            }
-            What::Err(line) => self.driver.error_line(line),
-            What::In(line) => self.driver.speak(|p| p.wrote(&line)),
-            What::Exited(code) => {
-                self.running.store(false, Ordering::SeqCst);
-                if !self.closing.load(Ordering::SeqCst) {
-                    self.driver.exited(code);
-                }
+    /// Every session Cue knows has been picked up: what an older host still runs that no session of Cue's is (Cue
+    /// forgot it) is closed, so the host can go; older hosts running nothing are stopped now, and the rest watched.
+    fn settled(&self) {
+        let olds: Vec<Arc<HostLink>> = crate::locking::lock(&self.old, "hosts: older hosts").iter().map(|o| o.link.clone()).collect();
+        for link in olds {
+            let ours: Vec<String> = on_link(&self.remotes, &link).iter().map(|r| r.host_id.clone()).collect();
+            let theirs = old_hosts::hello(&link).map(|h| h.sessions).unwrap_or_default();
+            for s in theirs.into_iter().filter(|s| s.running && !ours.contains(&s.session)) {
+                eprintln!("cue: closing {} on an older cue-host: no session of Cue's is it", s.session);
+                let _ = link.request(json!({ "op": "close", "session": s.session }));
             }
         }
-        self.set_cursor(record.seq);
-    }
-}
-
-/// The last record Cue handled of a session the host runs, kept on disk with the conversation's id, so a Cue that
-/// starts again knows where it was. Written as each record is handled (a small file, rewritten whole).
-struct Cursor {
-    path: PathBuf,
-    /// The conversation's id (what Cue knows it by).
-    session: String,
-    seq: u64,
-}
-
-impl Cursor {
-    fn set(&mut self, seq: u64) {
-        self.seq = seq;
-        self.save();
-    }
-
-    fn save(&self) {
-        let body = json!({ "session": self.session, "seq": self.seq }).to_string();
-        let tmp = self.path.with_extension("tmp");
-        if let Some(dir) = self.path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if std::fs::write(&tmp, body).and_then(|()| std::fs::rename(&tmp, &self.path)).is_err() {
-            eprintln!("cue: couldn't keep where {} was read to", self.session);
+        if drain(&self.old, &self.remotes) > 0 {
+            self.watch_old();
         }
     }
 
-    /// Those in `dir` not written for a month (as the host drops a session's log: host/server.rs FORGOTTEN).
-    fn prune(dir: &Path) {
-        let Ok(files) = std::fs::read_dir(dir) else { return };
-        for f in files.flatten() {
-            let old = f.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > FORGOTTEN);
-            if old {
-                let _ = std::fs::remove_file(f.path());
+    /// Every agent on every host ended (each session shows it exited and comes back paused; your next message
+    /// starts it on a fresh host), then the hosts themselves, by signal. For a host that misbehaves.
+    fn restart_host(&self) -> Result<String, String> {
+        let links = self.links();
+        let mut ended = 0;
+        for link in &links {
+            let hello = old_hosts::hello(link).ok();
+            let running: Vec<String> = hello.iter().flat_map(|h| h.sessions.iter()).filter(|s| s.running).map(|s| s.session.clone()).collect();
+            ended += running.len();
+            // All at once: each takes a few seconds to end. Their exits are reported (not closed on purpose).
+            let closing: Vec<_> = running.into_iter().map(|id| { let l = link.clone(); std::thread::spawn(move || l.request(json!({ "op": "close", "session": id }))) }).collect();
+            for c in closing {
+                let _ = c.join();
+            }
+            // Their exits handled before the host goes.
+            let until = Instant::now() + Duration::from_secs(3);
+            while on_link(&self.remotes, link).iter().any(|r| r.running.load(Ordering::SeqCst)) && Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let_go(&self.remotes, link, true);
+            link.shut();
+            if let Some(h) = hello {
+                old_hosts::end_process(h.pid);
             }
         }
+        crate::locking::lock(&self.old, "hosts: older hosts").clear();
+        *crate::locking::lock(&self.link, "hosts: link") = None;
+        *crate::locking::lock(&self.failed_at, "hosts: link tried") = None;
+        Ok(match (links.len(), ended) {
+            (0, _) => "cue-host wasn't running".into(),
+            (_, 0) => "Restarted cue-host (nothing was running)".into(),
+            (_, 1) => "Restarted cue-host: 1 session ended, and resumes with your next message".into(),
+            (_, n) => format!("Restarted cue-host: {n} sessions ended, and each resumes with your next message"),
+        })
     }
 
-    /// The host's id for conversation `session` and the last record read, from what's kept in `dir`.
-    fn find(dir: &Path, session: &str) -> Option<(String, u64)> {
-        std::fs::read_dir(dir).ok()?.flatten().find_map(|f| {
-            let v: Value = serde_json::from_slice(&std::fs::read(f.path()).ok()?).ok()?;
-            let host_id = f.path().file_stem()?.to_string_lossy().into_owned();
-            (v["session"].as_str() == Some(session)).then(|| (host_id, v["seq"].as_u64().unwrap_or(0)))
+    /// The hosts, for Settings: reachable, how many sessions each runs, and how many run inside Cue.
+    fn host_status(&self) -> Value {
+        let count = |l: &HostLink| old_hosts::hello(l).map(|h| h.sessions.iter().filter(|s| s.running).count()).unwrap_or(0);
+        let current = crate::locking::lock(&self.link, "hosts: link").clone();
+        let olds: Vec<(i32, Arc<HostLink>)> = crate::locking::lock(&self.old, "hosts: older hosts").iter().map(|o| (o.pid, o.link.clone())).collect();
+        let older: Vec<Value> = olds.iter().map(|(pid, l)| json!({ "pid": pid, "running": count(l) })).collect();
+        json!({
+            "reachable": current.as_ref().is_some_and(|l| l.connected()),
+            "build": cue_host::proto::BUILD,
+            "running": current.as_deref().map_or(0, count),
+            "older": older,
+            "inside_cue": self.direct.in_cue().len(),
         })
     }
 }

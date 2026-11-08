@@ -257,5 +257,15 @@ it never saw answered is resent on reconnect with the same `msg`; the host refus
 - **Housekeeping.** A session's log and Cue's cursor for it are dropped after 30 days with nothing new. Cost isn't
   kept across restarts (it never was), so a picked-up session counts its run from zero, as a resumed one does.
 - **`install.sh`** no longer waits for hosted turns when the host's socket is up (they carry on).
+- **Host builds** (2026-11-08). A host's build is a fingerprint of its own sources (`host/build.rs`, `BUILD`, told
+  in `hello`); a change elsewhere in Cue isn't a new host build. Each build lives in its own folder under Cue's data
+  folder's `host/` (`b-<build>`; the first host, from before builds, in `host/` itself), so a Cue with fixed host code
+  always sends new sessions to a host of its own build. Hosts of other builds are found when Cue starts
+  (`hosted/old_hosts.rs`), let finish the agents they run (sessions Cue no longer knows are closed), looked at every
+  15 s, and once one runs nothing it's stopped by a signal (nothing is asked of its code, so a broken one can't stay)
+  and its folder cleared. Settings → Agents → cue-host shows what runs where and has **Restart cue-host** (twice):
+  every hosted agent ended, its exit reported (the session comes back paused, and your next message starts it on a
+  fresh host), then every host. So a host bug never outlives the next install for new sessions, and never at all
+  once restarted.
 - Not yet: `tail` (H4), version checks between Cue and an older host (the protocol is at version 1), `write` dedupe
   by `msg` is in the host but Cue doesn't resend after a reconnect yet (a send during a drop is refused, saying so).

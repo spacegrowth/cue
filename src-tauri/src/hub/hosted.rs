@@ -117,6 +117,7 @@ impl Hub {
             }
             (back.go)();
         }
+        self.hosted().settled();
         self.changed();
     }
 

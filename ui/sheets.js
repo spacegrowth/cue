@@ -268,7 +268,33 @@ const setRow = (title, sub, control) => `<div class="set-row"><div class="set-te
 /** Settings → Agents' New sessions: where they run, and the hosted trial. */
 const newSessionRows = (st) => `
     ${st.sessions?.tmux_installed ? setRow("New sessions run in", `Cue: its terminal opens right in Cue, above the reply box, and keeps running if Cue quits (tmux runs it, out of sight). ${esc(st.sessions.terminal || "Terminal")}: a new tab there, as you'd open one. + New session can pick the other one for a session.`, seg("sessions.tmux", !!st.sessions?.tmux, [[true, "Cue"], [false, st.sessions.terminal || "Terminal"]])) : setRow("New sessions run in", `${esc(st.sessions?.terminal || "Terminal")}. To run them right in Cue instead, install tmux (<span class="mono">brew install tmux</span>) and reopen Settings.`, "")}
-    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is a card, and a message goes the moment you send it. Move to Cue brings a terminal app's session in this way, and ⋯ → Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}`;
+    ${setRow("Cue-hosted sessions (trial)", "On: + New session can start Claude Code, Pi or Codex hosted by Cue, with no terminal. Cue talks to it directly, so every permission, question and input request is a card, and a message goes the moment you send it. Move to Cue brings a terminal app's session in this way, and ⋯ → Move to hosted one in Cue's own terminal. Off: sessions start as before; hosted ones you already have keep working.", toggle("hosted.on", !!st.hosted?.on))}
+    ${st.hosted?.on ? hostRow() : ""}`;
+/** Settings → Agents' cue-host row: what it's doing, and Restart cue-host (twice: it ends every hosted agent). Asked
+ *  again every few seconds while Settings shows it. */
+let hostInfo = null, hostArm = false, hostAsked = 0;
+function hostRow() {
+  if (Date.now() - hostAsked > 5000) {
+    hostAsked = Date.now();
+    invoke("host_status").then((v) => { hostInfo = v; renderMain(); }).catch(() => {});
+  }
+  const h = hostInfo;
+  if (!h) return "";
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const older = (h.older || []).reduce((sum, o) => sum + o.running, 0);
+  const now = !h.reachable
+    ? `Not running${h.inside_cue ? `: ${n(h.inside_cue, "hosted session runs", "hosted sessions run")} inside Cue meanwhile, and quitting Cue ends ${h.inside_cue === 1 ? "it" : "them"}` : ""}.`
+    : `Running ${n(h.running, "session", "sessions")}${older ? `; an older cue-host finishes ${n(older, "more", "more")}, then stops` : ""}.`;
+  const btn = `<button class="btn ${hostArm ? "deny" : ""}" data-act="host-restart">${hostArm ? "Click again to end every hosted agent" : "Restart cue-host"}</button>`;
+  return setRow("cue-host", `Keeps hosted sessions running when Cue quits or updates. ${now} Restart ends every hosted agent (a turn under way is cut off); each session comes back paused and resumes with your next message.`, btn);
+}
+/** Restart cue-host: the first click arms it, the second does it. */
+function hostRestart() {
+  if (!hostArm) { hostArm = true; return renderMain(); }
+  hostArm = false;
+  renderMain();
+  invoke("host_restart").then(toast, (e) => toast(`Couldn't restart cue-host: ${e}`)).finally(() => { hostAsked = 0; renderMain(); });
+}
 /** Settings → General's Color: All projects' swatches (core.js projBtn's), so the window's color can be picked here too. */
 const themeSwatches = () => `<div class="set-sw">${swatchPicker(ALL_PROJ)}</div>`;
 /** Settings rows an add-on adds (fetched when Settings opens; none without one). A group with a `tab` gets a

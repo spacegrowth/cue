@@ -46,6 +46,16 @@ pub trait Hosted: Send + Sync {
     fn reattach(&self, _spec: &Spec, _report: Report) -> Option<Reattached> {
         None
     }
+    /// Every session Cue knows has been picked up (`reattach`): what's left over can be let go.
+    fn settled(&self) {}
+    /// Every host ended, and every agent it runs (Settings → Agents: Restart cue-host): what it did, or why not.
+    fn restart_host(&self) -> Result<String, String> {
+        Err("Cue doesn't run sessions under cue-host here".into())
+    }
+    /// The hosts, as Settings shows them (null: none).
+    fn host_status(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
 }
 
 /// A session picked up from cue-host: its process when it still runs (`started`), and `go`, which reports the asks

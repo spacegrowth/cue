@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 147 (3 sync) |
-| Lock declarations (static or field) | 112 |
-| Lock acquisitions | 263 |
+| `#[tauri::command]` | 149 (3 sync) |
+| Lock declarations (static or field) | 111 |
+| Lock acquisitions | 276 |
 | Lock-graph edges | 50 |
-| Spawn sites | 86 |
-| External calls: fs / db / process / notify / login / socket | 362 / 146 / 53 / 4 / 1 / 3 |
+| Spawn sites | 88 |
+| External calls: fs / db / process / notify / login / socket | 369 / 146 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -88,6 +88,8 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `move_to_terminal` | async | `ipc/hosted.rs::move_to_terminal` | ipc::with_hub |
 | `quit_check` | async | `ipc/hosted.rs::quit_check` | ipc::with_hub |
 | `quit_now` | async | `ipc/hosted.rs::quit_now` | — |
+| `host_status` | async | `ipc/hosted.rs::host_status` | ipc::with_hub |
+| `host_restart` | async | `ipc/hosted.rs::host_restart` | ipc::with_hub |
 | `insight_state` | async | `ipc/insights.rs::insight_state` | ipc::with_hub |
 | `insight_host_skills` | async | `ipc/insights.rs::insight_host_skills` | ipc::blocking |
 | `handoff_sent` | async | `ipc/insights.rs::handoff_sent` | ipc::with_hub |
@@ -203,15 +205,14 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hosted/driver.rs::Driver.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
 | `hosted/driver.rs::Driver.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
-| `hosted/host_link.rs::HostLink.out` | `Mutex<Option<UnixStream>>` | "cue-host link: out" (3 sites) |
+| `hosted/host_link.rs::HostLink.out` | `Mutex<Option<UnixStream>>` | "cue-host link: out" (4 sites) |
 | `hosted/host_link.rs::HostLink.waiting` | `Mutex<HashMap<u64,Sender<Result<Value,String>>>>` | "cue-host link: waiting" (5 sites) |
 | `hosted/host_link.rs::HostLink.routes` | `Mutex<HashMap<String,Route>>` | "cue-host link: routes" (3 sites) |
 | `hosted/host_link.rs::HostLink.on_back` | `Mutex<Option<Box<dynFn()+Send+Sync>>>` | "cue-host link: on back" (2 sites) |
-| `hosted/hosts.rs::Hosts.link` | `Mutex<Option<Arc<HostLink>>>` | "hosts: link" (2 sites) |
-| `hosted/hosts.rs::Hosts.failed_at` | `Mutex<Option<std::time::Instant>>` | "hosts: link tried" (2 sites) |
-| `hosted/hosts.rs::Hosts.remotes` | `Arc<Mutex<HashMap<String,Arc<Remote>>>>` | "hosts: sessions" (6 sites) |
-| `hosted/hosts.rs::Remote.cursor` | `Mutex<Cursor>` | "hosts: a session's cursor" (3 sites) |
-| `hosted/hosts.rs::Remote.queue` | `Mutex<Option<Sender<Event>>>` | "hosts: a session's queue" (2 sites) |
+| `hosted/hosts.rs::Hosts.link` | `Mutex<Option<Arc<HostLink>>>` | "hosts: link" (5 sites) |
+| `hosted/hosts.rs::Hosts.failed_at` | `Mutex<Option<Instant>>` | "hosts: link tried" (3 sites) |
+| `hosted/remote.rs::Remote.cursor` | `Mutex<Cursor>` | "hosts: a session's cursor" (3 sites) |
+| `hosted/remote.rs::Remote.queue` | `Mutex<Option<Sender<Event>>>` | — |
 | `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (5 sites) |
 | `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
@@ -297,7 +298,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `terminal/term.rs::M` | `OnceLock<Mutex<Terms>>` | — |
 | `terminal/term.rs::P` | `OnceLock<String>` | — |
 
-Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
+Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (5 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (7 sites), "hosts: sessions" (7 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
 
 ## Lock graph
 
@@ -379,6 +380,8 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hosted/host_link.rs::HostLink::lost` | thread::spawn | 1 |
 | `hosted/host_link.rs::HostLink::open` | thread::spawn | 1 |
 | `hosted/hosts.rs::Hosts::listen` | thread::spawn | 1 |
+| `hosted/hosts.rs::Hosts::restart_host` | thread::spawn | 1 |
+| `hosted/hosts.rs::Hosts::watch_old` | thread::spawn | 1 |
 | `hosted/running.rs::Running::close_all` | thread::spawn | 1 |
 | `hosted/session.rs::Session::start` | thread::spawn | 1 |
 | `hosted/session.rs::keep_last_words` | thread::spawn | 1 |
@@ -449,7 +452,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (362)
+### fs (369)
 
 | In | Call | Times |
 |---|---|---|
@@ -526,14 +529,19 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hook.rs::put_executable` | write | 1 |
 | `hook.rs::read_tail` | File::open | 1 |
 | `hook.rs::read_tail` | Path::metadata | 1 |
-| `hosted/hosts.rs::Cursor::find` | read | 1 |
-| `hosted/hosts.rs::Cursor::find` | read_dir | 1 |
-| `hosted/hosts.rs::Cursor::prune` | Path::metadata | 1 |
-| `hosted/hosts.rs::Cursor::prune` | read_dir | 1 |
-| `hosted/hosts.rs::Cursor::prune` | remove_file | 1 |
-| `hosted/hosts.rs::Cursor::save` | create_dir_all | 1 |
-| `hosted/hosts.rs::Cursor::save` | rename | 1 |
-| `hosted/hosts.rs::Cursor::save` | write | 1 |
+| `hosted/old_hosts.rs::clear` | remove_dir_all | 2 |
+| `hosted/old_hosts.rs::clear` | remove_file | 1 |
+| `hosted/old_hosts.rs::find` | Path::exists | 1 |
+| `hosted/old_hosts.rs::find` | Path::is_dir | 1 |
+| `hosted/old_hosts.rs::find` | read_dir | 1 |
+| `hosted/remote.rs::Cursor::find` | read | 1 |
+| `hosted/remote.rs::Cursor::find` | read_dir | 1 |
+| `hosted/remote.rs::Cursor::prune` | Path::metadata | 1 |
+| `hosted/remote.rs::Cursor::prune` | read_dir | 1 |
+| `hosted/remote.rs::Cursor::prune` | remove_file | 1 |
+| `hosted/remote.rs::Cursor::save` | create_dir_all | 1 |
+| `hosted/remote.rs::Cursor::save` | rename | 1 |
+| `hosted/remote.rs::Cursor::save` | write | 1 |
 | `hub/activity.rs::written_ms` | metadata | 1 |
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
@@ -605,6 +613,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/archive.rs::refresh` | Path::metadata | 1 |
 | `logs/archive.rs::refresh` | read_dir | 2 |
 | `logs/live.rs::claude_transcript` | Path::is_file | 1 |
+| `logs/live.rs::claude_transcript_path` | canonicalize | 1 |
 | `logs/live.rs::scan_claude` | read_dir | 1 |
 | `logs/live.rs::scan_claude` | read_to_string | 1 |
 | `logs/live.rs::started_ms` | read_to_string | 1 |
@@ -985,11 +994,12 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 |---|---|---|
 | `config/login.rs::service` | AnyClass::get | 1 |
 
-### socket (3)
+### socket (4)
 
 | In | Call | Times |
 |---|---|---|
 | `hook.rs::connect` | UnixStream::connect | 1 |
+| `hosted/host_link.rs::HostLink::open` | UnixStream::connect | 1 |
 | `server/mod.rs::serve` | UnixListener::bind | 1 |
 | `server/mod.rs::serve` | UnixStream::connect | 1 |
 

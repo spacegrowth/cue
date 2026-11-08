@@ -22,6 +22,8 @@ mod driver;
 mod host_link;
 mod hosts;
 mod launch;
+mod old_hosts;
+mod remote;
 mod pi;
 mod protocol;
 mod running;
@@ -46,7 +48,7 @@ mod translate_tests;
 
 pub use launch::{Agent, Program, Spec, Start};
 pub use hosts::Hosts;
-pub use running::{end_leftovers, Hosted, Reattached, Report, Running, Started};
+pub use running::{end_leftovers, Hosted, Report, Running, Started};
 pub use session::Session;
 
 use serde_json::Value;

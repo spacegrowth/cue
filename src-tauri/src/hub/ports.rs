@@ -99,10 +99,12 @@ impl Ports {
     }
 }
 
-/// Hosted sessions through cue-host: Cue's own program run as `cue host serve`, its home in Cue's data folder.
+/// Hosted sessions through cue-host: Cue's own program run as `cue host serve`, each build of the host in a folder of
+/// its own under Cue's data folder's `host/` (an older one there finishes what it runs, then goes: hosted/old_hosts.rs).
 fn hosts() -> crate::hosted::Hosts {
-    let home = crate::server::cue_dir().join("host");
+    let root = crate::server::cue_dir().join("host");
+    let home = root.join(format!("b-{}", cue_host::proto::BUILD));
     let me = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let serve = vec![me, "host".into(), "serve".into(), "--home".into(), home.to_string_lossy().into_owned()];
-    crate::hosted::Hosts::new(home, serve, crate::server::cue_dir().join("host-seen"))
+    crate::hosted::Hosts::new(root, home, serve, crate::server::cue_dir().join("host-seen"))
 }
