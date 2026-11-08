@@ -27,6 +27,7 @@
 /* The file's name, and under it its folder and when it last changed, quiet; both cut short before the buttons are. */
 .rdv-title { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; margin-left: 4px; line-height: 1.25; }
 .rdv-title .rd-file { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rdv-plain { font-size: 12px; margin-right: 4px; }
 .rdv-where { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rdv .rd { padding-top: 22px; }
 .rdv-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 40px; }
@@ -46,3 +47,5 @@
 .rdv-h.on { background: var(--sel); color: var(--on-sel); font-weight: 650; }
 /* The file: wider than the reader in a chat, but a line stays readable on a big window, with room either side. */
 .rdv .rd { max-width: 54em; margin: 0 auto; }
+/* Room under the end, so a heading near it can still come to the top when picked in Contents. */
+.rdv .rd { padding-bottom: 70vh; }

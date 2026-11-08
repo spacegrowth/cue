@@ -107,6 +107,7 @@ const LISTEN_CLICKS = [
   rule("[data-listen-skip]", (lk) => listenSkip(+lk.dataset.listenSkip)),
   rule("[data-listen-speed]", (lsp) => listenFaster(+lsp.dataset.listenSpeed)),
   rule("[data-listen-then]", () => listenThenNext()),
+  rule("[data-listen-plain]", () => listenPlainFlip()),
   rule("[data-voice-list]", flipVoiceList),
   rule("[data-voice-sample]", (vs) => playSample(vs.dataset.voiceSample)),
   rule("[data-voice-get]", (vg) => getVoice(vg.dataset.voiceGet)),

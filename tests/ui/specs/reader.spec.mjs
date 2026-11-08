@@ -66,3 +66,28 @@ test("New docs: the newest .md files in this Mac's sessions' repos, at the foot 
   await expect(page.locator(".rdv-head .rd-file")).toHaveText("plan.md");
   await expect(page.locator("[data-read-back]")).toHaveText(/agent-relay chat/);
 });
+
+test("Listen in Read skips code, tables, paths and § references (Skip code & tables, on by default)", async ({ cue, page }) => {
+  const DOC = "# Plan\n\nThe client lives in `src-tauri/src/hosted/` and talks to `claude` (§4.1).\n\n```\ncargo test\n```\n\n| Case | Today |\n| --- | --- |\n| Bash | card |\n\nRun it with `--resume` after a restart.";
+  await cue.open("board-waiting");
+  await page.evaluate(() => { localStorage.removeItem("cue.listenPlain"); listenPlain = true; });
+  await cue.override("read_doc", ({ path }, d) => ({ path, text: d, modified_ms: 0 }), DOC);
+  await page.evaluate(() => readOpen("/x/plan.md"));
+  await expect(page.locator("[data-listen-plain]")).toBeChecked();
+  await page.evaluate(() => { window.__spoken = []; speechSynthesis.speak = (u) => { window.__spoken.push(u.text); setTimeout(() => u.onend?.(), 0); }; speechSynthesis.cancel = () => {}; });
+  await page.locator(".rdv-head [data-listen]").click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(3);
+  expect(await page.evaluate(() => window.__spoken)).toEqual(["Plan", "The client lives in hosted and talks to claude.", "Run it with after a restart."]);
+});
+
+test("Listen in Read scrolls the file along to the sentence it reads", async ({ cue, page }) => {
+  const DOC = "# Long\n\n" + Array.from({ length: 60 }, (_, i) => `Paragraph ${i + 1} has a sentence in it.`).join("\n\n");
+  await cue.open("board-waiting");
+  await cue.override("read_doc", ({ path }, d) => ({ path, text: d, modified_ms: 0 }), DOC);
+  await page.evaluate(() => readOpen("/x/long.md"));
+  await page.evaluate(() => { speechSynthesis.speak = () => {}; speechSynthesis.cancel = () => {}; });
+  await page.locator(".rdv-head [data-listen]").click();
+  // Skip ahead 40 sentences: the page follows.
+  for (let i = 0; i < 40; i++) await page.locator('[data-listen-skip="1"]').click();
+  await expect.poll(() => page.evaluate(() => document.querySelector(".rdv-scroll").scrollTop)).toBeGreaterThan(400);
+});

@@ -76,8 +76,8 @@ function bindMain() {
   addEventListener("blur", releaseChat);
   // You scrolling the chat (the wheel or trackpad, or a press on its scroll bar, which lands on the chat itself):
   // a reply being read out stops scrolling it along (chat/listen.js listenScrolled).
-  document.addEventListener("wheel", (e) => { const c = e.target.closest?.("[data-chat]"); if (c) listenScrolled(c); }, { passive: true, capture: true });
-  document.addEventListener("pointerdown", (e) => { if (e.target.matches?.("[data-chat]")) listenScrolled(e.target); }, true);
+  document.addEventListener("wheel", (e) => { const c = e.target.closest?.("[data-chat], .rdv-scroll"); if (c) listenScrolled(c); }, { passive: true, capture: true });
+  document.addEventListener("pointerdown", (e) => { if (e.target.matches?.("[data-chat], .rdv-scroll")) listenScrolled(e.target); }, true);
   const app = document.getElementById("app");
   document.addEventListener("mousedown", (e) => { downInLive = !!e.target.closest?.(".lv-wrap"); }, true);
   // Into a session's box: start reading its "/" commands now (that takes a few seconds the first

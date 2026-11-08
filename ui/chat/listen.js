@@ -10,8 +10,40 @@
 let listening = null;    // { sid, key, i (sentence), n, playing, reader (started there), html (the reply as last shown), all (the reader's replies), follow (the chat scrolls along), ahead (scrolled away, the reading above the mark) }
 let listenRun = 0;       // bumped on every start, pause and stop: an old sentence's end is ignored
 const LISTEN_SPEEDS = [1, 1.1, 1.25, 1.4, 1.6];
-let listenSpeed = 0, listenThen = true;
-try { listenSpeed = Math.max(0, LISTEN_SPEEDS.indexOf(Number(localStorage.getItem("cue.listenRate")))); listenThen = localStorage.getItem("cue.listenThen") !== "0"; } catch {}
+let listenSpeed = 0, listenThen = true, listenPlain = true;
+try { listenSpeed = Math.max(0, LISTEN_SPEEDS.indexOf(Number(localStorage.getItem("cue.listenRate")))); listenThen = localStorage.getItem("cue.listenThen") !== "0"; listenPlain = localStorage.getItem("cue.listenPlain") !== "0"; } catch {}
+/** "Skip code & tables" (on unless turned off): what makes no sense heard is left out. Tables and code blocks
+ *  whole; in a sentence, a path, a link, code that isn't a plain word (a slash, a dot, an underscore, a brace…) and
+ *  a "(§4.1)" reference, so the rest of it is read; a sentence with nothing left is passed over. */
+const LISTEN_TECH = /^(?:-|.*\s-)|^(?:[\w-]*[/._{}()<>=:\\$#@|[\]][\S]*|\S{25,})$/;
+function listenPlainOf(el, text, nodes) {
+  // The characters to say: those not in technical code or a link that is a path or a web address. A path is said
+  // by its last part, a word (src-tauri/src/hosted/ → "hosted", docs/plan.md → "plan"), so the sentence still reads.
+  const keep = new Uint8Array(text.length).fill(1), subs = new Map(), named = new Set();
+  for (const { n, at } of nodes) {
+    const code = n.parentElement.closest("code"), link = n.parentElement.closest("a[data-path], a[data-href]");
+    const t = (code || link)?.textContent.trim() || "";
+    if (!((code && LISTEN_TECH.test(t)) || (link && (link.dataset.path || /^(?:https?|file):/.test(t))))) continue;
+    keep.fill(0, at, at + n.data.length);
+    const holder = link || code;
+    const word = /^(?:https?|file):/.test(t) ? "" : t.includes("/") ? t.replace(/\/+$/, "").split("/").pop().replace(/\.[A-Za-z]\w{0,7}$/, "").replace(/[-_]+/g, " ") : "";
+    if (word && /^[A-Za-z][\w ]*$/.test(word) && !named.has(holder)) { named.add(holder); subs.set(at, word); }
+  }
+  return { keep, subs };
+}
+function listenSay1(text, plain, a, b) {
+  if (!plain) return text.slice(a, b).replace(/\s/g, " ");
+  let s = "";
+  for (let i = a; i < b; i++) s += plain.keep[i] ? text[i] : plain.subs.has(i) ? ` ${plain.subs.get(i)} ` : " ";
+  return s.replace(/https?:\/\/\S+/g, " ").replace(/\(\s*§[\d.,–\s-]+\)|§[\d.]+/g, " ").replace(/[*_]{1,2}(?=\w)|(?<=\w)[*_]{1,2}/g, "")
+    .replace(/[,;]\s*\)/g, ")").replace(/\(\s*[,;]?\s*\)/g, " ")
+    .replace(/\s+([,.;:)])/g, "$1").replace(/\(\s+/g, "(").replace(/\s+/g, " ").replace(/^[\s,;:]+/, "").trim();
+}
+function listenPlainFlip() {
+  listenPlain = !listenPlain;
+  try { localStorage.setItem("cue.listenPlain", listenPlain ? "1" : "0"); } catch {}
+  renderMain();
+}
 const LISTEN_BLOCKS = "p, li, h1, h2, h3, h4, h5, h6, pre, tr, blockquote";
 /** The reply `key` as shown: in the reader when it's open on it, else its bubble in the chat. */
 function listenRoot(key) {
@@ -33,19 +65,25 @@ function listenSents(root) {
   const out = [];
   const els = [...root.querySelectorAll(LISTEN_BLOCKS)].filter((el) => !(el.matches("blockquote") && el.querySelector(LISTEN_BLOCKS)));
   for (const el of els.length ? els : [root]) {
-    if (el.matches("pre")) { if (!el.parentElement.closest("pre")) out.push({ say: "Code block.", el }); continue; }
+    if (el.matches("pre")) { if (!listenPlain && !el.parentElement.closest("pre")) out.push({ say: "Code block.", el }); continue; }
+    if (el.matches("tr") && listenPlain) continue;
     if (el.matches("tr")) { const say = [...el.cells].map((c) => c.textContent.trim()).filter(Boolean).join(", "); if (/\w/.test(say)) out.push({ say, el }); continue; }
     // This block's own text (not a nested list's or a code block's), as one string over its text nodes.
     const nodes = [], walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement.closest(LISTEN_BLOCKS) === el ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
     let text = "";
     for (let n; (n = walk.nextNode());) { nodes.push({ n, at: text.length }); text += n.data; }
+    const keep = listenPlain ? listenPlainOf(el, text, nodes) : null;
     const pos = (i) => { let k = nodes.length - 1; while (k > 0 && nodes[k].at > i) k--; return [nodes[k].n, Math.min(i - nodes[k].at, nodes[k].n.data.length)]; };
-    for (const m of text.matchAll(/(?:[^.!?\n]|[.!?]+(?=[^\s.!?"')\]]))+(?:[.!?]+["')\]]*(?=\s|$)|\n|$)/g)) {
+    // A heading is said whole ("1. What and why", not "1." and then the rest).
+    const whole = /^H[1-6]$/.test(el.tagName) ? [Object.assign([text.trimEnd()], { index: 0 })] : null;
+    for (const m of whole || text.matchAll(/(?:[^.!?\n]|[.!?]+(?=[^\s.!?"')\]]))+(?:[.!?]+["')\]]*(?=\s|$)|\n|$)/g)) {
       const a = m.index + (m[0].length - m[0].trimStart().length), b = m.index + m[0].trimEnd().length;
       if (b <= a || !/\w/.test(m[0])) continue;
       const range = document.createRange();
       range.setStart(...pos(a)); range.setEnd(...pos(b));
-      out.push({ say: text.slice(a, b).replace(/\s/g, " "), range, pos, a });
+      const say = listenSay1(text, keep, a, b);
+      if (!/\w/.test(say)) continue;
+      out.push({ say, range, pos, a });
     }
   }
   return out;
@@ -74,7 +112,8 @@ function listenUnmark() { if (CSS.highlights) ["cue-said", "cue-say", "cue-word"
  *  smooth, a jump (more than a screen) instant. Scroll the chat yourself and it stops following (`l.follow`) until
  *  the reading comes down to the mark from above, or you skip, or click a sentence. */
 function listenFollow(l) {
-  const v = l && listenView(l), x = v?.sents[l.i], chat = v?.root.closest("[data-chat]");
+  // The page it scrolls: the chat, or Read's (read.js) for a file read there.
+  const v = l && listenView(l), x = v?.sents[l.i], chat = v?.root.closest("[data-chat], .rdv-scroll");
   if (!x || !chat) return;
   const r = (listenWord(x, l.w) || x.range)?.getClientRects()[0] || x.el?.getBoundingClientRect();
   if (!r) return;
@@ -91,7 +130,7 @@ function listenFollow(l) {
   // A glide of Cue's own (core.js glideTo), not the browser's smooth scroll: this runs in every redraw, and in
   // WebKit a smooth scroll started then ran from the chat's top.
   const by = r.top - mark;
-  if (Math.abs(by) < box.height) return glideTo(() => listenRoot(l.key)?.closest("[data-chat]"), chat.scrollTop + by);
+  if (Math.abs(by) < box.height) return glideTo(() => listenRoot(l.key)?.closest("[data-chat], .rdv-scroll"), chat.scrollTop + by);
   glide = null;
   chat.scrollTop += by;
 }
@@ -99,7 +138,7 @@ function listenFollow(l) {
  *  following, so it doesn't pull you back while you look elsewhere. */
 function listenScrolled(chat) {
   const root = listening && listenRoot(listening.key);
-  if (root && root.closest("[data-chat]") === chat) { listening.follow = false; listening.ahead = false; }
+  if (root && root.closest("[data-chat], .rdv-scroll") === chat) { listening.follow = false; listening.ahead = false; }
 }
 /** The reply being read as shown, with its sentences, worked out again only when asked (`fresh`: after a redraw)
  *  or when the reply on screen is another element: the word marks move many times a second. */

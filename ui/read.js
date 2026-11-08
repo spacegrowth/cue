@@ -101,10 +101,11 @@ function readListenFrom() {
   return Math.max(0, listenSents(root).findIndex((x) => after(x.range ? x.range.startContainer : x.el)));
 }
 function readJump(n) {
-  const h = document.querySelectorAll(".rdv-scroll .msg h4")[n];
+  const sc = document.querySelector(".rdv-scroll"), h = sc?.querySelectorAll(".msg h4")[n];
   if (!h) return;
   readPicked = n;
-  h.scrollIntoView({ block: "start" });
+  // Its heading to the top of the page, by the page's own scroll (WebKit's scrollIntoView can move the window too).
+  sc.scrollTop += h.getBoundingClientRect().top - sc.getBoundingClientRect().top - 16;
   readTrack();
 }
 
@@ -123,6 +124,7 @@ function readView() {
   const from = d.sid && sessionOf(d.sid);
   const head = `<div class="bg-view-head rd-head rdv-head">${from ? `<button class="bg-back" data-read-back="1"><span class="bg-back-ch">‹</span>${esc(nameOf(d.sid, from.project))} chat</button>` : ""}<span class="rdv-title"><span class="rd-file">${esc(readName(d.path))}</span><span class="rdv-where">${esc(shortPath(d.path.replace(/\/[^/]*$/, "").replace(/^\/Users\/[^/]+/, "~")))}${d.modified_ms ? ` · changed ${ago(d.modified_ms)} ago` : ""}</span></span><span class="grow"></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
+    <label class="ls-then rdv-plain"><input type="checkbox" data-listen-plain="1" ${listenPlain ? "checked" : ""}/>Skip code &amp; tables</label>
     ${listening?.key === key ? "" : `<button class="btn ls-btn" data-listen="${esc(key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-open="${esc(d.path)}">Open</button></div>`;
   const body = `<div class="rdv-scroll"><div class="rd" data-key="rd:${esc(key)}:${readerSize}" data-rdkey="${esc(key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="msg">${html}</div></div></div>`;
   const toc = heads.length > 1 ? `<div class="rdv-toc"><div class="col-head">CONTENTS</div>${heads.map((h) => `<button class="rdv-h l${Math.min(h.lv, 4)} ${h.n === readAt ? "on" : ""}" data-read-h="${h.n}">${h.text}</button>`).join("")}</div>` : "";
