@@ -56,7 +56,10 @@ function olderRow(sid, harness) {
 /** The conversation for the Active pane: the live session's thread, or the item's own copy once the session is gone. */
 function conversation(it, s) {
   let ex = s ? [...(s.thread || [])] : [...(it?.thread || [])];
-  const o = older.get(s?.session_id || it?.session_id);
+  const sid = s?.session_id || it?.session_id, o = older.get(sid);
+  // Its recent thread is empty (Cue lost track of it a while, and it came back with a turn that said nothing):
+  // what it said last comes from Cue's log at once, as Earlier messages would, rather than a bare "Finished".
+  if (!ex.length && sid && !o && (current()?.s?.session_id || current()?.it?.session_id) === sid) queueMicrotask(() => loadOlder(sid));
   if (o?.msgs.length) {
     const first = ex[0]?.at_ms ?? Infinity;
     if (first !== Infinity && first > o.anchor && !o.busy) { o.busy = true; queueMicrotask(() => fillOlderGap(s?.session_id || it?.session_id, o, first)); }
