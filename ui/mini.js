@@ -58,7 +58,8 @@
     const items = needs(Infinity).shown.map((it) => ({ sid: it.session_id, project: it.project, cls: dotCls(it), talk: talking(it), at: it.created_ms, back: it.back_ms || 0 }));
     const works = working().map((s) => ({ sid: s.session_id, project: s.project, cls: "work", talk: workingOnYours(s), at: (s.thread || []).filter((e) => e.role === "you").pop()?.at_ms || s.since_ms, back: 0 }));
     const all = [...items, ...works];
-    const talk = all.filter((t) => t.talk).sort((a, b) => a.at - b.at);
+    // In conversation: the ones at work on what you said first, then the ones back to you (your turn).
+    const talk = all.filter((t) => t.talk).sort((a, b) => ((a.cls !== "work") - (b.cls !== "work")) || a.at - b.at);
     // Sent to the back (↓) stays below the rest, as in Waiting.
     const rest = (list) => list.filter((t) => !t.talk).sort((a, b) => (!!a.back - !!b.back) || (a.back ? a.back - b.back : b.at - a.at));
     // In conversation first, then what waits on you, then what's only at work.
