@@ -51,6 +51,14 @@ function beforeDraw() {
   // is over the list, the card under it stays put: the new one comes in above, and the count says so.
   const waitBody = document.querySelector(".sec-waiting .sec-body:hover");
   was.waitAnchor = waitBody && [...waitBody.querySelectorAll(".nrow[data-big]")].map((el) => ({ id: el.dataset.big, top: el.getBoundingClientRect().top })).find((a) => a.top >= waitBody.getBoundingClientRect().top - 1);
+  // Sessions keeps its place by the card at its top, not by a scroll number: a reply moves its card into the
+  // list, and the old number would land partway into another card (cut off at the top until you scrolled).
+  const sessBody = document.querySelector(".sec-sessions .sec-body");
+  if (sessBody?.scrollTop > 0) {
+    const t = sessBody.getBoundingClientRect().top;
+    const el = [...sessBody.querySelectorAll(":scope > [data-session]")].find((c) => c.getBoundingClientRect().bottom > t + 1);
+    if (el) was.sessAnchor = { id: el.dataset.session, off: el.getBoundingClientRect().top - t };
+  }
   was.onBefore = selectedCards();   // where the selected card sits in each list, and whether it's in full view
   was.oldChat = document.querySelector("[data-chat]");
   was.chatPinned = was.oldChat && was.oldChat.scrollHeight - was.oldChat.scrollTop - was.oldChat.clientHeight < 24;
@@ -112,6 +120,18 @@ function placeFloating() {
   const lc = current();
   listenKeep(lc?.s?.session_id || lc?.it?.session_id);   // a reply read out: its marks back on the redrawn chat
 }
+/** Sessions scrolled: the card that was at its top back where it was; that card gone, the list starts on the
+ *  whole card now at its top (never one cut off). */
+function keepSessionsTop(anchor) {
+  const body = document.querySelector(".sec-sessions .sec-body");
+  if (!body) return;
+  const t = body.getBoundingClientRect().top;
+  const cards = [...body.querySelectorAll(":scope > [data-session]")];
+  const same = cards.find((c) => c.dataset.session === anchor.id);
+  if (same) { body.scrollTop += same.getBoundingClientRect().top - t - anchor.off; return; }
+  const top = cards.find((c) => c.getBoundingClientRect().bottom > t + 1);
+  if (top && top.getBoundingClientRect().top < t - 1) body.scrollTop += top.getBoundingClientRect().top - t;
+}
 /** Every list where it was scrolled, the Waiting card under the pointer where it was, the MCP picker and a
  *  background script's output where they were. */
 function restoreScrolls(was) {
@@ -121,6 +141,7 @@ function restoreScrolls(was) {
     const dy = el ? el.getBoundingClientRect().top - was.waitAnchor.top : 0;
     if (Math.abs(dy) >= 1) el.closest(".sec-body").scrollTop += dy;
   }
+  if (was.sessAnchor) keepSessionsTop(was.sessAnchor);
   document.querySelectorAll(".mcp-list[data-mcp-key]").forEach((el) => { const top = was.mcpTops.get(el.dataset.mcpKey); if (top) el.scrollTop = top; });
   document.querySelectorAll("[data-bg-scroll]").forEach((el) => { el.scrollTop = was.bgScrolls.get(el.dataset.bgScroll) ?? el.scrollHeight; });
 }

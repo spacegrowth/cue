@@ -139,3 +139,28 @@ test("a card brought into view from below the list's edge leaves no card cut in 
   expect(cut.length).toBeGreaterThan(0);
   for (const c of cut) expect(c).toEqual({ sid: c.sid, shown: true, topCut: false });
 });
+
+test("a card leaving Sessions above where you'd scrolled leaves no card cut off at the list's top", async ({ cue, page }) => {
+  await cue.open("world-fifty-sessions");
+  const before = await page.evaluate(() => {
+    const list = document.querySelector(".sec-sessions .sec-body");
+    const cards = [...list.querySelectorAll(":scope > [data-session]")];
+    // Scrolled so the fourth card starts the list, whole.
+    list.scrollTop += cards[3].getBoundingClientRect().top - list.getBoundingClientRect().top;
+    return { top: cards[3].dataset.session, gone: cards[0].dataset.session };
+  });
+  // The first card leaves (as a reply moves a session's card elsewhere), and the window is drawn again.
+  await page.evaluate((sid) => {
+    const w = window.CueBridge.world;
+    w.state.sessions = w.state.sessions.filter((s) => s.session_id !== sid);
+    w.emit("state", w.snapshot());
+  }, before.gone);
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => {
+    const list = document.querySelector(".sec-sessions .sec-body");
+    const t = list.getBoundingClientRect().top;
+    const top = [...list.querySelectorAll(":scope > [data-session]")].find((c) => c.getBoundingClientRect().bottom > t + 1);
+    return { top: top.dataset.session, cut: top.getBoundingClientRect().top < t - 1 };
+  });
+  expect(after).toEqual({ top: before.top, cut: false });
+});
