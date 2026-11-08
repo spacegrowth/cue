@@ -3,7 +3,7 @@
 //! and what's sent to it: hub/hosted.rs.
 
 use super::{with_hub, StartOpts};
-use crate::hosted::Start;
+use crate::hosted::{Agent, Start};
 use crate::hub::{Hub, HostedStart};
 use crate::logs::{live, transcript};
 use crate::model::{self, Origin};
@@ -12,18 +12,21 @@ use crate::terminal::launch::Place;
 use std::sync::Arc;
 use tauri::State;
 
-/// + New session, hosted: Claude Code started by Cue in `dir` with no terminal, its first message (and images)
+/// + New session, hosted: `agent` started by Cue in `dir` with no terminal, its first message (and images)
 /// handed to it once it's up. Cue picks the id, so the session is in Active at once.
-pub(crate) fn start_hosted(h: &Arc<Hub>, dir: &str, message: &str, name: &str, opts: &StartOpts, saved: &[crate::uploads::Saved]) -> Result<serde_json::Value, String> {
+pub(crate) fn start_hosted(h: &Arc<Hub>, agent: Agent, dir: &str, message: &str, name: &str, opts: &StartOpts, saved: &[crate::uploads::Saved]) -> Result<serde_json::Value, String> {
     let start = Start::fresh();
     let sid = start.session_id().to_string();
     let mut args = flag_words(&opts.extra)?;
-    if let Some(names) = &opts.mcp {
+    // An MCP selection is Claude Code's (Pi has no MCP servers of its own).
+    if let Some(names) = opts.mcp.as_ref().filter(|_| agent == Agent::Claude) {
         let path = crate::logs::mcp::selection_path(&sid);
         crate::logs::mcp::write_selection(&path, &crate::logs::mcp::definitions(dir), names)?;
         args.extend(crate::logs::mcp::flags_for(&path));
     }
-    let origin = Origin { session_id: sid.clone(), harness: "claude".into(), cwd: dir.to_string(), transcript_path: live::claude_transcript_path(dir, &sid).to_string_lossy().into_owned(), hosted: true, ..Default::default() };
+    // Claude Code's conversation is a file Cue can name now; Pi's is named by Pi when it starts.
+    let transcript_path = if agent == Agent::Claude { live::claude_transcript_path(dir, &sid).to_string_lossy().into_owned() } else { String::new() };
+    let origin = Origin { session_id: sid.clone(), harness: agent.program().into(), cwd: dir.to_string(), transcript_path, hosted: true, ..Default::default() };
     let origin = h.run_hosted(&origin, start, &HostedStart { permissions: opts.perm.clone(), args })?;
     let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
     h.started(origin, "", &[], false);
@@ -31,7 +34,7 @@ pub(crate) fn start_hosted(h: &Arc<Hub>, dir: &str, message: &str, name: &str, o
     if !message.trim().is_empty() || !paths.is_empty() {
         h.send_to_hosted(&sid, message, saved, false)?;
     }
-    Ok(serde_json::json!({ "session_id": sid, "detail": "Started Claude Code, hosted in Cue" }))
+    Ok(serde_json::json!({ "session_id": sid, "detail": format!("Started {}, hosted in Cue", agent.name()) }))
 }
 
 /// + New's extra flags, as the arguments they are. Taken word by word: a hosted session's Claude gets them

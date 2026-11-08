@@ -8,7 +8,7 @@
 //! as Claude normally runs: with your real home folder, where its login is. That's the one thing taken from
 //! outside the tests' sandbox, for the Claude it starts only; the session folder it writes there is removed.
 
-use super::{Answer, Ask, AskKind, HostedEvent, InputAction, Program, Session, Spec, Start};
+use super::{Agent, Answer, Ask, AskKind, HostedEvent, InputAction, Program, Session, Spec, Start};
 use crate::model::Decision;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -38,7 +38,7 @@ impl Real {
     fn start_in(dir: PathBuf, settings: Value, start: Start, args: &[&str]) -> Real {
         let mut a = vec!["--setting-sources".into(), "local".into(), "--strict-mcp-config".into(), "--settings".into(), settings.to_string()];
         a.extend(args.iter().map(|s| s.to_string()));
-        let spec = Spec { cwd: dir.clone(), start, permissions: String::new(), model: Some(MODEL.into()), args: a, program: Program::At(claude_with_real_home(&dir)) };
+        let spec = Spec { agent: Agent::Claude, cwd: dir.clone(), start, permissions: String::new(), model: Some(MODEL.into()), args: a, program: Program::At(claude_with_real_home(&dir)) };
         let (tx, rx) = channel();
         let session = Session::start(&spec, move |e| {
             let _ = tx.send(e);

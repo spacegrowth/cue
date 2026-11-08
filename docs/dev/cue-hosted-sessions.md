@@ -67,7 +67,7 @@ a terminal), skills, MCP servers, model and permission mode. Claude still writes
 separate agent host yet; the owner's call, 2026-11-07). A hosted session survives a Cue restart as a conversation
 (resumed with `--resume`), not as a running process: a turn in progress when Cue quits is lost.
 
-**Not in v1:** the agent host process (§8 M4), remote machines, Codex/Pi, starting relay executors as hosted
+**Not in v1:** the agent host process (§8 M4, now §9 H3), remote machines, Codex/Pi (§9), starting relay executors as hosted
 sessions, removing the built-in terminal panel. Terminal sessions keep working exactly as today throughout.
 
 **Behind a setting, off by default.** Hosted sessions ship as a trial you turn on: Settings → *Cue-hosted
@@ -243,9 +243,58 @@ its split hub (`hub/events.rs`, `hub/asks.rs`, `hub/send.rs`).
 | **M2** | `Hosted` port + World fake, hub wiring (§4.3), `input` card, `+ New → Cue-hosted session`, paused/resume, all behind the `hosted.on` setting (§3) | **built 2026-11-07**; the trial is next | World cases green, with the setting off and on; a few days of daily use with it on and no answer-in-terminal card on a hosted session; then the owner decides whether it becomes the default |
 | **M3** | relay executors as hosted sessions (relay asks Cue to start them instead of opening iTerm tabs) | after M2 holds up | an executor packet runs end to end hosted |
 | **M4** | the agent host: processes move out of the app so a Cue restart or update no longer stops running work | when restarts interrupting work are felt | Cue restart mid-turn: the turn finishes, the app picks it back up |
-| **M5** | retire the built-in terminal panel and Cue's own tmux, once nothing in daily use needs them | last | — |
+| **M5** | every agent hosted and Cue's terminal removed: §9, H1 Pi → H2 Codex → H3 agent host (was M4) → H4 machines → H5 terminal-only gaps → H6 removal | started 2026-11-07 | each step live-tested; H6 only after the rest holds up in daily use |
 
-## 9. Open questions
+## 9. Every agent hosted, then no Cue terminal (the owner's call, 2026-11-07)
+
+The goal: Cue's own terminal (tmux panel, `Runs in → Cue`) goes away. Every agent Cue starts is hosted, asks
+the same way (a card), and nothing needs a terminal to be answered. Steps, in order; each behind `hosted.on`
+until the last, each with recorded fixtures from the real CLI and World tests, each run live before it's handed
+over.
+
+**H1. Pi, hosted** (built 2026-11-07: `hosted/protocol.rs` splits what a session's lines mean from its process, `hosted/pi.rs` is Pi's; fixtures recorded from Pi 0.87.1 with DeepSeek; live-tested start, gate card, mid-turn message, Cue restart and resume, Stop). `pi --mode rpc --session-id <id>` in its folder, through the login shell, with `CUE_HOSTED=1`.
+Pi has no permission prompts; Cue's Pi extension (`pi/cue.ts`) is already the gate (`pi.gate`: dangerous / all
+/ off, `CUE_PI_GATE` for one session) and already reports to Cue over its socket: what it's doing, its asks, its
+turn ending. That stays the one channel for Pi's events and asks, so a hosted Pi and a terminal Pi look the same
+to the hub. What hosting adds: Cue owns the process (the `Hosted` port, a Pi session beside the Claude one), sends
+your messages as RPC `prompt` (idle) or `steer` (mid-turn) and stops with `abort`, and reads from Pi's stdout
+only what the extension can't tell: the process is up, a message was taken, it exited. The extension's dialogs
+(`ctx.ui.select` for the terminal half of its race) arrive as `extension_ui_request` and are left to Cue's card:
+answered `cancelled`, which the extension already treats as "no answer from the terminal".
+
+**H2. Codex, hosted.** `codex app-server` (JSON-RPC 2.0 over stdio, the channel Codex's own apps use; marked
+experimental, so the compat suite pins a version). `thread/start` (folder, model, approval policy and sandbox
+from + New's permission choice) or `thread/resume`; `turn/start` for a message, `turn/steer` mid-turn,
+`turn/interrupt` to stop. Its requests become cards: `item/commandExecution/requestApproval` (a command),
+`item/fileChange/requestApproval` (an edit), `item/permissions/requestApproval`, `item/tool/requestUserInput`
+(a question), `mcpServer/elicitation/request` (a form, the `input` card). Codex picks the thread id, so the
+session's id is known once `thread/start` answers. Codex's hooks skip a hosted Codex (`CUE_HOSTED`, as for
+Claude). Cue finds `codex` on the login shell's PATH, else inside the ChatGPT app
+(`/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex`).
+
+**H3. The agent host (was M4).** A small process of its own (`cue agent-host`, the same binary, like `cue
+hook`) owns every hosted agent process and talks to the app over a socket in Cue's data folder. The app's
+`Running` becomes its client behind the same `Hosted` port, so the hub doesn't change. Quitting or updating Cue
+no longer stops a turn: on launch the app reconnects, gets each session's state and what it said meanwhile, and
+carries on. This is what tmux gave terminal sessions; it has to exist before tmux goes.
+
+**H4. Other machines.** Today a session on a machine runs in tmux there over SSH. Hosted: the agent's stdio
+runs over SSH (`ssh <host> 'cd <folder> && claude -p …'`), the same clients on top. Without a host on that
+machine, a dropped connection or Cue quitting pauses the session (resumed from its saved conversation on your
+next message; a turn in progress is cut off). Open: whether to run the agent host on the machine too (it would
+need Cue's binary there) or accept pausing.
+
+**H5. What only a terminal does.** Each one gets a replacement or is judged not needed, before H6:
+full-screen slash commands (`terminal_slash_commands` from Claude's `init`: `/config`, `/login`, …), signing in,
+seeing the raw screen when something looks stuck, a folder-trust dialog (headless doesn't ask), Pi and Codex
+equivalents.
+
+**H6. Remove Cue's terminal.** Hosted becomes how every session starts and `hosted.on` goes away. Removed: the
+tmux panel and its code, `Runs in`, Move to Cue (a terminal session comes into Cue hosted), the add-on's screen
+and keys calls. Kept: Move to terminal (resume in a terminal app) as the way out, and terminal sessions you
+start yourself, which Cue still watches through hooks.
+
+## 10. Open questions
 
 1. ~~Teammates headless.~~ Settled in M1: headless has no separate-terminal teammates; a named agent runs
    in-process and its asks arrive with its `agent_id` (compat suite). Nothing is left to answer in a terminal.

@@ -2,13 +2,14 @@
 //! session (started or resumed with what, sent, answered, stopped, closed) and fails a start when a test says
 //! so. What a session reports, a test hands the hub itself (`World::hosted_says`).
 
-use crate::hosted::{Answer, Hosted, Report, Spec, Start};
+use crate::hosted::{Agent, Answer, Hosted, Report, Spec, Start};
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-/// One start: the conversation (new or resumed), its permissions and arguments.
+/// One start: the agent, the conversation (new or resumed), its permissions and arguments.
 #[derive(Clone, Debug)]
 pub struct HostedLaunch {
+    pub agent: Agent,
     pub start: Start,
     pub cwd: String,
     pub permissions: String,
@@ -23,6 +24,7 @@ pub struct FakeHosted {
     answers: Mutex<Vec<(String, String, Answer)>>,
     interrupted: Mutex<Vec<String>>,
     closed: Mutex<Vec<String>>,
+    ended: Mutex<Vec<i32>>,
     refusal: Mutex<Option<String>>,
 }
 
@@ -30,6 +32,11 @@ pub struct FakeHosted {
 const FIRST_PID: i32 = 9_000_000;
 
 impl FakeHosted {
+    /// Process ids Cue asked to end as left by the Cue before it.
+    pub fn ended_left(&self) -> Vec<i32> {
+        crate::locking::lock(&self.ended, "fake hosted leftovers").clone()
+    }
+
     pub fn launched(&self) -> Vec<HostedLaunch> {
         crate::locking::lock(&self.launched, "fake hosted launches").clone()
     }
@@ -72,7 +79,7 @@ impl Hosted for FakeHosted {
         if let Some(why) = crate::locking::lock(&self.refusal, "fake hosted refusal").clone() {
             return Err(why);
         }
-        let launch = HostedLaunch { start: spec.start.clone(), cwd: spec.cwd.to_string_lossy().into_owned(), permissions: spec.permissions.clone(), args: spec.args.clone() };
+        let launch = HostedLaunch { agent: spec.agent, start: spec.start.clone(), cwd: spec.cwd.to_string_lossy().into_owned(), permissions: spec.permissions.clone(), args: spec.args.clone() };
         let n = {
             let mut l = crate::locking::lock(&self.launched, "fake hosted launches");
             l.push(launch);
@@ -107,6 +114,10 @@ impl Hosted for FakeHosted {
 
     fn running(&self, session_id: &str) -> bool {
         crate::locking::lock(&self.running, "fake hosted running").contains(session_id)
+    }
+
+    fn end_left(&self, pids: &[i32]) {
+        crate::locking::lock(&self.ended, "fake hosted leftovers").extend_from_slice(pids);
     }
 
     fn close_all(&self) {

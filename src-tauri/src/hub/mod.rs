@@ -215,6 +215,8 @@ impl Hub {
         st.history = kept_history::History::new(crate::db::history(crate::config::history_keep()));
         st.answers = crate::db::answers_since(now_ms().saturating_sub(crate::db::DAY_MS));
         let (sessions, waiting) = crate::db::live();
+        let left: Vec<i32> = sessions.iter().filter(|s| s.origin.hosted).filter_map(|s| s.origin.agent_pid).collect();
+        ports.hosted.end_left(&left);
         st.sessions.restore(sessions);
         st.items = waiting;
         st.parked = crate::db::parked();

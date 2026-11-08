@@ -434,3 +434,81 @@ fn a_reply_to_its_card_goes_straight_to_it_and_settles_when_taken() {
     assert!(w.snapshot().last_yours(&sid)["pending"].is_null());
     assert_eq!(w.snapshot().state(&sid), "working");
 }
+
+/// A Pi session started hosted by + New with `message`: its id.
+fn pi_started(w: &World, message: &str, perm: &str) -> String {
+    hosted_on(true);
+    let opts = StartOpts { hosted: true, perm: perm.into(), ..Default::default() };
+    let r = start_session_with(w.hub(), "pi", &w.home().to_string_lossy(), message, "", &opts).unwrap();
+    r["session_id"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn pi_starts_hosted_with_its_gate_as_chosen_and_takes_its_first_message() {
+    let w = World::new();
+    let sid = pi_started(&w, "add a test", "skip");
+    let l = w.hosted.launched().pop().unwrap();
+    assert_eq!((l.agent, l.permissions.as_str()), (crate::hosted::Agent::Pi, "skip"));
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "add a test".to_string())));
+    let s = w.snapshot();
+    assert_eq!(s.session(&sid)["harness"], "pi");
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    assert_eq!(w.snapshot().state(&sid), "working");
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "Added it.".into(), failed: false, cost_usd: 0.002, unprompted: false });
+    w.settle();
+    let s = w.snapshot();
+    assert_eq!(s.state(&sid), "waiting");
+    assert_eq!(s.card(&sid)["message"], "Added it.");
+}
+
+/// Its gate (Cue's Pi extension) asks over Cue's socket, as a terminal Pi's does: a card, answered there,
+/// never closed as "answered in its terminal" (it has none).
+#[test]
+fn a_hosted_pis_gate_asks_on_a_card_and_gets_the_answer() {
+    let w = World::new();
+    let sid = pi_started(&w, "clean up", "ask");
+    let pid = w.hub().session_origin(&sid).unwrap().agent_pid.unwrap();
+    let ask = w.session(&sid).pi().hosted().running_as(pid).in_folder(w.home()).ask_bash("rm -rf build");
+    w.advance(60_000);
+    w.settle();
+    assert!(ask.told().is_none(), "still waiting for you");
+    assert!(w.snapshot().session(&sid)["hosted"].as_bool().unwrap_or(false), "still the hosted session");
+    w.answer(&ask.id, json!({ "behavior": "allow" }));
+    assert_eq!(ask.told().unwrap()["behavior"], "allow");
+}
+
+#[test]
+fn a_paused_pi_picks_its_conversation_up_by_id_on_your_next_message() {
+    let mut w = World::new();
+    let sid = pi_started(&w, "", "");
+    w.relaunch();
+    w.send_to(&sid, "carry on");
+    let l = w.hosted.launched().pop().unwrap();
+    assert_eq!((l.agent, l.start), (crate::hosted::Agent::Pi, Start::Resume(sid.clone())), "Pi resumes by id even before it wrote anything");
+    assert_eq!(w.hosted.sent().last(), Some(&(sid, "carry on".to_string())));
+}
+
+#[test]
+fn a_message_the_agent_turns_down_offers_send_again_with_why() {
+    let w = World::new();
+    let sid = pi_started(&w, "", "");
+    w.send_to(&sid, "carry on");
+    w.hosted_says(&sid, HostedEvent::NotTaken { text: "carry on".into(), why: "No API key found for deepseek.".into() });
+    let last = w.snapshot().last_yours(&sid);
+    assert_eq!(last["unsent"], true, "{last}");
+    assert!(last["delivery"].to_string().contains("No API key found"), "{last}");
+}
+
+/// Cue killed before it could close its hosted agents: the next Cue ends the processes they ran as, if they still
+/// run on their own, before any is started again.
+#[test]
+fn the_next_cue_ends_what_its_hosted_sessions_ran_as() {
+    let mut w = World::new();
+    let a = pi_started(&w, "go", "");
+    let b = running(&w, "go");
+    let pids: Vec<i32> = [&a, &b].iter().map(|s| w.hub().session_origin(s).unwrap().agent_pid.unwrap()).collect();
+    w.relaunch();
+    let mut ended = w.hosted.ended_left();
+    ended.sort();
+    assert_eq!(ended, { let mut p = pids; p.sort(); p });
+}

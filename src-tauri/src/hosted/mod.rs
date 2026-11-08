@@ -14,6 +14,8 @@
 //! started with, and that's all whoever starts it needs.
 
 mod launch;
+mod pi;
+mod protocol;
 mod running;
 mod session;
 mod translate;
@@ -22,11 +24,13 @@ mod wire;
 #[cfg(test)]
 mod compat_tests;
 #[cfg(test)]
+mod pi_tests;
+#[cfg(test)]
 mod session_tests;
 #[cfg(test)]
 mod translate_tests;
 
-pub use launch::{Program, Spec, Start};
+pub use launch::{Agent, Program, Spec, Start};
 pub use running::{end_leftovers, Hosted, Report, Running};
 pub use session::Session;
 
@@ -46,6 +50,8 @@ pub enum HostedEvent {
     TurnStarted,
     /// A message of yours Claude has now taken: at once when it's idle, at its next step when it's busy.
     Taken { text: String },
+    /// A message of yours it turned down, and why (Pi with no key for its model, say): it won't read it.
+    NotTaken { text: String, why: String },
     /// Its words. `agent`: the tool call that started the agent saying them; None for the session itself.
     Said { text: String, agent: Option<String> },
     /// A tool it called (`id` pairs it with its result).

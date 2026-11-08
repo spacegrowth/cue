@@ -40,6 +40,12 @@ impl<'w> Agent<'w> {
         self
     }
 
+    /// Hosted by Cue (its extension says so: a hosted Pi's asks).
+    pub fn hosted(mut self) -> Self {
+        self.origin.hosted = true;
+        self
+    }
+
     /// In folder /work/<name>: the project its rows and cards go under.
     pub fn in_project(mut self, name: &str) -> Self {
         self.origin.cwd = format!("/work/{name}");

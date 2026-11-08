@@ -11,6 +11,9 @@
  *   gate: "dangerous" (default: rm -rf, sudo, force-push, …) | "all" (every bash/write/edit) | "off"
  *
  * If Cue isn't running, gated calls fall back to the terminal prompt alone.
+ *
+ * Hosted by Cue (CUE_HOSTED=1: Pi in RPC mode, no terminal), Cue reads the session's turns from Pi's own output,
+ * so this extension doesn't report them; it asks Cue alone (there's no terminal to race), and waits for the answer.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -23,6 +26,9 @@ import * as readline from "node:readline";
 
 const CUE_HOME = process.env.CUE_HOME || path.join(os.homedir(), "Library", "Application Support", "dev.spacegrowth.cue");
 const SOCK = path.join(CUE_HOME, "cue.sock");
+const HOSTED = process.env.CUE_HOSTED === "1";
+/** Turn events Cue reads from a hosted Pi's output itself. */
+const TURN_EVENTS = ["active", "stopped", "ended"];
 
 // A command that gets asked about in "dangerous" mode. A pattern list, not a parser: it errs towards
 // asking (a `-rf` in an argument asks too), never towards silence on the plain forms below.
@@ -86,6 +92,8 @@ function origin(ctx: ExtensionContext) {
 		term_program: process.env.TERM_PROGRAM ?? "",
 		iterm_session_id: process.env.ITERM_SESSION_ID ?? "",
 		tmux_pane: process.env.TMUX ? (process.env.TMUX_PANE ?? "") : "",
+		// Hosted: Cue started it, with no terminal; its asks are answered only in Cue.
+		...(HOSTED ? { hosted: true } : {}),
 	};
 }
 
@@ -113,6 +121,7 @@ function describeTool(name: string, input: any): string {
 }
 
 function sendEvent(ctx: ExtensionContext, event: string, message = "", turn?: { text: string; hooked: boolean }[]) {
+	if (HOSTED && TURN_EVENTS.includes(event)) return;
 	try {
 		const s = net.createConnection(SOCK);
 		s.on("error", () => {});
@@ -307,13 +316,19 @@ export default function (pi: ExtensionAPI) {
 		});
 		const ac = new AbortController();
 		const summary = event.toolName === "bash" ? String((event.input as any).command) : `${event.toolName} ${(event.input as any).path ?? ""}`;
-		const fromTerminal = ctx.hasUI
+		const fromTerminal = ctx.hasUI && !HOSTED
 			? ctx.ui
 					.select(`Allow ${event.toolName}?\n\n  ${summary}`, ["Yes", "No"], { signal: ac.signal })
 					.then((c) => (c === undefined ? never : { who: "terminal", allow: c === "Yes" }))
 			: never;
 		const fromCue = cue.answer.then((d) => ({ who: "cue", allow: d.behavior !== "deny", message: d.message }));
 
+		// Hosted: Cue is the only one to ask, and its card waits for you.
+		if (HOSTED) {
+			const r = await fromCue;
+			cue.close();
+			return r.allow ? undefined : { block: true, reason: r.message ?? "Blocked in Cue" };
+		}
 		// No terminal UI and Cue is unreachable: nobody can approve, so block.
 		if (!ctx.hasUI) {
 			const timeout = new Promise<{ who: string; allow: boolean; message?: string }>((r) =>
@@ -357,7 +372,7 @@ export default function (pi: ExtensionAPI) {
 				...origin(ctx),
 			});
 			const ac = new AbortController();
-			const fromTerminal: Promise<{ who: string; answer: string }> = ctx.hasUI
+			const fromTerminal: Promise<{ who: string; answer: string }> = ctx.hasUI && !HOSTED
 				? ctx.ui
 						.select(params.question, [...params.options.map((o) => o.label), OTHER], { signal: ac.signal })
 						.then(async (c) => {

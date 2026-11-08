@@ -16,10 +16,10 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 |---|---|
 | `#[tauri::command]` | 141 (3 sync) |
 | Lock declarations (static or field) | 98 |
-| Lock acquisitions | 226 |
+| Lock acquisitions | 224 |
 | Lock-graph edges | 49 |
 | Spawn sites | 81 |
-| External calls: fs / db / process / notify / login / socket | 345 / 146 / 50 / 4 / 1 / 3 |
+| External calls: fs / db / process / notify / login / socket | 345 / 146 / 51 / 4 / 1 / 3 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
@@ -197,7 +197,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hosted/running.rs::Running.sessions` | `Mutex<HashMap<String,Arc<Entry>>>` | "hosted sessions" (4 sites) |
 | `hosted/session.rs::Shared.input` | `Mutex<Option<ChildStdin>>` | "hosted session: input" (2 sites) |
-| `hosted/session.rs::Shared.pending` | `Mutex<HashMap<String,Value>>` | "hosted session: pending asks" (3 sites) |
+| `hosted/session.rs::Shared.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
 | `hosted/session.rs::Shared.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
 | `hub/live_writes.rs::LiveWrites.queue` | `Mutex<Queue>` | "db writes" (4 sites) |
 | `hub/live_writes.rs::LiveWrites.written` | `Mutex<Written>` | "db writer's marks" (2 sites) |
@@ -871,7 +871,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/turns.rs::read_so_far` | db::turns_read | 1 |
 | `startup/mod.rs::settle_folder_and_hooks` | db::rewrite_paths | 1 |
 
-### process (50)
+### process (51)
 
 | In | Call | Times |
 |---|---|---|
@@ -889,6 +889,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hook.rs::ps` | /bin/ps | 1 |
 | `hook.rs::tty_of_pane` | (program computed) | 1 |
 | `hosted/launch.rs::command` | (program computed) | 1 |
+| `hosted/running.rs::Running::end_left` | /bin/ps | 1 |
 | `hosted/running.rs::end_leftovers` | /bin/ps | 1 |
 | `ipc/chat.rs::run_crew_action` | /usr/bin/open | 1 |
 | `ipc/chat.rs::run_crew_action` | open | 1 |

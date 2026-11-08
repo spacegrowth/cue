@@ -7,7 +7,7 @@
 //! leaves it paused, with its conversation, and your next message starts it again (`--resume`).
 
 use super::*;
-use crate::hosted::{Answer as Given, Ask, AskKind, HostedEvent, InputAction, Program, Report, Spec, Start};
+use crate::hosted::{Agent, Answer as Given, Ask, AskKind, HostedEvent, InputAction, Program, Report, Spec, Start};
 use std::sync::Weak;
 
 /// What a hosted session's Claude starts with beyond its conversation.
@@ -26,7 +26,7 @@ impl Hub {
 
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
-        let spec = Spec { cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: None, args: with.args.clone(), program: Program::Claude };
+        let spec = Spec { agent: Agent::named(&origin.harness).ok_or("Cue can only host Claude Code and Pi")?, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: None, args: with.args.clone(), program: Program::Agent };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let pid = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
         Ok(Origin { agent_pid: Some(pid), hosted: true, ..origin.clone() })
@@ -37,6 +37,10 @@ impl Hub {
     /// it takes) starts new under the same id: Claude can't resume what isn't there ("No conversation found").
     pub(crate) fn resume_hosted_as(&self, origin: &Origin) -> Result<Origin, String> {
         let sid = origin.session_id.as_str();
+        // Pi picks its session up by id, or starts it under that id if it was never written: nothing to choose.
+        if origin.harness == "pi" {
+            return self.run_hosted(origin, Start::Resume(sid.to_string()), &HostedStart { permissions: String::new(), args: vec![] });
+        }
         let log = if origin.transcript_path.is_empty() { crate::live::claude_transcript_path(&origin.cwd, sid) } else { origin.transcript_path.clone().into() };
         let start = if log.is_file() { Start::Resume(sid.to_string()) } else { Start::New(sid.to_string()) };
         let mut args = crate::terminal::focus::model_args(&origin.transcript_path, "");
@@ -113,6 +117,13 @@ impl Hub {
         match e {
             HostedEvent::TurnStarted => self.hosted_turn_started(origin),
             HostedEvent::Taken { text } => self.hosted_taken(origin, text),
+            HostedEvent::NotTaken { text, why } => {
+                self.write(|st| {
+                    st.sessions.mark_unsent(&origin.session_id, &text, &why);
+                    st.sessions.set_queued(&origin.session_id, None);
+                });
+                self.changed();
+            }
             HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
             HostedEvent::TurnEnded { text, failed, cost_usd, .. } => {

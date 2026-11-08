@@ -2,7 +2,7 @@
 //! it ends, including the ways a real one goes wrong (dies mid-turn, says something that isn't JSON, asks
 //! something Cue doesn't know, won't end when asked, leaves a child behind).
 
-use super::{Answer, AskKind, HostedEvent, InputAction, Program, Session, Spec, Start};
+use super::{Agent, Answer, AskKind, HostedEvent, InputAction, Program, Session, Spec, Start};
 use crate::model::Decision;
 use crate::testing::{until, FakeClaude};
 use serde_json::{json, Value};
@@ -14,7 +14,7 @@ fn start(fake: &FakeClaude) -> (Session, Receiver<HostedEvent>) {
 }
 
 fn start_as(fake: &FakeClaude, start: Start) -> (Session, Receiver<HostedEvent>) {
-    let spec = Spec { cwd: std::env::temp_dir(), start, permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()) };
+    let spec = Spec { agent: Agent::Claude, cwd: std::env::temp_dir(), start, permissions: String::new(), model: None, args: vec![], program: Program::At(fake.program()) };
     let (tx, rx) = channel();
     let s = Session::start(&spec, move |e| {
         let _ = tx.send(e);

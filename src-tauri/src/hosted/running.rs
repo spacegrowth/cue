@@ -24,6 +24,9 @@ pub trait Hosted: Send + Sync {
     fn running(&self, session_id: &str) -> bool;
     /// Close every one (Cue quitting).
     fn close_all(&self);
+    /// The processes hosted sessions ran as under a Cue that's gone, ended if they still run on their own (that
+    /// Cue was killed before it could close them): before any is started again, so two never share a conversation.
+    fn end_left(&self, pids: &[i32]);
 }
 
 struct Entry {
@@ -90,6 +93,15 @@ impl Hosted for Running {
         self.get(session_id).is_ok()
     }
 
+    fn end_left(&self, pids: &[i32]) {
+        let Ok(out) = std::process::Command::new("/bin/ps").args(["-axww", "-o", "pid=,ppid=,comm="]).output() else { return };
+        for pid in left_running(&String::from_utf8_lossy(&out.stdout), pids) {
+            eprintln!("cue: ending hosted agent {pid}, left running by a Cue that's gone");
+            // SAFETY: a plain signal to one process id.
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+        }
+    }
+
     fn close_all(&self) {
         let all: Vec<Arc<Entry>> = crate::locking::lock(&self.sessions, "hosted sessions").drain().map(|(_, e)| e).collect();
         // All at once: each may take a few seconds to end.
@@ -136,9 +148,30 @@ fn leftovers(ps: &str) -> Vec<i32> {
         .collect()
 }
 
+/// From `ps -axww -o pid=,ppid=,comm=`: which of `pids` (hosted sessions' processes under the Cue before) still
+/// run as an agent on their own: adopted by launchd (their Cue ended), and Claude Code or Pi by name, so a process
+/// id since reused by something else is never matched. (Pi names its process "pi", with nothing else to tell it by.)
+fn left_running(ps: &str, pids: &[i32]) -> Vec<i32> {
+    ps.lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            let pid: i32 = w.next()?.parse().ok()?;
+            let ppid: i32 = w.next()?.parse().ok()?;
+            let name = w.next()?.rsplit('/').next()?;
+            (pids.contains(&pid) && ppid == 1 && matches!(name, "claude" | "pi")).then_some(pid)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::leftovers;
+    use super::{left_running, leftovers};
+
+    #[test]
+    fn a_process_a_hosted_session_ran_as_is_ended_only_if_it_is_still_that_agent_on_its_own() {
+        let ps = "  201     1 pi\n  202   900 pi\n  203     1 /opt/homebrew/bin/claude\n  204     1 node\n  205     1 pi";
+        assert_eq!(left_running(ps, &[201, 202, 203, 204]), vec![201, 203], "202: its Cue still runs; 204: the id is something else's now; 205: not one of Cue's");
+    }
 
     #[test]
     fn only_a_hosted_claude_whose_cue_is_gone_is_a_leftover() {
