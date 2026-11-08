@@ -51,7 +51,8 @@ function keyInBox(e) {
 }
 
 /** + New's folder field: arrows move through the folders, Enter picks one (the highlighted one, else the list's
- *  first; it never starts the session: nothing to pick, on to the Message box), Esc and Tab close the list. */
+ *  first; it never starts the session: nothing to pick, on to the Message box), Tab completes one as a shell does
+ *  (on into its own folders), Esc closes the list. */
 function keyInFolder(e) {
   if (e.target.dataset?.text !== "new-cwd") return false;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); stepFolder(e.key === "ArrowDown" ? 1 : -1); return true; }
@@ -64,6 +65,7 @@ function keyInFolder(e) {
     return true;
   }
   if (nfFolderOpen && e.key === "Escape") { e.preventDefault(); closeFolders(); renderMain(); return true; }
+  if (e.key === "Tab" && !e.shiftKey && nfFolderOpen && completeFolder()) { e.preventDefault(); return true; }
   if (nfFolderOpen && e.key === "Tab") { closeFolders(); renderMain(); }
   return false;
 }

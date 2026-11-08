@@ -265,6 +265,34 @@ pub(crate) async fn mcp_set_folder(cwd: String, name: String, on: bool) -> Resul
     blocking(move || { crate::logs::mcp::set_enabled(&cwd, &name, on)?; Ok(crate::logs::mcp::for_session(&cwd, "")) }).await?
 }
 
+/// + New's Folder field, as you type a path on this Mac: the folders in what you've typed so far whose name starts
+/// with the rest ("~/development/cue-m": cue-mac, cue-mini), in the form you typed them ("~" kept). A hidden one
+/// only when you typed its dot. Never for another machine's paths (those aren't on this Mac).
+#[tauri::command]
+pub(crate) async fn folders_under(typed: String) -> Result<Vec<String>, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    blocking(move || subfolders(&typed, &home, 12)).await
+}
+
+pub(crate) fn subfolders(typed: &str, home: &str, most: usize) -> Vec<String> {
+    let typed = typed.trim();
+    let Some(cut) = typed.rfind('/') else { return vec![] };
+    if !(typed.starts_with('/') || typed.starts_with("~/")) {
+        return vec![];
+    }
+    let (dir, part) = typed.split_at(cut + 1);
+    let real = match dir.strip_prefix('~') { Some(rest) => format!("{home}{rest}"), None => dir.to_string() };
+    let part = part.to_lowercase();
+    let mut names: Vec<String> = std::fs::read_dir(&real).into_iter().flatten().filter_map(Result::ok)
+        .filter_map(|e| e.file_name().into_string().ok().map(|n| (n, e.path())))
+        .filter(|(n, _)| n.to_lowercase().starts_with(&part) && (part.starts_with('.') || !n.starts_with('.')))
+        .filter(|(_, p)| p.is_dir())
+        .map(|(n, _)| n)
+        .collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    names.into_iter().take(most).map(|n| format!("{dir}{n}")).collect()
+}
+
 fn expand_home(p: &str) -> String {
     let p = p.trim().trim_end_matches('/');
     match (p.strip_prefix("~"), std::env::var("HOME")) {
@@ -552,4 +580,27 @@ pub(crate) async fn background_session(hub: State<'_, Arc<Hub>>, session_id: Str
 #[tauri::command]
 pub(crate) async fn focus_session_id(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     with_hub(&hub, move |h| focus::focus(&h.session_origin(&session_id).ok_or("that session is gone")?)).await?
+}
+
+#[cfg(test)]
+mod subfolders_tests {
+    use super::subfolders;
+
+    #[test]
+    fn the_folders_in_what_you_typed_that_start_with_the_rest_in_your_own_form() {
+        let home = std::env::temp_dir().join(format!("cue-subfolders-{}", std::process::id()));
+        for d in ["dev/cue-mini", "dev/cue-mac", "dev/Cue-Old", "dev/relay", "dev/.hidden"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        std::fs::write(home.join("dev/cue-notes.txt"), "").unwrap();
+        let h = home.to_string_lossy().into_owned();
+        assert_eq!(subfolders("~/dev/cue-m", &h, 12), vec!["~/dev/cue-mac", "~/dev/cue-mini"]);
+        assert_eq!(subfolders("~/dev/cue", &h, 12), vec!["~/dev/cue-mac", "~/dev/cue-mini", "~/dev/Cue-Old"]);
+        assert_eq!(subfolders("~/dev/", &h, 2), vec!["~/dev/cue-mac", "~/dev/cue-mini"]);
+        assert_eq!(subfolders("~/dev/.h", &h, 12), vec!["~/dev/.hidden"]);
+        assert_eq!(subfolders(&format!("{h}/dev/rel"), &h, 12), vec![format!("{h}/dev/relay")]);
+        assert!(subfolders("dev/cue", &h, 12).is_empty());
+        assert!(subfolders("~/nowhere/x", &h, 12).is_empty());
+        std::fs::remove_dir_all(&home).unwrap();
+    }
 }

@@ -164,7 +164,24 @@ function projLine() {
   const change = i.how === "folder" && nfProj.pick == null ? "Put in a project…" : "Change…";
   return `<div class="nf-row"><span class="nf-k">Project</span><div class="nf-fwrap nf-proj">${projDot(name)}<b>${esc(projLabel(name))}</b><span class="nf-hint">${esc(how)}</span><button class="btn small" data-lv="proj-open" aria-expanded="${nfProj.open}">${change}</button>${drop}</div></div>`;
 }
-const folderMatches = (folders) => { const q = nfFolderQ.toLowerCase(); return q ? folders.filter((f) => f.toLowerCase().includes(q) && f !== nfFolderQ) : folders; };
+/** Folders on this Mac under the path being typed (folders_under), for the text they were read for. */
+let nfDisk = { q: null, list: [] };
+const typedPath = (q) => !newMachine && /^(~|\/)/.test(q) && q.includes("/");
+function diskFolders(q) {
+  if (!typedPath(q)) return [];
+  if (nfDisk.q !== q) {
+    nfDisk = { q, list: nfDisk.list };
+    invoke("folders_under", { typed: q }).then((l) => { if (nfDisk.q === q) { nfDisk.list = l || []; renderMain(); } }, () => {});
+  }
+  // The last list read, while the new one comes (each keystroke reads again): only what still fits what's typed.
+  return nfDisk.list.filter((f) => f.toLowerCase().startsWith(q.toLowerCase()) && f !== q);
+}
+/** The Folder list: your recent folders that contain what's typed, then the folders on disk under it. */
+const folderMatches = (folders) => {
+  const q = nfFolderQ.toLowerCase();
+  const recent = q ? folders.filter((f) => f.toLowerCase().includes(q) && f !== nfFolderQ) : folders;
+  return [...new Set([...recent, ...diskFolders(nfFolderQ)])];
+};
 const nfFolders = () => newMachine ? machineFolders(newMachine) : recentFolders().map(homeless);
 function folderDrop(folders) {
   const m = nfFolderOpen ? folderMatches(folders) : [];
@@ -177,6 +194,18 @@ function pickFolder(f) {
   renderMain();
   const el = document.querySelector('[data-text="new-cwd"]');
   if (el) { el.focus(); el.setSelectionRange(f.length, f.length); }
+}
+/** Tab in the Folder field: the highlighted folder (else the first), with a "/" so its own folders come next. */
+function completeFolder() {
+  const m = folderMatches(nfFolders()), f = m[nfFolderSel] || m[0];
+  if (!f) return false;
+  const t = `${f.replace(/\/+$/, "")}/`;
+  draft("new-cwd").text = nfFolderQ = t;
+  nfFolderOpen = true; nfFolderSel = -1;
+  renderMain();
+  const el = document.querySelector('[data-text="new-cwd"]');
+  if (el) { el.focus(); el.setSelectionRange(t.length, t.length); }
+  return true;
 }
 /** ↓ / ↑ in the Folder field: open the list, move the highlight. */
 function stepFolder(by) {
@@ -199,7 +228,7 @@ function newForm() {
   const machines = machinesList || [];
   const acts = `<div class="nf-acts">${nfFull ? "" : `<button class="btn" data-lv="nf-more">All options</button><span class="grow"></span>`}<button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${nfFull && bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>`;
   const ran = (ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : "";
-  if (!nfFull) return `<div class="nf"><input class="nf-in nf-name" data-text="new-name" placeholder="Name, e.g. fix-login (optional)" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/><div class="nf-sum">${esc(nfSummary())}</div>${ran}</div>${acts}`;
+  if (!nfFull) return `<div class="nf"><input class="nf-in nf-name" data-text="new-name" placeholder="Name it, or just press ↵" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/>${nfRecentLine(folders)}<div class="nf-sum">${esc(nfSummary(false))}</div>${ran}</div>${acts}`;
   return `<div class="nf">
     <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add">+ Add</button></div>${extAddMenuHtml()}</div></div>
     ${nfAdding ? "" : machinePanel(newMachine)}
@@ -219,11 +248,26 @@ function newForm() {
 /** + New opens short: just a name, started with what you picked last time (this line says what that is).
  *  All options shows the whole form. */
 let nfFull = false;
-function nfSummary() {
+/** The short form's folder line: "In" and your three most recent folders (on the machine picked), the one it'll
+ *  use filled, one click each; … opens All options at the folder field. */
+function nfRecentLine(folders) {
+  const cur = draft("new-cwd").text.trim();
+  // In the order you last used them, so a click never moves them; one typed in All options comes first.
+  const top = folders.slice(0, 3), three = !cur || top.includes(cur) ? top : [cur, ...top].slice(0, 3);
+  if (!three.length) return "";
+  const pill = (f) => `<button class="nf-rf ${f === cur ? "on" : ""}" data-lv="folder-quick" data-cwd="${esc(f)}">${projDot(projectAtFolder(f))}${esc(baseName(f))}</button>`;
+  return `<div class="nf-recent"><span class="nf-k">In</span>${three.map(pill).join("")}<button class="nf-rf" data-lv="folder-more" aria-label="Another folder">…</button></div>`;
+}
+/** A folder's project, as Cue last had it for a session there (its own name if none). */
+function projectAtFolder(f) {
+  const same = (x) => x?.cwd && homeless(x.cwd) === homeless(f);
+  return (state.sessions.find(same) || (state.live || []).find(same) || (state.history || []).find(same))?.project || baseName(f);
+}
+function nfSummary(withFolder = true) {
   const where = newMachine ? machShort(newMachine) : newHosted() ? "Hosted" : newTmux() && state.settings?.sessions?.tmux_installed ? "in Cue" : termName();
   const model = newAgent !== "claude" ? "" : newModel === "default" || !newModel ? "" : `${(modelsOf(newMachine) || []).find((m) => m.value === newModel)?.label || newModel}${newModel1m && !/\[.*\]$/.test(newModel) ? " 1M" : ""}`;
   const perm = PERMS[newAgent]?.find(([v]) => v === newPerm)?.[1] || "";
-  return [agentName(newAgent), draft("new-cwd").text.trim() || "no folder yet", model, where, perm && `${perm}${newPerm === "skip" ? " (runs anything without asking)" : ""}`].filter(Boolean).join(" · ");
+  return [agentName(newAgent), withFolder && (draft("new-cwd").text.trim() || "no folder yet"), model, where, perm && `${perm}${newPerm === "skip" ? " (runs anything without asking)" : ""}`].filter(Boolean).join(" · ");
 }
 /** ↓ / ↑ in the drop-down: move the highlight, keeping it in view. */
 function stepLive(by) {
@@ -299,7 +343,7 @@ function afterNewSession(r) {
 /** + New's Start: a "!" line runs in the folder; else the session starts, with the MCP servers you picked for it
  *  (only once you changed a box; else its folder's, unpinned). */
 async function lvStart() {
-  const cwd = draft("new-cwd").text.trim();
+  const cwd = draft("new-cwd").text.trim().replace(/(.)\/+$/, "$1");
   if (!cwd) { nfFull = true; renderMain(); return toast("Pick a folder first"); }
   endDictation("new-msg");
   if (nfFull && isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
@@ -334,6 +378,8 @@ const LV_ACTS = {
   "proj-new-off": () => { nfNewProj = ""; renderMain(); },
   cancel: () => { endDictation("new-msg"); liveOpen = newOpen = false; nfNewProj = ""; closeFolders(); renderMain(); },
   start: lvStart,
+  "folder-quick": (d) => { draft("new-cwd").text = d.cwd; renderMain(); document.querySelector('[data-text="new-name"]')?.focus(); },
+  "folder-more": () => { nfFull = true; closeFolders(); nfFolderOpen = true; renderMain(); document.querySelector('[data-text="new-cwd"]')?.focus(); },
   "nf-more": () => { nfFull = true; renderMain(); document.querySelector('[data-text="new-name"]')?.focus(); },
 };
 async function lvAct(act, d) {
