@@ -27,7 +27,15 @@ impl Translator {
 
     pub fn step(&mut self, line: &Inbound) -> Vec<HostedEvent> {
         match line {
-            Inbound::Init(v) => self.started(v),
+            Inbound::Init(v) => {
+                // Claude says it's starting a turn (it repeats this line every turn) as soon as it reads a
+                // message while idle: never mid-turn, where a message is folded into the turn going on.
+                let mut es = self.started(v);
+                if !std::mem::replace(&mut self.in_turn, true) {
+                    es.push(HostedEvent::TurnStarted);
+                }
+                es
+            }
             Inbound::System(v) => task(v).into_iter().collect(),
             Inbound::Assistant(v) => {
                 self.in_turn = true;

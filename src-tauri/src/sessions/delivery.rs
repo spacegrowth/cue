@@ -77,6 +77,11 @@ impl Sessions {
         self.0.get(session_id).is_some_and(|s| s.thread.iter().rev().any(|e| e.role == "you" && e.pending && is_yours(e, text)))
     }
 
+    /// The oldest message of yours Cue is still waiting to see taken.
+    pub fn first_pending(&self, session_id: &str) -> Option<String> {
+        self.0.get(session_id)?.thread.iter().find(|e| e.role == "you" && e.pending).map(|e| e.text.clone())
+    }
+
     /// One more step in your message's way to the agent ("Enter again: it was still in its box").
     pub fn note_delivery(&mut self, session_id: &str, text: &str, what: &str) {
         if let Some(e) = self.0.get_mut(session_id).and_then(|s| yours_mut(s, text)) {

@@ -109,6 +109,40 @@ fn a_message_sent_to_an_idle_one_goes_to_it_directly_and_starts_a_turn_when_take
     assert!(last["pending"].is_null() && last["unsent"].is_null(), "taken, nothing waiting on it (both are left out when false): {last}");
 }
 
+/// Claude says it started a turn the moment it reads your message, and repeats the message back only with its
+/// first words, a second or more later: the message is taken at the first.
+#[test]
+fn a_message_to_an_idle_one_is_taken_when_its_turn_starts() {
+    let w = World::new();
+    let sid = started(&w, "");
+    w.send_to(&sid, "add a test");
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    let s = w.snapshot();
+    assert_eq!(s.state(&sid), "working");
+    let last = s.last_yours(&sid);
+    assert!(last["pending"].is_null() && last["unsent"].is_null(), "taken (both are left out when false): {last}");
+    // A second message, sent before it repeats the first: still on its way when that repeat comes.
+    w.send_to(&sid, "and the docs");
+    w.hosted_says(&sid, HostedEvent::Taken { text: "add a test".into() });
+    let s = w.snapshot();
+    assert!(s.session(&sid)["queued"].is_object(), "the second is still queued: {}", s.session(&sid));
+    assert_eq!(s.last_yours(&sid)["pending"], true);
+    let yours = s.thread(&sid).into_iter().filter(|(r, _)| r == "you").count();
+    assert_eq!(yours, 2, "{:?}", s.thread(&sid));
+}
+
+/// A background task that finished starts a turn of its own: nothing of yours is on its way, nothing changes.
+#[test]
+fn a_turn_nothing_of_yours_started_takes_nothing() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Started the build in the background.");
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    assert_eq!(w.snapshot().state(&sid), "waiting", "at work only once it does something");
+    w.hosted_says(&sid, HostedEvent::Said { text: "The build passed.".into(), agent: None });
+    assert_eq!(w.snapshot().state(&sid), "working");
+}
+
 #[test]
 fn a_message_sent_mid_turn_goes_at_once_and_is_taken_at_its_next_step() {
     let w = World::new();

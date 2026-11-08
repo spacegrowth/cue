@@ -97,6 +97,12 @@ impl Sessions {
         }
         // Cue sent it: a message of its own, even the same words as one a moment ago ("yes", twice): the agent got
         // two. (The agent's report of it, noted later, folds into this one.)
+        self.note_yours(session_id, text, images, keep);
+    }
+
+    /// A message of yours, noted as a new one whatever came just before it: for a send that's noted before
+    /// it goes (a hosted session's), so nothing the agent reported can be it yet.
+    pub fn note_yours(&mut self, session_id: &str, text: &str, images: &[String], keep: usize) {
         let text = text.trim();
         if let Some(s) = self.0.get_mut(session_id).filter(|_| !text.is_empty() || !images.is_empty()) {
             Self::push(s, "you", text, images, keep);

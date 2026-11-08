@@ -97,6 +97,19 @@ fn messages_are_taken_in_order_and_a_turn_no_message_started_is_unprompted() {
 }
 
 #[test]
+fn a_turn_says_it_started_before_it_repeats_your_message_and_never_mid_turn() {
+    let es = events(include_str!("fixtures/queue_interrupt_unprompted.jsonl"));
+    let order: Vec<&str> = es.iter().filter_map(|e| match e {
+        HostedEvent::TurnStarted => Some("start"),
+        HostedEvent::Taken { .. } => Some("taken"),
+        HostedEvent::TurnEnded { .. } => Some("end"),
+        _ => None,
+    }).collect();
+    // Three turns; the second message, sent mid-turn, is taken inside the first; the last a background task started.
+    assert_eq!(order, ["start", "taken", "taken", "end", "start", "taken", "end", "start", "end"]);
+}
+
+#[test]
 fn a_resumed_session_keeps_its_id_and_its_conversation() {
     let first = events(include_str!("fixtures/queue_interrupt_unprompted.jsonl"));
     let resumed = events(include_str!("fixtures/resume.jsonl"));

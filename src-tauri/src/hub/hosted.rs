@@ -55,7 +55,7 @@ impl Hub {
         let text = typed.trim();
         let paths: Vec<String> = saved.iter().map(|s| s.path.clone()).collect();
         self.write(|st| {
-            st.sessions.note_sent(sid, text, &paths, now_ms(), crate::config::context_keep());
+            st.sessions.note_yours(sid, text, &paths, crate::config::context_keep());
             st.sessions.set_pending(sid, text, true);
             if busy {
                 super::send::queue_typed(st, sid, text, paths.clone());
@@ -111,6 +111,7 @@ impl Hub {
     pub(crate) fn on_hosted(&self, o: &Origin, base: f64, e: HostedEvent) {
         let origin = self.hosted_origin(&o.session_id).unwrap_or_else(|| o.clone());
         match e {
+            HostedEvent::TurnStarted => self.hosted_turn_started(origin),
             HostedEvent::Taken { text } => self.hosted_taken(origin, text),
             HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
@@ -135,17 +136,28 @@ impl Hub {
     fn hosted_taken(&self, origin: Origin, text: String) {
         let sid = origin.session_id.clone();
         if self.read(|st| st.sessions.state(&sid).as_deref() == Some("working")) {
-            self.write(|st| {
-                st.sessions.got_message(&sid, &text, "it took it mid-turn");
-                st.sessions.set_queued(&sid, None);
-            });
-            self.changed();
+            // Nothing settled: the message that started this turn, already taken when the turn started.
+            if self.write(|st| st.sessions.got_message(&sid, &text, "it took it mid-turn")) {
+                self.write(|st| st.sessions.set_queued(&sid, None));
+                self.changed();
+            }
             return;
         }
         let driver = crate::leads::resolve_driver(&sid, "");
         self.event(origin, "active", text.clone(), vec![], &driver);
         self.write(|st| st.sessions.set_prompt(&sid, &crate::sessions::unwrap_pasted(&text)));
         self.changed();
+    }
+
+    /// A turn began while it was idle: the oldest message of yours on its way is the one it read (Cue sends
+    /// it nothing else), taken now rather than when it repeats it back with its first words, a second or more
+    /// later. A turn a background task started finds none, and goes to work with its first step.
+    fn hosted_turn_started(&self, origin: Origin) {
+        let sid = origin.session_id.clone();
+        let first = self.read(|st| if st.sessions.state(&sid).as_deref() == Some("working") { None } else { st.sessions.first_pending(&sid) });
+        if let Some(text) = first {
+            self.hosted_taken(origin, text);
+        }
     }
 
     /// It's doing something: at work, if nothing of yours started that (a background task that finished

@@ -41,6 +41,9 @@ pub const HOSTED_ENV: &str = "CUE_HOSTED";
 pub enum HostedEvent {
     /// Claude is up, with what it runs with. Once per session, however many turns repeat it.
     Started { session_id: String, model: String, slash_commands: Vec<String>, terminal_only: Vec<String> },
+    /// A turn began: Claude read a message while idle (a message of yours, or a background task's that
+    /// finished). It says so at once; it repeats your message back (`Taken`) only with its first words.
+    TurnStarted,
     /// A message of yours Claude has now taken: at once when it's idle, at its next step when it's busy.
     Taken { text: String },
     /// Its words. `agent`: the tool call that started the agent saying them; None for the session itself.
