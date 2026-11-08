@@ -237,6 +237,26 @@ fn stop_interrupts_it_directly_and_presses_nothing() {
     assert!(w.terminal.keys(&sid).is_empty());
 }
 
+/// Claude ends a turn you stopped as an error ("[ede_diagnostic] …"): that's the stop, not a failure. No "Stopped
+/// on an error" card, and it stays stopped though the step it was on reported back in between. A turn that
+/// fails on its own still says so.
+#[test]
+fn a_turn_you_stopped_ends_stopped_not_on_an_error() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    w.ask(json!({ "type": "interrupt", "session_id": sid }));
+    w.hosted_says(&sid, HostedEvent::ToolResult { id: "t1".into(), output: json!("[Request interrupted by user for tool use]"), failed: true, agent: None });
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use".into(), failed: true, cost_usd: 0.1, unprompted: false });
+    w.settle();
+    assert!(w.snapshot().cards_of(&sid).is_empty(), "no card: {:?}", w.snapshot().cards_of(&sid));
+    assert_eq!(w.snapshot().state(&sid), "stopped");
+
+    takes(&w, &sid, "again");
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "Overloaded".into(), failed: true, cost_usd: 0.0, unprompted: false });
+    w.settle();
+    assert_eq!(w.snapshot().card(&sid)["message"], "Stopped on an error: Overloaded", "nobody stopped this one");
+}
+
 /// Cue stopped mid-turn (a reinstall): the session comes back paused at its prompt, not still working, so your
 /// next message starts it with a turn of its own instead of sitting as queued behind one that's gone.
 #[test]

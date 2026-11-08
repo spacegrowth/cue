@@ -155,6 +155,16 @@ impl Hub {
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
             HostedEvent::TurnEnded { text, failed, cost_usd, .. } => {
                 self.set_cost(&origin.session_id, base + cost_usd);
+                let stopped = self.write(|st| st.hosted_stopped.remove(&origin.session_id));
+                if failed && stopped.is_some() {
+                    // The turn Cue stopped, ending as Claude ends one ("[ede_diagnostic] …"): not an error. Stopped
+                    // by you, it stays stopped (a step it was on may have brought it back to work meanwhile).
+                    if stopped == Some(true) {
+                        self.write(|st| st.sessions.mark(&origin, "stopped", None));
+                        self.changed();
+                    }
+                    return;
+                }
                 let driver = crate::leads::resolve_driver(&origin.session_id, "");
                 if failed {
                     self.failed(origin, "error", &text);

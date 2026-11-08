@@ -63,6 +63,10 @@ struct Store {
     /// back to its box, so a message typed in soon after needs a blank line before it, or the two go as one.
     /// By the forward-only clock (clock::now_mono_ms).
     escaped: HashMap<String, u64>,
+    /// A hosted turn Cue stopped (your Stop, or Send now on a queued message), until that turn's end comes back:
+    /// Claude ends a stopped turn as an error, which is the stop, not something that went wrong. `true`: you
+    /// stopped it (it's left stopped); `false`: Cue did, to send your queued message now.
+    hosted_stopped: HashMap<String, bool>,
     /// Every live session and its recent activity (the Working column and the 30-minute bars).
     sessions: crate::sessions::Sessions,
     /// Sessions you deleted while Cue ran, and when: an answer of theirs from before then, still on its way to

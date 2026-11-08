@@ -343,6 +343,9 @@ impl Hub {
             if let Some(o) = origin {
                 st.sessions.mark(&o, "stopped", None);
             }
+            if let Some(yours) = st.hosted_stopped.get_mut(session_id) {
+                *yours = true;
+            }
             if !direct {
                 st.escaped.insert(session_id.to_string(), mono_ms());
             }
@@ -370,7 +373,9 @@ impl Hub {
             // your message next in its input: an interrupt now would end the turn it starts before it begins.
             let mid_turn = self.read(|st| st.sessions.state(session_id).as_deref() == Some("working"));
             if mid_turn && self.hosted().running(session_id) {
+                self.write(|st| st.hosted_stopped.insert(session_id.to_string(), false));
                 if let Err(e) = self.hosted().interrupt(session_id) {
+                    self.write(|st| st.hosted_stopped.remove(session_id));
                     eprintln!("cue: couldn't stop hosted session {session_id}: {e}");
                 }
             }
