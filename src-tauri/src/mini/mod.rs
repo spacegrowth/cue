@@ -1,6 +1,6 @@
 //! The mini window: Cue at the edge of your screen while you work in another app, so a session that needs you
 //! can be read and answered without bringing the whole window forward. Settings → Mini window picks its shape:
-//! Off, the right edge (the rail: a small tab tucked into the screen's right edge, as high as you dragged it,
+//! Off, the edge (the rail: a small dark tab tucked into a side edge of a display, wherever you dragged it,
 //! that slides out into a panel with the chat, as picture in picture does) or the notch (a dark island that
 //! drops the same chat). The page is `ui/mini.html`; it gets the same `state` the
 //! window gets and calls the same commands (reply, respond), so nothing here knows about sessions.
@@ -39,6 +39,8 @@ static ON: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::ne
 static FRAME: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
 /// The window's frame when a drag of its bar began (mini_drag; width 0: no drag).
 static DRAG_FROM: [AtomicU64; 4] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+/// You put the rail on a display yourself (dragged it there): it stays there instead of following the pointer.
+static PINNED: AtomicBool = AtomicBool::new(false);
 /// The pointer-watching thread is running (started once, with the first mini window).
 static FOLLOWING: AtomicBool = AtomicBool::new(false);
 
@@ -117,7 +119,7 @@ fn follow(app: AppHandle) {
             None => {}
         }
         over = inside.is_some();
-        if over || open != Mode::Rail as u8 {
+        if over || open != Mode::Rail as u8 || PINNED.load(Ordering::SeqCst) {
             continue;
         }
         if asked == 0 {
@@ -222,30 +224,51 @@ fn screen(app: &AppHandle, w: &tauri::WebviewWindow, mode: Mode) -> Option<(f64,
 /// The rail's distance at least from the room's top and bottom edges.
 const RAIL_MARGIN: f64 = 12.0;
 
-/// Where a mini window of this size goes. The rail: flat against the right edge, its top `at` of the way down
-/// the room (where you dragged it), tucked or out, so the tab and the panel share one top and never move; a
-/// panel that wouldn't fit below it goes up just enough. The notch's island: centred at the top.
-fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64, at: f64) -> (f64, f64) {
+/// Where a mini window of this size goes. The rail: flat against its side edge (`left`, else the right one), its
+/// top `at` of the way down the room (where you dragged it), tucked or out, so the tab and the panel share one
+/// top and never move; a panel that wouldn't fit below it goes up just enough. The notch's island: centred at
+/// the top.
+fn place(mode: Mode, (x, y, sw, sh): (f64, f64, f64, f64), w: f64, h: f64, at: f64, left: bool) -> (f64, f64) {
     if mode == Mode::Notch {
         return (x + (sw - w) / 2.0, y);
     }
     let top = (at.clamp(0.0, 1.0) * sh).min(sh - RAIL_MARGIN - h).max(RAIL_MARGIN.min(sh - h).max(0.0));
-    (x + sw - w, y + top)
+    (if left { x } else { x + sw - w }, y + top)
+}
+
+/// Where a drag let the rail go, as its page keeps it: the display it's on (the one its middle is over, else the
+/// nearest), the side edge nearer its middle, and how far down that display's room its top is.
+fn dropped(all: &[((f64, f64, f64, f64), (f64, f64, f64, f64))], (x, y, w, h): (f64, f64, f64, f64)) -> Option<Value> {
+    let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+    let far = |(dx, dy, dw, dh): (f64, f64, f64, f64)| (cx - cx.clamp(dx, dx + dw)).abs() + (cy - cy.clamp(dy, dy + dh)).abs();
+    let (display, (_, ry, _, rh)) = all.iter().copied().min_by(|a, b| far(a.0).total_cmp(&far(b.0)))?;
+    let left = cx < display.0 + display.2 / 2.0;
+    let at = ((y - ry) / rh.max(1.0)).clamp(0.0, 1.0);
+    Some(serde_json::json!({ "at": at, "left": left, "display": [display.0, display.1, display.2, display.3] }))
 }
 
 /// The page's size for what it shows now (a hairline, the dots, the list, the drawer), in points. `show`
 /// false hides it (nothing to show).
 #[tauri::command]
-pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool, at: Option<f64>) -> Result<(), String> {
+pub(crate) async fn mini_shape(app: AppHandle, w: f64, h: f64, show: bool, at: Option<f64>, left: Option<bool>, display: Option<Vec<f64>>) -> Result<(), String> {
     let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
     if !show {
         store(&FRAME, (0.0, 0.0, 0.0, 0.0));
         return win.hide().map_err(|e| e.to_string());
     }
     let mode = if OPEN.load(Ordering::SeqCst) == Mode::Notch as u8 { Mode::Notch } else { Mode::Rail };
+    // The display you put the rail on, while it's still there (else it follows the pointer again).
+    if let Some(d) = display.filter(|d| d.len() == 4 && mode == Mode::Rail) {
+        let d = (d[0], d[1], d[2], d[3]);
+        let there = win.available_monitors().ok().unwrap_or_default().iter().any(|m| points(m) == d);
+        PINNED.store(there, Ordering::SeqCst);
+        if there {
+            set_on(d);
+        }
+    }
     let scr = screen(&app, &win, mode).ok_or("no screen")?;
     let (w, h) = (w.clamp(1.0, scr.2), h.clamp(1.0, scr.3));
-    let (x, y) = place(mode, scr, w, h, at.unwrap_or(1.0));
+    let (x, y) = place(mode, scr, w, h, at.unwrap_or(1.0), left.unwrap_or(false));
     store(&DRAG_FROM, (0.0, 0.0, 0.0, 0.0));
     #[cfg(debug_assertions)]
     eprintln!("[cue] mini window {w}×{h} at {x},{y}");
@@ -290,14 +313,14 @@ pub(crate) async fn mini_drag(app: AppHandle, dx: f64, dy: f64, begin: bool) -> 
     Ok(())
 }
 
-/// A drag let go: how far down the room the window's top is now (0 at its top, 1 at its bottom), for its page
-/// to keep (the rail stays at that height from then on).
+/// A drag let go: where the rail is now (`dropped`: its display, side and height), for its page to keep; it
+/// stays there from then on.
 #[tauri::command]
-pub(crate) async fn mini_drop(app: AppHandle) -> Result<f64, String> {
+pub(crate) async fn mini_drop(app: AppHandle) -> Result<Value, String> {
     let win = app.get_webview_window(LABEL).ok_or("no mini window")?;
-    let (_, y, _, _) = load(&FRAME).ok_or("not shown")?;
-    let (_, sy, _, sh) = screen(&app, &win, Mode::Rail).ok_or("no screen")?;
-    Ok(((y - sy) / sh.max(1.0)).clamp(0.0, 1.0))
+    let frame = load(&FRAME).ok_or("not shown")?;
+    let all: Vec<_> = win.available_monitors().map_err(|e| e.to_string())?.iter().map(|m| (points(m), room(m))).collect();
+    dropped(&all, frame).ok_or_else(|| "no display".into())
 }
 
 /// The mini window takes the keyboard (you clicked into its box) or hands it back to the app you were in.
@@ -349,20 +372,36 @@ mod tests {
 
     #[test]
     fn the_rail_sits_flat_against_the_right_edge_where_it_was_dragged_tucked_or_out() {
-        let tab = place(Mode::Rail, SCREEN, 36.0, 76.0, 0.5);
-        let panel = place(Mode::Rail, SCREEN, 420.0, 440.0, 0.7);
+        let tab = place(Mode::Rail, SCREEN, 36.0, 76.0, 0.5, false);
+        let panel = place(Mode::Rail, SCREEN, 420.0, 440.0, 0.7, false);
         assert_eq!(tab, (1512.0 - 36.0, 491.0));
         assert_eq!(panel, (1512.0 - 420.0, 982.0 - RAIL_MARGIN - 440.0), "a panel that wouldn't fit below goes up");
-        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 440.0, 0.2).1, 0.2 * 982.0, "one that fits keeps the tab's top");
-        assert_eq!(place(Mode::Rail, SCREEN, 36.0, 76.0, 0.0).1, RAIL_MARGIN);
-        assert_eq!(place(Mode::Rail, SCREEN, 36.0, 76.0, 1.0).1, 982.0 - RAIL_MARGIN - 76.0);
+        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 440.0, 0.2, false).1, 0.2 * 982.0, "one that fits keeps the tab's top");
+        assert_eq!(place(Mode::Rail, SCREEN, 36.0, 76.0, 0.0, false).1, RAIL_MARGIN);
+        assert_eq!(place(Mode::Rail, SCREEN, 36.0, 76.0, 1.0, false).1, 982.0 - RAIL_MARGIN - 76.0);
     }
 
     #[test]
     fn the_rail_never_leaves_its_room_and_takes_another_displays_own_edge() {
-        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 982.0, 1.0).1, 0.0);
+        assert_eq!(place(Mode::Rail, SCREEN, 420.0, 982.0, 1.0, false).1, 0.0);
         let external = (1800.0, -567.0, 3008.0, 1692.0);
-        assert_eq!(place(Mode::Rail, external, 36.0, 76.0, 0.0), (1800.0 + 3008.0 - 36.0, -567.0 + RAIL_MARGIN));
+        assert_eq!(place(Mode::Rail, external, 36.0, 76.0, 0.0, false), (1800.0 + 3008.0 - 36.0, -567.0 + RAIL_MARGIN));
+    }
+
+    #[test]
+    fn dragged_anywhere_the_rail_takes_the_nearer_side_edge_of_the_display_it_was_let_go_on() {
+        assert_eq!(place(Mode::Rail, SCREEN, 36.0, 76.0, 0.5, true), (0.0, 491.0), "the left edge");
+        let built_in = ((0.0, 0.0, 1512.0, 982.0), (0.0, 37.0, 1512.0, 945.0));
+        let external = ((1512.0, -300.0, 2560.0, 1440.0), (1512.0, -270.0, 2560.0, 1410.0));
+        let all = [built_in, external];
+        let d = dropped(&all, (300.0, 509.0, 36.0, 76.0)).unwrap();
+        assert_eq!(d["left"], true);
+        assert_eq!(d["display"], serde_json::json!([0.0, 0.0, 1512.0, 982.0]));
+        assert_eq!(d["at"].as_f64().unwrap(), (509.0 - 37.0) / 945.0);
+        let d = dropped(&all, (3500.0, -100.0, 36.0, 76.0)).unwrap();
+        assert_eq!((d["left"].as_bool(), d["display"][0].as_f64()), (Some(false), Some(1512.0)), "the external one's right edge");
+        let d = dropped(&all, (5000.0, 100.0, 36.0, 76.0)).unwrap();
+        assert_eq!(d["display"][0].as_f64(), Some(1512.0), "past every display: the nearest");
     }
 
     /// Placing or showing the mini window never takes the keyboard (Cue's own window lost it at once, every
@@ -410,6 +449,6 @@ mod tests {
 
     #[test]
     fn the_notch_island_is_centred_at_the_top() {
-        assert_eq!(place(Mode::Notch, SCREEN, 560.0, 324.0, 0.0), (476.0, 0.0));
+        assert_eq!(place(Mode::Notch, SCREEN, 560.0, 324.0, 0.0, false), (476.0, 0.0));
     }
 }

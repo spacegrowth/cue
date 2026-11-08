@@ -94,14 +94,15 @@ body.mini { overflow: hidden; font-size: 13px; }
 /* The rail, as the floating terminal was (picture in picture), in Cue's own theme and Color. */
 .rail #mini { justify-content: flex-end; }
 
-/* Tucked away: a small tab flat against the edge, ‹ and a live dot. Its left 6px are hidden until it's pointed
+/* Tucked away: a small dark tab flat against the edge (the one dark thing: the panel wears the theme), ‹ and a
+   live dot. Its left 6px are hidden until it's pointed
    at: it grows out of the edge, its right side never leaving it. A click brings the panel out; a drag moves it. */
 .m-tuck { width: 36px; height: 76px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
-  padding: 0 0 0 6px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--panel); color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--line); cursor: grab; touch-action: none;
+  padding: 0 0 0 6px; box-sizing: border-box; border-radius: 12px 0 0 12px; background: var(--slab); color: var(--on-slab);
+  cursor: grab; touch-action: none;
   clip-path: inset(0 0 0 6px round 12px 0 0 12px); transition: clip-path .2s; font-size: 18px; line-height: 1; }
 .m-tuck.over, .m-tuck:hover { clip-path: inset(0 round 12px 0 0 12px); }
-.m-live { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.m-live { width: 7px; height: 7px; border-radius: 50%; background: color-mix(in srgb, var(--on-slab) 30%, transparent); }
 .m-tuck.work .m-live { background: var(--sel); }
 .m-tuck.turn .m-live { background: #d99a3a; }
 .m-tuck.ask .m-live { background: #e8907f; }
@@ -110,14 +111,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 
 /* Out: the panel where the tab was, its bar on top (the tabs, ⤢ and ⇥), dragged by that bar. */
 .rail .m-chat { background: var(--panel); color: var(--ink); border-radius: 14px 0 0 14px; box-shadow: inset 0 0 0 1px var(--line); }
-.m-bar { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 8px; flex: none; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
-.m-bar .m-tabs { border: 0; padding: 0; flex: 1; min-width: 0; gap: 2px; scrollbar-width: none; }
-.m-bar .m-tabs::-webkit-scrollbar { display: none; }
-/* More tabs past an end: that end fades (mini.js fades). */
-.m-tabs.more-right { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
-.m-tabs.more-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px); mask-image: linear-gradient(to right, transparent, #000 32px); }
-.m-tabs.more-left.more-right { -webkit-mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent); }
-.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.m-bar { display: flex; align-items: flex-start; gap: 4px; min-height: 36px; padding: 6px 6px 6px 8px; box-sizing: border-box; flex: none; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
+.m-bar .m-tabs { border: 0; padding: 0; flex: 1; min-width: 0; gap: 2px; flex-wrap: wrap; overflow: visible; }
+.m-bar .m-tab { flex: none; height: 24px; padding: 0 8px; border-radius: 6px; font: 600 11.5px var(--sans); color: inherit; opacity: .65; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .m-bar .m-tab:hover { opacity: .9; background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .m-bar .m-tab.on { opacity: 1; background: color-mix(in srgb, var(--ink) 11%, transparent); font-weight: 600; }
 .m-pipbtn { width: 26px; height: 24px; border-radius: 6px; color: inherit; opacity: .75; flex: none; font-size: 14px; }
@@ -128,3 +124,14 @@ body.m-drag, body.m-drag * { cursor: grabbing !important; user-select: none; }
 @keyframes m-spring { from { transform: translateX(calc(100% + 12px)); } }
 .rail.m-leave .m-chat { transform: translateX(calc(100% + 12px)); transition: transform .22s ease-in; }
 @media (prefers-reduced-motion: reduce) { .rail.m-enter .m-chat, .m-tuck { animation: none; } .rail.m-leave .m-chat { transition: none; } }
+
+/* On the left edge: the same, mirrored (› to come out, the panel springs out rightwards). */
+.rail.side-left #mini { justify-content: flex-start; }
+.side-left .m-tuck { padding: 0 6px 0 0; border-radius: 0 12px 12px 0; clip-path: inset(0 6px 0 0 round 0 12px 12px 0); }
+.side-left .m-tuck.over, .side-left .m-tuck:hover { clip-path: inset(0 round 0 12px 12px 0); }
+.side-left .m-tuck.turn, .side-left .m-tuck.ask { animation-name: m-nudge-r; }
+@keyframes m-nudge-r { from { transform: translateX(-10px); } }
+.rail.side-left .m-chat { border-radius: 0 14px 14px 0; }
+.rail.side-left.m-enter .m-chat { animation-name: m-spring-r; }
+@keyframes m-spring-r { from { transform: translateX(calc(-100% - 12px)); } }
+.rail.side-left.m-leave .m-chat { transform: translateX(calc(-100% - 12px)); }

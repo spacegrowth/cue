@@ -1,6 +1,6 @@
 // Cue mini window — Cue at the edge of your screen while you work in another app (Settings → Mini window).
 // One page, two shapes: the rail on the right edge (#rail: picture in picture, as Cue's floating terminal was, a
-// small tab tucked into the edge, as high as you dragged it, that springs out into a panel) and the dark
+// small dark tab tucked into a side edge wherever you dragged it, that springs out into a panel) and the dark
 // island at the notch (#notch). Both show
 // what needs you in the Waiting column's order (in conversation first, then newest first), five at most, and
 // open any of them into its whole chat with a box to answer it. The window's size follows what it shows
@@ -18,9 +18,10 @@
   const HOVER_MS = 280, LEAVE_MS = 450, NOD_MS = 6000;
   const root = document.getElementById("mini");
   // shape: quiet | nod | chat. open: the session whose chat is open. keyed: it has the keyboard (you clicked in).
-  // at: how far down the right edge the rail sits (0 top, 1 bottom: mini_drop), kept in this window's own storage.
-  let at = 1;
-  try { const v = parseFloat(localStorage.getItem("cue.mini.at")); if (v >= 0 && v <= 1) at = v; } catch {}
+  // Where you put the rail (mini_drop): how far down its edge (0 top, 1 bottom), the left edge or the right, and
+  // on which display; kept in this window's own storage. Until you drag it: the right edge's foot.
+  let pos = { at: 1, left: false, display: null };
+  try { Object.assign(pos, JSON.parse(localStorage.getItem("cue.mini.pos") || "{}")); } catch {}
   const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, nodT: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, seen: null, nod: null, done: new Set(), note: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
@@ -69,7 +70,7 @@
   function tuckHtml() {
     const { shown } = needs(Infinity);
     const cls = shown.find(asks) ? "ask" : shown.length ? "turn" : working().length ? "work" : "idle";
-    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">‹</span><i class="m-live"></i></button>`;
+    return `<button class="m-panel m-tuck ${cls} ${m.over ? "over" : ""}" data-out aria-label="Bring Cue out"><span aria-hidden="true">${pos.left ? "›" : "‹"}</span><i class="m-live"></i></button>`;
   }
   /** Five tabs across the chat's top at most: what needs you (Waiting's order: in conversation, then newest
    *  first), then the ones at work if there's room. A click switches; each keeps what you typed in it. */
@@ -163,7 +164,7 @@
     const w = WIDTH[m.shape] || WIDTH.quiet;
     // The chat is always its full height (it scrolls inside), so new text while a session works never resizes it.
     const h = m.shape === "chat" ? cap : !NOTCH ? TAB_H : p ? Math.ceil(p.getBoundingClientRect().height) : 30;
-    const args = { w, h, show: true, at: NOTCH ? 0 : at };
+    const args = { w, h, show: true, at: NOTCH ? 0 : pos.at, left: !NOTCH && pos.left, display: NOTCH ? null : pos.display };
     const key = JSON.stringify(args);
     if (key === m.sized) return;   // the same size and place: nothing to move
     m.sized = key;
@@ -185,7 +186,7 @@
     m.drawnShape = m.shape;
     const drawnOpen = m.drawnOpen;
     m.drawnOpen = m.open;
-    document.body.className = `mini ${NOTCH ? "notch" : "rail"} s-${m.shape}${m.entering ? " m-enter" : ""}${m.dragging ? " m-drag" : ""}`;
+    document.body.className = `mini ${NOTCH ? "notch" : "rail"}${pos.left ? " side-left" : ""} s-${m.shape}${m.entering ? " m-enter" : ""}${m.dragging ? " m-drag" : ""}`;
     const box = root.querySelector("[data-box]");
     // The same session's chat, redrawn: only its ask, its messages and the dots (the box you're typing in stays).
     // Another session (a dot clicked): drawn whole.
@@ -201,32 +202,12 @@
     } else {
       const html = shapeHtml();
       if (drawn.get(root) !== html) {
-        const was = root.querySelector("[data-tabs]")?.scrollLeft || 0;
         root.innerHTML = html;
         drawn.set(root, html);
-        const tabs = root.querySelector("[data-tabs]");
-        if (tabs) tabs.scrollLeft = was;   // another tab picked: the bar stays where you'd scrolled it
         if (m.shape === "chat") toLatest();
       }
     }
-    tabsInView();
     fit();
-  }
-  /** The tab bar scrolls sideways when its tabs don't fit (a trackpad's swipe, or a mouse wheel: bind). The open
-   *  tab is always in view, and an end with more tabs past it fades. */
-  function tabsInView() {
-    const el = root.querySelector("[data-tabs]");
-    if (!el) return;
-    const on = el.querySelector(".m-tab.on");
-    if (on && on.dataset.open !== m.tabsShown) {
-      m.tabsShown = on.dataset.open;
-      on.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
-    fades(el);
-  }
-  function fades(el) {
-    el.classList.toggle("more-left", el.scrollLeft > 1);
-    el.classList.toggle("more-right", el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }
   /** The newest reply in sight from its start (a long one reads from the top), else the end of the chat. */
   function toLatest() {
@@ -261,13 +242,13 @@
     document.body.classList.add("m-leave");
     setTimeout(fold, 220);
   }
-  /** The rail dragged, the tab or the panel by its bar (the window itself moves, mini_drag): let go, it stays at
-   *  that height on the right edge from then on. The tab moves only up and down; the panel pushed off the right
-   *  edge tucks away there. A drag is never a click: the tab doesn't open under it. */
+  /** The rail dragged anywhere, the tab or the panel by its bar (the window itself moves, mini_drag): let go, it
+   *  takes the nearer side edge of the display it's over, at that height, and stays there from then on. A drag is
+   *  never a click: the tab doesn't open under it. */
   function drag(e, tab) {
     if (e.button !== 0 || (!tab && e.target.closest("button"))) return;
     clearTimeout(m.timer);   // pressed on the tab: not a hover that opens it
-    const x0 = e.screenX, y0 = e.screenY, w = window.innerWidth;
+    const x0 = e.screenX, y0 = e.screenY;
     let moved = false, queued = null, busy = false;
     const push = async () => {
       if (busy || !queued) return;
@@ -279,25 +260,24 @@
       push();
     };
     const move = (ev) => {
-      const dx = tab ? 0 : ev.screenX - x0, dy = ev.screenY - y0;
+      const dx = ev.screenX - x0, dy = ev.screenY - y0;
       if (!moved && Math.hypot(dx, dy) < 4) return;
       if (!moved) { moved = true; m.dragging = true; document.body.classList.add("m-drag"); queued = { dx: 0, dy: 0, begin: true }; push(); }
       queued = { dx, dy, begin: false };
       push();
     };
-    const up = (ev) => {
+    const up = () => {
       window.removeEventListener("pointermove", move);
       if (!moved) return;
       window.addEventListener("click", (c) => { c.stopPropagation(); c.preventDefault(); }, { capture: true, once: true });
-      document.body.classList.remove("m-drag");
-      const off = !tab && ev.screenX - x0 > w / 3;
       const settle = async () => {
         if (busy || queued) return setTimeout(settle, 30);
-        const v = await invoke("mini_drop").catch(() => null);
-        if (typeof v === "number") { at = v; try { localStorage.setItem("cue.mini.at", String(at)); } catch {} }
+        const p = await invoke("mini_drop").catch(() => null);
+        if (p && typeof p.at === "number") { pos = { at: p.at, left: !!p.left, display: p.display || null }; try { localStorage.setItem("cue.mini.pos", JSON.stringify(pos)); } catch {} }
         m.dragging = false;
         m.sized = "";
-        if (off) closeChat(); else fit();
+        drawn.delete(root);   // its arrow and side follow the edge it took
+        paint();
       };
       settle();
     };
@@ -376,14 +356,6 @@
     document.body.addEventListener("mouseenter", () => pointerIn());
     document.body.addEventListener("mouseleave", () => pointerOut());
     root.addEventListener("mousemove", () => pointerIn());
-    // A mouse wheel's up and down scrolls the tab bar sideways; a trackpad's sideways swipe already does.
-    root.addEventListener("wheel", (e) => {
-      const el = e.target.closest("[data-tabs]");
-      if (!el || el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
-    }, { passive: false });
-    root.addEventListener("scroll", (e) => { if (e.target.matches?.("[data-tabs]")) fades(e.target); }, true);
     root.addEventListener("pointerdown", (e) => { if (e.target.closest("[data-out]")) drag(e, true); else if (e.target.closest("[data-bar]")) drag(e, false); });
   }
   /** The pointer came over the mini window (the rail's dot, the notch's island): after a short pause the chat

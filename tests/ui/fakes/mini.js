@@ -4,6 +4,6 @@ CueBridge.area("mini", () => ({
   mini_shape: () => null,
   mini_key: () => null,
   mini_drag: () => null,
-  mini_drop: () => 0.5,
+  mini_drop: () => ({ at: 0.5, left: false, display: [0, 0, 1512, 982] }),
   mini_open_in_cue: () => null,
 }));
