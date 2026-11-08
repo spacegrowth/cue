@@ -29,13 +29,16 @@ function termAppName(s) {
   return { "iTerm.app": "iTerm", Apple_Terminal: "Terminal", WezTerm: "WezTerm", ghostty: "Ghostty", vscode: "VS Code", kitty: "kitty" }[t] || (s?.kitty_window_id ? "kitty" : s?.wezterm_pane ? "WezTerm" : "its terminal");
 }
 /** Where a session runs, set into its reply box's top right corner: a terminal app's (a click goes to its
- *  tab), or Cue's own (a click opens its terminal above the box, as the strip does). */
+ *  tab); for Cue's own terminal, nothing but Move to hosted (the strip above the box opens it). */
 function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
   if (s.hosted) return hostedTab(sid, s);
-  // In Cue: the same corner opens (or closes) its terminal above the box; with hosting on, Move to hosted too.
-  if (inTmux(sid)) return `<span class="tplace">${hostBtn(sid, s)}<button class="tplace-btn" data-act="term" data-sid="${esc(sid)}" aria-expanded="${termSid === sid}">${termSid === sid ? "Close" : "Open"} ${s.machine ? esc(machShort(s.machine)) : "Cue"} <span aria-hidden="true">${termSid === sid ? "▾" : "▴"}</span></button></span>`;
+  // In Cue: its terminal opens from the strip above the box; the corner has only Move to hosted (hosting on).
+  if (inTmux(sid)) {
+    const host = hostBtn(sid, s);
+    return host ? `<span class="tplace">${host}</span>` : "";
+  }
   // A terminal app's: its tab, and for Claude Code, Move to Cue (resumed in Cue's terminal).
   return `<span class="tplace">${moveBtn(sid, s.harness, s.state, "tplace-btn move")}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
 }
