@@ -60,8 +60,12 @@
    with ACTIVE and SESSIONS (stuck at 0, the band's top sat at the column's top and pushed the text 4px down). */
 .col.col-waiting > .sec > .col-head { --band: 4px; position: sticky; top: calc(-1 * var(--band)); z-index: 2; background: var(--bg); padding: var(--band) 0 6px; margin: calc(-1 * var(--band)) 0 -6px; }
 .sec-waiting .sec-body { padding: 0 2px 4px; margin: 0 -2px; }
-/* Waiting in two groups: IN CONVERSATION, then OLDEST FIRST; a conversation card says why it's there. */
-.sec-waiting .col-sub { margin: 6px 2px 2px; }
+/* One spacing rule for every column, so what's under each heading starts on one line: a group label opens its
+   column flush (level with Active's card), sits 8px over its first card, and has 18px of room above a later group. */
+.sec-body > .col-sub { margin-top: 8px; margin-bottom: -2px; }
+.sec-body > .col-sub:first-child { margin-top: 0; }
+/* Waiting in two groups: IN CONVERSATION, then NEWEST FIRST; a conversation card says why it's there. */
+.sec-waiting .col-sub { margin-left: 2px; margin-right: 2px; }
 .sub-fold { display: block; width: auto; background: none; border: 0; padding: 0; font-family: inherit; }
 .talk-why { font-size: 12px; color: var(--muted); margin-top: -3px; }
 .nrow.on .talk-why { color: color-mix(in srgb, var(--on-sel) 70%, transparent); }

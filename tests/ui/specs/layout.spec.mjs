@@ -106,6 +106,18 @@ test("the board's column headings line up", async ({ cue, page }) => {
   expect(new Set(tops).size, `heading tops ${tops}`).toBe(1);
 });
 
+test("what's under each column heading starts on one line, and every group label sits the same over its card", async ({ cue, page }) => {
+  await cue.open("board-waiting", { frozen: true });
+  const m = await page.evaluate(() => {
+    const top = (el) => Math.round(el.getBoundingClientRect().top);
+    const firsts = [".col.main .active-pane", ".col-waiting .sec-body > :first-child", ".col-sessions .sec-body > :first-child"].map((s) => top(document.querySelector(s)));
+    const gaps = [...document.querySelectorAll(".sec-body > .col-sub")].map((l) => top(l.nextElementSibling) - Math.round(l.getBoundingClientRect().bottom));
+    return { firsts, gaps };
+  });
+  expect(new Set(m.firsts).size, `first tops ${m.firsts}`).toBe(1);
+  expect(new Set(m.gaps).size, `label-to-card gaps ${m.gaps}`).toBe(1);
+});
+
 test("a lead's plan alone in its card has no rule above it", async ({ cue, page }) => {
   await cue.open("relay-review", { frozen: true });
   await openLead(page);
