@@ -60,6 +60,7 @@ if [ -n "$SIGN" ]; then codesign --force --options runtime --timestamp --sign "$
 # This Mac's own host: next to Cue's program in Cue.app (tauri.conf.json externalBin), so it shows as cue-host, not
 # as a second "cue". One per chip type, and both in one, as the bundler wants them; from the build above, so it is
 # this build.
+mkdir -p binaries   # not in a fresh checkout
 lipo -thin arm64 -output binaries/cue-host-aarch64-apple-darwin "$OUT/cue-host-darwin"
 lipo -thin x86_64 -output binaries/cue-host-x86_64-apple-darwin "$OUT/cue-host-darwin"
 cp "$OUT/cue-host-darwin" binaries/cue-host-universal-apple-darwin
