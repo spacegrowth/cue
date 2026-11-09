@@ -20,6 +20,13 @@ test("Enter in a finished turn's box replies with what's typed", async ({ cue, p
   await expect(box(page, "relay")).toHaveValue("");
 });
 
+test("A finished turn's box says where the reply goes: typed into its terminal, or straight to a hosted session", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay (typed into its terminal)…");
+  await cue.change((st) => { st.sessions.find((s) => s.session_id === "relay").hosted = true; });
+  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
+});
+
 test("Send replies, and Shift+Enter keeps the lines together", async ({ cue, page }) => {
   await openCard(page, "n2");
   await box(page, "det").pressSequentially("tune the stop");
