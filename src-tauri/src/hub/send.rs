@@ -458,6 +458,10 @@ impl Hub {
     /// Send now on a queued one does, so it reads it straight away. Mid-turn only if its Claude runs: a paused
     /// one starts a turn with this.
     fn send_saved_hosted(&self, session_id: &str, typed: &str, saved: &[crate::uploads::Saved], busy: bool, now: bool) -> Result<String, String> {
+        // One of its agent's own commands opens a terminal (or is refused) now, mid-turn or not: it never waits to go.
+        if let Some(done) = self.run_own_command(session_id, typed) {
+            return done;
+        }
         let busy = busy && self.hosted().running(session_id);
         if busy && !now {
             return Ok(self.keep(session_id, typed, saved));

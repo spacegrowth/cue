@@ -5,8 +5,11 @@
 
 use super::protocol::Protocol;
 use super::{Answer, Ask, HostedEvent, Spec};
-use std::collections::VecDeque;
+use serde_json::Value;
+use std::collections::{HashMap, VecDeque};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// How much of its error output is kept, for saying why it exited.
 const LAST_WORDS: usize = 20;
@@ -22,7 +25,25 @@ pub struct Driver {
     /// What its lines mean. Never held while anything is written or reported.
     protocol: Mutex<Box<dyn Protocol>>,
     last_words: Mutex<VecDeque<String>>,
+    /// Requests of Cue's to the agent itself (`control`), by id, each waiting for its answer.
+    asked: Mutex<HashMap<String, Sender<Result<Value, String>>>>,
     sink: Sink,
+}
+
+/// A request of Cue's on its way: the lines carrying it (for whoever writes to the agent) and its answer to come.
+pub struct Asked {
+    pub lines: Vec<String>,
+    answer: Receiver<Result<Value, String>>,
+}
+
+impl Asked {
+    /// Its answer, waited for up to `limit`.
+    pub fn answer(self, limit: Duration) -> Result<Value, String> {
+        self.answer.recv_timeout(limit).map_err(|e| match e {
+            std::sync::mpsc::RecvTimeoutError::Timeout => format!("no answer in {} s", limit.as_secs()),
+            std::sync::mpsc::RecvTimeoutError::Disconnected => "it ended before answering".to_string(),
+        })?
+    }
 }
 
 /// A line of the agent's, or Cue's to it, as its host's log keeps it.
@@ -34,7 +55,7 @@ pub enum Logged {
 
 impl Driver {
     pub fn new(spec: &Spec, sink: Sink) -> Driver {
-        Driver { name: spec.agent.name(), started_as: spec.start.session_id().to_string(), protocol: Mutex::new(spec.agent.protocol(spec)), last_words: Mutex::new(VecDeque::new()), sink }
+        Driver { name: spec.agent.name(), started_as: spec.start.session_id().to_string(), protocol: Mutex::new(spec.agent.protocol(spec)), last_words: Mutex::new(VecDeque::new()), asked: Mutex::default(), sink }
     }
 
     /// `f` with its protocol, let go before anything is written or reported.
@@ -57,8 +78,22 @@ impl Driver {
         self.speak(|p| p.wrote(line));
     }
 
+    /// A request of Cue's to the agent itself (`body`, its protocol's: Claude Code's control request): the lines to
+    /// write, and its answer to wait for. Err for an agent that takes none.
+    pub fn control(&self, body: Value) -> Result<Asked, String> {
+        let (id, lines) = self.speak(|p| p.control(body)).ok_or_else(|| format!("{} takes no requests of Cue's", self.name))?;
+        let (tx, answer) = channel();
+        crate::locking::lock(&self.asked, "hosted session: asked").insert(id, tx);
+        Ok(Asked { lines, answer })
+    }
+
     /// One line of its output: its events reported, and the lines to write back at once.
     pub fn read(&self, line: &str) -> Vec<String> {
+        if let Some((id, said)) = super::wire::parse_reply(line) {
+            if let Some(tx) = crate::locking::lock(&self.asked, "hosted session: asked").remove(&id) {
+                let _ = tx.send(said);
+            }
+        }
         let (events, replies) = self.speak(|p| p.read(line));
         let id = self.session_id();
         for e in events {
@@ -82,6 +117,8 @@ impl Driver {
 
     /// Its process is gone: nothing waits for an answer any more, and it's said how it went.
     pub fn exited(&self, code: Option<i32>) {
+        // Nothing will answer them now: whoever waits hears so at once.
+        crate::locking::lock(&self.asked, "hosted session: asked").clear();
         let during_turn = self.speak(|p| {
             p.gone();
             p.in_turn()

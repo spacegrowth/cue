@@ -58,6 +58,8 @@ async function deliver(sid, key, call) {
   // "/btw …": a side question, in its panel (the session never sees it).
   const bt = /^\/btw(?:\s+([\s\S]*))?$/.exec(text);
   if (bt && sessionOf(sid)?.harness === "claude") { delete drafts[key]; return openBtw(sid, bt[1] || ""); }
+  // "/mcp" in a hosted Claude Code session: Cue's MCP servers list (chat/mcp.js), which headless Claude Code doesn't have.
+  if (/^\/mcp(\s|$)/.test(text) && isHostedClaude(sid)) { delete drafts[key]; return openMcp(sid); }
   // "! …": a shell line, run by Cue in the session's folder (the card offers to send it on).
   if (isBang(text) && !d.images.length) { delete drafts[key]; return runLine(sid, text); }
   if (!text && !d.images.length) return;

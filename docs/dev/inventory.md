@@ -14,9 +14,9 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 151 (3 sync) |
-| Lock declarations (static or field) | 120 |
-| Lock acquisitions | 301 |
+| `#[tauri::command]` | 154 (3 sync) |
+| Lock declarations (static or field) | 121 |
+| Lock acquisitions | 304 |
 | Lock-graph edges | 58 |
 | Spawn sites | 92 |
 | External calls: fs / db / process / notify / login / socket | 389 / 146 / 53 / 4 / 1 / 4 |
@@ -111,6 +111,9 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `machine_setup` | async | `ipc/machines.rs::machine_setup` | ipc::blocking |
 | `machine_check` | async | `ipc/machines.rs::machine_check` | ipc::blocking |
 | `machine_login` | async | `ipc/machines.rs::machine_login` | ipc::blocking |
+| `mcp_live` | async | `ipc/mcp_live.rs::mcp_live` | ipc::with_hub |
+| `mcp_act` | async | `ipc/mcp_live.rs::mcp_act` | ipc::with_hub |
+| `mcp_signed_in` | async | `ipc/mcp_live.rs::mcp_signed_in` | ipc::with_hub |
 | `resume_session` | async | `ipc/sessions.rs::resume_session` | ipc::with_hub |
 | `park_session` | async | `ipc/sessions.rs::park_session` | ipc::with_hub |
 | `resume_parked` | async | `ipc/sessions.rs::resume_parked` | ipc::with_hub |
@@ -207,6 +210,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
 | `hosted/driver.rs::Driver.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
 | `hosted/driver.rs::Driver.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
+| `hosted/driver.rs::Driver.asked` | `Mutex<HashMap<String,Sender<Result<Value,String>>>>` | "hosted session: asked" (3 sites) |
 | `hosted/host_link.rs::HostLink.out` | `Mutex<Option<Box<dynWrite+Send>>>` | "cue-host link: out" (3 sites) |
 | `hosted/host_link.rs::HostLink.end` | `Mutex<Option<Box<dynFn()+Send+Sync>>>` | "cue-host link: end" (2 sites) |
 | `hosted/host_link.rs::HostLink.waiting` | `Mutex<HashMap<u64,Sender<Result<Value,Failed>>>>` | "cue-host link: waiting" (5 sites) |

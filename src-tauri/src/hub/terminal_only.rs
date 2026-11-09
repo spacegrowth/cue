@@ -1,18 +1,17 @@
 //! An agent's own commands, in a hosted session (docs/dev/cue-hosted-sessions.md §9, H5). Headless, an agent has none
 //! of its terminal interface: sent to it, a command like `/config` does nothing, and Pi and Codex take theirs for a
-//! message to the model. So Cue looks at what you send first:
+//! message to the model. So Cue looks at what you send first, and never sends these to the session:
 //! - Claude Code's own screens (`/config`, `/login`, `/theme`…: what Claude reports as `terminal_slash_commands`, plus
-//!   signing in and its settings, which headless never offers) open in a terminal tab: `claude /config` in the
-//!   session's folder (on its machine, over SSH).
-//! - Pi's sign-in and settings screens open Pi in a terminal tab, and Cue says which command to type there (a command
-//!   given to Pi as it starts goes to the model, even in its terminal).
-//! - Codex signs in with `codex login` / `codex logout`, run in a terminal tab.
+//!   signing in and its settings, which headless never offers): Cue says to run `claude /config` in a terminal. They
+//!   change Claude Code itself, not anything of Cue's, so Cue opens nothing.
+//! - Pi's sign-in and settings screens: run Pi in a terminal and type the command there (a command given to Pi as it
+//!   starts goes to the model, even in its terminal).
+//! - Codex signs in with `codex login` / `codex logout`, run in a terminal.
 //! - Pi's and Codex's other own commands act on the session itself, which a hosted one can't do from here: refused,
 //!   saying so, never sent to the model.
-//! Never on the session's conversation (two processes on one conversation would both write it).
+//! `/mcp` isn't one of these: Cue shows its own MCP servers list for it (ui/chat/mcp.js).
 
 use super::*;
-use crate::terminal::launch::Place;
 
 /// Claude Code's commands that need its terminal whatever it reports: signing in and out, and its own settings
 /// screens.
@@ -34,7 +33,7 @@ const PI_SCREENS: [&str; 7] = ["login", "logout", "settings", "scoped-models", "
 /// What an agent's own command becomes in a hosted session.
 #[derive(Debug, PartialEq)]
 pub(crate) enum Own {
-    /// Run `line` in a terminal tab in the session's folder; `then` is what to do there, if anything.
+    /// Run `line` in a terminal in the session's folder; `then` is what to do there, if anything.
     Terminal { line: String, then: String },
     /// One a hosted session doesn't have: refused, saying so.
     NotHosted,
@@ -43,10 +42,11 @@ pub(crate) enum Own {
 /// What `/name` (with `text`, all of it) is for `harness`, in a hosted session: None for one that goes to it as sent
 /// (a skill, an extension's command, one that runs headless). `terminal_only`: what Claude reported at its start.
 pub(crate) fn own(harness: &str, name: &str, text: &str, terminal_only: &[String]) -> Option<Own> {
-    let sh = crate::machines::shq;
+    // Quoted only when it needs to be (`claude /config`, `claude '/model opus'`): it's for you to type.
+    let arg = |t: &str| if t.chars().all(|c| c.is_ascii_alphanumeric() || "/-_:".contains(c)) { t.to_string() } else { crate::machines::shq(t) };
     match harness {
-        "claude" if CLAUDE_ALWAYS.contains(&name) || terminal_only.iter().any(|n| n == name) => Some(Own::Terminal { line: format!("claude {}", sh(text.trim())), then: String::new() }),
-        "pi" if PI_SCREENS.contains(&name) => Some(Own::Terminal { line: "pi --no-session".into(), then: format!("type {} there", text.trim()) }),
+        "claude" if CLAUDE_ALWAYS.contains(&name) || terminal_only.iter().any(|n| n == name) => Some(Own::Terminal { line: format!("claude {}", arg(text.trim())), then: String::new() }),
+        "pi" if PI_SCREENS.contains(&name) => Some(Own::Terminal { line: "pi --no-session".into(), then: format!("then type {} there", text.trim()) }),
         "pi" if crate::commands::pi_builtin(name) => Some(Own::NotHosted),
         "codex" if name == "login" || name == "logout" => Some(Own::Terminal { line: format!("codex {name}"), then: String::new() }),
         "codex" if crate::commands::codex_builtin(name) => Some(Own::NotHosted),
@@ -79,31 +79,32 @@ impl Hub {
         own(&origin.harness, name, text, &self.reported_terminal_only(session_id))
     }
 
-    /// `text`, when it's one of a hosted session's agent's own commands: opened in a terminal tab, or refused. What
-    /// it did (Err: refused). None: it's an ordinary message, for the session.
+    /// `text`, when it's one of a hosted session's agent's own commands: refused, saying what to run in a terminal
+    /// instead (Ok, shown in the chat as not sent) or that a hosted session doesn't have it (Err). None: it's an
+    /// ordinary message, for the session.
     pub(crate) fn run_own_command(&self, session_id: &str, text: &str) -> Option<Result<String, String>> {
         let name = text.trim().strip_prefix('/')?.split_whitespace().next()?.to_string();
         let o = self.hosted_origin(session_id)?;
         let agent = crate::hosted::Agent::named(&o.harness).map_or("the agent", |a| a.name());
         Some(match self.own_command(session_id, &name, text)? {
             Own::NotHosted => Err(format!("/{name} is one of {agent}'s own commands, which a hosted session doesn't have: Move to terminal to use it")),
-            Own::Terminal { line, then } => self.open_in_terminal(&o, &line, &name).map(|tab| {
-                let then = if then.is_empty() { String::new() } else { format!(": {then}") };
-                format!("Opened {agent} in {tab}{then}. /{name} is one of {agent}'s own screens, which only a terminal shows")
-            }),
+            Own::Terminal { line, then } => {
+                let then = if then.is_empty() { String::new() } else { format!(", {then}") };
+                // "not sent:" tells the chat to show this as it is, not as where the message went.
+                Ok(format!("not sent: /{name} is one of {agent}'s own screens, which only its terminal shows. To use it, run {line} in a terminal {}{then}", where_to_run(&o)))
+            }
         })
     }
+}
 
-    /// `line` run in a terminal tab in `o`'s folder, here or on its machine: where it opened.
-    fn open_in_terminal(&self, o: &Origin, line: &str, name: &str) -> Result<String, String> {
-        if o.machine.is_empty() {
-            return self.launcher().here(line, &o.cwd, &format!("/{name}"), Place::chosen(Some(false))).map(|t| t.what);
-        }
-        let m = crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more", o.machine))?;
-        let there = crate::machines::remote_command_err(&format!("cd {} && exec {line}", crate::machines::remote_dir(&o.cwd)));
-        let ssh = format!("ssh {} -t {} {}", crate::machines::shared().join(" "), m.host, crate::machines::shq(&there));
-        crate::terminal::focus::open_tab_with(&ssh).map(|t| format!("{} on {}", t.what, crate::machines::display_name(&m.name)))
+/// Where to run it: the session's folder, and its machine when it's on one.
+fn where_to_run(o: &Origin) -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    if o.machine.is_empty() {
+        let dir = o.cwd.strip_prefix(&home).filter(|r| !home.is_empty() && (r.is_empty() || r.starts_with('/'))).map_or(o.cwd.clone(), |r| format!("~{r}"));
+        return format!("in {dir}");
     }
+    format!("in {} on {}", o.cwd, crate::machines::display_name(&o.machine))
 }
 
 #[cfg(test)]
@@ -116,9 +117,9 @@ mod tests {
 
     #[test]
     fn claude_codes_screens_open_in_a_terminal_and_its_headless_commands_go_to_it() {
-        assert_eq!(own("claude", "config", "/config", &[]), terminal("claude '/config'", ""));
-        assert_eq!(own("claude", "login", "/login", &[]), terminal("claude '/login'", ""));
-        assert_eq!(own("claude", "statusline", "/statusline", &["statusline".into()]), terminal("claude '/statusline'", ""), "what Claude reported at start");
+        assert_eq!(own("claude", "config", "/config", &[]), terminal("claude /config", ""));
+        assert_eq!(own("claude", "login", "/login", &[]), terminal("claude /login", ""));
+        assert_eq!(own("claude", "statusline", "/statusline", &["statusline".into()]), terminal("claude /statusline", ""), "what Claude reported at start");
         assert_eq!(own("claude", "compact", "/compact", &[]), None);
     }
 
@@ -133,8 +134,8 @@ mod tests {
 
     #[test]
     fn pis_sign_in_and_settings_open_pi_in_a_terminal_its_session_commands_are_refused_and_extensions_go_through() {
-        assert_eq!(own("pi", "login", "/login anthropic", &[]), terminal("pi --no-session", "type /login anthropic there"));
-        assert_eq!(own("pi", "settings", "/settings", &[]), terminal("pi --no-session", "type /settings there"));
+        assert_eq!(own("pi", "login", "/login anthropic", &[]), terminal("pi --no-session", "then type /login anthropic there"));
+        assert_eq!(own("pi", "settings", "/settings", &[]), terminal("pi --no-session", "then type /settings there"));
         assert_eq!(own("pi", "compact", "/compact", &[]), Some(Own::NotHosted), "never sent to the model as a message");
         assert_eq!(own("pi", "pilead:mode", "/pilead:mode", &[]), None, "an extension's command runs in the session");
     }

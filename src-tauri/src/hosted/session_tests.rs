@@ -130,8 +130,11 @@ fn closing_ends_it_when_its_input_closes() {
     let (s, rx) = start(&fake);
     let t = Instant::now();
     s.close();
-    assert!(s.gone() && t.elapsed() < Duration::from_secs(2), "it ended on its own as its input closed");
-    assert!(matches!(exited(&rx), HostedEvent::Exited { code: Some(0), during_turn: false, .. }));
+    // On its own: exit code 0 (ended by Cue, it would have none, killed by a signal), and before Cue's grace ran out
+    // (that's when it would have been ended). Not a tighter clock: a busy machine (the whole suite at once) is slow to
+    // start and reap a process, which says nothing about how it ended.
+    assert!(s.gone() && t.elapsed() < super::session::CLOSE_GRACE, "it ended before Cue had to end it");
+    assert!(matches!(exited(&rx), HostedEvent::Exited { code: Some(0), during_turn: false, .. }), "it ended on its own as its input closed");
     s.close();
 }
 
@@ -173,4 +176,33 @@ fn two_asks_waiting_at_once_are_each_answered_in_any_order() {
     let r2 = heard_with(&fake, "r2's answer", |v| v["response"]["request_id"] == "r2");
     let r1 = heard_with(&fake, "r1's answer", |v| v["response"]["request_id"] == "r1");
     assert_eq!((r2["response"]["response"]["behavior"].as_str(), r1["response"]["response"]["behavior"].as_str()), (Some("deny"), Some("allow")));
+}
+
+#[test]
+fn a_request_of_cues_gets_the_answer_claude_gives_under_its_id_and_an_error_as_an_error() {
+    let status = json!({ "mcpServers": [{ "name": "linear", "status": "connected" }] });
+    let fake = FakeClaude::new()
+        .wait_for("initialize")
+        .wait_for("mcp_status")
+        // Something else first, as a real one may: only the answer under the request's own id counts.
+        .say(json!({ "type": "control_response", "response": { "subtype": "success", "request_id": "cue-1", "response": {} } }))
+        .say(json!({ "type": "control_response", "response": { "subtype": "success", "request_id": "cue-2", "response": status.clone() } }))
+        .wait_for("mcp_reconnect")
+        .say(json!({ "type": "control_response", "response": { "subtype": "error", "request_id": "cue-3", "error": "Server not found: nope" } }));
+    let (s, _rx) = start(&fake);
+    assert_eq!(s.control(json!({ "subtype": "mcp_status" }), Duration::from_secs(5)), Ok(status));
+    assert_eq!(s.control(json!({ "subtype": "mcp_reconnect", "serverName": "nope" }), Duration::from_secs(5)), Err("Server not found: nope".to_string()));
+    let heard: Vec<String> = fake.heard().iter().filter_map(|v| v.pointer("/request/subtype").and_then(Value::as_str).map(str::to_string)).collect();
+    assert_eq!(heard, ["initialize", "mcp_status", "mcp_reconnect"]);
+    s.close();
+}
+
+#[test]
+fn a_request_of_cues_is_told_at_once_when_claude_exits_without_answering_it() {
+    let fake = FakeClaude::new().wait_for("mcp_status").exit(0);
+    let (s, _rx) = start(&fake);
+    let t = Instant::now();
+    let said = s.control(json!({ "subtype": "mcp_status" }), Duration::from_secs(10));
+    assert_eq!(said, Err("it ended before answering".to_string()));
+    assert!(t.elapsed() < Duration::from_secs(5), "not left to time out");
 }

@@ -56,7 +56,7 @@ function mcpList(key, compact = false) {
     const calls = (t) => (m.tools || []).find((u) => u.name === t)?.calls || 0;
     const fold = tools.length ? `<button class="mcp-tfold" data-mcp="tools" data-sid="${esc(key)}" data-name="${esc(m.name)}" aria-expanded="${open}">· ${tools.length} tool${tools.length === 1 ? "" : "s"} ${open ? "▴" : "▾"}</button>` : "";
     const list = open && tools.length ? `<div class="mcp-tools mono">${tools.map((t) => `<span>${esc(t)}${calls(t) ? `<span class="mcp-tn"> · ${calls(t)}</span>` : ""}</span>`).join("")}</div>` : "";
-    return `<label class="mcp-it ${can ? "" : "fixed"}"><input type="checkbox" data-mcp-pick="${esc(key)}" value="${esc(m.name)}" ${(can ? on.has(m.name) : m.selected ?? m.enabled) ? "checked" : ""} ${can ? "" : "disabled"}/><span class="mcp-nm">${esc(m.name)}</span><span class="mcp-sc">${esc(mcpScopeWord(m))}</span>${mcpLiveWord(m)}${n}${fold}</label>${list}`;
+    return `<label class="mcp-it ${can ? "" : "fixed"}"><input type="checkbox" data-mcp-pick="${esc(key)}" value="${esc(m.name)}" ${(can ? on.has(m.name) : m.selected ?? m.enabled) ? "checked" : ""} ${can ? "" : "disabled"}/><span class="mcp-nm">${esc(m.name)}</span><span class="mcp-sc">${esc(mcpScopeWord(m))}</span>${mcpLiveWord(m, key)}${n}${fold}</label>${list}`;
   };
   const mine = servers.filter((m) => m.scope !== "session"), theirs = servers.filter((m) => m.scope === "session");
   if (!mine.length && !theirs.length) return `<div class="mcp-none">No MCP servers are set up in Claude Code</div>`;
@@ -64,15 +64,19 @@ function mcpList(key, compact = false) {
 }
 /** What the running session really has from a server (logs/mcp.rs with_live), so a tick never passes
  *  for working: connected, waiting for sign-in, connecting, failed, or (one it should have) not loaded. */
-function mcpLiveWord(m) {
+function mcpLiveWord(m, key) {
   // Blocked by a settings file's deniedMcpServers: Claude Code never loads it, ticked or not. The file, from its folder on.
   if (m.blocked) return `<span class="mcp-live bad">· blocked in ${esc(m.blocked.split("/").slice(-3).join("/"))}</span>`;
-  const w = { on: ["connected", "ok"], "sign-in": ["needs sign-in: /mcp in its terminal", "warn"], connecting: ["connecting", ""], failed: ["didn't connect", "bad"] }[m.live]
+  // Signing in is Claude Code's own screen: a hosted session has none, so it's run in a terminal.
+  const signIn = isHostedClaude(key) ? "needs sign-in: run claude /mcp in a terminal, then restart" : "needs sign-in: /mcp in its terminal";
+  const w = { on: ["connected", "ok"], "sign-in": [signIn, "warn"], connecting: ["connecting", ""], failed: ["didn't connect", "bad"] }[m.live]
     || (m.live === "off" && (m.selected ?? m.enabled) ? ["not loaded", "bad"] : null);
   return w ? `<span class="mcp-live ${w[1]}">· ${w[0]}</span>` : "";
 }
-/** ⋯ → MCP servers…: the checklist, Restart session with these, Cancel, and (pinned) back to the folder's. */
+/** ⋯ → MCP servers…: the checklist, Restart session with these, Cancel, and (pinned) back to the folder's. A hosted
+ *  Claude Code session's is Claude Code's own list instead (chat/mcp_live.js). */
 function mcpPicker(sid) {
+  if (isHostedClaude(sid)) return mcpLivePanel(sid);
   const busy = sessionOf(sid)?.state === "working";
   const d = mcpCache.get(sid)?.data;
   const back = d?.pinned ? `<button class="mcp-back" data-mcp="clear" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Back to the folder's servers</button>` : "";
@@ -82,6 +86,14 @@ function mcpPicker(sid) {
     ${busy ? `<div class="mcp-note">It's working; apply when it's idle</div>` : `<div class="mcp-note">Only this session restarts, with the ones checked; its conversation stays</div>`}
     <div class="mcp-acts">${back}<span class="grow"></span><button class="btn small" data-mcp="cancel">Cancel</button><button class="btn small primary" data-mcp="apply" data-sid="${esc(sid)}" ${busy || !d ? "disabled" : ""}>Restart session with these</button></div></div>`;
 }
+/** Open the ⋯ menu's MCP servers list for `sid` (⋯ → MCP servers…, or /mcp typed in a hosted session). */
+function openMcp(sid) {
+  moreFor = sid; handoffArm = null; mcpPicking = true; mcpPick.delete(sid);
+  // A hosted Claude Code session: what it has right now, from Claude Code itself (chat/mcp_live.js).
+  isHostedClaude(sid) ? mcplLoad(sid) : mcpLoad(sid, true);
+  renderMain();
+}
+const isHostedClaude = (sid) => { const s = sessionOf(sid); return !!s?.hosted && s.harness === "claude"; };
 function mcpClose(sid) { moreFor = handoffArm = null; mcpPicking = false; if (sid) mcpPick.delete(sid); }
 document.addEventListener("change", (e) => {
   const cb = e.target.closest?.("[data-mcp-pick]");
@@ -93,7 +105,7 @@ document.addEventListener("change", (e) => {
 });
 document.addEventListener("click", async (e) => {
   const ask = e.target.closest("[data-mcp-ask]");
-  if (ask) { mcpPicking = true; mcpPick.delete(ask.dataset.mcpAsk); mcpLoad(ask.dataset.mcpAsk, true); return renderMain(); }
+  if (ask) return openMcp(ask.dataset.mcpAsk);
   const el = e.target.closest("[data-mcp]");
   if (!el) return;
   const k = el.dataset.mcp, sid = el.dataset.sid;

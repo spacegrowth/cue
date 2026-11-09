@@ -61,8 +61,30 @@ pub fn interrupt(request_id: &str) -> String {
     request(request_id, json!({ "subtype": "interrupt" }))
 }
 
-fn request(request_id: &str, body: Value) -> String {
+/// A request of Cue's (`body`: its `subtype` and fields), Claude's answer coming back as a `control_response` under
+/// `request_id` (see `reply`).
+pub fn request(request_id: &str, body: Value) -> String {
     json!({ "type": "control_request", "request_id": request_id, "request": body }).to_string()
+}
+
+/// `line`, when it's a `control_response`: as `reply` reads it.
+pub fn parse_reply(line: &str) -> Option<(String, Result<Value, String>)> {
+    if !line.contains("\"control_response\"") {
+        return None;
+    }
+    let v: Value = serde_json::from_str(line).ok()?;
+    (v.get("type").and_then(Value::as_str) == Some("control_response")).then(|| reply(&v)).flatten()
+}
+
+/// A `control_response` line's request id and what it said: its `response` (`{}` when it has none), or its error.
+pub fn reply(v: &Value) -> Option<(String, Result<Value, String>)> {
+    let r = v.get("response")?;
+    let id = r.get("request_id")?.as_str()?.to_string();
+    let said = match r.get("subtype").and_then(Value::as_str) {
+        Some("success") => Ok(r.get("response").cloned().unwrap_or_else(|| json!({}))),
+        _ => Err(r.get("error").and_then(Value::as_str).unwrap_or("it refused, saying nothing").to_string()),
+    };
+    Some((id, said))
 }
 
 /// The answer to request `request_id`. `tool_input` is the asking tool call's input: an allow always carries

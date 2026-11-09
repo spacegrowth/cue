@@ -276,7 +276,7 @@ function cmdMenu(key) {
   // Pi's comes from its extension; Refresh asks it again. Codex's is Codex's own: nothing to refresh.
   const h = sessionOf(sidOfKey(key))?.harness;
   const foot = h === "claude" || h === "pi" ? `<div class="cmd-foot"><span>${h === "pi" ? "From Pi" : "Read once, kept a week"}</span><button data-cmd-refresh="${esc(key)}">Refresh</button></div>` : "";
-  return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd-name="${esc(c.name)}" role="option"><b>/${esc(c.name)}${after(c)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : c.kind === "terminal" ? `<i>opens a terminal</i>` : c.kind === "unavailable" ? `<i>not hosted</i>` : ""}</button>`).join("")}${foot}</div>`;
+  return `<div class="cmd-menu" role="listbox">${m.map((c, n) => `<button class="cmd-row ${n === cmdSel ? "on" : ""}" data-cmd-pick="${esc(key)}" data-cmd-name="${esc(c.name)}" role="option"><b>/${esc(c.name)}${after(c)}</b>${c.desc ? `<span>${esc(c.desc)}</span>` : ""}${c.kind === "skill" ? `<i>skill</i>` : c.kind === "terminal" ? `<i>in a terminal</i>` : c.kind === "cue" ? `<i>in Cue</i>` : c.kind === "unavailable" ? `<i>not hosted</i>` : ""}</button>`).join("")}${foot}</div>`;
 }
 /** The command a box's text runs ("/compact now" -> compact), from the session's list; undefined when
  *  it isn't a command, null when it's one the session doesn't have (or the list isn't in yet: then unknown). */
@@ -297,7 +297,8 @@ function slashHint(key) {
   const asText = `<button data-astext="${esc(key)}">Send as a message instead</button>`;
   if (c === null) return `<div class="slash-hint bad">“/${esc(name)}” isn't a command in this session. ${asText}</div>`;
   const agent = agentName(sessionOf(sidOfKey(key))?.harness);
-  if (c.kind === "terminal") return `<div class="slash-hint"><b>/${esc(c.name)}</b>: opens in a terminal tab. It's one of ${esc(agent)}'s own screens, which only a terminal shows.</div>`;
+  if (c.kind === "terminal") return `<div class="slash-hint"><b>/${esc(c.name)}</b>: one of ${esc(agent)}'s own screens, which only its terminal shows. Cue says what to run there.</div>`;
+  if (c.kind === "cue") return `<div class="slash-hint"><b>/${esc(c.name)}</b>: ${esc(c.desc)}</div>`;
   if (c.kind === "unavailable") return `<div class="slash-hint bad"><b>/${esc(c.name)}</b> is one of ${esc(agent)}'s own commands, which a hosted session doesn't have. Move to terminal to use it.</div>`;
   return `<div class="slash-hint">${c.desc ? `<b>/${esc(c.name)}${c.hint ? ` ${esc(c.hint)}` : ""}</b>: ${esc(c.desc)}` : `Starts with “/”, so the agent runs it as a command. ${asText}`}</div>`;
 }

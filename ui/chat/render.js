@@ -141,7 +141,7 @@ function chatHtml(it, s, harness, paged = false) {
       <div class="msg cv-text">${md(stripStatus(e.text), { runIn: s?.session_id })}</div>${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
-  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
+  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
@@ -162,7 +162,7 @@ function restartLine(sid, r, latest) {
   if (latest) mcpLoad(sid);
   const d = latest ? mcpCache.get(sid)?.data : null;
   const known = d?.live_known ? (d.servers || []).filter((m) => (r.servers ? r.servers.includes(m.name) : m.selected ?? m.enabled)) : null;
-  const list = known?.length ? known.map((m) => `<span class="rs-sv-it"><b>${esc(m.name)}</b>${mcpLiveWord(m)}</span>`).join("")
+  const list = known?.length ? known.map((m) => `<span class="rs-sv-it"><b>${esc(m.name)}</b>${mcpLiveWord(m, sid)}</span>`).join("")
     : r.servers?.length ? r.servers.map((s) => `<span class="rs-sv-it"><b>${esc(s)}</b></span>`).join("") : "";
   const later = latest && !known?.length ? `<div class="rs-sv">Whether each one connected shows after its next message</div>` : "";
   return `<div class="cv-result rs-line"><span class="sent-check">✓</span><span>${title}<span class="dim"> · ${r.secs}s</span></span>${when}${list ? `<div class="rs-sv">${list}</div>` : ""}${later}</div>`;
@@ -355,9 +355,11 @@ function forkItem(sid, s) {
   if (s?.harness !== "claude") return "";
   return `<button data-fork="${esc(sid)}" ${btwForking != null ? "disabled" : ""}>Fork<span>Its conversation goes on as a new session too, with -fork on its name; this one carries on as it is</span></button>`;
 }
-/** ⋯ → MCP servers…, for a Claude Code session on this Mac: how many it runs with. */
+/** ⋯ → MCP servers…, for a Claude Code session on this Mac: how many it runs with. A hosted one's (here or on a
+ *  machine) is Claude Code's own list (chat/mcp_live.js). */
 function mcpItem(sid) {
   const s = sessionOf(sid);
+  if (isHostedClaude(sid)) return mcplItem(sid);
   if (s?.harness !== "claude" || s?.machine) return "";
   mcpLoad(sid);
   const n = mcpOnCount(sid);

@@ -18,7 +18,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 /// How long the agent gets to finish and exit on its own once its input is closed, then once asked to end.
-const CLOSE_GRACE: Duration = Duration::from_secs(3);
+pub(super) const CLOSE_GRACE: Duration = Duration::from_secs(3);
 const END_GRACE: Duration = Duration::from_secs(2);
 /// How long its output may stay open after the agent itself exited (its last lines still on their way) before
 /// whatever of its group holds it is ended.
@@ -90,6 +90,13 @@ impl Session {
     /// Stop what it's doing: the running tool stops and the turn ends.
     pub fn interrupt(&self) -> Result<(), String> {
         self.shared.write_lines(&self.shared.driver.interrupt())
+    }
+
+    /// A request of Cue's to the agent itself (driver.rs `control`), answered within `limit`.
+    pub fn control(&self, body: serde_json::Value, limit: Duration) -> Result<serde_json::Value, String> {
+        let asked = self.shared.driver.control(body)?;
+        self.shared.write_lines(&asked.lines)?;
+        asked.answer(limit)
     }
 
     /// Whether its process has exited.

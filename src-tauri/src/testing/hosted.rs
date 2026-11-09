@@ -30,6 +30,10 @@ pub struct FakeHosted {
     refusal: Mutex<Option<String>>,
     /// Sessions run by cue-host (they go on when Cue quits); the rest are Cue's own children.
     in_host: Mutex<HashSet<String>>,
+    /// Requests of Cue's to an agent itself: (session, request), in order.
+    controls: Mutex<Vec<(String, serde_json::Value)>>,
+    /// What the agent answers a request with, by its subtype (none set: answered `{}`).
+    control_answers: Mutex<std::collections::HashMap<String, Result<serde_json::Value, String>>>,
 }
 
 /// The process ids the stand-in hands out: none a real process has (they're past the system's largest).
@@ -78,6 +82,16 @@ impl FakeHosted {
         *crate::locking::lock(&self.refusal, "fake hosted refusal") = Some(why.to_string());
     }
 
+    /// Requests of Cue's to an agent itself: (session, request).
+    pub fn controls(&self) -> Vec<(String, serde_json::Value)> {
+        crate::locking::lock(&self.controls, "fake hosted controls").clone()
+    }
+
+    /// The agent answers a request of `subtype` with `said` from now on.
+    pub fn answers_control(&self, subtype: &str, said: Result<serde_json::Value, String>) {
+        crate::locking::lock(&self.control_answers, "fake hosted control answers").insert(subtype.into(), said);
+    }
+
     fn live(&self, session_id: &str) -> Result<(), String> {
         if self.running(session_id) { Ok(()) } else { Err("it isn't running".into()) }
     }
@@ -119,6 +133,13 @@ impl Hosted for FakeHosted {
         self.live(session_id)?;
         crate::locking::lock(&self.interrupted, "fake hosted stops").push(session_id.into());
         Ok(())
+    }
+
+    fn control(&self, session_id: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        self.live(session_id)?;
+        let subtype = body["subtype"].as_str().unwrap_or_default().to_string();
+        crate::locking::lock(&self.controls, "fake hosted controls").push((session_id.into(), body));
+        crate::locking::lock(&self.control_answers, "fake hosted control answers").get(&subtype).cloned().unwrap_or_else(|| Ok(serde_json::json!({})))
     }
 
     fn close(&self, session_id: &str) {

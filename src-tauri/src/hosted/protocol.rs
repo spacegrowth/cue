@@ -27,6 +27,11 @@ pub(super) trait Protocol: Send {
     fn wrote(&mut self, line: &str);
     /// Whether request `request_id` (an `Ask`'s) still waits for an answer.
     fn waits_on(&self, request_id: &str) -> bool;
+    /// A request of Cue's to the agent itself (`body`: Claude Code's control request, `{"subtype": "mcp_status"}`):
+    /// its id, for matching the answer (driver.rs), and the lines carrying it. None: this agent takes none.
+    fn control(&mut self, _body: serde_json::Value) -> Option<(String, Vec<String>)> {
+        None
+    }
     /// The conversation's id, once the agent has said it, for one that picks its own (Codex); None: the one Cue
     /// started it with.
     fn session_id(&self) -> Option<String> {
@@ -116,6 +121,12 @@ impl Protocol for Claude {
 
     fn waits_on(&self, request_id: &str) -> bool {
         self.pending.contains_key(request_id)
+    }
+
+    fn control(&mut self, body: serde_json::Value) -> Option<(String, Vec<String>)> {
+        let id = self.request_id();
+        let line = super::wire::request(&id, body);
+        Some((id, vec![line]))
     }
 }
 

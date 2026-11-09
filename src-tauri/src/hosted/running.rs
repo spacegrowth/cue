@@ -7,6 +7,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// How long a request of Cue's to an agent waits for its answer (a sign-in link can take a few seconds to make).
+pub const CONTROL_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+
 /// What a session reports to, from its own thread: each event with the conversation's id.
 pub type Report = Box<dyn Fn(&str, HostedEvent) + Send + Sync>;
 
@@ -29,6 +32,11 @@ pub trait Hosted: Send + Sync {
     fn send(&self, session_id: &str, text: &str) -> Result<(), String>;
     fn answer(&self, session_id: &str, request_id: &str, answer: &Answer) -> Result<(), String>;
     fn interrupt(&self, session_id: &str) -> Result<(), String>;
+    /// A request of Cue's to its agent itself (Claude Code's control request: `{"subtype": "mcp_status"}`), and the
+    /// agent's answer. Blocking, up to `CONTROL_WAIT`: call it off the main thread.
+    fn control(&self, _session_id: &str, _body: serde_json::Value) -> Result<serde_json::Value, String> {
+        Err("this session takes no requests of Cue's".into())
+    }
     /// Close it and return once it's gone. Blocking: up to a few seconds for one that won't end.
     fn close(&self, session_id: &str);
     /// Whether its process runs.
@@ -119,6 +127,10 @@ impl Hosted for Running {
 
     fn interrupt(&self, session_id: &str) -> Result<(), String> {
         self.get(session_id)?.session.interrupt()
+    }
+
+    fn control(&self, session_id: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        self.get(session_id)?.session.control(body, CONTROL_WAIT)
     }
 
     fn close(&self, session_id: &str) {

@@ -37,9 +37,16 @@ pub(crate) fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_jso
     let mut v = listed(hub, session_id, fresh);
     add_claude_screens(hub, session_id, &mut v);
     // Hosted: its agent's own commands that open a terminal, or that it doesn't have (hub/terminal_only.rs).
-    if hub.hosted_origin(session_id).is_some() {
+    if let Some(o) = hub.hosted_origin(session_id) {
+        let claude = o.harness == "claude";
         for c in v["list"].as_array_mut().into_iter().flatten() {
             let name = c["name"].as_str().unwrap_or_default().to_string();
+            if name == "mcp" && claude {
+                // Cue's own MCP servers list (ui/chat/mcp_live.js), which headless Claude Code doesn't have.
+                c["kind"] = "cue".into();
+                c["desc"] = "Your MCP servers: which are connected or need signing in, and which this session runs with".into();
+                continue;
+            }
             match hub.own_command(session_id, &name, &format!("/{name}")) {
                 Some(crate::hub::Own::Terminal { .. }) => c["kind"] = "terminal".into(),
                 Some(crate::hub::Own::NotHosted) => c["kind"] = "unavailable".into(),

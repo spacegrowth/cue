@@ -15,7 +15,24 @@ CueBridge.area("mcp", (w) => {
   const folder = () => ({ calls: 0, pinned: false, servers: fx.servers.filter((m) => m.scope !== "session").map((m) => ({ ...m, selected: m.enabled, used: 0, failed: 0, tools: [] })) });
   const enable = (name, on) => { const m = fx.servers.find((x) => x.name === name); if (m) m.enabled = on; };
 
+  // A hosted Claude Code session's servers as Claude Code reports them (ipc/mcp_live.rs): one of each state.
+  const live = [
+    { name: "linear", title: "Linear", status: "connected", scope: "user", error: null, tools: ["list_issues", "get_issue"], can_sign_out: true },
+    { name: "claude.ai Gmail", title: null, status: "needs-auth", scope: "claudeai", error: null, tools: [], can_sign_out: false },
+    { name: "data-tools", title: null, status: "failed", scope: "project", error: "spawn uv ENOENT", tools: [], can_sign_out: false },
+    { name: "sentry", title: null, status: "disabled", scope: "local", error: null, tools: [], can_sign_out: false },
+  ];
+  const liveSet = (name, status) => { const m = live.find((x) => x.name === name); if (m) m.status = status; };
+
   return {
+    mcp_live: () => ({ servers: live.map((m) => ({ ...m })), pinned: w.q.get("pinned") === "1" }),
+    mcp_act: ({ server, action }) => {
+      if (action === "on") liveSet(server, "connected");
+      if (action === "off") liveSet(server, "disabled");
+      if (action === "reconnect") liveSet(server, "connected");
+      return action === "sign-in" ? { url: `https://auth.example/${encodeURIComponent(server)}`, paste_back: w.q.get("machine") === "1" } : {};
+    },
+    mcp_signed_in: ({ server }) => { liveSet(server, "connected"); return null; },
     mcp_for: session,
     mcp_for_folder: folder,
     mcp_set: ({ name, on }) => { enable(name, on); return session(); },

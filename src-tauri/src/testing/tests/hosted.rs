@@ -619,37 +619,45 @@ fn quitting_names_the_sessions_cue_runs_itself_mid_turn_first_and_not_those_the_
 }
 
 #[test]
-fn one_of_claude_codes_own_screens_opens_in_a_terminal_tab_and_the_session_never_gets_it() {
+fn one_of_claude_codes_own_screens_says_what_to_run_in_a_terminal_and_the_session_never_gets_it() {
     let w = World::new();
     let sid = started(&w, "");
     w.hosted_says(&sid, HostedEvent::Started { session_id: sid.clone(), model: "opus".into(), slash_commands: vec!["compact".into()], terminal_only: vec!["statusline".into()] });
     let before = w.hosted.sent().len();
+    let tabs = w.launcher.launched().len();
     for (typed, name) in [("/config", "config"), ("/login", "login"), ("/statusline", "statusline")] {
-        w.send_to(&sid, typed);
-        let tab = w.launcher.last();
-        assert_eq!((tab.line.as_str(), tab.name.as_str()), (format!("claude '{typed}'").as_str(), format!("/{name}").as_str()), "a terminal tab of its own, in the session's folder");
-        assert_eq!(tab.dir, w.home().to_string_lossy());
+        let said = w.send_to(&sid, typed).to_string();
+        assert!(said.contains(&format!("not sent: /{name} is one of Claude Code's own screens")), "the chat shows it as not sent, saying why: {said}");
+        assert!(said.contains(&format!("run claude {typed} in a terminal in {}", w.home().to_string_lossy())), "{said}");
     }
+    assert_eq!(w.launcher.launched().len(), tabs, "Cue opens nothing");
     assert_eq!(w.hosted.sent().len(), before, "none of them went to the session");
+    // Mid-turn too: answered now, not kept for the turn's end.
+    takes(&w, &sid, "go");
+    let said = w.send_to(&sid, "/config").to_string();
+    assert!(said.contains("not sent: /config"), "{said}");
+    assert!(w.snapshot().session(&sid)["held"].is_null(), "nothing kept for later");
+    turn_ends(&w, &sid, "Done.");
     // An ordinary command still goes to it.
     w.send_to(&sid, "/compact");
     assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "/compact".to_string())));
 }
 
 #[test]
-fn claude_codes_own_screens_are_in_the_slash_menu_marked_as_opening_a_terminal() {
+fn claude_codes_own_screens_are_in_the_slash_menu_marked_as_for_a_terminal_and_mcp_as_cues() {
     let w = World::new();
     let sid = started(&w, "");
     w.hosted_says(&sid, HostedEvent::Started { session_id: sid.clone(), model: "opus".into(), slash_commands: vec!["compact".into()], terminal_only: vec!["statusline".into()] });
     // What Claude Code's headless mode lists for the folder: none of its own screens.
-    let compact = crate::commands::Cmd { name: "compact".into(), kind: "command".into(), desc: "Compact".into(), hint: String::new(), args: vec![] };
-    crate::db::set_commands(&w.home().to_string_lossy(), crate::model::now_ms(), &[compact]);
+    let cmd = |n: &str| crate::commands::Cmd { name: n.into(), kind: "command".into(), desc: n.into(), hint: String::new(), args: vec![] };
+    crate::db::set_commands(&w.home().to_string_lossy(), crate::model::now_ms(), &[cmd("compact"), cmd("mcp")]);
     let menu = crate::ipc::commands_of(w.hub(), &sid, false);
     let kind = |n: &str| menu["list"].as_array().unwrap().iter().find(|c| c["name"] == n).map(|c| c["kind"].as_str().unwrap_or_default().to_string());
     assert_eq!(kind("login").as_deref(), Some("terminal"), "{menu}");
     assert_eq!(kind("config").as_deref(), Some("terminal"));
     assert_eq!(kind("statusline").as_deref(), Some("terminal"), "what Claude reported at its start");
     assert_eq!(kind("compact").as_deref(), Some("command"), "it runs headless");
+    assert_eq!(kind("mcp").as_deref(), Some("cue"), "Cue's own MCP servers list");
 }
 
 /// A hosted `agent` session started by + New in the World's folder: its id.
@@ -661,21 +669,68 @@ fn started_as(w: &World, agent: &str) -> String {
 }
 
 #[test]
-fn pis_and_codexs_own_commands_never_reach_the_model_sign_in_opens_a_terminal_and_the_rest_is_refused() {
+fn pis_and_codexs_own_commands_never_reach_the_model_sign_in_says_what_to_run_and_the_rest_is_refused() {
     let w = World::new();
     let pi = started_as(&w, "pi");
     let before = w.hosted.sent().len();
+    let tabs = w.launcher.launched().len();
     let said = w.send_to(&pi, "/login anthropic");
-    let tab = w.launcher.last();
-    assert_eq!((tab.line.as_str(), tab.dir.as_str()), ("pi --no-session", w.home().to_str().unwrap()), "Pi itself, in a terminal tab, to type it in");
-    assert!(said.to_string().contains("type /login anthropic there"), "{said}");
+    assert!(said.to_string().contains("run pi --no-session in a terminal"), "Pi itself, to type it in: {said}");
+    assert!(said.to_string().contains("then type /login anthropic there"), "{said}");
     let refused = w.send_to(&pi, "/compact");
     assert!(refused.to_string().contains("a hosted session doesn't have"), "{refused}");
     assert_eq!(w.hosted.sent().len(), before, "neither went to Pi as a message");
     w.send_to(&pi, "/pilead:mode");
     assert_eq!(w.hosted.sent().last(), Some(&(pi.clone(), "/pilead:mode".to_string())), "an extension's command does");
     let codex = started_as(&w, "codex");
-    w.send_to(&codex, "/login");
-    assert_eq!(w.launcher.last().line, "codex login");
+    assert!(w.send_to(&codex, "/login").to_string().contains("run codex login in a terminal"));
+    assert_eq!(w.launcher.launched().len(), tabs, "Cue opens nothing");
     assert!(w.send_to(&codex, "/model").to_string().contains("a hosted session doesn't have"));
+}
+
+#[test]
+fn mcp_in_a_hosted_session_asks_its_claude_code_directly_and_a_paused_one_says_so() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    w.hosted.answers_control("mcp_status", Ok(json!({ "mcpServers": [{ "name": "claude.ai Gmail", "status": "needs-auth", "config": { "type": "claudeai-proxy" } }] })));
+    let live = crate::ipc::mcp_live_of(w.hub(), &sid).unwrap();
+    assert_eq!(live["servers"][0]["status"], "needs-auth");
+    assert_eq!(live["pinned"], false, "it runs with its folder's servers");
+    let sel = crate::logs::mcp::selection_path(&sid);
+    std::fs::create_dir_all(sel.parent().unwrap()).unwrap();
+    std::fs::write(&sel, r#"{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}"#).unwrap();
+    assert_eq!(crate::ipc::mcp_live_of(w.hub(), &sid).unwrap()["pinned"], true, "picked for it alone: the list says so");
+    w.hosted.answers_control("mcp_authenticate", Ok(json!({ "authUrl": "https://claude.ai/sign-in", "callbackExpected": false })));
+    let signed = crate::ipc::mcp_act_on(w.hub(), &sid, "claude.ai Gmail", "sign-in", true).unwrap();
+    assert_eq!(signed, json!({ "url": "https://claude.ai/sign-in", "paste_back": false }), "on this Mac: nothing to paste back");
+    crate::ipc::mcp_act_on(w.hub(), &sid, "claude.ai Gmail", "off", true).unwrap();
+    let asked: Vec<Value> = w.hosted.controls().into_iter().map(|(s, b)| { assert_eq!(s, sid); b }).collect();
+    assert!(asked.contains(&json!({ "subtype": "mcp_toggle", "serverName": "claude.ai Gmail", "enabled": false })), "{asked:?}");
+    assert!(w.hosted.sent().iter().all(|(_, t)| t == "go"), "nothing went to it as a message");
+    // A page of Claude Code's own (another kind of server): pasted back when the browser isn't on this Mac.
+    w.hosted.answers_control("mcp_authenticate", Ok(json!({ "authUrl": "https://auth.example/x", "callbackExpected": true })));
+    assert_eq!(crate::ipc::mcp_act_on(w.hub(), &sid, "x", "sign-in", true).unwrap()["paste_back"], false, "this Mac's browser reaches it");
+    assert_eq!(crate::ipc::mcp_act_on(w.hub(), &sid, "x", "sign-in", false).unwrap()["paste_back"], true, "another device's doesn't");
+    // Its refusal comes back as it said it.
+    w.hosted.answers_control("mcp_reconnect", Err("Server not found: x".into()));
+    assert_eq!(crate::ipc::mcp_act_on(w.hub(), &sid, "x", "reconnect", true), Err("Server not found: x".into()));
+    // Paused: nothing to ask.
+    w.hosted.exits(&sid);
+    assert!(crate::ipc::mcp_live_of(w.hub(), &sid).unwrap_err().contains("paused"));
+}
+
+#[test]
+fn a_hosted_session_picked_to_run_some_servers_gets_its_folders_back_and_resumes_hosted_with_them() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    let sel = crate::logs::mcp::selection_path(&sid);
+    std::fs::create_dir_all(sel.parent().unwrap()).unwrap();
+    std::fs::write(&sel, r#"{"mcpServers":{"linear":{"type":"http","url":"https://mcp.linear.app/mcp"}}}"#).unwrap();
+    crate::ipc::mcp_apply_clear_for(w.hub(), &sid).unwrap();
+    assert!(!sel.exists(), "its own pick is gone");
+    let again = w.hosted.launched().last().cloned().unwrap();
+    assert_eq!(again.start, Start::Resume(sid.clone()), "the same conversation");
+    assert!(!again.args.iter().any(|a| a == "--strict-mcp-config" || a == "--mcp-config"), "with its folder's servers: {:?}", again.args);
+    assert!(w.hub().hosted_origin(&sid).is_some(), "still hosted");
 }

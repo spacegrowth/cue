@@ -362,6 +362,17 @@ impl Hosted for Hosts {
         }
     }
 
+    fn control(&self, session_id: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        match self.remote(session_id) {
+            Some(r) => {
+                let asked = r.driver.control(body)?;
+                r.write_lines(&asked.lines)?;
+                asked.answer(super::running::CONTROL_WAIT)
+            }
+            None => self.direct.control(session_id, body),
+        }
+    }
+
     fn close(&self, session_id: &str) {
         match self.drop_remote(session_id) {
             Some(r) => r.close(),

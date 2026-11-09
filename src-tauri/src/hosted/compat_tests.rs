@@ -18,8 +18,8 @@ use std::time::{Duration, Instant};
 const MODEL: &str = "haiku";
 const PATIENCE: Duration = Duration::from_secs(150);
 
-/// A real hosted session in a folder of its own.
-struct Real {
+/// A real hosted session in a folder of its own (mcp_compat_tests.rs uses it too).
+pub(super) struct Real {
     dir: PathBuf,
     session: Option<Session>,
     rx: Receiver<HostedEvent>,
@@ -27,7 +27,7 @@ struct Real {
 
 impl Real {
     /// `None` unless CUE_CLAUDE_COMPAT is set. `settings`: the session's own settings (hooks, sandbox).
-    fn start(name: &str, settings: Value, start: Start, args: &[&str]) -> Option<Real> {
+    pub(super) fn start(name: &str, settings: Value, start: Start, args: &[&str]) -> Option<Real> {
         std::env::var_os("CUE_CLAUDE_COMPAT")?;
         let dir = std::env::temp_dir().join(format!("cue-compat-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -47,7 +47,7 @@ impl Real {
         Real { dir, session: Some(session), rx }
     }
 
-    fn s(&self) -> &Session {
+    pub(super) fn s(&self) -> &Session {
         self.session.as_ref().unwrap()
     }
 
@@ -115,7 +115,7 @@ fn allow(_: &Ask) -> Answer {
     Answer::Decision(Decision { behavior: "allow".into(), ..Default::default() })
 }
 
-fn quiet() -> Value {
+pub(super) fn quiet() -> Value {
     json!({ "disableAllHooks": true })
 }
 

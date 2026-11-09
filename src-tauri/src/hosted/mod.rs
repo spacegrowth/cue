@@ -40,6 +40,8 @@ mod codex_tests;
 #[cfg(test)]
 mod compat_tests;
 #[cfg(test)]
+mod mcp_compat_tests;
+#[cfg(test)]
 mod hosts_tests;
 #[cfg(test)]
 mod machine_tests;
