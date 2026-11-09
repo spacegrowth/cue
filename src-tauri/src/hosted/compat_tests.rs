@@ -277,3 +277,158 @@ fn until_file(path: &Path) {
         std::thread::sleep(Duration::from_millis(200));
     }
 }
+
+/// Teams (docs/dev/cue-teams.md §2): what real Claude Code (2.1.319, headless, Haiku) writes when a lead runs
+/// named background teammates, recorded once per question (fixtures/team_*.jsonl: Claude's own lines, the
+/// recording folder written /tmp/project; Cue's writes and their echoes left out). Cue's teams rest on these.
+mod team {
+    use super::super::translate::Translator;
+    use super::super::wire;
+    use super::super::{Ask, HostedEvent};
+    use serde_json::Value;
+
+    fn events(fixture: &str) -> Vec<HostedEvent> {
+        let mut t = Translator::default();
+        fixture.lines().flat_map(|l| t.step(&wire::parse(l))).collect()
+    }
+
+    /// The lead's Agent call that started teammate `name`: (its tool call id, its input).
+    fn agent_call<'a>(es: &'a [HostedEvent], name: &str) -> (&'a str, &'a Value) {
+        es.iter()
+            .find_map(|e| match e {
+                HostedEvent::ToolCall { id, name: tool, input, agent: None } if tool == "Agent" && input["name"] == name => Some((id.as_str(), input)),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no Agent call named {name}"))
+    }
+
+    /// Claude's own task events of `what` (task_started, task_notification…), whole.
+    fn tasks<'a>(es: &'a [HostedEvent], what: &str) -> Vec<&'a Value> {
+        es.iter().filter_map(|e| if let HostedEvent::Task { what: w, detail } = e { (w == what).then_some(detail) } else { None }).collect()
+    }
+
+    /// Where in `es` each kind of event is: the first index `f` accepts.
+    fn first(es: &[HostedEvent], f: impl Fn(&HostedEvent) -> bool) -> usize {
+        es.iter().position(f).expect("seen")
+    }
+
+    fn by(e: &HostedEvent, call: &str) -> bool {
+        matches!(e, HostedEvent::Said { agent: Some(a), .. } | HostedEvent::ToolCall { agent: Some(a), .. } | HostedEvent::ToolResult { agent: Some(a), .. } if a == call)
+    }
+
+    fn asks(es: &[HostedEvent]) -> Vec<&Ask> {
+        es.iter().filter_map(|e| if let HostedEvent::Ask(a) = e { Some(a) } else { None }).collect()
+    }
+
+    /// 1. A background teammate's lines come while it works: after the lead's turn has ended ("started"), step
+    /// by step, each before the teammate is reported finished; the finish then starts a turn of the lead's itself.
+    #[test]
+    fn team_a_background_teammates_lines_arrive_while_it_works() {
+        let es = events(include_str!("fixtures/team_live.jsonl"));
+        let (call, input) = agent_call(&es, "worker");
+        assert_eq!(input["run_in_background"], true);
+        let lead_done = first(&es, |e| matches!(e, HostedEvent::TurnEnded { .. }));
+        let its_first = first(&es, |e| by(e, call));
+        let finished = first(&es, |e| matches!(e, HostedEvent::Task { what, detail } if what == "task_notification" && detail["tool_use_id"] == call));
+        assert!(lead_done < its_first, "the lead's turn ended before the teammate's first line");
+        let steps: Vec<&str> = es[..finished]
+            .iter()
+            .filter(|e| by(e, call))
+            .filter_map(|e| match e {
+                HostedEvent::ToolCall { input, .. } => input["command"].as_str(),
+                HostedEvent::ToolResult { output, .. } => output.as_str(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(steps, ["sleep 5 && echo one", "one", "echo two", "two"], "each step as it happened, all before the finish");
+        assert!(es[finished..].iter().all(|e| !by(e, call)), "nothing of the teammate's held back for its end");
+        // Its own long command is a task of its own (local_bash), not a second teammate.
+        let started = tasks(&es, "task_started");
+        let kinds: Vec<(&str, bool)> = started.iter().map(|d| (d["task_type"].as_str().unwrap(), d["is_backgrounded"] == true)).collect();
+        assert_eq!(kinds, [("local_agent", true), ("local_bash", false)]);
+        let ends: Vec<bool> = es.iter().filter_map(|e| if let HostedEvent::TurnEnded { unprompted, .. } = e { Some(*unprompted) } else { None }).collect();
+        assert_eq!(ends, [false, true], "the teammate finishing starts the lead's next turn by itself");
+    }
+
+    /// 2. Name and agent_id meet in the teammate's task_started: its `tool_use_id` is the Agent call (whose input has
+    /// the name), its `task_id` the `agent_id` every ask of the teammate carries. The Agent call's result says it too.
+    #[test]
+    fn team_a_teammates_name_and_agent_id_meet_at_its_task_started() {
+        let es = events(include_str!("fixtures/team_name_id.jsonl"));
+        let (call, _) = agent_call(&es, "probe");
+        let started = tasks(&es, "task_started");
+        let it = started.iter().find(|d| d["tool_use_id"] == call).expect("its task_started");
+        let agent_id = it["task_id"].as_str().unwrap();
+        assert!(it.get("name").is_none(), "task_started doesn't carry the name: it comes from the Agent call");
+        let launched = es.iter().find_map(|e| match e {
+            HostedEvent::ToolResult { id, output, agent: None, .. } if id == call => Some(output.to_string()),
+            _ => None,
+        });
+        assert!(launched.unwrap().contains(&format!("agentId: {agent_id}")));
+        let a = asks(&es);
+        assert_eq!(a.len(), 1);
+        assert_eq!((a[0].tool_name.as_str(), a[0].agent_id.as_str()), ("Bash", agent_id), "its ask, matched by agent_id");
+        assert!(es.iter().any(|e| matches!(e, HostedEvent::ToolCall { id, agent: Some(c), .. } if c == call && *id == a[0].tool_use_id)), "and by the call it asks for");
+        // Every line of the teammate's carries both: parent_tool_use_id (the Agent call) and agent_id.
+        let fixture = include_str!("fixtures/team_name_id.jsonl");
+        let its: Vec<Value> = fixture.lines().map(|l| serde_json::from_str::<Value>(l).unwrap()).filter(|v| v["parent_tool_use_id"] == call).collect();
+        assert!(!its.is_empty() && its.iter().all(|v| v["agent_id"] == agent_id));
+    }
+
+    /// 3. After the lead's process restarts (`--resume`), SendMessage by name reaches the earlier teammate: it
+    /// resumes under the same agent_id, with a task_started whose tool_use_id is the SendMessage call, its lines still
+    /// under the first process's Agent call. Its earlier lines don't come back on the stream.
+    #[test]
+    fn team_a_teammate_answers_a_message_after_the_leads_restart_and_its_old_lines_stay_away() {
+        let fixture = include_str!("fixtures/team_resume.jsonl");
+        let lines: Vec<&str> = fixture.lines().collect();
+        let second = lines.iter().position(|l| l.contains("\"isReplay\":true") && l.contains("Use SendMessage")).unwrap();
+        let restart = lines[..second].iter().rposition(|l| l.contains("\"subtype\":\"init\"")).unwrap();
+        let (before, after) = (events(&lines[..restart].join("\n")), events(&lines[restart..].join("\n")));
+        let (call, _) = agent_call(&before, "keeper");
+        let agent_id = tasks(&before, "task_started")[0]["task_id"].as_str().unwrap().to_string();
+        let send = after
+            .iter()
+            .find_map(|e| match e {
+                HostedEvent::ToolCall { id, name, input, agent: None } if name == "SendMessage" => Some((id.clone(), input.clone())),
+                _ => None,
+            })
+            .expect("the lead's SendMessage");
+        assert_eq!(send.1["to"], "keeper");
+        let sent = first(&after, |e| matches!(e, HostedEvent::ToolCall { name, .. } if name == "SendMessage"));
+        assert!(after[..sent].iter().all(|e| !by(e, call)), "nothing of the teammate's replayed on resume");
+        let resumed = tasks(&after, "task_started");
+        assert_eq!(resumed.len(), 1);
+        assert_eq!((resumed[0]["task_id"].as_str(), resumed[0]["tool_use_id"].as_str()), (Some(agent_id.as_str()), Some(send.0.as_str())));
+        let reply = after.iter().find_map(|e| match e {
+            HostedEvent::ToolResult { id, output, .. } if *id == send.0 => Some(output.to_string()),
+            _ => None,
+        });
+        assert!(reply.as_deref().is_some_and(|r| r.contains(&format!(r#"\"resumedAgentId\":\"{agent_id}\""#)) && r.contains(r#"\"name\":\"keeper\""#)), "{reply:?}");
+        let said: Vec<&str> = after.iter().filter_map(|e| if let HostedEvent::Said { text, agent: Some(a) } = e { (a == call).then_some(text.as_str()) } else { None }).collect();
+        assert_eq!(said, ["MANGO"], "it answered, remembering, under the first process's Agent call");
+    }
+
+    /// 4. With `isolation: worktree` the teammate works in `<lead's folder>/.claude/worktrees/agent-<agent_id>`. No
+    /// line names that folder as such: Cue knows it from the lead's cwd and the agent_id (its pwd and its ask agree).
+    #[test]
+    fn team_a_worktree_teammate_works_in_a_folder_named_by_its_agent_id() {
+        let fixture = include_str!("fixtures/team_worktree.jsonl");
+        let es = events(fixture);
+        let (call, input) = agent_call(&es, "builder");
+        assert_eq!(input["isolation"], "worktree");
+        let init: Value = serde_json::from_str(fixture.lines().next().unwrap()).unwrap();
+        let started = tasks(&es, "task_started");
+        let it = started.iter().find(|d| d["tool_use_id"] == call).unwrap();
+        let folder = format!("{}/.claude/worktrees/agent-{}", init["cwd"].as_str().unwrap(), it["task_id"].as_str().unwrap());
+        assert!(!it.to_string().contains("worktree"), "task_started doesn't say where");
+        let pwd = es.iter().find_map(|e| match e {
+            HostedEvent::ToolResult { output, agent: Some(a), .. } if a == call && output.as_str().is_some_and(|o| o.contains("worktrees")) => output.as_str(),
+            _ => None,
+        });
+        assert_eq!(pwd, Some(folder.as_str()), "its pwd");
+        let a = asks(&es);
+        assert_eq!(a.len(), 1);
+        assert!(a[0].suggestions.to_string().contains(&format!("\"{folder}\"")), "its ask offers that folder: {:?}", a[0].suggestions);
+    }
+}
