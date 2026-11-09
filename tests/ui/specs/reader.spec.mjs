@@ -147,3 +147,15 @@ test("Listen on a chat reply skips code and tables too, and marks each sentence 
   expect(await page.evaluate(() => window.__spoken)).toEqual(["Here is the fix.", "It is in docs now."]);
   expect(await marked()).toBe("It is in src-tauri/src/ipc/docs.rs now.");
 });
+
+test("Listening in the chat, the line above the box has Skip code & tables, as the reader does", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await page.evaluate(() => { localStorage.removeItem("cue.listenPlain"); listenPlain = true; speechSynthesis.speak = () => {}; speechSynthesis.cancel = () => {}; });
+  await page.locator('.nrow[data-big="n1"]').click();
+  await page.locator(".active-pane .cv-agent").last().locator("[data-listen]").click();
+  const skip = page.locator(".ls-line [data-listen-plain]");
+  await expect(skip).toBeChecked();
+  await skip.click();
+  await expect(page.locator(".ls-line [data-listen-plain]")).not.toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem("cue.listenPlain"))).toBe("0");
+});

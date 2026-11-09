@@ -39,6 +39,8 @@ function listenSay1(text, plain, a, b) {
     .replace(/[,;]\s*\)/g, ")").replace(/\(\s*[,;]?\s*\)/g, " ")
     .replace(/\s+([,.;:)])/g, "$1").replace(/\(\s+/g, "(").replace(/\s+/g, " ").replace(/^[\s,;:]+/, "").trim();
 }
+/** The "Skip code & tables" checkbox: one setting, shown in the reader, in Read and above the chat's box. */
+const listenPlainBox = () => `<label class="ls-then rdv-plain"><input type="checkbox" data-listen-plain="1" ${listenPlain ? "checked" : ""}/>Skip code &amp; tables</label>`;
 function listenPlainFlip() {
   listenPlain = !listenPlain;
   try { localStorage.setItem("cue.listenPlain", listenPlain ? "1" : "0"); } catch {}
@@ -423,13 +425,13 @@ function listenBtn(key) {
   const [icon, label] = !on ? [SPEAKER_ICON, "Listen"] : listening.playing ? [PAUSE_ICON, "Pause"] : [PLAY_ICON, "Resume"];
   return `<button class="cv-pill ls-pill ${on ? "on" : ""}" data-listen="${esc(key)}">${icon}${label}</button>`;
 }
-/** Above the chat's box while a reply is read out: in its own session, how far; in another, whose (a click goes there). */
+/** Above the chat's box while a reply is read out: in its own session, how far; in another, whose (a click goes there); Skip code & tables, as in the reader. */
 function listenLine(sid) {
   const l = listening;
   if (!l || !sid) return "";
   const where = l.key.startsWith("file:") ? `<button class="ls-where" data-view="read">${esc(l.key.split("/").pop())}</button>` : l.sid === sid ? `sentence <span data-listen-of="1">${Math.min(l.i + 1, l.n)} of ${l.n}</span>` : `<button class="ls-where" data-listen-open="${esc(l.sid)}">${esc(nameOf(l.sid, sessionOf(l.sid)?.project))}</button>`;
   return `<div class="ls-line" data-key="listen"><b>${l.playing ? "Listening" : "Paused"}</b><span class="dim"> · ${where}${listenSpeed ? ` · ${LISTEN_SPEEDS[listenSpeed]}×` : ""}</span><span class="grow"></span>
-    <button class="btn" data-listen-toggle="1" aria-label="${l.playing ? "Pause" : "Go on"}">${l.playing ? PAUSE_ICON : PLAY_ICON}</button><button class="btn" data-listen-stop="1">Stop</button></div>`;
+    ${listenPlainBox()}<button class="btn" data-listen-toggle="1" aria-label="${l.playing ? "Pause" : "Go on"}">${l.playing ? PAUSE_ICON : PLAY_ICON}</button><button class="btn" data-listen-stop="1">Stop</button></div>`;
 }
 /** The reader's foot while it reads the reply open there: a sentence back, pause, a sentence on, how far, speed,
  *  "Then the next reply", Stop. */
