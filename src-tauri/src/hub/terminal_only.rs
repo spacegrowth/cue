@@ -17,6 +17,17 @@ use crate::terminal::launch::Place;
 /// Claude Code's commands that need its terminal whatever it reports: signing in and out, and its own settings
 /// screens.
 const CLAUDE_ALWAYS: [&str; 8] = ["login", "logout", "config", "theme", "terminal-setup", "doctor", "ide", "vim"];
+/// What each of `CLAUDE_ALWAYS` does, for the `/` menu: Claude Code's headless list (commands.rs) leaves them out.
+const CLAUDE_ALWAYS_DESC: [&str; 8] = [
+    "Sign in to Claude Code",
+    "Sign out of Claude Code",
+    "Claude Code's settings",
+    "Change Claude Code's colour theme",
+    "Set up the terminal's keys for Claude Code",
+    "Check Claude Code's install",
+    "Connect Claude Code to your editor",
+    "Turn vim keys on or off",
+];
 /// Pi's commands that change Pi itself (its sign-in and settings), not a session: done in Pi in a terminal.
 const PI_SCREENS: [&str; 7] = ["login", "logout", "settings", "scoped-models", "hotkeys", "changelog", "trust"];
 
@@ -43,17 +54,29 @@ pub(crate) fn own(harness: &str, name: &str, text: &str, terminal_only: &[String
     }
 }
 
+/// Claude Code's own screens that its headless list of commands leaves out, for the `/` menu: name and what it does.
+/// `reported`: what it said only its terminal has (a hosted session's start), shown with no description of its own.
+pub(crate) fn claude_screens(reported: &[String]) -> Vec<(String, String)> {
+    let always = CLAUDE_ALWAYS.iter().zip(CLAUDE_ALWAYS_DESC).map(|(n, d)| (n.to_string(), d.to_string()));
+    let more = reported.iter().filter(|n| !CLAUDE_ALWAYS.contains(&n.as_str())).map(|n| (n.clone(), String::new()));
+    always.chain(more).collect()
+}
+
 impl Hub {
     /// The commands Claude said only its terminal has, at the session's start.
     pub(crate) fn note_terminal_only(&self, session_id: &str, names: Vec<String>) {
         self.write(|st| st.terminal_only.insert(session_id.to_string(), names));
     }
 
+    /// What Claude reported only its terminal has, for hosted session `session_id`.
+    pub(crate) fn reported_terminal_only(&self, session_id: &str) -> Vec<String> {
+        self.read(|st| st.terminal_only.get(session_id).cloned()).unwrap_or_default()
+    }
+
     /// What `/name` is in hosted session `session_id`, when it's one of its agent's own (see `own`).
     pub(crate) fn own_command(&self, session_id: &str, name: &str, text: &str) -> Option<Own> {
         let origin = self.hosted_origin(session_id)?;
-        let reported = self.read(|st| st.terminal_only.get(session_id).cloned()).unwrap_or_default();
-        own(&origin.harness, name, text, &reported)
+        own(&origin.harness, name, text, &self.reported_terminal_only(session_id))
     }
 
     /// `text`, when it's one of a hosted session's agent's own commands: opened in a terminal tab, or refused. What
@@ -97,6 +120,15 @@ mod tests {
         assert_eq!(own("claude", "login", "/login", &[]), terminal("claude '/login'", ""));
         assert_eq!(own("claude", "statusline", "/statusline", &["statusline".into()]), terminal("claude '/statusline'", ""), "what Claude reported at start");
         assert_eq!(own("claude", "compact", "/compact", &[]), None);
+    }
+
+    #[test]
+    fn claude_codes_screens_are_in_the_menu_with_what_it_reported_and_none_twice() {
+        let s = super::claude_screens(&["statusline".into(), "config".into()]);
+        let names: Vec<&str> = s.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"login") && names.contains(&"config") && names.contains(&"statusline"));
+        assert_eq!(names.iter().filter(|n| **n == "config").count(), 1);
+        assert!(s.iter().find(|(n, _)| n == "login").is_some_and(|(_, d)| !d.is_empty()));
     }
 
     #[test]

@@ -14,8 +14,9 @@ use std::time::Duration;
 /// the tests that run one take turns.
 static WATCHERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Never with the CUE_HOSTED of whatever runs the tests (a hosted session): the script then skips most events.
 fn run_sh(script: &str, home: &std::path::Path, args: &[&str], input: &str) -> String {
-    let mut c = Command::new("/bin/sh").arg("-c").arg(script).arg("cue-hook").args(args).env("HOME", home).env("TMUX", "/tmp/x,1,0").env("TMUX_PANE", "%7").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let mut c = Command::new("/bin/sh").arg("-c").arg(script).arg("cue-hook").args(args).env("HOME", home).env_remove("CUE_HOSTED").env("TMUX", "/tmp/x,1,0").env("TMUX_PANE", "%7").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     c.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
     String::from_utf8_lossy(&c.wait_with_output().unwrap().stdout).to_string()
 }

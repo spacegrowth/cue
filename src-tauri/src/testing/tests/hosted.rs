@@ -636,6 +636,22 @@ fn one_of_claude_codes_own_screens_opens_in_a_terminal_tab_and_the_session_never
     assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "/compact".to_string())));
 }
 
+#[test]
+fn claude_codes_own_screens_are_in_the_slash_menu_marked_as_opening_a_terminal() {
+    let w = World::new();
+    let sid = started(&w, "");
+    w.hosted_says(&sid, HostedEvent::Started { session_id: sid.clone(), model: "opus".into(), slash_commands: vec!["compact".into()], terminal_only: vec!["statusline".into()] });
+    // What Claude Code's headless mode lists for the folder: none of its own screens.
+    let compact = crate::commands::Cmd { name: "compact".into(), kind: "command".into(), desc: "Compact".into(), hint: String::new(), args: vec![] };
+    crate::db::set_commands(&w.home().to_string_lossy(), crate::model::now_ms(), &[compact]);
+    let menu = crate::ipc::commands_of(w.hub(), &sid, false);
+    let kind = |n: &str| menu["list"].as_array().unwrap().iter().find(|c| c["name"] == n).map(|c| c["kind"].as_str().unwrap_or_default().to_string());
+    assert_eq!(kind("login").as_deref(), Some("terminal"), "{menu}");
+    assert_eq!(kind("config").as_deref(), Some("terminal"));
+    assert_eq!(kind("statusline").as_deref(), Some("terminal"), "what Claude reported at its start");
+    assert_eq!(kind("compact").as_deref(), Some("command"), "it runs headless");
+}
+
 /// A hosted `agent` session started by + New in the World's folder: its id.
 fn started_as(w: &World, agent: &str) -> String {
     hosted_on(true);

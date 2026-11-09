@@ -33,8 +33,9 @@ pub(crate) async fn session_commands(hub: State<'_, Arc<Hub>>, session_id: Strin
 }
 
 /// What session_commands answers with.
-fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
+pub(crate) fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
     let mut v = listed(hub, session_id, fresh);
+    add_claude_screens(hub, session_id, &mut v);
     // Hosted: its agent's own commands that open a terminal, or that it doesn't have (hub/terminal_only.rs).
     if hub.hosted_origin(session_id).is_some() {
         for c in v["list"].as_array_mut().into_iter().flatten() {
@@ -47,6 +48,20 @@ fn commands_of(hub: &Hub, session_id: &str, fresh: bool) -> serde_json::Value {
         }
     }
     v
+}
+
+/// Claude Code's own screens (`/login`, `/config`…) put in a Claude session's list, which comes from its headless
+/// mode and so leaves them out. In its terminal they're Claude's; hosted, the loop above marks them as opening one.
+fn add_claude_screens(hub: &Hub, session_id: &str, v: &mut serde_json::Value) {
+    if hub.session_origin(session_id).is_none_or(|o| o.harness != "claude") {
+        return;
+    }
+    let Some(list) = v["list"].as_array_mut() else { return };
+    for (name, desc) in crate::hub::claude_screens(&hub.reported_terminal_only(session_id)) {
+        if !list.iter().any(|c| c["name"] == name.as_str()) {
+            list.push(serde_json::json!(commands::Cmd { name, kind: "command".into(), desc, hint: String::new(), args: vec![] }));
+        }
+    }
 }
 
 /// The session's commands, as its agent has them.
