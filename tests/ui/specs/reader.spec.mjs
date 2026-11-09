@@ -77,7 +77,6 @@ test("New docs: the newest .md files in this Mac's sessions' repos, at the foot 
   await page.locator(".rdv-list > .rdv-item [data-read-open]").first().click();
   await expect(page.locator(".rdv-list > .rdv-item.on")).toHaveCount(1);
   await expect(page.locator(".rdv-new .rdv-item.on")).toHaveCount(0);
-  await expect(page.locator("[data-read-back]")).toHaveText(/agent-relay chat/);
 });
 
 test("Listen in Read skips code, tables, paths and § references (Skip code & tables, on by default)", async ({ cue, page }) => {
@@ -116,4 +115,35 @@ test("Read keeps its place when Cue redraws (a session's update), and a file you
   expect(await page.evaluate(() => document.querySelector(".rdv-scroll").scrollTop)).toBe(1500);
   await page.evaluate(() => readOpen("/x/other.md"));
   expect(await page.evaluate(() => document.querySelector(".rdv-scroll").scrollTop)).toBe(0);
+});
+
+test("Read always has ‹ <session> chat, back to the chat you came from", async ({ cue, page }) => {
+  await cue.open("board-waiting");
+  await cue.override("read_doc", ({ path }) => ({ path, text: "# Doc", modified_ms: 0 }));
+  await cue.override("recent_docs", () => [{ path: "/Users/me/code/agent-relay/docs/mine.md", top: "/Users/me/code/agent-relay", created_ms: 0, modified_ms: 0 }]);
+  await page.locator('.nrow[data-big="n1"]').click();
+  await page.locator('[data-view="read"]').click();
+  await page.locator(".rdv-new [data-read-new]").click();
+  await expect(page.locator("[data-read-back]")).toHaveText(/agent-relay chat/);
+  await page.locator("[data-read-back]").click();
+  await expect(page.locator('[data-view="board"]')).toHaveClass(/on/);
+});
+
+test("Listen on a chat reply skips code and tables too, and marks each sentence it reads", async ({ cue, page }) => {
+  const REPLY = "Here is the fix.\n\n```\ncargo test --lib docs\n```\n\n| File | Change |\n| --- | --- |\n| docs.rs | new |\n\nIt is in `src-tauri/src/ipc/docs.rs` now.";
+  await cue.open("board-waiting");
+  await page.evaluate(() => { localStorage.removeItem("cue.listenPlain"); listenPlain = true; });
+  await cue.change((s, t) => { s.sessions.find((x) => x.session_id === "relay").thread.at(-1).text = t; }, REPLY);
+  await page.locator('.nrow[data-big="n1"]').click();
+  // Each sentence held until the test lets it end, so the mark can be read on it.
+  await page.evaluate(() => { window.__spoken = []; window.__end = null; speechSynthesis.speak = (u) => { window.__spoken.push(u.text); window.__end = () => u.onend?.(); }; speechSynthesis.cancel = () => {}; });
+  await page.locator(".active-pane .cv-agent").last().locator("[data-listen]").click();
+  const marked = () => page.evaluate(() => { const h = CSS.highlights.get("cue-say"); return h ? [...h].map((r) => r.toString()).join("") : ""; });
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
+  expect(await marked()).toBe("Here is the fix.");
+  await page.evaluate(() => window.__end());
+  // The code block and the table are passed over: the next sentence read, and marked, is the last one.
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(2);
+  expect(await page.evaluate(() => window.__spoken)).toEqual(["Here is the fix.", "It is in docs now."]);
+  expect(await marked()).toBe("It is in src-tauri/src/ipc/docs.rs now.");
 });

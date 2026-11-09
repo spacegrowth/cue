@@ -442,6 +442,6 @@ function listenPlayer(key) {
     <span class="dim ls-of" data-listen-of="1">${of} of ${l.n}</span>
     <span class="ls-track"><span class="ls-fill" style="width: ${Math.round((of / Math.max(1, l.n)) * 100)}%"></span></span>
     <span class="rd-seg ls-speeds">${LISTEN_SPEEDS.map((x, n) => `<button class="${n === listenSpeed ? "on" : ""}" data-listen-speed="${n}">${x}×</button>`).join("")}</span>
-    ${key.startsWith("file:") ? "" : `<label class="ls-then"><input type="checkbox" data-listen-then="1" ${listenThen ? "checked" : ""}/>Then the next reply</label>`}
-    <button class="btn" data-listen-stop="1">Stop</button></div>`;
+    <span class="ls-opts">${key.startsWith("file:") ? "" : `<label class="ls-then"><input type="checkbox" data-listen-then="1" ${listenThen ? "checked" : ""}/>Then the next reply</label>`}
+    <button class="btn" data-listen-stop="1">Stop</button></span></div>`;
 }

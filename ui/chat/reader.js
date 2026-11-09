@@ -26,8 +26,12 @@ function openReader(sid, key) {
   renderMain();
 }
 /** A markdown file a reply named: in Read (read.js), found from the session's folder (ipc/docs.rs read_doc: the path
- *  as written, from the folders up to the repo's top, or by name). */
-const openDoc = (sid, path) => readOpen(path, sid, sessionOf(sid)?.cwd || null);
+ *  as written, from the folders up to the repo's top, or by name). Read's ‹ goes back to the chat you came from: a
+ *  link in the mini window opens its own chat behind Read first. */
+function openDoc(sid, path) {
+  if (current()?.s?.session_id !== sid && sessionOf(sid)) setActive(null, sid);
+  return readOpen(path, sid, sessionOf(sid)?.cwd || null);
+}
 const isDocPath = (p) => /\.(md|markdown)$/i.test(p);
 /** ‹ › (and ← →): the previous or next reply, if there is one. */
 function stepReader(dir) {
@@ -76,7 +80,7 @@ function readerPane(sid, it, s, harness, rv) {
   const bar = `<div class="bg-view-head rd-head" data-key="head"><button class="bg-back" data-reader-back="1"><span class="bg-back-ch">‹</span>Chat</button>${who}<span class="grow"></span>${term}
     <span class="rd-seg"><button data-reader-step="-1" aria-label="Previous reply" ${rv.at ? "" : "disabled"}>‹</button><span class="rd-of">${rv.at + 1} of ${n}</span><button data-reader-step="1" aria-label="Next reply" ${rv.at < n - 1 ? "" : "disabled"}>›</button></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
-    ${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</div>`;
+    <span class="rd-listen"><label class="ls-then rdv-plain"><input type="checkbox" data-listen-plain="1" ${listenPlain ? "checked" : ""}/>Skip code &amp; tables</label>${listening?.key === r.key ? "" : `<button class="btn ls-btn" data-listen="${esc(r.key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-copy="1">Copy</button>${s ? `<button class="btn primary" data-reader-reply="1">Reply</button>` : ""}</span></div>`;
   const body = `<div class="rd" data-key="rd:${esc(r.key)}:${readerSize}" data-rdkey="${esc(r.key)}" style="--rd-size: ${READER_SIZES[readerSize]}px"><div class="rd-by">${esc(agentName(harness))} · ${ago(r.at_ms)} ago · reply ${rv.at + 1} of ${n}</div><div class="msg">${md(stripStatus(r.text))}</div>${localImages(r.text)}</div>`;
   const asks = isPending(it) && it.kind !== "waiting";
   const foot = asks ? `<div class="foot rd-ask"><span class="rd-ask-dot"></span><span class="rd-ask-t"><b>${esc(nameOf(sid, it.project))} ${it.kind === "question" ? "is asking you" : "needs a decision"}</b>${it.kind === "question" ? "" : `<span class="dim"> · ${esc(verb(it))}</span>`}</span><span class="grow"></span><button class="btn primary" data-reader-back="1">Back to chat</button></div>` : "";

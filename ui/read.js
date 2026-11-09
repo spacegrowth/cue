@@ -14,6 +14,23 @@ let readNew = [];         // [{ path, top, created_ms, modified_ms }]: the newes
 let readNewAt = 0;        // when they were last asked for
 const readKeyOf = (path) => `file:${path}`;
 const readName = (path) => String(path).split("/").pop();
+/** A file's project, as Cue names it: the project of the session on this Mac whose folder holds it (the deepest), or
+ *  one whose folder is in its repo (`top`); else the repo's folder name, else the file's own folder. */
+function readProject(path, top = "") {
+  return readPlace(path, top).name;
+}
+/** The project a file is in (readProject) and its folder within it ("docs/dev"; "" at the project's top); a file in
+ *  no project's folder: its own folder, shortened, as `dir`. */
+function readPlace(path, top = "") {
+  const local = state.sessions.filter((s) => !s.machine && s.cwd && s.project);
+  const into = local.filter((s) => path.startsWith(`${s.cwd.replace(/\/+$/, "")}/`)).sort((a, b) => b.cwd.length - a.cwd.length)[0]
+    || (top && local.find((s) => s.cwd === top || s.cwd.startsWith(`${top}/`)));
+  const dirOf = (root) => path.slice(root.replace(/\/+$/, "").length + 1).replace(/\/?[^/]*$/, "");
+  if (into) return { name: projLabel(into.project), dir: dirOf(path.startsWith(`${into.cwd}/`) ? into.cwd : top) };
+  if (top) return { name: readName(top), dir: dirOf(top) };
+  const folder = path.replace(/\/[^/]*$/, "");
+  return { name: readName(folder), dir: shortPath(folder.replace(/^\/Users\/[^/]+/, "~")) };
+}
 
 /** A file in Recent: one opened for the first time goes on top; one opened before stays where it is (the list never
  *  moves under your clicks), its session kept up to date. */
@@ -57,12 +74,14 @@ function readLoadNew(force = false) {
   invoke("recent_docs", { folders, limit: 10 }).then((list) => { readNew = list || []; if (view === "read") renderMain(); }, () => {});
 }
 addEventListener("focus", () => { if (view === "read") readLoadNew(true); });
-/** The session a file belongs to: one on this Mac whose folder is in the file's repo (for ‹ <session> chat). */
-const readSidIn = (top) => state.sessions.find((s) => !s.machine && s.cwd && (s.cwd === top || s.cwd.startsWith(`${top}/`)))?.session_id || null;
-/** ‹ <session>: back to the session it was opened from. */
+/** The chat ‹ goes back to: the one you came from, open behind Read. */
+function readBackSid() {
+  const sid = current()?.s?.session_id;
+  return sid && sessionOf(sid) ? sid : null;
+}
 function readBack() {
-  const sid = readDoc?.sid;
-  if (sid && sessionOf(sid)) setActive(null, sid);
+  const sid = readBackSid();
+  if (sid) setActive(null, sid);
   else { view = "board"; renderMain(); }
 }
 function readForget(path) {
@@ -117,15 +136,15 @@ function readView() {
   if (!readDoc && !readTried && readRecent.length) { readTried = true; const r = readRecent[0]; queueMicrotask(() => readOpen(r.path, r.sid)); }
   const d = readDoc, key = d ? readKeyOf(d.path) : "";
   const list = readRecent.length
-    ? readRecent.map((r) => `<div class="rdv-item ${d?.path === r.path && d.from !== "new" ? "on" : ""}"><button class="rdv-open" data-read-open="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc([r.project, `${ago(r.at)} ago`].filter(Boolean).join(" · "))}</span></button><button class="rdv-x" data-read-forget="${esc(r.path)}" aria-label="Take it off the list">×</button></div>`).join("")
+    ? readRecent.map((r) => `<div class="rdv-item ${d?.path === r.path && d.from !== "new" ? "on" : ""}"><button class="rdv-open" data-read-open="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readProject(r.path)} · ${ago(r.at)} ago`)}</span></button><button class="rdv-x" data-read-forget="${esc(r.path)}" aria-label="Take it off the list">×</button></div>`).join("")
     : `<div class="quiet-line">Files you open show here. Click a .md path in any reply.</div>`;
   // At the foot of the left: the newest docs in your sessions' repos, whether or not you opened them.
-  const fresh = readNew.length ? `<div class="rdv-new"><div class="col-head">NEW DOCS</div>${readNew.map((r) => `<div class="rdv-item ${readDoc?.path === r.path && readDoc.from === "new" ? "on" : ""}"><button class="rdv-open" data-read-new="${esc(r.path)}" data-top="${esc(r.top)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readName(r.top)} · ${ago(r.created_ms)} ago`)}</span></button></div>`).join("")}</div>` : "";
+  const fresh = readNew.length ? `<div class="rdv-new"><div class="col-head">NEW DOCS</div>${readNew.map((r) => `<div class="rdv-item ${readDoc?.path === r.path && readDoc.from === "new" ? "on" : ""}"><button class="rdv-open" data-read-new="${esc(r.path)}"><span class="rdv-name">${esc(readName(r.path))}</span><span class="rdv-sub">${esc(`${readProject(r.path, r.top)} · ${ago(r.created_ms)} ago`)}</span></button></div>`).join("")}</div>` : "";
   if (!d) return `<div class="rdv"><div class="rdv-list"><div class="col-head">RECENT</div>${list}${fresh}</div><div class="rdv-doc rdv-none"><div class="quiet-line">${readRecent.length ? "Opening…" : "Nothing open yet."}</div></div></div>`;
   const html = md(d.text, { pathsOf: d.sid && sessionOf(d.sid) ? d.sid : null, doc: true });
   const heads = readHeadings(html).filter((h) => h.lv > 0);
-  const from = d.sid && sessionOf(d.sid);
-  const head = `<div class="bg-view-head rd-head rdv-head">${from ? `<button class="bg-back" data-read-back="1"><span class="bg-back-ch">‹</span>${esc(nameOf(d.sid, from.project))} chat</button>` : ""}<span class="rdv-title"><span class="rd-file">${esc(readName(d.path))}</span><span class="rdv-where">${esc(shortPath(d.path.replace(/\/[^/]*$/, "").replace(/^\/Users\/[^/]+/, "~")))}${d.modified_ms ? ` · changed ${ago(d.modified_ms)} ago` : ""}</span></span><span class="grow"></span>
+  const back = readBackSid();
+  const head = `<div class="bg-view-head rd-head rdv-head">${back ? `<button class="bg-back" data-read-back="1"><span class="bg-back-ch">‹</span>${esc(nameOf(back, sessionOf(back).project))} chat</button>` : ""}<span class="rdv-title"><span class="rd-file">${esc(readName(d.path))}</span><span class="rdv-where">${esc((({ name, dir }) => [name, dir].filter(Boolean).join(" · "))(readPlace(d.path)))}${d.modified_ms ? ` · changed ${ago(d.modified_ms)} ago` : ""}</span></span><span class="grow"></span>
     <span class="rd-seg"><button class="rd-a small" data-reader-size="-1" aria-label="Smaller text" ${readerSize ? "" : "disabled"}>A</button><button class="rd-a big" data-reader-size="1" aria-label="Larger text" ${readerSize < READER_SIZES.length - 1 ? "" : "disabled"}>A</button></span>
     <label class="ls-then rdv-plain"><input type="checkbox" data-listen-plain="1" ${listenPlain ? "checked" : ""}/>Skip code &amp; tables</label>
     ${listening?.key === key ? "" : `<button class="btn ls-btn" data-listen="${esc(key)}" data-listen-reader="1">${SPEAKER_ICON}Listen</button>`}<button class="btn" data-reader-open="${esc(d.path)}">Open</button></div>`;
