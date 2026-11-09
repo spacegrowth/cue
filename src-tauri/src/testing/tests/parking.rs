@@ -2,7 +2,7 @@
 //! what it refuses, a restart that can't stop its agent, a restart that fails after its park (its tmux
 //! session vanished), and what a relaunch after a reboot brings back by itself.
 
-use crate::ipc::{auto_resumable, park, restart_session_now};
+use crate::ipc::{auto_resumable, move_to_terminal_now, park, restart_session_now};
 use crate::testing::{relay_calls, AgentProcess, Crew, World};
 use serde_json::json;
 
@@ -220,4 +220,36 @@ fn after_a_reboot_cue_brings_back_its_claude_sessions_in_tmux_and_leaves_executo
     let mut back: Vec<String> = w.hub().saved_sessions().into_iter().filter(|s| auto_resumable(&s.origin, crate::leads::is_executor)).map(|s| s.origin.session_id).collect();
     back.sort();
     assert_eq!(back, ["mine"], "not an executor, a session with no pane, nor one only Claude can --resume");
+}
+
+/// ⋯ → Move to terminal for a session in Cue's own terminal (ipc/move_out.rs): its agent ended as Close does, then
+/// resumed in a tab of your terminal app, with its name and star.
+#[test]
+fn move_to_terminal_takes_a_session_out_of_cues_terminal_into_a_tab_of_yours() {
+    let w = World::new();
+    let agent = AgentProcess::start();
+    w.session("a").running_as(agent.pid).in_tmux("%7").prompt("go").stop("Done.");
+    // Named as + New names it (a rename is typed into its terminal, which this test's terminal echoes as a message).
+    w.hub().name_new("a", "billing");
+    w.hub().set_starred("a", true);
+    let said = move_to_terminal_now(w.hub(), "a").unwrap();
+    assert!(said.starts_with("Moved to"), "{said}");
+    w.settle();
+    assert!(!agent.running(), "its agent in Cue's terminal ended");
+    let l = w.launcher.last();
+    assert!(l.line.contains("claude --resume 'a'"), "{}", l.line);
+    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
+    let s = w.snapshot();
+    assert_eq!(s.session("a")["name"], "billing");
+    assert_ne!(w.hub().session_origin("a").unwrap().tmux_pane, "%7", "not in Cue's terminal any more");
+    assert!(w.hub().session_star("a") > 0, "starred still");
+}
+
+#[test]
+fn move_to_terminal_leaves_a_session_already_in_a_terminal_of_yours_where_it_is() {
+    let w = World::new();
+    let agent = AgentProcess::start();
+    finished(&w, "a", &agent);
+    assert_eq!(move_to_terminal_now(w.hub(), "a"), Err("it already runs in a terminal of yours".to_string()));
+    assert!(agent.running());
 }

@@ -36,14 +36,20 @@ fn a_background_agent_shows_at_work_under_its_step_until_its_session_hears_it_fi
     assert_eq!(h.tokens, 10 + 1000 + 100 + 20 + 5 + 1100 + 30, "its tokens: every reply's input, cache reads and writes, and output");
     let last = crate::logs::transcript::iso_ms("2026-10-04T10:00:06.000Z").unwrap();
     assert_eq!(h.last_ms, last, "last did something: its newest step");
-    assert!(!h.stuck(last + STUCK_MS) && h.stuck(last + STUCK_MS + 1), "stuck once nothing happened for STUCK_MS");
+    // Quiet past the threshold (sessions/quiet.rs) with a step open ("Reading …"): a long run, left to it, not stuck.
+    let quiet = crate::sessions::quiet::QUIET_MS;
+    assert_eq!((h.quiet(last + quiet - 1), h.quiet(last + quiet)), ("", "tool"));
+    assert!(!h.stuck(last + quiet), "a step open is a long run, not stuck");
+    assert!(h.open_step().starts_with("Reading"), "{}", h.open_step());
     assert_eq!(running_helpers(p), vec!["Backend: names".to_string()]);
     assert_eq!(running_background(p), 1);
     assert_eq!(agent_count(p, true), Some(1), "its agents: the same list the window shows");
     assert_eq!(agent_name(p, "a1"), "Backend: names", "an ask from inside it is named by its task");
     assert_eq!(agent_name(p, "nope"), "");
     let shown = &steps(p, 0)["helpers"][0];
-    assert_eq!((shown["tokens"].as_u64(), shown["last_ms"].as_u64(), shown["running"].as_bool(), shown["stuck"].as_bool()), (Some(2265), Some(last), Some(true), Some(true)), "sent as such (and that step is years old by now): {shown}");
+    assert_eq!((shown["tokens"].as_u64(), shown["last_ms"].as_u64(), shown["running"].as_bool(), shown["stuck"].as_bool()), (Some(2265), Some(last), Some(true), Some(false)), "sent as such: {shown}");
+    // That step is long open by now: a long run, left to it (sessions/quiet.rs), the step it has open said.
+    assert_eq!((shown["quiet"].as_str(), shown["quiet_what"].as_str()), (Some("tool"), Some("Reading hub.rs")));
     // It writes its report: it's done, even before its session hears so.
     let v = f.version;
     let mut log = std::fs::OpenOptions::new().append(true).open(sub.join("agent-a1.jsonl")).unwrap();
@@ -251,4 +257,47 @@ fn a_teammate_with_no_log_of_its_own_goes_by_its_name() {
     assert_eq!(f.helpers.len(), 1);
     assert_eq!((f.helpers[0].desc.as_str(), f.helpers[0].name.as_str()), ("probe", "probe"));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A session `s` whose background agent "a1" (a fork, `kind`) wrote `lines` to its own log, its last one long ago, and
+/// never sent its notice: the feed, caught up.
+fn quiet_agent(name: &str, lines: &[&str]) -> Feed {
+    let dir = std::env::temp_dir().join(format!("cue-steps-quiet-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let sub = dir.join("s").join("subagents");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join("agent-a1.meta.json"), r#"{"agentType":"fork","description":"Review the packet","toolUseId":"t1","requestShape":"background"}"#).unwrap();
+    let mut log = vec![r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"review it"}}"#];
+    log.extend_from_slice(lines);
+    std::fs::write(sub.join("agent-a1.jsonl"), log.join("\n") + "\n").unwrap();
+    let path = dir.join("s.jsonl");
+    std::fs::write(&path, [
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"review the packet"}}"#,
+        r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Review the packet","subagent_type":"fork","prompt":"review it","run_in_background":true}}]}}"#,
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Review the packet"}}"#,
+    ].join("\n") + "\n").unwrap();
+    let mut f = Feed::open(path.to_str().unwrap(), 1);
+    f.catch_up();
+    f
+}
+
+#[test]
+fn an_agent_quiet_for_long_whose_last_line_is_its_answer_finished_and_one_after_a_result_is_stuck() {
+    // Its last line its own words, no notice, no end_turn (a fork's report, written long ago): done, not running.
+    let f = quiet_agent("done", &[
+        r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"h1","name":"Read","input":{"file_path":"/p/a.md"}}]}}"#,
+        r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"h1","content":"text"}]}}"#,
+        r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:06.000Z","message":{"content":[{"type":"text","text":"Reviewed: 2 findings, both minor."}]}}"#,
+    ]);
+    let h = &f.helpers[0];
+    assert!(!h.running(), "finished and lingering: done, not quiet");
+    assert_eq!(h.quiet(crate::model::now_ms()), "");
+    // Its last line a tool's result, and nothing after: stuck (quiet, nothing open).
+    let f = quiet_agent("stuck", &[
+        r#"{"type":"assistant","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:04.000Z","message":{"content":[{"type":"tool_use","id":"h1","name":"Read","input":{"file_path":"/p/a.md"}}]}}"#,
+        r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"h1","content":"text"}]}}"#,
+    ]);
+    let h = &f.helpers[0];
+    assert!(h.running());
+    assert!(h.stuck(crate::model::now_ms()) && h.open_step().is_empty(), "quiet with nothing open: stuck");
 }

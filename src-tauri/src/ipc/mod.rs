@@ -11,10 +11,12 @@ mod insights;
 mod insights_tab;
 mod machines;
 mod mcp_live;
+mod move_out;
 mod restore;
 mod sessions;
 mod settings;
 mod state;
+mod team;
 mod terminal;
 mod updates;
 
@@ -25,10 +27,12 @@ pub(crate) use insights::*;
 pub(crate) use insights_tab::*;
 pub(crate) use machines::*;
 pub(crate) use mcp_live::*;
+pub(crate) use move_out::*;
 pub(crate) use restore::*;
 pub(crate) use sessions::*;
 pub(crate) use settings::*;
 pub(crate) use state::*;
+pub(crate) use team::*;
 pub(crate) use terminal::*;
 pub(crate) use updates::*;
 

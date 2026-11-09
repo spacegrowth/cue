@@ -82,6 +82,11 @@ impl FakeHosted {
         *crate::locking::lock(&self.refusal, "fake hosted refusal") = Some(why.to_string());
     }
 
+    /// Starts go through again.
+    pub fn accept(&self) {
+        *crate::locking::lock(&self.refusal, "fake hosted refusal") = None;
+    }
+
     /// Requests of Cue's to an agent itself: (session, request).
     pub fn controls(&self) -> Vec<(String, serde_json::Value)> {
         crate::locking::lock(&self.controls, "fake hosted controls").clone()

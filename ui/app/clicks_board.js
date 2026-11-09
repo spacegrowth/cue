@@ -155,6 +155,8 @@ function answerTerminal(tp) {
   return invoke("answer_terminal", { id: tp.dataset.id, n: +tp.dataset.tpick }).then((r) => toast(r)).catch((e) => toast(`Couldn't answer it: ${e}`));
 }
 const BOARD_CLICKS = [
+  // The add-on's first: a button of its on a session's card is its own, not the card's.
+  ...addOn.clicks,
   rule("[data-session]", (ss) => openSession(ss.dataset.session)),
   rule("[data-view]", (vb) => { view = vb.dataset.view; renderMain(); }),
   rule("[data-hfilter]", (hf) => { histFilter = hf.dataset.hfilter; histOpen = null; renderMain(); }),

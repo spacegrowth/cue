@@ -51,9 +51,10 @@ pub fn user_message(text: &str) -> String {
     json!({ "type": "user", "message": { "role": "user", "content": text } }).to_string()
 }
 
-/// The setup request every host sends first (its reply lists commands, models and more).
+/// The setup request every host sends first (its reply lists commands, models and more). `promptSuggestions`:
+/// after a turn with an obvious next step, Claude says what you'd likely type (a `prompt_suggestion` line).
 pub fn initialize(request_id: &str) -> String {
-    request(request_id, json!({ "subtype": "initialize" }))
+    request(request_id, json!({ "subtype": "initialize", "promptSuggestions": true }))
 }
 
 /// Stop what it's doing: the running tool is stopped and the turn ends.

@@ -50,7 +50,7 @@
 .pill.intr { background: var(--deny); color: #fff; }
 /* The top of the chat: "Earlier messages", loading, or where Cue's log starts. */
 .cv-older { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0 8px; }
-.cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+.cv-older button { font: inherit; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--pill-radius); padding: 3px 12px; cursor: pointer; }
 .cv-older button:hover { color: var(--ink); border-color: var(--muted); }
 /* Catch me up: in the insight bar's place above the box, no border or fill. */
 .cu-strip { margin: 4px 0 0; padding: 6px 2px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink); }
@@ -73,7 +73,7 @@
 /* The session the Active pane shows, where it's listed in Sessions: a solid lime border, not a fill. */
 .working.on, .working.on:hover { border: 1px solid var(--sel); box-shadow: inset 0 0 0 1px var(--sel); opacity: 1; }
 /* In the drop-down the lime fill is the keyboard highlight, so the open session gets a tag instead. */
-.viewing-tag { flex: none; margin: 0 6px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--ink); color: var(--panel); }
+.viewing-tag { flex: none; margin: 0 6px; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: var(--pill-radius); background: var(--ink); color: var(--panel); }
 .tl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .queued-note { margin-top: 6px; font-size: 12px; color: var(--on-bg); }
 

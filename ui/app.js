@@ -85,6 +85,7 @@ async function boot() {
   bindMain();
   setState(await invoke("get_state"));
   loadExtensions();
+  addOn.boot();
   loadMachines();   // their names (and what you renamed them to) for every label, before + New is opened
   restoreSpot();
   await T.event.listen("state", (e) => setState(e.payload));

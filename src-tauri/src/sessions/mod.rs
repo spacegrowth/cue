@@ -10,6 +10,9 @@ mod delivery;
 mod held;
 mod marks;
 mod names;
+pub(crate) mod shell_writes;
+pub mod quiet;
+pub mod team;
 mod thread;
 mod turn;
 
@@ -71,6 +74,10 @@ pub struct Session {
     pub task_told_ms: u64,
     /// What you sent while it was busy, until it picks it up (its next turn starts or ends).
     pub queued: Option<Exchange>,
+    /// What you'd likely type next, as Claude suggests it after a hosted turn ("yes, add tests"): shown in the
+    /// reply box and beside the quick phrases while it waits on you. Cleared when it goes back to work.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub suggestion: String,
     pub since_ms: u64,
     /// What you last asked it to do, when the harness tells us.
     pub prompt: String,
@@ -167,6 +174,14 @@ pub struct Session {
     /// are already saved (their paths).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<Exchange>,
+    /// A hosted lead's teammates (team.rs), from its stream: kept with its record, since a resumed lead's stream
+    /// never says them again.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub team: Vec<team::Teammate>,
+    /// The Team switch on its box (a hosted Claude lead's): "on" (split what you send among teammates), "off" (no
+    /// teammates), "" (auto: the lead decides).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub team_mode: String,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -193,6 +208,7 @@ impl Parked {
         s.since_ms = now;
         s.segments = vec![Segment { kind: "waiting".into(), start_ms: now, end_ms: None }];
         s.queued = None;
+        s.suggestion.clear();
         s.held = None;
         s.limit = None;
         s.retry = None;
@@ -223,6 +239,7 @@ impl Session {
             state: String::new(),
             since_ms: now,
             prompt: String::new(),
+            suggestion: String::new(),
             segments: vec![],
             thread: vec![],
             driven_by: String::new(),
@@ -259,6 +276,8 @@ impl Session {
             teammates_read_ms: 0,
             stuck_ms: 0,
             held: None,
+            team: vec![],
+            team_mode: String::new(),
         }
     }
 
@@ -283,6 +302,7 @@ impl Session {
         self.compacted_ms = 0;
         self.told_ms = 0;
         self.changes = None;
+        self.suggestion.clear();
         // Back at work: no longer waiting on its background agents (their own list, from its log, says
         // which still run). Counted again if its turn ends with some still at work.
         if self.helpers > 0 {
@@ -394,6 +414,13 @@ impl Sessions {
 
     pub fn state(&self, session_id: &str) -> Option<String> {
         self.0.get(session_id).map(|s| s.state.clone())
+    }
+
+    /// Claude's suggestion of what you'd type next, kept only while the session waits on you. Whether it changed.
+    pub fn set_suggestion(&mut self, session_id: &str, text: &str) -> bool {
+        let Some(s) = self.0.get_mut(session_id).filter(|s| s.state == "waiting" && s.suggestion != text) else { return false };
+        s.suggestion = text.to_string();
+        true
     }
 
     pub fn set_prompt(&mut self, session_id: &str, prompt: &str) {

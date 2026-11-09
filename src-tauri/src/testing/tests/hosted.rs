@@ -4,7 +4,7 @@
 //! next message, closed, parked, moved in from a terminal and out to one.
 
 use crate::hosted::{Answer, Ask, AskKind, HostedEvent, InputAction, Start};
-use crate::ipc::{end_session, move_hosted_to_terminal, move_session_to_cue, park, resume_parked_session, start_session_with, StartOpts};
+use crate::ipc::{end_session, move_to_terminal_now, move_session_to_cue, park, resume_parked_session, start_session_with, StartOpts};
 use crate::testing::{until, AgentProcess, Transcript, World};
 use serde_json::{json, Value};
 
@@ -67,7 +67,10 @@ fn a_new_hosted_session_starts_claude_with_no_terminal_and_hands_it_its_first_me
     let sid = started(&w, "fix the login");
     let l = w.hosted.launched();
     assert_eq!(l.len(), 1);
-    assert_eq!((&l[0].start, l[0].permissions.as_str(), l[0].args.clone()), (&Start::New(sid.clone()), "auto", vec!["--model".to_string(), "opus".to_string()]));
+    assert_eq!((&l[0].start, l[0].permissions.as_str(), &l[0].args[..2]), (&Start::New(sid.clone()), "auto", &["--model".to_string(), "opus".to_string()][..]));
+    // Then the team skill every hosted Claude lead starts with (hub/team_out.rs), and nothing else.
+    assert_eq!((l[0].args.len(), l[0].args[2].as_str()), (4, "--append-system-prompt"));
+    assert!(l[0].args[3].starts_with("# Working as a team lead (Cue)"));
     assert!(w.launcher.launched().is_empty(), "no terminal");
     assert_eq!(w.hosted.sent(), vec![(sid.clone(), "fix the login".to_string())]);
     let o = w.hub().session_origin(&sid).unwrap();
@@ -417,10 +420,11 @@ fn move_to_terminal_closes_it_and_resumes_it_in_a_tab_as_a_terminal_session() {
     let w = World::new();
     let sid = running(&w, "go");
     turn_ends(&w, &sid, "Done.");
-    move_hosted_to_terminal(w.hub(), &sid).unwrap();
+    move_to_terminal_now(w.hub(), &sid).unwrap();
     assert_eq!(w.hosted.closed(), vec![sid.clone()]);
     let l = w.launcher.last();
     assert!(l.line.contains(&format!("claude --resume '{sid}'")), "{}", l.line);
+    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
     let o = w.hub().session_origin(&sid).unwrap();
     assert!(!o.hosted && o.agent_pid.is_none());
     assert_eq!(w.snapshot().session(&sid)["name"], "trial");
@@ -733,4 +737,43 @@ fn a_hosted_session_picked_to_run_some_servers_gets_its_folders_back_and_resumes
     assert_eq!(again.start, Start::Resume(sid.clone()), "the same conversation");
     assert!(!again.args.iter().any(|a| a == "--strict-mcp-config" || a == "--mcp-config"), "with its folder's servers: {:?}", again.args);
     assert!(w.hub().hosted_origin(&sid).is_some(), "still hosted");
+}
+
+/// Claude's prompt suggestion, said after the turn's result: on the session while it waits on you, gone once it's
+/// back at work.
+#[test]
+fn a_prompt_suggestion_waits_with_the_session_and_goes_when_it_works_again() {
+    let w = World::new();
+    let sid = running(&w, "write is_even");
+    turn_ends(&w, &sid, "Done. Should I also add unit tests?");
+    w.hosted_says(&sid, HostedEvent::Suggested { text: "yes, add tests".into() });
+    let s = w.snapshot();
+    assert_eq!(s.session(&sid)["suggestion"], "yes, add tests", "{}", s.session(&sid));
+    w.send_to(&sid, "no, commit it");
+    w.hosted_says(&sid, HostedEvent::TurnStarted);
+    let s = w.snapshot();
+    assert_eq!(s.state(&sid), "working");
+    assert!(s.session(&sid)["suggestion"].is_null(), "{}", s.session(&sid));
+}
+
+#[test]
+fn move_to_terminal_resumes_a_hosted_pi_with_pi_not_claude_code() {
+    let w = World::new();
+    let pi = started_as(&w, "pi");
+    w.hosted_says(&pi, HostedEvent::TurnEnded { text: "Done.".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    w.settle();
+    move_to_terminal_now(w.hub(), &pi).unwrap();
+    let l = w.launcher.last();
+    assert!(l.line.contains(&format!("pi --session '{pi}'")) && !l.line.contains("claude"), "{}", l.line);
+    assert_eq!(l.place, Some(crate::terminal::launch::Place::Tab), "a plain tab of your terminal app, not one Cue's tmux keeps");
+    assert_eq!(w.hub().session_origin(&pi).unwrap().harness, "pi", "still Pi, now in a terminal");
+}
+
+#[test]
+fn move_to_terminal_waits_while_it_works() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    let why = move_to_terminal_now(w.hub(), &sid).unwrap_err();
+    assert!(why.contains("working"), "{why}");
+    assert!(w.hosted.closed().is_empty(), "left running");
 }

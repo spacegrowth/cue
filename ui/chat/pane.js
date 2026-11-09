@@ -44,7 +44,9 @@ function activePill(it, s, pending, ch) {
  *  asked: your box stays (cursor and text intact), and sending waits until you've answered, so nothing gets typed
  *  into its prompt. */
 function askFoot(it, sid, harness) {
-  const head = (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`) + machTag(it.machine);
+  // A teammate's ask: titled "<lead> › <teammate>" (team.js).
+  const who = mateOfAsk(it) ? `${esc(nameOf(sid, it.project))} ${mateTitle(it)}` : esc(agentName(harness));
+  const head = (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${who} ${esc(verb(it))}`) + machTag(it.machine);
   let foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it)}</div>`;
   const key = `s:${sid}`;
   if (document.activeElement?.dataset?.text === key || draft(key).text.trim() || draft(key).images.length) {
@@ -62,7 +64,8 @@ function activeFoot(it, s, pending, harness, project, sid) {
   if (!s) return "";
   const busy = s.state === "working";
   const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
+  // A hosted lead's Team switch beside Send (team_send.js).
+  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", teamSwitch(sid))}</div>`;
 }
 /** What fills the chat area instead of the chat: a background agent opened in full (helperPane), or a reply open
  *  in the reader (readerPane, read-only, the box and insight bar out of the way). */
@@ -99,7 +102,7 @@ function openPane(a, full) {
     ${activeHead(a)}
     ${btwPanel(sid)}
     ${subHead(s?.cwd || a.it?.cwd, "", sid)}
-    ${sid ? reviewRows(sid) + leadCard(sid) + packetCard(sid) : ""}
+    ${sid ? addOn.chatTop(sid) + teamGroup(sid) + reviewRows(sid) + leadCard(sid) + packetCard(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full)}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}

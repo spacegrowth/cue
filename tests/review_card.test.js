@@ -34,7 +34,7 @@ assert.doesNotMatch(h, /title=/, "no hover text");
 // reviewing, queued and auto: Diff
 assert.equal(said(rows({ state: "reviewing" })), "reviewing…");
 assert.equal(said(rows({ state: "queued" })), "review queued");
-assert.equal(said(rows({ state: "auto" })), "finished packet 2 · its lead reviews it");
+assert.equal(said(rows({ state: "auto" })), "finished packet 2 · its lead is reviewing it");
 for (const st of ["reviewing", "queued", "auto"]) assert.deepEqual(buttons(rows({ state: st })), ["Diff"]);
 
 // reviewed: what it recommends and how many notes, › opens them; Commit · Send fixes type their words into the lead

@@ -87,7 +87,7 @@
 .sx-l.ask { color: var(--deny); }
 .sx-l.out .sx-k { font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-right: 6px; }
 /* "new": a session that started in the last few minutes, so you can find it. */
-.new-pill { flex: none; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font: 700 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
+.new-pill { flex: none; margin-left: 6px; padding: 1px 7px; border-radius: var(--pill-radius); font: 700 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
 .sx-st { font-size: 11px; font-weight: 500; color: var(--muted); }
 .sx-st.hot { color: var(--deny); font-weight: 650; }
 .sx-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
@@ -123,14 +123,14 @@
 
 /* History: filters (kind chips + session picker), and a session's answers folded into one row. */
 .hfilter { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
-.hfchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
+.hfchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 10%, transparent); }
 .hfchip span { font-weight: 500; opacity: 0.7; font-variant-numeric: tabular-nums; }
 .hfchip:hover { background: color-mix(in srgb, var(--on-bg) 18%, transparent); }
 .hfchip.on { background: var(--sel); color: var(--on-sel); }
 .hsess { height: 28px; padding: 0 8px; border-radius: 8px; border: 0; font: 600 12px var(--sans); color: var(--ink); background: var(--panel); max-width: 240px; }
 .hsrow .hwho { gap: 7px; }
 .hfold { width: 12px; font-size: 12px; color: var(--ink); opacity: 0.6; flex: none; }
-.hcount { font: 650 10.5px var(--mono); padding: 1px 7px; border-radius: 999px; background: var(--panel-2); color: var(--muted); flex: none; }
+.hcount { font: 650 10.5px var(--mono); padding: 1px 7px; border-radius: var(--pill-radius); background: var(--panel-2); color: var(--muted); flex: none; }
 .hsrow.open { background: var(--panel-2); }
 .hrow.nested { background: color-mix(in srgb, var(--panel-2) 55%, var(--panel)); }
 .hrow.nested .hwho { border-left: 2px solid var(--line); height: 100%; margin-left: 14px; }
@@ -145,7 +145,7 @@
 .convo-sheet { width: min(860px, calc(100vw - 40px)); }
 .convo-sheet .sheet-head { gap: 10px; }
 .convo-body { display: flex; flex-direction: column; gap: 14px; padding: 6px 22px 22px; }
-.cv-you.cv-hit .cv-you-text { background: var(--sel); color: var(--on-sel); box-shadow: 0 0 0 2px var(--sel); }
+.cv-you.cv-hit .cv-you-text { background: var(--sel); color: var(--on-sel); box-shadow: 0 0 0 2px var(--sel); --link: var(--on-sel); --link-hover: var(--on-sel); }
 .cv-agent.cv-hit { background: color-mix(in srgb, var(--sel) 38%, transparent); border-radius: 10px; padding: 8px 12px; margin: 0 -12px; }
 .sr-last b { font-weight: 650; }
 
@@ -250,7 +250,7 @@
 .nf-in.nf-name:focus { border-bottom-color: var(--accent); }
 .nf-recent { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .nf-recent .nf-k { margin-right: 2px; }
-.nf-rf { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--panel-2); color: var(--muted); font: 600 12px var(--sans); }
+.nf-rf { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: var(--pill-radius); background: var(--panel-2); color: var(--muted); font: 600 12px var(--sans); }
 .nf-rf:hover { color: var(--ink); }
 .nf-rf.on { height: 30px; padding: 0 12px; background: var(--sel); color: var(--on-sel); font-size: 13px; }
 .nf-sum { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
@@ -267,7 +267,7 @@
 .sr-line { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sr-line mark { background: var(--sel); color: var(--on-sel); border-radius: 3px; padding: 0 1px; }
 .sr-sec em { font-style: normal; font-weight: 500; letter-spacing: 0; text-transform: none; margin-left: 8px; opacity: 0.85; }
-.sr-resume { font-size: 11.5px; font-weight: 700; color: var(--accent); padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.sr-resume { font-size: 11.5px; font-weight: 700; color: var(--accent); padding: 2px 8px; border-radius: var(--pill-radius); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 /* On a closed session's row: a button of its own (the row opens the conversation). */
 .sr-resume.act { cursor: pointer; }
 .sr-resume.act:hover { background: var(--accent); color: var(--on-accent); }
@@ -293,7 +293,7 @@
    shares it): the path gives way first, then the numbers shrink with … from their end. */
 .ap-meta { font-size: 12px; color: var(--muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ap-meta b { color: var(--ink); font-weight: 650; }
-.mi-compact, .mi-act { flex: none; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--amber); color: var(--amber); font-size: 11.5px; font-weight: 650; background: transparent; }
+.mi-compact, .mi-act { flex: none; padding: 1px 9px; border-radius: var(--pill-radius); border: 1px solid var(--amber); color: var(--amber); font-size: 11.5px; font-weight: 650; background: transparent; }
 .mi-compact:hover, .mi-act:hover { background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .commit-btn { margin-left: 2px; }
 /* Context: how full, at a glance (a small gauge and the number), amber from 80%, red from 95%. */
@@ -306,6 +306,8 @@
 .more-wrap { position: relative; display: inline-flex; }
 .more-btn { min-width: 32px; justify-content: center; font-weight: 800; letter-spacing: 1px; }
 .more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 12; min-width: 240px; background: var(--panel); border-radius: 12px; padding: 6px; box-shadow: var(--shadow), 0 0 0 1px var(--line); display: flex; flex-direction: column; }
+/* A long menu (a session with every item) stays inside the window and scrolls: it opens from ⋯ near the pane's top. */
+.more-menu { max-height: calc(100vh - 176px); overflow-y: auto; }
 .more-menu button { text-align: left; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 650; color: var(--ink); display: flex; flex-direction: column; gap: 1px; }
 .more-menu button span { font-size: 11px; font-weight: 500; color: var(--muted); }
 .more-menu button:hover:not(:disabled) { background: var(--panel-2); }
@@ -326,7 +328,7 @@
 .sec { position: relative; }
 /* Its cards' offsets count from the list itself (for "N more" and ending on a whole card). */
 .sec-body, .card.recent { position: relative; }
-.more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; padding: 0 9px; border-radius: 999px;
+.more-below { position: absolute; left: 50%; transform: translateX(-50%); z-index: 3; height: 20px; padding: 0 9px; border-radius: var(--pill-radius);
   font-size: 11px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; color: var(--on-bg);
   background: var(--bg); border: 1px solid color-mix(in srgb, var(--on-bg) 22%, transparent); transition: opacity 0.15s; }
 .more-below:hover { border-color: color-mix(in srgb, var(--on-bg) 45%, transparent); }
@@ -355,7 +357,7 @@
 .prow.waking .prow-go { display: none; }
 /* Active, for a parked one: its last turns, a little faded, and a dashed line where it stopped. */
 .active-pane.parked .cv-you, .active-pane.parked .cv-agent { opacity: 0.72; }
-.park-more { align-self: center; font-size: 11.5px; font-weight: 650; color: var(--muted); padding: 3px 11px; border-radius: 999px; background: var(--panel-2); }
+.park-more { align-self: center; font-size: 11.5px; font-weight: 650; color: var(--muted); padding: 3px 11px; border-radius: var(--pill-radius); background: var(--panel-2); }
 .park-more:hover { color: var(--ink); }
 .park-line { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
 .park-line::before, .park-line::after { content: ""; flex: 1; border-top: 1px dashed var(--line); }

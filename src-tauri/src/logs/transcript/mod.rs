@@ -17,7 +17,7 @@ mod turns;
 #[cfg(test)]
 mod tests;
 
-pub use activity::activity_of;
+pub use activity::{activity_of, describe_tool};
 pub use conversation::{conversation_before, recent_context, status_asks};
 pub use queue::{is_message, prompt_since, queued_state, read_state, taken_mid_turn, Queued};
 pub use senders::{about, harness_text, is_stop_hook, peer_text, placeholder_reply, prompt_sender, queued_from_harness, teammate_messages, teammate_messages_after, yours_mid_turn, Sender};

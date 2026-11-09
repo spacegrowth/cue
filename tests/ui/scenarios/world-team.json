@@ -1,0 +1,506 @@
+{
+  "about": {},
+  "ahead_watch": [],
+  "branches": {
+    "/work/cue": ""
+  },
+  "connections": {
+    "claude": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "codex": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "pi": {
+      "ok": true,
+      "present": true
+    }
+  },
+  "crew": {},
+  "ended": [],
+  "handoffs": {},
+  "history": [],
+  "insight": {},
+  "items": [
+    {
+      "agent_id": "id-hub",
+      "agent_name": "hub",
+      "agent_pid": 9000001,
+      "back_ms": null,
+      "context": [],
+      "created_ms": 1793984400000,
+      "cwd": "/work/cue",
+      "followup": "",
+      "harness": "claude",
+      "hosted": true,
+      "id": "n1793984390004",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "permission",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "",
+      "outcome": "",
+      "project": "cue",
+      "resolved_ms": null,
+      "session_id": "lead",
+      "status": "pending",
+      "suggestions": [],
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984390001,
+          "role": "agent",
+          "text": "Handed hub, rows, skill and handoff out. skill is done and waits for your review."
+        },
+        {
+          "at_ms": 1793984390002,
+          "delivery": [
+            {
+              "at_ms": 1793984390000,
+              "what": "handed to it directly"
+            }
+          ],
+          "pending": true,
+          "role": "you",
+          "text": "Review your teammate handoff's work with a fork (one Agent call, not in the background): read the diff of its files against what it was asked, run its tests, and reply with only numbered findings (`1. file:line — should-fix — what`) and a last line `Recommendation: commit` or `Recommendation: send fixes`. Don't change, commit or message anything.\nWhat it was asked: Carry the team over a handoff\nIts files: src-tauri/src/hub/handoff.rs, ui/core.js"
+        },
+        {
+          "at_ms": 1793984390003,
+          "role": "agent",
+          "text": "1. hub/handoff.rs:40 — should-fix — the team list is cut at 8 teammates without saying so.\n2. ui/core.js:212 — note — also changed by rows; commit after rows lands.\nRecommendation: commit"
+        },
+        {
+          "at_ms": 1793984400000,
+          "delivery": [
+            {
+              "at_ms": 1793984400000,
+              "what": "handed to it directly"
+            }
+          ],
+          "pending": true,
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork (one Agent call, not in the background): read the diff of its files against what it was asked, run its tests, and reply with only numbered findings (`1. file:line — should-fix — what`) and a last line `Recommendation: commit` or `Recommendation: send fixes`. Don't change, commit or message anything.\nWhat it was asked: Document teams\nIts files: docs/dev/cue-teams.md"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "1. docs/dev/cue-teams.md:12 — note — reads well.\nRecommendation: commit"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": {
+        "command": "cd src-tauri && cargo test --features ext",
+        "description": "Run the tests"
+      },
+      "tool_name": "Bash",
+      "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "live": [],
+  "now_ms": 1793984400000,
+  "parked": [],
+  "projects": {
+    "/work/cue": {
+      "key": "/work/cue",
+      "name": "cue",
+      "own": "cue",
+      "root": "/work/cue",
+      "top": "/work/cue"
+    }
+  },
+  "restarted": {},
+  "restarting": {},
+  "review_queue": {},
+  "reviews": {},
+  "sessions": [
+    {
+      "agent_pid": 9000001,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/cue",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "hosted": true,
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "cue",
+      "prompt": "Build the team view: hand out hub, rows, skill and handoff",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "waiting",
+          "start_ms": 1793984390000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "lead",
+      "since_ms": 1793984400000,
+      "state": "deciding",
+      "team": [
+        {
+          "agent_id": "id-hub",
+          "asked": "Keep a team per hosted lead. Don't commit; finish with a summary.",
+          "call": "call-hub",
+          "ended_ms": 0,
+          "files": [],
+          "name": "hub",
+          "started_ms": 1793984390000,
+          "state": "working",
+          "step": "Running: cd src-tauri && cargo test --features ext",
+          "step_ms": 1793984400000,
+          "summary": "",
+          "what": "Keep a team per hosted lead"
+        },
+        {
+          "agent_id": "id-rows",
+          "also": [
+            "handoff"
+          ],
+          "asked": "Draw the teammate rows. Don't commit; finish with a summary.",
+          "call": "call-rows",
+          "ended_ms": 0,
+          "files": [
+            "ui/team.js",
+            "ui/core.js"
+          ],
+          "name": "rows",
+          "started_ms": 1793984390000,
+          "state": "working",
+          "step": "Running: node tests/team.test.js",
+          "step_ms": 1793984390000,
+          "summary": "",
+          "what": "Draw the teammate rows"
+        },
+        {
+          "agent_id": "id-skill",
+          "asked": "Write the team skill. Don't commit; finish with a summary.",
+          "call": "call-skill",
+          "ended_ms": 1793984390000,
+          "files": [
+            "skills/team/SKILL.md",
+            "skills/team/review.md"
+          ],
+          "name": "skill",
+          "started_ms": 1793984390000,
+          "state": "done",
+          "step": "",
+          "step_ms": 1793984390000,
+          "summary": "Team skill written, 12 tests pass",
+          "what": "Write the team skill"
+        },
+        {
+          "agent_id": "id-handoff",
+          "also": [
+            "rows"
+          ],
+          "asked": "Carry the team over a handoff. Don't commit; finish with a summary.",
+          "call": "call-handoff",
+          "ended_ms": 1793984390000,
+          "files": [
+            "src-tauri/src/hub/handoff.rs",
+            "ui/core.js"
+          ],
+          "findings": [
+            "1. hub/handoff.rs:40 — should-fix — the team list is cut at 8 teammates without saying so.",
+            "2. ui/core.js:212 — note — also changed by rows; commit after rows lands."
+          ],
+          "name": "handoff",
+          "recommendation": "commit",
+          "review_ms": 1793984390000,
+          "started_ms": 1793984390000,
+          "state": "reviewed",
+          "step": "",
+          "step_ms": 1793984390000,
+          "summary": "Handoff carries the team; 9 tests pass",
+          "what": "Carry the team over a handoff"
+        },
+        {
+          "agent_id": "id-docs",
+          "asked": "Document teams. Don't commit; finish with a summary.",
+          "call": "call-docs",
+          "ended_ms": 1793984390000,
+          "files": [
+            "docs/dev/cue-teams.md"
+          ],
+          "findings": [
+            "1. docs/dev/cue-teams.md:12 — note — reads well."
+          ],
+          "name": "docs",
+          "recommendation": "commit",
+          "review_ms": 1793984400000,
+          "started_ms": 1793984390000,
+          "state": "reviewed",
+          "step": "",
+          "step_ms": 1793984390000,
+          "summary": "Teams documented",
+          "what": "Document teams"
+        },
+        {
+          "agent_id": "id-spike",
+          "asked": "Try a drag-to-hand-out. Don't commit; finish with a summary.",
+          "call": "call-spike",
+          "ended_ms": 1793984390000,
+          "files": [],
+          "name": "spike",
+          "started_ms": 1793984390000,
+          "state": "aside",
+          "step": "",
+          "step_ms": 1793984390000,
+          "summary": "Tried it; not worth it",
+          "what": "Try a drag-to-hand-out"
+        }
+      ],
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984390002,
+          "delivery": [
+            {
+              "at_ms": 1793984390000,
+              "what": "handed to it directly"
+            }
+          ],
+          "pending": true,
+          "role": "you",
+          "text": "Review your teammate handoff's work with a fork (one Agent call, not in the background): read the diff of its files against what it was asked, run its tests, and reply with only numbered findings (`1. file:line — should-fix — what`) and a last line `Recommendation: commit` or `Recommendation: send fixes`. Don't change, commit or message anything.\nWhat it was asked: Carry the team over a handoff\nIts files: src-tauri/src/hub/handoff.rs, ui/core.js"
+        },
+        {
+          "at_ms": 1793984390003,
+          "role": "agent",
+          "text": "1. hub/handoff.rs:40 — should-fix — the team list is cut at 8 teammates without saying so.\n2. ui/core.js:212 — note — also changed by rows; commit after rows lands.\nRecommendation: commit"
+        },
+        {
+          "at_ms": 1793984400000,
+          "delivery": [
+            {
+              "at_ms": 1793984400000,
+              "what": "handed to it directly"
+            }
+          ],
+          "pending": true,
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork (one Agent call, not in the background): read the diff of its files against what it was asked, run its tests, and reply with only numbered findings (`1. file:line — should-fix — what`) and a last line `Recommendation: commit` or `Recommendation: send fixes`. Don't change, commit or message anything.\nWhat it was asked: Document teams\nIts files: docs/dev/cue-teams.md"
+        },
+        {
+          "at_ms": 1793984400001,
+          "role": "agent",
+          "text": "1. docs/dev/cue-teams.md:12 — note — reads well.\nRecommendation: commit"
+        },
+        {
+          "at_ms": 1793984400002,
+          "role": "agent",
+          "text": "Bash: cd src-tauri && cargo test --features ext"
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "settings": {
+    "actions": {
+      "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+      "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+    },
+    "agents": {
+      "show_driven": false
+    },
+    "appearance": {
+      "mode": "system",
+      "project": false,
+      "zoom": 1.0
+    },
+    "background": {
+      "sessions": []
+    },
+    "context": {
+      "keep": 5
+    },
+    "history": {
+      "keep": 300
+    },
+    "hosted": {
+      "on": false
+    },
+    "insights": {
+      "ahead": false,
+      "cache": false,
+      "handoff": false,
+      "on": false,
+      "queue": false,
+      "skills": {},
+      "snooze": 0
+    },
+    "login": {
+      "open": false
+    },
+    "mini": {
+      "mode": "off"
+    },
+    "notify": {
+      "cold": true,
+      "decisions": true,
+      "finished": true,
+      "sound": "pluck"
+    },
+    "pi": {
+      "gate": "dangerous"
+    },
+    "project": {
+      "all": null,
+      "colors": {},
+      "folders": {},
+      "hue": null,
+      "made": [],
+      "moves": {},
+      "names": {},
+      "pins": []
+    },
+    "quick": {
+      "phrases": [
+        "Commit",
+        "Go ahead",
+        "Think hard"
+      ]
+    },
+    "sessions": {
+      "terminal": "Terminal",
+      "tmux": true,
+      "tmux_installed": true
+    },
+    "setup": {
+      "done": false
+    },
+    "status": {
+      "on": true,
+      "sessions": []
+    },
+    "steps": {
+      "mode": "line"
+    },
+    "tasks": {
+      "auto": false,
+      "on": false
+    },
+    "tips": {
+      "on": true
+    },
+    "turn": {
+      "mode": "answer"
+    },
+    "updates": {
+      "beta": false
+    },
+    "usage": {
+      "claude": true,
+      "file": "~/.cue/usage.csv"
+    },
+    "voice": {
+      "pick": ""
+    }
+  },
+  "skill_handoffs": {},
+  "status_spent": {
+    "replies": 0,
+    "sessions": {},
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "tasks": {},
+  "tasks_spent": {
+    "calls": 0,
+    "tokens": 0,
+    "tracked": 0,
+    "usd": 0.0
+  },
+  "today": {
+    "allowed": 0,
+    "answered": 0,
+    "denied": 0,
+    "hours": [
+      {
+        "from_ms": 1793944800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793948400000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793952000000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793955600000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793959200000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793962800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793966400000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793970000000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793973600000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793977200000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793980800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793984400000,
+        "n": 0
+      }
+    ],
+    "longest": null,
+    "median_wait_ms": null,
+    "replied": 0
+  },
+  "unreachable": [],
+  "usage": null,
+  "usage_file": null,
+  "window_ms": 1800000
+}

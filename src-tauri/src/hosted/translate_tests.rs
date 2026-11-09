@@ -152,6 +152,17 @@ fn a_rate_limit_event_reports_the_plans_usage_as_the_status_line_would() {
 }
 
 #[test]
+fn a_prompt_suggestion_says_what_you_d_likely_type_next() {
+    // The line as Claude Code 2.1.319 sends it after the turn's result (initialize asked for them).
+    let mut t = Translator::default();
+    let es = t.step(&wire::parse(r#"{"type":"prompt_suggestion","suggestion":"yes, add tests","uuid":"473f35b6","session_id":"478c46e9"}"#));
+    assert_eq!(es, vec![HostedEvent::Suggested { text: "yes, add tests".into() }]);
+    assert_eq!(t.step(&wire::parse(r#"{"type":"prompt_suggestion","suggestion":"  "}"#)), vec![], "an empty one says nothing");
+    let init: serde_json::Value = serde_json::from_str(&wire::initialize("i1")).unwrap();
+    assert_eq!(init["request"]["promptSuggestions"], true, "setup asks for them");
+}
+
+#[test]
 fn a_turn_is_under_way_from_your_message_to_its_end() {
     let mut t = Translator::default();
     assert!(!t.in_turn());

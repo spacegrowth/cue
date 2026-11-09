@@ -252,6 +252,9 @@ fn set_up(c: &Connection) -> rusqlite::Result<()> {
     c.pragma_update(None, "journal_mode", "WAL")?;
     c.pragma_update(None, "synchronous", "NORMAL")?;
     c.execute_batch(SCHEMA)?;
+    // The optional add-on's own tables.
+    #[cfg(feature = "ext")]
+    c.execute_batch(super::ext::SCHEMA)?;
     import_old_files(c);
     let version = c.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?;
     migrate(c, version)

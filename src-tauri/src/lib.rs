@@ -174,7 +174,9 @@ mod tests {
         let mut seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         let mut twice = vec![];
         for script in &scripts {
-            let text = std::fs::read_to_string(ui.join(script)).unwrap();
+            // Built with the optional add-on, the window gets its script in addon.js's place.
+            let path = if cfg!(feature = "ext") && *script == "addon.js" { ui.join("../src-tauri/ext/ui/addon.js") } else { ui.join(script) };
+            let text = std::fs::read_to_string(path).unwrap();
             for (i, line) in text.lines().enumerate() {
                 let mut words = line.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'));
                 let (Some(kw), Some(name)) = (words.next(), words.next()) else { continue };

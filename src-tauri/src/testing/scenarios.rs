@@ -14,6 +14,7 @@ const SCENARIOS: &[(&str, fn(&World))] = &[
     ("one-ask", one_ask),
     ("many-sessions", many_sessions),
     ("relay-review", relay_review),
+    ("relay-auto", relay_auto),
     ("status-list", status_list),
     ("parked", parked),
     ("restarting", restarting),
@@ -23,6 +24,7 @@ const SCENARIOS: &[(&str, fn(&World))] = &[
     ("handoff-pending", handoff_pending),
     ("settings", settings),
     ("four-choices", four_choices),
+    ("team", team),
 ];
 
 fn one_ask(w: &World) {
@@ -58,6 +60,67 @@ fn relay_review(w: &World) {
     w.session("ex-docs").in_project("order-engine").prompt("packet 1").stop_driven("Docs done.", "its relay lead (order-engine)");
     // The lead is working: the first review waits in its queue.
     w.hub().review("lead", "ex-fills", "/relay:review fills").unwrap();
+}
+
+/// A relay lead on auto mode (it reviews reports on its own), back from its turn, and its executor that reported:
+/// nothing asks you to start that review. The executor's finished turn would be a card of its own (show sessions
+/// another agent drives in Waiting is on), but its lead takes it, so it isn't one.
+fn relay_auto(w: &World) {
+    crate::config::set("agents.show_driven", json!(true)).unwrap();
+    let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "order-engine".into(), auto: Some(true), ..Default::default() };
+    let fills = Member { name: "fills".into(), id: "relay-fills".into(), packet: Some(3), goal: "fills: the packet's goal".into(), outcome: "Done and staged.".into(), lead: "lead".into(), lead_name: "order-engine".into(), ready_late: true, ..reported_exec() };
+    install_index([("lead".to_string(), lead), ("ex-fills".to_string(), fills)].into());
+    w.session("lead").in_project("order-engine").prompt("Lead the router refactor").stop("Sent packet 3 to fills.");
+    w.session("ex-fills").in_project("order-engine").prompt("packet 3").stop_driven("Packet 3 done.", "its relay lead (order-engine)");
+}
+
+/// A hosted lead with a team of five, one in each state the chat shows (docs/dev/cue-teams.md §4): hub asks you to
+/// run a command, rows is working, skill is done, handoff is reviewed and held (it shares ui/core.js with rows), docs
+/// is reviewed and free to commit; and one that left the team (set aside).
+fn team(w: &World) {
+    use crate::hosted::{Ask, AskKind, HostedEvent as E};
+    let lead = w.session("lead").hosted().in_project("cue");
+    lead.prompt("Build the team view: hand out hub, rows, skill and handoff");
+    let says = |e: E| w.hosted_says("lead", e);
+    let task = |what: &str, call: &str, id: &str| E::Task { what: what.into(), detail: json!({ "subtype": what, "tool_use_id": call, "task_id": id, "task_type": "local_agent", "status": "completed" }) };
+    let start = |name: &str, what: &str| {
+        let call = format!("call-{name}");
+        says(E::ToolCall { id: call.clone(), name: "Agent".into(), input: json!({ "name": name, "description": what, "prompt": format!("{what}. Don't commit; finish with a summary."), "run_in_background": true }), agent: None });
+        says(task("task_started", &call, &format!("id-{name}")));
+    };
+    let edit = |name: &str, file: &str| {
+        says(E::ToolCall { id: format!("{name}-{file}"), name: "Edit".into(), input: json!({ "file_path": format!("/work/cue/{file}") }), agent: Some(format!("call-{name}")) });
+        says(E::ToolResult { id: format!("{name}-{file}"), output: json!("ok"), failed: false, agent: Some(format!("call-{name}")) });
+    };
+    let finish = |name: &str, summary: &str| says(E::Task { what: "task_notification".into(), detail: json!({ "tool_use_id": format!("call-{name}"), "task_id": format!("id-{name}"), "status": "completed", "summary": summary }) });
+    for (name, what) in [("hub", "Keep a team per hosted lead"), ("rows", "Draw the teammate rows"), ("skill", "Write the team skill"), ("handoff", "Carry the team over a handoff"), ("docs", "Document teams"), ("spike", "Try a drag-to-hand-out")] {
+        start(name, what);
+    }
+    edit("handoff", "src-tauri/src/hub/handoff.rs");
+    edit("handoff", "ui/core.js");
+    finish("handoff", "Handoff carries the team; 9 tests pass");
+    edit("docs", "docs/dev/cue-teams.md");
+    finish("docs", "Teams documented");
+    edit("skill", "skills/team/SKILL.md");
+    edit("skill", "skills/team/review.md");
+    finish("skill", "Team skill written, 12 tests pass");
+    finish("spike", "Tried it; not worth it");
+    edit("rows", "ui/team.js");
+    edit("rows", "ui/core.js");
+    says(E::ToolCall { id: "rows-run".into(), name: "Bash".into(), input: json!({ "command": "node tests/team.test.js" }), agent: Some("call-rows".into()) });
+    says(E::TurnEnded { text: "Handed hub, rows, skill and handoff out. skill is done and waits for your review.".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    // handoff reviewed: Review typed into the free lead, its reply the review.
+    w.hub().team_action("lead", "id-handoff", "review").unwrap();
+    says(E::TurnEnded { text: "1. hub/handoff.rs:40 — should-fix — the team list is cut at 8 teammates without saying so.\n2. ui/core.js:212 — note — also changed by rows; commit after rows lands.\nRecommendation: commit".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    // The lead takes a moment to show as working after a review is typed in (reviews.rs REVIEW_SETTLE_MS).
+    w.advance(10_000);
+    w.hub().team_action("lead", "id-docs", "review").unwrap();
+    says(E::TurnEnded { text: "1. docs/dev/cue-teams.md:12 — note — reads well.\nRecommendation: commit".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    w.hub().team_action("lead", "id-spike", "aside").unwrap();
+    // hub asks to run the tests.
+    says(E::ToolCall { id: "hub-test".into(), name: "Bash".into(), input: json!({ "command": "cd src-tauri && cargo test --features ext" }), agent: Some("call-hub".into()) });
+    says(E::Ask(Ask { request_id: "r-hub".into(), kind: AskKind::Permission, tool_name: "Bash".into(), input: json!({ "command": "cd src-tauri && cargo test --features ext", "description": "Run the tests" }), suggestions: json!([]), agent_id: "id-hub".into(), tool_use_id: "hub-test".into(), server: String::new(), message: String::new(), form: Value::Null }));
+    w.settle();
 }
 
 fn status_list(w: &World) {

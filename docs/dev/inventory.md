@@ -14,15 +14,15 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 154 (3 sync) |
-| Lock declarations (static or field) | 121 |
-| Lock acquisitions | 304 |
+| `#[tauri::command]` | 158 (3 sync) |
+| Lock declarations (static or field) | 122 |
+| Lock acquisitions | 307 |
 | Lock-graph edges | 58 |
 | Spawn sites | 92 |
-| External calls: fs / db / process / notify / login / socket | 389 / 146 / 53 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 390 / 146 / 53 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
-Modules declared but not in this checkout (not analysed): lib.rs: mod ext.
+Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
 
 ## Commands
 
@@ -87,7 +87,6 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `focus_session_id` | async | `ipc/chat.rs::focus_session_id` | ipc::with_hub |
 | `read_doc` | async | `ipc/docs.rs::read_doc` | ipc::blocking |
 | `recent_docs` | async | `ipc/docs.rs::recent_docs` | ipc::blocking |
-| `move_to_terminal` | async | `ipc/hosted.rs::move_to_terminal` | ipc::with_hub |
 | `quit_check` | async | `ipc/hosted.rs::quit_check` | ipc::with_hub |
 | `quit_now` | async | `ipc/hosted.rs::quit_now` | — |
 | `host_status` | async | `ipc/hosted.rs::host_status` | ipc::with_hub |
@@ -114,6 +113,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `mcp_live` | async | `ipc/mcp_live.rs::mcp_live` | ipc::with_hub |
 | `mcp_act` | async | `ipc/mcp_live.rs::mcp_act` | ipc::with_hub |
 | `mcp_signed_in` | async | `ipc/mcp_live.rs::mcp_signed_in` | ipc::with_hub |
+| `move_to_terminal` | async | `ipc/move_out.rs::move_to_terminal` | ipc::with_hub |
 | `resume_session` | async | `ipc/sessions.rs::resume_session` | ipc::with_hub |
 | `park_session` | async | `ipc/sessions.rs::park_session` | ipc::with_hub |
 | `resume_parked` | async | `ipc/sessions.rs::resume_parked` | ipc::with_hub |
@@ -158,6 +158,10 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `set_starred` | async | `ipc/state.rs::set_starred` | ipc::with_hub |
 | `answer_terminal` | async | `ipc/state.rs::answer_terminal` | ipc::blocking |
 | `reply` | async | `ipc/state.rs::reply` | ipc::with_hub |
+| `team_action` | async | `ipc/team.rs::team_action` | ipc::with_hub |
+| `team_mode` | async | `ipc/team.rs::team_mode` | ipc::with_hub |
+| `team_hand_out_preview` | async | `ipc/team.rs::team_hand_out_preview` | ipc::with_hub |
+| `team_hand_out` | async | `ipc/team.rs::team_hand_out` | ipc::with_hub |
 | `dictate_start` | async | `ipc/terminal.rs::dictate_start` | ipc::blocking |
 | `dictate_stop` | async | `ipc/terminal.rs::dictate_stop` | ipc::blocking |
 | `speak_send` | async | `ipc/terminal.rs::speak_send` | ipc::blocking |
@@ -208,6 +212,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `db/handoffs.rs::Kept.kept` | `Mutex<Option<(u64,std::time::Instant,T)>>` | "a kept db answer" (2 sites) |
 | `db/mod.rs::DB` | `Mutex<Option<Connection>>` | "DB" (1 sites) |
 | `extensions.rs::ONE` | `std::sync::Mutex<()>` | "extensions log" (1 sites) |
+| `hosted/agent_check.rs::P` | `OnceLock<Mutex<HashSet<(String,&'staticstr)>>>` | — |
 | `hosted/driver.rs::Driver.protocol` | `Mutex<Box<dynProtocol>>` | "hosted session: protocol" (1 sites) |
 | `hosted/driver.rs::Driver.last_words` | `Mutex<VecDeque<String>>` | "hosted session: last words" (2 sites) |
 | `hosted/driver.rs::Driver.asked` | `Mutex<HashMap<String,Sender<Result<Value,String>>>>` | "hosted session: asked" (3 sites) |
@@ -248,7 +253,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `leads/files.rs::FIRST_LINES` | `Mutex<Option<HashMap<PathBuf,(std::time::SystemTime,String)>>>` | "FIRST_LINES" (1 sites) |
 | `leads/git.rs::GIT_ASKED` | `Mutex<Option<HashMap<String,(std::time::Instant,Option<(i32,String)>)>>>` | "GIT_ASKED" (2 sites) |
 | `leads/git.rs::PACKET_FILES` | `Mutex<Option<HashMap<PathBuf,(std::time::SystemTime,Vec<String>)>>>` | "PACKET_FILES" (2 sites) |
-| `leads/index.rs::INDEX` | `Mutex<Option<HashMap<String,Member>>>` | "INDEX" (21 sites) |
+| `leads/index.rs::INDEX` | `Mutex<Option<HashMap<String,Member>>>` | "INDEX" (22 sites) |
 | `leads/index.rs::LOCAL` | `Mutex<Option<HashMap<String,Member>>>` | "LOCAL" (2 sites) |
 | `leads/index.rs::CARRIED` | `Mutex<Option<HashSet<(String,String)>>>` | "CARRIED" (1 sites) |
 | `leads/ledger.rs::LEDGER` | `Mutex<Option<HashMap<PathBuf,Ledger>>>` | "LEDGER" (1 sites) |
@@ -313,7 +318,7 @@ Each declaration with the names `locking::lock`/`read`/`write` give it (matched 
 | `terminal/term.rs::M` | `OnceLock<Mutex<Terms>>` | — |
 | `terminal/term.rs::P` | `OnceLock<String>` | — |
 
-Lock names not matched to a declaration: "FOUND" (4 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
+Lock names not matched to a declaration: "FOUND" (4 sites), "agent checks passed" (2 sites), "btw: asked" (2 sites), "caches" (5 sites), "command list reader" (2 sites), "copies" (7 sites), "hosts: a session's queue" (2 sites), "hosts: older hosts" (8 sites), "hosts: sessions" (7 sites), "machine hosts placed" (2 sites), "machine tails" (5 sites), "music: Listen's holds" (1 sites), "open_terms" (8 sites), "remote poll schedule" (2 sites), "shell line: done" (2 sites), "shell line: timed out" (2 sites), "typing gate" (3 sites), "watchers" (2 sites).
 
 ## Lock graph
 
@@ -392,7 +397,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | In | Spawn | Times |
 |---|---|---|
 | `actions/mod.rs::start` | thread::spawn | 1 |
-| `btw.rs::asked` | thread::spawn | 1 |
+| `btw.rs::asked_for` | thread::spawn | 1 |
 | `chaos/db.rs::start` | Builder::spawn | 1 |
 | `chaos/ssh.rs::start` | Builder::spawn | 1 |
 | `commands.rs::for_folder` | thread::spawn | 1 |
@@ -479,7 +484,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (389)
+### fs (390)
 
 | In | Call | Times |
 |---|---|---|
@@ -580,6 +585,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/hosted.rs::Hub::resume_hosted_as` | Path::is_file | 1 |
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
+| `hub/team.rs::remove_file` | remove_file | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | read_dir | 4 |
 | `ipc/chat.rs::mcp_apply_clear_for` | read | 1 |
@@ -975,7 +981,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `actions/run.rs::plain_start` | (program computed) | 1 |
 | `actions/run.rs::stop` | /bin/sh | 1 |
 | `actions/run.rs::tmux_here` | (program computed) | 1 |
-| `btw.rs::asked` | /bin/kill | 1 |
+| `btw.rs::asked_for` | /bin/kill | 1 |
 | `btw.rs::run_full` | (program computed) | 1 |
 | `chaos/ssh.rs::end_ssh_children` | /bin/ps | 1 |
 | `chaos/ssh.rs::refused` | /bin/sh | 1 |
@@ -1001,7 +1007,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `logs/live.rs::tty_of` | /bin/ps | 1 |
 | `machines/mod.rs::end_streams` | /bin/ps | 1 |
 | `machines/mod.rs::ssh` | (program computed) | 1 |
-| `safe_git.rs::run` | (program computed) | 1 |
+| `safe_git.rs::run_env` | (program computed) | 1 |
 | `server/mod.rs::agent_behind` | /bin/ps | 1 |
 | `sounds.rs::preview` | /usr/bin/afplay | 1 |
 | `talk.rs::dictation` | (program computed) | 1 |
@@ -1057,6 +1063,7 @@ Paths from the repo root; `cargo run -p xtask -- sizes` prints the lengths. Func
 | Function |  |  |
 |---|---|---|
 | `src-tauri/src/actions/mod.rs::an_action_runs_in_tmux_and_is_stopped` | test |  |
+| `src-tauri/src/hosted/compat_tests.rs::compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed` | test |  |
 | `src-tauri/src/hosted/machine_tests.rs::live_on_a_real_machine_claude_code_asks_runs_a_command_past_a_dropped_connection_and_is_picked_up_after_a_restart` | test |  |
 | `src-tauri/src/hub/hand_off.rs::a_hand_off_goes_ahead_only_where_you_turned_it_on_and_holds_where_typing_could_hurt` | test |  |
 | `src-tauri/src/hub/sessions.rs::a_parked_session_is_kept_through_a_restart_and_comes_back_whole` | test |  |

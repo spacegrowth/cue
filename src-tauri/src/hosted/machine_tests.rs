@@ -525,3 +525,51 @@ impl Drop for Scratch {
         }
     }
 }
+
+/// Pi on a real machine (CUE_TEST_REAL_MACHINE), hosted: Cue's check of it there passes, it starts under cue-host
+/// with Cue's extension, takes a message, and whatever it answers (a reply; "not signed in" on a machine where Pi has no
+/// provider yet) comes back as the turn's end or its exit, never silence.
+#[test]
+#[ignore = "needs a real machine: CUE_TEST_REAL_MACHINE=<ssh host>"]
+fn live_on_a_real_machine_pi_starts_hosted_takes_a_message_and_answers_or_says_why_not() {
+    let Some((_w, _ssh, name)) = real_machine() else { panic!("set CUE_TEST_REAL_MACHINE") };
+    let m = machines::get(&name).unwrap();
+    let dir = format!("/tmp/cue-live-pi-{}", std::process::id());
+    machines::run(&m.host, &format!("mkdir -p {dir}")).unwrap();
+    let cue = Cue::new();
+    let start = Start::fresh();
+    let sid = start.session_id().to_string();
+    let _scratch = Scratch { host: m.host.clone(), dir: dir.clone(), sid: sid.clone() };
+    let spec = Spec { agent: Agent::Pi, cwd: dir.clone().into(), start, permissions: String::new(), model: None, args: vec![], program: Program::Agent, machine: name.clone() };
+    let hosts = cue.hosts();
+    let (r, rx) = report();
+    let started = hosts.start(&spec, r).expect("started there");
+    eprintln!("-- started {} (pid {} there)", started.session_id, started.pid);
+    hosts.send(&sid, "Reply with just the word hello.").unwrap();
+    let end = std::time::Instant::now() + Duration::from_secs(90);
+    let mut seen = vec![];
+    let last = loop {
+        let e = rx.recv_timeout(end.saturating_duration_since(std::time::Instant::now())).unwrap_or_else(|_| panic!("Pi said nothing in 90 s; saw {seen:?}"));
+        // Its answer, or why there's none: a turn's end, its exit, or the message refused with Pi's reason (no
+        // provider signed in: "No API key found…"), which the chat shows on your message.
+        let done = matches!(e, HostedEvent::TurnEnded { .. } | HostedEvent::Exited { .. } | HostedEvent::NotTaken { .. });
+        seen.push(e.clone());
+        if done {
+            break e;
+        }
+    };
+    eprintln!("-- events: {seen:#?}");
+    match &last {
+        HostedEvent::TurnEnded { text, failed, .. } => eprintln!("-- turn ended (failed: {failed}): {text}"),
+        HostedEvent::Exited { code, last_words, .. } => eprintln!("-- exited {code:?}: {last_words}"),
+        HostedEvent::NotTaken { why, .. } => {
+            assert!(!why.trim().is_empty(), "a refusal says why");
+            eprintln!("-- not taken: {why}");
+        }
+        _ => unreachable!(),
+    }
+    assert!(hosts.running(&sid), "a refused message leaves it running, for the next one once it's signed in");
+    hosts.close(&sid);
+    // Pi keeps its sessions under its own folder: this one's goes too.
+    let _ = machines::run(&m.host, &format!("find \"${{PI_CODING_AGENT_DIR:-$HOME/.pi/agent}}/sessions\" -name '*{sid}*' -exec rm -rf {{}} + 2>/dev/null; true"));
+}

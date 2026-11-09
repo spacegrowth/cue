@@ -256,12 +256,14 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
     let o = h.session_origin(session_id).ok_or("Cue has no record of that session")?;
     let log = local_log(h, session_id);
     let model = (o.harness == "claude").then(|| log.as_deref().and_then(steps::model_of)).flatten();
-    let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), ..Default::default() };
+    // A hosted lead carries on hosted (its team with it: `carry_team`).
+    let opts = super::StartOpts { extra: model.map(|m| format!("--model {m}")).unwrap_or_default(), machine: o.machine.clone(), hosted: o.hosted, ..Default::default() };
     let first = first(&log.as_deref().and_then(steps::last_say).unwrap_or_default());
     let name = next_name(&h.session_name(session_id), &crate::model::folder_of(&o.cwd));
     let started = super::start_session_with(h, &o.harness, &o.cwd, &first, &name, &opts)?;
     let new_id = started.get("session_id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     crate::config::carry_move(session_id, &new_id);
+    h.carry_team(session_id, &new_id);
     Ok(new_id)
 }
 

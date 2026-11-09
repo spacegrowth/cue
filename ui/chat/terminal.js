@@ -33,7 +33,8 @@ function termAppName(s) {
 function placeTab(sid) {
   const s = sid && sessionOf(sid);
   if (!s) return "";
-  if (s.hosted) return hostedTab(sid, s);
+  // Hosted: no terminal, so nothing here (⋯ has Move to terminal, for moving away from Cue).
+  if (s.hosted) return "";
   // In Cue: its terminal opens from the strip above the box; the corner has only Move to hosted (hosting on).
   if (inTmux(sid)) {
     const host = hostBtn(sid, s);
@@ -41,14 +42,6 @@ function placeTab(sid) {
   }
   // A terminal app's: its tab, and for Claude Code, Move to Cue (resumed in Cue's terminal).
   return `<span class="tplace">${moveBtn(sid, s.harness, s.state, "tplace-btn move")}<button class="tplace-btn" data-act="go-session" data-sid="${esc(sid)}">Open ${esc(termAppName(s))} <span aria-hidden="true">↗</span></button></span>`;
-}
-/** A hosted session's corner (no terminal to open): paused while its Claude isn't running (your next message
- *  starts it again), and Move to terminal, which resumes it in a terminal tab as an ordinary session. Greyed
- *  while it works or asks you something; a click says why. */
-function hostedTab(sid, s) {
-  const why = s.state === "working" ? "Available once it finishes what it's doing (or Stop it)" : s.state === "deciding" ? "Answer what it's asking first" : "";
-  const paused = s.agent_pid ? "" : `<span class="tplace-note">Paused · your next message resumes it</span>`;
-  return `<span class="tplace">${paused}<button class="tplace-btn" data-act="move-term" data-sid="${esc(sid)}" ${why ? `aria-disabled="true" data-why="${esc(why)}"` : ""}>Move to terminal</button></span>`;
 }
 /** Move to Cue, for a Claude Code session in a terminal app's tab: ended there, resumed in Cue's terminal.
  *  Shown even when it can't run yet, greyed, and a click says why, so it never just isn't there. */

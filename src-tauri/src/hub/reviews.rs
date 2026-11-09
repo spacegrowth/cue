@@ -45,6 +45,10 @@ impl Hub {
         if st.review_sent.contains_key(exec) {
             return Taken::Answer(Err("its lead is already reviewing it".into()));
         }
+        // A lead on auto mode reviews each report on its own: typing one in would start the same review twice.
+        if crate::leads::lead_on_auto(lead) {
+            return Taken::Answer(Ok("Its lead is on auto mode: it reviews this itself".into()));
+        }
         if st.review_queue.iter().any(|q| q.exec == exec) {
             return Taken::Answer(Ok("Already queued: it goes when its lead is free".into()));
         }
@@ -65,7 +69,11 @@ impl Hub {
     }
 
     fn send_review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
-        match self.send_to_session(lead, text, &[], false) {
+        let sent = self.send_to_session(lead, text, &[], false);
+        // A teammate's (team.rs): under review from here, or back to done.
+        self.team_review_sent(exec, sent.is_ok());
+        match sent {
+            Ok(_) if super::team::teammate_key(exec).is_some() => Ok("Sent its review to its lead".into()),
             Ok(_) => Ok(format!("Sent {text}")),
             Err(e) => {
                 self.write(|st| st.review_sent.remove(exec));
@@ -103,8 +111,13 @@ impl Hub {
     /// The queue's moot reviews dropped (their executors), and each free lead's next review taken off it to
     /// send now, noted as sent.
     fn take_due_reviews(st: &mut Store, now: u64) -> (Vec<String>, Vec<QueuedReview>) {
-        // Moot: no longer waiting for a review, or a review of it already ran.
-        let stale: Vec<String> = st.review_queue.iter().filter(|q| !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec)).map(|q| q.exec.clone()).collect();
+        // Moot: no longer waiting for a review, a review of it already ran, or its lead went on auto mode (it reviews on its own).
+        // A teammate's (team.rs): moot once it's no longer waiting in the queue (back at work, set aside).
+        let moot = |q: &QueuedReview| match super::team::teammate_key(&q.exec) {
+            Some((lead, agent)) => !st.sessions.team(lead).iter().any(|t| t.agent_id == agent && t.state == "queued"),
+            None => !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec) || crate::leads::lead_on_auto(&q.lead),
+        };
+        let stale: Vec<String> = st.review_queue.iter().filter(|q| moot(q)).map(|q| q.exec.clone()).collect();
         st.review_queue.retain(|q| !stale.contains(&q.exec));
         let mut due: Vec<QueuedReview> = vec![];
         let leads: Vec<String> = st.review_queue.iter().map(|q| q.lead.clone()).collect();
@@ -161,7 +174,8 @@ impl Hub {
 
     /// For every screen: where each packet that waits on you stands in its review, by executor, in one
     /// place. The apps show it as it is. Per packet: `state` (`waiting`: nothing has reviewed it yet;
-    /// `auto`: its lead is on auto mode and reviews it on its own; `queued`: your Review waits for its lead;
+    /// `auto`: its lead is on auto mode and reviews it on its own, so nothing asks you to start one (a review queued
+    /// before it went on auto is moot, dropped on the next drain); `queued`: your Review waits for its lead;
     /// `reviewing`: your Review is typed in and running; `reviewed`: a review ran, it waits for you to
     /// commit or send fixes), `missed` (relay's wake-up never reached its lead), and what a card shows:
     /// executor, lead, packet, goal, outcome, the diff's size (`stat`), the review's findings and what it recommends.
@@ -178,14 +192,15 @@ impl Hub {
             if m.packet.is_some_and(|n| st.set_aside.contains(&(m.id.clone(), n))) {
                 continue;
             }
-            let missed = missed.contains(&sid);
-            let state = if st.review_queue.iter().any(|q| q.exec == sid) {
+            // On auto mode its lead takes the report on its own: never a missed wake asking you to step in.
+            let missed = !lead_auto && missed.contains(&sid);
+            let state = if !lead_auto && st.review_queue.iter().any(|q| q.exec == sid) {
                 "queued"
             } else if st.review_sent.contains_key(&sid) {
                 "reviewing"
             } else if m.reviewed {
                 "reviewed"
-            } else if lead_auto && !missed {
+            } else if lead_auto {
                 "auto"
             } else {
                 "waiting"
@@ -216,11 +231,13 @@ impl Hub {
         (findings, recommendation)
     }
 
-    /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×).
+    /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×). None for a lead on
+    /// auto mode: they're moot, and go on the next drain.
     pub(super) fn review_queue_view(st: &Store) -> Value {
         let mut out = serde_json::Map::new();
-        for q in &st.review_queue {
-            let row = json!({ "exec": q.exec, "name": crate::leads::name_of(&q.exec), "at_ms": q.at_ms });
+        for q in st.review_queue.iter().filter(|q| !crate::leads::lead_on_auto(&q.lead)) {
+            let name = super::team::teammate_key(&q.exec).and_then(|(lead, agent)| st.sessions.teammate_name(lead, agent)).unwrap_or_else(|| crate::leads::name_of(&q.exec));
+            let row = json!({ "exec": q.exec, "name": name, "at_ms": q.at_ms });
             out.entry(q.lead.clone()).or_insert_with(|| json!([])).as_array_mut().unwrap().push(row);
         }
         Value::Object(out)
@@ -289,6 +306,8 @@ mod tests {
         exec(true, false, true);
         assert_eq!(state(&hub), "auto", "its lead is on auto mode and woken");
         hub.write(|st| st.review_queue.push(QueuedReview { exec: "E".into(), lead: "L".into(), text: "r".into(), at_ms: 1 }));
+        assert_eq!(state(&hub), "auto", "a review queued before its lead went on auto is moot");
+        exec(true, false, false);
         assert_eq!(state(&hub), "queued");
         hub.write(|st| st.review_queue.clear());
         hub.write(|st| st.review_sent.insert("E".into(), ("L".into(), now_ms())));
@@ -303,17 +322,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A lead whose wake-up never arrived is waiting for you, never "reviewing on its own", even on auto mode; the
-    /// findings of a review are its saved text, else the lead's last reply.
+    /// A lead whose wake-up never arrived is waiting for you; on auto mode it isn't: it takes reports on its own, and
+    /// nothing asks you to start its review. The findings of a review are its saved text, else the lead's last reply.
     #[test]
     fn a_missed_wake_shows_as_waiting_and_a_reviews_findings_come_from_its_file_or_the_leads_reply() {
         let _g = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut st = Store::default();
-        let lead = crate::leads::Member { role: "lead".into(), plugin: "relay".into(), auto: Some(true), ..Default::default() };
-        let late = crate::leads::Member { ready_late: true, ..crate::leads::reported_exec() };
-        crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), late)].into());
+        let crew = |auto: bool| {
+            let lead = crate::leads::Member { role: "lead".into(), plugin: "relay".into(), auto: Some(auto), ..Default::default() };
+            let late = crate::leads::Member { ready_late: true, ..crate::leads::reported_exec() };
+            crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), late)].into());
+        };
+        crew(false);
         let v = Hub::reviews_view(&mut st);
         assert_eq!((v["E"]["state"].as_str(), v["E"]["missed"].as_bool()), (Some("waiting"), Some(true)));
+        crew(true);
+        let v = Hub::reviews_view(&mut st);
+        assert_eq!((v["E"]["state"].as_str(), v["E"]["missed"].as_bool()), (Some("auto"), Some(false)), "on auto mode: never asks you");
         let m = crate::leads::Member { review: "Findings:\n1. one\n\n2. two\nRecommendation: fix-list (finding 1).\n".into(), ..crate::leads::reported_exec() };
         assert_eq!(Hub::findings(&st, &m), (vec!["1. one".to_string(), "2. two".to_string()], "fix-list".to_string()), "the heading and the recommendation aren't findings");
         let mut said = Hub::new_item(&mut st, "waiting", Origin { session_id: "L".into(), ..Default::default() });
@@ -330,6 +355,7 @@ mod tests {
         let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("CUE_HOME", &dir);
         crate::db::reset();
+        crate::leads::install_index(HashMap::new());
         let hub = Hub::new(None);
         // The lead was just handed a review (it takes a moment to show as working): busy.
         hub.write(|st| {

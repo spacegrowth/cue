@@ -107,7 +107,7 @@ fn describe_codex(name: &str, args: &Value, raw: &str) -> String {
 }
 
 /// A tool call in plain words: what it's doing and to what.
-pub(super) fn describe_tool(b: &Value) -> String {
+pub fn describe_tool(b: &Value) -> String {
     let name = b.get("name").and_then(Value::as_str).unwrap_or("a tool");
     let arg = |k: &str| b.pointer(&format!("/input/{k}")).and_then(Value::as_str).unwrap_or("").to_string();
     let file = |k: &str| arg(k).rsplit('/').next().unwrap_or("").to_string();

@@ -47,12 +47,24 @@ pub fn words(dir: &str, extra: &[String], rest: &[&str]) -> Vec<String> {
 
 /// Run git in `dir`, here (`machine` empty) or on that machine: stdout and the exit code.
 pub fn run(machine: &str, dir: &str, extra: &[String], rest: &[&str]) -> Result<(String, i32), String> {
+    run_env(machine, dir, extra, &[], rest)
+}
+
+/// `run` with these environment variables set for git (like `GIT_INDEX_FILE`).
+pub fn run_env(machine: &str, dir: &str, extra: &[String], env: &[(&str, &str)], rest: &[&str]) -> Result<(String, i32), String> {
     let w = words(dir, extra, rest);
     if machine.is_empty() {
-        let out = Command::new(git_bin()).args(&w[1..]).stdin(Stdio::null()).output().map_err(|e| e.to_string())?;
+        let mut cmd = Command::new(git_bin());
+        cmd.args(&w[1..]).stdin(Stdio::null());
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let out = cmd.output().map_err(|e| e.to_string())?;
         return Ok((String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(OUT_LIMIT)]).to_string(), out.status.code().unwrap_or(1)));
     }
-    let script = format!("{}; printf '\\n@@cue-exit %s\\n' $?", sh_words(&w));
+    let vars: Vec<String> = env.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let prefix = if vars.is_empty() { String::new() } else { format!("env {} ", sh_words(&vars)) };
+    let script = format!("{prefix}{}; printf '\\n@@cue-exit %s\\n' $?", sh_words(&w));
     let o = on_machine(machine, &script)?;
     Ok(match o.rfind("\n@@cue-exit ") {
         Some(i) => (o[..i].to_string(), o[i + 12..].trim().parse().unwrap_or(1)),

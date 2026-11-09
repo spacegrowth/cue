@@ -88,6 +88,8 @@ const THREAD_CLICKS = [
   rule("[data-run-code]", (rc) => runCode(rc)),
   // A card's "N agents": open its session (its item, on a waiting card) on its Agents tab.
   rule("[data-bg-open]", (bo) => { const sid = bo.dataset.bgOpen, it = bo.closest("[data-big]")?.dataset.big; bgTabOn.set(sid, "agents"); return it ? setActive(it) : openSession(sid); }),
+  // A stuck agent's Resume / Stop, before its row's own click (agents.js).
+  rule("[data-ag-wake]", (b) => agentWake(b.dataset)),
   rule("[data-helper]", (hb) => { const [sid, id] = hb.dataset.helper.split("|"); helperView = { sid, id }; renderMain(); }),
   // Back to the chat (Go to chat, ‹ Back to chat, the lead's chip): with the cursor in its box, ready to write.
   rule("[data-helper-back]", () => { closeHelperView(); focusComposer(); }),

@@ -14,7 +14,7 @@ function reviewState(r) {
     case "reviewing": return "reviewing…";
     case "queued": return "review queued";
     case "reviewed": return `reviewed${r.recommendation ? `: ${r.recommendation}` : ""}${n ? ` · ${n} note${n === 1 ? "" : "s"}` : ""}`;
-    case "auto": return `finished${packet} · its lead reviews it`;
+    case "auto": return `finished${packet} · its lead is reviewing it`;
     default: return [`finished${packet}`, r.stat, r.missed ? "its lead hasn't picked this up" : ""].filter(Boolean).join(" · ");
   }
 }

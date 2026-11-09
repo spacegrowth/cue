@@ -96,25 +96,17 @@ test("Settings → Agents: a command in a setting's note stays whole", async ({ 
   expect(await splitWords(page, ".sheet .set-sub")).toEqual([]);
 });
 
-test("the board's column headings line up", async ({ cue, page }) => {
-  await cue.open("board-waiting", { frozen: true });
-  const tops = await page.evaluate(() => [".col.main", ".col-waiting", ".col-sessions"].map((c) => {
-    const r = document.createRange();
-    r.selectNodeContents(document.querySelector(`${c} .col-head`));
-    return Math.round(r.getClientRects()[0].top);
-  }));
-  expect(new Set(tops).size, `heading tops ${tops}`).toBe(1);
-});
-
-test("what's under each column heading starts on one line, and every group label sits the same over its card", async ({ cue, page }) => {
+test("no column headings: the lists' first group labels share one line, and the open card starts level with the lists' first cards", async ({ cue, page }) => {
   await cue.open("board-waiting", { frozen: true });
   const m = await page.evaluate(() => {
     const top = (el) => Math.round(el.getBoundingClientRect().top);
-    const firsts = [".col.main .active-pane", ".col-waiting .sec-body > :first-child", ".col-sessions .sec-body > :first-child"].map((s) => top(document.querySelector(s)));
+    const labels = [".col-waiting .sec-body > :first-child", ".col-sessions .sec-body > :first-child"].map((s) => document.querySelector(s));
     const gaps = [...document.querySelectorAll(".sec-body > .col-sub")].map((l) => top(l.nextElementSibling) - Math.round(l.getBoundingClientRect().bottom));
-    return { firsts, gaps };
+    return { labels: labels.map(top), cards: [document.querySelector(".col.main .active-pane"), ...labels.map((l) => l.nextElementSibling)].map(top), gaps, heads: document.querySelectorAll(".col-waiting > .sec-waiting > .col-head:not(.col-tools), .col-sessions > .sec-sessions > .col-head:not(.col-tools)").length };
   });
-  expect(new Set(m.firsts).size, `first tops ${m.firsts}`).toBe(1);
+  expect(m.heads, "a WAITING or SESSIONS heading").toBe(0);
+  expect(new Set(m.labels).size, `label tops ${m.labels}`).toBe(1);
+  expect(new Set(m.cards).size, `card tops ${m.cards}`).toBe(1);
   expect(new Set(m.gaps).size, `label-to-card gaps ${m.gaps}`).toBe(1);
 });
 

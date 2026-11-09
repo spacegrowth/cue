@@ -31,6 +31,9 @@
   --shadow: 0 18px 40px -22px rgba(15, 20, 5, 0.55);
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  /* Every small label (a role, a mode, a state, a count, a chip) is a full capsule: this one shape
+     (tests/ui/specs/pills.mjs checks every screen for one that isn't). */
+  --pill-radius: 999px;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -94,6 +97,14 @@ body { background: var(--bg); color: var(--ink); font: 13.5px/1.5 var(--sans); -
 @media (prefers-reduced-motion: reduce) { body { transition: none; } }
 .sel, .msg, pre, code, input, textarea { user-select: text; -webkit-user-select: text; }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+/* Links, everywhere (chat, the Read tab, cards, tips, settings): the theme's link colour, never the browser's
+   blue, and a visited one doesn't turn purple. --link (unset: the accent, read where the link is: a project's tint,
+   an inverted card's own) is AA on every surface it sits on; under the pointer it moves toward the text
+   colour (darker in light, lighter in dark), and the keyboard's focus gets a ring. On the selected colour (a
+   hit, a highlighted reply) a link takes that surface's own text colour. */
+a, a:visited { color: var(--link, var(--accent)); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--link-hover, color-mix(in oklab, var(--link, var(--accent)) 65%, var(--ink))); }
+a:focus-visible { outline: 2px solid var(--link, var(--accent)); outline-offset: 2px; border-radius: 2px; }
 .mono { font-family: var(--mono); }
 
 /* ---------- shell ---------- */
@@ -106,7 +117,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .wordmark svg { display: block; pointer-events: none; }
 /* Header chips: click to open the oldest of each kind (again for the next). */
 .hchips { display: flex; gap: 8px; align-items: center; }
-.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
+.hchip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12.5px; font-weight: 650; color: var(--on-bg); background: color-mix(in srgb, var(--on-bg) 12%, transparent); white-space: nowrap; }
 .hchip:hover { background: color-mix(in srgb, var(--on-bg) 20%, transparent); }
 /* Stronger = closer to the header's own text color, in either theme. */
 .hchip.warm { background: color-mix(in srgb, var(--on-bg) 30%, transparent); }

@@ -333,6 +333,11 @@ impl Hosted for Hosts {
                 (back.go)();
                 return back.started.ok_or_else(|| "it ended as Cue picked it up".to_string());
             }
+            // Its agent there takes what Cue starts it with, or Cue says what's wrong (agent_check.rs). The tests'
+            // stand-in (`Program::At`) is no agent to ask about.
+            if matches!(spec.program, super::Program::Agent) {
+                super::agent_check::on_machine(&spec.machine, spec.agent)?;
+            }
             return self.start_hosted(&link, spec, report);
         }
         match self.link() {

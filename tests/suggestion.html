@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Cue prompt suggestion check</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // Claude's prompt suggestion in a hosted session's box: grey in the empty box, a chip after the quick phrases,
+    // Tab types it in; gone once the session is back at work. Headless:
+    //   chrome --headless=new --allow-file-access-from-files --dump-dom file://…/tests/suggestion.html 2> log.txt; grep CHECK log.txt
+    window.onerror = (m, src, l, c) => console.log(`CHECK no-error fail ${m} @${l}:${c}`);
+    (() => {
+      const now = (window.NOW = Date.now()), M = (window.MIN = 60000);
+      const st = (id, kind, verb, subject, result, m, o = {}) => ({ t: "step", id, kind, verb, subject, mono: true, result, bad: false, done: true, at_ms: now - m * M, ...o });
+      const say = (text, m) => ({ t: "say", text, at_ms: now - m * M });
+      // The thread: long enough that the chat scrolls, so a page of earlier messages has somewhere to go.
+      const thread = [];
+      for (let n = 0; n < 12; n++) thread.push({ role: n % 2 ? "agent" : "you", text: `Message ${n + 1} of the thread, with enough words to take a line or two in the chat.`, at_ms: now - (40 - n) * M });
+      thread.push({ role: "you", text: "Do the thing.", at_ms: now - 10.5 * M }, { role: "agent", text: "Done.", at_ms: now - 9 * M }, { role: "you", text: "Now the next thing.", at_ms: now - 2.5 * M });
+      const sess = (sid, project, state, thread) => ({ session_id: sid, project, harness: "claude", cwd: `/x/${project}`, state, since_ms: now - 2.4 * M, prompt: "Now the next thing.", segments: [{ kind: "working", start_ms: now - 2.4 * M, end_ms: null }], thread });
+      const state = { now_ms: now, window_ms: 30 * M, settings: { appearance: { mode: "dark" }, quick: { phrases: ["continue", "commit this", "why?"] } }, connections: { claude: { ok: true } }, parked: [], live: [],
+        sessions: [{ ...sess("w1", "one", "waiting", thread), suggestion: "yes, add tests" }, sess("w2", "two", "working", thread.slice(0, 4))], items: [], history: [] };
+      window.FEED = { version: 1, turns: [
+        { at_ms: now - 10.4 * M, more: 0, items: [st("a1", "read", "Read", "main.rs", "80 lines", 10.3), st("a2", "edit", "Edited", "main.rs", "+4 −1", 10), say("Done.", 9)] },
+        { at_ms: now - 2.4 * M, more: 0, items: [say("Looking at it.", 2.3), st("c1", "read", "Read", "lib.rs", "40 lines", 2.2), st("c2", "run", "Ran", "cargo test", "", 2.1, { done: false })] },
+      ] };
+      window.__TAURI__ = {
+        app: { getVersion: async () => "0" },
+        event: { listen: async () => {}, emit: async () => {} },
+        core: { convertFileSrc: (p) => p, invoke: async (cmd, args) => {
+          if (cmd === "get_state") return structuredClone(state);
+          if (cmd === "get_drafts") return {};
+          if (cmd === "session_steps") return args.sessionId === "w1" && args.version !== FEED.version ? structuredClone(FEED) : { version: args.sessionId === "w1" ? FEED.version : 0, turns: args.sessionId === "w1" ? undefined : [] };
+          if (cmd === "step_detail") return Object.fromEntries(args.ids.map((id) => [id, { full: "cargo test", output: ["ok"] }]));
+          if (cmd === "session_log_page") return Array.from({ length: 30 }, (_, n) => ({ at_ms: args.beforeMs - (30 - n) * M, role: n % 2 ? "agent" : "you", text: `Earlier message ${n + 1}`, images: [] }));
+          if (cmd === "actions_list") return { actions: [], pending: [] };
+          if (cmd === "transcript_page" || cmd === "closed_sessions" || cmd === "machines_list") return [];
+          return null;
+        } },
+      };
+    })();
+  </script>
+  <script src="index_tags.js"></script>
+  <script>
+    const check = (name, ok, why = "") => console.log(`CHECK ${name} ${ok ? "pass" : "fail"}${ok || !why ? "" : ` (${why})`}`);
+    const tbox = () => document.querySelector(".active-pane textarea[data-text]");
+    setTimeout(async () => {
+      setActive(null, "w1");
+      await loadSteps("w1");
+      const el = tbox();
+      check("setup", !!el, "no text box");
+      check("grey-in-box", el.placeholder.startsWith("yes, add tests"), el.placeholder);
+      const chip = document.querySelector(".active-pane .qp.sug");
+      check("chip-after-phrases", chip?.dataset.phrase === "yes, add tests" && chip.previousElementSibling?.dataset.phrase === "why?", chip?.outerHTML);
+      if (location.hash === "#look") return;
+      el.focus();
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+      check("tab-types-it", tbox().value === "yes, add tests", tbox().value);
+      // Back at work: neither shows (the hub clears it then too).
+      const s = state.sessions.find((x) => x.session_id === "w1");
+      s.state = "working";
+      tbox().value = "";
+      draft("s:w1").text = "";
+      renderMain();
+      check("gone-at-work", !document.querySelector(".active-pane .qp.sug") && !tbox().placeholder.startsWith("yes"), tbox().placeholder);
+      console.log("CHECK done pass");
+    }, 300);
+  </script>
+</body>
+</html>

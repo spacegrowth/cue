@@ -46,6 +46,7 @@ function keyInBox(e) {
     else pickCmd(mk, m[cmdSel].name, e.key === "Enter");
     return true;
   }
+  if (mk?.startsWith("s:") && e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && takeSuggestion(mk)) { e.preventDefault(); return true; }
   if (mk?.startsWith("s:") && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing && recallSent(e)) { e.preventDefault(); return true; }
   return false;
 }

@@ -29,6 +29,7 @@ mod settings;
 mod status_list;
 mod store;
 mod tasks;
+mod team;
 mod terminal_screens;
 mod transcripts;
 mod typing;

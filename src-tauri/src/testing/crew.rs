@@ -15,6 +15,13 @@ impl Crew {
         self
     }
 
+    /// Relay lead `sid` on auto mode (`/relay:auto`): it reviews its executors' reports on its own.
+    pub fn auto_lead(mut self, sid: &str) -> Self {
+        self = self.lead(sid);
+        self.0.get_mut(sid).unwrap().auto = Some(true);
+        self
+    }
+
     /// Lead `sid`, which took over from `predecessor` (a relay hand-off) at `started_ms`.
     pub fn successor(mut self, sid: &str, predecessor: &str, started_ms: u64) -> Self {
         self = self.lead(sid);

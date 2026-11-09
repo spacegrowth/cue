@@ -56,8 +56,9 @@ impl Hub {
             it.tool_input = tool_input;
             it.suggestions = suggestions;
             it.context = context;
+            // A hosted lead's teammate goes by the name its lead gave it (team.rs).
+            it.agent_name = st.sessions.teammate_name(&sid, &agent_id).unwrap_or(agent_name);
             it.agent_id = agent_id;
-            it.agent_name = agent_name;
             it.request_id = request_id.map(str::to_string);
             it.scan_from = scan_from;
             let asked = match it.kind.as_str() {
@@ -401,6 +402,10 @@ pub(super) fn notify_title(it: &Item) -> (String, String) {
     if !it.origin.machine.is_empty() {
         who = format!("{who} on {}", crate::machines::display_name(&it.origin.machine));
     }
+    // One of its agents asks: "<lead> › <agent>".
+    if !it.agent_name.is_empty() {
+        who = format!("{who} › {}", it.agent_name);
+    }
     let what = match it.kind.as_str() {
         "question" => "has a question",
         "waiting" => "finished, waiting for you",
@@ -553,6 +558,7 @@ mod tests {
         assert_eq!(mine, [("a7", "Clean the build"), ("", "")], "the agent's ask carries its id and name; the session's own doesn't");
         let v = serde_json::to_value(&items[1]).unwrap();
         assert!(v.get("agent_id").is_none(), "the session's own ask sends no agent fields");
+        assert!(notify_title(&items[0]).0.ends_with("› Clean the build wants permission"), "its notification says which agent: {:?}", notify_title(&items[0]));
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&dir);
     }

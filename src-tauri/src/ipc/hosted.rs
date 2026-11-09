@@ -8,7 +8,6 @@ use crate::hub::{Hub, HostedStart};
 use crate::logs::{live, transcript};
 use crate::model::{self, Origin};
 use crate::terminal::focus;
-use crate::terminal::launch::Place;
 use std::sync::Arc;
 use tauri::State;
 
@@ -183,43 +182,6 @@ pub(crate) fn move_into_hosted(h: &Arc<Hub>, origin: Origin, end: impl FnOnce() 
     Ok(if origin.machine.is_empty() { "Moved to Cue: hosted here now".into() } else { format!("Moved: hosted on {} now", crate::machines::display_name(&origin.machine)) })
 }
 
-/// "Move to terminal": a hosted session that isn't working or asking you something, closed and resumed with
-/// `claude --resume` in a terminal tab, where it's an ordinary terminal session from then on.
-#[tauri::command]
-pub(crate) async fn move_to_terminal(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
-    with_hub(&hub, move |h| move_hosted_to_terminal(h, &session_id)).await?
-}
-
-pub(crate) fn move_hosted_to_terminal(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
-    let origin = h.hosted_origin(session_id).ok_or("it isn't hosted in Cue")?;
-    h.closable(session_id)?;
-    if !origin.machine.is_empty() {
-        return move_hosted_to_tmux_there(h, &origin);
-    }
-    let line = focus::resume_line_local(&origin.cwd, session_id, &origin.transcript_path)?;
-    let name = h.session_name(session_id);
-    let label = if name.is_empty() { model::folder_of(&origin.cwd) } else { name };
-    h.hosted().close(session_id);
-    let tab = h.launcher().here(&line, &origin.cwd, &label, Place::chosen(Some(false)))?;
-    let moved = Origin { session_id: session_id.to_string(), harness: "claude".into(), cwd: origin.cwd.clone(), transcript_path: origin.transcript_path.clone(), term_program: tab.term_program, iterm_session_id: tab.iterm_session_id, tty: tab.tty, tmux_pane: tab.tmux_pane, ..Default::default() };
-    h.resumed(moved, &label, &[], false);
-    Ok(format!("Moved to {}", tab.what))
-}
-
-/// Move to terminal for a session hosted on a machine: closed there and resumed in tmux on the same machine (Cue's
-/// terminal shows it over SSH), on the model it last used.
-fn move_hosted_to_tmux_there(h: &Arc<Hub>, origin: &Origin) -> Result<String, String> {
-    let sid = origin.session_id.as_str();
-    let m = crate::machines::get(&origin.machine).ok_or(format!("{} isn't one of your machines any more (+ New → Machine)", origin.machine))?;
-    let line = focus::resume_line_for_with("claude", ".", sid, &focus::model_args(&origin.transcript_path, &origin.machine))?;
-    let name = h.session_name(sid);
-    let label = if name.is_empty() { model::folder_of(&origin.cwd) } else { name };
-    h.hosted().close(sid);
-    let crate::terminal::launch::Started { pane, tty, dir } = h.launcher().there(&m, &line, &origin.cwd, &label)?;
-    let moved = Origin { session_id: sid.to_string(), harness: "claude".into(), cwd: dir, transcript_path: origin.transcript_path.clone(), term_program: "tmux".into(), tty, tmux_pane: pane, machine: m.name.clone(), ..Default::default() };
-    h.resumed(moved, &label, &[], false);
-    Ok(format!("Moved to tmux on {}", m.name))
-}
 
 #[cfg(test)]
 mod tests {

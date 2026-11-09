@@ -20,6 +20,12 @@ mod schema;
 #[cfg(test)]
 pub use self::schema::tests_seam;
 mod search;
+// The optional add-on's tables and queries (built in with the `ext` feature).
+#[cfg(feature = "ext")]
+#[path = "../../ext/db/mod.rs"]
+pub(crate) mod ext;
+#[cfg(feature = "ext")]
+pub use self::ext::*;
 
 pub use self::commands::{commands, set_commands, all_commands, stale_commands};
 pub use self::drafts::{draft_text, drafts, set_draft, review_queue, queue_review, unqueue_review, set_aside, add_set_aside};

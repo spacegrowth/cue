@@ -36,6 +36,8 @@ pub(super) struct Feed {
     pub(super) helper: bool,
     /// Helper: when its last answer ended (its report is written, no step open); 0 while it works.
     pub(super) ended_ms: u64,
+    /// Helper: its log's last line, when, and what it was (sessions/quiet.rs).
+    pub(super) last_line: (u64, crate::sessions::quiet::Last),
     /// The background agents this session started (Claude Code's Agent tool), each read from its own log.
     pub(super) helpers: Vec<Helper>,
     /// How many helpers it keeps (finished ones go first): MAX_HELPERS, or all for a session's history.
@@ -117,7 +119,7 @@ impl Feed {
 
     /// A feed reading `kind`'s log from `offset`, with nothing read yet. No file is touched.
     pub(super) fn blank(path: &str, kind: Kind, version: u64, offset: u64) -> Feed {
-        Feed { path: path.to_string(), meta: Meta::default(), kind, patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, generation: 0, used: Instant::now(), helper: false, ended_ms: 0, helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false), max_helpers: MAX_HELPERS }
+        Feed { path: path.to_string(), meta: Meta::default(), kind, patches: HashMap::new(), offset, align: offset > 0, turns: Vec::new(), version, generation: 0, used: Instant::now(), helper: false, ended_ms: 0, last_line: (0, crate::sessions::quiet::Last::Result), helpers: Vec::new(), tokens: 0, failures: Vec::new(), last_reply: String::new(), codex_total: 0, note_calls: HashMap::new(), note: None, prompted: (0, false), max_helpers: MAX_HELPERS }
     }
 
     /// A background agent's log, read from its start (it's small: one task).

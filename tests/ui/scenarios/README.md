@@ -30,6 +30,7 @@ What the `world-*` files promise, so the screenshots taken from them don't chang
 | world-one-ask | one session asking to run a Bash command |
 | world-many-sessions | finished, working, asking a question, out of usage, driven by a relay lead, Pi, Codex |
 | world-relay-review | a working relay lead and two reported executors, one review queued for the lead |
+| world-relay-auto | a relay lead on auto mode, back from its turn, and its executor that reported (its card left off Waiting) |
 | world-status-list | a finished turn ending in a status list, its prompt carrying the status ask |
 | world-parked | one parked session and one under Closed |
 | world-restarting | a session restarting for its MCP servers (step "start") |
@@ -39,3 +40,4 @@ What the `world-*` files promise, so the screenshots taken from them don't chang
 | world-handoff-pending | a session that sent /handoff and hasn't continued |
 | world-settings | Finished-turn notifications off, History kept to 50 |
 | world-four-choices | one session asking a question with four choices (the 1–4 keys) |
+| world-team | a hosted lead and its team: one teammate asking, one working, one done, one reviewed and held (a shared file), one reviewed and free to commit, one set aside |

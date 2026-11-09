@@ -1,0 +1,426 @@
+{
+  "about": {},
+  "ahead_watch": [],
+  "branches": {
+    "/work/order-engine": ""
+  },
+  "connections": {
+    "claude": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "codex": {
+      "events": [
+        "PermissionRequest",
+        "Stop",
+        "UserPromptSubmit",
+        "SessionEnd"
+      ],
+      "ok": true,
+      "present": true
+    },
+    "pi": {
+      "ok": true,
+      "present": true
+    }
+  },
+  "crew": {
+    "ex-fills": {
+      "goal": "fills: the packet's goal",
+      "lead": "lead",
+      "lead_armed": true,
+      "lead_name": "order-engine",
+      "name": "fills",
+      "outcome": "Done and staged.",
+      "packet": 3,
+      "plugin": "relay",
+      "role": "executor",
+      "status": "reported"
+    },
+    "lead": {
+      "auto": true,
+      "executors": [
+        {
+          "goal": "fills: the packet's goal",
+          "machine": "",
+          "model": "",
+          "name": "fills",
+          "outcome": "Done and staged.",
+          "packet": 3,
+          "plugin": "relay",
+          "session_id": "ex-fills",
+          "setup": "",
+          "status": "reported",
+          "tmux_session": "",
+          "verify": null
+        }
+      ],
+      "name": "order-engine",
+      "plugin": "relay",
+      "role": "lead"
+    }
+  },
+  "ended": [],
+  "handoffs": {},
+  "history": [],
+  "insight": {},
+  "items": [
+    {
+      "agent_pid": null,
+      "back_ms": null,
+      "context": [
+        {
+          "role": "assistant",
+          "text": "Sent packet 3 to fills."
+        }
+      ],
+      "created_ms": 1793984380000,
+      "cwd": "/work/order-engine",
+      "followup": "",
+      "harness": "claude",
+      "hosted": false,
+      "id": "n1793984360001",
+      "images": [],
+      "interrupted": false,
+      "iterm_session_id": "",
+      "kind": "waiting",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "message": "Sent packet 3 to fills.",
+      "outcome": "",
+      "project": "order-engine",
+      "resolved_ms": null,
+      "session_id": "lead",
+      "status": "pending",
+      "suggestions": null,
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984360000,
+          "role": "you",
+          "text": "Lead the router refactor"
+        }
+      ],
+      "tmux_pane": "",
+      "tool_input": null,
+      "tool_name": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "live": [],
+  "now_ms": 1793984400000,
+  "parked": [],
+  "projects": {
+    "/work/order-engine": {
+      "key": "/work/order-engine",
+      "name": "order-engine",
+      "own": "order-engine",
+      "root": "/work/order-engine",
+      "top": "/work/order-engine"
+    }
+  },
+  "restarted": {},
+  "restarting": {},
+  "review_queue": {},
+  "reviews": {
+    "ex-fills": {
+      "findings": [],
+      "goal": "fills: the packet's goal",
+      "lead": "lead",
+      "missed": false,
+      "name": "fills",
+      "outcome": "Done and staged.",
+      "packet": 3,
+      "recommendation": "",
+      "stat": "",
+      "state": "auto"
+    }
+  },
+  "sessions": [
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/order-engine",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "hosted": false,
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "order-engine",
+      "prompt": "packet 3",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984400000,
+          "kind": "working",
+          "start_ms": 1793984380000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984400000
+        }
+      ],
+      "session_id": "ex-fills",
+      "since_ms": 1793984400000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984380000,
+          "role": "you",
+          "text": "packet 3"
+        },
+        {
+          "at_ms": 1793984400000,
+          "role": "agent",
+          "text": "Packet 3 done."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/ex-fills.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    },
+    {
+      "agent_pid": null,
+      "agents": 0,
+      "background": 0,
+      "cwd": "/work/order-engine",
+      "doing_ms": 0,
+      "driven_by": "",
+      "harness": "claude",
+      "hosted": false,
+      "iterm_session_id": "",
+      "kitty_listen_on": "",
+      "kitty_window_id": "",
+      "machine": "",
+      "project": "order-engine",
+      "prompt": "Lead the router refactor",
+      "queued": null,
+      "segments": [
+        {
+          "end_ms": 1793984380000,
+          "kind": "working",
+          "start_ms": 1793984360000
+        },
+        {
+          "end_ms": null,
+          "kind": "waiting",
+          "start_ms": 1793984380000
+        }
+      ],
+      "session_id": "lead",
+      "since_ms": 1793984380000,
+      "state": "waiting",
+      "term_program": "",
+      "thread": [
+        {
+          "at_ms": 1793984360000,
+          "role": "you",
+          "text": "Lead the router refactor"
+        },
+        {
+          "at_ms": 1793984380000,
+          "role": "agent",
+          "text": "Sent packet 3 to fills."
+        }
+      ],
+      "tmux_pane": "",
+      "transcript_path": "/Users/me/.claude/projects/-work/lead.jsonl",
+      "tty": "",
+      "wezterm_pane": ""
+    }
+  ],
+  "settings": {
+    "actions": {
+      "default": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why.",
+      "prompt": "Look at this project and set up my Cue actions for it in {file} (Cue's own file, outside the repo). Read the notes at the top of the file first (its \"about\" list, which says how an action is written) and follow them. Keep the actions already there unless they're wrong. Then tell me what you added, changed or removed, and why."
+    },
+    "agents": {
+      "show_driven": true
+    },
+    "appearance": {
+      "mode": "system",
+      "project": false,
+      "zoom": 1.0
+    },
+    "background": {
+      "sessions": []
+    },
+    "context": {
+      "keep": 5
+    },
+    "history": {
+      "keep": 300
+    },
+    "hosted": {
+      "on": false
+    },
+    "insights": {
+      "ahead": false,
+      "cache": false,
+      "handoff": false,
+      "on": false,
+      "queue": false,
+      "skills": {},
+      "snooze": 0
+    },
+    "login": {
+      "open": false
+    },
+    "mini": {
+      "mode": "off"
+    },
+    "notify": {
+      "cold": true,
+      "decisions": true,
+      "finished": true,
+      "sound": "pluck"
+    },
+    "pi": {
+      "gate": "dangerous"
+    },
+    "project": {
+      "all": null,
+      "colors": {},
+      "folders": {},
+      "hue": null,
+      "made": [],
+      "moves": {},
+      "names": {},
+      "pins": []
+    },
+    "quick": {
+      "phrases": [
+        "Commit",
+        "Go ahead",
+        "Think hard"
+      ]
+    },
+    "sessions": {
+      "terminal": "Terminal",
+      "tmux": true,
+      "tmux_installed": true
+    },
+    "setup": {
+      "done": false
+    },
+    "status": {
+      "on": true,
+      "sessions": []
+    },
+    "steps": {
+      "mode": "line"
+    },
+    "tasks": {
+      "auto": false,
+      "on": false
+    },
+    "tips": {
+      "on": true
+    },
+    "turn": {
+      "mode": "answer"
+    },
+    "updates": {
+      "beta": false
+    },
+    "usage": {
+      "claude": true,
+      "file": "~/.cue/usage.csv"
+    },
+    "voice": {
+      "pick": ""
+    }
+  },
+  "skill_handoffs": {},
+  "status_spent": {
+    "replies": 0,
+    "sessions": {},
+    "tokens": 0,
+    "usd": 0.0
+  },
+  "tasks": {},
+  "tasks_spent": {
+    "calls": 0,
+    "tokens": 0,
+    "tracked": 0,
+    "usd": 0.0
+  },
+  "today": {
+    "allowed": 0,
+    "answered": 0,
+    "denied": 0,
+    "hours": [
+      {
+        "from_ms": 1793944800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793948400000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793952000000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793955600000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793959200000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793962800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793966400000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793970000000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793973600000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793977200000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793980800000,
+        "n": 0
+      },
+      {
+        "from_ms": 1793984400000,
+        "n": 0
+      }
+    ],
+    "longest": null,
+    "median_wait_ms": null,
+    "replied": 0
+  },
+  "unreachable": [],
+  "usage": null,
+  "usage_file": null,
+  "window_ms": 1800000
+}

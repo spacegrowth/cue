@@ -133,6 +133,9 @@ pub(super) fn helper_json(h: &Helper, now: u64) -> Value {
     let mut v = serde_json::to_value(h).unwrap_or(Value::Null);
     v["running"] = json!(h.running());
     v["stuck"] = json!(h.stuck(now));
+    // Quiet (sessions/quiet.rs): "tool" with the step it has open, or "stuck".
+    v["quiet"] = json!(h.quiet(now));
+    v["quiet_what"] = json!(h.open_step());
     v
 }
 

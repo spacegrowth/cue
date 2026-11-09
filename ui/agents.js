@@ -105,7 +105,7 @@ const agentGo = (a) => a.kind === "relay" ? exGo(a.id) : `data-helper="${esc(`${
  *  Review. Else ›. */
 function agentRow(a, times = false) {
   const tok = times ? helperTokens(a.tokens) : "";
-  const quiet = a.kind !== "relay" && a.state === "stuck" ? ` · ${helperQuiet(a.h)}` : a.state === "stuck" ? ` · <span class="bg-quiet">stuck</span>` : "";
+  const quiet = a.kind !== "relay" && a.state === "stuck" ? ` · ${helperQuiet(a.h)}` : a.state === "stuck" ? ` · <span class="bg-quiet">stuck</span>` : a.kind !== "relay" && a.h?.quiet === "tool" ? ` · ${helperLongRun(a.h)}` : "";
   const dot = agentLive(a) ? `<span class="dot-live ${a.state === "stuck" ? "stuck" : ""}"></span>` : "";
   const meta = `<span class="bg-meta">· ${esc(a.type)} · ${agentWhen(a, times)}${tok ? ` · ${tok}` : ""}${quiet}</span>`;
   const head = `${agentMark(a)}<span class="bg-name">${esc(a.name)}</span>`;
@@ -116,14 +116,25 @@ function agentRow(a, times = false) {
     return `<div class="stx-line bg-row ag-row need" data-key="${esc(a.key)}" role="button" ${ask ? `data-big="${esc(ask.id)}"` : agentGo(a)}>${head}<span class="bg-meta">· ${esc(a.type)} · <span class="ag-need">${esc(AGENT_WORDS.needs)}</span></span><span class="bg-tail ag-ask">${what}</span>${acts}</div>`;
   }
   const relayDone = a.kind === "relay" && a.state === "done";
-  const acts = relayDone ? `<span class="ag-acts">${diffBtn(a.id, a.e)}${reviewWord(a.id) ? `<span class="dim">${esc(reviewWord(a.id))}</span>` : `${missedWake(a.id) ? `<span class="dim">not picked up</span>` : ""}${crewBtn(a.id, "review", "Review", true)}`}</span>` : `<span class="stx-chev">›</span>`;
+  // Stuck: its session is asked to wake it (Resume) or stop it, as you'd type it there.
+  const wake = a.kind !== "relay" && a.state === "stuck" ? `<span class="ag-acts">${["resume", "stop"].map((w) => `<button class="btn small ${w === "stop" ? "deny" : ""}" data-ag-wake="${w}" data-ag-sid="${esc(a.sid)}" data-ag-id="${esc(a.id)}" data-ag-name="${esc(a.name)}">${w === "stop" ? "Stop" : "Resume"}</button>`).join("")}</span>` : "";
+  const acts = wake || (relayDone ? `<span class="ag-acts">${diffBtn(a.id, a.e)}${reviewWord(a.id) ? `<span class="dim">${esc(reviewWord(a.id))}</span>` : `${missedWake(a.id) ? `<span class="dim">not picked up</span>` : ""}${crewBtn(a.id, "review", "Review", true)}`}</span>` : `<span class="stx-chev">›</span>`);
   const idle = a.state === "idle" || a.state === "stopped";
   return `<div class="stx-line bg-row ag-row ${idle ? "idle" : ""}" data-key="${esc(a.key)}" role="button" ${agentGo(a)}>${head}${meta}${dot}<span class="bg-tail">${esc(a.latest)}</span>${acts}</div>`;
+}
+/** Resume or Stop on a stuck agent's row: its session is asked, at once (its turn waits on this very agent). */
+function agentWake(d) {
+  const text = d.agWake === "stop"
+    ? `Stop your background agent “${d.agName}” now (TaskStop, task id ${d.agId}), and say so.`
+    : `Your background agent “${d.agName}” has gone quiet. Ask it where it is and to carry on, with SendMessage (to: "${d.agId}").`;
+  return invoke("send_to_session", { sessionId: d.agSid, text, images: [], now: true }).then(() => toast(d.agWake === "stop" ? `Asked its session to stop ${d.agName}` : `Asked its session to wake ${d.agName}`), (e) => toast(`Couldn't ask its session: ${e}`));
 }
 /** Above the message box: the session's agents that need you or are at work, any kind, at most AGENT_ROWS (then
  *  "N more · Agents ›"); then its scripts still running. "" when nothing is. */
 function agentTray(sid) {
-  const { rows, more } = agentTrayRows(agentsOf(sid));
+  // A hosted lead's teammates have their rows in its team (team.js), not here too.
+  const mates = new Set(mateList(sid).map((t) => t.agent_id));
+  const { rows, more } = agentTrayRows(agentsOf(sid).filter((a) => !mates.has(a.id)));
   const scripts = helpersOf(sid).filter((h) => h.script && helperRunning(h)).sort((a, b) => a.started_ms - b.started_ms).map((h) => bgRow(sid, h)).join("");
   if (!rows.length && !scripts) return "";
   const head = rows.length ? `<div class="ag-head" data-key="ag-head"><span>AGENTS</span><span class="grow"></span>${more ? `<button class="ag-more" data-bg-tab="agents" data-sid="${esc(sid)}">${more} more · Agents ›</button>` : ""}</div>` : "";
@@ -139,6 +150,9 @@ function agentsPage(sid, helpers) {
 /** On the title line: a chip for each agent that needs you ("<name> needs you"), then "N agents ›", which opens the
  *  Agents tab. A relay agent's own chat has its RELAY tag and "for <lead> ›" instead (teamChips). */
 function agentChips(sid) {
+  // A hosted lead with a team: its teammates' chips, "N agents ›" opening the team under its title (team.js).
+  const team = mateChips(sid);
+  if (team) return team;
   const { needs } = agentChipsOf(agentsOf(sid)), { n } = agentCount(sid);
   if (!n) return "";
   const need = needs.map((a) => `<button class="tm-chip need" ${a.ask ? `data-big="${esc(a.ask.id)}"` : agentGo(a)}><span class="tm-n">${esc(a.name)}</span> <span class="tm-sub">needs you</span></button>`).join("");

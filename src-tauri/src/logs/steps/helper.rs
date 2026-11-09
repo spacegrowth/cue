@@ -3,6 +3,7 @@
 
 use super::feed::Feed;
 use super::model::Item;
+use crate::sessions::quiet::{judge, quiet_ms, Last, Quiet};
 use super::reading::{HelperRead, Reads, ScriptRead};
 use super::step_line::strip_ansi;
 use super::LINE_CHARS;
@@ -32,7 +33,7 @@ pub struct Helper {
     /// at the end of its output file); 0 until then.
     pub(super) finished_ms: u64,
     /// When it last did something: an agent's newest step, a script's output file last written; its
-    /// start until then. Running with nothing for STUCK_MS reads as stuck (`stuck`, added in `steps`).
+    /// start until then. Quiet past the threshold (sessions/quiet.rs) is judged by its last line (`quiet`).
     pub(super) last_ms: u64,
     /// An agent's tokens so far (input, output, and cache reads and writes), summed over its log's replies. 0 for a script.
     pub(super) tokens: u64,
@@ -78,8 +79,6 @@ pub struct Helper {
 /// A background task that failed after running this long: worth a word (a quick failure is one the
 /// session sees to itself).
 pub(super) const FAILURE_WORTH_MS: u64 = 60_000;
-/// Running with nothing new for this long: stuck.
-pub(super) const STUCK_MS: u64 = 180_000;
 
 /// A session's background task that failed after a while (FAILURE_WORTH_MS): the session's log,
 /// when, the task's description and its output's last line. The hub takes these (`take_task_failures`).
@@ -102,13 +101,64 @@ impl Helper {
     /// Running: not reported finished, and its log doesn't end on an answer (one from before its session
     /// sent it a message doesn't count, nor one that waits on its own background work: a command or agent
     /// it started, which brings it back when it's done).
+    /// An agent quiet past the threshold whose last line is its own words (sessions/quiet.rs) finished and only
+    /// lingers: not running (its notice or `end_turn` never came: a fork, a resumed one that answered).
     pub fn running(&self) -> bool {
+        self.at_work() && !self.lingering(crate::model::now_ms())
+    }
+
+    /// By its log and notice alone: not reported finished, and its log doesn't end on an answer.
+    fn at_work(&self) -> bool {
         self.finished_ms == 0 && self.feed.as_ref().is_none_or(|f| f.ended_ms == 0 || f.ended_ms < self.resumed_ms || f.helpers.iter().any(Helper::running))
     }
 
-    /// Running, with nothing done for STUCK_MS as of `now`.
+    /// Finished and lingering as of `now`: an agent (not a script) waiting on none of its own, quiet, its last line
+    /// its own words.
+    fn lingering(&self, now: u64) -> bool {
+        !self.script && !self.feed.as_ref().is_some_and(|f| f.helpers.iter().any(Helper::running)) && judge(self.last_kind(), self.heard_ms(), now) == Quiet::Finished
+    }
+
+    /// When it was last heard of: its newest line, or a message its session sent it since (that restarts the quiet).
+    fn heard_ms(&self) -> u64 {
+        self.last_ms.max(self.resumed_ms).max(self.feed.as_ref().map_or(0, |f| f.last_line.0))
+    }
+
+    /// Its log's last line: its own words, a step still open, or a step done (or nothing yet).
+    fn last_kind(&self) -> Last {
+        match self.feed.as_ref() {
+            // A message its session sent it since its last line: it was to go on from there.
+            Some(f) if f.last_line.0 > 0 && self.resumed_ms <= f.last_line.0 => f.last_line.1,
+            _ => Last::Result,
+        }
+    }
+
+    /// Running and quiet as of `now`: "tool" (a step open: a long run, left to it) or "stuck"; "" otherwise. A script
+    /// with nothing written for the threshold is stuck (it has no steps to tell by).
+    pub(super) fn quiet(&self, now: u64) -> &'static str {
+        if !self.running() {
+            return "";
+        }
+        if self.script {
+            return if now.saturating_sub(self.heard_ms()) >= quiet_ms() { "stuck" } else { "" };
+        }
+        match judge(self.last_kind(), self.heard_ms(), now) {
+            Quiet::Tool => "tool",
+            Quiet::Stuck => "stuck",
+            _ => "",
+        }
+    }
+
+    /// Running, and quiet with nothing open as of `now` (`quiet`).
     pub(super) fn stuck(&self, now: u64) -> bool {
-        self.running() && now.saturating_sub(self.last_ms) > STUCK_MS
+        self.quiet(now) == "stuck"
+    }
+
+    /// The step it has open, as its row says it ("Ran npm test"); "" when none is.
+    pub(super) fn open_step(&self) -> String {
+        match self.feed.as_ref().and_then(|f| f.turns.iter().rev().find_map(|t| t.items.last())) {
+            Some(Item::Step { done: false, verb, subject, .. }) => format!("{verb} {subject}").trim().to_string(),
+            _ => String::new(),
+        }
     }
 
     /// Put in what a catch-up read of it found; true when what's shown of it changed.

@@ -150,7 +150,8 @@ const moreWoke = new Set();
 /** Each chip's list, oldest first (going cold: soonest first): what a click steps through. */
 function chipList(kind) {
   const { yours, decide } = groups();
-  if (kind === "waiting") return yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
+  // The add-on's that wait on you count here too, after yours.
+  if (kind === "waiting") return [...yours.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms })), ...addOn.waitingChips()];
   if (kind === "asking") return decide.map((i) => ({ id: i.id, sid: i.session_id, project: i.project, since: i.created_ms }));
   // Waiting on you with its cache counting down on its card (insights.js cacheWarn): the soonest to run out first.
   return [...yours, ...decide].map((i) => ({ id: i.id, sid: i.session_id, project: i.project, w: cacheWarn(i.session_id) }))
@@ -167,16 +168,17 @@ function headerChips() {
     return `<button class="hchip ${cls}" data-chip="${kind}"><span class="hdot ${dot}"></span>${list.length}<span class="hlbl"> ${label}</span>${extra ? `<span class="hsub"> · ${extra}</span>` : ""}</button>`;
   };
   const waiting = chipList("waiting"), cold = chipList("cold");
-  const oldest = waiting[0] ? now() - waiting[0].since : 0;
+  const first = waiting.reduce((o, x) => (!o || x.since < o.since ? x : o), null);
+  const oldest = first ? now() - first.since : 0;
   // Stronger the longer the oldest has waited: soft under 5 minutes, then half, then solid at 15.
   const heat = oldest >= 15 * 60000 ? "hot" : oldest >= 5 * 60000 ? "warm" : "";
-  const html = chip("waiting", "waiting", waiting[0] ? `oldest ${ago(waiting[0].since)}` : "", heat, "z")
+  const html = chip("waiting", "waiting", first ? `oldest ${ago(first.since)}` : "", heat, "z")
     + chip("cold", "going cold", cold[0] ? `<span data-cold-in="${cold[0].since}">${coldIn(cold[0].since)}</span>` : "", "cold", "c")
     + chip("asking", "asking you", "", "", "ask");
   return html || `<span class="hall" data-tauri-drag-region>all clear</span>`;
 }
 /** Where the Active pane sits in a chip's list (-1 when it's showing something else). */
-const chipAt = (list) => list.findIndex((x) => (x.id ? x.id === active?.id : x.sid === active?.sid && !isPending(findItem(active?.id))));
+const chipAt = (list) => list.findIndex((x) => (x.shown ? x.shown() : x.id ? x.id === active?.id : x.sid === active?.sid && !isPending(findItem(active?.id))));
 /** A chip click opens the oldest of its kind; clicking again (or ›, →) steps to the next, ‹ or ← back; both wrap. */
 function openFromChip(kind, dir = 1) {
   const list = chipList(kind);
@@ -185,6 +187,7 @@ function openFromChip(kind, dir = 1) {
   const next = list[at < 0 ? (dir > 0 ? 0 : list.length - 1) : (at + dir + list.length) % list.length];
   chipNav = kind;
   slideDir = dir;
+  if (next.open) return next.open();
   setActive(next.id, next.sid);
 }
 

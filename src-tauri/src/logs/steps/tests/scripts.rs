@@ -29,7 +29,8 @@ fn a_background_script_shows_its_output_tail_until_its_session_hears_it_ended() 
     assert_eq!(running_background(p), 1, "but it's a background task the card counts");
     let written = mtime_ms(&out).unwrap();
     assert_eq!((h.last_ms, h.tokens), (written, 0), "last did something: its output file last written; no tokens");
-    assert!(!h.stuck(written + STUCK_MS) && h.stuck(written + STUCK_MS + 1));
+    let quiet = crate::sessions::quiet::QUIET_MS;
+    assert!(!h.stuck(written + quiet - 1) && h.stuck(written + quiet), "a script with nothing written for the threshold");
     // More output: shown on the next read.
     let v = f.version;
     std::fs::write(&out, "   Compiling cue v0.1.41\n\x1b[32m    Finished\x1b[0m release\n").unwrap();

@@ -39,9 +39,11 @@ CueBridge.area("steps", (w) => {
       helper("h2", "UI: every name shown", "Explore", "claude-opus-5-5", 4.9, { step: "n2", finished_ms: w.now() - 2.5 * M, last_ms: w.now() - 2.5 * M, tokens: 7300, running: false, items: [search("h2a", 4.5, { subject: "“nameSpan|agentName”", result: "9 results" }), read("h2b", "app.js", "4193 lines", 3.5), say("Every name the UI shows comes from `nameSpan` …", 2.5)] }),
       ...(many ? [
         helper("h3", "Docs: names in the README and site", "general-purpose", "claude-sonnet-5-5", 3.2, { step: "n1", last_ms: w.now() - 0.2 * M, tokens: 12100, items: [search("h3a", 3, { subject: "“session name”", result: "22 results" }), read("h3b", "README.md", "310 lines", 2.4), say("The README calls it a title in two places and a name in five.", 1.8), step("h3c", "run", "Running", "grep -rn title site/", "", 0.2, { done: false })] }),
-        // h4 is stuck: running, but quiet since its one step 3½ minutes ago.
-        helper("h4", "Tests: what the protocol suite asserts about names", "Explore", "claude-haiku-5-5", 4.2, { step: "n2", last_ms: w.now() - 3.6 * M, stuck: true, tokens: 2100, items: [step("h4a", "read", "Reading", "tests/test_protocol.py", "", 3.6, { done: false })] }),
+        // h4 is stuck: running, its last step done 16 minutes ago and nothing since (src-tauri/src/sessions/quiet.rs).
+        helper("h4", "Tests: what the protocol suite asserts about names", "Explore", "claude-haiku-5-5", 16.6, { step: "n2", last_ms: w.now() - 16 * M, stuck: true, quiet: "stuck", tokens: 2100, items: [step("h4a", "read", "Reading", "tests/test_protocol.py", "", 3.6, { done: false })] }),
         helper("h5", "Hooks: the name Claude Code sends", "Explore", "claude-opus-5-5", 0.4, { step: "n1", last_ms: w.now() - 0.4 * M }),
+        // h7 has a long run open: quiet 20 minutes inside one command, left to it.
+        helper("h7", "Suite: the full protocol run", "general-purpose", "claude-sonnet-5-5", 21, { step: "n2", last_ms: w.now() - 20 * M, quiet: "tool", quiet_what: "Running npm test", tokens: 900 }),
         helper("h6", "History: names kept per session", "Explore", "claude-sonnet-5-5", 4.8, { step: "n2", finished_ms: w.now() - 3.9 * M, last_ms: w.now() - 3.9 * M, tokens: 4900, running: false, items: [search("h6a", 4.6, { subject: "“custom_title”", result: "3 results" }), say("History keeps `custom_title` and `ai_title`; the UI prefers the first.", 3.9)] }),
       ] : []),
       ...(scripts ? [

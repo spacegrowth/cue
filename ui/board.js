@@ -351,7 +351,7 @@ function starEntry(s, open) {
     <div class="tl-title">${esc(what)}</div><div class="tl-out">${esc(st)}</div></div>`;
 }
 
-// ---------- Board view: ACTIVE | WAITING | WORKING + RECENTLY ANSWERED ----------
+// ---------- Board view (no column headings: the toolbar counts, each list's first group label leads it): OPEN | WAITING | WORKING + RECENTLY ANSWERED ----------
 // In conversation: a card that came back within a few minutes of your last message to that session.
 // It leaves the group (back to its place, newest first) once it's sat that long unanswered, except
 // while it's open in Active, so it never moves under you.
@@ -462,7 +462,7 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${bgPill(sessionOf(it.session_id), { tree: crewOf(it.session_id)?.role === "lead" })}`,
+    ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id), { tree: crewOf(it.session_id)?.role === "lead" })}`,
       `<span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}`)}
     ${talkNote(it)}${cardCrew(it.session_id)}
     ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
@@ -755,11 +755,13 @@ function waitingRows(b) {
   const inTalk = (i) => !i._team && talking(i);
   const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
   const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
-  const restRows = rest.length ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest)}</button>${newestShut() ? "" : draw(rest)}` : "";
+  // The add-on's rows that wait on you sit in Waiting with the rest.
+  const more = addOn.waiting();
+  const restRows = rest.length || more.count ? `<button class="col-sub fold-head sub-fold" data-fold-newest aria-expanded="${!newestShut()}"><span class="fold-arrow">${newestShut() ? "▸" : "▾"}</span> NEWEST FIRST · ${count(rest) + more.count}</button>${newestShut() ? "" : more.html + draw(rest)}` : "";
   const html = (talks.length || talkWork.length
-    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) ? ` · ${count(talks)}` : ""}${talkWork.length ? ` · ${talkWork.length} WORKING` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
+    ? `<div class="col-sub">IN CONVERSATION · LAST ${TALK_MS / 60000} MIN${count(talks) + talkWork.length ? ` · ${count(talks) + talkWork.length}` : ""}</div>${draw(talks)}${talkWork.map((x) => talkWorkRow(x, isOpen(x.session_id))).join("")}`
     : "") + restRows;
-  return { html, count: count(talks) + talkWork.length + count(rest) + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
+  return { html, count: count(talks) + talkWork.length + count(rest) + more.count + later.filter((l) => !needs.some((i) => i.session_id === l.sid)).length };
 }
 
 /** What a Sessions card says under its name: its card's ask, a start that needs its terminal, or why it's idle. */
@@ -774,9 +776,9 @@ function sessionCard(s, open, tree) {
   const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
   return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
       <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s, { count: true, tree: !!tree })}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
-      ${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
+      ${addOn.cardLine(s.session_id)}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}</div>`;
+      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}${handOutHtml(s)}</div>`;
 }
 /** Sessions' cards: working, then out of usage, then idle, each under its heading. */
 function workColumn(shown, isOpen, sessTree) {
@@ -785,7 +787,7 @@ function workColumn(shown, isOpen, sessTree) {
   return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
     + (idle.length ? `<div class="col-sub">IDLE · ${idle.length}</div>${idle.map(card).join("")}` : "")
-    || `<div class="quiet-line">No other sessions.</div>`;
+    || `<div class="col-sub">NO OTHER SESSIONS</div>`;
 }
 
 /** A drawer under Sessions or Waiting: its heading folds it; `body()` is drawn only while it's open. */
@@ -807,7 +809,7 @@ function waitingColumn(b, wait) {
   const { needs, later } = b;
   const elsewhere = projFilter ? state.items.filter((i) => !inProj(i.project) && !parkedIds().has(i.session_id)).length : 0;
   return `<div class="col split col-waiting">
-      <div class="sec sec-waiting"><div class="col-head">WAITING <span>${wait.count}${needs.some((i) => i.kind !== "waiting") ? ` · ${needs.filter((i) => i.kind !== "waiting").length} asking` : ""}</span><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${wait.html || `<div class="quiet-line">Nothing waiting.</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
+      <div class="sec sec-waiting"><div class="col-head col-tools"><span class="grow"></span>${colReset("waiting")}<button class="collapse-x" data-collapse="waiting" aria-label="Fold Waiting">»</button></div><div class="sec-body">${wait.html || `<div class="col-sub">NOTHING WAITING</div>`}${elsewhere ? `<button class="quiet-line link" data-pj="pick" data-project="">${elsewhere} waiting in other projects · show all</button>` : ""}</div></div>
       ${later.length ? drawerHtml("later", "NEED TO DECIDE", later.length, () => later.map(laterRow).join("")) : ""}
     </div>`;
 }
@@ -831,7 +833,7 @@ function starredDrawer(isOpen) {
 /** The Sessions column: its cards (`workCol`; `count`: they and the executors in its leads' trees), then the drawers. */
 function sessionsColumn(b, workCol, count) {
   return `<div class="col split col-sessions ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
-      <div class="sec sec-sessions"><div class="col-head">SESSIONS <span>${count}</span><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
+      <div class="sec sec-sessions"><div class="col-head col-tools"><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
       ${starredDrawer(b.isOpen)}
       ${recentDrawer()}
       ${shelfDrawer(b.isOpen)}
@@ -862,7 +864,7 @@ function boardView() {
   // that stays open keeps its width when the other folds, and Active takes the room.
   const lay = colLayout(wColl, sColl);
   return `<div class="board" style="grid-template-columns:${lay.tpl}">
-    <div class="col main">${focus ? "" : `<div class="col-head">ACTIVE</div>`}${activePane()}</div>
+    <div class="col main ${focus ? "" : "below-labels"}">${activePane()}</div>
     ${wColl ? "" : waitingCol}${sColl ? "" : sessionsCol}${railCol}${lay.grips.map(colGrip).join("")}
   </div>`;
 }

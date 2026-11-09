@@ -32,6 +32,26 @@ test.describe("relay's review cards", () => {
   });
 });
 
+// A lead on auto mode reviews each report on its own (world-relay-auto: lead "lead", its executor fills reported).
+test.describe("a relay lead on auto mode", () => {
+  test.beforeEach(async ({ cue }) => { await cue.open("world-relay-auto"); });
+
+  test("its reported executor has no card in Waiting and no Review anywhere: its lead is on it", async ({ page }) => {
+    const waiting = page.locator(".col-waiting .nrow[data-big]");
+    await expect(waiting).toHaveCount(1);   // the lead's own finished turn, not the executor's
+    await expect(waiting.locator(".tn").filter({ hasText: "fills" })).toContainText("its lead is reviewing it");
+    await expect(page.locator('[data-crew="review"]')).toHaveCount(0);
+  });
+
+  test("the lead's chat shows the packet as being reviewed, with no Review button", async ({ page }) => {
+    await page.locator(".col-waiting .nrow[data-big]").click();
+    const row = page.locator(".active-pane .rv-row").filter({ hasText: "fills" });
+    await expect(row).toContainText("its lead is reviewing it");
+    await expect(row.getByRole("button", { name: "Review" })).toHaveCount(0);
+    await expect(page.locator('[data-crew="review"]')).toHaveCount(0);
+  });
+});
+
 test.describe("parking", () => {
   test("⋯ → Park parks the open session and it moves under Parked", async ({ cue, page }) => {
     await cue.open("board-waiting");
@@ -172,4 +192,48 @@ test("a wide waiting stretch is striped and outlined at both its ends", async ({
   const r = compareShot("bar-wide-waiting", await page.locator(".ap-bar").screenshot({ animations: "disabled" }));
   expect(r.baseline, "baseline for bar-wide-waiting").not.toBe("missing");
   expect(r.differ, "bar-wide-waiting: pixels that differ from tests/ui/baseline/bar-wide-waiting.png").toBe(0);
+});
+
+// How work goes out to a hosted lead's team (ui/team_send.js; world-team: lead "lead", its teammate hub asking).
+test.describe("a hosted lead's team: the Team switch, /team, a task dropped on the lead", () => {
+  const TEAM_ASK = "n1793984390004";
+  test.beforeEach(async ({ cue, page }) => {
+    await cue.open("world-team");
+    await openCard(page, TEAM_ASK);
+    await page.locator('.act-card [data-act="allow"]').click();
+  });
+  const drop = (page, text) => page.evaluate((text) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", text);
+    const el = document.querySelector(".working[data-session='lead']");
+    for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, text);
+
+  test("the Team switch sets the lead's mode", async ({ cue, page }) => {
+    await page.locator('[data-team-sw="lead"][data-team-mode="off"]').click();
+    expect((await cue.called("team_mode", { sessionId: "lead" })).args.mode).toBe("off");
+    await expect(page.locator(".team-sw button.on")).toHaveText("Off");
+  });
+
+  test("/team is one of the lead's commands, in Cue", async ({ page }) => {
+    await page.locator('textarea[data-text="s:lead"]').fill("/tea");
+    await expect(page.locator('.cmd-row[data-cmd-name="team"]')).toContainText("in Cue");
+  });
+
+  test("a task that names a file a teammate changes says so, and Send anyway hands it out", async ({ cue, page }) => {
+    await drop(page, "Fix ui/team.js and ui/board.js");
+    await expect(page.locator(".ho .ho-f")).toHaveCount(2);
+    await expect(page.locator(".ho .ho-by")).toHaveText("rows is changing it");
+    await page.locator("[data-ho-go]", { hasText: "Send anyway" }).click();
+    expect((await cue.called("team_hand_out", { sessionId: "lead" })).args.text).toBe("Fix ui/team.js and ui/board.js");
+    await expect(page.locator(".ho")).toHaveCount(0);
+  });
+
+  test("a task with nothing taken is Hand out; Cancel drops it", async ({ cue, page }) => {
+    await drop(page, "Add a line to notes/c.txt");
+    await expect(page.locator("[data-ho-go]")).toHaveText("Hand out");
+    await page.locator("[data-ho-cancel]").click();
+    await expect(page.locator(".ho")).toHaveCount(0);
+    expect(await cue.calls("team_hand_out")).toHaveLength(0);
+  });
 });

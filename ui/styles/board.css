@@ -8,7 +8,7 @@
 .col-grip:hover i { opacity: .55; }
 .col-grip.on::before { opacity: .22; }
 .col-grip.on i { opacity: 1; height: 52px; margin-top: -26px; }
-.col-grip b { position: absolute; left: 7px; top: 50%; margin-top: -62px; transform: translateX(-50%); white-space: nowrap; font: 600 10.5px var(--mono); letter-spacing: .12em; background: var(--slab); color: var(--on-slab); border-radius: 999px; padding: 3px 9px; pointer-events: none; }
+.col-grip b { position: absolute; left: 7px; top: 50%; margin-top: -62px; transform: translateX(-50%); white-space: nowrap; font: 600 10.5px var(--mono); letter-spacing: .12em; background: var(--slab); color: var(--on-slab); border-radius: var(--pill-radius); padding: 3px 9px; pointer-events: none; }
 body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select: none !important; -webkit-user-select: none !important; }
 /* Reset shows with the » beside it, when the head is hovered. */
 .col-reset { color: var(--on-bg-muted); font-size: 11px; font-weight: 650; letter-spacing: 0; margin-right: 8px; opacity: 0; transition: opacity .14s ease; }
@@ -39,7 +39,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .badge { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--accent); color: var(--on-accent); font: 700 10px var(--mono); flex: none; }
 /* Where a session runs when it isn't this Mac: one small outlined label in the theme's accent (moss in light, lime in dark): border and text only.
    On a selected row (lime) or a working card (drawn on the background) it takes their text color. */
-.mach { display: inline-flex; align-items: center; gap: 4px; height: 17px; padding: 0 6px 0 5px; margin-left: 4px; border-radius: 5px; font: 650 10.5px/1 var(--sans); white-space: nowrap; vertical-align: middle; flex: none;
+.mach { display: inline-flex; align-items: center; gap: 4px; height: 17px; padding: 0 6px 0 5px; margin-left: 4px; border-radius: var(--pill-radius); font: 650 10.5px/1 var(--sans); white-space: nowrap; vertical-align: middle; flex: none;
   color: var(--accent); background: transparent; border: 1px solid var(--accent); }
 .nrow.on .mach, .tl.on .mach { color: var(--on-sel); border-color: var(--on-sel); }
 .working .mach { color: var(--on-bg); border-color: var(--on-bg); }
@@ -55,7 +55,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .proj { font-weight: 650; }
 .dim { color: var(--muted); }
 .age { font: 11px var(--mono); color: var(--muted); }
-.pill { font: 600 11px var(--mono); padding: 4px 11px; line-height: 1.3; border-radius: 999px; background: var(--accent); color: var(--on-accent); white-space: nowrap; }
+.pill { font: 600 11px var(--mono); padding: 4px 11px; line-height: 1.3; border-radius: var(--pill-radius); background: var(--accent); color: var(--on-accent); white-space: nowrap; }
 
 .foot { padding: 10px 12px; border-top: 1px solid var(--line); background: var(--panel-2); display: flex; gap: 8px; align-items: stretch; }
 .foot > .btn { height: auto; }
@@ -71,7 +71,7 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .diff pre { margin: 0; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 120px; overflow-y: auto; }
 .diff .del { background: var(--panel-2); color: var(--muted); }
 .qtabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.qtab { height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--muted); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qtab { height: 26px; padding: 0 10px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--muted); background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qtab.done { color: var(--accent); }
 .qtab.on { background: var(--accent); color: var(--on-accent); box-shadow: none; }
 .qcount { margin-left: auto; font-size: 11.5px; color: var(--muted); }
@@ -133,6 +133,10 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .quick { display: flex; gap: 5px; flex-wrap: wrap; padding: 5px 0 1px; }
 .qp { height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--panel-2); }
 .qp:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
+/* Claude's suggestion of what you'd type next: at the end of the phrases, tinted, Tab marking it. */
+.qp.sug { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); background: color-mix(in srgb, var(--accent) 22%, var(--panel-2)); }
+.qp.sug:hover { background: color-mix(in srgb, var(--accent) 32%, var(--panel-2)); }
+.sug-k { font: 600 9.5px var(--mono); padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--muted); }
 .quick-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; width: 300px; }
 .qp-in { height: 30px; border-radius: 8px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 600 12.5px var(--sans); min-width: 0; }
 .qp-in::placeholder { color: var(--muted); font-weight: 400; }

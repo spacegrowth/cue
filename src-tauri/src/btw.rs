@@ -8,6 +8,11 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+// The optional add-on's part (built in with the `ext` feature).
+#[cfg(feature = "ext")]
+#[path = "../ext/btw.rs"]
+pub(crate) mod ext;
+
 /// The longest a side question may take before Cue gives up on it.
 const TIMEOUT_SECS: u64 = 180;
 
@@ -189,7 +194,12 @@ fn side(question: &str) -> String {
 }
 
 /// Hand the running Claude Code its prompt on its stdin and wait for it, never longer than TIMEOUT_SECS.
-fn asked(mut child: std::process::Child, prompt: &str) -> Result<std::process::Output, String> {
+fn asked(child: std::process::Child, prompt: &str) -> Result<std::process::Output, String> {
+    asked_for(child, prompt, TIMEOUT_SECS)
+}
+
+/// `asked`, waiting up to `secs`.
+fn asked_for(mut child: std::process::Child, prompt: &str, secs: u64) -> Result<std::process::Output, String> {
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(prompt.as_bytes());
     }
@@ -198,7 +208,7 @@ fn asked(mut child: std::process::Child, prompt: &str) -> Result<std::process::O
     let done = Arc::new(Mutex::new(false));
     let watch = done.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(TIMEOUT_SECS));
+        std::thread::sleep(std::time::Duration::from_secs(secs));
         if !*crate::locking::lock(&watch, "btw: asked") {
             let _ = Command::new("/bin/kill").arg(pid.to_string()).status();
         }

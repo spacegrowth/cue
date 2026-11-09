@@ -72,11 +72,11 @@
 .thumbs.shots .thumb img { object-fit: cover; object-position: top left; }
 .shots-named { margin-top: 6px; font-size: 12px; color: var(--muted); word-break: break-all; }
 .shots-named code { font-family: var(--mono); }
-.msg a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.msg a { overflow-wrap: anywhere; }
 /* A path in a message (⌘-click opens it): it stays plain text — paths are everywhere in
    agent prose — with a dotted underline on hover as the only hint. */
 /* A path: the theme's link colour (its accent, a project's tint with it), underlined only under the pointer. */
-a[data-path], .msg a[data-path], .msg code a[data-path] { color: var(--accent); text-decoration: none; cursor: pointer; }
+a[data-path], .msg a[data-path], .msg code a[data-path] { text-decoration: none; cursor: pointer; }
 a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-underline-offset: 2px; }
 .lightbox { position: fixed; inset: 0; z-index: 40; background: rgba(8, 10, 4, 0.82); display: grid; place-items: center; padding: 40px; cursor: zoom-out; }
 .lightbox img { max-width: 100%; max-height: calc(100vh - 100px); border-radius: 10px; box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7); background: #fff; }
@@ -87,7 +87,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .active-pane.empty { align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 24px; }
 .quiet-big { font-size: 16px; font-weight: 650; }
 .ap-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; font-size: 13px; }
-.pill-x { margin: -2px -6px -2px 6px; width: 18px; height: 18px; display: inline-grid; place-items: center; vertical-align: middle; border-radius: 999px; font-size: 14px; line-height: 1; color: inherit; opacity: 0.75; }
+.pill-x { margin: -2px -6px -2px 6px; width: 18px; height: 18px; display: inline-grid; place-items: center; vertical-align: middle; border-radius: var(--pill-radius); font-size: 14px; line-height: 1; color: inherit; opacity: 0.75; }
 .pill-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }
 .pill.soft { background: var(--panel-2); color: var(--muted); }
 .ap-bar { padding: 8px 16px 0; }
@@ -193,7 +193,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .rd-head { flex-wrap: wrap; row-gap: 8px; }
 .rd-listen { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 /* Waiting in its terminal, in the reader's bar: the terminal strip's waiting amber, as a chip. */
-.rd-term { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: 999px; background: color-mix(in srgb, #d99a3a 32%, var(--slab)); color: var(--on-slab); font-size: 11.5px; font-weight: 650; white-space: nowrap; flex: none; }
+.rd-term { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: var(--pill-radius); background: color-mix(in srgb, #d99a3a 32%, var(--slab)); color: var(--on-slab); font-size: 11.5px; font-weight: 650; white-space: nowrap; flex: none; }
 .rd-term:hover { background: color-mix(in srgb, #d99a3a 44%, var(--slab)); }
 .rd-term .tlive { background: #d99a3a; }
 .rd-seg { display: inline-flex; align-items: center; height: 30px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
@@ -219,7 +219,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .bg-quiet { color: #d99a3a; font-weight: 650; white-space: nowrap; flex: none; }
 .dot-live.stuck { background: #d99a3a; animation: none; }
 /* "N bg" on a session's card and tile: how many agents and scripts it has in the background. */
-.bg-pill { flex: none; padding: 1px 7px; border-radius: 999px; font: 600 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
+.bg-pill { flex: none; padding: 1px 7px; border-radius: var(--pill-radius); font: 600 10px var(--mono); line-height: 1.5; background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; white-space: nowrap; }
 button.bg-pill { border: 0; cursor: pointer; }
 button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
 .stx-detail { margin: 2px 0 6px 25px; display: flex; flex-direction: column; gap: 6px; min-width: 0; user-select: text; -webkit-user-select: text; }
@@ -249,7 +249,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .cv-agent .cv-acts { position: sticky; bottom: -10px; z-index: 2; background: var(--panel); padding: 6px 0 16px; margin: 2px 0 -10px; }   /* -10px: the chat's own bottom padding (.ap-chat), so no line shows under it */
 .cv-agent .cv-acts::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 10px; background: linear-gradient(transparent, var(--panel)); pointer-events: none; }
 /* Listen and Read under a reply: real buttons, not links. */
-.cv-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: var(--panel-2); border: 1px solid var(--line); }
+.cv-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--accent); background: var(--panel-2); border: 1px solid var(--line); }
 .cv-pill:hover { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 .cv-pill.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
 /* A reply read out (Listen): what it read in gray, the sentence it's on in lime, the word it's saying underlined. */
@@ -316,7 +316,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .ls-then { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
 
 /* A real button (a tinted pill), not a text link, so it doesn't read as part of the message. */
-.cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
+.cv-fwd { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--pill-radius); font-size: 12px; font-weight: 650; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s; }
 /* Last in the row, at its right end: the reply's own buttons and its project's actions come first. */
 .cv-fwd:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .cv-agent:hover .cv-fwd, .cv-agent.last .cv-fwd, .cv-fwd:focus-visible { opacity: 1; }
@@ -404,7 +404,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 :root[data-theme="dark"] .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); }
 .st-panel { position: relative; flex: none; margin: 8px 16px 6px; z-index: 5; }
 .st-head { display: flex; align-items: center; gap: 6px; border-radius: 10px; }   /* the line and relay's buttons, one band */
-.st-pill { flex: none; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
+.st-pill { flex: none; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--pill-radius); background: var(--panel-2); color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
 .st-pill:hover { border-color: var(--muted); }
 .st-agents { flex: none; display: inline-flex; align-items: center; gap: 5px; font: 600 11.5px var(--sans); color: var(--muted); }
 .st-agent { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
@@ -491,7 +491,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .pj-pinned { max-width: 170px; }
 .pj-pinned .pj-open { min-width: 0; }
 /* A pinned project's count of replies that just came back in a conversation, while another project is shown. */
-.pj-wait { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font: 700 11px var(--mono); background: #f6e7c8; color: #5b3d05; }
+.pj-wait { flex: none; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: var(--pill-radius); display: inline-flex; align-items: center; justify-content: center; font: 700 11px var(--mono); background: #f6e7c8; color: #5b3d05; }
 /* A row's ✎ (rename it in Cue), shown as its pin is; the name's box in its place; its own name under yours. */
 .pj-ren { display: grid; place-items: center; width: 22px; height: 22px; margin: -3px -4px -3px 0; border-radius: 6px; font-size: 12px; color: var(--muted); opacity: 0; }
 .pj-row:hover .pj-ren, .pj-ren:focus-visible { opacity: 0.7; }

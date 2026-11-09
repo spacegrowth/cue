@@ -297,6 +297,10 @@ pub async fn watch(hub: Arc<Hub>) {
 pub(crate) fn tick(h: &Hub, usage: bool) {
     h.refresh_activity();
     settle_the_gone(h);
+    // Teammates gone quiet (hub/team.rs): seen to once a quiet stretch.
+    h.team_quiet_tick();
+    #[cfg(feature = "ext")]
+    h.ext_tick();
     if usage {
         h.usage_tick();
     }

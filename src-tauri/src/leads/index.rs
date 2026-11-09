@@ -223,6 +223,12 @@ pub fn is_reviewed(session_id: &str) -> bool {
     crate::locking::lock(&INDEX, "INDEX").as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "executor" && m.reviewed)
 }
 
+/// Whether a session is a lead on relay's auto mode (`/relay:auto`): it reviews its executors' reports on its own,
+/// so Cue never asks you to start one, nor types one into it.
+pub fn lead_on_auto(session_id: &str) -> bool {
+    crate::locking::lock(&INDEX, "INDEX").as_ref().and_then(|i| i.get(session_id)).is_some_and(|m| m.role == "lead" && m.auto == Some(true))
+}
+
 /// Every executor whose packet waits on you, with whether its lead is on auto mode: it reported and
 /// nobody has committed its work yet, or relay parked it after a review and what it staged is still staged. Cue session id first.
 pub fn needing_you() -> Vec<(String, Member, bool)> {

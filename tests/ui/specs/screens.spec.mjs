@@ -2,6 +2,7 @@
 // scenarios' NOW and nothing animates (?still=1), so a screen draws the same pixels every run.
 import { test, expect } from "./cue.mjs";
 import { compareShot } from "./shots.mjs";
+import { pillProblems } from "./pills.mjs";
 
 // The smallest the window goes (tauri.conf.json minWidth; Cue has no phone layout of its own).
 const NARROWEST = { width: 900, height: 600 };
@@ -25,6 +26,17 @@ const openTerminal = async (page) => {
   });
 };
 
+/** world-team's ask (hub, a teammate of the lead), and its lead's chat with the team open. */
+const TEAM_ASK = "n1793984390004";
+const openTeam = async (page) => { await openCard(page, TEAM_ASK); await page.locator("[data-mt-open]").click(); };
+/** Text dropped on `sel`, as a selection dragged there drops it. */
+const dropOn = (page, sel, text) => page.evaluate(([sel, text]) => {
+  const dt = new DataTransfer();
+  dt.setData("text/plain", text);
+  const el = document.querySelector(sel);
+  for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+}, [sel, text]);
+
 /** name → { scenario, flags, viewport, setup(page): what to open, done(page): what's on screen once it's drawn } */
 const SCREENS = {
   "board-empty": { scenario: "board-empty", done: (p) => p.locator(".switch-view").waitFor() },
@@ -40,6 +52,76 @@ const SCREENS = {
   "shelf-parked": { scenario: "parked-ended", setup: (p) => p.locator('[data-shelf="parked"]').click(), done: (p) => p.locator('.prow.parked[data-session="guide"]').waitFor() },
   "shelf-closed": { scenario: "parked-ended", setup: (p) => p.locator('[data-shelf="closed"]').click(), done: (p) => p.locator('.prow.closed[data-session="lost2"]').waitFor() },
   "sessions-view": { scenario: "parked-ended", setup: async (p) => { await p.locator('[data-shelf="parked"]').click(); await p.locator('.sec-parked [data-lv="all"]').click(); }, done: (p) => p.locator('[data-sid="q2"]').first().waitFor() },
+  // A hosted lead's team (docs/dev/cue-teams.md §4; world-team). team-closed: its chip on the title line. team-ask: the
+  // team open, hub's row "needs you" and its card titled "cue › hub". team-open: that ask answered, every row in its
+  // state. team-review: handoff's findings open. team-diff: skill's diff under its row. team-commit-main: Commit on docs
+  // refused (its folder is on main), the reason under its row.
+  "team-closed": { scenario: "world-team", setup: (p) => openCard(p, TEAM_ASK), done: (p) => p.locator(".active-pane [data-mt-open]").waitFor() },
+  "team-ask": { scenario: "world-team", setup: (p) => openTeam(p), done: async (p) => { await p.locator(".mt-row.need").waitFor(); await p.locator(".act-card .act-head .mt-of").waitFor(); } },
+  "team-open": {
+    scenario: "world-team",
+    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await p.locator("[data-mt-open]").click(); },
+    done: async (p) => { await p.locator(".mt-row").nth(4).waitFor(); await expect(p.locator(".mt-row.need")).toHaveCount(0); },
+  },
+  "team-review": {
+    scenario: "world-team",
+    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-fold="lead|id-handoff"]').click(); },
+    done: (p) => p.locator(".mt-under .rv-k").first().waitFor(),
+  },
+  "team-diff": {
+    scenario: "world-team",
+    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-act="diff"][data-mt-agent="id-skill"]').click(); },
+    done: (p) => p.locator(".mt-diff", { hasText: "skill wrote this" }).waitFor(),
+  },
+  "team-commit-main": {
+    scenario: "world-team",
+    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
+    done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
+  },
+  // How work goes out to the team (ui/team_send.js). team-switch: the lead's box with its Team switch on On.
+  // team-handout: a task dropped on the lead's card under Sessions, one of the files it names already rows's.
+  "team-switch": {
+    scenario: "world-team",
+    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await p.locator('[data-team-sw="lead"][data-team-mode="on"]').click(); },
+    done: async (p) => { await expect(p.locator(".team-sw button.on")).toHaveText("On"); await p.waitForFunction(() => CueBridge.called("team_mode").some((c) => c.args?.mode === "on")); },
+  },
+  "team-handout": {
+    scenario: "world-team",
+    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await dropOn(p, ".working[data-session='lead']", "Show the team's spend on the lead's card: ui/team.js and ui/board.js"); },
+    done: (p) => p.locator(".ho .ho-by", { hasText: "rows is changing it" }).waitFor(),
+  },
+  // Gone quiet (src-tauri/src/sessions/quiet.rs). team-quiet: hub stuck 20 minutes (Resume / Stop), rows 20 minutes into
+  // its test run (left to it). agents-quiet: names' background agents, h4 stuck, h7 in a long run.
+  "team-quiet": {
+    scenario: "world-team",
+    setup: async (p) => {
+      await openCard(p, TEAM_ASK);
+      await p.locator('.act-card [data-act="allow"]').click();
+      await p.locator("[data-mt-open]").click();
+      await p.evaluate((ago) => {
+        const st = CueBridge.world.state, lead = st.sessions.find((s) => s.session_id === "lead"), at = (n) => lead.team.find((t) => t.name === n);
+        Object.assign(at("hub"), { quiet: "stuck", step_ms: st.now_ms - ago });
+        Object.assign(at("rows"), { quiet: "tool", step_ms: st.now_ms - ago });
+        CueBridge.emit("state", CueBridge.world.snapshot());
+      }, 20 * 60_000);
+    },
+    done: (p) => p.locator(".mt-line", { hasText: "looks stuck" }).waitFor(),
+  },
+  "agents-quiet": {
+    scenario: "board-waiting",
+    flags: "many=1",
+    setup: (p) => p.evaluate(() => openSession("names")),
+    // Its row, and the board's columns done scrolling to its card (opening a session scrolls them there).
+    done: async (p) => {
+      await p.locator('.ag-row[data-key="h:h4"] [data-ag-wake]').first().waitFor();
+      await p.waitForFunction(() => {
+        const at = [...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 1).map((e) => e.scrollTop).join();
+        const same = window.__scrollWas === at;
+        window.__scrollWas = at;
+        return same;
+      }, null, { polling: 150 });
+    },
+  },
   "narrowest-window": { scenario: "board-waiting", viewport: NARROWEST, done: (p) => p.locator('[data-big="n6"]').first().waitFor() },
 };
 
@@ -56,6 +138,8 @@ for (const [name, s] of Object.entries(SCREENS)) {
     const png = await page.screenshot({ animations: "disabled", caret: "hide" });
     const r = compareShot(name, png);
     expect(r.baseline, `baseline for ${name}`).not.toBe("missing");
+    // Every small label on it is a full capsule (pills.mjs), so a new one can't come in with corners of its own.
+    expect(await pillProblems(page, "body"), `${name}: small labels that aren't a full capsule`).toEqual([]);
     expect(r.differ, `${name}: pixels that differ from tests/ui/baseline/${name}.png (see tests/ui/shots/${name}.diff.png)`).toBe(0);
   });
 }

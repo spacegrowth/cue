@@ -31,7 +31,7 @@ mod wake;
 
 pub use self::commands::{Act, Cmd};
 pub use self::index::{
-    act, close_left_behind, close_plan, exec_tmux, hand_left_behind, handoffs, is_done, is_executor, is_relay_lead, is_reviewed, lead_close, missed, name_of, needing_you, packet_of, refresh,
+    act, close_left_behind, close_plan, exec_tmux, hand_left_behind, handoffs, is_done, is_executor, is_relay_lead, is_reviewed, lead_close, lead_on_auto, missed, name_of, needing_you, packet_of, refresh,
     resolve_driver, view,
 };
 #[cfg_attr(not(feature = "ext"), allow(unused_imports))]

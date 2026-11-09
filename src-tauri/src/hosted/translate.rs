@@ -29,6 +29,15 @@ fn rates(v: &Value) -> Option<HostedEvent> {
     (!rl.is_empty()).then(|| HostedEvent::Rates(Value::Object(rl)))
 }
 
+/// A `prompt_suggestion` line: what you'd likely type next, said after a turn ends (only when there's an obvious one).
+fn suggested(v: &Value) -> Option<HostedEvent> {
+    if v.get("type").and_then(Value::as_str) != Some("prompt_suggestion") {
+        return None;
+    }
+    let text = v.get("suggestion").and_then(Value::as_str)?.trim();
+    (!text.is_empty()).then(|| HostedEvent::Suggested { text: text.to_string() })
+}
+
 /// Claude's tool for questions with choices, and the one a sandboxed command asks network access through.
 const QUESTION_TOOL: &str = "AskUserQuestion";
 const NETWORK_TOOL: &str = "SandboxNetworkAccess";
@@ -66,7 +75,7 @@ impl Translator {
             Inbound::User(v) => self.user(v),
             Inbound::Result(v) => vec![self.turn_ended(v)],
             Inbound::Request { id, request } => vec![ask(id, request)],
-            Inbound::Other(v) => rates(v).into_iter().collect(),
+            Inbound::Other(v) => rates(v).or_else(|| suggested(v)).into_iter().collect(),
             Inbound::Response(_) | Inbound::Text(_) => vec![],
         }
     }

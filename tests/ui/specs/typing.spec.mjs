@@ -187,3 +187,25 @@ test("A session that runs only servers picked for it says so, and can have all o
   await page.locator(".mcp-pick").getByRole("button", { name: "Use all of the folder's servers" }).click();
   await cue.called("mcp_apply_clear", { sessionId: "relay" });
 });
+
+test("⋯ → Move to terminal is there for a hosted session, says it's for moving away, and isn't a button by the box", async ({ cue, page }) => {
+  await hosted(cue);
+  await openCard(page, "n1");
+  await expect(page.locator(".active-pane .tplace [data-act=move-term]")).toHaveCount(0);
+  await page.locator(".active-pane .more-btn").click();
+  const item = page.locator(".active-pane .more-menu [data-act=move-term]");
+  await expect(item).toContainText("Only if you're moving away from Cue");
+  await expect(item).toContainText("tab, and Cue stops running it");
+  await item.click();
+  await cue.called("move_to_terminal", { sessionId: "relay" });
+  await expect(page.locator(".active-pane .more-menu")).toHaveCount(0);
+});
+
+test("⋯ → Move to terminal waits while the session works", async ({ cue, page }) => {
+  await cue.change((st) => { const s = st.sessions.find((x) => x.session_id === "relay"); s.hosted = true; s.state = "working"; });
+  await openCard(page, "n1");
+  await page.locator(".active-pane .more-btn").click();
+  const item = page.locator(".active-pane .more-menu [data-act=move-term]");
+  await expect(item).toBeDisabled();
+  await expect(item).toContainText("When this turn ends");
+});

@@ -12,8 +12,8 @@ let ONLY;
 test("with no sessions the board says nothing waits and lists nothing", async ({ cue, page }) => {
   await cue.open("world-empty");
   await expect(page.locator(".nrow")).toHaveCount(0);
-  await expect(page.locator(".sec-waiting")).toContainText("Nothing waiting.");
-  await expect(page.locator(".sec-sessions")).toContainText("No other sessions.");
+  await expect(page.locator(".sec-waiting")).toContainText("NOTHING WAITING");
+  await expect(page.locator(".sec-sessions")).toContainText("NO OTHER SESSIONS");
 });
 
 test.describe("one ask, answered by its keys", () => {

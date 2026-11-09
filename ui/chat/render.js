@@ -335,13 +335,24 @@ function moreMenu(sid, s, closable = false) {
       ${handoffMenu(sid, s)}
       ${relayMode(sid)?.on === false ? `<button data-cmd="relay-on" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Start relay<span>${busy ? "When this turn ends" : "Make it a relay lead (/relay:mode): it plans and hands work to relay agents"}</span></button>` : ""}
       ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
+      ${addOn.chatMenu(sid, s)}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
       ${restartItem(sid, s)}
       ${forkItem(sid, s)}
+      ${moveOutItem(sid, s)}
       ${later}${parkMenuItem(sid, s, closable)}
       <button data-delete-ask="${esc(sid)}" ${busy ? "disabled" : ""}>Delete…<span>${busy ? "When this turn ends" : "Gone for good: from Cue, and its conversation, so it can't be resumed"}</span></button></div>`;
   return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="${open}">⋯</button>${items}</span>`;
+}
+/** ⋯ → Move to terminal, for a session Cue runs (hosted, or in Cue's own terminal): resumed where you run agents
+ *  yourself (ipc/move_out.rs). Only for moving away from Cue, so it's here, not a button, and says so. Not while it
+ *  works or asks you something. */
+function moveOutItem(sid, s) {
+  if (!s || !(s.hosted || (inTmux(sid) && !s.machine))) return "";
+  const why = s.state === "working" ? "When this turn ends" : s.state === "deciding" ? "Once you've answered what it asks" : "";
+  const where = s.hosted && s.machine ? `in tmux on ${machName(s.machine)}` : `in a ${termName()} tab`;
+  return `<button data-act="move-term" data-sid="${esc(sid)}" ${why ? "disabled" : ""}>Move to terminal<span>${why || `Only if you're moving away from Cue: the conversation goes on ${esc(where)}, and Cue stops running it`}</span></button>`;
 }
 /** ⋯ → Restart session: stopped and resumed with the same conversation, so it loads what it reads only at
  *  start (a skill added since, MCP servers, settings). Covered while it restarts, as an MCP restart is. */

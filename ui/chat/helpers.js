@@ -13,9 +13,13 @@ const helperSpan = (h) => { const ms = (h.finished_ms || (h.running === false &&
 const helperModel = (h) => (h.model || "").replace(/^claude-/, "").replace(/-\d.*$/, "");
 /** "12k tokens" an agent has used so far; "" until it has used any (a script uses none). */
 const helperTokens = (n) => !(n > 0) ? "" : n < 1000 ? `${n} tokens` : n < 1e6 ? `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k tokens` : `${(n / 1e6).toFixed(1)}M tokens`;
-/** Running but quiet for minutes (the feed says so): shown amber, with how long since it last did anything. */
+/** Quiet (src-tauri/src/sessions/quiet.rs, as the feed judged it): stuck (nothing open, nothing said), shown amber
+ *  with how long; or a long tool call open ("running npm test for 20m"), left to it. Minutes since it last did
+ *  anything (a long run reads as its step: "Running: npm test for 20m"). */
 const helperStuck = (h) => helperRunning(h) && !!h.stuck;
-const helperQuiet = (h) => `<span class="bg-quiet">quiet · ${Math.max(1, Math.floor((Date.now() - (h.last_ms || h.started_ms)) / 60000))}m</span>`;
+const helperMins = (h) => Math.max(1, Math.floor((Date.now() - (h.last_ms || h.started_ms)) / 60000));
+const helperQuiet = (h) => `<span class="bg-quiet">quiet for ${helperMins(h)}m — looks stuck</span>`;
+const helperLongRun = (h) => `${esc(h.quiet_what || "running a tool")} for ${helperMins(h)}m`;
 /** The live dot: pulsing, or amber and still when it's quiet. */
 const liveDot = (h) => `<span class="dot-live ${helperStuck(h) ? "stuck" : ""}"></span>`;
 /** Where an agent's steps end and its reply begins: a finished one's last words are its reply. */

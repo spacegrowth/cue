@@ -32,13 +32,13 @@ impl Real {
         let dir = std::env::temp_dir().join(format!("cue-compat-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let dir = dir.canonicalize().unwrap();
-        Some(Real::start_in(dir, settings, start, args))
+        Some(Real::start_in(dir, settings, start, args, MODEL))
     }
 
-    fn start_in(dir: PathBuf, settings: Value, start: Start, args: &[&str]) -> Real {
+    fn start_in(dir: PathBuf, settings: Value, start: Start, args: &[&str], model: &str) -> Real {
         let mut a = vec!["--setting-sources".into(), "local".into(), "--strict-mcp-config".into(), "--settings".into(), settings.to_string()];
         a.extend(args.iter().map(|s| s.to_string()));
-        let spec = Spec { agent: Agent::Claude, cwd: dir.clone(), start, permissions: String::new(), model: Some(MODEL.into()), args: a, program: Program::At(claude_with_real_home(&dir)), machine: String::new() };
+        let spec = Spec { agent: Agent::Claude, cwd: dir.clone(), start, permissions: String::new(), model: Some(model.into()), args: a, program: Program::At(claude_with_real_home(&dir)), machine: String::new() };
         let (tx, rx) = channel();
         let session = Session::start(&spec, move |_, e| {
             let _ = tx.send(e);
@@ -221,7 +221,7 @@ fn compat_a_resume_keeps_the_conversation_in_the_same_transcript() {
     let lines = |f: &Path| std::fs::read_to_string(f).map(|t| t.lines().count()).unwrap_or(0);
     let before = lines(&file);
     assert!(before > 0, "its transcript is at {}", file.display());
-    let again = Real::start_in(r.dir.clone(), quiet(), Start::Resume(id.clone()), &[]);
+    let again = Real::start_in(r.dir.clone(), quiet(), Start::Resume(id.clone()), &[], MODEL);
     let es = again.turn("What word did I ask you to remember? One word.", allow);
     assert!(ended(&es).0.to_uppercase().contains("MANGO"), "{es:?}");
     assert!(lines(&file) > before, "the resume added to the same transcript");
@@ -431,4 +431,81 @@ mod team {
         assert_eq!(a.len(), 1);
         assert!(a[0].suggestions.to_string().contains(&format!("\"{folder}\"")), "its ask offers that folder: {:?}", a[0].suggestions);
     }
+}
+
+/// T4 (docs/dev/cue-teams.md §6), live: a plain request with two independent parts, to a real Claude lead started with
+/// Cue's team skill (hub/team_out.rs) in a git folder, becomes a team of two on its own: each a named background
+/// teammate in a worktree of its own. Its stream, read by a hub as Cue reads a hosted lead's, makes the two rows, and
+/// one teammate's work is committed in its worktree. Nothing in the message says "team".
+#[test]
+#[ignore = "real Claude: CUE_CLAUDE_COMPAT=1"]
+fn compat_a_two_part_request_becomes_a_team_of_two_on_its_own_and_one_is_committed() {
+    if std::env::var_os("CUE_CLAUDE_COMPAT").is_none() {
+        return;
+    }
+    let w = crate::testing::World::new();
+    let dir = w.home().canonicalize().unwrap();
+    let git = |args: &[&str]| {
+        let o = std::process::Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap();
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        String::from_utf8_lossy(&o.stdout).to_string()
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["config", "user.email", "t@example.com"]);
+    git(&["config", "user.name", "T"]);
+    // The World's own files (and Claude Code's worktrees) stay out of git.
+    std::fs::write(dir.join(".gitignore"), "*\n!.gitignore\n!a.txt\n!b.txt\n").unwrap();
+    std::fs::write(dir.join("a.txt"), "Helo, world.\n").unwrap();
+    std::fs::write(dir.join("b.txt"), "first line\n").unwrap();
+    git(&["add", ".gitignore", "a.txt", "b.txt"]);
+    git(&["commit", "-q", "-m", "start"]);
+    let message = "fix the typo in a.txt and add a line to b.txt";
+    // The hub's lead: the same folder, its stream the real one's.
+    crate::config::set("hosted.on", json!(true)).unwrap();
+    let opts = crate::ipc::StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
+    let r = crate::ipc::start_session_with(w.hub(), "claude", &dir.to_string_lossy(), message, "live-team", &opts).unwrap();
+    let sid = r["session_id"].as_str().unwrap().to_string();
+    // A lead's usual model, not the compat suite's smallest: the lead's judgement is what's tested.
+    let real = Real::start_in(dir.clone(), quiet(), Start::fresh(), &["--append-system-prompt", crate::hub::team_out::TEAM_SKILL], "sonnet");
+    real.s().send(message).unwrap();
+    // Up to both teammates finished and the lead's turn after them ended.
+    let end = Instant::now() + Duration::from_secs(600);
+    let (mut finished, mut agents, mut after) = (0, 0, false);
+    while !(agents >= 2 && finished >= agents && after) {
+        let e = real.rx.recv_timeout(end.saturating_duration_since(Instant::now())).unwrap_or_else(|_| panic!("not seen in time: {agents} started, {finished} finished; team {:?}", w.snapshot().session(&sid)["team"]));
+        match &e {
+            HostedEvent::Ask(a) => {
+                real.s().answer(&a.request_id, &allow(a)).unwrap();
+                continue;
+            }
+            HostedEvent::ToolCall { name, input, agent: None, .. } if name == "Agent" || name == "Task" => {
+                eprintln!("live: Agent call {input}");
+                agents += 1;
+            }
+            HostedEvent::Task { what, .. } if what == "task_notification" => finished += 1,
+            HostedEvent::TurnEnded { text, .. } if agents == 0 => panic!("the lead ended its turn without a team: {text}"),
+            HostedEvent::TurnEnded { text, .. } if agents >= 2 && finished >= agents => {
+                eprintln!("live: the lead's last word: {text}");
+                after = true;
+            }
+            _ => {}
+        }
+        w.hosted_says(&sid, e);
+    }
+    w.settle();
+    let team = w.snapshot().session(&sid)["team"].as_array().cloned().unwrap_or_default();
+    eprintln!("live: team {}", serde_json::to_string_pretty(&team).unwrap());
+    assert_eq!(team.len(), 2, "two rows, one per part");
+    for t in &team {
+        assert_eq!(t["state"], "done", "{t}");
+        assert!(t["worktree"].as_str().is_some_and(|p| p.contains("/.claude/worktrees/agent-")), "each in a worktree of its own: {t}");
+    }
+    let first = &team[0];
+    let c = w.hub().team_action(&sid, first["agent_id"].as_str().unwrap(), "commit").unwrap();
+    eprintln!("live: {c}");
+    assert!(c.starts_with(&format!("Committed {}'s", first["name"].as_str().unwrap())), "{c}");
+    let wt = PathBuf::from(first["worktree"].as_str().unwrap());
+    let log = std::process::Command::new("git").arg("-C").arg(&wt).args(["log", "-1", "--name-only", "--format=%s%n%b"]).output().unwrap();
+    eprintln!("live: its commit:\n{}", String::from_utf8_lossy(&log.stdout));
+    assert_eq!(git(&["rev-list", "--count", "main"]).trim(), "1", "main as it was");
 }

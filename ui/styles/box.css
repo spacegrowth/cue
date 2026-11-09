@@ -13,7 +13,7 @@
 .cmd-row b { font-family: var(--mono); font-weight: 600; font-size: 12px; white-space: nowrap; }
 .cmd-row b em { font: 400 12.5px var(--sans); opacity: .75; }
 .cmd-row span { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cmd-row i { font-style: normal; font-size: 10.5px; font-weight: 650; color: var(--muted); padding: 1px 6px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); }
+.cmd-row i { font-style: normal; font-size: 10.5px; font-weight: 650; color: var(--muted); padding: 1px 6px; border-radius: var(--pill-radius); box-shadow: inset 0 0 0 1px var(--line); }
 .cmd-row:hover { background: var(--panel-2, rgba(0,0,0,.04)); }
 .cmd-row.cmd-wait { color: var(--muted); cursor: default; }
 .cmd-row.cmd-wait:hover { background: none; }
@@ -56,12 +56,19 @@
 .col.split.col-waiting { overflow-y: auto; padding-bottom: 16px; }
 .col.col-waiting > .sec { flex: none; max-height: none; }
 .col.col-waiting .sec-body { overflow: visible; }
-/* Its band reaches 4px above the text, held there by the margin; stuck at the same offset, so the heading lines up
-   with ACTIVE and SESSIONS (stuck at 0, the band's top sat at the column's top and pushed the text 4px down). */
+/* Need to decide's heading: its band reaches 4px above the text, held there by the margin; stuck at the same offset
+   (stuck at 0, the band's top sat at the column's top and pushed the text 4px down). */
 .col.col-waiting > .sec > .col-head { --band: 4px; position: sticky; top: calc(-1 * var(--band)); z-index: 2; background: var(--bg); padding: var(--band) 0 6px; margin: calc(-1 * var(--band)) 0 -6px; }
 .sec-waiting .sec-body { padding: 0 2px 4px; margin: 0 -2px; }
-/* One spacing rule for every column, so what's under each heading starts on one line: a group label opens its
-   column flush (level with Active's card), sits 8px over its first card, and has 18px of room above a later group. */
+/* No column headings over Waiting and Sessions (the toolbar has their counts): each list's first group label is its
+   top line, its Reset and » at that line's right end, shown while the column is hovered. The open session's card
+   starts level with the lists' first cards: a label (16px) and its 8px under it. */
+.sec-waiting, .sec-sessions { position: relative; }
+.col.col-waiting > .sec > .col-head.col-tools, .sec > .col-head.col-tools { position: absolute; top: 0; right: 0; height: 16px; margin: 0; padding: 0 0 0 8px; background: var(--bg); z-index: 2; align-items: center; }
+.sec:hover > .col-tools .collapse-x, .sec:hover > .col-tools .col-reset { opacity: 1; }
+.col.main.below-labels { padding-top: 24px; }
+/* One spacing rule for the lists' group labels: the first opens its column flush, each sits 8px over its first card,
+   and a later one has 18px of room above it. */
 .sec-body > .col-sub { margin-top: 8px; margin-bottom: -2px; }
 .sec-body > .col-sub:first-child { margin-top: 0; }
 /* Waiting in two groups: IN CONVERSATION, then NEWEST FIRST; a conversation card says why it's there. */
@@ -109,9 +116,9 @@
 .uo-sub { font-weight: 500; opacity: .8; }
 .usage-chip.soft-warn { box-shadow: inset 0 0 0 1.5px #d99a3a; background: color-mix(in srgb, #d99a3a 14%, transparent); }
 .uf-dot { width: 8px; height: 8px; border-radius: 50%; background: #d99a3a; }
-.usage-back { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 4px 0 13px; border-radius: 999px; font-size: 12.5px; font-weight: 650; background: var(--on-bg); color: var(--bg); white-space: nowrap; }
+.usage-back { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 4px 0 13px; border-radius: var(--pill-radius); font-size: 12.5px; font-weight: 650; background: var(--on-bg); color: var(--bg); white-space: nowrap; }
 .ub-dot { width: 8px; height: 8px; border-radius: 50%; background: #7fae5a; }
-.ub-btn { height: 22px; padding: 0 10px; border-radius: 999px; border: 0; background: var(--bg); color: var(--on-bg); font: inherit; font-weight: 650; font-size: 12px; cursor: pointer; }
+.ub-btn { height: 22px; padding: 0 10px; border-radius: var(--pill-radius); border: 0; background: var(--bg); color: var(--on-bg); font: inherit; font-weight: 650; font-size: 12px; cursor: pointer; }
 .usage-pop { position: absolute; top: 38px; right: 0; z-index: 20; width: 300px; padding: 12px 14px 10px; border-radius: 14px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow, 0 10px 30px rgba(0,0,0,.25)); }
 /* Your usage file's rows: the first sits in the bar; hovering it shows them all in a list that looks like the bar.
    A strip above the list bridges the gap so the pointer can reach it. */
@@ -172,7 +179,7 @@
 .sr:hover, .sr.open { background: var(--panel-2); }
 .sr-top { display: flex; align-items: center; gap: 8px; font-size: 12.5px; min-width: 0; }
 .sr-top .proj { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sr-ended { font: 600 10px var(--mono); padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+.sr-ended { font: 600 10px var(--mono); padding: 1px 6px; border-radius: var(--pill-radius); background: var(--panel-2); color: var(--muted); }
 .sr-snip { margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sr-snip mark { background: var(--sel); color: var(--on-sel); border-radius: 3px; padding: 0 1px; }
 .sr-full { margin-top: 6px; font-size: 13px; max-height: 320px; overflow-y: auto; }

@@ -121,6 +121,58 @@ fn a_queued_review_reviewed_meanwhile_by_its_lead_on_auto_is_dropped() {
     assert!(w.hub().queued_reviews().is_empty());
 }
 
+/// A lead on auto mode reviews each report on its own: its executor's packet is "auto" (nothing asks you to start a
+/// review, even once relay's wake-up reads as missed), and Review types nothing into it. A lead waiting for you
+/// (auto off) is as before: Review types `/relay:review` in.
+#[test]
+fn a_lead_on_auto_is_never_asked_to_review_and_one_waiting_for_you_is() {
+    for auto in [true, false] {
+        let w = World::new();
+        let crew = if auto { Crew::default().auto_lead("L") } else { Crew::default().lead("L") };
+        crew.exec_as("E", "L", |m| m.ready_late = true).install();
+        w.session("L").prompt("lead").stop("Waiting for reports.");
+        // Its finished turn as a card in Waiting (Settings → show sessions another agent drives in Waiting).
+        crate::config::set("agents.show_driven", json!(true)).unwrap();
+        w.session("E").prompt("packet 1").stop_driven("Packet 1 done.", "its relay lead (L)");
+        let s = w.snapshot();
+        let row = &s.0["reviews"]["E"];
+        assert_eq!((row["state"].as_str(), row["missed"].as_bool()), if auto { (Some("auto"), Some(false)) } else { (Some("waiting"), Some(true)) }, "auto {auto}");
+        let waiting = |s: &crate::testing::Snap| s.0["items"].as_array().unwrap().iter().any(|i| i["session_id"] == "E");
+        assert_eq!(waiting(&s), !auto, "its finished turn waits on you only when its lead does (auto {auto})");
+        let r = w.hub().review("L", "E", "/relay:review E").unwrap();
+        w.settle();
+        if auto {
+            assert_eq!(r, "Its lead is on auto mode: it reviews this itself");
+            assert!(w.terminal.typed("L").is_empty(), "the same review twice");
+            assert!(w.hub().queued_reviews().is_empty());
+            assert_eq!(review_state(&w, "E"), "auto");
+        } else {
+            assert_eq!(w.terminal.typed("L"), ["/relay:review E"]);
+            assert_eq!(review_state(&w, "E"), "reviewing");
+        }
+    }
+}
+
+/// A review queued while its lead waited for you is dropped, never typed, once the lead goes on auto mode: it
+/// takes that report on its own. Until the drop the queue shows nothing for it and the packet reads "auto".
+#[test]
+fn a_queued_review_is_dropped_when_its_lead_goes_on_auto() {
+    let w = World::new();
+    free_lead(&w, &["E"]);
+    let lead = w.session("L");
+    lead.prompt("more");
+    w.hub().review("L", "E", "/relay:review E").unwrap();
+    assert_eq!(review_state(&w, "E"), "queued");
+    Crew::default().auto_lead("L").exec("E", "L").install();
+    let s = w.snapshot();
+    assert_eq!(s.0["reviews"]["E"]["state"], "auto");
+    assert!(s.0["review_queue"].as_object().unwrap().is_empty(), "{}", s.0["review_queue"]);
+    lead.stop("Reviewed E on my own.");
+    w.advance(1500);
+    assert!(w.terminal.typed("L").is_empty(), "the same review twice");
+    assert!(w.hub().queued_reviews().is_empty());
+}
+
 #[test]
 fn a_message_of_yours_kept_for_the_lead_goes_before_a_queued_review() {
     let w = World::new();

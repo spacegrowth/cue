@@ -4,7 +4,27 @@ const T = window.__TAURI__;
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
 let clockSkew = 0;          // backend clock − browser clock, so bars line up with the backend's timestamps
 let sheet = null;           // null | "settings"
-let view = "board";         // the switch in the header: "board" | "sessions" | "insights" | "terminal"; "history" from All history →
+let view = "board";         // the switch in the header: "board" | "read" | "insights" | "terminal" (or one of addOn.views); "history" from All history →
+/** What the optional add-on adds to the window (addon.js, empty without it; a build with the add-on serves its own in
+ *  that file's place). It sets these; as here, the window has none of it. */
+const addOn = {
+  /** Its views in the header's switch, after Board: { id, label() → the button's inside, html() → the view }. */
+  views: [],
+  /** A line on a session's card, under its title. */
+  cardLine: (sid) => "",
+  /** Its rows in Waiting, among the newest, and how many there are. */
+  waiting: () => ({ html: "", count: 0 }),
+  /** Its entries in the waiting chip's list, oldest first: { since, shown() → whether the window shows it now, open() }. */
+  waitingChips: () => [],
+  /** A card at the top of a session's chat. */
+  chatTop: (sid) => "",
+  /** Items in a session's ⋯ menu. */
+  chatMenu: (sid, s) => "",
+  /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */
+  clicks: [],
+  /** Once the window has its state (boot, app.js). */
+  boot: () => {},
+};
 let histOpen = null;        // the History row that's open (one at a time)
 let histShown = null;       // the open row we've already scrolled to (so a redraw doesn't yank it back)
 let active = null;          // { id, sid }: what the Active pane shows. Sticky: it stays after you act.
@@ -434,8 +454,9 @@ const crewBtn = (sid, action, label, primary = false, short = "") => `<button cl
  *  machine it runs on and Cue can't bring that one here, so a pi-lead executor on another machine has no Diff. */
 const diffBtn = (sid, m) => m?.plugin === "pilead" && m.machine ? "" : crewBtn(sid, "diff", "Diff");
 /** Where a packet waiting on you stands in its review (Cue tells every screen, see reviewcard.js): "review queued"
- *  while it waits for its lead, "in review" once your review is typed in, "reviewed" once one ran, else "". */
-const REVIEW_WORDS = { queued: "review queued", reviewing: "in review", reviewed: "reviewed" };
+ *  while it waits for its lead, "in review" once your review is typed in, "reviewed" once one ran, and with its lead
+ *  on auto mode (it reviews reports on its own) that the lead is on it: never a Review button for that one. Else "". */
+const REVIEW_WORDS = { queued: "review queued", reviewing: "in review", reviewed: "reviewed", auto: "its lead is reviewing it" };
 const reviewWord = (sid) => REVIEW_WORDS[state.reviews?.[sid]?.state] || "";
 /** A report relay never woke its lead for: ready a while, unseen, its lead listening and free. Cue says so
  *  instead of "waiting for review"; Review in lead stays. */
@@ -550,7 +571,7 @@ function packetCard(sid, m = crewOf(sid)) {
   let st, acts = "";
   if (reported(m.status)) {
     const asked = reviewWord(sid);
-    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : asked ? `${asked} with ${lead}` : missedWake(sid) ? `${lead} hasn't picked this up` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
+    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : state.reviews?.[sid]?.state === "auto" ? `${lead} is reviewing it` : asked ? `${asked} with ${lead}` : missedWake(sid) ? `${lead} hasn't picked this up` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
     acts = diffBtn(sid, m) + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
   } else {
     const now = liveStep(sid);

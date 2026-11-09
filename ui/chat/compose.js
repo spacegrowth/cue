@@ -195,7 +195,8 @@ function cmdList(sid, fresh) {
   }
   const list = cmdLists.get(sid) || [];
   // Cue's own: a side question, answered in a panel (Claude Code's /btw answers only in its terminal).
-  return sessionOf(sid)?.harness === "claude" ? [BTW_CMD, ...list.filter((c) => c.name !== "btw")] : list;
+  // A hosted lead's /team (team_send.js).
+  return sessionOf(sid)?.harness === "claude" ? [BTW_CMD, ...teamCmds(sid, list), ...list.filter((c) => c.name !== "btw")] : list;
 }
 const sidOfKey = (key) => (key.startsWith("s:") ? key.slice(2) : "");
 // ---------- ↑ / ↓ in a session's box: the last messages you sent it, like a shell's history ----------
@@ -332,11 +333,30 @@ function pickCmd(key, name, run) {
 }
 /** Quick phrases (Settings → Quick phrases): chips that send their text, after anything typed in the box. */
 const phrases = () => state.settings?.quick?.phrases || [];
-/** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
+/** What Claude suggests you type next (a hosted session's prompt suggestion), while it waits on you; "" when none. */
+const suggestionFor = (sid) => {
+  const s = sid && sessionOf(sid);
+  return s?.state === "waiting" ? s.suggestion || "" : "";
+};
+/** The quick phrases, then Claude's suggestion (sent the same way, Tab marking it), with (at the right) where the
+ *  session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
+  const sug = suggestionFor(sid);
+  const sugChip = sug ? `<button class="qp sug" ${attrs} data-phrase="${esc(sug)}"><span class="sug-k">Tab</span>${esc(sug)}</button>` : "";
+  return phrases().length || place || sug ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${sugChip}${place}</div>` : "";
 };
+/** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). */
+function takeSuggestion(key) {
+  const sug = suggestionFor(sidOfKey(key));
+  const d = draft(key);
+  if (!sug || d.text.trim()) return false;
+  d.text = sug;
+  saveDrafts();
+  const el = document.querySelector(`textarea[data-text="${CSS.escape(key)}"]`);
+  if (el) { el.value = sug; el.selectionStart = el.selectionEnd = sug.length; el.dispatchEvent(new Event("input", { bubbles: true })); }
+  return true;
+}
 /** Settings → Quick phrases as you type them (redraws keep them); saved as you type (app/inputs.js) and when you leave. */
 let qpEdit = null;
 let qpSaveAt = 0;
@@ -373,9 +393,10 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   // A Claude Code session's box: its ring ahead of the mic (status.js), while the status list is on in Settings.
   const sess = images && sidOfKey(key) && sessionOf(sidOfKey(key));
   const status = sess?.harness === "claude" && statusShown() ? statusChip(null, sess) : "";
+  const sug = images ? suggestionFor(sidOfKey(key)) : "";
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
-    <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(placeholder)}">${esc(d.text)}</textarea>
+    <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(sug ? `${sug}      ⇥ Tab` : placeholder)}">${esc(d.text)}</textarea>
     ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
     ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;

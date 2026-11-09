@@ -116,14 +116,14 @@ fn month_of(s: &str) -> Option<i32> {
     months.iter().position(|m| p.starts_with(m)).map(|i| i as i32)
 }
 
-fn local_tm(secs: u64) -> libc::tm {
+pub(crate) fn local_tm(secs: u64) -> libc::tm {
     let t = secs as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&t, &mut tm) };
     tm
 }
 
-fn to_epoch(tm: &mut libc::tm) -> Option<u64> {
+pub(crate) fn to_epoch(tm: &mut libc::tm) -> Option<u64> {
     tm.tm_isdst = -1;
     let t = unsafe { libc::mktime(tm) };
     (t > 0).then_some(t as u64)

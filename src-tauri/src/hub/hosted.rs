@@ -28,7 +28,10 @@ impl Hub {
 
     /// Start (`Start::New`) or resume a hosted session's Claude: `origin` with the process it now runs as.
     pub(crate) fn run_hosted(&self, origin: &Origin, start: Start, with: &HostedStart) -> Result<Origin, String> {
-        let spec = Spec { agent: Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args: with.args.clone(), program: Program::Agent, machine: origin.machine.clone() };
+        let agent = Agent::named(&origin.harness).ok_or("Cue can only host Claude Code, Pi and Codex")?;
+        // A Claude lead starts with the team skill (team_out.rs), new or resumed: merged into a prompt you append.
+        let args = super::team_out::with_skill(agent, &with.args);
+        let spec = Spec { agent, cwd: origin.cwd.clone().into(), start, permissions: with.permissions.clone(), model: with.model.clone(), args, program: Program::Agent, machine: origin.machine.clone() };
         let base = self.session_cost(&origin.session_id).unwrap_or(0.0);
         let started: crate::hosted::Started = self.hosted().start(&spec, self.hosted_report(origin.clone(), base))?;
         let transcript_path = match started.transcript {
@@ -154,20 +157,19 @@ impl Hub {
     /// there is one: it has the process it runs as).
     pub(crate) fn on_hosted(&self, o: &Origin, base: f64, e: HostedEvent) {
         let origin = self.hosted_origin(&o.session_id).unwrap_or_else(|| o.clone());
+        // Its team (team.rs): a teammate started, at work, finished.
+        self.team_sees(&origin, &e);
+        #[cfg(feature = "ext")]
+        self.ext_sees(&origin, &e);
         match e {
             HostedEvent::TurnStarted => self.hosted_turn_started(origin),
             HostedEvent::Taken { text } => self.hosted_taken(origin, text),
-            HostedEvent::NotTaken { text, why } => {
-                self.write(|st| {
-                    st.sessions.mark_unsent(&origin.session_id, &text, &why);
-                    st.sessions.set_queued(&origin.session_id, None);
-                });
-                self.changed();
-            }
+            HostedEvent::NotTaken { text, why } => self.hosted_not_taken(&origin, &text, &why),
             HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
             HostedEvent::Rates(rl) => self.set_rates(&rl),
+            HostedEvent::Suggested { text } => self.hosted_suggested(&origin, &text),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
-            HostedEvent::TurnEnded { text, failed, cost_usd, .. } => {
+            HostedEvent::TurnEnded { text, failed, cost_usd, unprompted } => {
                 self.set_cost(&origin.session_id, base + cost_usd);
                 let stopped = self.write(|st| st.hosted_stopped.remove(&origin.session_id));
                 if failed && stopped.is_some() {
@@ -176,20 +178,52 @@ impl Hub {
                     if stopped == Some(true) {
                         self.write(|st| st.sessions.mark(&origin, "stopped", None));
                         self.changed();
+                        #[cfg(feature = "ext")]
+                        self.ext_turn_ended(&origin.session_id, super::ext::TurnEnd::Stopped);
                     }
                     return;
                 }
                 let driver = crate::leads::resolve_driver(&origin.session_id, "");
+                #[cfg(feature = "ext")]
+                let (sid, ended) = (origin.session_id.clone(), if failed { super::ext::TurnEnd::Failed(text.clone()) } else { super::ext::TurnEnd::Done(text.clone()) });
                 if failed {
                     self.failed(origin, "error", &text);
                 } else {
+                    self.team_reply(&origin.session_id, &text, unprompted);
                     let turn = turn_parts(&origin.transcript_path, &text);
                     self.event(origin, "stopped", text, turn, &driver);
                 }
+                #[cfg(feature = "ext")]
+                self.ext_turn_ended(&sid, ended);
             }
-            HostedEvent::Exited { code, during_turn, last_words } => self.hosted_exited(origin, code, during_turn, &last_words),
+            HostedEvent::Exited { code, during_turn, last_words } => {
+                #[cfg(feature = "ext")]
+                let sid = origin.session_id.clone();
+                self.hosted_exited(origin, code, during_turn, &last_words);
+                #[cfg(feature = "ext")]
+                if during_turn {
+                    self.ext_turn_ended(&sid, super::ext::TurnEnd::Exited(last_words));
+                }
+            }
             HostedEvent::Refused { subtype, .. } => eprintln!("cue: hosted session {} asked for a “{subtype}”, which Cue can't answer: refused", o.session_id),
             HostedEvent::Started { terminal_only, .. } => self.note_terminal_only(&origin.session_id, terminal_only),
+        }
+    }
+
+    /// Claude didn't take a message: it shows as unsent, and nothing waits queued for it.
+    fn hosted_not_taken(&self, origin: &Origin, text: &str, why: &str) {
+        self.write(|st| {
+            st.sessions.mark_unsent(&origin.session_id, text, why);
+            st.sessions.set_queued(&origin.session_id, None);
+        });
+        self.changed();
+    }
+
+    /// Claude's guess at what you'd type next. Only for a session back at its prompt: a turn already under way has
+    /// moved past it.
+    fn hosted_suggested(&self, origin: &Origin, text: &str) {
+        if self.write(|st| st.sessions.set_suggestion(&origin.session_id, text)) {
+            self.changed();
         }
     }
 

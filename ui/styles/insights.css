@@ -9,7 +9,7 @@
 .ins-axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
 .ins-axis b { color: var(--ink); }
 .ins-why { font-size: 14px; line-height: 1.45; color: var(--ink); }
-.ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: 999px; padding: 2px 8px; }
+.ins-n { flex: none; font: 700 11px var(--mono); color: var(--ink); background: var(--panel-2); border: 0; border-radius: var(--pill-radius); padding: 2px 8px; }
 button.ins-n { cursor: pointer; }
 .ins-line .ins-n { margin-left: auto; }
 /* What you just tapped, on its way: in place of the actions. */
@@ -106,7 +106,7 @@ button.ins-n { cursor: pointer; }
 .itab-fine { font-size: 11.5px; color: var(--on-bg-muted); line-height: 1.5; }
 .itab-find { background: var(--panel); color: var(--ink); border-radius: 14px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .itab-kicker { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 10px; }
-.itab-tag { font: 600 10px var(--mono); letter-spacing: .04em; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); padding: 2px 7px; border-radius: 999px; }
+.itab-tag { font: 600 10px var(--mono); letter-spacing: .04em; color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); padding: 2px 7px; border-radius: var(--pill-radius); }
 .itab-claim { display: flex; align-items: baseline; gap: 16px; }
 .itab-big { font-size: 34px; font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .itab-says { margin: 0; font-size: 14px; line-height: 1.45; max-width: 680px; }
@@ -143,7 +143,7 @@ button.ins-n { cursor: pointer; }
 .itab-col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; background: color-mix(in srgb, var(--ink) 18%, var(--panel)); border-radius: 2px 2px 0 0; }
 .itab-col i { display: block; background: color-mix(in srgb, var(--amber) 70%, var(--panel)); }
 .itab-col.worst i { background: var(--amber); }
-.itab-callout { position: absolute; transform: translate(-50%, -4px); font: 600 10.5px var(--mono); color: var(--amber); background: var(--panel); padding: 1px 4px; white-space: nowrap; border-radius: 4px; }
+.itab-callout { position: absolute; transform: translate(-50%, -4px); font: 600 10.5px var(--mono); color: var(--amber); background: var(--panel); padding: 1px 4px; white-space: nowrap; border-radius: var(--pill-radius); }
 .itab-callout.end { transform: translate(-100%, -4px); }
 .itab-callout.start { transform: translate(0, -4px); }
 .itab-daily .itab-top { transform: translateY(-50%); }
@@ -261,7 +261,7 @@ button.ins-n { cursor: pointer; }
 .ac-poprow .ac-pname { flex: none; max-width: 9em; }
 .ac-st.on { color: var(--accent); }
 .ac-st.bad { color: var(--deny); }
-.ac-tag { font: 600 9.5px var(--mono); letter-spacing: 0.1em; color: var(--muted); background: var(--panel-2); padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+.ac-tag { font: 600 9.5px var(--mono); letter-spacing: 0.1em; color: var(--muted); background: var(--panel-2); padding: 2px 6px; border-radius: var(--pill-radius); white-space: nowrap; }
 .ac-tag.warn { color: var(--on-sel); background: var(--sel); }
 .ac-empty { font-size: 12.5px; color: var(--muted); padding: 10px 2px; }
 .ac-pname { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -281,7 +281,7 @@ button.ins-n { cursor: pointer; }
 .ac-sug.bad { color: var(--deny); }
 .ac-sug.wait { color: var(--muted); background: transparent; border-style: dashed; }
 /* The dots on a project's chip (one per running action) and the popover they open. */
-.ac-dots { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 5px; margin: 0 -4px 0 2px; border-radius: 999px; }
+.ac-dots { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 5px; margin: 0 -4px 0 2px; border-radius: var(--pill-radius); }
 .ac-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--sel); }
 .ac-dots b { font: 600 10px var(--mono); color: inherit; opacity: 0.8; }
 .ac-dots:hover, .ac-dots.open { background: color-mix(in srgb, currentColor 16%, transparent); }

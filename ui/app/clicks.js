@@ -15,7 +15,8 @@ const ACTS = {
   "open-settings": () => { sheet = sheet === "settings" ? null : "settings"; extSections = null; renderMain(); },
   // Buttons that name a session, not a card (no data-id): the "!" cards, Send again, Move to Cue.
   "move-cue": (el) => el.dataset.why ? toast(`Move to Cue: ${el.dataset.why}`) : moveToCue(el.dataset.sid),
-  "move-term": (el) => el.dataset.why ? toast(`Move to terminal: ${el.dataset.why}`) : invoke("move_to_terminal", { sessionId: el.dataset.sid }).then(toast).catch((e) => toast(`Couldn't move it: ${e}`)),
+  // ⋯ → Move to terminal (chat/render.js moveOutItem): the menu closes, and Cue says where it went.
+  "move-term": (el) => { moreFor = null; renderMain(); invoke("move_to_terminal", { sessionId: el.dataset.sid }).then(toast).catch((e) => toast(`Couldn't move it: ${e}`)); },
   "move-dismiss": () => { moving = null; renderMain(); },
   "delete-yes": () => deleteAnswer(true),
   "delete-no": () => deleteAnswer(false),

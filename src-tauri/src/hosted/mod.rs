@@ -17,6 +17,7 @@
 //! None of this knows about the hub, the store or the window: a session reports through the function it was
 //! started with, and that's all whoever starts it needs.
 
+mod agent_check;
 mod codex;
 mod conn;
 mod driver;
@@ -54,6 +55,13 @@ mod session_tests;
 #[cfg(test)]
 mod translate_tests;
 
+/// Tests: what Claude's recorded lines (a fixture's) say to Cue, line by line, as one process read them.
+#[cfg(test)]
+pub(crate) fn fixture_events(lines: &str) -> Vec<Vec<HostedEvent>> {
+    let mut t = translate::Translator::default();
+    lines.lines().map(|l| t.step(&wire::parse(l))).collect()
+}
+
 pub use launch::{Agent, Program, Spec, Start};
 pub use hosts::Hosts;
 pub use running::{end_leftovers, Hosted, Report, Running, Started};
@@ -89,6 +97,8 @@ pub enum HostedEvent {
     /// The plan's usage, as the status line reports it (`five_hour` / `seven_day`, each with
     /// `used_percentage` and `resets_at` in seconds): a hosted session has no status line to say it.
     Rates(Value),
+    /// What you'd likely type next (Claude's prompt suggestion), after a turn with an obvious next step.
+    Suggested { text: String },
     /// It needs an answer from you before it goes on (`Session::answer`).
     Ask(Ask),
     /// A turn is over. `unprompted`: nothing of yours started it (a background task that finished did).

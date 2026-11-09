@@ -7,6 +7,11 @@
 use serde::{Deserialize, Serialize};
 use crate::safe_git;
 
+// The optional add-on's part (built in with the `ext` feature).
+#[cfg(feature = "ext")]
+#[path = "../ext/changes.rs"]
+pub(crate) mod ext;
+
 /// Where a turn started from: the folder's root, a snapshot of it, and its untracked files (extensions see it too).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Base {
@@ -147,11 +152,12 @@ pub fn since(base: &Base) -> Option<Changes> {
     Some(Changes { files, add, del })
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn repo() -> String {
+    pub(super) fn repo() -> String {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let dir = format!("{}/cue-changes-{}-{}", std::env::temp_dir().display(), std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
         std::fs::create_dir_all(&dir).unwrap();
@@ -191,3 +197,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+

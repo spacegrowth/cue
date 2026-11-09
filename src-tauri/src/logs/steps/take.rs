@@ -24,6 +24,17 @@ impl Feed {
                 Some("user") if !content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) => self.ended_ms = 0,
                 _ => {}
             }
+            // Its last line, for when it goes quiet (sessions/quiet.rs): its own words, a tool call, or anything it
+            // was to go on from (a result, a message to it).
+            let last = match e.get("type").and_then(Value::as_str) {
+                Some("assistant") if content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_use")) => Some(crate::sessions::quiet::Last::Call),
+                Some("assistant") if content_blocks(e).iter().any(|b| b.get("type").and_then(Value::as_str) == Some("text")) => Some(crate::sessions::quiet::Last::Said),
+                Some("user") => Some(crate::sessions::quiet::Last::Result),
+                _ => None,
+            };
+            if let Some(last) = last {
+                self.last_line = (at, last);
+            }
         }
         match e.get("type").and_then(Value::as_str) {
             Some("attachment") => self.take_attachment(e, at),

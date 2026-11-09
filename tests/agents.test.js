@@ -43,6 +43,7 @@ const ctx = {
 vm.createContext(ctx);
 const load = (src) => vm.runInContext(src.replace(/^(const|let) /gm, "var "), ctx);
 load(fs.readFileSync(__dirname + "/../ui/agents.js", "utf8"));
+load(fs.readFileSync(__dirname + "/../ui/team.js", "utf8"));
 const core = fs.readFileSync(__dirname + "/../ui/core.js", "utf8");
 const cut = (from, to) => { const a = core.indexOf(from), b = core.indexOf(to, a); assert.ok(a > 0 && b > a, `core.js still has ${from}`); return core.slice(a, b); };
 load(cut("/** On a relay agent's title line", "/** relay verify's verdict, in words"));

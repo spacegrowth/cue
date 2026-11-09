@@ -62,6 +62,17 @@ CueBridge.area("chat", (w) => {
     // Earlier messages, a page at a time: 75 made-up ones from Cue's log, 40 more from the transcript.
     session_log_page: (a) => before(page(75, w.now() - 3 * H, "Earlier message"), a),
     transcript_page: (a) => before(page(40, w.now() - 9 * H, "From the transcript"), a),
+    // A hosted lead's teammate's buttons (ipc/team.rs): Diff answers with a diff, Commit is refused as on main (the
+    // scenario's folder), the rest say what was done.
+    team_action: ({ agent, action }) => action === "commit" ? Promise.reject("Not committed: its folder is on main. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one") : action === "branch" ? `Committed 1 file to team/${agent} (c71e04b); your folder stays on main.` : action === "diff" ? `diff --git a/${agent}.txt b/${agent}.txt\nnew file mode 100644\n--- /dev/null\n+++ b/${agent}.txt\n@@ -0,0 +1 @@\n+${agent} wrote this` : `${action}: ${agent}`,
+    // The Team switch, and a task dropped on a lead (ipc/team.rs): the files it names, those world-team's rows is
+    // changing marked.
+    team_mode: () => null,
+    team_hand_out_preview: ({ text }) => {
+      const files = [...new Set(String(text).match(/[\w./-]+\.[a-z]{1,6}\b/g) || [])].map((path) => ({ path, by: ["ui/team.js", "ui/core.js"].includes(path) ? "rows is changing it" : "" }));
+      return { lead: "cue", files, overlap: files.some((f) => f.by) };
+    },
+    team_hand_out: () => "Handed to cue as a new teammate",
     crew_action: ({ sessionId, action }) => action === "review" ? `Sent /relay:review ${sessionId}` : action === "close" ? "Closed" : action.startsWith("auto-") ? `Auto mode ${action.slice(5)}` : "Opened in your browser",
     // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
     btw: async () => { await w.wait(600); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; },

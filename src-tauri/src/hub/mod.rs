@@ -27,12 +27,18 @@ mod saves;
 mod send;
 mod sessions;
 mod shown;
+mod team;
+pub(crate) mod team_out;
 mod store_access;
 mod terminal_only;
 pub(crate) use terminal_only::{claude_screens, Own};
 mod today;
 mod turn_end;
 mod usage;
+// The optional add-on's part of the hub (built in with the `ext` feature).
+#[cfg(feature = "ext")]
+#[path = "../../ext/hub/mod.rs"]
+pub(crate) mod ext;
 
 pub use history::{split_turn, summary};
 pub use asks::NewAsk;
@@ -467,7 +473,12 @@ impl Hub {
             // Today's numbers (today.rs), not every answer of the day: those grow all day.
             "today": today::today(&st.answers, now),
         });
-        (seq, next, StoreParts { items: st.items.clone(), history: st.history.brief(), sessions, parked, small })
+        // An executor whose lead is on auto mode (its packet's review reads "auto"): its finished turn isn't waiting
+        // on you, its lead takes the report on its own. Off Waiting and every count of it while that holds; back if
+        // the lead goes off auto. What it asks you (a permission, a question) still shows.
+        let lead_on_it: HashSet<&str> = small["reviews"].as_object().map(|r| r.iter().filter(|(_, v)| v["state"] == "auto").map(|(k, _)| k.as_str()).collect()).unwrap_or_default();
+        let items = st.items.iter().filter(|i| !(i.kind == "waiting" && lead_on_it.contains(i.origin.session_id.as_str()))).cloned().collect();
+        (seq, next, StoreParts { items, history: st.history.brief(), sessions, parked, small })
     }
 
     /// The sessions that ended while Cue ran, for the snapshot: not the ones live or parked again, each
