@@ -124,7 +124,6 @@ fn tell_event(h: &Hub, origin: Origin, event: &str, message: String, turn: Vec<T
     // straight away (waiting on a file that never shows let its reply land first).
     let path = if origin.machine.is_empty() { origin.transcript_path.clone() } else { String::new() };
     let sid = origin.session_id.clone();
-    let driven_by = crate::leads::resolve_driver(&origin.session_id, driven_by);
     let lookup = event == "active" && !prompt_id.is_empty() && !path.is_empty();
     // Nothing to look up (Pi, Codex, a session on a machine): the prompt is yours, noted with the event itself.
     if event == "active" && !lookup && !transcript::harness_text(&message) {

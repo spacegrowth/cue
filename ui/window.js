@@ -213,8 +213,6 @@ let agentsAvail = null;            // the agents installed on this Mac (asked on
 // ---------- Sessions view: every live session as a map of project tiles ----------
 const homeless = (p) => String(p || "").replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
 const lastSaid = (s) => [...(s.thread || [])].reverse().find((e) => e.role === "agent")?.text || "";
-/** relay names tabs "[Exec] web-lines-cleanup", "[Lead] relay-tmux-backend": the LEAD / EXEC tag says that already. */
-const bareName = (n) => String(n || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "");
 
 /** Cue's mark (the app icon without its tile): an open C around a dot. */
 /** The mark at 14px, and a terminal (a prompt in a window), for the "Runs in" choice. */

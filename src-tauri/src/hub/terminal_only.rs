@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(own("pi", "login", "/login anthropic", &[]), terminal("pi --no-session", "then type /login anthropic there"));
         assert_eq!(own("pi", "settings", "/settings", &[]), terminal("pi --no-session", "then type /settings there"));
         assert_eq!(own("pi", "compact", "/compact", &[]), Some(Own::NotHosted), "never sent to the model as a message");
-        assert_eq!(own("pi", "pilead:mode", "/pilead:mode", &[]), None, "an extension's command runs in the session");
+        assert_eq!(own("pi", "plan:mode", "/plan:mode", &[]), None, "an extension's command runs in the session");
     }
 
     #[test]

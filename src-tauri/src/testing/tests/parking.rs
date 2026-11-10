@@ -2,8 +2,8 @@
 //! what it refuses, a restart that can't stop its agent, a restart that fails after its park (its tmux
 //! session vanished), and what a relaunch after a reboot brings back by itself.
 
-use crate::ipc::{auto_resumable, move_to_terminal_now, park, restart_session_now};
-use crate::testing::{relay_calls, AgentProcess, Crew, World};
+use crate::ipc::{move_to_terminal_now, park, rebuildable, restart_session_now};
+use crate::testing::{AgentProcess, World};
 use serde_json::json;
 
 /// Session `sid` at its finished turn, its agent running as `agent`.
@@ -71,30 +71,6 @@ fn park_refuses_what_it_couldnt_resume() {
     assert_eq!(park(w.hub(), "a"), Err("Cue doesn't know which folder it runs in, so it couldn't resume it".to_string()));
     assert_eq!(park(w.hub(), "nobody"), Err("Cue has no record of that session".to_string()));
     assert_eq!(w.snapshot().cards_of("a").len(), 1);
-}
-
-#[test]
-fn park_leaves_a_relay_executor_to_relay() {
-    let w = World::new();
-    let agent = AgentProcess::start();
-    Crew::default().lead("L").exec("E", "L").install();
-    w.session("E").running_as(agent.pid).prompt("packet 1").stop_driven("Report written.", "its relay lead (L)");
-    assert!(park(w.hub(), "E").is_err());
-    assert!(agent.running());
-    assert!(w.snapshot().find("E").is_some());
-}
-
-#[test]
-fn a_lead_with_executors_open_cant_be_parked_and_one_with_none_can() {
-    let w = World::new();
-    let agent = AgentProcess::start();
-    Crew::default().lead("L").exec("E", "L").install();
-    finished(&w, "L", &agent);
-    assert_eq!(park(w.hub(), "L"), Err("it leads 1 executor still open: close them, or hand the lead off, first".to_string()));
-    Crew::default().lead("L").install();
-    assert!(park(w.hub(), "L").is_ok());
-    assert!(relay_calls().iter().any(|c| c == "close --self L"), "relay is told the lead stops: {:?}", relay_calls());
-    assert!(!agent.running());
 }
 
 #[test]
@@ -208,18 +184,17 @@ fn a_session_keeps_its_last_five_restarts() {
 }
 
 #[test]
-fn after_a_reboot_cue_brings_back_its_claude_sessions_in_tmux_and_leaves_executors_to_their_leads() {
+fn after_a_reboot_cue_brings_back_its_claude_sessions_in_tmux() {
     let mut w = World::new();
-    Crew::default().lead("L").exec("E", "L").install();
     for sid in ["mine", "E"] {
         w.session(sid).in_tmux("%1").prompt("go").stop("Done.");
     }
     w.session("plain").prompt("go").stop("Done.");
     w.session("cx").codex().in_tmux("%2").prompt("go").stop("Done.");
     w.relaunch();
-    let mut back: Vec<String> = w.hub().saved_sessions().into_iter().filter(|s| auto_resumable(&s.origin, crate::leads::is_executor)).map(|s| s.origin.session_id).collect();
+    let mut back: Vec<String> = w.hub().saved_sessions().into_iter().filter(|s| rebuildable(&s.origin)).map(|s| s.origin.session_id).collect();
     back.sort();
-    assert_eq!(back, ["mine"], "not an executor, a session with no pane, nor one only Claude can --resume");
+    assert_eq!(back, ["E", "mine"], "not a session with no pane, nor one only Claude can --resume");
 }
 
 /// ⋯ → Move to terminal for a session in Cue's own terminal (ipc/move_out.rs): its agent ended as Close does, then

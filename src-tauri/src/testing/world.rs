@@ -1,6 +1,6 @@
 //! The World: one hub on a private CUE_HOME, driven as the socket drives it, with its terminals, the
-//! agents it starts (`FakeLauncher`), its follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME and the
-//! agent index are process-wide): it holds the database's and the index's test locks for its life.
+//! agents it starts (`FakeLauncher`), its follow-up work and its clock in the test's hands. One World at a time per process (CUE_HOME is
+//! process-wide): it holds the database's test lock for its life.
 
 use super::{Agent, Deferred, FakeHosted, FakeLauncher, FakeNotes, FakeTerminal, FakeWindow, Snap};
 use crate::clock::fake::Fake;
@@ -72,8 +72,7 @@ pub struct World {
     home: PathBuf,
     /// How long an agent takes to answer, by this World's clock (`agents_think`): 0 unless said.
     thinking_ms: std::cell::Cell<u64>,
-    // Dropped last, after `Drop` has put things back: the index's turn, then the database's.
-    _index: std::sync::MutexGuard<'static, ()>,
+    // Dropped last, after `Drop` has put things back: the database's turn.
     _db: std::sync::MutexGuard<'static, ()>,
 }
 
@@ -90,7 +89,6 @@ impl World {
     }
 
     fn with_clock(clock: Fake) -> Self {
-        let index = crate::leads::test_turn();
         let db = crate::db::test_turn();
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -100,13 +98,12 @@ impl World {
         std::env::set_var("CUE_HOME", &home);
         crate::db::reset();
         crate::live::set_claude(vec![]);
-        crate::leads::install_index(Default::default());
         clock.install();
         let fakes = Fakes::default();
         let later = Arc::default();
         let hub = Arc::new(Hub::with_ports(None, fakes.ports(&later)));
         let Fakes { terminal, launcher, hosted, notes, window } = fakes;
-        let w = Self { client: Client { hub, clock }, terminal, launcher, hosted, notes, window, later, home, thinking_ms: Default::default(), _index: index, _db: db };
+        let w = Self { client: Client { hub, clock }, terminal, launcher, hosted, notes, window, later, home, thinking_ms: Default::default(), _db: db };
         w.agents_take_what_is_typed();
         w
     }
@@ -292,7 +289,6 @@ impl Drop for World {
         Fake::uninstall();
         crate::db::reset();
         crate::live::set_claude(vec![]);
-        crate::leads::install_index(Default::default());
         std::env::remove_var("CUE_HOME");
         let _ = std::fs::remove_dir_all(&self.home);
     }

@@ -10,8 +10,6 @@ let downInLive = false;
 const OVERLAY_CLOSERS = [
   // An add-on's open menu closes on a click anywhere else.
   (t) => { if (extPickOpen && !t.closest(".xp-menu, [data-ext-open]")) { extPickOpen = null; renderMain(); } return false; },
-  // A Review row's ⋯ menu closes on any click but its own button (one of its items runs as it closes).
-  (t) => { if (reviewMenu && !t.closest("[data-rv-more]")) { reviewMenu = null; renderMain(); } return false; },
   // A picture shown full size: any click closes it, and does nothing else.
   () => { if (!lightbox) return false; lightbox = null; renderMain(); return true; },
 ];
@@ -102,15 +100,6 @@ const USAGE_CLICKS = [
 const LIVE_CLICKS = [
   (t) => { if (nfFolderOpen && !t.closest(".nf-fwrap")) { closeFolders(); renderMain(); } return false; },
   rule("[data-lv]", (lv) => lvAct(lv.dataset.lv, lv.dataset)),
-  // A Review row: its findings (or what it was asked) open under it; ⋯ opens its menu.
-  rule("[data-rv-open], [data-rv-asked]", (ro) => { const exec = ro.dataset.rvOpen || ro.dataset.rvAsked, what = ro.dataset.rvOpen ? "findings" : "asked"; reviewOpen.get(exec) === what ? reviewOpen.delete(exec) : reviewOpen.set(exec, what); renderMain(); }),
-  rule("[data-rv-more]", (rm) => { reviewMenu = reviewMenu === rm.dataset.rvMore ? null : rm.dataset.rvMore; renderMain(); }),
-  // A Review row's Commit / Send fixes: the words typed into the lead (it commits only; pushing stays yours).
-  rule("[data-rv-say]", (rv) => invoke("send_to_session", { sessionId: rv.dataset.rvSay, text: rv.dataset.rvText, images: [], now: false }).then((r) => toast(`Sent ${r}`)).catch((x) => toast(`Couldn't: ${x}`))),
-  // A team button (auto, Diff, Review) inside a row that opens its session: the button, not the row.
-  rule("[data-crew]", (ca) => crewAct(ca.dataset.crewSid, ca.dataset.crew)),
-  // A remote executor's row in its lead's tree: its own terminal there (see openExec).
-  rule("[data-exec-term]", (xt) => openExec(xt.dataset.execTerm)),
   // A button in the row (Allow / Deny in the starred list) does its own thing, not "open".
   rule("[data-sv]", (sv) => { if (liveOpen && sv.dataset.sv !== "close") liveOpen = false; svAct(sv.dataset.sv, sv.dataset.sid); }, (sv, t) => !t.closest("button[data-act], button[data-wake]")),
   (t) => { if (liveOpen && !downInLive && !t.closest(".lv-wrap")) { liveOpen = newOpen = false; renderMain(); } return false; },
@@ -143,8 +132,8 @@ const PARKED_CLICKS = [
   rule("[data-shelf]", (shw) => pickShelf(shw.dataset.shelf)),
   rule("[data-park-closed]", (pkc) => parkClosed(pkc.dataset.parkClosed)),
   rule("[data-unpark]", (upk) => unparkSession(upk.dataset.unpark)),
-  rule("[data-park-session]", (pks) => { moreFor = handoffArm = null; parkSession(pks.dataset.parkSession); }),
-  rule("[data-delete-ask]", (dla) => { moreFor = handoffArm = null; deleteAsk = dla.dataset.deleteAsk; document.activeElement?.blur(); renderMain(); }),
+  rule("[data-park-session]", (pks) => { moreFor = null; parkSession(pks.dataset.parkSession); }),
+  rule("[data-delete-ask]", (dla) => { moreFor = null; deleteAsk = dla.dataset.deleteAsk; document.activeElement?.blur(); renderMain(); }),
   rule("[data-park-all]", (pka) => { parkedAll = parkedAll === pka.dataset.parkAll ? null : pka.dataset.parkAll; renderMain(); }),
 ];
 

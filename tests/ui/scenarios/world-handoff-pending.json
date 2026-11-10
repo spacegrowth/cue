@@ -2,7 +2,7 @@
   "about": {},
   "ahead_watch": [],
   "branches": {
-    "/work/agent-relay": ""
+    "/work/agent-board": ""
   },
   "connections": {
     "claude": {
@@ -30,9 +30,7 @@
       "present": true
     }
   },
-  "crew": {},
   "ended": [],
-  "handoffs": {},
   "history": [],
   "insight": {},
   "items": [
@@ -46,7 +44,7 @@
         }
       ],
       "created_ms": 1793984400000,
-      "cwd": "/work/agent-relay",
+      "cwd": "/work/agent-board",
       "followup": "",
       "harness": "claude",
       "id": "n1793984380001",
@@ -59,9 +57,9 @@
       "machine": "",
       "message": "Hand-off note written to HANDOFF.md.",
       "outcome": "",
-      "project": "agent-relay",
+      "project": "agent-board",
       "resolved_ms": null,
-      "session_id": "relay",
+      "session_id": "board",
       "status": "pending",
       "suggestions": null,
       "term_program": "",
@@ -75,7 +73,7 @@
       "tmux_pane": "",
       "tool_input": null,
       "tool_name": "",
-      "transcript_path": "/Users/me/.claude/projects/-work/relay.jsonl",
+      "transcript_path": "/Users/me/.claude/projects/-work/board.jsonl",
       "tty": "",
       "wezterm_pane": ""
     }
@@ -84,24 +82,23 @@
   "now_ms": 1793984400000,
   "parked": [],
   "projects": {
-    "/work/agent-relay": {
-      "key": "/work/agent-relay",
-      "name": "agent-relay",
-      "own": "agent-relay",
-      "root": "/work/agent-relay",
-      "top": "/work/agent-relay"
+    "/work/agent-board": {
+      "key": "/work/agent-board",
+      "name": "agent-board",
+      "own": "agent-board",
+      "root": "/work/agent-board",
+      "top": "/work/agent-board"
     }
   },
   "restarted": {},
   "restarting": {},
   "review_queue": {},
-  "reviews": {},
   "sessions": [
     {
       "agent_pid": null,
       "agents": 0,
       "background": 0,
-      "cwd": "/work/agent-relay",
+      "cwd": "/work/agent-board",
       "doing_ms": 0,
       "driven_by": "",
       "harness": "claude",
@@ -109,7 +106,7 @@
       "kitty_listen_on": "",
       "kitty_window_id": "",
       "machine": "",
-      "project": "agent-relay",
+      "project": "agent-board",
       "prompt": "/handoff",
       "queued": null,
       "segments": [
@@ -124,7 +121,7 @@
           "start_ms": 1793984400000
         }
       ],
-      "session_id": "relay",
+      "session_id": "board",
       "since_ms": 1793984400000,
       "state": "waiting",
       "term_program": "",
@@ -141,7 +138,7 @@
         }
       ],
       "tmux_pane": "",
-      "transcript_path": "/Users/me/.claude/projects/-work/relay.jsonl",
+      "transcript_path": "/Users/me/.claude/projects/-work/board.jsonl",
       "tty": "",
       "wezterm_pane": ""
     }
@@ -240,7 +237,7 @@
     }
   },
   "skill_handoffs": {
-    "relay": {
+    "board": {
       "ahead": 0,
       "continued_ms": 0,
       "next": "",

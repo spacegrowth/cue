@@ -46,7 +46,7 @@ pub struct Session {
     /// | "agent" (finished, but another agent drives it: waiting on that agent, not you)
     /// | "stopped" (you interrupted it from Cue; it's at its prompt)
     pub state: String,
-    /// Who drives it when it's in "agent" state, e.g. "its relay lead (…)", or "2 background agents".
+    /// Who drives it when it's in "agent" state, e.g. "its lead (…)", or "2 background agents".
     pub driven_by: String,
     /// Background agents it started that are still at work (Claude Code's Agent tool): it's at its
     /// prompt meanwhile, in "agent" state, and Claude Code wakes it when they report. 0 = none.
@@ -57,7 +57,7 @@ pub struct Session {
     #[serde(default)]
     pub background: u64,
     /// Its agents (background agents and teammates, any state) in the list its chat shows (steps::agent_count): its
-    /// cards count these, with a lead's relay agents, so a card and its chat say the same "N agents".
+    /// cards count these, so a card and its chat say the same "N agents".
     #[serde(default)]
     pub agents: u64,
     /// A background task of its that failed after running a while: when (0 = none), what it was, and its

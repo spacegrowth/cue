@@ -872,7 +872,7 @@ mod tests {
         s["sessions"][0]["helpers"] = json!(2);
         assert!(outcome(&s, &t).is_none(), "its agents are still at work");
         s["sessions"][0]["helpers"] = json!(0);
-        assert_eq!(outcome(&s, &t), Some(json!({ "answer": "Started two agents." })), "another agent drives it (relay): its reply is the answer");
+        assert_eq!(outcome(&s, &t), Some(json!({ "answer": "Started two agents." })), "another agent drives it: its reply is the answer");
     }
 
     #[test]

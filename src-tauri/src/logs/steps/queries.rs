@@ -156,7 +156,7 @@ pub fn running_background(path: &str) -> usize {
 }
 
 /// How many agents a session has: the background agents and teammates (not its scripts) in its feed, the same
-/// list the window shows as its agents (with a lead's relay agents, which come from relay). `open`: start its feed
+/// list the window shows as its agents. `open`: start its feed
 /// when there's none (a session at work); else None while nobody reads it, and a feed only this asks for isn't kept
 /// alive by it.
 pub fn agent_count(path: &str, open: bool) -> Option<usize> {

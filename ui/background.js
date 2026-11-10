@@ -1,9 +1,9 @@
 // ---------- The Agents and Scripts tabs: a session's background work, all of it ----------
 // Beside Actions, each shown once the session has that kind of work: Agents (every agent of it, any kind: its
-// background agents, teammates and a lead's relay agents, grouped Needs you / Working / Done: agents.js agentsPage)
+// background agents and teammates, grouped Needs you / Working / Done: agents.js agentsPage)
 // and Scripts (the shell commands it ran in the background, one row each (chat/helpers.js bgRow), what's running first, then
 // what's over, newest first). The tab shows a live dot and how many work while any do. A click opens it in full
-// (chat/helpers.js helperPane; a relay agent: its chat); Back comes back here. The live feed keeps a session's newest few;
+// (chat/helpers.js helperPane); Back comes back here. The live feed keeps a session's newest few;
 // "Show earlier" reads its whole transcript for the rest, only once asked, and an earlier one is read in full only
 // when it's opened.
 const BG_TABS = [["agents", "Agents", (h) => !h.script], ["scripts", "Scripts", (h) => !!h.script]];

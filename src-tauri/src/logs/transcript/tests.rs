@@ -226,7 +226,7 @@ fn a_message_handed_over_mid_turn_is_found_in_the_log_as_sent() {
     assert!(!taken_mid_turn(&p.0, &long, t0), "from before this send");
     let p = write_transcript(&[queued(at(40), "<task-notification>agents reported</task-notification>", None)]);
     assert!(!taken_mid_turn(&p.0, "<task-notification>agents reported</task-notification>", t0), "Claude Code's own notice");
-    let p = write_transcript(&[queued(at(40), &long, Some(json!({"kind":"peer","name":"relay"})))]);
+    let p = write_transcript(&[queued(at(40), &long, Some(json!({"kind":"peer","name":"helper"})))]);
     assert!(!taken_mid_turn(&p.0, &long, t0), "another agent's message, not yours");
     let p = write_transcript(&[json!({"type":"attachment","timestamp":at(40),"attachment":{"type":"queued_command","commandMode":"bash","prompt":long}})]);
     assert!(!taken_mid_turn(&p.0, &long, t0), "a command, not a prompt");

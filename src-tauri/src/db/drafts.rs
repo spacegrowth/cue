@@ -1,4 +1,4 @@
-//! What waits to be sent: your unsent drafts per session, and the reviews and packets waiting for their leads.
+//! What waits to be sent: your unsent drafts per session, and teammates' reviews waiting for their leads.
 
 use super::with;
 use crate::model::now_ms;
@@ -40,7 +40,7 @@ pub fn set_draft(key: &str, text: &str, images: &Value) {
     });
 }
 
-/// The reviews waiting for their leads, oldest first: (executor, lead, text, when).
+/// The reviews waiting for their leads, oldest first: (teammate's key, lead, text, when).
 pub fn review_queue() -> Vec<(String, String, String, u64)> {
     with(|c| {
         let mut q = c.prepare("SELECT exec, lead, text, at_ms FROM review_queue ORDER BY at_ms")?;
@@ -58,18 +58,4 @@ pub fn queue_review(exec: &str, lead: &str, text: &str, at_ms: u64) {
 /// A queued review sent, or taken back.
 pub fn unqueue_review(exec: &str) {
     with(|c| c.execute("DELETE FROM review_queue WHERE exec = ?1", params![exec]));
-}
-
-/// Every packet you set aside: (executor id, packet).
-pub fn set_aside() -> Vec<(String, u64)> {
-    with(|c| {
-        let mut q = c.prepare("SELECT exec, packet FROM set_aside")?;
-        let rows = q.query_map([], |r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64)))?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
-    })
-    .unwrap_or_default()
-}
-
-pub fn add_set_aside(exec: &str, packet: u64) {
-    with(|c| c.execute("INSERT OR IGNORE INTO set_aside (exec, packet, at_ms) VALUES (?1, ?2, ?3)", params![exec, packet as i64, crate::model::now_ms() as i64]));
 }

@@ -3,7 +3,7 @@
 /** Closed: one strip showing its screen's last line, amber while it waits on something only the terminal
  *  can answer. Open: xterm.js draws the real terminal, streamed from a tmux client of Cue's own (term.rs),
  *  and what you type goes straight to it. Its element lives outside the redraws: each one puts it back. */
-const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane || !!execTerm(sid);
+const inTmux = (sid) => !!sessionOf(sid)?.tmux_pane;
 let termSid = null;            // whose terminal is open
 let termGen = 0;               // which opening its output belongs to (0: not known yet)
 let termOpening = 0;           // this window's openings, counted: a late answer to an earlier one is left alone
@@ -111,25 +111,8 @@ function keptTerm(slot) {
   try { termKept.fit.fit(); } catch {}
   return termKept;
 }
-/** A remote executor, from its row in its lead's tree: its chat when Cue holds it, else a pane of its
- *  own (execPane), and either way its terminal, attached to its own tmux session there. Once per
- *  executor: a second click on the same row keeps the terminal that's open. */
-function openExec(sid, id = null) {
-  if (sessionOf(sid)) setActive(id, sid);
-  else if (quietOpen !== sid || view !== "board") {
-    if (quietOpen !== sid) setActive(null, null);   // (not when it's this one: that would end its terminal)
-    view = "board";
-    quietOpen = sid;
-    followProject(sid);
-    renderMain();
-  }
-  return openTerm(sid);
-}
-/** A session Cue holds, opened from any row, chip or list that names it: its chat, and for a remote
- *  executor in a tmux session of its own (one a lead on a machine started, whose hooks reached Cue too)
- *  also that terminal, as from its row in its lead's tree (openExec). `id`: the card to open it on. */
+/** A session Cue holds, opened from any row, chip or list that names it: its chat. `id`: the card to open it on. */
 function openSession(sid, id = null) {
-  if (sessionOf(sid) && execTerm(sid)) return openExec(sid, id);
   return setActive(id, sid);
 }
 /** Close it (the session keeps running in tmux). `quiet`: no redraw, another opening follows. */

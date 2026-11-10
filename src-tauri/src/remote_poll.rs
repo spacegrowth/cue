@@ -1,4 +1,4 @@
-//! When each of your machines has its crews read (relay's and pi-lead's listing there, one SSH call).
+//! When each of your machines is read (its live sessions and setup screens, machines::listing, one SSH call).
 //! Every machine is read, whether or not Cue has anything open there: every 10 s where it has a live
 //! session, every minute elsewhere. A machine that can't be reached is tried less and less often (up to
 //! every 5 minutes) until it answers again, and it never holds the others up: each read runs on its

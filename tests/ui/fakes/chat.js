@@ -1,5 +1,5 @@
 // Fakes for src-tauri/src/ipc/chat.rs, the part about messages: sending, the "/" menu, earlier messages, search,
-// by-the-way questions, crews, tasks. (Steps are in steps.js, MCP servers in mcp.js.)
+// by-the-way questions, tasks. (Steps are in steps.js, MCP servers in mcp.js.)
 CueBridge.area("chat", (w) => {
   const H = 3600000;
   /** "/" menu entries of a Claude Code session (?ins=1: a hand-off skill too; ?ins=cue: no skill at all). */
@@ -73,7 +73,6 @@ CueBridge.area("chat", (w) => {
       return { lead: "cue", files, overlap: files.some((f) => f.by) };
     },
     team_hand_out: () => "Handed to cue as a new teammate",
-    crew_action: ({ sessionId, action }) => action === "review" ? `Sent /relay:review ${sessionId}` : action === "close" ? "Closed" : action.startsWith("auto-") ? `Auto mode ${action.slice(5)}` : "Opened in your browser",
     // By the way: a side question, answered after a moment (the real one asks a copy of the conversation).
     btw: async () => { await w.wait(600); return "Because the CSV export is read by the **finance script**, which expects the old order. Changing it would break their import, so it only changed the board."; },
     catch_up: async () => { await w.wait(600); return { points: ["Finished the spend column; tests pass.", "Kept the CSV export's old column order."], needs: "Carry spend over to a successor, or not?" }; },

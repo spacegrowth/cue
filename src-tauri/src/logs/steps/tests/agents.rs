@@ -266,15 +266,15 @@ fn quiet_agent(name: &str, lines: &[&str]) -> Feed {
     let _ = std::fs::remove_dir_all(&dir);
     let sub = dir.join("s").join("subagents");
     std::fs::create_dir_all(&sub).unwrap();
-    std::fs::write(sub.join("agent-a1.meta.json"), r#"{"agentType":"fork","description":"Review the packet","toolUseId":"t1","requestShape":"background"}"#).unwrap();
+    std::fs::write(sub.join("agent-a1.meta.json"), r#"{"agentType":"fork","description":"Review the change","toolUseId":"t1","requestShape":"background"}"#).unwrap();
     let mut log = vec![r#"{"type":"user","isSidechain":true,"agentId":"a1","timestamp":"2026-10-04T10:00:03.000Z","message":{"role":"user","content":"review it"}}"#];
     log.extend_from_slice(lines);
     std::fs::write(sub.join("agent-a1.jsonl"), log.join("\n") + "\n").unwrap();
     let path = dir.join("s.jsonl");
     std::fs::write(&path, [
-        r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"review the packet"}}"#,
-        r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Review the packet","subagent_type":"fork","prompt":"review it","run_in_background":true}}]}}"#,
-        r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Review the packet"}}"#,
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:00.000Z","message":{"content":"review the change"}}"#,
+        r#"{"type":"assistant","timestamp":"2026-10-04T10:00:02.000Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Agent","input":{"description":"Review the change","subagent_type":"fork","prompt":"review it","run_in_background":true}}]}}"#,
+        r#"{"type":"user","timestamp":"2026-10-04T10:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Async agent launched"}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a1","description":"Review the change"}}"#,
     ].join("\n") + "\n").unwrap();
     let mut f = Feed::open(path.to_str().unwrap(), 1);
     f.catch_up();

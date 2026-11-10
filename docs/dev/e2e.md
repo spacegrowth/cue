@@ -37,7 +37,7 @@ worked on this Mac in the spike, and gives real clicks and keys, not just evalua
 ## Isolation (what a run never touches)
 
 Each journey gets its own folder under one run folder (`/tmp/cue-e2e.XXXX`, short because Unix socket
-paths must fit 104 bytes): `cue/` (CUE_HOME), `home/` (HOME: Cue's view of `~/.claude`, `~/.relay-tasks`,
+paths must fit 104 bytes): `cue/` (CUE_HOME), `home/` (HOME: Cue's view of `~/.claude`,
 the window-state file), `tmux/` (TMUX_TMPDIR). Cue is started from an environment built from nothing
 (`World.env`), with `TMUX`/`TMUX_PANE` never in it.
 
@@ -48,7 +48,7 @@ Cue looks with that TMUX_TMPDIR), and `Tmux` refuses a socket that is the defaul
 processes running this worktree's e2e binary (Cue and its hooks). A failed journey keeps its folder with
 `cue.log` and `window.png`; the run prints where.
 
-## Journeys (13)
+## Journeys (11)
 
 | File | Journey |
 |---|---|
@@ -56,10 +56,6 @@ processes running this worktree's e2e binary (Cue and its hooks). A failed journ
 | sessions | reply on a finished card typed into its tmux pane, exactly · a setting survives a relaunch · Park from ⋯ ends the pane and stays parked across a relaunch |
 | terminal | open, type, close the built-in terminal · 1,000 keys while Cue's tmux client is SIGSTOPped · 1,000 keys while the pane's program is stopped · **freeze regression**: terminal nobody reads (tmux server SIGSTOPped), 2,000 keys, window answers < 500 ms throughout, "isn't responding" line, Resume after SIGCONT, typing goes in again |
 | load | 1,000 hook events at 100/s across 20 sessions while typing 1,000 keys: window < 500 ms throughout, every key and event lands |
-| relay | Review to a lead while another report waits (regression for 2e9abc0): cards render, review typed into the lead, window < 500 ms · the other card says "missed" again when the lead settles, with nothing else happening |
-
-The relay journey fails with 2e9abc0 reverted (Cue deadlocks; the review never reaches the lead) and passes
-with it: checked by reverting, rebuilding and running it.
 
 Timing (M-series Mac, built): whole suite ~60 s, launch ~1.5 s per journey, the longest journey (load) ~12 s.
 The first `run.sh` builds the e2e target (~4 min cold, seconds after).

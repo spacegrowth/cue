@@ -49,21 +49,6 @@ to = "folder facts"
 reason = "db::open regroups projects by repo root (repos::repo_root) the first time the db is opened, under DB; folder facts is a leaf, read from memory"
 
 [[lock_order]]
-from = "INDEX"
-to = "REMOTE"
-reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
-
-[[lock_order]]
-from = "INDEX"
-to = "REMOTE_PILEAD"
-reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
-
-[[lock_order]]
-from = "INDEX"
-to = "VERIFY"
-reason = "leads: the agent index held while a side table of the same file is read (a leaf); none of them takes INDEX"
-
-[[lock_order]]
 from = "actions STORE"
 to = "folder facts"
 reason = "actions key their state by repo root (repos::repo_root) under their own lock; folder facts is a leaf, read from memory"
@@ -140,11 +125,6 @@ reason = "saves.rs hand_in_parked_turn, only without a writer thread (tests, or 
 
 [[lock_order]]
 from = "the hub's store"
-to = "INDEX"
-reason = "reviews_view reads the agent index under the store (plan §1.2); INDEX never takes the store"
-
-[[lock_order]]
-from = "the hub's store"
 to = "config in memory"
 reason = "settings are read under the store (context_keep, flag, moved); config in memory is a leaf, held only to clone an Arc"
 
@@ -186,21 +166,6 @@ reason = "the typing gate is taken first and held while a message is typed, by d
 [[lock_order]]
 from = "typing gate"
 to = "DB"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "INDEX"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "LEDGER"
-reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
-
-[[lock_order]]
-from = "typing gate"
-to = "VERIFY"
 reason = "the typing gate is taken first and held while a message is typed, by design (hub/send.rs wait_turn); what a reply does runs under it, the store included (gate before store, never the reverse)"
 
 [[lock_order]]

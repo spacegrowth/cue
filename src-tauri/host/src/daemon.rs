@@ -109,17 +109,17 @@ pub fn pipe(home: &Path, serve: &[String]) -> std::io::Result<()> {
     let mut to_host = s.try_clone()?;
     let mut from_host = s;
     std::thread::spawn(move || {
-        let _ = relay(&mut std::io::stdin().lock(), &mut to_host);
+        let _ = pump(&mut std::io::stdin().lock(), &mut to_host);
         let _ = to_host.shutdown(std::net::Shutdown::Write);
     });
-    relay(&mut from_host, &mut std::io::stdout().lock())
+    pump(&mut from_host, &mut std::io::stdout().lock())
 }
 
 /// Bytes from `from` to `to` as they come, until `from` ends. A plain read and write, never `std::io::copy`: on Linux
 /// that splices a socket into a pipe, and the kernel holds the pipe's lock while it waits for the socket, so sshd,
-/// reading the other end of that pipe on its one thread, waits on the lock and stops relaying your input as well:
+/// reading the other end of that pipe on its one thread, waits on the lock and stops passing your input on as well:
 /// nothing moves either way.
-fn relay(from: &mut impl std::io::Read, to: &mut impl std::io::Write) -> std::io::Result<()> {
+fn pump(from: &mut impl std::io::Read, to: &mut impl std::io::Write) -> std::io::Result<()> {
     let mut buf = vec![0u8; 64 * 1024];
     loop {
         let n = match from.read(&mut buf) {

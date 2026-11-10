@@ -429,6 +429,14 @@ impl Sessions {
         sees(&mut s.team, &cwd, e, now)
     }
 
+    /// Tests: `t` joins `sid`'s team as it is.
+    #[cfg(test)]
+    pub fn add_teammate(&mut self, sid: &str, t: Teammate) {
+        if let Some(s) = self.0.get_mut(sid) {
+            s.team.push(t);
+        }
+    }
+
     /// `f` on `sid`'s teammate `agent` (its agent id or its call): what it returns, None when there's no such teammate.
     pub fn with_teammate<R>(&mut self, sid: &str, agent: &str, f: impl FnOnce(&mut Teammate) -> R) -> Option<R> {
         let s = self.0.get_mut(sid)?;

@@ -44,15 +44,9 @@ pub fn on_for(cfg: &Value, session_id: &str) -> bool {
 }
 
 /// Background agents are on for this session: the status list is (they run its ∥ steps), and it was turned on for the
-/// session from its status line (`background.sessions`, each starts off). Never for a relay lead: it hands its steps to
-/// executors itself, and its status line has no switch to turn this off again.
+/// session from its status line (`background.sessions`, each starts off).
 pub fn background_for(cfg: &Value, session_id: &str) -> bool {
-    background_on(cfg, session_id, crate::leads::is_relay_lead(session_id))
-}
-
-/// background_for, with whether the session is a relay lead given.
-fn background_on(cfg: &Value, session_id: &str, relay_lead: bool) -> bool {
-    !relay_lead && on_for(cfg, session_id) && cfg.pointer("/background/sessions").and_then(Value::as_array).is_some_and(|on| on.iter().any(|s| s == session_id))
+    on_for(cfg, session_id) && cfg.pointer("/background/sessions").and_then(Value::as_array).is_some_and(|on| on.iter().any(|s| s == session_id))
 }
 
 /// The prompt hook's added context: the ask for a new list, after the session's last list when a compaction has
@@ -159,22 +153,15 @@ fn sessions_carrying(cfg: &Value, old: &str, new: &str) -> Option<Value> {
     carrying(cfg, "status", old, new)
 }
 
-/// `background.sessions` carried to `new`, as `carrying`, except to a relay lead (a relay hand-off's successor always is
-/// one): it has no switch to turn it off again.
-fn carrying_background(cfg: &Value, old: &str, new: &str, new_is_relay_lead: bool) -> Option<Value> {
-    if new_is_relay_lead { None } else { carrying(cfg, "background", old, new) }
-}
-
-/// `new` takes over from `old` (a hand-off): the status list, and background agents (not for a relay lead), are on for
+/// `new` takes over from `old` (a hand-off): the status list, and background agents, are on for
 /// it too when they were for `old`, as if you'd switched them on yourself. Called once when the link is learned;
 /// whatever you set for `new` afterwards stays. True when it switched something on for `new`.
 pub fn carry_over(old: &str, new: &str) -> bool {
     if old.is_empty() || new.is_empty() || old == new {
         return false;
     }
-    let relay_lead = crate::leads::is_relay_lead(new);
     let status = crate::config::update("status.sessions", |c| carrying(c, "status", old, new));
-    let background = crate::config::update("background.sessions", |c| carrying_background(c, old, new, relay_lead));
+    let background = crate::config::update("background.sessions", |c| carrying(c, "background", old, new));
     let carried = (status == Ok(true)) | (background == Ok(true));
     if carried {
         crate::machines::hooks::push_status_on();
@@ -464,21 +451,10 @@ mod tests {
     }
 
     #[test]
-    fn a_relay_lead_never_gets_the_background_line_even_when_listed() {
-        let cfg = json!({ "status": { "sessions": ["a"] }, "background": { "sessions": ["a"] } });
-        assert!(background_on(&cfg, "a", false), "a plain session listed: on");
-        assert!(!background_on(&cfg, "a", true), "a relay lead listed: off, so no hook line");
-        // The line itself: only added when it's on, so a lead's prompt carries the list's ask alone.
-        let list = Some(SPEC.to_string());
-        assert_eq!(with_background(list.clone(), false, background_on(&cfg, "a", true)), list);
-    }
-
-    #[test]
-    fn a_relay_hand_off_does_not_carry_background_agents_but_a_plain_handoff_does() {
+    fn a_handoff_carries_the_status_list_and_background_agents() {
         let cfg = json!({ "status": { "sessions": ["old"] }, "background": { "sessions": ["old"] } });
-        assert_eq!(carrying_background(&cfg, "old", "new", true), None, "a relay hand-off's successor is a lead: not carried");
-        assert_eq!(carrying_background(&cfg, "old", "new", false), Some(json!(["old", "new"])), "a plain /handoff successor: carried");
-        assert_eq!(sessions_carrying(&cfg, "old", "new"), Some(json!(["old", "new"])), "the status list is carried either way");
+        assert_eq!(carrying(&cfg, "background", "old", "new"), Some(json!(["old", "new"])), "a /handoff successor: carried");
+        assert_eq!(sessions_carrying(&cfg, "old", "new"), Some(json!(["old", "new"])), "the status list too");
     }
 
     #[test]

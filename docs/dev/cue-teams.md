@@ -1,6 +1,6 @@
 # Teams in hosted sessions — design
 
-Status (2026-11-09): **built** (T0–T5; T6, removing Cue's relay integration, waits on daily use). §11 says what
+Status (2026-11-09): **built** (T0–T6; T6 removed Cue's relay integration). §11 says what
 shipped beyond the first plan and the answers that were settled on the way. Builds on `cue-hosted-sessions.md` (hosted sessions, §9 H1–H6) and
 `cue-agent-host.md` (the agent host). It replaces that plan's M3 ("relay executors as hosted sessions"): with this,
 Cue needs no relay integration at all.
@@ -144,11 +144,14 @@ until you commit them.
 
 ## 8. What goes away
 
-- Cue's relay code: the relay scan and index (`leads/`), the relay review rows' relay inputs, relay's wake and
-  status hooks in Cue's view, the Start/Stop relay switch.
+- Cue's relay code (gone in T6): the relay and pi-lead scan and index (`leads/`), the relay review rows
+  (`ui/reviewcard.js`) and their inputs, the LEAD / RELAY tags and auto switch, the packet and lead cards, the lead
+  trees on the board and in Sessions, relay's handoff and Start/Stop relay, and relay's counts in Insights. A
+  session relay starts is a plain session to Cue.
 - Cue's terminal (H6, already planned).
-- Kept and reused: the review rows and their queue (`hub/reviews.rs`, `ui/reviewcard.js`), set aside, the
-  background agent view.
+- Kept and reused: the review queue (`hub/reviews.rs`, teammates' only now), set aside, the background agent view.
+  Left in the database (dropping them would need a migration): the `set_aside` table and `turns.relay`, no longer
+  read or written.
 
 ## 9. Steps
 
@@ -160,11 +163,10 @@ until you commit them.
 | **T3** | Review, Commit (its files only), Send fixes, Set aside on teammates | an end-to-end run: hand out, review, commit, with a second teammate's work left untouched |
 | **T4** | The team skill, loaded by hosted leads | one real feature built with a team, no relay |
 | **T5** | Handoff carries the team | a handoff mid-team; the successor reviews and commits the earlier teammates' work |
-| **T6** | Remove Cue's relay integration | after T4 holds up in daily use; the owner's call |
+| **T6** | Remove Cue's relay integration | **done 2026-11-09**: Cue reads nothing of relay's; relay keeps working on its own |
 
 T0–T5 are built: §2 holds T0's answers; T1–T3 the team on the lead's record, its group and the row actions; T4 the
-skill (§6) with the Team switch; T5 the handoff carry (§7). T6 sits with H6 and is the owner's call once T4 holds
-up in daily use.
+skill (§6) with the Team switch; T5 the handoff carry (§7). T6 removed Cue's relay integration (§8).
 
 ## 10. Open questions
 

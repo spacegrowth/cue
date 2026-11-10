@@ -30,9 +30,7 @@
       "present": true
     }
   },
-  "crew": {},
   "ended": [],
-  "handoffs": {},
   "history": [],
   "insight": {},
   "items": [
@@ -93,7 +91,6 @@
   "restarted": {},
   "restarting": {},
   "review_queue": {},
-  "reviews": {},
   "sessions": [
     {
       "agent_pid": null,

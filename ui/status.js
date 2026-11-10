@@ -93,7 +93,7 @@ function statusChecklist() {
 }
 
 /** What a list shows, in its parts, for the ring's card and the panel above the chat (status_panel.js) alike:
- *  `list` the track and what it waits on, `relay` relay's and the background agents' buttons for the line (a session's
+ *  `list` the track and what it waits on, `acts` the background agents' buttons for the line (a session's
  *  own list only), `toggle` the session's switch, `starts` when tracking starts (on, no list yet), `cost` what it costs. `listed`: there is a list
  *  to show (and, with `sw`, it's on for the session). */
 function statusParts(status, sw = null) {
@@ -103,21 +103,18 @@ function statusParts(status, sw = null) {
   const now = items.filter((i) => i.state === "now").length;
   // Numbered, so an item can be named ("do 3"), its mark at the end; a long one wraps under its own text.
   const list = listed ? `<div class="st-list">${statusTree(items, sw?.background?.on ? sw.agents : null)}<div class="st-wait">Waiting on you: ${esc(waiting || "nothing")}</div></div>` : "";
-  // The line's buttons (`sw.relay`: { on }, while relay's skills are there for the session), always in view: Start relay
-  // makes the session a lead, a lead gets Stop relay. Background agents (`sw.background`: { on, n, live }, none for a
-  // lead: relay hands steps to executors itself): Start / Stop, and while on, how many agents and a live dot.
-  const rl = listed && sw?.relay;
+  // The line's buttons, always in view: background agents (`sw.background`: { on, n, live }): Start / Stop, and while
+  // on, how many agents and a live dot.
   const pill = (act, label) => `<button class="st-pill" data-act="${act}" data-sid="${esc(sw.sid)}">${label}</button>`;
-  const relayPill = !rl ? "" : !rl.on ? pill("status-relay", "Start relay") : pill("status-relay-stop", "Stop relay");
-  const bg = listed && !rl?.on ? sw?.background : null;
+  const bg = listed ? sw?.background : null;
   const count = bg?.on ? `<span class="st-agents">${bg.live ? '<span class="dot-live"></span>' : ""}${bg.n} agent${bg.n === 1 ? "" : "s"}</span>` : "";
-  const relay = relayPill + (bg ? pill("status-background", bg.on ? "Stop background agents" : "Start background agents") + count : "");
+  const acts = bg ? pill("status-background", bg.on ? "Stop background agents" : "Start background agents") + count : "";
   // What it has cost this session (`sw.spent`, in words), beside its name.
   const toggle = sw ? `<div class="st-toggle ${list ? "" : "solo"}"><span>Status list for this session${sw.spent ? ` <span class="st-dim">(${esc(sw.spent)})</span>` : ""}</span><button class="toggle ${sw.on ? "on" : ""}" data-act="status-session" data-sid="${esc(sw.sid)}" data-on="${sw.on ? 0 : 1}" role="switch" aria-checked="${sw.on}" aria-label="Status list for this session"><span></span></button></div>` : "";
   const starts = sw?.on && !listed ? `<div class="st-note">Status tracking starts ${sw.working ? "when this turn ends" : "with your next message"}</div>` : "";
   // What it is and what it costs, in a line under the switch: the agent writes the list (tokens it's paid for).
   const cost = sw ? `<div class="st-note">${STATUS_COST}</div>` : "";
-  return { listed, done, now, list, relay, toggle, starts, cost };
+  return { listed, done, now, list, acts, toggle, starts, cost };
 }
 
 /** The ring beside the mic, for the latest reply's list: the ring and "done/total". `key` says which list.

@@ -62,13 +62,13 @@ CREATE TABLE IF NOT EXISTS parked (
 
 -- Reviews waiting for their lead to be free (Review while it works): sent in order, one at a time.
 CREATE TABLE IF NOT EXISTS review_queue (
-  exec        TEXT PRIMARY KEY,        -- the executor's Cue session id
+  exec        TEXT PRIMARY KEY,        -- the teammate's key (team:<lead>:<agent id>)
   lead        TEXT NOT NULL,           -- its lead's Cue session id
-  text        TEXT NOT NULL,           -- what's typed into the lead ("/relay:review <id>")
+  text        TEXT NOT NULL,           -- what's typed into the lead
   at_ms       INTEGER NOT NULL
 );
 
--- Packets you set aside on a Review card: the executor's relay id and the packet.
+-- No longer read or written: kept so older databases need no migration.
 CREATE TABLE IF NOT EXISTS set_aside (
   exec        TEXT NOT NULL,
   packet      INTEGER NOT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS insight_events (
   session_id  TEXT NOT NULL,
   rule        TEXT NOT NULL,           -- 'handoff' | 'cache' | 'queue'
   action      TEXT NOT NULL,           -- 'shown' | 'acted' | 'later' | 'dismissed'
-  detail      TEXT NOT NULL DEFAULT '',-- what was picked ('/relay:handoff', '/compact')
+  detail      TEXT NOT NULL DEFAULT '',-- what was picked ('/compact')
   tokens      INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS insight_events_at ON insight_events(at_ms);
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS turns (
   correction   TEXT NOT NULL DEFAULT '',
   looks        INTEGER NOT NULL DEFAULT 0, -- reads and searches it ran itself
   agents       INTEGER NOT NULL DEFAULT 0, -- background agents it started
-  relay        INTEGER NOT NULL DEFAULT 0, -- relay executors it spawned
+  relay        INTEGER NOT NULL DEFAULT 0, -- no longer written: kept so older databases need no migration
   areas        TEXT NOT NULL DEFAULT '',   -- the project areas it edited, one per line
   auto_compact INTEGER NOT NULL DEFAULT 0, -- the context Claude Code compacted it at on its own (0: it didn't)
   PRIMARY KEY (session_id, at_ms)

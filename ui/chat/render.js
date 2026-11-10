@@ -204,31 +204,10 @@ function statusPanel(it, s) {
   const { status, key, sw } = latestStatus(it, s);
   const own = state.status_spent?.sessions?.[sw.sid];
   const spent = own?.replies ? `${own.usd < 0.01 ? "" : "about "}${aboutMoney(own.usd)} so far` : "";
-  const relay = relayMode(sw.sid), bg = backgroundOn(sw.sid), agents = agentsOf(sw.sid), live = agents.filter(agentLive).length;
+  const bg = backgroundOn(sw.sid), agents = agentsOf(sw.sid), live = agents.filter(agentLive).length;
   // The agents each step runs on, found by the step's words in the agent's description (status.js agentOfStep).
   const known = bg ? agents.map((a) => ({ text: [a.h?.desc, a.name].filter(Boolean), mark: agentMark(a), name: a.name })) : [];
-  return statusPanelHtml(status, { ...sw, spent, key, relay, background: { on: bg, n: agentCount(sw.sid).n, live: live > 0 }, agents: known }, statusPanelView(sw.sid));
-}
-/** Relay mode started or stopped from Cue, until relay shows the change (the session runs /relay:mode or /relay:stop in
- *  its turn, so its crew entry comes a while after): sid → { on, at }. */
-const relayAsked = new Map();
-const RELAY_CATCH_UP_MS = 90000;
-const isRelayLead = (sid) => crewOf(sid)?.role === "lead" && crewOf(sid)?.plugin === "relay";
-/** A session's relay mode: null while relay's skills aren't there for it (its "/" list has no relay:mode), else
- *  { on }: on while it's a relay lead, or as you just started or stopped it until relay catches up (or a while passes). */
-function relayMode(sid) {
-  if (!cmdList(sid).some((c) => c.name === "relay:mode")) return null;
-  const lead = isRelayLead(sid), asked = relayAsked.get(sid);
-  if (asked && (asked.on === lead || Date.now() - asked.at > RELAY_CATCH_UP_MS)) relayAsked.delete(sid);
-  return { on: relayAsked.has(sid) ? asked.on : lead };
-}
-/** Start or stop a session's relay mode: relay's own skill, typed into it (session_command). */
-function setRelayMode(sid, on) {
-  relayAsked.set(sid, { on, at: Date.now() });
-  // A relay lead hands its steps to executors itself: background agents go off when relay starts.
-  if (on && backgroundOn(sid)) invoke("background_session", { sessionId: sid, on: false }).catch(() => {});
-  renderMain();
-  invoke("session_command", { sessionId: sid, action: on ? "relay-on" : "relay-off" }).then((m) => toast(m), (e) => { relayAsked.delete(sid); renderMain(); toast(`Couldn't: ${e}`); });
+  return statusPanelHtml(status, { ...sw, spent, key, background: { on: bg, n: agentCount(sw.sid).n, live: live > 0 }, agents: known }, statusPanelView(sw.sid));
 }
 /** "Tell me" on the turn that just ended: on its reply's meta line (no line of its own under the chat), the
  *  tada and how long it took, until the next turn starts. While it runs, the tada in place of the title's dot
@@ -291,9 +270,8 @@ function nextBar() {
   return `<div class="next-bar" data-act="next" role="button" tabindex="0"><span class="next-label">Next</span>${badge(n.harness)}<span class="next-proj">${esc(n.project)}</span><span class="next-what">${esc(plain(summary(n)))}</span>${clear}<kbd>N</kbd></div>`;
 }
 
-/** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), a relay lead's Relay
- *  handoff (asks once more first: the lead steps down), and Decide later / Back to Waiting. */
-let moreFor = null, handoffArm = null, movingProj = false;
+/** The chat header's ⋯: what's used now and then. Compact (any agent's /compact), and Decide later / Back to Waiting. */
+let moreFor = null, movingProj = false;
 /** + New project… at the foot of Move to project: the session whose list has the name box open (draft
  *  `newproj:<sid>`), and what the box last said back (a name already taken). */
 let newProjFor = null, newProjNote = "";
@@ -315,7 +293,7 @@ function submitNewProj(sid) {
   const taken = takenProject(name, [folderProject(sid)]);
   if (taken) { newProjNote = `${projLabel(taken)} is already a project: pick it above`; return renderMain(); }
   draft(`newproj:${sid}`).text = "";
-  newProjFor = null; newProjNote = ""; moreFor = handoffArm = null; movingProj = false;
+  newProjFor = null; newProjNote = ""; moreFor = null; movingProj = false;
   moveToProject(sid, name);
   // The window goes to the new project, the moved session still open in it.
   setProjFilter(name);
@@ -326,15 +304,11 @@ function moreMenu(sid, s, closable = false) {
   if (open && movingProj) return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="true">⋯</button>${projMoveList(sid)}</span>`;
   if (open && mcpPicking) return `<span class="more-wrap"><button class="btn more-btn" data-more="${esc(sid)}" aria-label="More" aria-expanded="true">⋯</button>${mcpPicker(sid)}</span>`;
   const busy = s?.state === "working";
-  const m = crewOf(sid);
-  const lead = m?.role === "lead" && m?.plugin === "relay";
   const later = isParked(sid) ? `<button data-park="${esc(sid)}:0">Back to Waiting</button>` : `<button data-park="${esc(sid)}:1">Decide later<span>Move it to Need to decide while you think it over</span></button>`;
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${tellItem(sid, s)}
       ${handoffMenu(sid, s)}
-      ${relayMode(sid)?.on === false ? `<button data-cmd="relay-on" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Start relay<span>${busy ? "When this turn ends" : "Make it a relay lead (/relay:mode): it plans and hands work to relay agents"}</span></button>` : ""}
-      ${lead ? `<button data-cmd="handoff" data-sid="${esc(sid)}" ${busy ? "disabled" : ""} class="${handoffArm === sid ? "armed" : ""}">${handoffArm === sid ? "Relay handoff? Click again" : "Relay handoff…"}<span>${busy ? "When this turn ends" : "Through relay (/relay:handoff): it writes its notes, relay opens a new lead and steps this one down"}</span></button>` : ""}
       ${addOn.chatMenu(sid, s)}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>
       ${mcpItem(sid)}
@@ -357,7 +331,7 @@ function moveOutItem(sid, s) {
 /** ⋯ → Restart session: stopped and resumed with the same conversation, so it loads what it reads only at
  *  start (a skill added since, MCP servers, settings). Covered while it restarts, as an MCP restart is. */
 function restartItem(sid, s) {
-  if (!s || !["claude", "codex", "pi"].includes(s.harness) || !s.cwd || crewOf(sid)?.role === "executor") return "";
+  if (!s || !["claude", "codex", "pi"].includes(s.harness) || !s.cwd) return "";
   const busy = s.state === "working";
   return `<button data-restart="${esc(sid)}" ${busy ? "disabled" : ""}>Restart session<span>${busy ? "When this turn ends" : "Same conversation, fresh start: picks up new skills, MCP servers and settings"}</span></button>`;
 }
@@ -420,8 +394,6 @@ function titleChips(sid) {
  *  reports to Cue. Read-only: what it's been doing, from its transcript, and how to make it a full one. */
 let quietOpen = null;
 function quietPane() {
-  const x = execTerm(quietOpen);
-  if (x) return execPane(quietOpen, x);
   const q = (state.live || []).find((x) => x.session_id === quietOpen);
   if (!q) { quietOpen = null; return activePane(); }   // it ended (or reported in): back to the usual
   const f = stepFeeds.get(q.session_id);
@@ -429,20 +401,11 @@ function quietPane() {
   const turns = (f?.turns || []).slice(-8);
   const chat = turns.map((t, i) => quietTurn(q.session_id, t, busy && i === turns.length - 1, i === turns.length - 1, q.harness)).join("");
   return `<div class="active-pane ${busy ? "busy" : ""}">
-    <div class="ap-head">${projBtn(q.project || projOf(q.cwd), "ap")}${badge(q.harness)}<span class="proj">${esc(bareName(q.name) || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
+    <div class="ap-head">${projBtn(q.project || projOf(q.cwd), "ap")}${badge(q.harness)}<span class="proj">${esc(q.name || baseName(q.cwd) || "session")}</span><span class="pill soft">${busy ? "working" : "quiet"}</span><span class="grow"></span>
       ${moveBtn(q.session_id, q.harness, busy ? "working" : "idle", "btn primary")}<button class="btn" data-sv="tab" data-sid="${esc(q.session_id)}">${openInLabel(null)}</button></div>
-    ${subHead(q.cwd, "", "", q.session_id)}
+    ${subHead(q.cwd, "", q.session_id)}
     <div class="quiet-note">It started before Cue was connected, so Cue can show what it's doing but can't answer it yet. In its terminal, type <code>/hooks</code> once to pick up Cue's hooks (or restart it with <code>claude --resume</code>; the conversation carries on), and you can reply, allow and answer from Cue.</div>
     ${chatBox(`q|${q.session_id}`, chat || `<div class="dim cv-empty" data-key="empty">${f ? "Nothing in its transcript yet." : "Reading its transcript…"}</div>`)}</div>`;
-}
-/** A remote executor Cue doesn't hold (its hooks never reached Cue): its team, its packet as its lead's
- *  listing has it, and its own terminal, which fills the pane. */
-function execPane(sid, e) {
-  const st = exState(e);
-  return `<div class="active-pane exec-pane">
-    <div class="ap-head">${relayBack(sid)}${badge(e.plugin === "pilead" ? "pi" : "claude")}<i class="stx-ic k-relay">R</i><span class="proj">${esc(e.name || sid)}</span><span class="role executor">RELAY</span>${e.model ? `<span class="dim">${esc(shortModel(e.model))}</span>` : ""}<span class="mach">${esc(machShort(e.machine))}</span>${st.word ? `<span class="pill soft">${esc(st.word)}</span>` : ""}${teamChips(sid)}<span class="grow"></span></div>
-    ${packetCard(sid, e)}
-    ${termDock(sid)}</div>`;
 }
 /** One turn of a quiet session: your message, its steps, its reply (all from the transcript). */
 function quietTurn(sid, t, live, latest, harness = "claude") {

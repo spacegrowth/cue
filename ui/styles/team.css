@@ -1,4 +1,4 @@
-/* A hosted lead's team under its title (ui/team.js): the Review rows' group (relay.css .rv-rows), one row per teammate. */
+/* A hosted lead's team under its title (ui/team.js): its rows, one row per teammate. */
 /* Sized to its rows; in a short pane it gives way (its rows scroll) before the chat does, which keeps room for a few
    lines while the team is open. */
 /* No margin under it: the bar below brings its own padding. */

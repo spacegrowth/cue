@@ -74,12 +74,12 @@ fn a_session_resumed_after_it_ended_is_live_again_and_not_under_closed() {
 fn a_turn_driven_by_another_agent_is_its_and_not_your_card() {
     let w = World::new();
     let a = w.session("x");
-    a.prompt("packet 1");
-    a.stop_driven("Report written.", "its relay lead (lead-1)");
+    a.prompt("task 1");
+    a.stop_driven("Report written.", "its lead (lead-1)");
     let s = w.snapshot();
     assert!(s.cards_of("x").is_empty());
     assert_eq!(s.state("x"), "agent");
-    assert_eq!(s.session("x")["driven_by"], "its relay lead (lead-1)");
+    assert_eq!(s.session("x")["driven_by"], "its lead (lead-1)");
 }
 
 #[test]

@@ -1,0 +1,41 @@
+/* ---------- the chat's head: its tags, the line under it, its chips, renaming ---------- */
+.role { font: 800 9.5px var(--sans); letter-spacing: 0.08em; padding: 2px 6px; border-radius: var(--pill-radius); line-height: 1.3; flex: none; }
+/* Under the Active header: the folder on the right, under the buttons. */
+.ap-sub { display: flex; align-items: baseline; gap: 12px; padding: 7px 16px 0 44px; min-width: 0; }
+.ap-cwd { margin-left: auto; font: 11px var(--mono); color: var(--muted); white-space: nowrap; min-width: 0; max-width: 50%; flex: 0 1000 auto; display: flex; overflow: hidden; }   /* never more than half the line */
+/* Cut in the middle: the start gives way first, the folder's own name only when nothing else is left. */
+.cwd-head { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cwd-tail { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* Chips on the chat's title line: a session's agents (agents.js agentChips) or its team's (team.js). */
+/* A chip gives way only by its name's … (never under 3 letters), so what it says never runs into the next one; in the
+   chat's header, fitHead takes chips away whole when even that doesn't fit. */
+.tm-chips { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; }
+.tm-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-weight: 600; font-size: 12px; white-space: nowrap; flex: 0 1 auto; }
+.tm-n { overflow: hidden; text-overflow: ellipsis; min-width: 3ch; }
+button.tm-chip:hover { background: var(--panel-2); }
+.tm-chip.on { background: var(--sel); color: var(--on-sel); border-color: transparent; }
+.tm-chip.on .tm-sub { color: inherit; opacity: 0.75; }
+.tm-sub { font-weight: 500; color: var(--muted); }
+.tm-chip.need .tm-sub { color: var(--deny); font-weight: 650; }
+.tm-chip .dot-live { width: 6px; height: 6px; flex: none; }
+/* The ⋯ menus and chevrons of a hosted lead's team rows (team.js). */
+.rv-chev { flex: none; width: 10px; text-align: center; }
+.rv-more { flex: none; height: 26px; padding: 0 6px; border-radius: 8px; color: var(--muted); font-size: 15px; letter-spacing: 0.04em; }
+.rv-more:hover, .rv-more.on { background: var(--panel); color: var(--ink); }
+.rv-k { color: var(--muted); }
+.rv-menu { top: 0; right: 0; min-width: 180px; }
+.ap-head .proj, .ap-head .pill { white-space: nowrap; }
+.ap-head .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Renaming a session: ✎ beside its name (on hover), and the name as an input while you edit it. */
+.rename-btn { width: 22px; height: 22px; border-radius: 6px; font-size: 13px; color: var(--muted); opacity: 0; transition: opacity 0.12s; }
+.ap-head:hover .rename-btn, .rename-btn:focus-visible { opacity: 1; }
+.rename-btn:hover { background: var(--panel-2); color: var(--ink); }
+.rename-in { width: 240px; padding: 4px 8px; border-radius: 7px; border: 1.5px solid var(--accent); background: var(--panel); color: var(--ink); font: 650 13px var(--sans); outline: none; }
+
+/* Stepping through a header chip: the next item slides in from the side you moved toward. */
+@keyframes slideFromRight { from { opacity: 0; transform: translateX(22px); } }
+@keyframes slideFromLeft { from { opacity: 0; transform: translateX(-22px); } }
+.active-pane.slide-r > * { animation: slideFromRight 0.18s ease-out; }
+.active-pane.slide-l > * { animation: slideFromLeft 0.18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .active-pane.slide-r > *, .active-pane.slide-l > * { animation: none; } }

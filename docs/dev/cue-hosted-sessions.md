@@ -67,8 +67,7 @@ a terminal), skills, MCP servers, model and permission mode. Claude still writes
 separate agent host yet; the owner's call, 2026-11-07). A hosted session survives a Cue restart as a conversation
 (resumed with `--resume`), not as a running process: a turn in progress when Cue quits is lost.
 
-**Not in v1:** the agent host process (§8 M4, now §9 H3), remote machines, Codex/Pi (§9), starting relay executors as hosted
-sessions, removing the built-in terminal panel. Terminal sessions keep working exactly as today throughout.
+**Not in v1:** the agent host process (§8 M4, now §9 H3), remote machines, Codex/Pi (§9), removing the built-in terminal panel. Terminal sessions keep working exactly as today throughout.
 
 **Behind a setting, off by default.** Hosted sessions ship as a trial you turn on: Settings → *Cue-hosted
 sessions*, stored as `hosted.on` in config.json (missing means off). Turned off, Cue behaves exactly as it does
@@ -163,7 +162,7 @@ Go to tab, the terminal strip and Move to Cue aren't offered (the reply box's co
 offers Move to terminal); Claude Code's own list of running sessions (which only has terminal ones) never ends
 it. None of today's terminal code changes for terminal sessions.
 
-**Cue's own hooks:** a hosted session still runs your hooks (relay's, the iTerm status hook, …), and they see
+**Cue's own hooks:** a hosted session still runs your hooks (the iTerm status hook, …), and they see
 `CUE_HOSTED=1` (compat suite). Cue's `cue-hook` would report the same events twice, so when it's set the hook
 reports nothing to Cue; what it adds to the session's own prompts (the status list, a voice message's context)
 still runs. Built in M1 (`hook.rs`).
@@ -241,7 +240,7 @@ its split hub (`hub/events.rs`, `hub/asks.rs`, `hub/send.rs`).
 |---|---|---|---|
 | **M1** | `hosted/` client, fake `claude`, fixtures, compatibility suite, `cue-hook` skip; settle the teammate question | **done 2026-11-07** (branch `hosted-m1`) | fixture + lifecycle tests green; compat suite green on 2.1.319 |
 | **M2** | `Hosted` port + World fake, hub wiring (§4.3), `input` card, `+ New → Cue-hosted session`, paused/resume, all behind the `hosted.on` setting (§3) | **built 2026-11-07**; the trial is next | World cases green, with the setting off and on; a few days of daily use with it on and no answer-in-terminal card on a hosted session; then the owner decides whether it becomes the default |
-| **M3** | relay executors as hosted sessions (relay asks Cue to start them instead of opening iTerm tabs) | after M2 holds up | an executor packet runs end to end hosted |
+| **M3** | dropped: teams in hosted sessions (`cue-teams.md`) replaced it | | |
 | **M4** | the agent host: processes move out of the app so a Cue restart or update no longer stops running work | when restarts interrupting work are felt | Cue restart mid-turn: the turn finishes, the app picks it back up |
 | **M5** | every agent hosted and Cue's terminal removed: §9, H1 Pi → H2 Codex → H3 agent host (was M4) → H4 machines → H5 terminal-only gaps → H6 removal | started 2026-11-07 | each step live-tested; H6 only after the rest holds up in daily use |
 

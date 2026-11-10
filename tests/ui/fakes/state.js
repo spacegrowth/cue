@@ -62,7 +62,6 @@ CueBridge.area("state", (w) => {
     },
     unqueue_review: ({ exec }) => {
       for (const lead of Object.keys(w.state.review_queue || {})) w.state.review_queue[lead] = w.state.review_queue[lead].filter((r) => r.exec !== exec);
-      if (w.state.reviews?.[exec]?.state === "queued") w.state.reviews[exec].state = "waiting";
       w.changed();
       return null;
     },

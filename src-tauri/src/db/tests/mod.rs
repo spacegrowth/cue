@@ -158,7 +158,7 @@ fn live_sessions_cards_log_and_drafts_survive_a_reopen() {
         tool_name: String::new(), tool_input: Value::Null, suggestions: Value::Null, context: vec![], message: "done".into(),
         created_ms: 1, status: "pending".into(), outcome: String::new(), resolved_ms: None, thread: vec![], tool_use_id: None, request_id: None, scan_from: 0, at_prompt: false, agent_id: String::new(), agent_name: String::new(), followup: String::new(), interrupted: false, back_ms: None, images: vec![],
     };
-    sync_live(&[session("lead", ""), session("exec", "its relay lead")], &[&card]);
+    sync_live(&[session("lead", ""), session("exec", "its lead")], &[&card]);
     set_draft("s:lead", "half a thought", &json!([]));
 
     reset(); // as if Cue restarted
@@ -168,14 +168,14 @@ fn live_sessions_cards_log_and_drafts_survive_a_reopen() {
     assert_eq!(drafts()["s:lead"]["text"], "half a thought");
     assert_eq!(exchange_count("exec"), 1);
 
-    // The executor exits: it's marked ended, not deleted, and its log stays.
+    // The driven session exits: it's marked ended, not deleted, and its log stays.
     sync_live(&[session("lead", "")], &[]);
     let (sessions, waiting) = live();
     assert_eq!(sessions.len(), 1);
     assert!(waiting.is_empty(), "a card that left memory leaves the database");
     assert_eq!(exchange_count("exec"), 1, "the ended session's conversation is kept");
     let driver: String = with(|c| c.query_row("SELECT driven_by FROM sessions WHERE id = 'exec'", [], |r| r.get(0))).unwrap();
-    assert_eq!(driver, "its relay lead");
+    assert_eq!(driver, "its lead");
 
     set_draft("s:lead", "", &json!([]));
     assert!(drafts().get("s:lead").is_none(), "an emptied draft is removed");

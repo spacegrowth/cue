@@ -2,7 +2,6 @@
 
 use super::{blocking, with_hub};
 use crate::db;
-use crate::leads;
 use crate::model;
 use crate::machines;
 use crate::logs::transcript;
@@ -41,7 +40,7 @@ pub(crate) fn resume_older(h: &Arc<Hub>, session_id: &str) -> Result<serde_json:
 
 /// Park: stop a session (its agent ended as Close ends it, its tab closed) and keep it under Parked,
 /// to resume with its whole conversation. Claude Code, Codex and Pi; not while it works or asks you
-/// something, and not one relay runs.
+/// something.
 #[tauri::command]
 pub(crate) async fn park_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
     with_hub(&hub, move |h| park(&h, &session_id)).await?
@@ -54,13 +53,6 @@ pub(crate) fn park(h: &Arc<Hub>, session_id: &str) -> Result<String, String> {
     }
     // Only one Cue can bring back: checked before anything is ended.
     focus::resume_line_for(&s.origin.harness, &s.origin.cwd, session_id)?;
-    // An executor is relay's (or pilead's) to close; a lead with executors still open can't go yet.
-    // A lead with none left is parked like any session: `claude --resume` brings the lead back.
-    match leads::close_plan(session_id) {
-        Some(Err(e)) => return Err(e),
-        Some(Ok(_)) => return Err("relay runs it: close it through relay instead".into()),
-        None => {}
-    }
     h.closable(session_id)?;
     // Its finished turn leaves Waiting before its end, which would file it as "session ended", and comes back
     // as it was if its agent can't be stopped after all. (Only a finished turn can be here: closable refuses
@@ -214,8 +206,7 @@ pub(crate) async fn adopt_session(hub: State<'_, Arc<Hub>>, session_id: String) 
     with_hub(&hub, move |h| h.adopt(&session_id)).await?
 }
 
-/// Close a session from the Sessions view: an executor through relay / pilead (they mark it closed and
-/// close its tab), a relay lead with its executors; anything else by ending its agent (SIGTERM: the conversation is saved, `--resume`
+/// Close a session from the Sessions view: by ending its agent (SIGTERM: the conversation is saved, `--resume`
 /// brings it back; on a machine, one SIGTERM to everything in its tmux pane there) and closing its tab.
 /// Never while it works or asks you something.
 #[tauri::command]
@@ -233,31 +224,12 @@ pub(crate) fn end_session(h: &Arc<Hub>, session_id: &str) -> Result<String, Stri
             h.forget(&session_id);
             return Ok("Removed from Cue (its machine can't be reached)".into());
         }
-        // A relay lead: relay closes each executor it still has (it stops it and closes its tab), then
-        // steps the lead down (else it still thinks it leads); then the lead is ended as any session. If any of
-        // that fails, its error is the answer and the lead stays.
-        if let Some(plan) = leads::lead_close(&session_id) {
-            let plan = plan?;
-            let failed: Vec<String> = plan.executors.iter().filter_map(|(sid, name, cmd)| cmd.run().and_then(|_| end_if_still_here(h, sid)).err().map(|e| format!("{name}: {e}"))).collect();
-            if !failed.is_empty() {
-                return Err(format!("relay couldn't close {} ({}); the lead stays", if failed.len() == 1 { "an executor" } else { "some executors" }, failed.join("; ")));
-            }
-            plan.stop.run().map_err(|e| format!("relay couldn't step this lead down: {e}"))?;
-            let n = plan.executors.len();
-            let said = end_and_close(h, &session_id)?;
-            return Ok(match n { 0 => said, 1 => "Closed it and its executor".into(), _ => format!("Closed it and its {n} executors") });
-        }
-        // An executor: relay / pi-lead close it, where it runs (on its machine, over SSH).
-        if let Some(plan) = leads::close_plan(&session_id) {
-            plan?.run()?;
-            return end_if_still_here(h, &session_id).map(|_| "Closed".into());
-        }
         end_and_close(h, &session_id)
     }
 }
 
 /// Delete, in the chat header's ⋯ (asked once more first): a session gone for good. A running one is
-/// closed first as Close does (a relay lead with its executors; never while it works or asks you), then
+/// closed first as Close does (never while it works or asks you), then
 /// Cue forgets everything it kept of it, and its conversation file goes, so it can't be resumed.
 #[tauri::command]
 pub(crate) async fn delete_session(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
@@ -311,18 +283,16 @@ fn delete_transcript(o: &crate::model::Origin) -> Result<(), String> {
             _ => Ok(()),
         };
     }
-    let rm = leads::Cmd { bin: "rm".into(), args: vec!["-rf".into(), "--".into(), path.clone(), beside.to_string_lossy().into_owned()], machine: o.machine.clone() };
-    rm.run().map(|_| ())
-}
-
-/// After relay / pi-lead closed an executor: relay ends the agent it knows of, but one resumed since runs
-/// in a pane relay's record doesn't name, so one still running here is ended like any other session.
-pub(crate) fn end_if_still_here(h: &Hub, session_id: &str) -> Result<(), String> {
-    let still = h.live_origin(session_id).filter(|o| o.machine.is_empty()).and_then(|_| live::claude().into_iter().find(|q| q.session_id == session_id && unsafe { libc::kill(q.pid, 0) } == 0));
-    if still.is_some() {
-        end_and_close(h, session_id)?;
+    let m = crate::machines::get(&o.machine).ok_or(format!("{} isn't one of your machines any more", o.machine))?;
+    let beside = beside.to_string_lossy().into_owned();
+    let line = ["rm", "-rf", "--", path.as_str(), beside.as_str()].map(focus::shq).join(" ");
+    // Its own words either way (Cue's SSH hides a script's stderr), and its exit code last.
+    let out = crate::machines::run(&m.host, &format!("{line} 2>&1; printf '\\n__CUE_EXIT__:%d\\n' \"$?\""))?;
+    match out.rsplit_once("\n__CUE_EXIT__:") {
+        Some((_, code)) if code.trim() == "0" => Ok(()),
+        Some((said, _)) => Err(said.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("it failed").trim().to_string()),
+        None => Err("it didn't run there".into()),
     }
-    Ok(())
 }
 
 /// End a session's agent and close its tab.
@@ -341,7 +311,7 @@ fn end_and_close(h: &Hub, session_id: &str) -> Result<String, String> {
     }
     Ok(match focus::close_tab(&origin) {
         Ok(t) => format!("Closed its {t}"),
-        // Many tabs close by themselves when the agent they run exits (relay launches its tabs so).
+        // Many tabs close by themselves when the agent they run exits.
         Err(e) if e.contains("is gone") || e.contains("couldn't find") => "Ended it; its tab closed with it".into(),
         Err(e) => format!("Ended it ({e})"),
     })
@@ -709,7 +679,7 @@ pub(crate) fn move_session_to_cue(h: &Arc<Hub>, session_id: &str) -> Result<Stri
 }
 
 /// The session, when it can be moved to Cue: an idle Claude Code session here, outside Cue's tmux and not
-/// hosted already, not a relay lead, in a folder Cue knows. `tmux`: it's moving into Cue's tmux.
+/// hosted already, in a folder Cue knows. `tmux`: it's moving into Cue's tmux.
 /// Where Move to Cue resumes a session.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MoveTo {
@@ -733,9 +703,6 @@ fn movable_origin(h: &Arc<Hub>, session_id: &str, to: MoveTo) -> Result<model::O
     match to {
         MoveTo::Tmux if !origin.tmux_pane.is_empty() => return Err("it already runs in Cue".into()),
         _ => {}
-    }
-    if leads::close_plan(session_id).is_some() {
-        return Err("a relay lead: close it through relay, then resume it in Cue".into());
     }
     if origin.cwd.is_empty() {
         return Err("Cue doesn't know which folder it runs in".into());

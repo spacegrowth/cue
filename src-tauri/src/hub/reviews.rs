@@ -1,14 +1,11 @@
-//! Reviews typed into a lead for an executor: sent when the lead is free, queued while it is busy.
+//! Teammates' reviews typed into their lead (hub/team.rs): sent when the lead is free, queued while it is busy.
 
 use super::*;
 
 /// After typing a review into a lead, wait this long before judging it free again.
 pub(super) const REVIEW_SETTLE_MS: u64 = 8000;
 
-/// A review's row shows this many lines of findings.
-const FINDING_LINES: usize = 10;
-
-/// "in review" stops showing after this long even if the executor still reads as done.
+/// A review typed in stops counting as running after this long, even if its lead never replied.
 const REVIEW_SHOWN_MS: u64 = 15 * 60_000;
 
 /// What Review does with a review (`take_review`).
@@ -23,7 +20,7 @@ enum Taken {
 
 impl Hub {
     /// Review: typed into its lead now if the lead is free, else queued (in order, saved) and sent
-    /// the moment it is (see `drain_reviews`). Never refused for being busy.
+    /// the moment it is (see `drain_reviews`). Never refused for being busy. `exec`: the teammate's key.
     pub fn review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
         match self.write(|st| Self::take_review(st, lead, exec, text, now_ms())) {
             Taken::Answer(r) => r,
@@ -33,7 +30,7 @@ impl Hub {
                 Ok(format!("Queued: its lead is {why}, Cue sends it when it's free"))
             }
             Taken::Send => {
-                self.changed(); // "in review" shows now; typing it in takes a moment
+                self.changed();
                 self.send_review(lead, exec, text)
             }
         }
@@ -45,16 +42,8 @@ impl Hub {
         if st.review_sent.contains_key(exec) {
             return Taken::Answer(Err("its lead is already reviewing it".into()));
         }
-        // A lead on auto mode reviews each report on its own: typing one in would start the same review twice.
-        if crate::leads::lead_on_auto(lead) {
-            return Taken::Answer(Ok("Its lead is on auto mode: it reviews this itself".into()));
-        }
         if st.review_queue.iter().any(|q| q.exec == exec) {
             return Taken::Answer(Ok("Already queued: it goes when its lead is free".into()));
-        }
-        // A review of this packet already ran (relay saved it or ledgered it): a second one is the same work twice.
-        if crate::leads::is_reviewed(exec) {
-            return Taken::Answer(Ok("Its lead already reviewed this report".into()));
         }
         // Behind another queued review, or the lead is busy: queue it.
         let ahead = st.review_queue.iter().any(|q| q.lead == lead);
@@ -70,11 +59,10 @@ impl Hub {
 
     fn send_review(&self, lead: &str, exec: &str, text: &str) -> Result<String, String> {
         let sent = self.send_to_session(lead, text, &[], false);
-        // A teammate's (team.rs): under review from here, or back to done.
+        // Under review from here, or back to done.
         self.team_review_sent(exec, sent.is_ok());
         match sent {
-            Ok(_) if super::team::teammate_key(exec).is_some() => Ok("Sent its review to its lead".into()),
-            Ok(_) => Ok(format!("Sent {text}")),
+            Ok(_) => Ok("Sent its review to its lead".into()),
             Err(e) => {
                 self.write(|st| st.review_sent.remove(exec));
                 self.changed();
@@ -92,8 +80,8 @@ impl Hub {
 
     /// Send each lead its next queued review once it's free (its turn ended, nothing asked, not
     /// compacting, no message of yours waiting to go first). One per lead at a time: the next waits
-    /// until that review is done. A review whose executor is no longer waiting for one (closed, or
-    /// back at work) is dropped. Blocking (typing takes a moment): call off the UI thread.
+    /// until that review is done. A review whose teammate is no longer waiting for one (back at work,
+    /// set aside) is dropped. Blocking (typing takes a moment): call off the UI thread.
     pub fn drain_reviews(&self) {
         let (stale, due) = self.write(|st| Self::take_due_reviews(st, now_ms()));
         if due.is_empty() && stale.is_empty() {
@@ -108,14 +96,14 @@ impl Hub {
         }
     }
 
-    /// The queue's moot reviews dropped (their executors), and each free lead's next review taken off it to
+    /// The queue's moot reviews dropped (their keys), and each free lead's next review taken off it to
     /// send now, noted as sent.
     fn take_due_reviews(st: &mut Store, now: u64) -> (Vec<String>, Vec<QueuedReview>) {
-        // Moot: no longer waiting for a review, a review of it already ran, or its lead went on auto mode (it reviews on its own).
-        // A teammate's (team.rs): moot once it's no longer waiting in the queue (back at work, set aside).
+        // Moot once its teammate is no longer waiting in the queue (back at work, set aside); anything that
+        // isn't a teammate's (a review saved by an older Cue) is moot as well.
         let moot = |q: &QueuedReview| match super::team::teammate_key(&q.exec) {
             Some((lead, agent)) => !st.sessions.team(lead).iter().any(|t| t.agent_id == agent && t.state == "queued"),
-            None => !crate::leads::is_done(&q.exec) || crate::leads::is_reviewed(&q.exec) || crate::leads::lead_on_auto(&q.lead),
+            None => true,
         };
         let stale: Vec<String> = st.review_queue.iter().filter(|q| moot(q)).map(|q| q.exec.clone()).collect();
         st.review_queue.retain(|q| !stale.contains(&q.exec));
@@ -134,10 +122,15 @@ impl Hub {
         (stale, due)
     }
 
+    /// A queued or sent review's teammate, by name (its key when the team no longer has it).
+    fn reviewed_name(st: &Store, exec: &str) -> String {
+        super::team::teammate_key(exec).and_then(|(lead, agent)| st.sessions.teammate_name(lead, agent)).unwrap_or_else(|| exec.to_string())
+    }
+
     /// Why a lead can't take a review right now, or None when it's free: working (a review or anything
     /// else), compacting, asking you something, or a review just typed in (it takes a moment to show as working).
     fn lead_busy(st: &Store, lead: &str, now: u64) -> Option<String> {
-        let reviewing = || st.review_sent.iter().filter(|(_, (l, _))| l == lead).max_by_key(|(_, (_, at))| *at).map(|(e, _)| crate::leads::name_of(e));
+        let reviewing = || st.review_sent.iter().filter(|(_, (l, _))| l == lead).max_by_key(|(_, (_, at))| *at).map(|(e, _)| Self::reviewed_name(st, e));
         let settling = now.saturating_sub(st.review_last.get(lead).copied().unwrap_or(0)) < REVIEW_SETTLE_MS;
         if settling || st.sessions.state(lead).as_deref() == Some("working") {
             return Some(reviewing().map_or_else(|| "busy".to_string(), |n| format!("reviewing {n}")));
@@ -151,8 +144,26 @@ impl Hub {
         None
     }
 
+    /// Reviews typed in that are over: past REVIEW_SETTLE_MS, a review stays sent while its teammate is under
+    /// review (until its lead replies), for REVIEW_SHOWN_MS at most.
+    pub(super) fn prune_reviews(st: &mut Store, now: u64) {
+        let reviewing = |s: &Store, exec: &str| super::team::teammate_key(exec).is_some_and(|(lead, agent)| s.sessions.team(lead).iter().any(|t| t.agent_id == agent && t.state == "reviewing"));
+        let over: Vec<String> = st
+            .review_sent
+            .iter()
+            .filter(|(exec, (_, at))| {
+                let age = now.saturating_sub(*at);
+                age >= REVIEW_SHOWN_MS || (age >= REVIEW_SETTLE_MS && !reviewing(st, exec))
+            })
+            .map(|(e, _)| e.clone())
+            .collect();
+        for e in over {
+            st.review_sent.remove(&e);
+        }
+    }
+
     /// When the review rules above flip with time alone: a lead is no longer settling (REVIEW_SETTLE_MS after
-    /// its last review), and "in review" stops showing (REVIEW_SHOWN_MS after it was sent).
+    /// its last review), and a review stops counting as running (REVIEW_SHOWN_MS after it was sent).
     pub(super) fn review_changes(st: &Store, now: u64, next: &mut super::shown::NextChange) {
         for at in st.review_last.values() {
             next.at(at + REVIEW_SETTLE_MS, now);
@@ -162,82 +173,11 @@ impl Hub {
         }
     }
 
-    /// Set aside (in a Review row's ⋯ menu): this executor's current packet stops waiting on you. Cue's own
-    /// note, saved; relay isn't told, and the executor's next packet shows a card again.
-    pub fn set_aside(&self, exec: &str) -> Result<String, String> {
-        let (id, packet) = crate::leads::packet_of(exec).ok_or("Cue doesn't know this executor's packet")?;
-        crate::db::add_set_aside(&id, packet);
-        self.write(|st| st.set_aside.insert((id, packet)));
-        self.changed();
-        Ok("Set aside".into())
-    }
-
-    /// For every screen: where each packet that waits on you stands in its review, by executor, in one
-    /// place. The apps show it as it is. Per packet: `state` (`waiting`: nothing has reviewed it yet;
-    /// `auto`: its lead is on auto mode and reviews it on its own, so nothing asks you to start one (a review queued
-    /// before it went on auto is moot, dropped on the next drain); `queued`: your Review waits for its lead;
-    /// `reviewing`: your Review is typed in and running; `reviewed`: a review ran, it waits for you to
-    /// commit or send fixes), `missed` (relay's wake-up never reached its lead), and what a card shows:
-    /// executor, lead, packet, goal, outcome, the diff's size (`stat`), the review's findings and what it recommends.
-    pub(super) fn reviews_view(st: &mut Store) -> Value {
-        let now = now_ms();
-        // "in review" until its lead has finished its turn after a review ran (or 15 minutes).
-        let working = |s: &Store, lead: &str| s.sessions.state(lead).as_deref() == Some("working");
-        let done: Vec<String> = st.review_sent.iter().filter(|(e, (lead, _))| crate::leads::is_reviewed(e) && !working(st, lead)).map(|(e, _)| e.clone()).collect();
-        st.review_sent.retain(|exec, (_, at)| now.saturating_sub(*at) < REVIEW_SHOWN_MS && crate::leads::is_done(exec) && !done.contains(exec));
-        let free = |s: &Store, lead: &str| Self::lead_busy(s, lead, now).is_none();
-        let missed: HashSet<String> = crate::leads::missed(|lead| free(st, lead)).into_iter().collect();
-        let mut out = serde_json::Map::new();
-        for (sid, m, lead_auto) in crate::leads::needing_you() {
-            if m.packet.is_some_and(|n| st.set_aside.contains(&(m.id.clone(), n))) {
-                continue;
-            }
-            // On auto mode its lead takes the report on its own: never a missed wake asking you to step in.
-            let missed = !lead_auto && missed.contains(&sid);
-            let state = if !lead_auto && st.review_queue.iter().any(|q| q.exec == sid) {
-                "queued"
-            } else if st.review_sent.contains_key(&sid) {
-                "reviewing"
-            } else if m.reviewed {
-                "reviewed"
-            } else if lead_auto {
-                "auto"
-            } else {
-                "waiting"
-            };
-            let (findings, recommendation) = if state == "reviewed" { Self::findings(st, &m) } else { (vec![], String::new()) };
-            out.insert(sid, json!({
-                "state": state, "missed": missed, "name": m.name, "lead": m.lead, "packet": m.packet, "goal": m.goal, "outcome": m.outcome,
-                "stat": Self::stat_line(&m), "findings": findings, "recommendation": recommendation,
-            }));
-        }
-        Value::Object(out)
-    }
-
-    /// "3 files · +94 −2": the size of what the packet staged, when relay recorded it.
-    fn stat_line(m: &crate::leads::Member) -> String {
-        m.diff_size.filter(|(files, ..)| *files > 0).map(|(files, added, removed)| format!("{files} file{} · +{added} −{removed}", if files == 1 { "" } else { "s" })).unwrap_or_default()
-    }
-
-    /// A review's findings (a few lines) and what it recommends ("commit", "fix-list", "" when it doesn't say):
-    /// relay's saved review, else what the lead said last (an inline review has no file: its reply is the review).
-    fn findings(st: &Store, m: &crate::leads::Member) -> (Vec<String>, String) {
-        let reply = || st.items.iter().find(|i| i.kind == "waiting" && i.origin.session_id == m.lead).map(|i| if i.message.is_empty() { i.context.last().map(|c| c.text.clone()).unwrap_or_default() } else { i.message.clone() });
-        let text = if m.review.is_empty() { reply().unwrap_or_default() } else { m.review.clone() };
-        let said = |l: &str| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("recommendation")).map(|(_, v)| v.split(['.', '(', ',', ';']).next().unwrap_or("").trim().to_string());
-        let lines = || text.lines().map(str::trim).filter(|l| !l.is_empty());
-        let recommendation = lines().find_map(said).unwrap_or_default();
-        let findings = lines().filter(|l| said(l).is_none() && !l.trim_end_matches(':').eq_ignore_ascii_case("findings")).take(FINDING_LINES).map(String::from).collect();
-        (findings, recommendation)
-    }
-
-    /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×). None for a lead on
-    /// auto mode: they're moot, and go on the next drain.
+    /// For every screen: each lead's queued reviews, in order (shown in its chat, each with ×).
     pub(super) fn review_queue_view(st: &Store) -> Value {
         let mut out = serde_json::Map::new();
-        for q in st.review_queue.iter().filter(|q| !crate::leads::lead_on_auto(&q.lead)) {
-            let name = super::team::teammate_key(&q.exec).and_then(|(lead, agent)| st.sessions.teammate_name(lead, agent)).unwrap_or_else(|| crate::leads::name_of(&q.exec));
-            let row = json!({ "exec": q.exec, "name": name, "at_ms": q.at_ms });
+        for q in &st.review_queue {
+            let row = json!({ "exec": q.exec, "name": Self::reviewed_name(st, &q.exec), "at_ms": q.at_ms });
             out.entry(q.lead.clone()).or_insert_with(|| json!([])).as_array_mut().unwrap().push(row);
         }
         Value::Object(out)
@@ -246,9 +186,21 @@ impl Hub {
 
 #[cfg(test)]
 impl Hub {
-    /// Tests: the executors whose reviews are queued, in order, as the store has them.
+    /// Tests: the teammates whose reviews are queued, in order, as the store has them.
     pub(crate) fn queued_reviews(&self) -> Vec<String> {
         self.read(|st| st.review_queue.iter().map(|q| q.exec.clone()).collect())
+    }
+
+    /// Tests: teammate `agent` of `lead`, waiting in Review's queue as its Review leaves it; its review key.
+    pub(crate) fn queued_teammate(&self, lead: &str, agent: &str) -> String {
+        let t = crate::sessions::team::Teammate { agent_id: agent.into(), name: format!("{agent}-name"), state: "queued".into(), ..Default::default() };
+        self.write(|st| st.sessions.add_teammate(lead, t));
+        format!("team:{lead}:{agent}")
+    }
+
+    /// Tests: teammate `agent` of `lead` set to `state`.
+    pub(crate) fn set_teammate_state(&self, lead: &str, agent: &str, state: &str) {
+        self.write(|st| st.sessions.with_teammate(lead, agent, |t| t.state = state.into()));
     }
 }
 
@@ -284,103 +236,49 @@ mod tests {
         assert_eq!(next(t + REVIEW_SHOWN_MS), None);
     }
 
-    /// One state per packet that waits on you, from every fact: a woken lead is nothing yet (waiting), a lead on auto reviews on
-    /// its own, a review waiting for its lead is queued, one Cue sent is reviewing, one that ran is reviewed, set aside is gone.
-    #[test]
-    fn each_packet_waiting_on_you_has_one_state() {
-        let _g = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _d = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("cue-rs-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::env::set_var("CUE_HOME", &dir);
-        crate::db::reset();
-        let hub = Hub::new(None);
-        let exec = |woken: bool, reviewed: bool, auto: bool| {
-            let lead = crate::leads::Member { role: "lead".into(), plugin: "relay".into(), auto: Some(auto), ..Default::default() };
-            let e = crate::leads::Member { woken, reviewed, ..crate::leads::reported_exec() };
-            crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), e)].into());
-        };
-        let state = |hub: &Hub| hub.write(Hub::reviews_view)["E"]["state"].clone();
-        exec(true, false, false);
-        assert_eq!(state(&hub), "waiting", "woken but unreviewed: it waits for you");
-        exec(true, false, true);
-        assert_eq!(state(&hub), "auto", "its lead is on auto mode and woken");
-        hub.write(|st| st.review_queue.push(QueuedReview { exec: "E".into(), lead: "L".into(), text: "r".into(), at_ms: 1 }));
-        assert_eq!(state(&hub), "auto", "a review queued before its lead went on auto is moot");
-        exec(true, false, false);
-        assert_eq!(state(&hub), "queued");
-        hub.write(|st| st.review_queue.clear());
-        hub.write(|st| st.review_sent.insert("E".into(), ("L".into(), now_ms())));
-        assert_eq!(state(&hub), "reviewing", "Review sent");
-        exec(true, true, true);
-        assert_eq!(state(&hub), "reviewed", "the review ran (a saved review or relay's ledger): the in-review note is dropped");
-        assert!(hub.read(|st| st.review_sent.is_empty()));
-        hub.set_aside("E").unwrap();
-        assert!(hub.write(Hub::reviews_view).get("E").is_none(), "set aside: no longer waiting on you");
-        assert!(Hub::new(None).read(|st| st.set_aside.contains(&("ex".to_string(), 1))), "kept across a restart");
-        crate::db::reset();
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// A lead whose wake-up never arrived is waiting for you; on auto mode it isn't: it takes reports on its own, and
-    /// nothing asks you to start its review. The findings of a review are its saved text, else the lead's last reply.
-    #[test]
-    fn a_missed_wake_shows_as_waiting_and_a_reviews_findings_come_from_its_file_or_the_leads_reply() {
-        let _g = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut st = Store::default();
-        let crew = |auto: bool| {
-            let lead = crate::leads::Member { role: "lead".into(), plugin: "relay".into(), auto: Some(auto), ..Default::default() };
-            let late = crate::leads::Member { ready_late: true, ..crate::leads::reported_exec() };
-            crate::leads::install_index([("L".to_string(), lead), ("E".to_string(), late)].into());
-        };
-        crew(false);
-        let v = Hub::reviews_view(&mut st);
-        assert_eq!((v["E"]["state"].as_str(), v["E"]["missed"].as_bool()), (Some("waiting"), Some(true)));
-        crew(true);
-        let v = Hub::reviews_view(&mut st);
-        assert_eq!((v["E"]["state"].as_str(), v["E"]["missed"].as_bool()), (Some("auto"), Some(false)), "on auto mode: never asks you");
-        let m = crate::leads::Member { review: "Findings:\n1. one\n\n2. two\nRecommendation: fix-list (finding 1).\n".into(), ..crate::leads::reported_exec() };
-        assert_eq!(Hub::findings(&st, &m), (vec!["1. one".to_string(), "2. two".to_string()], "fix-list".to_string()), "the heading and the recommendation aren't findings");
-        let mut said = Hub::new_item(&mut st, "waiting", Origin { session_id: "L".into(), ..Default::default() });
-        said.message = "looks right\n1. only thing".into();
-        st.items.push(said);
-        assert_eq!(Hub::findings(&st, &crate::leads::reported_exec()).0, ["looks right", "1. only thing"], "an inline review has no file: the reply is the review");
-    }
-
     #[test]
     fn a_review_for_a_busy_lead_is_queued_kept_across_restarts_and_dropped_once_moot() {
         let dir = std::env::temp_dir().join(format!("cue-rq-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let _l = crate::leads::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _g = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("CUE_HOME", &dir);
         crate::db::reset();
-        crate::leads::install_index(HashMap::new());
         let hub = Hub::new(None);
         // The lead was just handed a review (it takes a moment to show as working): busy.
         hub.write(|st| {
-            st.review_sent.insert("E0".into(), ("L".into(), now_ms()));
+            st.review_sent.insert("team:L:a0".into(), ("L".into(), now_ms()));
             st.review_last.insert("L".into(), now_ms());
         });
-        let r = hub.review("L", "E1", "/relay:review e1").unwrap();
+        let r = hub.review("L", "team:L:a1", "review a1").unwrap();
         assert!(r.starts_with("Queued: its lead is reviewing"), "{r}");
-        assert!(hub.review("L", "E1", "/relay:review e1").unwrap().starts_with("Already queued"), "twice doesn't queue it twice");
-        hub.review("L", "E2", "/relay:review e2").unwrap();
+        assert!(hub.review("L", "team:L:a1", "review a1").unwrap().starts_with("Already queued"), "twice doesn't queue it twice");
+        hub.review("L", "team:L:a2", "review a2").unwrap();
         let q = hub.read(Hub::review_queue_view);
         let names: Vec<&str> = q["L"].as_array().unwrap().iter().map(|r| r["exec"].as_str().unwrap()).collect();
-        assert_eq!(names, ["E1", "E2"], "in the order you asked");
-        crate::leads::install_index(["E1", "E2"].map(|e| (e.to_string(), crate::leads::reported_exec())).into());
-        assert_eq!(hub.write(Hub::reviews_view)["E2"]["state"], "queued");
+        assert_eq!(names, ["team:L:a1", "team:L:a2"], "in the order you asked");
         // Saved: a restart keeps them, in order.
         let again = Hub::new(None);
-        assert_eq!(again.read(|st| st.review_queue.iter().map(|q| q.exec.clone()).collect::<Vec<_>>()), ["E1", "E2"]);
+        assert_eq!(again.read(|st| st.review_queue.iter().map(|q| q.exec.clone()).collect::<Vec<_>>()), ["team:L:a1", "team:L:a2"]);
         // × takes one back, for good.
-        again.unqueue_review("E1");
+        again.unqueue_review("team:L:a1");
         assert_eq!(Hub::new(None).read(|st| st.review_queue.len()), 1);
-        // An executor no longer waiting for a review (closed, unknown to relay) is dropped, not sent.
-        crate::leads::install_index(HashMap::new());
+        // A teammate the team no longer has waiting is dropped, not sent.
         again.drain_reviews();
         assert!(again.read(|st| st.review_queue.is_empty()));
         assert!(Hub::new(None).read(|st| st.review_queue.is_empty()));
+        crate::db::reset();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A review typed in counts as running while it settles, then while its teammate is under review.
+    #[test]
+    fn a_sent_review_is_pruned_once_it_settled_and_nothing_is_under_review() {
+        let mut st = Store::default();
+        let t = 1_000_000;
+        st.review_sent.insert("team:L:a1".into(), ("L".into(), t));
+        Hub::prune_reviews(&mut st, t + 1000);
+        assert!(st.review_sent.contains_key("team:L:a1"), "still settling");
+        Hub::prune_reviews(&mut st, t + REVIEW_SETTLE_MS);
+        assert!(st.review_sent.is_empty(), "settled, and no teammate under review");
     }
 }

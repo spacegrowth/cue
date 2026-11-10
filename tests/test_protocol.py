@@ -545,13 +545,13 @@ def test_a_session_driven_by_another_agent_is_not_your_turn():
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(SOCK)
     s.sendall((json.dumps({"type": "event", "event": "stopped", "harness": "claude", "session_id": sid, "cwd": "/tmp/exec",
-                           "message": "staged + report written, awaiting the lead's review", "driven_by": "its relay lead (demo)"}) + "\n").encode())
+                           "message": "done, awaiting the lead's look", "driven_by": "its lead (demo)"}) + "\n").encode())
     s.close()
     sess = wait_for(lambda: next((x for x in call({"type": "list"})["sessions"] if x["session_id"] == sid), None), "session")
-    assert sess["state"] == "agent" and sess["driven_by"] == "its relay lead (demo)"
+    assert sess["state"] == "agent" and sess["driven_by"] == "its lead (demo)"
     assert sess["segments"][-1]["kind"] == "idle"
     time.sleep(0.3)
-    assert not pending_for(sid), "no Your-turn card for an executor its lead handles"
+    assert not pending_for(sid), "no Your-turn card for a session another agent drives"
 
 
 def test_the_hook_reads_who_drives_a_session_from_its_environment():

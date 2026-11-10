@@ -88,13 +88,13 @@ function mcpPicker(sid) {
 }
 /** Open the ⋯ menu's MCP servers list for `sid` (⋯ → MCP servers…, or /mcp typed in a hosted session). */
 function openMcp(sid) {
-  moreFor = sid; handoffArm = null; mcpPicking = true; mcpPick.delete(sid);
+  moreFor = sid; mcpPicking = true; mcpPick.delete(sid);
   // A hosted Claude Code session: what it has right now, from Claude Code itself (chat/mcp_live.js).
   isHostedClaude(sid) ? mcplLoad(sid) : mcpLoad(sid, true);
   renderMain();
 }
 const isHostedClaude = (sid) => { const s = sessionOf(sid); return !!s?.hosted && s.harness === "claude"; };
-function mcpClose(sid) { moreFor = handoffArm = null; mcpPicking = false; if (sid) mcpPick.delete(sid); }
+function mcpClose(sid) { moreFor = null; mcpPicking = false; if (sid) mcpPick.delete(sid); }
 document.addEventListener("change", (e) => {
   const cb = e.target.closest?.("[data-mcp-pick]");
   if (!cb) return;

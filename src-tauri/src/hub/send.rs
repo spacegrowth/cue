@@ -172,12 +172,11 @@ impl Hub {
                 // Settled by the log before the turn is started for it: the "active" below settles what's
                 // still open as its prompt hook's word, and the record would credit the hook.
                 self.write(|st| st.sessions.got_message(sid, text, SAID));
-                let driver = crate::leads::resolve_driver(&origin.session_id, "");
-                self.event(origin.clone(), "active", text.to_string(), vec![], &driver);
+                self.event(origin.clone(), "active", text.to_string(), vec![], "");
                 // A quick turn may be over already (it ended before Cue looked): finish it now, as the
                 // Stop hook would have. A longer one is caught when it ends (usage_tick).
                 if let Some((_, reply, parts)) = crate::transcript::turn_ended_parts(log).filter(|(at, _, _)| *at + 2_000 >= t0) {
-                    self.event(origin.clone(), "stopped", reply, parts, &driver);
+                    self.event(origin.clone(), "stopped", reply, parts, "");
                 }
                 return Some(SAID);
             }
@@ -603,23 +602,15 @@ impl Hub {
     }
 
     /// A Claude Code turn just ended: type the rename it missed while busy (after its Stop hooks settle).
-    /// Type one of the agent's own commands into its session (Compact: `/compact`; a relay lead's Hand off:
-    /// `/relay:handoff`). Not mid-turn: typed then, it would land in the middle of its work.
+    /// Type one of the agent's own commands into its session (Compact: `/compact`). Not mid-turn: typed
+    /// then, it would land in the middle of its work.
     pub fn session_command(&self, session_id: &str, action: &str) -> Result<String, String> {
         let (origin, state) = self.read(|st| st.sessions.all().into_iter().find(|s| s.origin.session_id == session_id).map(|s| (s.origin, s.state))).ok_or("that session is gone")?;
         if state == "working" {
             return Err("It's working: do this when its turn ends".into());
         }
-        let lead = || crate::leads::view(&std::iter::once(session_id.to_string()).collect()).get(session_id).is_some_and(|m| m["role"] == "lead" && m["plugin"] == "relay");
         let line = match action {
             "compact" => "/compact",
-            "handoff" if !lead() => return Err("only a relay lead can hand off".into()),
-            "handoff" => "/relay:handoff",
-            // Relay mode on or off (the status line's Start relay / Stop relay, ⋯ Start relay): relay's own skills do it.
-            "relay-on" if lead() => return Err("It's a relay lead already".into()),
-            "relay-on" => "/relay:mode",
-            "relay-off" if !lead() => return Err("It isn't a relay lead".into()),
-            "relay-off" => "/relay:stop",
             _ => return Err(format!("Cue doesn't know \"{action}\"")),
         };
         self.keys().type_into(&origin, line)?;
@@ -634,16 +625,9 @@ impl Hub {
                 return Err(format!("{line} is typed but it didn't take it: press Enter in its terminal"));
             }
         }
-        if action == "compact" {
-            self.write(|st| st.sessions.set_compacting(session_id, now_ms()));
-            self.changed();
-        }
-        Ok(match action {
-            "compact" => "Compacting: it summarizes the conversation to free up context".into(),
-            "relay-on" => "Relay mode: it becomes a relay lead and hands work to helpers".into(),
-            "relay-off" => "Relay mode off: it steps down as lead".into(),
-            _ => "Relay handoff: it writes its notes, relay opens the new lead, then this one steps down".into(),
-        })
+        self.write(|st| st.sessions.set_compacting(session_id, now_ms()));
+        self.changed();
+        Ok("Compacting: it summarizes the conversation to free up context".into())
     }
 
     /// A prompt you sent the session (not a background agent's notification): it shows as yours

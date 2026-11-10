@@ -28,7 +28,6 @@
       "present": true
     }
   },
-  "crew": {},
   "ended": [
     {
       "cwd": "/work/web-app",
@@ -40,7 +39,6 @@
       "session_id": "gone"
     }
   ],
-  "handoffs": {},
   "history": [
     {
       "agent_pid": null,
@@ -140,7 +138,6 @@
   "restarted": {},
   "restarting": {},
   "review_queue": {},
-  "reviews": {},
   "sessions": [],
   "settings": {
     "actions": {

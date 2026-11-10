@@ -1,7 +1,7 @@
 // The status list above the chat: one line under a session's tabs (so it's in view on every tab: Chat, Actions,
 // Agents, About), in the theme's own color. A click on it slides the whole list down over the chat, hanging from the
-// line: the list (it scrolls when it's long), then the session's switch and what the list costs, always in view at its foot. Relay's and the background agents' buttons
-// (Start relay or a lead's Stop relay; Start / Stop background agents) sit on the line itself, so they're always in view. A click on the line again, anywhere else, or Esc slides it back up. The
+// line: the list (it scrolls when it's long), then the session's switch and what the list costs, always in view at its foot. The background agents' buttons
+// (Start / Stop background agents) sit on the line itself, so they're always in view. A click on the line again, anywhere else, or Esc slides it back up. The
 // ring by the box (statusChipHtml) puts the line away or brings it back; that choice is kept per session.
 
 /** How many sessions' put-away choices are kept (the oldest go first). */
@@ -53,10 +53,10 @@ function statusPanelHtml(status, sw, view) {
   if (!p.listed || view.away) return "";
   const sid = esc(sw.sid), ring = statusRing(p.done, p.now, status.items.length), open = !!view.open;
   const bar = `<button class="st-bar st-inv" data-act="status-open" data-sid="${sid}" aria-expanded="${open}" aria-label="${open ? "Close the status list" : "Open the status list"}">${ring}${statusOneLine(status, p.done)}</button>`;
-  // ▾ / ▴ at the line's right edge, past relay's switch; it opens and closes the list too.
+  // ▾ / ▴ at the line's right edge, past the line's buttons; it opens and closes the list too.
   const chev = `<button class="st-chev" data-act="status-open" data-sid="${sid}" tabindex="-1" aria-hidden="true">${open ? "▴" : "▾"}</button>`;
   const drawer = open ? `<div class="st-drawer st-inv${view.slide ? " slide" : ""}" data-sid="${sid}" data-key="${esc(sw.key || "")}"><div class="st-scroll">${p.list}</div>${p.toggle}${p.cost}</div>` : "";
-  return `<div class="st-panel"><div class="st-head st-inv">${bar}${p.relay}${chev}</div>${drawer}</div>`;
+  return `<div class="st-panel"><div class="st-head st-inv">${bar}${p.acts}${chev}</div>${drawer}</div>`;
 }
 
 /** An open list is at most half the chat's height and ends above its bottom (the box stays free; on a tab with the

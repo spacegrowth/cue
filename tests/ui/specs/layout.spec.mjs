@@ -7,7 +7,7 @@ import { layoutProblems, LINE } from "./layout.mjs";
 // The smallest the window goes (tauri.conf.json minWidth).
 const NARROWEST = { width: 900, height: 600 };
 const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
-const openLead = async (page) => { await openCard(page, "n1"); await page.locator(".active-pane .rv-row").first().waitFor(); };
+const openChat = async (page) => { await openCard(page, "n1"); await page.locator(".active-pane .ap-head").first().waitFor(); };
 
 /** The words of what `sel` shows that are split over two lines, by where each word's letters land. */
 const splitWords = (page, sel) => page.evaluate((sel) => {
@@ -26,22 +26,16 @@ const splitWords = (page, sel) => page.evaluate((sel) => {
   return out;
 }, sel);
 
-test("a lead's chat opens with its first review row in full view", async ({ cue, page }) => {
-  await cue.open("relay-review", { frozen: true });
-  await openLead(page);
-  expect(await layoutProblems(page, ".rv-rows", { inside: [[".rv-row:first-child", ""]] })).toEqual([]);
-});
-
 for (const [size, viewport] of [["", null], [" at the narrowest window", NARROWEST]]) {
-  test(`a lead's chat header: its chips and buttons never run into each other${size}`, async ({ cue, page }) => {
+  test(`a chat header: its chips and buttons never run into each other${size}`, async ({ cue, page }) => {
     if (viewport) await page.setViewportSize(viewport);
-    await cue.open("relay-review", { frozen: true });
-    await openLead(page);
+    await cue.open("board-waiting", { frozen: true });
+    await openChat(page);
     expect(await layoutProblems(page, ".ap-head", LINE(""))).toEqual([]);
   });
 }
 
-for (const [scenario, size, viewport] of [["board-waiting", "", null], ["relay-review", "", null], ["board-waiting", " at the narrowest window", NARROWEST]]) {
+for (const [scenario, size, viewport] of [["board-waiting", "", null], ["board-waiting", " at the narrowest window", NARROWEST]]) {
   test(`${scenario}: every Waiting card's top line keeps its name, chips, time and buttons apart and inside the card${size}`, async ({ cue, page }) => {
     if (viewport) await page.setViewportSize(viewport);
     await cue.open(scenario, { frozen: true });
@@ -108,14 +102,6 @@ test("no column headings: the lists' first group labels share one line, and the 
   expect(new Set(m.labels).size, `label tops ${m.labels}`).toBe(1);
   expect(new Set(m.cards).size, `card tops ${m.cards}`).toBe(1);
   expect(new Set(m.gaps).size, `label-to-card gaps ${m.gaps}`).toBe(1);
-});
-
-test("a lead's plan alone in its card has no rule above it", async ({ cue, page }) => {
-  await cue.open("relay-review", { frozen: true });
-  await openLead(page);
-  const foot = page.locator(".active-pane .team-card > .tc-foot:first-child");
-  await expect(foot).toHaveCount(1);
-  expect(await foot.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("none");
 });
 
 test("a card brought into view from below the list's edge leaves no card cut in half at the list's top", async ({ cue, page }) => {

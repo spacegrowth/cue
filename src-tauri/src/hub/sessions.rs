@@ -143,9 +143,8 @@ impl Hub {
         // terminal (one Cue missed): a card that sends you there.
         if q.status == "waiting" {
             self.terminal_ask(origin, waiting_words(&q.waiting_for), false);
-        } else if q.status == "idle" && crate::leads::resolve_driver(session_id, "").is_empty() {
-            // Its last turn ended with its reply and nothing from you since: your turn. (One a lead drives
-            // is the lead's to pick up.)
+        } else if q.status == "idle" {
+            // Its last turn ended with its reply and nothing from you since: your turn.
             if let Some((at, reply, parts)) = (!path.is_empty()).then(|| transcript::turn_ended_parts(&path)).flatten() {
                 self.your_turn_since(origin, reply, parts, at);
             }

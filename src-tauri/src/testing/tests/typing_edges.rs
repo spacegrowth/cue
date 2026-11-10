@@ -307,15 +307,12 @@ fn the_message_sent_right_after_stop_goes_apart_and_one_much_later_does_not() {
 
 #[test]
 fn a_review_queued_behind_a_message_kept_for_its_lead_waits_until_that_message_goes() {
-    use crate::leads::{install_index, reported_exec, Member};
     let w = World::new();
-    let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "lead".into(), ..Default::default() };
-    let exec = Member { name: "E1-topic".into(), id: "relay-E1".into(), ready_late: true, ..reported_exec() };
-    install_index([("L".to_string(), lead), ("E1".to_string(), exec)].into());
     let l = w.session("L");
     l.prompt("lead");
+    let key = w.hub().queued_teammate("L", "a1");
     w.send_to("L", "check the budget first");
-    w.hub().review("L", "E1", "/relay:review E1").unwrap();
+    w.hub().review("L", &key, "review a1").unwrap();
     // Its turn ends with its pane gone a moment: your message stays kept.
     w.terminal.pane("L", |p| p.takes = Takes::Refuses("tmux pane is gone".into()));
     l.stop("ok");
@@ -325,7 +322,7 @@ fn a_review_queued_behind_a_message_kept_for_its_lead_waits_until_that_message_g
     w.hub().send_held("L", false).unwrap();
     l.stop("budget checked");
     w.advance(2_000);
-    assert_eq!(w.terminal.typed("L"), ["check the budget first", "/relay:review E1"]);
+    assert_eq!(w.terminal.typed("L"), ["check the budget first", "review a1"]);
 }
 
 /// The blank line after Stop goes on a message sent within 30 s of it, by the clock that only moves

@@ -72,12 +72,11 @@ impl Turn {
 }
 
 /// A turn's own looking around and delegating, for Insights' "could have delegated": reads and searches
-/// it ran itself, the background agents and relay executors it started, and the files it edited.
+/// it ran itself, the background agents it started, and the files it edited.
 #[derive(Clone, Default)]
 pub struct Work {
     pub looks: u64,
     pub agents: u64,
-    pub relay: u64,
     /// Each file edited, once (at most MAX_EDITED).
     pub edited: Vec<String>,
 }
@@ -93,9 +92,7 @@ impl Work {
         match name {
             "Read" | "Grep" | "Glob" | "WebFetch" | "WebSearch" => self.looks += 1,
             "Bash" if is_look(arg("command")) => self.looks += 1,
-            "Bash" if arg("command").contains("relay spawn") => self.relay += 1,
             "Agent" | "Task" => self.agents += 1,
-            "Skill" if arg("skill").starts_with("relay:spawn") => self.relay += 1,
             "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => {
                 let f = if arg("file_path").is_empty() { arg("notebook_path") } else { arg("file_path") };
                 if !f.is_empty() && self.edited.len() < MAX_EDITED && !self.edited.iter().any(|e| e == f) {
