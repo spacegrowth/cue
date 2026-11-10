@@ -7,7 +7,7 @@
 <body>
   <div id="app"></div>
   <script>
-    // Claude's prompt suggestion in a hosted session's box: tinted in the empty box (not among the quick phrases),
+    // Claude's prompt suggestion in a hosted session's box: labelled “Suggested” in the empty box (not among the quick phrases),
     // Tab types it in; gone once the session is back at work. Headless:
     //   chrome --headless=new --allow-file-access-from-files --dump-dom file://…/tests/suggestion.html 2> log.txt; grep CHECK log.txt
     window.onerror = (m, src, l, c) => console.log(`CHECK no-error fail ${m} @${l}:${c}`);
@@ -51,20 +51,22 @@
       await loadSteps("w1");
       const el = tbox();
       check("setup", !!el, "no text box");
-      check("grey-in-box", el.placeholder.startsWith("yes, add tests"), el.placeholder);
-      check("tinted", el.classList.contains("sug"), el.className);
+      const line = document.querySelector(".active-pane .sug-line");
+      check("shown-in-box", !!line && line.textContent.includes("Suggested") && line.textContent.includes("yes, add tests") && getComputedStyle(line).display !== "none", line?.textContent);
+      check("marked", el.classList.contains("sug"), el.className);
       check("not-a-phrase", ![...document.querySelectorAll(".active-pane .qp")].some((b) => b.dataset.phrase === "yes, add tests"));
       if (location.hash === "#look") return;
       el.focus();
       el.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
       check("tab-types-it", tbox().value === "yes, add tests", tbox().value);
+      check("hidden-once-typed", getComputedStyle(document.querySelector(".active-pane .sug-line")).display === "none");
       // Back at work: neither shows (the hub clears it then too).
       const s = state.sessions.find((x) => x.session_id === "w1");
       s.state = "working";
       tbox().value = "";
       draft("s:w1").text = "";
       renderMain();
-      check("gone-at-work", !tbox().classList.contains("sug") && !tbox().placeholder.startsWith("yes"), tbox().placeholder);
+      check("gone-at-work", !tbox().classList.contains("sug") && !document.querySelector(".active-pane .sug-line")?.textContent, tbox().placeholder);
       console.log("CHECK done pass");
     }, 300);
   </script>

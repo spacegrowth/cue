@@ -123,15 +123,15 @@ function mateMenuHtml(sid, t) {
   return `<div class="more-menu rv-menu mt-menu">${review}${onRow ? "" : `<button data-mt-act="diff" data-mt-sid="${s}" data-mt-agent="${a}">Diff</button>`}${t.review ? `<button data-mt-full="${esc(mateKey(sid, t))}">Full review</button>` : ""}<button data-mt-asked="${esc(mateKey(sid, t))}">What it was asked</button><button class="mt-aside" data-mt-act="aside" data-mt-sid="${s}" data-mt-agent="${a}">Set aside</button></div>`;
 }
 
-/** Inside the lead's message box, top right (compose.js quickRow): "Crew 4 · 1 needs you · 1 ready ▴", which opens its
- *  rows above the box. "" when it has no crew. */
-function crewStrip(sid) {
+/** "Crew 4 · 1 needs you · 1 ready ▴", which opens its rows above the box: `tab`, as the tab on the box's top-right
+ *  corner (compose.js quickRow); else a pill of its own (above an ask's card). "" when it has no crew. */
+function crewStrip(sid, tab = false) {
   const list = mateList(sid);
   if (!list.length) return "";
   const open = mateOpenLeads.has(sid);
   const need = list.filter((t) => mateAsk(sid, t)).length, ready = list.filter((t) => t.state === "reviewed").length;
   const words = [`Crew ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
-  return `<button class="crew-strip ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
+  return `<button class="${tab ? "tplace-btn crew-tab" : "crew-strip"} ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
 }
 
 /** Above the lead's message box, while its strip is open: its crew's rows in one group that scrolls past a few, and why

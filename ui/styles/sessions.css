@@ -222,6 +222,10 @@
 /* The short form: the name with no box around it, then your three recent folders, the one it'll use filled. */
 .nf-in.nf-name, .nf-in.nf-name:focus { box-shadow: none; border-radius: 0; border-bottom: 1px solid var(--line); padding: 4px 0; height: 32px; font-size: 16px; font-weight: 600; background: none; }
 .nf-in.nf-name:focus { border-bottom-color: var(--accent); }
+/* Under it, the first message in the same large type, no box either; it grows as you type, the image button at its end. */
+.nf-in.nf-prompt, .nf-in.nf-prompt:focus { box-shadow: none; border-radius: 0; border-bottom: 1px solid var(--line); padding: 5px 30px 5px 0; min-height: 32px; max-height: 180px; overflow-y: auto; font-size: 16px; font-weight: 500; line-height: 1.4; background: none; resize: none; }
+.nf-in.nf-prompt:focus { border-bottom-color: var(--accent); }
+.nf-pmsg .nf-attach { top: 4px; right: 0; }
 .nf-recent { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .nf-recent .nf-k { margin-right: 2px; }
 .nf-rf { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: var(--pill-radius); background: var(--panel-2); color: var(--muted); font: 600 12px var(--sans); }

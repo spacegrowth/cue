@@ -235,9 +235,10 @@ function newForm() {
   if ((newMachine ? remote?.tools : agentsAvail) && agents.length && !agents.includes(newAgent)) { newAgent = agents[0]; newPerm = savedPerm(newAgent); }
   const folders = nfFolders();
   const machines = machinesList || [];
-  const acts = `<div class="nf-acts">${nfFull ? "" : `<button class="btn" data-lv="nf-more">All options</button><span class="grow"></span>`}<button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${nfFull && bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>`;
+  const acts = `<div class="nf-acts">${nfFull ? "" : `<button class="btn" data-lv="nf-more">All options</button><span class="grow"></span>`}<button class="btn" data-lv="cancel">Cancel</button><button class="btn primary" data-lv="start">${bangTyped(draft("new-msg").text) ? "Run" : `Start ${esc(agentName(newAgent))}`}</button></div>`;
   const ran = (ranLog.get("new") || []).length ? `<div class="nf-ran">${(ranLog.get("new") || []).map((e, n) => ranCard("new", e, n)).join("")}</div>` : "";
-  if (!nfFull) return `<div class="nf"><input class="nf-in nf-name" data-text="new-name" placeholder="Name it, or just press ↵" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/>${nfRecentLine(folders)}<div class="nf-sum">${esc(nfSummary(false))}</div>${ran}</div>${acts}`;
+  // The short form: a name, then what it should start on (images pasted, dropped or picked), both in the same large type.
+  if (!nfFull) return `<div class="nf"><input class="nf-in nf-name" data-text="new-name" placeholder="Name it, or just press ↵" spellcheck="false" autocomplete="off" value="${esc(draft("new-name").text)}"/><div class="nf-msg nf-pmsg" data-drop="new-msg"><div class="nf-fwrap"><textarea class="nf-in nf-prompt" data-text="new-msg" rows="1" spellcheck="false" placeholder="What should it start on? (optional)">${esc(draft("new-msg").text)}</textarea><button class="icon-btn nf-attach" data-attach="new-msg" aria-label="Add image">${IMAGE_ICON}</button></div>${draftChips("new-msg")}</div>${nfRecentLine(folders)}<div class="nf-sum">${esc(nfSummary(false))}</div>${ran}</div>${acts}`;
   return `<div class="nf">
     <div class="nf-row"><span class="nf-k">Machine</span><div class="nf-where"><div class="seg">${[["", "This Mac"], ...machines.map((m) => [m.name, machShort(m.name)])].map(([v, l]) => `<button class="${newMachine === v && !nfAdding ? "on" : ""}" data-lv="machine" data-machine="${esc(v)}"${v ? ` title="${esc(machinesList.find((m) => m.name === v)?.host || v)}"` : ""}>${esc(l)}</button>`).join("")}<button class="${nfAdding ? "on" : ""}" data-lv="machine-add">+ Add</button></div>${extAddMenuHtml()}</div></div>
     ${nfAdding ? "" : machinePanel(newMachine)}
@@ -254,7 +255,7 @@ function newForm() {
     <div class="nf-row"><span class="nf-k">Flags</span><input class="nf-in mono" data-text="new-flags" placeholder="optional, e.g. --effort high" spellcheck="false" autocomplete="off" value="${esc(draft("new-flags").text)}"/></div>
     ${ran}</div>${acts}`;
 }
-/** + New opens short: just a name, started with what you picked last time (this line says what that is).
+/** + New opens short: a name and a first message, started with what you picked last time (this line says what that is).
  *  All options shows the whole form. */
 let nfFull = false;
 /** The short form's folder line: "In" and your three most recent folders (on the machine picked), the one it'll
@@ -355,13 +356,13 @@ async function lvStart(_d, trust = false) {
   const cwd = draft("new-cwd").text.trim().replace(/(.)\/+$/, "$1");
   if (!cwd) { nfFull = true; renderMain(); return toast("Pick a folder first"); }
   endDictation("new-msg");
-  if (nfFull && isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
+  if (isBang(draft("new-msg").text)) { const line = draft("new-msg").text; draft("new-msg").text = ""; return runLine("new", line, cwd); }
   try {
     const typed = draft("new-flags").text.trim();
     const extra = newAgent === "claude" && !/(^|\s)--model(\s|=)/.test(typed) ? `${modelFlag()} ${typed}`.trim() : typed;
     const mk = `f:${cwd}`;
     const mcp = newAgent === "claude" && !newMachine && mcpPick.has(mk) ? [...mcpPick.get(mk)] : null;
-    const r = await invoke("new_session", { agent: newAgent, cwd, message: nfFull ? draft("new-msg").text : "", name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted(), trust });
+    const r = await invoke("new_session", { agent: newAgent, cwd, message: draft("new-msg").text, name: draft("new-name").text, tmux: newTmux(), perm: newPerm, extra, machine: newMachine, mcp, images: draft("new-msg").images, hosted: newHosted(), trust });
     mcpPick.delete(mk);
     rememberFolder(newMachine, cwd);
     afterNewSession(r);

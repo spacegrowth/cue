@@ -133,8 +133,14 @@ body.col-sizing, body.col-sizing * { cursor: col-resize !important; user-select:
 .quick { display: flex; gap: 5px; flex-wrap: wrap; padding: 5px 0 1px; }
 .qp { height: 22px; padding: 0 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); background: var(--panel-2); }
 .qp:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
-/* Claude's suggestion of what you'd type next, in the empty box: a faint tint and italic set it apart from the usual placeholder. */
-.field textarea.sug::placeholder { color: color-mix(in srgb, var(--accent) 40%, var(--muted)); font-style: italic; }
+/* Claude's suggestion of what you'd type next, in the empty box: "SUGGESTED" in small accent caps, the text, a Tab keycap.
+   Laid over the box's first line (in .ta-wrap); gone once anything's typed (the box's placeholder is a space, so :placeholder-shown means empty). */
+.ta-wrap { flex: 1; min-width: 0; display: flex; position: relative; }
+.sug-line { position: absolute; left: 0; right: 0; top: 5px; display: flex; align-items: center; gap: 7px; pointer-events: none; font-size: 13px; line-height: 1.45; min-width: 0; }
+.sug-line:empty, .field textarea:not(.sug) + .sug-line, .field textarea.sug:not(:placeholder-shown) + .sug-line { display: none; }
+.sug-k { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+.sug-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); opacity: .75; }
+.sug-line kbd { flex: none; font: 600 10.5px var(--sans); color: var(--muted); background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); border-radius: 4px; padding: 1px 5px; }
 .quick-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; width: 300px; }
 .qp-in { height: 30px; border-radius: 8px; border: 0; padding: 0 10px; background: var(--panel-2); color: var(--ink); font: 600 12.5px var(--sans); min-width: 0; }
 .qp-in::placeholder { color: var(--muted); font-weight: 400; }

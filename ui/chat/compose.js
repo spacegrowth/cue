@@ -341,9 +341,10 @@ const suggestionFor = (sid) => {
 /** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  // A hosted lead's crew, at the row's right end: "Crew 4 · 1 ready ▴", opening its rows above the box (team.js).
-  const crew = sid ? crewStrip(sid) : "";
-  return phrases().length || place || crew ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}${crew ? `<span class="quick-r">${crew}</span>` : ""}</div>` : "";
+  // A hosted lead's crew: a tab on the box's top-right corner, as a terminal session's "Open iTerm ↗" is ("Crew 4 ·
+  // 1 ready ▴"), opening its rows above the box (team.js). A hosted session has no place tab, so they never meet.
+  const crew = sid && !place ? crewStrip(sid, true) : "";
+  return phrases().length || place || crew ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}${crew ? `<span class="tplace">${crew}</span>` : ""}</div>` : "";
 };
 /** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). */
 function takeSuggestion(key) {
@@ -392,11 +393,14 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   // A Claude Code session's box: its ring ahead of the mic (status.js), while the status list is on in Settings.
   const sess = images && sidOfKey(key) && sessionOf(sidOfKey(key));
   const status = sess?.harness === "claude" && statusShown() ? statusChip(null, sess) : "";
-  // Claude's suggestion, grey-green in the empty box (a hint apart from the usual placeholder); Tab types it in.
+  // Claude's suggestion in the empty box: "Suggested", the text and a Tab keycap, laid over the box (a placeholder
+  // can't style its parts) and hidden by CSS once anything's typed; Tab types it in. The wrapper and the line are
+  // always drawn, so a redraw never swaps out the box you're typing in.
   const sug = images ? suggestionFor(sidOfKey(key)) : "";
+  const sugLine = `<div class="sug-line" aria-hidden="true">${sug ? `<span class="sug-k">Suggested</span><span class="sug-t">${esc(sug)}</span><kbd>Tab</kbd>` : ""}</div>`;
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
-    <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug"` : ""} placeholder="${esc(sug ? `${sug}      ⇥ Tab` : placeholder)}">${esc(d.text)}</textarea>
+    <div class="ta-wrap"><textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug" aria-label="${esc(`Suggested: ${sug}. Tab types it in.`)}"` : ""} placeholder="${esc(sug ? " " : placeholder)}">${esc(d.text)}</textarea>${sugLine}</div>
     ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
     ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;

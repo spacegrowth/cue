@@ -4,7 +4,10 @@
 .crew-dock { margin: 0 16px 6px; display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-height: 0; }
 .active-pane:has(.crew-dock.open) .ap-chat { min-height: 160px; }
 .active-pane:has(.crew-dock.open) > :not(.crew-dock, .ap-chat) { flex-shrink: 0; }
-.quick-r { margin-left: auto; display: inline-flex; }
+/* As the corner tab: the place tab's shape (terminal.css .tplace-btn); who needs you stays readable on its colour. */
+.crew-tab { display: inline-flex; align-items: center; gap: 4px; }
+.crew-tab .tm-sub { color: inherit; opacity: 0.8; }
+.crew-tab .crew-need { color: inherit; text-decoration: underline; }
 .crew-alone { display: flex; justify-content: flex-end; margin: 0 16px 6px; }
 .crew-strip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; }
 .crew-strip:hover, .crew-strip.on { background: var(--panel); }
