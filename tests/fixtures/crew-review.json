@@ -68,6 +68,12 @@
     {
       "text": "Review your teammate's work",
       "words": null
+    },
+    {
+      "text": "  Review your teammate docs's work with a fork",
+      "words": "Cue asked for docs's review",
+      "name": "docs",
+      "review": true
     }
   ],
   "reviews": [
@@ -99,6 +105,36 @@
     {
       "text": "Looked at it; fine.",
       "verdict": "",
+      "counts": ""
+    },
+    {
+      "text": "1. a.rs:1 — note — x\n**Recommendation**: commit",
+      "verdict": "commit",
+      "counts": "1 note"
+    },
+    {
+      "text": "I'd say the Recommendation: commit holds.",
+      "verdict": "",
+      "counts": ""
+    },
+    {
+      "text": "1. Notes — intro — should-fix — say more\nRecommendation: send fixes",
+      "verdict": "send fixes",
+      "counts": "1 should-fix"
+    },
+    {
+      "text": "1. a.rs — should-fix now — x\nRecommendation: send fixes",
+      "verdict": "send fixes",
+      "counts": "1 note"
+    },
+    {
+      "text": "*Recommendation*: commit",
+      "verdict": "commit",
+      "counts": ""
+    },
+    {
+      "text": "Recommendation : commit",
+      "verdict": "commit",
       "counts": ""
     }
   ],
@@ -239,6 +275,177 @@
       "reviews": {
         "2": "docs"
       }
+    },
+    {
+      "about": "a Recommendation mid-line is no verdict",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "I'd say the Recommendation: commit holds."
+        }
+      ],
+      "reviews": {}
     }
-  ]
+  ],
+  "_lines": "A review's one line: its plain words (a window may bold the name and verdict), the button it calls for (\"fixes\", \"commit\" or none), and whether Open › shows. `team`: the lead's crew; a name shared by two members means the latest. The button: \"fixes\" when the verdict has \"fix\" in it, \"commit\" when it starts with \"commit\", none otherwise.",
+  "lines": [
+    {
+      "about": "its current review, send fixes",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "1. d.md:1 — should-fix — say more\nRecommendation: send fixes"
+        }
+      ],
+      "text": "1. d.md:1 — should-fix — say more\nRecommendation: send fixes",
+      "words": "docs reviewed: send fixes · 1 should-fix",
+      "button": "fixes",
+      "open": true
+    },
+    {
+      "about": "its current review, commit",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "text": "1. d.md:1 — note — fine\nRecommendation: commit",
+      "words": "docs reviewed: commit · 1 note",
+      "button": "commit",
+      "open": true
+    },
+    {
+      "about": "an older review of it: no button",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "text": "1. d.md:1 — should-fix — say more\nRecommendation: send fixes",
+      "words": "docs reviewed: send fixes · 1 should-fix",
+      "button": null,
+      "open": true
+    },
+    {
+      "about": "back at work: no button",
+      "team": [
+        {
+          "name": "docs",
+          "state": "working",
+          "review": ""
+        }
+      ],
+      "text": "1. d.md:1 — should-fix — say more\nRecommendation: send fixes",
+      "words": "docs reviewed: send fixes · 1 should-fix",
+      "button": null,
+      "open": true
+    },
+    {
+      "about": "committed: it left the crew",
+      "team": [
+        {
+          "name": "docs",
+          "state": "committed",
+          "review": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "text": "1. d.md:1 — note — fine\nRecommendation: commit",
+      "words": "docs reviewed: commit · 1 note · committed",
+      "button": null,
+      "open": false
+    },
+    {
+      "about": "set aside: it left the crew",
+      "team": [
+        {
+          "name": "docs",
+          "state": "aside",
+          "review": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "text": "1. d.md:1 — note — fine\nRecommendation: commit",
+      "words": "docs reviewed: commit · 1 note · set aside",
+      "button": null,
+      "open": false
+    },
+    {
+      "about": "not in the crew at all",
+      "team": [],
+      "text": "1. d.md:1 — note — fine\nRecommendation: commit",
+      "words": "docs reviewed: commit · 1 note · not in the crew",
+      "button": null,
+      "open": false
+    },
+    {
+      "about": "two named docs: the latest",
+      "team": [
+        {
+          "name": "docs",
+          "state": "committed",
+          "review": "1. d.md:1 — note — fine\nRecommendation: commit"
+        },
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "text": "1. d.md:1 — note — fine\nRecommendation: commit",
+      "words": "docs reviewed: commit · 1 note",
+      "button": "commit",
+      "open": true
+    },
+    {
+      "about": "no verdict",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "Looked; fine."
+        }
+      ],
+      "text": "Looked; fine.",
+      "words": "docs reviewed: no verdict",
+      "button": null,
+      "open": true
+    },
+    {
+      "about": "a verdict with \"fix\" in it: Send fixes",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "1. a.rs:1 — question — why?\nRecommendation: fix first"
+        }
+      ],
+      "text": "1. a.rs:1 — question — why?\nRecommendation: fix first",
+      "words": "docs reviewed: fix first · 1 note",
+      "button": "fixes",
+      "open": true
+    },
+    {
+      "about": "a verdict it doesn't know: no button (never Commit on a guess)",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "Recommendation: looks good to me"
+        }
+      ],
+      "text": "Recommendation: looks good to me",
+      "words": "docs reviewed: looks good to me",
+      "button": null,
+      "open": true
+    }
+  ],
+  "_reviews": "A finding's kind is an exact \" — <kind> — \" part (blocker, must-fix, should-fix, nit, note, question), else it counts as a note. A Recommendation line starts the line, with any * around the word and spaces before the colon."
 }

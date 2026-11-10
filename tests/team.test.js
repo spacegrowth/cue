@@ -89,6 +89,10 @@ for (const c of cases.said) {
 assert.match(ctx.cueSaid("Review your teammate docs's work with a fork").html, /Cue asked for <b>docs<\/b>'s review/, "the name in bold");
 assert.equal(ctx.cueSaid("Review your teammate <img>'s work with a fork").html.includes("<img>"), false, "a name is escaped");
 for (const c of cases.reviews) assert.deepEqual(ctx.reviewSays(c.text), { verdict: c.verdict, counts: c.counts }, c.text);
+for (const c of cases.lines) {
+  const p = ctx.reviewLineParts(c.team, "docs", c.text);
+  assert.deepEqual([p.words, p.button || null, p.open], [c.words, c.button, c.open], c.about);
+}
 for (const c of cases.replies) {
   const got = ctx.reviewReplies(c.chat, (name) => c.member?.name === name ? c.member.review : "");
   assert.deepEqual(Object.fromEntries([...got].map(([k, v]) => [String(k), v])), c.reviews, c.about);

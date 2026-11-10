@@ -116,7 +116,7 @@ function chatHtml(it, s, harness, paged = false) {
   const since = sid ? aboutSince(sid, ex) : null;
   if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
   const team = s?.team || [];
-  const reviews = reviewReplies(ex, (name) => team.find((m) => m.name === name)?.review || "");
+  const reviews = reviewReplies(ex, (name) => [...team].reverse().find((m) => m.name === name)?.review || "");
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     // What Cue sent the lead for its crew: one quiet line, never your bubble (team.js).

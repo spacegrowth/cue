@@ -188,7 +188,7 @@ const CUE_SAID = [
  *  anything else (your own words stay yours). */
 function cueSaid(text) {
   for (const [re, words, kind] of CUE_SAID) {
-    const m = re.exec(String(text || ""));
+    const m = re.exec(String(text || "").trim());
     if (!m) continue;
     const name = m[1] || "", plain = words(name, text), i = name ? plain.indexOf(name) : -1;
     const html = i < 0 ? esc(plain) : `${esc(plain.slice(0, i))}<b>${esc(name)}</b>${esc(plain.slice(i + name.length))}`;
@@ -203,11 +203,15 @@ function cueSaidLine(said, key, text) {
   const open = cueSaidOpen.has(key);
   return `<div class="cue-said"><button data-cue-said="${esc(key)}">${said.html} · <span class="cue-said-what">${open ? "fold" : "what it asked"}</span></button>${open ? `<div class="cue-said-text">${esc(text)}</div>` : ""}</div>`;
 }
+/** A review's Recommendation line: it starts the line ("**Recommendation**:" and "**Recommendation:**" both), and what
+ *  follows it up to . ( , ; or * is the verdict. */
+const RECOMMENDATION = /^\**recommendation\**\s*:\s*\**\s*([^.(,;*]*)/i;
+const hasRecommendation = (text) => String(text || "").split("\n").some((l) => RECOMMENDATION.test(l.trim()));
 /** A review's verdict and counts read off its words ("send fixes", "1 should-fix · 2 notes"): should-fix, must-fix and
  *  blocker count as should-fix; note, nit, question (or no kind) as notes; a zero group is left out. */
 function reviewSays(text) {
   const lines = String(text || "").split("\n").map((l) => l.trim());
-  const rec = lines.map((l) => /^\**recommendation\**\s*:\s*\**\s*([^.(,;*]*)/i.exec(l)).find(Boolean);
+  const rec = lines.map((l) => RECOMMENDATION.exec(l)).find(Boolean);
   const kinds = lines.filter((l) => /^\d+\.\s/.test(l)).map((l) => (/ — (blocker|must-fix|should-fix|nit|note|question) — /i.exec(l) || [])[1]?.toLowerCase() || "note");
   const fix = kinds.filter((k) => ["should-fix", "must-fix", "blocker"].includes(k)).length, notes = kinds.length - fix;
   const counts = [fix ? `${fix} should-fix` : "", notes ? `${notes} note${notes === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
@@ -225,22 +229,33 @@ function reviewReplies(ex, review = () => "") {
     const ends = (y) => { if (y.role !== "you") return false; const c = cueSaid(y.text); return !c || c.review; };
     for (let k = n + 1; k < ex.length && !ends(ex[k]); k++) if (ex[k].role === "agent") span.push(k);
     const saved = review(asked.name).trim();
-    const hit = (saved ? span.find((k) => ex[k].text.trim() === saved) : undefined) ?? span.filter((k) => /recommendation\**\s*:/i.test(ex[k].text)).at(-1);
+    const hit = (saved ? span.find((k) => ex[k].text.trim() === saved) : undefined) ?? span.filter((k) => hasRecommendation(ex[k].text)).at(-1);
     if (hit != null) out.set(hit, asked.name);
   });
   return out;
 }
-/** The lead's reply to "Cue asked for <name>'s review": one line with its verdict, the button it calls for (only while
- *  this is that crew member's current review), and Open › (its findings under its row). */
-function reviewLine(sid, name, text) {
-  const t = (sessionOf(sid)?.team || []).find((m) => m.name === name);
+/** A review's one line, in parts (tests/fixtures/crew-review.json "lines"): its plain words, the button it calls for
+ *  ("fixes", "commit" or "": only on that member's current review — the reply is its saved review — while it's
+ *  reviewed), whether Open › shows (while it's still in the crew), and the member (the latest of that name). */
+function reviewLineParts(team, name, text) {
+  const t = [...(team || [])].reverse().find((m) => m.name === name) || null;
   const { verdict, counts } = reviewSays(text);
-  const current = t && t.state === "reviewed" && (t.review || "").trim() === String(text).trim();
-  const fixes = /fix/.test(verdict);
-  const btn = current ? (fixes ? mateBtn(sid, t, "fixes", "Send fixes", true) : mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0)) : "";
-  const gone = t && !current && ["committed", "aside"].includes(t.state) ? ` · <span class="dim">${t.state === "aside" ? "set aside" : "committed"}</span>` : "";
-  const open = t && t.state !== "committed" && t.state !== "aside" ? `<button class="btn" data-crew-open="${esc(mateKey(sid, t))}">Open ›</button>` : "";
-  return `<div class="cv-review"><i class="stx-ic k-team">${PERSON_ICON}</i><span class="cv-review-w"><b>${esc(name)}</b> reviewed: <b class="${fixes ? "rv-fix" : "rv-ok"}">${esc(verdict || "no verdict")}</b>${counts ? ` · ${esc(counts)}` : ""}${gone}</span>${btn}${open}</div>`;
+  const current = !!t && t.state === "reviewed" && (t.review || "").trim() === String(text).trim();
+  // Send fixes for a verdict with "fix" in it, Commit for one that starts with "commit", nothing on a guess.
+  const button = !current ? "" : /fix/.test(verdict) ? "fixes" : /^commit/.test(verdict) ? "commit" : "";
+  const suffix = !t ? "not in the crew" : t.state === "committed" ? "committed" : t.state === "aside" ? "set aside" : "";
+  const words = [`${name} reviewed: ${verdict || "no verdict"}`, counts, suffix].filter(Boolean).join(" · ");
+  return { words, verdict, counts, suffix, button, open: !!t && !suffix, member: t };
+}
+/** The lead's reply that is <name>'s review: one line with its verdict, its button, and Open › (its findings under
+ *  its row). */
+function reviewLine(sid, name, text) {
+  const p = reviewLineParts(sessionOf(sid)?.team, name, text), t = p.member;
+  const btn = p.button === "fixes" ? mateBtn(sid, t, "fixes", "Send fixes", true) : p.button === "commit" ? mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0) : "";
+  const open = p.open ? `<button class="btn" data-crew-open="${esc(mateKey(sid, t))}">Open ›</button>` : "";
+  // Amber for a verdict with "fix" in it, green for commit, plain for anything else.
+  const tone = /fix/.test(p.verdict) ? "rv-fix" : /^commit/.test(p.verdict) ? "rv-ok" : "";
+  return `<div class="cv-review"><i class="stx-ic k-team">${PERSON_ICON}</i><span class="cv-review-w"><b>${esc(name)}</b> reviewed: <b class="${tone}">${esc(p.verdict || "no verdict")}</b>${p.counts ? ` · ${esc(p.counts)}` : ""}${p.suffix ? ` · <span class="dim">${esc(p.suffix)}</span>` : ""}</span>${btn}${open}</div>`;
 }
 
 /** The teammate an ask comes from, by name, when its session's team has it: "" otherwise. */
