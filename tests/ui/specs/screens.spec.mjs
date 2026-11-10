@@ -77,12 +77,12 @@ const SCREENS = {
     setup: async (p) => { await openTeam(p); await p.locator('[data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
     done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
   },
-  // How work goes out to the team (ui/team_send.js). team-switch: the lead's box with its Team switch on On.
+  // How work goes out to the crew (ui/team_send.js). team-switch: the Crew menu open at the top right, split on Always.
   // team-handout: a task dropped on the lead's card under Sessions, one of the files it names already rows's.
   "team-switch": {
     scenario: "world-team",
-    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await p.locator('[data-team-sw="lead"][data-team-mode="on"]').click(); },
-    done: async (p) => { await expect(p.locator(".team-sw button.on")).toHaveText("On"); await p.waitForFunction(() => CueBridge.called("team_mode").some((c) => c.args?.mode === "on")); },
+    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await p.locator('[data-crew-menu="lead"]').click(); await p.locator('[data-team-sw="lead"][data-team-mode="on"]').click(); },
+    done: async (p) => { await expect(p.locator(".team-sw button.on").first()).toHaveText("Always"); await p.waitForFunction(() => CueBridge.called("team_mode").some((c) => c.args?.mode === "on")); },
   },
   "team-handout": {
     scenario: "world-team",

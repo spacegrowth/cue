@@ -182,6 +182,10 @@ pub struct Session {
     /// teammates), "" (auto: the lead decides).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub team_mode: String,
+    /// What Cue does with a crew member's work once its review (which runs by itself) finds nothing blocking:
+    /// "clean" commits it on a branch of its own; "" waits for your Commit.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub crew_commit: String,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -278,6 +282,7 @@ impl Session {
             held: None,
             team: vec![],
             team_mode: String::new(),
+            crew_commit: String::new(),
         }
     }
 

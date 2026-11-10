@@ -1,5 +1,9 @@
 # Teams in hosted sessions — design
 
+**Named Crew in the UI (2026-11-09):** the switch, the group ("Crew · N"), `/crew`, its messages and the
+`crew/<name>` branch say Crew, so it isn't confused with Claude Code's own "agent teams". The code, its files and
+this doc keep "team"; the words to Claude keep "teammate", Claude Code's own name for a named agent.
+
 Status (2026-11-09): **built** (T0–T6; T6 removed Cue's relay integration). §11 says what
 shipped beyond the first plan and the answers that were settled on the way. Builds on `cue-hosted-sessions.md` (hosted sessions, §9 H1–H6) and
 `cue-agent-host.md` (the agent host). It replaces that plan's M3 ("relay executors as hosted sessions"): with this,

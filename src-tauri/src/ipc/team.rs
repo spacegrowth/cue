@@ -19,6 +19,13 @@ pub(crate) async fn team_mode(hub: State<'_, Arc<Hub>>, session_id: String, mode
     with_hub(&hub, move |h| h.set_team_mode(&session_id, &mode)).await?
 }
 
+/// The Crew setting for a lead's crew members whose review is clean: "clean" (commit on a branch of its own) or
+/// "wait" (Commit is yours).
+#[tauri::command]
+pub(crate) async fn crew_commit(hub: State<'_, Arc<Hub>>, session_id: String, mode: String) -> Result<(), String> {
+    with_hub(&hub, move |h| h.set_crew_commit(&session_id, &mode)).await?
+}
+
 /// A task dropped on a hosted lead, before it goes: the files it names and who touches each now.
 #[tauri::command]
 pub(crate) async fn team_hand_out_preview(hub: State<'_, Arc<Hub>>, session_id: String, text: String) -> Result<serde_json::Value, String> {

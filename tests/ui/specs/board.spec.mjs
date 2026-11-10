@@ -148,7 +148,7 @@ test("a wide waiting stretch is striped and outlined at both its ends", async ({
 });
 
 // How work goes out to a hosted lead's team (ui/team_send.js; world-team: lead "lead", its teammate hub asking).
-test.describe("a hosted lead's team: the Team switch, /team, a task dropped on the lead", () => {
+test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on the lead", () => {
   const TEAM_ASK = "n1793984390004";
   test.beforeEach(async ({ cue, page }) => {
     await cue.open("world-team");
@@ -162,15 +162,22 @@ test.describe("a hosted lead's team: the Team switch, /team, a task dropped on t
     for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
   }, text);
 
-  test("the Team switch sets the lead's mode", async ({ cue, page }) => {
+  test("the Crew chip at the top right opens its two settings, and each goes to the lead", async ({ cue, page }) => {
+    await expect(page.locator(".foot .team-sw")).toHaveCount(0);
+    await page.locator('.ap-head [data-crew-menu="lead"]').click();
     await page.locator('[data-team-sw="lead"][data-team-mode="off"]').click();
     expect((await cue.called("team_mode", { sessionId: "lead" })).args.mode).toBe("off");
-    await expect(page.locator(".team-sw button.on")).toHaveText("Off");
+    await expect(page.locator(".team-sw button.on").first()).toHaveText("Never");
+    await expect(page.locator('.ap-head [data-crew-menu="lead"]')).toContainText("Crew: never");
+    await page.locator('[data-crew-commit="lead"][data-crew-mode="clean"]').click();
+    expect((await cue.called("crew_commit", { sessionId: "lead" })).args.mode).toBe("clean");
+    await page.locator(".ap-chat").first().click();
+    await expect(page.locator(".crew-menu")).toHaveCount(0);
   });
 
-  test("/team is one of the lead's commands, in Cue", async ({ page }) => {
-    await page.locator('textarea[data-text="s:lead"]').fill("/tea");
-    await expect(page.locator('.cmd-row[data-cmd-name="team"]')).toContainText("in Cue");
+  test("/crew is one of the lead's commands, in Cue", async ({ page }) => {
+    await page.locator('textarea[data-text="s:lead"]').fill("/cre");
+    await expect(page.locator('.cmd-row[data-cmd-name="crew"]')).toContainText("in Cue");
   });
 
   test("a task that names a file a teammate changes says so, and Send anyway hands it out", async ({ cue, page }) => {

@@ -60,14 +60,12 @@ function askFoot(it, sid, harness) {
  *  ends. */
 function activeFoot(it, s, pending, harness, project, sid) {
   if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
-  // A hosted session has no terminal: the reply goes straight to it. A hosted lead's Team switch is here too: most
-  // messages go after a reply.
-  if (pending) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send", teamSwitch(sid))}</div>`;
+  // A hosted session has no terminal: the reply goes straight to it.
+  if (pending) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
   if (!s) return "";
   const busy = s.state === "working";
   const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
-  // A hosted lead's Team switch beside Send (team_send.js).
-  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`, "", teamSwitch(sid))}</div>`;
+  return `<div class="foot">${box_(`s:${sid}`, busy ? `Message ${nameOf(sid, project)}… ${after}` : `Message ${project}…`, busy ? "Queue" : "Send", `data-act="send-to" data-sid="${esc(sid)}"`)}</div>`;
 }
 /** What fills the chat area instead of the chat: a background agent opened in full (helperPane), or a reply open
  *  in the reader (readerPane, read-only, the box and insight bar out of the way). */
@@ -83,7 +81,7 @@ function activeHead(a) {
   const { it, s, sid, harness, project, pending, ch } = a;
   const closable = sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" });
   return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
-      ${sid ? moreMenu(sid, s, closable) : ""}
+      ${sid ? crewChip(sid) + moreMenu(sid, s, closable) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${closable ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>`;
@@ -102,11 +100,11 @@ function openPane(a, full) {
     ${activeHead(a)}
     ${btwPanel(sid)}
     ${subHead(s?.cwd || a.it?.cwd, sid)}
-    ${sid ? addOn.chatTop(sid) + teamGroup(sid) : ""}
+    ${sid ? addOn.chatTop(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full)}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${full ? full.foot : listenLine(sid) + foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewDock(sid) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 function activePane() {
   if (quietOpen) return quietPane();

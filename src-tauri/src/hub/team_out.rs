@@ -1,5 +1,5 @@
 //! How work goes out to a hosted lead's team (docs/dev/cue-teams.md §6, T4, T5): the team skill every hosted Claude
-//! lead starts with, the Team switch on its box (auto, on, off; `/team` for one message), a task dragged onto the
+//! lead starts with, the Crew switch on its box (auto, on, off; `/crew` for one message), a task dragged onto the
 //! lead to hand out as a new teammate (with the files it would likely touch that a teammate already touches), and the
 //! team carried over to the lead that carries on after a handoff. The user never types any of it.
 
@@ -9,14 +9,14 @@ use crate::sessions::team::carried_note;
 /// The team skill's text, with `$more` (rules the optional add-on adds; "" without it) after its first rule.
 macro_rules! team_skill {
     ($($more:tt)*) => {
-        concat!("# Working as a team lead (Cue)
-You run inside Cue, which shows each teammate you start under you; the user looks over and commits their work there.
+        concat!("# Working as a crew lead (Cue)
+You run inside Cue, which shows each teammate you start under you as your crew; the user looks over and commits their work there.
 - When a task has two or more independent parts (different files, no part needing another's result) and each is real work, not a one-line change, don't do them yourself: start one teammate per part with the Agent tool, each with a short plain `name` for its part (letters, digits, - or _, no spaces, like \"parser-tests\"), `run_in_background: true` and `isolation: \"worktree\"`.
 ", $($more)*, "- One teammate per part, never two on the same files. Tell each what to do, which files are its own, and not to commit.
 - Don't set a `model`: teammates run on yours.
 - Then wait: you're told as each one finishes. When all have, say in plain words what each did. Don't commit their work.
 - One part, small quick changes, or parts that share files: do it yourself.
-- A message that ends with \"(Team: on …)\" or \"(Team: off …)\" is the user's choice for that message.")
+- A message that ends with \"(Crew: on …)\" or \"(Crew: off …)\" is the user's choice for that message.")
     };
 }
 #[cfg(feature = "ext")]
@@ -34,8 +34,8 @@ pub(crate) const TEAM_SKILL: &str = team_skill!(more_rules!());
 
 /// The Team switch's words after your message: "on" splits it among teammates, "off" keeps the lead on it alone;
 /// auto adds nothing (the skill decides).
-const TEAM_ON: &str = "(Team: on. Split this into its independent parts and hand each to its own named background teammate, as your team instructions say.)";
-const TEAM_OFF: &str = "(Team: off. Do this yourself: start no teammates.)";
+const TEAM_ON: &str = "(Crew: on. Split this into its independent parts and hand each to its own named background teammate, as your team instructions say.)";
+const TEAM_OFF: &str = "(Crew: off. Do this yourself: start no teammates.)";
 
 /// `args` (yours) with the team skill added: Claude Code's only (Pi and Codex have no Agent tool).
 pub(super) fn with_skill(agent: crate::hosted::Agent, args: &[String]) -> Vec<String> {
@@ -65,11 +65,11 @@ pub(super) fn with_skill(agent: crate::hosted::Agent, args: &[String]) -> Vec<St
     out
 }
 
-/// `typed` as it goes to a lead whose Team switch is `mode`: "/team …" is on for that one message (the command taken
+/// `typed` as it goes to a lead whose Crew switch is `mode`: "/crew …" is on for that one message (the command taken
 /// off); a command or a shell line goes as typed.
 pub(crate) fn with_team(typed: &str, mode: &str) -> String {
     let t = typed.trim();
-    let (rest, mode) = match t.strip_prefix("/team") {
+    let (rest, mode) = match t.strip_prefix("/crew") {
         Some(r) if r.is_empty() || r.starts_with(char::is_whitespace) => (r.trim(), "on"),
         _ if t.starts_with('/') || t.starts_with('!') => return typed.to_string(),
         _ => (t, mode),
@@ -128,9 +128,22 @@ impl Hub {
     /// The Team switch on `sid`'s box: "on", "off", or "auto".
     pub fn set_team_mode(&self, sid: &str, mode: &str) -> Result<(), String> {
         if !matches!(mode, "on" | "off" | "auto") {
-            return Err(format!("“{mode}” isn't a Team setting"));
+            return Err(format!("“{mode}” isn't a Crew setting"));
         }
         if !self.write(|st| st.sessions.set_team_mode(sid, mode)) {
+            return Err("that session is gone".into());
+        }
+        self.changed();
+        Ok(())
+    }
+
+    /// What happens to a crew member's work once its review is clean: "clean" commits it on a branch of its own,
+    /// "wait" leaves Commit to you.
+    pub fn set_crew_commit(&self, sid: &str, mode: &str) -> Result<(), String> {
+        if !matches!(mode, "clean" | "wait") {
+            return Err(format!("“{mode}” isn't a Crew setting"));
+        }
+        if !self.write(|st| st.sessions.set_crew_commit(sid, mode)) {
             return Err("that session is gone".into());
         }
         self.changed();
@@ -180,7 +193,7 @@ impl Hub {
         }
         self.read(|st| st.sessions.origin(sid)).filter(|o| o.hosted && o.harness == "claude").ok_or("only a hosted Claude Code lead takes a teammate")?;
         self.send_to_session(sid, &hand_out_text(task), &[], false)?;
-        Ok(format!("Handed to {} as a new teammate", self.session_name(sid)))
+        Ok(format!("Handed to {}'s crew", self.session_name(sid)))
     }
 
     /// A handoff: the lead `to` that carries on from `from` takes its team (sessions/team.rs `carried`) and is told
@@ -212,11 +225,12 @@ mod tests {
         assert_eq!(with_team("fix it", ""), "fix it", "auto: as typed");
         assert_eq!(with_team("fix it", "on"), format!("fix it\n\n{TEAM_ON}"));
         assert_eq!(with_team("fix it", "off"), format!("fix it\n\n{TEAM_OFF}"));
-        assert_eq!(with_team("/team fix a and b", ""), format!("fix a and b\n\n{TEAM_ON}"));
-        assert_eq!(with_team("/team fix a and b", "off"), format!("fix a and b\n\n{TEAM_ON}"), "/team wins over the switch");
+        assert_eq!(with_team("/crew fix a and b", ""), format!("fix a and b\n\n{TEAM_ON}"));
+        assert_eq!(with_team("/crew fix a and b", "off"), format!("fix a and b\n\n{TEAM_ON}"), "/crew wins over the switch");
         assert_eq!(with_team("/compact", "on"), "/compact", "a command goes as typed");
         assert_eq!(with_team("! ls", "on"), "! ls");
-        assert_eq!(with_team("/teams", "on"), "/teams", "another command");
+        assert_eq!(with_team("/crews", "on"), "/crews", "another command");
+        assert_eq!(with_team("/team fix it", "off"), "/team fix it", "not ours any more: as typed");
     }
 
     #[test]

@@ -61,12 +61,17 @@ impl Hub {
         #[cfg(feature = "ext")]
         self.ext_mates_done(sid);
         let (sid, cwd, machine) = (sid.to_string(), origin.cwd.clone(), origin.machine.clone());
+        let origin = origin.clone();
         self.later(0, move |h| {
-            for t in ended {
-                let c = changes(&machine, &cwd, &t).ok();
+            for t in &ended {
+                let c = changes(&machine, &cwd, t).ok();
                 h.write(|st| st.sessions.with_teammate(&sid, &t.call, |m| finished_files(m, c.as_ref())));
             }
             h.changed();
+            // Its review runs by itself: there's nothing for you to decide before it (docs/dev/cue-teams.md §5).
+            for t in ended {
+                h.review_on_finish(&sid, &origin, &t.call);
+            }
         });
     }
 
@@ -112,17 +117,50 @@ impl Hub {
             return;
         }
         let filed = self.write(|st| {
-            let Some(t) = st.sessions.team(lead).into_iter().filter(|t| t.state == "reviewing").min_by_key(|t| t.review_ms) else { return false };
+            let t = st.sessions.team(lead).into_iter().filter(|t| t.state == "reviewing").min_by_key(|t| t.review_ms)?;
             let (findings, recommendation) = read_review(text);
+            let clean = recommendation == "commit";
             st.sessions.with_teammate(lead, &t.call, |m| {
                 m.state = "reviewed".into();
                 m.findings = findings;
                 m.recommendation = recommendation;
             });
-            true
+            Some((t.call, clean && st.sessions.crew_commit(lead) == "clean"))
         });
-        if filed {
-            self.changed();
+        let Some((call, commit)) = filed else { return };
+        self.changed();
+        if commit {
+            let lead = lead.to_string();
+            self.later(0, move |h| h.commit_when_clean(&lead, &call));
+        }
+    }
+
+    /// A crew member that just finished, reviewed by itself through its lead's review queue: only one that finished its
+    /// work (not stopped), and not a loop's (a loop reviews its own crew).
+    fn review_on_finish(&self, lead: &str, origin: &Origin, call: &str) {
+        #[cfg(feature = "ext")]
+        if self.ext_leads_loop(lead) {
+            return;
+        }
+        let Some(t) = self.read(|st| st.sessions.team(lead)).into_iter().find(|t| t.call == call) else { return };
+        if t.state != "done" || t.agent_id.is_empty() || !t.from.is_empty() {
+            return;
+        }
+        if let Err(e) = self.review_teammate(lead, origin, &t) {
+            eprintln!("cue: couldn't queue {}'s review: {e}", t.name);
+        }
+    }
+
+    /// The lead's "commit when clean": a crew member whose review recommends commit goes on a branch of its own (never
+    /// main); held or refused, it stays reviewed with Commit for you, and why is on its row.
+    fn commit_when_clean(&self, lead: &str, call: &str) {
+        let (origin, t) = self.read(|st| (st.sessions.origin(lead), st.sessions.team(lead).into_iter().find(|t| t.call == call)));
+        let (Some(origin), Some(t)) = (origin, t) else { return };
+        if t.state != "reviewed" {
+            return;
+        }
+        if let Err(e) = self.commit_teammate(lead, &origin, &t, true) {
+            self.set_teammate(lead, call, |m| m.step = format!("Not committed by itself: {e}"));
         }
     }
 
@@ -307,7 +345,7 @@ impl Hub {
     /// Commit: the teammate's files only, `git commit --only -- <its files>`, in its worktree when it has one; held
     /// while another teammate in the same folder has uncommitted changes in one of them. Nothing of any other
     /// teammate's goes in, staged or not.
-    /// `branch`: on main, master or a detached HEAD, the commit goes on a new branch team/<name> made at HEAD
+    /// `branch`: on main, master or a detached HEAD, the commit goes on a new branch crew/<name> made at HEAD
     /// (`commit_to_new_branch`); the folder stays where it is.
     fn commit_teammate(&self, lead: &str, origin: &Origin, t: &Teammate, branch: bool) -> Result<String, String> {
         if t.working() || t.agent_id.is_empty() {
@@ -357,7 +395,7 @@ impl Hub {
     }
 
     /// Make a branch and commit, for a folder on main, master or a detached HEAD (often the main checkout, where
-    /// other sessions keep uncommitted work): team/<name> made at HEAD with `files` committed on it, through a
+    /// other sessions keep uncommitted work): crew/<name> made at HEAD with `files` committed on it, through a
     /// temporary index. The folder's HEAD, index and files stay as they are; the branch appears only once its commit
     /// is made, so a failure leaves none.
     fn commit_to_new_branch(&self, lead: &str, origin: &Origin, t: &Teammate, files: &[String], on: &str) -> Result<String, String> {
@@ -400,11 +438,11 @@ fn remove_file(machine: &str, path: &str) {
     }
 }
 
-/// A branch for teammate `name`'s commit that isn't taken (`taken`): team/<name>, else team/<name>-2, -3….
+/// A branch for teammate `name`'s commit that isn't taken (`taken`): crew/<name>, else crew/<name>-2, -3….
 fn free_branch(name: &str, taken: impl Fn(&str) -> bool) -> String {
     let slug: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let slug = slug.trim_matches('-');
-    let base = format!("team/{}", if slug.is_empty() { "teammate" } else { slug });
+    let base = format!("crew/{}", if slug.is_empty() { "member" } else { slug });
     (1..).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|b| !taken(b)).unwrap_or(base)
 }
 
@@ -413,7 +451,7 @@ fn free_branch(name: &str, taken: impl Fn(&str) -> bool) -> String {
 fn not_on(branch: &str) -> Option<String> {
     match branch {
         "" => Some("Not committed: its folder isn't on a branch (a detached HEAD). Make a branch and commit puts it on a branch of its own".into()),
-        "main" | "master" => Some(format!("Not committed: its folder is on {branch}. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one")),
+        "main" | "master" => Some(format!("Not committed: its folder is on {branch}. Cue commits crew work only on a branch of its own: Make a branch and commit puts it on a new one")),
         _ => None,
     }
 }

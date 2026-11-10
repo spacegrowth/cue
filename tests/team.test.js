@@ -33,18 +33,20 @@ world.sessions.L = { session_id: "L", team: [
 ] };
 world.items = [{ id: "a1", session_id: "L", kind: "permission", agent_id: "id-hub", agent_name: "hub", cmd: "cargo test --features ext" }];
 
-// ---- the chip on the title line ----
+// ---- the title line: who needs you; the strip above the box ----
 let chips = ctx.mateChips("L");
-assert.match(chips, /data-big="a1"><span class="tm-n">hub<\/span> <span class="tm-sub">· needs you/, "a chip for the teammate that asks, opening its ask");
-assert.match(chips, /data-mt-open="L">4 agents <span class="tm-sub">›/, "the team counts those still in it: committed and set aside left");
-assert.equal(ctx.teamGroup("L"), "", "closed: no rows");
-assert.equal(ctx.mateChips("nobody"), "", "no team, no chip (agents.js draws its own)");
+assert.match(chips, /data-big="a1"><span class="tm-n">hub<\/span> <span class="tm-sub">· needs you/, "a chip for the crew member that asks, opening its ask");
+assert.doesNotMatch(chips, /data-mt-open/, "the crew opens from its strip, not the title");
+assert.equal(ctx.mateChips("nobody"), "");
+let dock = ctx.crewDock("L");
+assert.match(dock, /data-mt-open="L" aria-expanded="false">Crew 4 · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▴/, "counts those still in it (committed and set aside left), who needs you, who's ready");
+assert.doesNotMatch(dock, /mt-row/, "closed: the strip only");
+assert.equal(ctx.crewDock("nobody"), "", "no crew, no strip");
 
-// ---- the rows, open ----
+// ---- the rows, open above the strip ----
 ctx.mateOpenLeads.add("L");
-assert.match(ctx.mateChips("L"), /4 agents <span class="tm-sub">▾/);
-const g = ctx.teamGroup("L");
-assert.match(g, /Team · 4/);
+const g = ctx.crewDock("L");
+assert.match(g, /class="crew-dock open".*mt-rows.*crew-strip on/s, "the rows above the strip");
 const row = (name) => g.split('<div class="mt-row').find((r) => r.includes(`>${name}</button>`)) || "";
 assert.match(row("hub"), /needs you/);
 assert.match(row("hub"), /Allow: cargo test --features ext/, "what it asks, on its row");
@@ -52,7 +54,8 @@ assert.doesNotMatch(row("hub"), /data-mt-act="stop"/, "an asking teammate's butt
 assert.match(row("rows"), /working.*>9m · Editing teamcard.js · 3 files so far \(1 via shell\)/s, "a file read off its shell commands says so");
 assert.match(row("rows"), /data-mt-act="stop"/);
 assert.match(row("skill"), /done.*>7m · team skill written, 12 tests pass · 2 files \+140 −0/s, "how long it took, its summary, its size");
-assert.match(row("skill"), /data-mt-act="review"[^>]*>Review<\/button><button[^>]*data-mt-act="diff"/);
+assert.match(row("skill"), /data-mt-act="diff"/);
+assert.doesNotMatch(row("skill"), /data-mt-act="review"/, "finished: reviewed by itself, no Review button");
 assert.match(row("handoff"), /reviewed · 2 findings/);
 assert.match(row("handoff"), /also changed by rows/);
 assert.match(row("handoff"), /class="btn primary held"[^>]*data-mt-act="commit"[^>]*aria-disabled="true"/, "Commit held while another teammate shares a file");
@@ -63,10 +66,10 @@ assert.doesNotMatch(g, /left:|border-left/, "no stripes");
 
 // ---- findings fold open; the ⋯ menu ----
 ctx.mateUnder.set("L|id-handoff", "findings");
-const open = ctx.teamGroup("L");
+const open = ctx.crewDock("L");
 assert.match(open, /<span class="mono">hub\/handoff.rs:40<\/span> · the list is cut at 8 <span class="rv-k">should-fix<\/span>/);
 ctx.mateMenu = "L|id-rows";
-assert.match(ctx.teamGroup("L"), /mt-menu"><button data-mt-act="diff"[^>]*>Diff<\/button><button data-mt-asked="L\|id-rows">What it was asked<\/button><button class="mt-aside" data-mt-act="aside"/, "working: Diff in ⋯");
+assert.match(ctx.crewDock("L"), /mt-menu"><button data-mt-act="diff"[^>]*>Diff<\/button><button data-mt-asked="L\|id-rows">What it was asked<\/button><button class="mt-aside" data-mt-act="aside"/, "working: Diff in ⋯");
 
 // ---- asks titled with the teammate ----
 assert.equal(ctx.mateOfAsk(world.items[0]), "hub");

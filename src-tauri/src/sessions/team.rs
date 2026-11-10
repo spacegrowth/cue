@@ -470,6 +470,17 @@ impl Sessions {
         self.0.get(sid).map(|s| s.team_mode.clone()).unwrap_or_default()
     }
 
+    /// The lead's crew commit setting: "clean" (commit a crew member's work once its review is clean) or "" (wait).
+    pub fn crew_commit(&self, sid: &str) -> String {
+        self.0.get(sid).map(|s| s.crew_commit.clone()).unwrap_or_default()
+    }
+
+    pub fn set_crew_commit(&mut self, sid: &str, mode: &str) -> bool {
+        let Some(s) = self.0.get_mut(sid) else { return false };
+        s.crew_commit = if mode == "clean" { mode.to_string() } else { String::new() };
+        true
+    }
+
     pub fn set_team_mode(&mut self, sid: &str, mode: &str) -> bool {
         let Some(s) = self.0.get_mut(sid) else { return false };
         s.team_mode = if matches!(mode, "on" | "off") { mode.to_string() } else { String::new() };

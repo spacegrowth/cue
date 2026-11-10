@@ -110,7 +110,7 @@ fn a_teammates_current_step_comes_live_its_long_command_is_no_second_teammate_an
     assert_eq!(mate(&w, &sid, "worker")["state"], "working", "not done before it's said to be");
     says(&w, &sid, ls[done].clone());
     let t = mate(&w, &sid, "worker");
-    assert_eq!(t["state"], "done");
+    assert_eq!(t["state"], "queued", "finished, its review queued by itself");
     assert!(t["summary"].as_str().unwrap().starts_with("Both commands ran in order"), "{t}");
     assert!(t["ended_ms"].as_u64().unwrap() > 0);
 }
@@ -136,7 +136,7 @@ fn a_worktree_teammate_works_in_the_folder_claude_code_makes_for_it() {
     let t = mate(&w, &sid, "builder");
     let home = w.home().to_string_lossy().to_string();
     assert_eq!(t["worktree"], format!("{home}/.claude/worktrees/agent-a4043a0c4248969e1"), "derived from the lead's folder and its agent id");
-    assert_eq!(t["state"], "done");
+    assert_eq!(t["state"], "queued", "finished, its review queued by itself");
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn commit_wont_go_on_main_or_master_and_says_so_until_the_folder_is_on_a_branch_
     assert!(w.hub().team_action(&sid, "agentA", "commit").is_err_and(|e| e.contains("is on master")));
     assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "1", "nothing committed on the main line");
     assert_eq!(git(&dir, &["status", "--porcelain"]).trim(), "?? a.txt", "nothing staged either");
-    assert_eq!(mate(&w, &sid, "rows")["state"], "done", "still waiting for you");
+    assert_eq!(mate(&w, &sid, "rows")["state"], "queued", "still waiting for you (its review queued)");
     git(&dir, &["switch", "-q", "-c", "rows-work"]);
     let r = w.hub().team_action(&sid, "agentA", "commit").unwrap();
     assert!(r.starts_with("Committed rows's 1 file"), "{r}");
@@ -255,7 +255,7 @@ fn commit_takes_only_that_teammates_files_and_leaves_the_others_untouched() {
     let t = mate(&w, &sid, "rows");
     assert_eq!(t["state"], "committed");
     assert!(!t["commit"].as_str().unwrap().is_empty());
-    assert_eq!(mate(&w, &sid, "hub")["state"], "done");
+    assert_eq!(mate(&w, &sid, "hub")["state"], "queued");
 }
 
 #[test]
@@ -266,9 +266,9 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
     w.hosted_says(&sid, HostedEvent::TurnEnded { text: "started rows".into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
-    let r = w.hub().team_action(&sid, "agentA", "review").unwrap();
+    // Nobody clicks Review: it was queued as rows finished, and goes now the lead is free.
+    w.hub().drain_reviews();
     w.settle();
-    assert_eq!(r, "Sent its review to its lead");
     let sent = w.hosted.sent();
     let review = &sent.last().unwrap().1;
     assert!(review.starts_with("Review your teammate rows's work with a fork") && review.contains("Its files: a.txt"), "{review}");
@@ -292,14 +292,13 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
 }
 
 #[test]
-fn a_review_for_a_busy_lead_waits_in_reviews_queue_and_goes_when_it_is_free() {
+fn a_finished_crew_member_is_reviewed_by_itself_queued_while_its_lead_works_and_sent_when_it_is_free() {
     let w = World::new();
     let dir = repo(&w);
     let sid = lead(&w, "one teammate");
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
-    let r = w.hub().team_action(&sid, "agentA", "review").unwrap();
-    assert!(r.starts_with("Queued"), "the lead is still working: {r}");
-    assert_eq!(mate(&w, &sid, "rows")["state"], "queued");
+    w.settle();
+    assert_eq!(mate(&w, &sid, "rows")["state"], "queued", "nobody clicked Review");
     assert_eq!(w.snapshot().0["review_queue"][&sid][0]["name"], "rows");
     w.hosted_says(&sid, HostedEvent::TurnEnded { text: "started rows".into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
@@ -318,10 +317,10 @@ fn after_a_restart_the_team_is_back_from_cue_db_and_a_resumed_teammates_new_line
     let inits: Vec<usize> = include_str!("../../hosted/fixtures/team_resume.jsonl").lines().enumerate().filter(|(_, l)| l.contains("\"subtype\":\"init\"")).map(|(i, _)| i).collect();
     let second = inits[2];
     says(&w, &sid, ls[..second].iter().flatten().cloned());
-    assert_eq!((mate(&w, &sid, "keeper")["state"].as_str(), mate(&w, &sid, "keeper")["summary"].as_str()), (Some("done"), Some("OK")));
+    assert_eq!((mate(&w, &sid, "keeper")["state"].as_str(), mate(&w, &sid, "keeper")["summary"].as_str()), (Some("reviewing"), Some("OK")), "finished, its review sent by itself to the free lead");
     w.relaunch();
     let t = mate(&w, &sid, "keeper");
-    assert_eq!((t["agent_id"].as_str(), t["state"].as_str()), (Some("ad7fdc6dbd6894ce9"), Some("done")), "kept in cue.db with its lead: the resumed stream never says it again");
+    assert_eq!((t["agent_id"].as_str(), t["state"].as_str()), (Some("ad7fdc6dbd6894ce9"), Some("reviewing")), "kept in cue.db with its lead: the resumed stream never says it again");
     // The second process (--resume): SendMessage resumes it under the same agent id; its new line, under its first call.
     let ls = lines(&include_str!("../../hosted/fixtures/team_resume.jsonl").lines().skip(second).collect::<Vec<_>>().join("\n"));
     let resumed = at(&ls, |e| task(e, "task_started"));
@@ -330,7 +329,7 @@ fn after_a_restart_the_team_is_back_from_cue_db_and_a_resumed_teammates_new_line
     let done = at(&ls, |e| task(e, "task_notification"));
     says(&w, &sid, ls[resumed + 1..=done].iter().flatten().cloned());
     let t = mate(&w, &sid, "keeper");
-    assert_eq!((t["state"].as_str(), t["summary"].as_str()), (Some("done"), Some("MANGO")), "its new words added to what was kept");
+    assert_eq!((t["state"].as_str(), t["summary"].as_str()), (Some("queued"), Some("MANGO")), "its new words added to what was kept, and reviewed again by itself");
     assert_eq!(team(&w, &sid).len(), 1, "the same teammate, not a second");
 }
 
@@ -354,7 +353,7 @@ fn launched_args(w: &World) -> Vec<String> {
 }
 
 /// How the team skill (hub/team_out.rs) starts.
-const SKILL_START: &str = "# Working as a team lead (Cue)";
+const SKILL_START: &str = "# Working as a crew lead (Cue)";
 
 /// The team skill in `args`: right after `--append-system-prompt`.
 fn skill_in(args: &[String]) -> Option<String> {
@@ -409,8 +408,8 @@ fn the_team_switch_says_on_or_off_with_your_message_auto_says_nothing_and_slash_
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
     w.hosted_says(&sid, HostedEvent::TurnEnded { text: "rows is done".into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
-    let r = w.hub().team_action(&sid, "agentA", "review").unwrap();
-    assert_eq!(r, "Sent its review to its lead");
+    w.hub().drain_reviews();
+    w.settle();
     assert!(last(&w).starts_with("Review your teammate rows") && !last(&w).contains("(Team:"), "{}", last(&w));
     w.hosted_says(&sid, HostedEvent::TurnEnded { text: "1. a.txt:1 — note — fine\nRecommendation: commit".into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
@@ -421,12 +420,12 @@ fn the_team_switch_says_on_or_off_with_your_message_auto_says_nothing_and_slash_
     w.hub().set_team_mode(&sid, "on").unwrap();
     assert_eq!(w.snapshot().session(&sid)["team_mode"], "on", "the switch is the session's, in the window's state");
     w.hub().send_yours(&sid, ask, &[], false).unwrap();
-    assert!(last(&w).starts_with(&format!("{ask}\n\n(Team: on. Split this")), "{}", last(&w));
+    assert!(last(&w).starts_with(&format!("{ask}\n\n(Crew: on. Split this")), "{}", last(&w));
     w.hub().set_team_mode(&sid, "off").unwrap();
     w.hub().send_yours(&sid, ask, &[], false).unwrap();
-    assert_eq!(last(&w), format!("{ask}\n\n(Team: off. Do this yourself: start no teammates.)"));
-    w.hub().send_yours(&sid, &format!("/team {ask}"), &[], false).unwrap();
-    assert!(last(&w).starts_with(&format!("{ask}\n\n(Team: on.")), "/team: on for this one, over the switch: {}", last(&w));
+    assert_eq!(last(&w), format!("{ask}\n\n(Crew: off. Do this yourself: start no teammates.)"));
+    w.hub().send_yours(&sid, &format!("/crew {ask}"), &[], false).unwrap();
+    assert!(last(&w).starts_with(&format!("{ask}\n\n(Crew: on.")), "/crew: on for this one, over the switch: {}", last(&w));
     w.hub().send_yours(&sid, "/compact", &[], false).unwrap();
     assert_eq!(last(&w), "/compact", "a command goes as typed");
     w.hub().set_team_mode(&sid, "auto").unwrap();
@@ -451,10 +450,10 @@ fn a_reply_to_a_finished_lead_carries_its_team_switch_and_slash_team_as_the_box_
     };
     w.hub().set_team_mode(&sid, "on").unwrap();
     reply(&w, ask);
-    assert!(last(&w).starts_with(&format!("{ask}\n\n(Team: on. Split this")), "{}", last(&w));
+    assert!(last(&w).starts_with(&format!("{ask}\n\n(Crew: on. Split this")), "{}", last(&w));
     w.hub().set_team_mode(&sid, "auto").unwrap();
-    reply(&w, &format!("/team {ask}"));
-    assert!(last(&w).starts_with(&format!("{ask}\n\n(Team: on.")), "/team in the reply box: {}", last(&w));
+    reply(&w, &format!("/crew {ask}"));
+    assert!(last(&w).starts_with(&format!("{ask}\n\n(Crew: on.")), "/crew in the reply box: {}", last(&w));
     reply(&w, ask);
     assert_eq!(last(&w), ask, "auto: as typed");
 }
@@ -550,6 +549,37 @@ fn a_task_dropped_on_a_lead_shows_the_files_a_teammate_already_changes_then_goes
 }
 
 #[test]
+fn commit_when_clean_puts_a_clean_review_on_a_branch_of_its_own_and_findings_wait_for_you() {
+    let w = World::new();
+    let dir = main_repo(&w);
+    let sid = lead(&w, "two parts");
+    w.hub().set_crew_commit(&sid, "clean").unwrap();
+    assert_eq!(w.snapshot().session(&sid)["crew_commit"], "clean", "the lead's setting, in the window's state");
+    let reviewed = |w: &World, text: &str| {
+        w.hosted_says(&sid, HostedEvent::TurnEnded { text: "on it".into(), failed: false, cost_usd: 0.0, unprompted: false });
+        w.settle();
+        w.advance(60_000); // past the last review's settling time: one review at a time goes to a lead
+        w.hub().drain_reviews();
+        w.settle();
+        w.hosted_says(&sid, HostedEvent::TurnEnded { text: text.into(), failed: false, cost_usd: 0.0, unprompted: false });
+        w.settle();
+    };
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
+    reviewed(&w, "1. a.txt:1 — note — fine\nRecommendation: commit");
+    let t = mate(&w, &sid, "rows");
+    assert_eq!(t["state"], "committed", "a clean review, committed by itself: {t}");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "crew/rows"]).trim(), "rows's part\n\na.txt", "on a branch of its own");
+    assert_eq!(git(&dir, &["symbolic-ref", "--short", "HEAD"]).trim(), "main", "the folder stays on main");
+    says(&w, &sid, writes("toolu_B", "agentB", "hub", &[dir.join("b.txt").to_string_lossy().to_string()]));
+    reviewed(&w, "1. b.txt:1 — should-fix — say more\nRecommendation: send fixes");
+    assert_eq!(mate(&w, &sid, "hub")["state"], "reviewed", "findings wait for you");
+    assert!(git(&dir, &["branch", "--list", "crew/hub"]).trim().is_empty());
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    assert!(w.snapshot().session(&sid)["crew_commit"].is_null(), "wait is no setting");
+    assert!(w.hub().set_crew_commit(&sid, "sometimes").is_err());
+}
+
+#[test]
 fn commit_from_main_offers_make_a_branch_and_commit_which_commits_on_a_new_branch_and_leaves_the_folder_alone() {
     let w = World::new();
     let dir = main_repo(&w);
@@ -564,15 +594,15 @@ fn commit_from_main_offers_make_a_branch_and_commit_which_commits_on_a_new_branc
     assert_eq!(git(&dir, &["status", "--porcelain"]), status);
     let refused = w.hub().team_action(&sid, "agentA", "commit").unwrap_err();
     assert!(refused.contains("is on main") && refused.contains("Make a branch and commit"), "{refused}");
-    git(&dir, &["branch", "-q", "team/rows"]);
+    git(&dir, &["branch", "-q", "crew/rows"]);
     let index = std::fs::read(dir.join(".git/index")).unwrap();
     let r = w.hub().team_action(&sid, "agentA", "branch").unwrap();
     assert_eq!(std::fs::read(dir.join(".git/index")).unwrap(), index, "the real index untouched, byte for byte");
-    let sha = git(&dir, &["rev-parse", "--short=7", "team/rows-2"]).trim().to_string();
-    assert_eq!(r, format!("Committed 1 file to team/rows-2 ({sha}); your folder stays on main."), "a free name, said plainly");
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "team/rows-2"]).trim(), "rows's part\n\na.txt", "the teammate's file only");
-    assert_eq!(git(&dir, &["rev-parse", "team/rows-2^"]), git(&dir, &["rev-parse", "main"]), "made at HEAD");
-    assert_eq!(git(&dir, &["show", "team/rows-2:a.txt"]), "rows wrote this\n");
+    let sha = git(&dir, &["rev-parse", "--short=7", "crew/rows-2"]).trim().to_string();
+    assert_eq!(r, format!("Committed 1 file to crew/rows-2 ({sha}); your folder stays on main."), "a free name, said plainly");
+    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "crew/rows-2"]).trim(), "rows's part\n\na.txt", "the teammate's file only");
+    assert_eq!(git(&dir, &["rev-parse", "crew/rows-2^"]), git(&dir, &["rev-parse", "main"]), "made at HEAD");
+    assert_eq!(git(&dir, &["show", "crew/rows-2:a.txt"]), "rows wrote this\n");
     // The folder as it was: on main, main unmoved, the same changes, no scratch index left.
     assert_eq!(git(&dir, &["branch", "--show-current"]).trim(), "main");
     assert_eq!(git(&dir, &["rev-list", "--count", "main"]).trim(), "1");
@@ -588,12 +618,12 @@ fn make_a_branch_and_commit_that_fails_leaves_no_branch() {
     let dir = main_repo(&w);
     let sid = lead(&w, "one teammate");
     says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
-    // A stale lock on team/rows: everything up to the commit works, then the branch can't be made.
-    std::fs::create_dir_all(dir.join(".git/refs/heads/team")).unwrap();
-    std::fs::write(dir.join(".git/refs/heads/team/rows.lock"), "").unwrap();
+    // A stale lock on crew/rows: everything up to the commit works, then the branch can't be made.
+    std::fs::create_dir_all(dir.join(".git/refs/heads/crew")).unwrap();
+    std::fs::write(dir.join(".git/refs/heads/crew/rows.lock"), "").unwrap();
     let r = w.hub().team_action(&sid, "agentA", "branch");
     assert!(r.as_ref().is_err_and(|e| e.contains("none was made")), "{r:?}");
-    assert_eq!(git(&dir, &["branch", "--list", "team/*"]).trim(), "", "no half-made branch");
+    assert_eq!(git(&dir, &["branch", "--list", "crew/*"]).trim(), "", "no half-made branch");
     assert_eq!(git(&dir, &["branch", "--show-current"]).trim(), "main");
     assert_ne!(mate(&w, &sid, "rows")["state"], "committed");
 }

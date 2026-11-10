@@ -54,7 +54,7 @@ world.sessions = { L: { session_id: "L", agents: 2 } };
 
 let list = ctx.agentsOf("L");
 assert.deepEqual(list.map((a) => [a.name, a.kind, a.type, a.state]), [
-  ["reviewer", "teammate", "teammate", "idle"],
+  ["reviewer", "teammate", "crew", "idle"],
   ["Inventory agent UIs", "agent", "Explore", "working"],
 ], "one list: teammates and background agents; scripts are not agents");
 let g = ctx.agentGroups(list);
@@ -109,3 +109,8 @@ const a = ctx.agentsOf("L").find((x) => x.id === "x0");
 h = ctx.agentHead(a, "<back>");
 assert.ok(h.startsWith('<div class="bg-view-head ag-view-head"') && h.includes("<back>") && h.includes("job 0") && h.includes(">AGENT<") && h.includes("working") && h.includes("for L"), "‹ Back · mark · name · kind · state · for <session>");
 console.log("agents ok");
+
+// ---- a hosted lead's crew is in its strip, never also in its agents ----
+world.sessions = { L: { session_id: "L", agents: 2, team: [{ agent_id: "x0", name: "job 0", state: "working" }] } };
+assert.deepEqual(ctx.agentsOf("L").map((a) => a.id), ["x1", "x2", "x3", "x4"], "a crew member isn't listed again as an agent");
+assert.equal(ctx.agentCount("L").n, 1, "nor counted in the agents chip while it works");

@@ -21,14 +21,16 @@ const agentLive = (a) => a.state === "working" || a.state === "stuck";
  *  `helpers`: the steps feed's (the Agents tab passes the earlier ones too). */
 function agentsOf(sid, helpers = helpersOf(sid)) {
   const asks = helperAsks(sid);
-  return helpers.filter((h) => !h.script).map((h) => helperAgent(sid, h, asks.find((i) => i.agent_id === h.id)));
+  // Its crew isn't here: a hosted lead's named agents are its crew, in the crew strip (one place each, never two).
+  const crew = new Set((sessionOf(sid)?.team || []).map((t) => t.agent_id).filter(Boolean));
+  return helpers.filter((h) => !h.script && !crew.has(h.id)).map((h) => helperAgent(sid, h, asks.find((i) => i.agent_id === h.id)));
 }
 /** What a session's background agents and teammates ask you: its pending asks that came from inside one of them
  *  (Claude Code names the agent on the hook: the item's agent_id, the helper's id). */
 const helperAsks = (sid) => (state.items || []).filter((i) => i.session_id === sid && i.agent_id && i.kind !== "waiting");
 /** A teammate or background agent of session `sid`, as an agent; `ask`: what it asks you, if it does. */
 const helperAgent = (sid, h, ask = helperAsks(sid).find((i) => i.agent_id === h.id)) => ({
-  key: `h:${h.id}`, id: h.id, sid, kind: h.teammate ? "teammate" : "agent", type: h.teammate ? "teammate" : h.kind || "agent",
+  key: `h:${h.id}`, id: h.id, sid, kind: h.teammate ? "teammate" : "agent", type: h.teammate ? "crew" : h.kind || "agent",
   name: bgName(h), state: agentState({ ...h, asks: !!ask }), started_ms: h.started_ms, ended_ms: h.finished_ms || h.last_ms || h.started_ms,
   tokens: h.tokens || 0, latest: bgLatest(h), ask: ask || null, h,
 });
@@ -54,7 +56,9 @@ const agentChipsOf = (list) => ({ needs: agentGroups(list).needs });
 /** The names of a session's own agents (background agents, teammates) asking you. */
 const helperNeeds = (sid) => helperAsks(sid).map((i) => i.agent_name || "an agent");
 function agentCount(sid) {
-  return { n: sessionOf(sid)?.agents || 0, needs: helperNeeds(sid) };
+  // Its crew at work is counted in its strip, not here.
+  const s = sessionOf(sid), crew = (s?.team || []).filter((t) => t.state === "working").length;
+  return { n: Math.max(0, (s?.agents || 0) - crew), needs: helperNeeds(sid) };
 }
 
 // ---------- how they look ----------
@@ -117,12 +121,11 @@ function agentsPage(sid, helpers) {
 /** On the title line: a chip for each agent that needs you ("<name> needs you"), then "N agents ›", which opens the
  *  Agents tab. */
 function agentChips(sid) {
-  // A hosted lead with a team: its teammates' chips, "N agents ›" opening the team under its title (team.js).
-  const team = mateChips(sid);
-  if (team) return team;
+  // A hosted lead's crew member that needs you, by name (team.js); the crew itself is in its strip above the box.
+  const crewNeed = mateChips(sid);
   const { needs } = agentChipsOf(agentsOf(sid)), { n } = agentCount(sid);
-  if (!n) return "";
-  const need = needs.map((a) => `<button class="tm-chip need" ${a.ask ? `data-big="${esc(a.ask.id)}"` : agentGo(a)}><span class="tm-n">${esc(a.name)}</span> <span class="tm-sub">needs you</span></button>`).join("");
+  if (!n) return crewNeed ? `<span class="tm-chips">${crewNeed}</span>` : "";
+  const need = crewNeed + needs.filter((a) => a.kind !== "teammate").map((a) => `<button class="tm-chip need" ${a.ask ? `data-big="${esc(a.ask.id)}"` : agentGo(a)}><span class="tm-n">${esc(a.name)}</span> <span class="tm-sub">needs you</span></button>`).join("");
   const on = bgTabOn.get(sid) === "agents";
   return `<span class="tm-chips">${need}<button class="tm-chip ${on ? "on" : ""}" data-bg-tab="agents" data-sid="${esc(sid)}">${n} agent${n === 1 ? "" : "s"} <span class="tm-sub">›</span></button></span>`;
 }

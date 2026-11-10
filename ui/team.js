@@ -1,7 +1,8 @@
 // ---------- a hosted lead's team: its teammates as rows in its chat (docs/dev/cue-teams.md §4) ----------
 // Cue keeps the team from the lead's stream (hub/team.rs: state.sessions[].team); this draws it. On the lead's title
-// line, a chip for each teammate that needs you and "N agents ›", which opens the team under the title: one row per
-// teammate (its mark, its name, its state, how long, its newest step or its summary, the buttons its state needs).
+// line, a chip for each crew member that needs you; above the message box, a one-line strip ("Crew 3 · 1 ready ▴")
+// that opens the crew above it: one row per crew member (its mark, its name, its state, how long, its newest step or
+// its summary, the buttons its state needs). A finished one is reviewed by itself (hub/team.rs review_on_finish).
 // A committed or set-aside teammate leaves the team. Asks from a teammate are titled "<lead> › <teammate>".
 
 /** The leads whose team is open under their title, and per teammate what's open under its row ("findings", "diff",
@@ -69,7 +70,10 @@ function mateActs(sid, t, ask) {
     case "working": return t.quiet === "stuck" ? mateBtn(sid, t, "resume", "Resume", true) + mateBtn(sid, t, "stop", "Stop") : mateBtn(sid, t, "stop", "Stop");
     case "queued": case "reviewing": return mateBtn(sid, t, "diff", "Diff");
     case "reviewed": return mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0) + mateBtn(sid, t, "fixes", "Send fixes");
-    default: return mateBtn(sid, t, "review", "Review", true) + mateBtn(sid, t, "diff", "Diff");
+    // Stopped (by you, or with its lead's interrupt): what it changed, if anything; nothing to review in nothing.
+    case "stopped": return (t.files || []).length ? mateBtn(sid, t, "diff", "Diff") : mateBtn(sid, t, "aside", "Set aside");
+    // Finished: its review is queued by itself (a loop's has Review in ⋯).
+    default: return mateBtn(sid, t, "diff", "Diff");
   }
 }
 
@@ -114,18 +118,24 @@ function mateRow(sid, t) {
 function mateMenuHtml(sid, t) {
   const onRow = ["queued", "reviewing", "done", "stopped"].includes(t.state) && !mateAsk(sid, t);
   const a = esc(t.agent_id || t.call), s = esc(sid);
-  return `<div class="more-menu rv-menu mt-menu">${onRow ? "" : `<button data-mt-act="diff" data-mt-sid="${s}" data-mt-agent="${a}">Diff</button>`}<button data-mt-asked="${esc(mateKey(sid, t))}">What it was asked</button><button class="mt-aside" data-mt-act="aside" data-mt-sid="${s}" data-mt-agent="${a}">Set aside</button></div>`;
+  const review = t.state === "done" || t.state === "stopped" ? `<button data-mt-act="review" data-mt-sid="${s}" data-mt-agent="${a}">Review</button>` : "";
+  return `<div class="more-menu rv-menu mt-menu">${review}${onRow ? "" : `<button data-mt-act="diff" data-mt-sid="${s}" data-mt-agent="${a}">Diff</button>`}<button data-mt-asked="${esc(mateKey(sid, t))}">What it was asked</button><button class="mt-aside" data-mt-act="aside" data-mt-sid="${s}" data-mt-agent="${a}">Set aside</button></div>`;
 }
 
-/** Under the lead's title, while its team is open: "TEAM · N", its rows in one group that scrolls past a few, and why a
- *  Commit is held. "" when it has no team or it's closed. */
-function teamGroup(sid) {
+/** Above the lead's message box: the strip, "Crew 3 · 1 needs you · 1 ready ▴", and while it's open the crew above it,
+ *  its rows in one group that scrolls past a few, and why a Commit is held. "" when it has no crew. */
+function crewDock(sid) {
   const list = mateList(sid);
-  if (!list.length || !mateOpenLeads.has(sid)) return "";
+  if (!list.length) return "";
+  const open = mateOpenLeads.has(sid);
+  const need = list.filter((t) => mateAsk(sid, t)).length, ready = list.filter((t) => t.state === "reviewed").length;
+  const words = [`Crew ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
+  const strip = `<button class="crew-strip ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
+  if (!open) return `<div class="crew-dock" data-key="crew-dock">${strip}</div>`;
   const menu = list.find((t) => mateKey(sid, t) === mateMenu);
   const held = list.find((t) => t.state === "reviewed" && (t.also || []).length);
   const heldLine = held ? `<div class="mt-held">Commit on <b>${esc(held.name)}</b> is held: <b>${esc(held.also[0])}</b> has uncommitted changes in one of its files.</div>` : "";
-  return `<div class="mt-wrap" data-key="mt-wrap"><div class="mt-cap">Team · ${list.length}</div><div class="mt-rows" data-scroll-key="mt:${esc(sid)}">${list.map((t) => mateRow(sid, t)).join("")}</div>${menu ? mateMenuHtml(sid, menu) : ""}${heldLine}</div>`;
+  return `<div class="crew-dock open" data-key="crew-dock"><div class="mt-wrap"><div class="mt-rows" data-scroll-key="mt:${esc(sid)}">${list.map((t) => mateRow(sid, t)).join("")}</div>${menu ? mateMenuHtml(sid, menu) : ""}${heldLine}</div>${strip}</div>`;
 }
 
 /** The open team's rows, when they have to scroll (a short pane gives the chat its room first): the box ends under the
@@ -147,14 +157,10 @@ function placeTeamRows() {
 }
 if (typeof window !== "undefined") window.addEventListener("resize", () => { if (typeof document !== "undefined") placeTeamRows(); });
 
-/** On the lead's title line: a chip for each teammate that needs you ("hub · needs you"), then "N agents ›" (▾ while
- *  open), which opens the team. "" for a session with no team (agents.js agentChips draws its own). */
+/** On the lead's title line: a chip for each crew member that needs you ("hub · needs you"); "" when none does (the
+ *  crew itself is in its strip above the box, crewDock). */
 function mateChips(sid) {
-  const list = mateList(sid);
-  if (!list.length) return "";
-  const need = list.map((t) => [t, mateAsk(sid, t)]).filter(([, a]) => a).map(([t, a]) => `<button class="tm-chip need" data-big="${esc(a.id)}"><span class="tm-n">${esc(t.name)}</span> <span class="tm-sub">· needs you</span></button>`).join("");
-  const on = mateOpenLeads.has(sid), n = list.length;
-  return `<span class="tm-chips">${need}<button class="tm-chip ${on ? "on" : ""}" data-mt-open="${esc(sid)}">${n} agent${n === 1 ? "" : "s"} <span class="tm-sub">${on ? "▾" : "›"}</span></button></span>`;
+  return mateList(sid).map((t) => [t, mateAsk(sid, t)]).filter(([, a]) => a).map(([t, a]) => `<button class="tm-chip need" data-big="${esc(a.id)}"><span class="tm-n">${esc(t.name)}</span> <span class="tm-sub">· needs you</span></button>`).join("");
 }
 
 /** The teammate an ask comes from, by name, when its session's team has it: "" otherwise. */
@@ -194,7 +200,7 @@ if (typeof document !== "undefined") {
     if (d.mtMore) { mateMenu = closeMenu || mateMenu === d.mtMore ? null : d.mtMore; return renderMain(); }
     const fold = d.mtFold || d.mtAsked, what = d.mtFold ? "findings" : "asked";
     if (fold) { if (mateUnder.get(fold) === what) mateUnder.delete(fold); else { mateUnder.set(fold, what); mateShow = fold; } return renderMain(); }
-    if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: another teammate has uncommitted changes in one of its files");
+    if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: someone else in the crew has uncommitted changes in one of its files");
     renderMain();
     mateAct(d.mtSid, d.mtAgent, d.mtAct);
   }, true);
