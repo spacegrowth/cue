@@ -7,7 +7,7 @@
 <body>
   <div id="app"></div>
   <script>
-    // Claude's prompt suggestion in a hosted session's box: grey in the empty box, a chip after the quick phrases,
+    // Claude's prompt suggestion in a hosted session's box: tinted in the empty box (not among the quick phrases),
     // Tab types it in; gone once the session is back at work. Headless:
     //   chrome --headless=new --allow-file-access-from-files --dump-dom file://…/tests/suggestion.html 2> log.txt; grep CHECK log.txt
     window.onerror = (m, src, l, c) => console.log(`CHECK no-error fail ${m} @${l}:${c}`);
@@ -52,8 +52,8 @@
       const el = tbox();
       check("setup", !!el, "no text box");
       check("grey-in-box", el.placeholder.startsWith("yes, add tests"), el.placeholder);
-      const chip = document.querySelector(".active-pane .qp.sug");
-      check("chip-after-phrases", chip?.dataset.phrase === "yes, add tests" && chip.previousElementSibling?.dataset.phrase === "why?", chip?.outerHTML);
+      check("tinted", el.classList.contains("sug"), el.className);
+      check("not-a-phrase", ![...document.querySelectorAll(".active-pane .qp")].some((b) => b.dataset.phrase === "yes, add tests"));
       if (location.hash === "#look") return;
       el.focus();
       el.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
@@ -64,7 +64,7 @@
       tbox().value = "";
       draft("s:w1").text = "";
       renderMain();
-      check("gone-at-work", !document.querySelector(".active-pane .qp.sug") && !tbox().placeholder.startsWith("yes"), tbox().placeholder);
+      check("gone-at-work", !tbox().classList.contains("sug") && !tbox().placeholder.startsWith("yes"), tbox().placeholder);
       console.log("CHECK done pass");
     }, 300);
   </script>

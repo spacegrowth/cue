@@ -338,13 +338,10 @@ const suggestionFor = (sid) => {
   const s = sid && sessionOf(sid);
   return s?.state === "waiting" ? s.suggestion || "" : "";
 };
-/** The quick phrases, then Claude's suggestion (sent the same way, Tab marking it), with (at the right) where the
- *  session runs when it's a terminal app's. */
+/** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  const sug = suggestionFor(sid);
-  const sugChip = sug ? `<button class="qp sug" ${attrs} data-phrase="${esc(sug)}"><span class="sug-k">Tab</span>${esc(sug)}</button>` : "";
-  return phrases().length || place || sug ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${sugChip}${place}</div>` : "";
+  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
 /** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). */
 function takeSuggestion(key) {
@@ -393,10 +390,11 @@ function box(key, placeholder, label, sendAttrs, images, alt = "", extra = "") {
   // A Claude Code session's box: its ring ahead of the mic (status.js), while the status list is on in Settings.
   const sess = images && sidOfKey(key) && sessionOf(sidOfKey(key));
   const status = sess?.harness === "claude" && statusShown() ? statusChip(null, sess) : "";
+  // Claude's suggestion, grey-green in the empty box (a hint apart from the usual placeholder); Tab types it in.
   const sug = images ? suggestionFor(sidOfKey(key)) : "";
   // Send sits inside the box, at the end of its row, so the box spans the full width (as the terminal dock does).
   return `<div class="composer"><div class="field ${images ? "drop" : ""} ${bangTyped(d.text) ? "bang" : ""}" data-drop="${images ? esc(key) : ""}">${sidOfKey(key) ? `<div class="cmd-slot">${cmdMenu(key)}</div>` : ""}${images ? quickRow(`data-quick="${esc(key)}"`, sidOfKey(key)) : ""}${chips}<div class="field-row">
-    <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}" placeholder="${esc(sug ? `${sug}      ⇥ Tab` : placeholder)}">${esc(d.text)}</textarea>
+    <textarea rows="2" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-text="${esc(key)}"${sug ? ` class="sug"` : ""} placeholder="${esc(sug ? `${sug}      ⇥ Tab` : placeholder)}">${esc(d.text)}</textarea>
     ${status}<button class="icon-btn mic ${dictating?.key === key ? "on" : ""}" data-mic="${esc(key)}" title="${dictating?.key === key ? "Stop dictating" : "Dictate: talk and it types here"}" aria-label="Dictate">${MIC_ICON}</button>
     ${images ? `<button class="icon-btn" data-attach="${esc(key)}" title="Add an image (or paste one with ⌘V)" aria-label="Add image">${IMAGE_ICON}</button>` : ""}
     ${extra}${ready ? alt : ""}<button class="btn primary send" ${sendAttrs} ${ready ? "" : "disabled"}>${label}</button></div>${slashHint(key)}</div></div>`;
