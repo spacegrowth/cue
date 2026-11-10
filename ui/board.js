@@ -248,7 +248,7 @@ function groups() {
 // A finished turn's box is the session's box: one draft per session, whichever card shows it.
 /** What the Active pane shows, in the drop-down lists (where lime is the keyboard highlight). */
 const VIEWING = `<span class="viewing-tag">viewing</span>`;
-const field = (it, placeholder, label) => box(it.kind === "waiting" ? `s:${it.session_id}` : it.id, placeholder, label, `data-act="send" data-id="${esc(it.id)}"`, it.kind === "waiting");
+const field = (it, placeholder, label, extra = "") => box(it.kind === "waiting" ? `s:${it.session_id}` : it.id, placeholder, label, `data-act="send" data-id="${esc(it.id)}"`, it.kind === "waiting", "", extra);
 
 function requestBody(it) {
   const i = it.tool_input || {};

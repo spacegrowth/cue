@@ -437,6 +437,29 @@ fn the_team_switch_says_on_or_off_with_your_message_auto_says_nothing_and_slash_
 }
 
 #[test]
+fn a_reply_to_a_finished_lead_carries_its_team_switch_and_slash_team_as_the_box_does() {
+    let w = World::new();
+    repo(&w);
+    let sid = lead(&w, "start");
+    let last = |w: &World| w.hosted.sent().last().map(|(_, t)| t.clone()).unwrap_or_default();
+    let ask = "fix the typo in a.txt and add a line to b.txt";
+    let reply = |w: &World, text: &str| {
+        w.hosted_says(&sid, HostedEvent::TurnEnded { text: "ok".into(), failed: false, cost_usd: 0.0, unprompted: false });
+        w.settle();
+        let card = w.snapshot().card(&sid)["id"].as_str().expect("a finished lead waits on you").to_string();
+        w.hub().reply(&card, text, &[]).unwrap();
+    };
+    w.hub().set_team_mode(&sid, "on").unwrap();
+    reply(&w, ask);
+    assert!(last(&w).starts_with(&format!("{ask}\n\n(Team: on. Split this")), "{}", last(&w));
+    w.hub().set_team_mode(&sid, "auto").unwrap();
+    reply(&w, &format!("/team {ask}"));
+    assert!(last(&w).starts_with(&format!("{ask}\n\n(Team: on.")), "/team in the reply box: {}", last(&w));
+    reply(&w, ask);
+    assert_eq!(last(&w), ask, "auto: as typed");
+}
+
+#[test]
 fn a_carried_teammate_leaves_its_old_lead_so_it_shows_once_and_one_lead_commits_it() {
     let w = World::new();
     let dir = repo(&w);

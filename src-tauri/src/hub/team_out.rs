@@ -139,12 +139,17 @@ impl Hub {
 
     /// A message you typed in a session's box: to a hosted Claude lead with its Team switch's words (`with_team`).
     pub fn send_yours(&self, sid: &str, text: &str, images: &[crate::model::Upload], now: bool) -> Result<String, String> {
+        self.send_to_session(sid, &self.team_words(sid, text), images, now)
+    }
+
+    /// What you typed to `sid`, from its box or its reply box: with its Team switch's words when it's a hosted Claude
+    /// lead (`with_team`), else as typed.
+    pub(crate) fn team_words(&self, sid: &str, text: &str) -> String {
         let lead = self.read(|st| st.sessions.origin(sid)).filter(|o| o.hosted && o.harness == "claude");
-        let text = match lead {
+        match lead {
             Some(_) => with_team(text, &self.read(|st| st.sessions.team_mode(sid))),
             None => text.to_string(),
-        };
-        self.send_to_session(sid, &text, images, now)
+        }
     }
 
     /// Before a dragged task goes to lead `sid` as a new teammate: the files it names, each with who touches it now

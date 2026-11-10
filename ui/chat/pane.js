@@ -60,8 +60,9 @@ function askFoot(it, sid, harness) {
  *  ends. */
 function activeFoot(it, s, pending, harness, project, sid) {
   if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
-  // A hosted session has no terminal: the reply goes straight to it.
-  if (pending) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
+  // A hosted session has no terminal: the reply goes straight to it. A hosted lead's Team switch is here too: most
+  // messages go after a reply.
+  if (pending) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send", teamSwitch(sid))}</div>`;
   if (!s) return "";
   const busy = s.state === "working";
   const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";

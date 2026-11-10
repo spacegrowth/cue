@@ -27,6 +27,15 @@ test("A finished turn's box says where the reply goes: typed into its terminal, 
   await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
 });
 
+test("A hosted Claude lead's reply box has its Team switch too; a terminal session's has none", async ({ cue, page }) => {
+  await openCard(page, "n1");
+  await expect(page.locator(".active-pane .team-sw")).toHaveCount(0);
+  await cue.change((st) => { Object.assign(st.sessions.find((s) => s.session_id === "relay"), { hosted: true, harness: "claude" }); });
+  await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
+  await page.locator('.active-pane [data-team-sw="relay"][data-team-mode="on"]').click();
+  expect((await cue.called("team_mode", { sessionId: "relay" })).args.mode).toBe("on");
+});
+
 test("Send replies, and Shift+Enter keeps the lines together", async ({ cue, page }) => {
   await openCard(page, "n2");
   await box(page, "det").pressSequentially("tune the stop");

@@ -225,6 +225,12 @@ impl Hub {
         }
         let it = self.get(id).filter(|i| i.status == "pending").ok_or("that card is gone")?;
         let sid = it.origin.session_id.clone();
+        // A reply to a finished turn is a message like the box's: a hosted lead's Team switch (and /team) say their piece.
+        let worded = if it.kind == "waiting" { self.team_words(&sid, text) } else { text.to_string() };
+        let text = worded.as_str();
+        if text.trim().is_empty() && images.is_empty() {
+            return Err("nothing to send".into());
+        }
         // One message at a time into a session: another being typed into it goes first (see Hub::typing).
         let gate = self.typing_gate(&sid);
         let _typing = wait_turn(&gate)?;
