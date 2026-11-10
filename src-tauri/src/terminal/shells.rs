@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn a_shells_id_is_its_prefix_and_a_plain_name() {
         assert!(id_ok("shell:1") && id_ok("shell:a-b_2"));
-        for bad in ["", "shell:", "1", "relay", "shell:a b", "shell:../x", "shell:$(id)", &format!("shell:{}", "x".repeat(49))] {
+        for bad in ["", "shell:", "1", "notashell", "shell:a b", "shell:../x", "shell:$(id)", &format!("shell:{}", "x".repeat(49))] {
             assert!(!id_ok(bad), "{bad:?}");
         }
         assert!(open_with("not-a-shell", "/", 80, 12, |_| {}).is_err(), "a session's id is never opened as a shell");

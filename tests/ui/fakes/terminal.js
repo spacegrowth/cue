@@ -7,11 +7,8 @@ CueBridge.area("terminal", (w) => {
   const stalled = new Set();
   const stallAll = w.q.has("stalled");
   let gen = 0;
-  /** What a session's terminal shows when it's attached: Claude Code's permission menu; a remote executor's
-   *  own tmux session (rx-…) at work. */
-  const screen = (sid) => sid.startsWith("rx-")
-    ? `\x1b[1m[relay-dns-cutover]\x1b[0m  claude · build-box\r\n\r\n\x1b[2m⏺\x1b[0m Update(zones/example.net.tf)\r\n  ⎿ Updated with 14 additions and 3 removals\r\n\x1b[2m⏺\x1b[0m Bash(terraform plan -out dns.plan)\r\n  ⎿ Plan: 12 to add, 0 to change, 3 to destroy.\r\n\r\n\x1b[33m✻ Checking the TTLs… (38s)\x1b[0m\r\n`
-    : ["╭──────────────────────────────────────────────────────────╮", "│ \x1b[33mBash command\x1b[0m", "│   rm -rf build && make release", "│", "│ \x1b[1mDo you want to proceed?\x1b[0m", "│ \x1b[32m❯ 1. Yes\x1b[0m", "│   2. Yes, and don't ask again for rm commands here", "│   3. No, and tell Claude what to do differently (esc)", "╰──────────────────────────────────────────────────────────╯"]
+  /** What a session's terminal shows when it's attached: Claude Code's permission menu. */
+  const screen = (sid) => ["╭──────────────────────────────────────────────────────────╮", "│ \x1b[33mBash command\x1b[0m", "│   rm -rf build && make release", "│", "│ \x1b[1mDo you want to proceed?\x1b[0m", "│ \x1b[32m❯ 1. Yes\x1b[0m", "│   2. Yes, and don't ask again for rm commands here", "│   3. No, and tell Claude what to do differently (esc)", "╰──────────────────────────────────────────────────────────╯"]
       .map((l) => /^[╭│╰]/.test(l) ? `\x1b[2m${l[0]}\x1b[0m${l.slice(1)}` : l).join("\r\n") + "\r\n";
   // Cue's own shells: a prompt that echoes what's typed, Enter a new prompt, Backspace rubs out.
   const shellCwd = {};

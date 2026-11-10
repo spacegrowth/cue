@@ -5,7 +5,6 @@
 //! The file format is in tests/ui/scenarios/README.md.
 
 use super::{Takes, World};
-use crate::leads::{install_index, reported_exec, Member};
 use serde_json::{json, Value};
 
 /// Each scenario: its name and how the World gets there.
@@ -13,8 +12,6 @@ const SCENARIOS: &[(&str, fn(&World))] = &[
     ("empty", |_| {}),
     ("one-ask", one_ask),
     ("many-sessions", many_sessions),
-    ("relay-review", relay_review),
-    ("relay-auto", relay_auto),
     ("status-list", status_list),
     ("parked", parked),
     ("restarting", restarting),
@@ -45,33 +42,9 @@ fn many_sessions(w: &World) {
     w.session("pipe").in_project("data-pipeline").prompt("Backfill March").ask_question("Which source wins on a clash?", &["Vendor", "Exchange"]);
     let lim = w.session("bot").in_project("filings-bot");
     lim.prompt("Parse every 10-K").failed("rate_limit", "You've hit your session limit · resets 4:10am (America/Los_Angeles)");
-    w.session("helper").in_project("order-engine").prompt("packet 2").stop_driven("Report written.", "its relay lead (eng)");
+    w.session("helper").in_project("order-engine").prompt("task 2").stop_driven("Report written.", "its lead (eng)");
     w.session("pi").pi().in_project("notes").prompt("Summarise today").stop("Summary in notes/today.md");
     w.session("cx").codex().in_project("api-server").prompt("Port the handler").stop("Ported; tests pass.");
-}
-
-fn relay_review(w: &World) {
-    let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "order-engine".into(), ..Default::default() };
-    let exec = |name: &str, packet: u64| Member { name: name.into(), id: format!("relay-{name}"), packet: Some(packet), goal: format!("{name}: the packet's goal"), outcome: "Done and staged.".into(), lead: "lead".into(), lead_name: "order-engine".into(), updated: format!("2026-11-01T10:00:0{packet}"), ..reported_exec() };
-    install_index([("lead".to_string(), lead), ("ex-fills".to_string(), exec("fills", 3)), ("ex-docs".to_string(), exec("docs", 1))].into());
-    let l = w.session("lead").in_project("order-engine");
-    l.prompt("Lead the router refactor");
-    w.session("ex-fills").in_project("order-engine").prompt("packet 3").stop_driven("Packet 3 done.", "its relay lead (order-engine)");
-    w.session("ex-docs").in_project("order-engine").prompt("packet 1").stop_driven("Docs done.", "its relay lead (order-engine)");
-    // The lead is working: the first review waits in its queue.
-    w.hub().review("lead", "ex-fills", "/relay:review fills").unwrap();
-}
-
-/// A relay lead on auto mode (it reviews reports on its own), back from its turn, and its executor that reported:
-/// nothing asks you to start that review. The executor's finished turn would be a card of its own (show sessions
-/// another agent drives in Waiting is on), but its lead takes it, so it isn't one.
-fn relay_auto(w: &World) {
-    crate::config::set("agents.show_driven", json!(true)).unwrap();
-    let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "order-engine".into(), auto: Some(true), ..Default::default() };
-    let fills = Member { name: "fills".into(), id: "relay-fills".into(), packet: Some(3), goal: "fills: the packet's goal".into(), outcome: "Done and staged.".into(), lead: "lead".into(), lead_name: "order-engine".into(), ready_late: true, ..reported_exec() };
-    install_index([("lead".to_string(), lead), ("ex-fills".to_string(), fills)].into());
-    w.session("lead").in_project("order-engine").prompt("Lead the router refactor").stop("Sent packet 3 to fills.");
-    w.session("ex-fills").in_project("order-engine").prompt("packet 3").stop_driven("Packet 3 done.", "its relay lead (order-engine)");
 }
 
 /// A hosted lead with a team of five, one in each state the chat shows (docs/dev/cue-teams.md §4): hub asks you to
@@ -124,7 +97,7 @@ fn team(w: &World) {
 }
 
 fn status_list(w: &World) {
-    let a = w.session("relay").in_project("agent-relay");
+    let a = w.session("board").in_project("agent-board");
     let ask = "End this reply with the status list: **Where we are**";
     a.prompt("Ship the board");
     a.transcript().prompt_with_status_ask("u1", "Ship the board", ask);
@@ -175,8 +148,8 @@ fn fifty_sessions(w: &World) {
 }
 
 fn handoff_pending(w: &World) {
-    w.session("relay").in_project("agent-relay").prompt("/handoff").stop("Hand-off note written to HANDOFF.md.");
-    crate::db::handoff_sent("relay", "handoff", true, 0);
+    w.session("board").in_project("agent-board").prompt("/handoff").stop("Hand-off note written to HANDOFF.md.");
+    crate::db::handoff_sent("board", "handoff", true, 0);
 }
 
 fn settings(w: &World) {

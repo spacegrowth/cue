@@ -6,6 +6,7 @@
 //! there is its own: its hooks, and for a session it hosts there, cue-host in ~/.cue (hosted/machine_host.rs).
 
 pub(crate) mod hooks;
+pub(crate) mod listing;
 pub(crate) mod logs;
 
 use serde::{Deserialize, Serialize};

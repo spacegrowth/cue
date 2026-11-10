@@ -47,13 +47,13 @@ const LOOKS: u64 = 30;
 const LOOK_GROWTH: u64 = 80_000;
 const SUMMARY: u64 = 5_000;
 /// A session that passed its hand-off point while editing in this many areas of its project (logs/steps/model.rs
-/// area_of) was several pieces of work in one context: each could have had a session (relay) or an agent of its own.
+/// area_of) was several pieces of work in one context: each could have had an agent of its own.
 const AREAS: usize = 3;
 
 /// What a session could have delegated. `search`: its costliest turn that looked around itself (its index in
 /// the session's turns, reads and searches, how much its context grew, and what its later replies re-read
 /// of that growth: tokens, dollars, replies). `split`: the areas it edited, when it passed its hand-off point
-/// in three or more without spawning a relay executor. `agents`, `relay`: what it did delegate.
+/// in three or more. `agents`: what it did delegate.
 #[derive(Default, Debug, PartialEq)]
 pub(crate) struct Delegate {
     pub search: Option<Search>,
@@ -62,7 +62,6 @@ pub(crate) struct Delegate {
     pub searches: u64,
     pub split: Vec<String>,
     pub agents: u64,
-    pub relay: u64,
 }
 
 #[derive(Default, Debug, PartialEq)]
@@ -76,15 +75,13 @@ pub(crate) struct Search {
 }
 
 /// One session's turns, oldest first, and the context it started at (for its hand-off point).
-/// SHORTCUT: a relay executor's own session can be told "split" too: the turns history doesn't keep which
-/// sessions were executors (leads/ knows only live ones). Upgrade path: keep a session's relay role with its turns.
 /// SHORTCUT: a turn's growth is its whole growth, what it wrote and ran too, not only what its looking read.
 /// Upgrade path: keep each tool result's size with the turn.
 pub(crate) fn delegate_of(turns: &[&db::StoredTurn], start: u64) -> Delegate {
     let mut d = Delegate::default();
     for (i, t) in turns.iter().enumerate() {
-        (d.agents, d.relay) = (d.agents + t.agents, d.relay + t.relay);
-        // From what its first reply carried (a relay executor's packet is often one long turn, the session's first).
+        d.agents += t.agents;
+        // From what its first reply carried (a session's first turn is often one long one).
         let growth = t.context.saturating_sub(t.usage.first_read + t.usage.first_write);
         if t.looks < LOOKS || t.agents > 0 || growth < LOOK_GROWTH {
             continue;
@@ -103,7 +100,7 @@ pub(crate) fn delegate_of(turns: &[&db::StoredTurn], start: u64) -> Delegate {
         }
     }
     let peak = turns.iter().map(|t| t.context).max().unwrap_or(0);
-    if d.relay == 0 && start > 0 && peak >= HANDOFF_CONTEXT && peak >= start * HANDOFF_GROWTH {
+    if start > 0 && peak >= HANDOFF_CONTEXT && peak >= start * HANDOFF_GROWTH {
         let mut areas: Vec<String> = turns.iter().flat_map(|t| t.areas.lines()).filter(|a| !a.is_empty()).map(str::to_string).collect();
         areas.sort();
         areas.dedup();
@@ -112,14 +109,6 @@ pub(crate) fn delegate_of(turns: &[&db::StoredTurn], start: u64) -> Delegate {
         }
     }
     d
-}
-
-/// Whether relay (the claude-relay plugin) is on in Claude Code on this Mac: its settings' enabledPlugins.
-/// SHORTCUT: this Mac's settings only, for every machine's sessions. Upgrade path: each machine's own.
-pub(crate) fn relay_on() -> bool {
-    let path = std::path::Path::new(&std::env::var("HOME").unwrap_or_default()).join(".claude/settings.json");
-    let v: Value = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
-    v.get("enabledPlugins").and_then(Value::as_object).is_some_and(|m| m.iter().any(|(k, on)| k.starts_with("relay@") && on.as_bool() == Some(true)))
 }
 
 /// For each session asked about (a waiting card's): what it could have delegated, from its turns so far.
@@ -140,14 +129,14 @@ pub(crate) fn delegate_states(session_ids: &[String]) -> Value {
             out.insert(sid.clone(), delegate_json(&d));
         }
     }
-    json!({ "relay": relay_on(), "sessions": out })
+    json!({ "sessions": out })
 }
 
 fn delegate_json(d: &Delegate) -> Value {
     json!({
         "search": d.search.as_ref().map(|s| json!({ "looks": s.looks, "growth": s.growth, "tokens": s.tokens, "usd": usd2(s.usd), "later": s.later })),
         "searches": d.searches, "search_tokens": d.search_tokens, "search_usd": usd2(d.search_usd),
-        "split": d.split, "agents": d.agents, "relay": d.relay,
+        "split": d.split, "agents": d.agents,
     })
 }
 
@@ -478,10 +467,10 @@ fn delegates_of(turns: &[db::StoredTurn], starts: &HashMap<String, u64>) -> Vec<
 /// What sessions could have delegated: totals, the 8 costliest searches, and the sessions that ran long
 /// across several areas.
 fn delegate_section(mut delegates: Vec<(usize, Delegate)>, tally: &Tally, long_by: &HashMap<String, f64>, rows: &mut Rows) -> Value {
-    let (mut d_tokens, mut d_usd, mut d_turns, mut d_agents, mut d_agent_sessions, mut d_relay) = (0u64, 0f64, 0u64, 0u64, 0u64, 0u64);
+    let (mut d_tokens, mut d_usd, mut d_turns, mut d_agents, mut d_agent_sessions) = (0u64, 0f64, 0u64, 0u64, 0u64);
     for (_, d) in &delegates {
         (d_tokens, d_usd, d_turns) = (d_tokens + d.search_tokens, d_usd + d.search_usd, d_turns + d.searches);
-        (d_agents, d_agent_sessions, d_relay) = (d_agents + d.agents, d_agent_sessions + u64::from(d.agents > 0), d_relay + d.relay);
+        (d_agents, d_agent_sessions) = (d_agents + d.agents, d_agent_sessions + u64::from(d.agents > 0));
     }
     delegates.sort_by(|a, b| b.1.search_usd.total_cmp(&a.1.search_usd).then(b.1.search_tokens.cmp(&a.1.search_tokens)));
     let turns = rows.turns;
@@ -494,7 +483,7 @@ fn delegate_section(mut delegates: Vec<(usize, Delegate)>, tally: &Tally, long_b
     }).collect();
     let (spread, spread_n) = spread_rows(&delegates, tally, long_by, rows);
     json!({ "usd": usd2(d_usd), "tokens": d_tokens, "turns": d_turns, "sessions": searched, "spread": spread, "spread_count": spread_n,
-        "agents": d_agents, "agent_sessions": d_agent_sessions, "relay_spawns": d_relay, "relay": relay_on(),
+        "agents": d_agents, "agent_sessions": d_agent_sessions,
         "looks_min": LOOKS, "growth_min": LOOK_GROWTH, "areas_min": AREAS })
 }
 
@@ -567,7 +556,7 @@ mod tests {
     fn turn(waited_ms: u64, context: u64, usage: crate::logs::steps::Usage) -> db::StoredTurn {
         db::StoredTurn { day: String::new(), session_id: "s".into(), tokens: 0, context, model: "claude-opus-5-5".into(), cwd: String::new(), machine: String::new(),
             errors: 0, interrupted: false, corrected: false, at_ms: 0, harness: "claude".into(), usage, waited_ms, prompt: String::new(), correction: String::new(),
-            looks: 0, agents: 0, relay: 0, areas: String::new() }
+            looks: 0, agents: 0, areas: String::new() }
     }
 
     /// A turn at `context` that read `read` from the cache, looked around `looks` times and edited in `areas`.
@@ -589,7 +578,7 @@ mod tests {
         assert_eq!(s.tokens, 420_000 * 95 / 210 + 440_000 * 95 / 220, "each later reply's reads, the growth's share of them");
         assert!(s.usd > 0.0 && (s.usd - s.tokens as f64 * prices::rates("claude-opus-5-5").unwrap().read / 1e6).abs() < 1e-6, "at the read rate");
         assert_eq!(d.searches, 1);
-        // A session's first turn (a relay executor's one packet): from its first reply, not from where the turn ended.
+        // A session's first turn: from its first reply, not from where the turn ended.
         let one = [from(20_000, work(200_000, 0, 40, "")), work(210_000, 420_000, 0, "")];
         let s = delegate_of(&one.iter().collect::<Vec<_>>(), 200_000).search.expect("its first turn");
         assert_eq!((s.turn, s.growth, s.later), (0, 180_000, 1));
@@ -608,17 +597,13 @@ mod tests {
     }
 
     #[test]
-    fn a_long_session_across_several_areas_could_have_been_split_unless_relay_was() {
+    fn a_long_session_across_several_areas_could_have_been_split() {
         let ts = [work(50_000, 0, 0, "ui"), work(150_000, 0, 0, "src-tauri\nui"), work(350_000, 0, 0, "tests")];
         let d = delegate_of(&ts.iter().collect::<Vec<_>>(), 50_000);
         assert_eq!(d.split, vec!["src-tauri", "tests", "ui"]);
         let two = [work(50_000, 0, 0, "ui"), work(350_000, 0, 0, "src-tauri")];
         assert!(delegate_of(&two.iter().collect::<Vec<_>>(), 50_000).split.is_empty(), "two areas");
         assert!(delegate_of(&ts.iter().collect::<Vec<_>>(), 100_000).split.is_empty(), "under 4× its start");
-        let relayed = [db::StoredTurn { relay: 1, ..work(50_000, 0, 0, "ui") }, work(150_000, 0, 0, "src-tauri"), work(350_000, 0, 0, "tests")];
-        let d = delegate_of(&relayed.iter().collect::<Vec<_>>(), 50_000);
-        assert!(d.split.is_empty(), "it spawned a relay executor");
-        assert_eq!(d.relay, 1);
     }
 
     #[test]

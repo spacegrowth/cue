@@ -35,9 +35,7 @@
       "present": true
     }
   },
-  "crew": {},
   "ended": [],
-  "handoffs": {},
   "history": [],
   "insight": {},
   "items": [
@@ -273,7 +271,6 @@
   "restarted": {},
   "restarting": {},
   "review_queue": {},
-  "reviews": {},
   "sessions": [
     {
       "agent_pid": null,
@@ -417,14 +414,14 @@
       "background": 0,
       "cwd": "/work/order-engine",
       "doing_ms": 0,
-      "driven_by": "its relay lead (eng)",
+      "driven_by": "its lead (eng)",
       "harness": "claude",
       "iterm_session_id": "",
       "kitty_listen_on": "",
       "kitty_window_id": "",
       "machine": "",
       "project": "order-engine",
-      "prompt": "packet 2",
+      "prompt": "task 2",
       "queued": null,
       "segments": [
         {
@@ -446,7 +443,7 @@
         {
           "at_ms": 1793984340000,
           "role": "you",
-          "text": "packet 2"
+          "text": "task 2"
         },
         {
           "at_ms": 1793984360000,

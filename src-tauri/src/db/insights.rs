@@ -50,14 +50,14 @@ pub fn save_turns(path: &str, of: &TurnsOf, rows: &[crate::logs::steps::TurnRow]
         {
             let mut q = tx.prepare_cached(
                 "INSERT INTO turns (session_id, at_ms, tokens, context, prompt_chars, model, cwd, machine, harness, errors, interrupted, corrected,
-                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, relay, areas, auto_compact)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
+                   fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, areas, auto_compact)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)
                  ON CONFLICT(session_id, at_ms) DO UPDATE SET tokens = excluded.tokens, context = excluded.context, prompt_chars = excluded.prompt_chars,
                    model = excluded.model, cwd = excluded.cwd, machine = excluded.machine, harness = excluded.harness, errors = excluded.errors,
                    interrupted = excluded.interrupted, corrected = excluded.corrected, fresh = excluded.fresh, output = excluded.output,
                    cache_read = excluded.cache_read, write_5m = excluded.write_5m, write_1h = excluded.write_1h, first_write = excluded.first_write,
                    first_read = excluded.first_read, prompt = excluded.prompt, correction = excluded.correction,
-                   looks = excluded.looks, agents = excluded.agents, relay = excluded.relay, areas = excluded.areas, auto_compact = excluded.auto_compact,
+                   looks = excluded.looks, agents = excluded.agents, areas = excluded.areas, auto_compact = excluded.auto_compact,
                    -- An open turn is read again from its own start, without the reply before it: keep the wait read the first time.
                    waited_ms = CASE WHEN excluded.waited_ms > 0 THEN excluded.waited_ms ELSE turns.waited_ms END",
             )?;
@@ -65,7 +65,7 @@ pub fn save_turns(path: &str, of: &TurnsOf, rows: &[crate::logs::steps::TurnRow]
                 let u = &t.usage;
                 q.execute(params![of.session_id, t.at_ms as i64, t.tokens as i64, t.context as i64, t.prompt_chars as i64, t.model, t.cwd, of.machine, of.harness, t.errors as i64, t.interrupted, t.corrected,
                     u.fresh as i64, u.output as i64, u.read as i64, u.write_5m as i64, u.write_1h as i64, u.first_write as i64, u.first_read as i64, t.waited_ms as i64, t.prompt, t.correction,
-                    t.looks as i64, t.agents as i64, t.relay as i64, t.areas, t.auto_compact as i64])?;
+                    t.looks as i64, t.agents as i64, t.areas, t.auto_compact as i64])?;
             }
         }
         tx.execute(
@@ -97,13 +97,12 @@ pub struct StoredTurn {
     pub correction: String,
     pub looks: u64,
     pub agents: u64,
-    pub relay: u64,
     /// The project areas it edited, one per line.
     pub areas: String,
 }
 
 const STORED_TURN: &str = "SELECT date(at_ms / 1000, 'unixepoch', 'localtime'), session_id, tokens, context, model, cwd, machine, errors, interrupted, corrected,
-   at_ms, harness, fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, relay, areas
+   at_ms, harness, fresh, output, cache_read, write_5m, write_1h, first_write, first_read, waited_ms, prompt, correction, looks, agents, areas
  FROM turns";
 
 /// Every turn since `since_ms`, oldest first.
@@ -155,8 +154,7 @@ fn stored_turn(r: &rusqlite::Row) -> rusqlite::Result<StoredTurn> {
         correction: r.get(21)?,
         looks: r.get::<_, i64>(22)? as u64,
         agents: r.get::<_, i64>(23)? as u64,
-        relay: r.get::<_, i64>(24)? as u64,
-        areas: r.get(25)?,
+        areas: r.get(24)?,
     })
 }
 

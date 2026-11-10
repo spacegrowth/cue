@@ -67,9 +67,9 @@ pub fn on_reached(f: impl Fn(&str) + Send + Sync + 'static) {
     let _ = ON_REACHED.set(Box::new(f));
 }
 
-/// What runs when a session Cue hasn't heard from in this run sends its first event from a machine (a
-/// relay executor just started, say): given the machine's name, on a thread of its own, now and once
-/// more a few seconds later (its lead may not have written it down yet). At most once per machine every
+/// What runs when a session Cue hasn't heard from in this run sends its first event from a machine (one
+/// just started there, say): given the machine's name, on a thread of its own, now and once
+/// more a few seconds later (its pane may not be on its first screen yet). At most once per machine every
 /// few seconds, so a machine reached with many sessions asks once.
 static ON_NEW_SESSION: OnceLock<Box<dyn Fn(&str) + Send + Sync>> = OnceLock::new();
 

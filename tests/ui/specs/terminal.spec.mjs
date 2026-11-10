@@ -1,6 +1,5 @@
 // A session's terminal in Cue: what's typed reaches it in order (ui/invoke.js's lanes), a terminal that stops
-// reading says so once and Resume lets typing through again, closing and resizing it, and a remote executor's
-// own terminal opening once from each way in.
+// reading says so once and Resume lets typing through again, and closing and resizing it.
 import { test, expect } from "./cue.mjs";
 import { openTerminal } from "./term.mjs";
 
@@ -81,45 +80,5 @@ test.describe("a terminal that stopped reading", () => {
     await page.keyboard.type("q");
     await cue.called("term_write", { sessionId: "relay", data: "q" });
     expect(await written(cue)).toBe("q");
-  });
-});
-
-// dns-cutover: a remote executor Cue holds as a session, in a tmux session of its own on build-box. From each way
-// in, its chat opens and its own terminal attaches, once; its lead's row opens only the lead's chat.
-test.describe("a remote executor's terminal", () => {
-  test.beforeEach(async ({ cue }) => { await cue.open("crew-remote"); });
-  const open = (page) => page.evaluate(() => active?.sid);
-  const termOpens = async (cue, sid) => (await cue.calls("term_open")).filter((c) => c.args.sessionId === sid).length;
-
-  test("from its row in its lead's tree", async ({ cue, page }) => {
-    await page.locator('.team-tree [data-exec-term="rx-dns"]').first().click();
-    await cue.called("term_open", { sessionId: "rx-dns" });
-    expect(await open(page)).toBe("rx-dns");
-    await page.locator('.team-tree [data-exec-term="rx-dns"]').first().click();
-    expect(await termOpens(cue, "rx-dns")).toBe(1);
-  });
-
-  test("from its lead's Agents tab", async ({ cue, page }) => {
-    await page.locator('.working[data-session="rlead"], .team-top[data-session="rlead"]').first().click();
-    await page.locator('.active-pane [data-bg-tab="agents"][data-sid="rlead"]').first().click();
-    await page.locator('.bg-page [data-exec-term="rx-dns"]').first().click();
-    await cue.called("term_open", { sessionId: "rx-dns" });
-    expect(await open(page)).toBe("rx-dns");
-    expect(await termOpens(cue, "rx-dns")).toBe(1);
-  });
-
-  test("from the live list", async ({ cue, page }) => {
-    await page.keyboard.press("l");
-    await page.locator('.lv-row[data-sid="rx-dns"]').click();
-    await cue.called("term_open", { sessionId: "rx-dns" });
-    expect(await open(page)).toBe("rx-dns");
-    expect(await termOpens(cue, "rx-dns")).toBe(1);
-  });
-
-  test("its lead's own row opens the lead's chat, no terminal", async ({ cue, page }) => {
-    await page.locator('.working[data-session="rlead"], .team-top[data-session="rlead"]').first().click();
-    await expect.poll(() => open(page)).toBe("rlead");
-    await expect(page.locator(".active-pane")).toContainText("infra-ops");
-    expect(await cue.calls("term_open")).toEqual([]);
   });
 });

@@ -5,9 +5,6 @@ digraph locks {
   "AUTO_SEEN" -> "DB";
   "AUTO_SEEN" -> "folder facts";
   "DB" -> "folder facts";
-  "INDEX" -> "REMOTE";
-  "INDEX" -> "REMOTE_PILEAD";
-  "INDEX" -> "VERIFY";
   "a session's feed" -> "WINDOWS";
   "a session's feed" -> "config in memory";
   "a session's feed" -> "copies";
@@ -31,15 +28,11 @@ digraph locks {
   "review queue saves" -> "DB";
   "review queue saves" -> "folder facts";
   "review queue saves" -> "the hub's store";
-  "the hub's store" -> "INDEX";
   "the hub's store" -> "config in memory";
   "the hub's store" -> "folder facts";
   "typing gate" -> "CLAUDE";
   "typing gate" -> "DB";
   "typing gate" -> "FEEDS";
-  "typing gate" -> "INDEX";
-  "typing gate" -> "LEDGER";
-  "typing gate" -> "VERIFY";
   "typing gate" -> "WINDOWS";
   "typing gate" -> "a session's feed";
   "typing gate" -> "caches";

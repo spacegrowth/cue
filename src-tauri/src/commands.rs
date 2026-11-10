@@ -402,15 +402,15 @@ mod tests {
     #[test]
     fn pi_and_codex_lists_are_pis_own_plus_what_its_extension_reports_and_codexs_own() {
         let reported = vec![
-            crate::model::AgentCmd { name: "pilead:review".into(), description: "Review an executor".into(), source: "extension".into() },
+            crate::model::AgentCmd { name: "plan:review".into(), description: "Review a step".into(), source: "extension".into() },
             crate::model::AgentCmd { name: "/tidy".into(), description: "A prompt template".into(), source: "prompt".into() },
             crate::model::AgentCmd { name: "compact".into(), description: "Pi has this itself".into(), source: "extension".into() },
             crate::model::AgentCmd { name: " ".into(), description: String::new(), source: "skill".into() },
         ];
         let pi = for_pi(&reported);
         assert_eq!(pi.iter().filter(|c| c.name == "compact").count(), 1, "Pi's own wins, once");
-        let ext = pi.iter().find(|c| c.name == "pilead:review").unwrap();
-        assert_eq!((ext.kind.as_str(), ext.desc.as_str()), ("command", "Review an executor"));
+        let ext = pi.iter().find(|c| c.name == "plan:review").unwrap();
+        assert_eq!((ext.kind.as_str(), ext.desc.as_str()), ("command", "Review a step"));
         assert_eq!(pi.iter().find(|c| c.name == "tidy").unwrap().kind, "skill", "a template is a prompt, the slash dropped");
         assert!(pi.iter().all(|c| !c.name.trim().is_empty()));
         assert!(for_pi(&[]).iter().any(|c| c.name == "model" && c.hint == "<provider/model>"));

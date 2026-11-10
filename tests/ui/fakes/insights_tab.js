@@ -1,6 +1,6 @@
 // Fakes for src-tauri/src/ipc/insights_tab.rs: the Insights view's numbers and the board's "could have delegated".
 // The summary is made up but steady (a seeded generator), shaped like the owner's last 30 days: ~5,500 turns,
-// ~250 late answers re-writing ~59M tokens (≈ $470). ?itab=empty: no turns read yet. ?relay=off: relay not set up.
+// ~250 late answers re-writing ~59M tokens (≈ $470). ?itab=empty: no turns read yet.
 CueBridge.area("insights_tab", (w) => {
   const D = 86400000, H = 3600000, M = 60000;
   /** The same "random" number for the same n, every run. */
@@ -82,7 +82,7 @@ CueBridge.area("insights_tab", (w) => {
   function delegateOf(at) {
     const dlr = [["c1", "cue", 64, 188000, 21, 4.1], ["c2", "order-engine", 52, 141000, 30, 3.2], ["q1", "data-pipeline", 38, 97000, 12, 1.4], ["c4", "web-app", 33, 84000, 6, 0.4]];
     const spread = [["c7", "order-engine", ["src", "tests", "scripts", "web", "/x/shared/lib"], 520000], ["c3", "cue", ["src-tauri", "ui", "tests"], 410000], ["c8", "data-pipeline", ["dags", "lib", "sql"], 330000]];
-    return { usd: 12.6, tokens: 25200000, turns: 31, looks_min: 30, growth_min: 80000, areas_min: 3, agents: 412, agent_sessions: 96, relay_spawns: 188, relay: w.q.get("relay") !== "off", spread_count: 3,
+    return { usd: 12.6, tokens: 25200000, turns: 31, looks_min: 30, growth_min: 80000, areas_min: 3, agents: 412, agent_sessions: 96, spread_count: 3,
       sessions: dlr.map(([sid, project, looks, growth, later, usd], i) => who(sid, project, { last_ms: at(4 + i * 22), at_ms: at(4 + i * 22), prompt: "", looks, growth, later, usd, tokens: Math.round(usd * 2e6), turns: 1 + (i % 2) })),
       spread: spread.map(([sid, project, areas, peak], i) => who(sid, project, { last_ms: at(9 + i * 40), areas, usd: 0, peak_context: peak })) };
   }
@@ -104,9 +104,9 @@ CueBridge.area("insights_tab", (w) => {
 
   return {
     insights_summary: summary,
-    // ?del=1: the board's sessions could have delegated (relay on): one looked around itself, one ran long across areas.
-    insight_delegate: () => !w.q.has("del") ? { relay: false, sessions: {} } : { relay: true, sessions: {
-      det: { search: { looks: 46, growth: 132000, tokens: 1840000, usd: 0.92, later: 14 }, searches: 1, search_tokens: 1840000, search_usd: 0.92, split: [], agents: 0, relay: 0 },
-      sec: { search: null, searches: 0, search_tokens: 0, search_usd: 0, split: ["src", "tests", "scripts", "/x/shared/lib"], agents: 2, relay: 0 } } },
+    // ?del=1: the board's sessions could have delegated: one looked around itself, one ran long across areas.
+    insight_delegate: () => !w.q.has("del") ? { sessions: {} } : { sessions: {
+      det: { search: { looks: 46, growth: 132000, tokens: 1840000, usd: 0.92, later: 14 }, searches: 1, search_tokens: 1840000, search_usd: 0.92, split: [], agents: 0 },
+      sec: { search: null, searches: 0, search_tokens: 0, search_usd: 0, split: ["src", "tests", "scripts", "/x/shared/lib"], agents: 2 } } },
   };
 });

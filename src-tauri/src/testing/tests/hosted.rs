@@ -684,8 +684,8 @@ fn pis_and_codexs_own_commands_never_reach_the_model_sign_in_says_what_to_run_an
     let refused = w.send_to(&pi, "/compact");
     assert!(refused.to_string().contains("a hosted session doesn't have"), "{refused}");
     assert_eq!(w.hosted.sent().len(), before, "neither went to Pi as a message");
-    w.send_to(&pi, "/pilead:mode");
-    assert_eq!(w.hosted.sent().last(), Some(&(pi.clone(), "/pilead:mode".to_string())), "an extension's command does");
+    w.send_to(&pi, "/plan:mode");
+    assert_eq!(w.hosted.sent().last(), Some(&(pi.clone(), "/plan:mode".to_string())), "an extension's command does");
     let codex = started_as(&w, "codex");
     assert!(w.send_to(&codex, "/login").to_string().contains("run codex login in a terminal"));
     assert_eq!(w.launcher.launched().len(), tabs, "Cue opens nothing");

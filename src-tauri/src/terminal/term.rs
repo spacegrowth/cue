@@ -104,9 +104,8 @@ pub fn open(app: AppHandle, sid: &str, o: &crate::model::Origin, cols: u16, rows
     })
 }
 
-/// A relay / pi-lead executor on machine `machine`, running in a detached tmux session of its own
-/// (`tmux_session`, from its lead's listing there): its terminal is a client attached to exactly that
-/// session, never to its lead's. Opened, deduped and closed as `open`'s are (one per `sid`).
+/// A detached tmux session of its own on machine `machine` (`tmux_session`: an action's run there): its
+/// terminal is a client attached to exactly that session. Opened, deduped and closed as `open`'s are (one per `sid`).
 pub fn open_attached(app: AppHandle, sid: &str, machine: &str, tmux_session: &str, cols: u16, rows: u16) -> Result<u64, String> {
     let host = crate::machines::get(machine).ok_or(format!("{machine} isn't one of your machines any more (+ New → Machine)"))?.host;
     let target = Target::Session(tmux_session);
@@ -123,7 +122,7 @@ pub(crate) fn attach_local(sid: &str, tmux_session: &str, cols: u16, rows: u16, 
 }
 
 /// What a terminal shows: a session's pane (through a view of Cue's own, grouped with the pane's tmux
-/// session), or a whole tmux session it attaches to (an executor's own, on a machine).
+/// session), or a whole tmux session it attaches to (an action's own, or a shell of Cue's).
 enum Target<'a> {
     Pane(&'a str),
     Session(&'a str),
@@ -630,8 +629,8 @@ mod tests {
     }
 
     #[test]
-    fn an_executors_terminal_attaches_to_its_own_tmux_session_by_its_whole_name() {
-        assert_eq!(attach_args("relay-exec_2"), Some(vec!["-u".to_string(), "attach-session".into(), "-t".into(), "=relay-exec_2".into()]));
+    fn a_terminal_attaches_to_its_own_tmux_session_by_its_whole_name() {
+        assert_eq!(attach_args("run-act_2"), Some(vec!["-u".to_string(), "attach-session".into(), "-t".into(), "=run-act_2".into()]));
         for bad in ["", "a b", "lead:0", "x;y", "$(id)", "a.b"] {
             assert_eq!(attach_args(bad), None, "{bad:?}");
         }
@@ -658,8 +657,8 @@ mod tests {
         let out = watch(seen.clone(), ended.clone());
         once("ex", 80, 12, || launch("ex", &target, None, 80, 12, out)).unwrap();
         let attached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).lines().count() == 1 && !crate::locking::lock(&seen, "seen").is_empty());
-        type_in("ex", "typed into the executor\r").unwrap();
-        let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("typed into the executor"));
+        type_in("ex", "typed into the session\r").unwrap();
+        let reached = until(|| tmux(&["capture-pane", "-p", "-t", &pane]).contains("typed into the session"));
         let elsewhere = tmux(&["capture-pane", "-p", "-t", &other]);
         close("ex");
         let detached = until(|| tmux(&["list-clients", "-t", &name, "-F", "#{client_name}"]).trim().is_empty());
@@ -676,7 +675,7 @@ mod tests {
         tmux(&["kill-session", "-t", &format!("={longer}")]);
         assert!(attached, "one client, on its own session");
         assert!(reached, "what you type reaches it");
-        assert!(!elsewhere.contains("typed into the executor"), "and nothing else: {elsewhere:?}");
+        assert!(!elsewhere.contains("typed into the session"), "and nothing else: {elsewhere:?}");
         assert!(detached && heard_end, "closing ends the client");
         assert!(after.lines().any(|l| l == name), "its session keeps running: {after:?}");
         assert!(gone_ends, "a session that's gone ends the terminal: {:?}", &*crate::locking::lock(&seen2, "seen2"));

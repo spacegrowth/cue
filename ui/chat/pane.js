@@ -76,14 +76,12 @@ function fullView(sid, it, s, harness) {
   const full = hvp ? { ...hvp, forKey: `h|${sid}|${hv.id}` } : rvp ? { ...rvp, forKey: `r|${sid}|${rv.all[rv.at].key}` } : null;
   return { full, reading: !!rvp };
 }
-/** The pane's head: the project, the agent, the name, its tags and chips, the pill, and its buttons. The badge
- *  already says which agent: no "Claude Code" beside it. An executor's relay name and a crew's model stay. */
+/** The pane's head: the project, the agent, the name, its chips, the pill, and its buttons. The badge
+ *  already says which agent: no "Claude Code" beside it. */
 function activeHead(a) {
   const { it, s, sid, harness, project, pending, ch } = a;
-  const cm = crewOf(sid);
-  const who = cm?.role === "executor" ? `${esc(cm.name)}${cm.model ? ` · ${esc(shortModel(cm.model))}` : ""}` : cm?.role === "lead" && cm.model ? esc(shortModel(cm.model)) : "";
   const closable = sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" });
-  return `<div class="ap-head">${relayBack(sid)}${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${relayMark(sid)}${nameHead(sid, project)}${roleTag(sid, true)}${who ? `<span class="dim">${who}</span>` : ""}${a.onMachine}${a.pill}${sid ? (execOf(sid) ? teamChips(sid) : agentChips(sid)) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
+  return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
       ${sid ? moreMenu(sid, s, closable) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
@@ -102,8 +100,8 @@ function openPane(a, full) {
   return `<div class="active-pane ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     ${activeHead(a)}
     ${btwPanel(sid)}
-    ${subHead(s?.cwd || a.it?.cwd, "", sid)}
-    ${sid ? addOn.chatTop(sid) + teamGroup(sid) + reviewRows(sid) + leadCard(sid) + packetCard(sid) : ""}
+    ${subHead(s?.cwd || a.it?.cwd, sid)}
+    ${sid ? addOn.chatTop(sid) + teamGroup(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full)}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
@@ -129,8 +127,8 @@ function activePane() {
   // Restarting (after an MCP change): covered until it's back, with nothing to press meanwhile.
   const rs = sid && state.restarting?.[sid];
   if (rs) return `<div class="active-pane restarting">
-    <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${roleTag(sid, true)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
-    ${subHead(s?.cwd || it?.cwd, "", sid)}
+    <div class="ap-head">${projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${onMachine}<span class="pill soft">restarting</span><span class="grow"></span></div>
+    ${subHead(s?.cwd || it?.cwd, sid)}
     ${chatBox(`m|${sid}`, chatHtml(it, s, harness, true))}${foot}${restartCover(rs, nameOf(sid, project))}</div>`;
   // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.
   if (reading) return `<div class="active-pane reading ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}

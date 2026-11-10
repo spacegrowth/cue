@@ -2,7 +2,6 @@
 //! sessions driven by another agent, the sweep across agents and machines, Closed, an empty folder, and
 //! hundreds of sessions at once.
 
-use crate::leads::{install_index, reported_exec};
 use crate::testing::World;
 use serde_json::json;
 use std::collections::HashSet;
@@ -123,20 +122,10 @@ fn a_usage_limit_ends_with_your_next_prompt() {
 }
 
 #[test]
-fn an_executor_cue_knows_from_relay_is_driven_even_when_its_hook_doesnt_say() {
-    let w = World::new();
-    install_index([("E".to_string(), reported_exec())].into());
-    w.session("E").prompt("packet 1").stop("Report written.");
-    let s = w.snapshot();
-    assert!(s.cards_of("E").is_empty(), "its lead's to pick up, not yours");
-    assert_eq!(s.state("E"), "agent");
-}
-
-#[test]
 fn a_driven_session_asking_permission_is_still_your_card() {
     let w = World::new();
     let a = w.session("x");
-    a.prompt("packet 1").stop_driven("Report written.", "its relay lead (L)");
+    a.prompt("task 1").stop_driven("Report written.", "its lead (L)");
     let ask = a.ask_bash("git push");
     assert_eq!(w.snapshot().card("x")["id"], ask.id.as_str(), "only you can answer a permission");
 }
@@ -145,7 +134,7 @@ fn a_driven_session_asking_permission_is_still_your_card() {
 fn a_turn_of_yours_after_a_driven_one_is_your_card_again() {
     let w = World::new();
     let a = w.session("x");
-    a.prompt("packet 1").stop_driven("Report written.", "its relay lead (L)");
+    a.prompt("task 1").stop_driven("Report written.", "its lead (L)");
     a.prompt("what did you change?").stop("Two files.");
     let s = w.snapshot();
     assert_eq!(s.card("x")["message"], "Two files.");

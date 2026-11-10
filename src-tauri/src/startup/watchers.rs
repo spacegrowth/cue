@@ -3,7 +3,7 @@
 
 use crate::hub::Hub;
 use crate::ipc::{bring_back_cards, restore_machine, restore_sessions};
-use crate::{config, leads, machines};
+use crate::{config, machines};
 use std::sync::Arc;
 
 /// Settings watched, then this Mac's sessions back as they were before Cue stopped.
@@ -28,11 +28,11 @@ pub(super) fn bring_back(hub: &Arc<Hub>) {
 pub(super) fn machines(hub: &Arc<Hub>) {
     let h = hub.clone();
     machines::hooks::on_reached(move |m| restore_machine(&h, m));
-    // A new session there (a relay executor just started): its crew read now, not at the next poll.
+    // A new session there: the machine read now (its setup screens), not at the next poll.
     let h = hub.clone();
     machines::hooks::on_new_session(move |m| {
         if let Some(mach) = machines::get(m) {
-            if leads::refresh_remote(&mach.name, &mach.host).0 {
+            if machines::listing::refresh(&mach.name, &mach.host).0 {
                 h.redraw();
             }
         }

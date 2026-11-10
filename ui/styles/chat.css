@@ -112,7 +112,7 @@ a[data-path]:hover, .msg a[data-path]:hover { text-decoration: underline; text-u
 .stx-line:disabled { cursor: default; }
 .stx-ic { width: 17px; height: 17px; border-radius: 4px; flex: none; display: grid; place-items: center; font: 800 9.5px var(--mono); font-style: normal; background: var(--panel-2); color: var(--muted); }
 .stx-ic.k-edit { background: var(--sel); color: var(--on-sel); }
-.stx-ic.k-run, .stx-ic.k-relay { background: var(--slab); color: var(--on-slab); }
+.stx-ic.k-run { background: var(--slab); color: var(--on-slab); }
 .stx-line.bad .stx-ic { background: color-mix(in srgb, var(--deny) 16%, var(--panel)); color: var(--deny); }
 .stx-what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stx-what .mono { font-size: 11.5px; }
@@ -403,7 +403,7 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); } }
 :root[data-theme="dark"] .st-inv { --panel: color-mix(in srgb, var(--on-bg) 13%, var(--bg)); --panel-2: color-mix(in srgb, var(--on-bg) 21%, var(--bg)); --line: color-mix(in srgb, var(--on-bg) 28%, var(--bg)); }
 .st-panel { position: relative; flex: none; margin: 8px 16px 6px; z-index: 5; }
-.st-head { display: flex; align-items: center; gap: 6px; border-radius: 10px; }   /* the line and relay's buttons, one band */
+.st-head { display: flex; align-items: center; gap: 6px; border-radius: 10px; }   /* the line and its buttons, one band */
 .st-pill { flex: none; height: 22px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--pill-radius); background: var(--panel-2); color: var(--ink); font: 600 11.5px var(--sans); cursor: pointer; }
 .st-pill:hover { border-color: var(--muted); }
 .st-agents { flex: none; display: inline-flex; align-items: center; gap: 5px; font: 600 11.5px var(--sans); color: var(--muted); }

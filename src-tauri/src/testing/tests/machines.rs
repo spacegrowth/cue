@@ -126,21 +126,21 @@ fn a_slow_machine_holds_up_only_its_own_calls() {
 }
 
 #[test]
-fn an_unreachable_machine_lists_no_crews_and_nothing_live_there() {
-    let (_w, _ssh, m) = with_machine("crewless");
-    let (changed, live) = crate::leads::refresh_remote(&m.name, &m.host);
+fn an_unreachable_machine_lists_nothing_live_there() {
+    let (_w, _ssh, m) = with_machine("unreached");
+    let (changed, live) = crate::machines::listing::refresh(&m.name, &m.host);
     assert!(!changed);
     assert_eq!(live, None, "not reached: the sweep must not take its sessions for ended");
 }
 
 #[test]
 fn a_machine_that_answers_says_which_of_its_sessions_are_live_and_garbage_says_none() {
-    let (_w, ssh, m) = with_machine("crewed");
-    ssh.host("crewed", "printf 'NORELAY\\n__CUE_PILEAD__\\n__CUE_LIVE__\\nsess-1\\n\\nsess-2\\n'");
-    let (_, live) = crate::leads::refresh_remote(&m.name, &m.host);
+    let (_w, ssh, m) = with_machine("answers");
+    ssh.host("answers", "printf '__CUE_LIVE__\\nsess-1\\n\\nsess-2\\n'");
+    let (_, live) = crate::machines::listing::refresh(&m.name, &m.host);
     assert_eq!(live.unwrap(), ["sess-1".to_string(), "sess-2".to_string()].into_iter().collect());
-    ssh.host("crewed", "printf '\\001garbage{\\n'");
-    let (_, live) = crate::leads::refresh_remote(&m.name, &m.host);
+    ssh.host("answers", "printf '\\001garbage{\\n'");
+    let (_, live) = crate::machines::listing::refresh(&m.name, &m.host);
     assert_eq!(live, Some(Default::default()), "reached, with nothing live it can name");
 }
 
@@ -200,7 +200,7 @@ fn a_machine_answering_slowly_is_waited_for_then_read_again_on_time() {
     let t0 = Instant::now();
     let ms = vec![(m.name.clone(), true)];
     assert_eq!(s.due(&ms, t0), vec![m.name.clone()]);
-    let (_, live) = crate::leads::refresh_remote(&m.name, &m.host);
+    let (_, live) = crate::machines::listing::refresh(&m.name, &m.host);
     assert_eq!(live, Some(["slow-1".to_string()].into_iter().collect()));
     assert_eq!(s.done(&m.name, live.is_some()), None, "a slow answer is still an answer: no change to log");
     assert_eq!(s.due(&ms, t0 + Duration::from_secs(10)).len(), 1, "on its 10 s pace");

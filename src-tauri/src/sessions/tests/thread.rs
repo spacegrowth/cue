@@ -97,8 +97,8 @@ fn the_same_short_reply_twice_is_two_messages() {
 
 #[test]
 fn a_paste_split_into_chunks_reads_as_sent() {
-    let wrapped = "<pasted_content id=\"bcfe\">\nIs it ready? ✅ **Naming:** c\n</pasted_content id=\"bcfe\">\n\n\n<pasted_content id=\"bcfe\">\nlaude-relay is public.\n\nNext line.\n</pasted_content id=\"bcfe\">\n";
-    assert_eq!(unwrap_pasted(wrapped).trim(), "Is it ready? ✅ **Naming:** claude-relay is public.\n\nNext line.");
+    let wrapped = "<pasted_content id=\"bcfe\">\nIs it ready? ✅ **Naming:** c\n</pasted_content id=\"bcfe\">\n\n\n<pasted_content id=\"bcfe\">\nlaude-teams is public.\n\nNext line.\n</pasted_content id=\"bcfe\">\n";
+    assert_eq!(unwrap_pasted(wrapped).trim(), "Is it ready? ✅ **Naming:** claude-teams is public.\n\nNext line.");
     assert_eq!(unwrap_pasted("no tags <here>"), "no tags <here>");
     assert_eq!(unwrap_pasted("cut <pasted_content id=\"x\""), "cut <pasted_content id=\"x\"");
 }
@@ -173,8 +173,8 @@ fn a_reply_and_its_echoed_prompt_are_one_exchange() {
 fn a_long_forward_and_its_wrapped_echo_are_one_exchange() {
     let mut s = Sessions::default();
     s.mark(&origin("f"), "waiting", None);
-    s.note("f", "you", "check this\n\n[Forwarded from the backend session]\nIt's well built. claude-relay is public.", 5);
-    let echo = "<pasted_content id=\"a\">\ncheck this\n\n[Forwarded from the backend session]\nIt's well built. c\n</pasted_content id=\"a\">\n\n\n<pasted_content id=\"a\">\nlaude-relay is public.\n</pasted_content id=\"a\">";
+    s.note("f", "you", "check this\n\n[Forwarded from the backend session]\nIt's well built. claude-teams is public.", 5);
+    let echo = "<pasted_content id=\"a\">\ncheck this\n\n[Forwarded from the backend session]\nIt's well built. c\n</pasted_content id=\"a\">\n\n\n<pasted_content id=\"a\">\nlaude-teams is public.\n</pasted_content id=\"a\">";
     s.note("f", "you", &unwrap_pasted(echo), 5);
     assert_eq!(s.thread("f").len(), 1);
 }

@@ -1,7 +1,6 @@
 //! The built-in terminal, a session's screen and keys, and dictation.
 
 use super::{blocking, with_hub};
-use crate::leads;
 use crate::model;
 use crate::terminal::shells;
 use crate::terminal::term;
@@ -64,13 +63,7 @@ pub(crate) fn tmux_origin_of(hub: &Hub, session_id: &str) -> Result<model::Origi
 /// The built-in terminal (sessions in tmux): open it at its size; its output comes as "term" events.
 #[tauri::command]
 pub(crate) async fn term_open(app: tauri::AppHandle, hub: State<'_, Arc<Hub>>, session_id: String, cols: u16, rows: u16) -> Result<u64, String> {
-    // A relay / pi-lead executor on a machine, in a tmux session of its own: that session, whatever
-    // pane Cue has on record for it (and whether or not Cue holds it at all). Never its lead's.
-    with_hub(&hub, move |h| match leads::exec_tmux(&session_id) {
-        Some((machine, name)) => term::open_attached(app, &session_id, &machine, &name, cols, rows),
-        None => term::open(app, &session_id, &tmux_origin_of(h, &session_id)?, cols, rows),
-    })
-    .await?
+    with_hub(&hub, move |h| term::open(app, &session_id, &tmux_origin_of(h, &session_id)?, cols, rows)).await?
 }
 
 /// A shell of Cue's own (the floating terminal's tabs), `id` from the window, in `cwd` (home when that

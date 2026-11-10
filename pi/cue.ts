@@ -296,7 +296,7 @@ export default function (pi: ExtensionAPI) {
 					});
 					const text = typeof m.text === "string" ? m.text.trim() : "";
 					if (!text && !images.length) return;
-					// "/…" from Cue runs as a command (/pilead:review, a prompt template), as it would typed
+					// "/…" from Cue runs as a command (an extension's, a prompt template), as it would typed
 					// here; " /…" (a leading space) is a message that starts with a slash. Pi runs commands
 					// from an extension only when asked to.
 					const command = typeof m.text === "string" && m.text.startsWith("/");

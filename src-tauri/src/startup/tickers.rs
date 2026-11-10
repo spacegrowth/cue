@@ -1,5 +1,5 @@
-//! What runs in the background for as long as Cue does: the socket the agents' hooks talk to, the crews
-//! read here every 3 s and on your machines on their own schedule, the usage file watched, and a newer
+//! What runs in the background for as long as Cue does: the socket the agents' hooks talk to, live
+//! sessions read here every 3 s and on your machines on their own schedule, the usage file watched, and a newer
 //! Cue looked for.
 
 use crate::hub::Hub;
@@ -7,7 +7,7 @@ use crate::ipc::{find_update, offer_update};
 use crate::logs::{live, usage_file};
 use crate::machines::{self, Machine};
 use crate::remote_poll::{self, Schedule};
-use crate::{leads, logs, server};
+use crate::{logs, server};
 use std::sync::{Arc, Mutex};
 
 /// The socket the agents' hooks and `cue` commands talk to; the window hears if it stops.
@@ -23,8 +23,8 @@ pub(super) fn serve_socket(hub: &Arc<Hub>, app: &tauri::AppHandle) {
     });
 }
 
-/// Leads and executors (claude-relay, pi-lead): re-read their state folders every few seconds.
-pub(super) fn local_crews(hub: &Arc<Hub>) {
+/// Live Claude sessions and folders here: re-read every few seconds.
+pub(super) fn local_reads(hub: &Arc<Hub>) {
     let h = hub.clone();
     tauri::async_runtime::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(3));
@@ -35,12 +35,12 @@ pub(super) fn local_crews(hub: &Arc<Hub>) {
     });
 }
 
-/// One local read: crews, live Claude sessions and folders, then the sessions whose agent is gone and the
+/// One local read: live Claude sessions and folders, then the sessions whose agent is gone and the
 /// ones Cue doesn't know yet.
 async fn refresh_local(h: &Arc<Hub>) {
     // Also every live Claude session, for the Sessions view, and each folder's repository and branch
     // (non-short-circuit |: all run).
-    let (others, folders) = tauri::async_runtime::spawn_blocking(|| (leads::refresh() | live::refresh(), logs::repos::refresh())).await.unwrap_or((false, false));
+    let (others, folders) = tauri::async_runtime::spawn_blocking(|| (live::refresh(), logs::repos::refresh())).await.unwrap_or((false, false));
     // Folders' facts came in: the projects the hub keeps derived again (that redraws).
     if folders {
         let f = h.clone();
@@ -56,11 +56,11 @@ async fn refresh_local(h: &Arc<Hub>) {
     let _ = tauri::async_runtime::spawn_blocking(move || a.sync_live()).await;
 }
 
-/// Leads and executors on your machines: relay's and pi-lead's listing there (one SSH call),
+/// Your machines: their live sessions and setup screens (machines::listing, one SSH call),
 /// on every machine, whether or not Cue has anything open there: every 10 s where it has a
 /// live session, every minute elsewhere, less and less often while one can't be reached
 /// (remote_poll). Each machine is read on its own, so one that hangs holds no other up.
-pub(super) fn remote_crews(hub: &Arc<Hub>) {
+pub(super) fn remote_reads(hub: &Arc<Hub>) {
     let h = hub.clone();
     tauri::async_runtime::spawn(async move {
         let sched = Arc::new(Mutex::new(Schedule::default()));
@@ -74,12 +74,12 @@ pub(super) fn remote_crews(hub: &Arc<Hub>) {
     });
 }
 
-/// The machines whose turn it is, each read on its own thread; crews of machines that were removed dropped.
+/// The machines whose turn it is, each read on its own thread; what was read of machines that were removed dropped.
 fn read_due_machines(a: &Arc<Hub>, s: &Arc<Mutex<Schedule>>) {
     let busy: std::collections::HashSet<String> = a.saved_sessions().into_iter().map(|s| s.origin.machine).filter(|m| !m.is_empty()).collect();
     let list = machines::list();
     let names: Vec<String> = list.iter().map(|m| m.name.clone()).collect();
-    if leads::retain_remote(&names) {
+    if machines::listing::retain(&names) {
         a.redraw();
     }
     let marks: Vec<(String, bool)> = list.iter().map(|m| (m.name.clone(), busy.contains(&m.name))).collect();
@@ -90,13 +90,13 @@ fn read_due_machines(a: &Arc<Hub>, s: &Arc<Mutex<Schedule>>) {
     }
 }
 
-/// One machine's crews read, its schedule told whether it answered, and (where Cue has sessions there)
+/// One machine read, its schedule told whether it answered, and (where Cue has sessions there)
 /// the ones that ended while Cue wasn't looking swept.
 fn read_machine(a: &Arc<Hub>, s: &Mutex<Schedule>, m: &Machine, has_sessions: bool) {
-    let (changed, live) = leads::refresh_remote(&m.name, &m.host);
+    let (changed, live) = machines::listing::refresh(&m.name, &m.host);
     let change = crate::locking::lock(s, "remote poll schedule").done(&m.name, live.is_some());
     match change {
-        Some(false) => eprintln!("cue: can't reach {} for its crews; trying less often until it answers", m.name),
+        Some(false) => eprintln!("cue: can't reach {}; trying less often until it answers", m.name),
         Some(true) => eprintln!("cue: reached {} again", m.name),
         None => {}
     }

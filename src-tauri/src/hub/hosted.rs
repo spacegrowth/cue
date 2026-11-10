@@ -183,7 +183,6 @@ impl Hub {
                     }
                     return;
                 }
-                let driver = crate::leads::resolve_driver(&origin.session_id, "");
                 #[cfg(feature = "ext")]
                 let (sid, ended) = (origin.session_id.clone(), if failed { super::ext::TurnEnd::Failed(text.clone()) } else { super::ext::TurnEnd::Done(text.clone()) });
                 if failed {
@@ -191,7 +190,7 @@ impl Hub {
                 } else {
                     self.team_reply(&origin.session_id, &text, unprompted);
                     let turn = turn_parts(&origin.transcript_path, &text);
-                    self.event(origin, "stopped", text, turn, &driver);
+                    self.event(origin, "stopped", text, turn, "");
                 }
                 #[cfg(feature = "ext")]
                 self.ext_turn_ended(&sid, ended);
@@ -240,8 +239,7 @@ impl Hub {
             }
             return;
         }
-        let driver = crate::leads::resolve_driver(&sid, "");
-        self.event(origin, "active", text.clone(), vec![], &driver);
+        self.event(origin, "active", text.clone(), vec![], "");
         self.write(|st| st.sessions.set_prompt(&sid, &crate::sessions::unwrap_pasted(&text)));
         self.changed();
     }
@@ -271,8 +269,7 @@ impl Hub {
     fn hosted_at_work(&self, origin: Origin) {
         let idle = self.read(|st| matches!(st.sessions.state(&origin.session_id).as_deref(), Some("waiting" | "stopped")));
         if idle {
-            let driver = crate::leads::resolve_driver(&origin.session_id, "");
-            self.event(origin, "active", String::new(), vec![], &driver);
+            self.event(origin, "active", String::new(), vec![], "");
         }
     }
 

@@ -112,9 +112,6 @@
         if (openQ && /fold=1/.test(q)) trayFolded.add(openQ);
         const bgQ = new URLSearchParams(q).get("bg");
         if (openQ && bgQ) setTimeout(() => { helperView = { sid: openQ, id: bgQ }; renderMain(); }, 400);
-        // ?crew=1&remote=1: dns-cutover's row is clicked twice (still one terminal); &view=sessions: it's the one open there.
-        if (/remote=1/.test(q) && /view=sessions/.test(q)) setTimeout(() => { quietOpen = "rx-dns"; renderMain(); }, 200);
-        else if (/remote=1/.test(q)) setTimeout(() => { document.querySelector('[data-exec-term="rx-dns"]')?.click(); setTimeout(() => document.querySelector('[data-exec-term="rx-dns"]')?.click(), 1200); }, 200);
         // ?new=1: + New session (⌘N), with tmux installed; &agent=pi|codex picks the agent, &perm=skip a permission.
         if (/new=1/.test(q)) setTimeout(() => {
           state.settings.sessions = { tmux: false, tmux_installed: true, terminal: "iTerm" };

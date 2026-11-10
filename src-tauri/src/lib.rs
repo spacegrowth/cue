@@ -12,7 +12,6 @@ mod safe_git;
 mod commands;
 mod hub;
 mod ipc;
-mod leads;
 mod locking;
 mod logs;
 mod model;
@@ -39,8 +38,8 @@ mod machines;
 mod mini;
 mod remote_poll;
 
-// The old crate-root paths of the moved modules, kept for what still names them there: the hub (its own
-// packet) and the optional add-on.
+// The old crate-root paths of the moved modules, kept for what still names them there: the hub (moved on
+// its own) and the optional add-on.
 pub(crate) use logs::{about, live, steps, transcript, usage, usage_file};
 pub(crate) use terminal::{dialog, focus};
 #[cfg(feature = "ext")]

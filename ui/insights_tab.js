@@ -109,7 +109,7 @@ const itabRows = new Map();
  *  (the first of them the one a narrow window leaves out). Clicking it opens the session. */
 function itabSess(r, cells, share = null, at = null) {
   itabRows.set(r.session_id, r);
-  const name = bareName(nameOf(r.session_id, r.project)) || r.project || "session";
+  const name = nameOf(r.session_id, r.project) || r.project || "session";
   const proj = r.project && r.project !== name ? `<span class="itab-proj">${esc(r.project)}</span>` : "";
   const bar = share == null ? "" : `<span class="itab-bar"><i style="width:${Math.max(2, share * 100).toFixed(1)}%"></i></span>`;
   return `<button class="itab-row${bar ? " itab-row-bar" : ""}" data-itab-open="${esc(r.session_id)}"${at ? ` data-itab-at="${at}"` : ""}>
@@ -236,7 +236,7 @@ function itabDots(answers) {
  *  amber mark where it passed its hand-off point and the amber past it, what it re-read above where it started. */
 function itabClimb(r) {
   itabRows.set(r.session_id, r);
-  const name = bareName(nameOf(r.session_id, r.project)) || r.project || "session";
+  const name = nameOf(r.session_id, r.project) || r.project || "session";
   const pts = r.climb || [], n = Math.max(2, r.climb_turns || pts.length), W = 300, H = 100;
   const top = Math.max(r.peak_context || 0, 300000, ...pts.map((p) => p[1])) * 1.08;
   const X = (i) => (i / (n - 1)) * W, Y = (v) => H - (v / top) * H, s0 = Y(r.start_context || 0);
@@ -324,16 +324,14 @@ function itabLong(l) {
 /** Could have delegated: turns that looked around themselves, and long sessions across several areas. */
 function itabDelegate(dl) {
   const dls = dl.sessions || [], dsp = dl.spread || [], dTop = Math.max(0.01, ...dls.map((r) => r.usd));
-  const used = `Already delegated: ${itabNum(dl.agents || 0)} background agent${dl.agents === 1 ? "" : "s"} in ${itabNum(dl.agent_sessions || 0)} session${dl.agent_sessions === 1 ? "" : "s"}${dl.relay_spawns ? `, ${itabNum(dl.relay_spawns)} relay executor${dl.relay_spawns === 1 ? "" : "s"}` : ""}.`;
+  const used = `Already delegated: ${itabNum(dl.agents || 0)} background agent${dl.agents === 1 ? "" : "s"} in ${itabNum(dl.agent_sessions || 0)} session${dl.agent_sessions === 1 ? "" : "s"}.`;
   const looked = dl.turns
     ? `${itabNum(dl.turns)} turn${dl.turns === 1 ? "" : "s"} did ${dl.looks_min} or more reads and searches themselves, each growing its session's context by ${itabNum(dl.growth_min)} or more; later replies re-read ${itabNum(dl.tokens)} tokens of it.`
     : "No turn did a lot of reading and searching itself.";
   const spreadLine = dl.spread_count ? ` ${dl.spread_count} session${dl.spread_count === 1 ? "" : "s"} ran past the hand-off point editing in ${dl.areas_min} or more areas.` : "";
   const delSess = dls.length ? itabFig("The turns that looked around", "reads and searches · what it grew · what was re-read", `<div class="itab-list">${dls.map((r) => itabSess(r, [`${r.looks} looks`, `+${itabNum(r.growth)}`, `<b>${itabUsd(r.usd)}</b>`], r.usd / dTop, r.at_ms)).join("")}</div>`) : "";
   const delSpread = dsp.length ? itabFig("Long, across several areas", "its re-reads past the hand-off point are counted under Long sessions", `<div class="itab-list">${dsp.map((r) => itabSess(r, [`peak ${itabNum(r.peak_context)}`, esc(r.areas.slice(0, 4).map(areaName).join(", ") + (r.areas.length > 4 ? ", …" : "")), `<b>${r.areas.length} areas</b>`])).join("")}</div>`) : "";
-  const split = dl.relay
-    ? "For work across several areas, start a relay lead (/relay:mode): each area gets an executor with a small context of its own."
-    : "For work across several areas, a background agent per area, each in its own worktree, keeps every context small.";
+  const split = "For work across several areas, a background agent per area, each in its own worktree, keeps every context small.";
   return itabFind("Could have delegated", itabUsd(dl.usd || 0),
     `${looked}${spreadLine} ${used}`,
     "", "",
@@ -407,7 +405,7 @@ document.addEventListener("click", (e) => {
   if ((state.live || []).some((q) => q.session_id === sid)) return svAct("quiet", sid);
   // Parked or just closed: its pane, with what resuming costs beside Resume and Start fresh.
   if (parkedOf(sid) || closedOf(sid)) return setActive(null, sid);
-  openConvo({ session_id: sid, name: bareName(nameOf(sid, r.project)) || r.project, project: r.project, harness: r.harness }, +b.dataset.itabAt || null, "Insights");
+  openConvo({ session_id: sid, name: nameOf(sid, r.project) || r.project, project: r.project, harness: r.harness }, +b.dataset.itabAt || null, "Insights");
 });
 
 /** A range picked: kept, and the view drawn for it. */

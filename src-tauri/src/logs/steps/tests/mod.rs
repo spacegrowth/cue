@@ -32,15 +32,13 @@ fn an_edited_file_is_in_the_area_under_its_session_folder() {
 }
 
 #[test]
-fn a_turns_work_counts_its_looks_agents_relay_and_edits() {
+fn a_turns_work_counts_its_looks_agents_and_edits() {
     let mut w = Work::default();
     for b in [
         json!({"name":"Read","input":{"file_path":"/r/a.rs"}}),
         json!({"name":"Grep","input":{"pattern":"x"}}),
         json!({"name":"Bash","input":{"command":"cd /r && grep -n x a.rs"}}),
         json!({"name":"Bash","input":{"command":"cargo test"}}),
-        json!({"name":"Bash","input":{"command":"relay spawn --topic x"}}),
-        json!({"name":"Skill","input":{"skill":"relay:spawn"}}),
         json!({"name":"Agent","input":{"description":"look"}}),
         json!({"name":"Edit","input":{"file_path":"/r/a.rs"}}),
         json!({"name":"Write","input":{"file_path":"/r/a.rs"}}),
@@ -48,7 +46,7 @@ fn a_turns_work_counts_its_looks_agents_relay_and_edits() {
     ] {
         w.count(&b);
     }
-    assert_eq!((w.looks, w.agents, w.relay), (3, 1, 2));
+    assert_eq!((w.looks, w.agents), (3, 1));
     assert_eq!(w.edited, vec!["/r/a.rs", "/r/n.ipynb"], "each file once");
 }
 

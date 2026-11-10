@@ -115,16 +115,14 @@ struct Store {
     /// The board's cards on this Mac: their cache's expiry and their context, as of the last cache_tick
     /// (insights.js counts down from these; ipc::insight_states has the same shape).
     insight: HashMap<String, Value>,
-    /// Reviews typed into a lead: executor → (its lead, when). "in review" until it's no longer done
-    /// (15 minutes at most). A lead takes one review at a time: Review waits until it's free again.
+    /// Teammates' reviews typed into their lead: `team:<lead>:<agent>` → (its lead, when). A lead takes one
+    /// review at a time: Review waits until it's free again.
     review_sent: HashMap<String, (String, u64)>,
     /// When a review was last typed into each lead: it takes a moment to show as working.
     review_last: HashMap<String, u64>,
     /// Reviews asked for while their lead was busy, oldest first: each goes when its lead is free,
     /// one at a time. Saved, so a restart doesn't drop them.
     review_queue: Vec<QueuedReview>,
-    /// Packets you set aside on their Review card: (relay's executor id, packet). Saved.
-    set_aside: HashSet<(String, u64)>,
     /// Claude sessions missing from Claude Code's own list of running sessions, and since when: gone
     /// for GONE_AFTER_MS, they're ended in Cue (see `sweep`).
     missing: HashMap<String, u64>,
@@ -179,7 +177,7 @@ impl StoreParts {
 
 /// What `snapshot` reads files for, from the store: the session ids Cue knows, the live sessions it hasn't
 /// heard from yet, each Claude session's transcript, and every folder in play.
-type Sources = (HashSet<String>, Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>);
+type Sources = (Vec<crate::live::Quiet>, Vec<(String, String)>, Vec<String>);
 
 /// A restart in progress. Underneath it's a park and a resume, but the window never sees those: the
 /// session stays where it is (its record as it was before, `held`, while its agent is down), never on
@@ -239,7 +237,6 @@ impl Hub {
         st.items = waiting;
         st.parked = crate::db::parked();
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
-        st.set_aside = crate::db::set_aside().into_iter().collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
         Self { store: store_access::StoreCell::new(st), app, typing: Mutex::new(HashMap::new()), shown: shown::Shown::default(), ports, saves: saves::SaveLocks::default(), redraws: Arc::default() }
@@ -427,11 +424,10 @@ impl Hub {
         // What the files say (each folder's git HEAD; each Claude session's latest request, as last read) and
         // what other parts of Cue keep are taken with the store let go: this runs on every change, and a slow
         // disk mustn't hold every hook and tick behind it.
-        let (known, live, transcripts, cwds) = self.snapshot_sources();
-        let ids: HashSet<String> = known.iter().cloned().chain(live.iter().map(|q| q.session_id.clone())).collect();
+        let (live, transcripts, cwds) = self.snapshot_sources();
         let put = crate::config::folders_put();
         let mut outside = folders_view(live, transcripts, cwds, &put);
-        outside.extend(apart_view(&ids));
+        outside.extend(apart_view());
         // The store's part is taken as copies under its lock and made into the window's JSON after: the big
         // lists (sessions, cards, History) are written out with the store let go.
         let (seq, next, parts) = self.write(Self::store_parts);
@@ -449,6 +445,7 @@ impl Hub {
         st.shown_seq += 1;
         let seq = st.shown_seq;
         let now = now_ms();
+        Self::prune_reviews(st, now);
         let next = Self::next_change(st, now);
         // A session restarting stays in its place: its record from before while its agent is down, and
         // not on Parked on the way.
@@ -464,7 +461,6 @@ impl Hub {
             "ended": Self::ended_view(st),
             "restarting": restarting,
             "restarted": st.restarted,
-            "reviews": Self::reviews_view(st),
             "review_queue": Self::review_queue_view(st),
             "unreachable": st.unreachable,
             // The board's cards' cache and context numbers (cache_tick), so a card says them as it lands.
@@ -473,11 +469,7 @@ impl Hub {
             // Today's numbers (today.rs), not every answer of the day: those grow all day.
             "today": today::today(&st.answers, now),
         });
-        // An executor whose lead is on auto mode (its packet's review reads "auto"): its finished turn isn't waiting
-        // on you, its lead takes the report on its own. Off Waiting and every count of it while that holds; back if
-        // the lead goes off auto. What it asks you (a permission, a question) still shows.
-        let lead_on_it: HashSet<&str> = small["reviews"].as_object().map(|r| r.iter().filter(|(_, v)| v["state"] == "auto").map(|(k, _)| k.as_str()).collect()).unwrap_or_default();
-        let items = st.items.iter().filter(|i| !(i.kind == "waiting" && lead_on_it.contains(i.origin.session_id.as_str()))).cloned().collect();
+        let items = st.items.clone();
         (seq, next, StoreParts { items, history: st.history.brief(), sessions, parked, small })
     }
 
@@ -531,7 +523,7 @@ impl Hub {
         let cwds: Vec<String> = st.sessions.all().iter().filter(|s| s.origin.machine.is_empty()).map(|s| s.origin.cwd.clone())
             .chain(live.iter().filter(|q| !remote.contains(q.session_id.as_str())).map(|q| q.cwd.clone()))
             .filter(|c| !c.is_empty()).collect::<HashSet<_>>().into_iter().collect();
-        (known, live, transcripts, cwds)
+        (live, transcripts, cwds)
     }
 
     /// This hub as the app holds it, for work handed to another thread (none in tests: no app).
@@ -605,15 +597,14 @@ fn folders_view(live: Vec<crate::live::Quiet>, transcripts: Vec<(String, String)
 }
 
 /// The snapshot's parts other parts of Cue keep, each behind its own lock (taken before the store's, never
-/// under it) for the sessions `ids`: the crew and its hand-offs (relay's, and a hand-off skill's pending ones
-/// that offer "Continue in a new session"), "Hand off if I don't come back", About and the status list's
+/// under it): a hand-off skill's pending hand-offs that offer "Continue in a new session", "Hand off if I don't come back", About and the status list's
 /// costs, and settings (kept in memory: config.rs).
-fn apart_view(ids: &HashSet<String>) -> serde_json::Map<String, Value> {
-    let (crew, handoffs, skill_handoffs, ahead_watch) = (crate::leads::view(ids), crate::leads::handoffs(ids), crate::db::handoffs(), crate::db::ahead_watched());
+fn apart_view() -> serde_json::Map<String, Value> {
+    let (skill_handoffs, ahead_watch) = (crate::db::handoffs(), crate::db::ahead_watched());
     let (tasks, tasks_spent, status_spent) = (crate::tasks::view(), crate::tasks::spent(), crate::statuslist::spent());
     let (settings, connections, usage_file) = (crate::config::effective(), crate::config::connections(), crate::usage_file::read());
     let view = json!({
-        "crew": crew, "handoffs": handoffs, "skill_handoffs": skill_handoffs, "ahead_watch": ahead_watch,
+        "skill_handoffs": skill_handoffs, "ahead_watch": ahead_watch,
         "tasks": tasks, "tasks_spent": tasks_spent, "status_spent": status_spent,
         "window_ms": crate::sessions::WINDOW_MS, "now_ms": now_ms(),
         "settings": settings, "connections": connections, "usage_file": usage_file,

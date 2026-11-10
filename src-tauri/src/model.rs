@@ -131,7 +131,7 @@ pub enum ClientMsg {
         /// The whole final turn, when the harness can tell (see TurnPart).
         #[serde(default)]
         turn: Vec<TurnPart>,
-        /// Set when another agent drives this session (e.g. "its relay lead (…)"): its finished
+        /// Set when another agent drives this session (e.g. "its lead (…)", from CUE_DRIVEN_BY): its finished
         /// turn is that agent's to handle, not yours.
         #[serde(default)]
         driven_by: String,

@@ -14,8 +14,7 @@ impl Hub {
         let now = now_ms();
         let Some(mut limit) = crate::usage::parse(error_type, details, now) else {
             let what = if details.trim().is_empty() { error_type.replace('_', " ") } else { details.trim().to_string() };
-            let driver = crate::leads::resolve_driver(&sid, "");
-            self.event(origin, "stopped", format!("Stopped on an error: {what}"), vec![], &driver);
+            self.event(origin, "stopped", format!("Stopped on an error: {what}"), vec![], "");
             return;
         };
         let announce = self.write(|st| {
@@ -166,8 +165,7 @@ impl Hub {
                 // Only a turn that ended after it started working, and seconds ago (the hook is faster).
                 let since = self.read(|st| st.sessions.all().into_iter().find(|s| s.origin.session_id == o.session_id).map(|s| s.since_ms)).unwrap_or(u64::MAX);
                 if at >= since {
-                    let driver = crate::leads::resolve_driver(&o.session_id, "");
-                    self.event(o, "stopped", reply, parts, &driver);
+                    self.event(o, "stopped", reply, parts, "");
                 }
             }
         }

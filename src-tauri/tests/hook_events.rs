@@ -82,9 +82,9 @@ fn a_stop_tells_cue_the_turn_ended_with_its_reply_and_turn() {
 #[test]
 fn a_stop_in_a_session_another_agent_drives_says_who() {
     let cue = FakeCue::running();
-    let out = cue.hook(&["stop"], json!({"session_id": "s1", "last_assistant_message": "ok"}).to_string().as_bytes(), &[("CUE_DRIVEN_BY", " relay ")]).wait_with_output().unwrap();
+    let out = cue.hook(&["stop"], json!({"session_id": "s1", "last_assistant_message": "ok"}).to_string().as_bytes(), &[("CUE_DRIVEN_BY", " its lead ")]).wait_with_output().unwrap();
     assert!(out.status.success());
-    assert_eq!(cue.received()[0]["driven_by"], "relay");
+    assert_eq!(cue.received()[0]["driven_by"], "its lead");
 }
 
 #[test]

@@ -61,7 +61,7 @@ impl Hub {
     /// Your latest request to each Claude session the window lists, read again off the tick (`about`: each
     /// transcript on a thread of its own); what came in since the last tick redraws the window.
     fn read_about(&self) {
-        let (_, _, transcripts, _) = self.snapshot_sources();
+        let (_, transcripts, _) = self.snapshot_sources();
         crate::about::read_about(transcripts.into_iter().map(|(_, p)| p).collect(), now_ms());
         if crate::about::about_news() {
             self.changed();
@@ -99,8 +99,7 @@ impl Hub {
             .map(|(o, _)| o);
         for o in stopped {
             let sid = o.session_id.clone();
-            let driver = crate::leads::resolve_driver(&sid, "");
-            self.event(o, "stopped", "Interrupted: it stopped mid-turn and is waiting for you. Say “continue” to pick up where it left off.".into(), vec![], &driver);
+            self.event(o, "stopped", "Interrupted: it stopped mid-turn and is waiting for you. Say “continue” to pick up where it left off.".into(), vec![], "");
             self.write(|st| {
                 if let Some(it) = st.items.iter_mut().find(|i| i.kind == "waiting" && i.origin.session_id == sid) {
                     it.interrupted = true;
@@ -236,7 +235,7 @@ impl Hub {
 
     /// Before Claude Code starts (no hook from it yet), its terminal can sit on a screen of its own: the
     /// trust question, or one waiting for Enter. Read off its pane: this Mac's now, a machine's from
-    /// its last listing (leads::refresh_remote, no SSH here). Shown as such, not as at work.
+    /// its last listing (machines::listing, no SSH here). Shown as such, not as at work.
     fn read_setup_screens(&self, now: u64) {
         let before = self.read(|st| st.sessions.before_start());
         let mut seen: Vec<(String, Option<crate::dialog::Setup>)> = vec![];
@@ -246,8 +245,8 @@ impl Hub {
                     Ok(screen) => crate::dialog::setup_on(&screen),
                     Err(_) => continue,
                 }
-            } else if crate::leads::remote_screens_known(&o.machine) {
-                crate::leads::remote_setup(&o.machine, &o.tmux_pane)
+            } else if crate::machines::listing::known(&o.machine) {
+                crate::machines::listing::setup(&o.machine, &o.tmux_pane)
             } else {
                 continue;
             };

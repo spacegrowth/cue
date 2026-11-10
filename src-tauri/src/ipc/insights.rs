@@ -268,7 +268,7 @@ fn start_after(h: &Arc<Hub>, session_id: &str, first: impl FnOnce(&str) -> Strin
 }
 
 /// The name of the session that carries on from one named `name` (else from its folder): "cue-ios" →
-/// "cue-ios-2", "cue-ios-2" → "cue-ios-3". A relay tag in front ("[Lead] …") isn't carried over.
+/// "cue-ios-2", "cue-ios-2" → "cue-ios-3". A bracketed tag in front ("[WIP] …") isn't carried over.
 fn next_name(name: &str, folder: &str) -> String {
     let name = name.trim();
     let name = name.strip_prefix('[').and_then(|r| r.split_once(']')).map(|(_, rest)| rest.trim()).unwrap_or(name);

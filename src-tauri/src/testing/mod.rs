@@ -11,7 +11,6 @@
 //! and `now_ms`, not tokio's timers, `Instant` deadlines elsewhere, or file times read through `elapsed()`.
 
 mod agent;
-mod crew;
 mod fake_claude;
 mod hosted;
 mod launcher;
@@ -33,7 +32,6 @@ mod scenarios;
 mod tests;
 
 pub use agent::{Agent, Ask};
-pub use crew::{relay_calls, Crew};
 pub use fake_claude::FakeClaude;
 pub use hosted::FakeHosted;
 pub use launcher::FakeLauncher;

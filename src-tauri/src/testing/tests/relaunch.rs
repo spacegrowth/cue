@@ -1,7 +1,7 @@
 //! Cue quit and opened again (a restart, an update, the Mac rebooted): what comes back from what it saved,
 //! what doesn't, and an ask whose hook asks again once Cue is back (hook.rs keeps trying for 15 minutes).
 
-use crate::testing::{Crew, World};
+use crate::testing::World;
 use serde_json::json;
 
 #[test]
@@ -79,33 +79,17 @@ fn a_parked_session_is_still_parked_after_a_restart() {
     assert_eq!(s.0["parked"][0]["session_id"], "old", "{}", s.0["parked"]);
 }
 
-/// Lead L (relay) and executor E, reported.
-fn crew() {
-    Crew::default().lead("L").exec("E", "L").install();
-}
-
 #[test]
 fn a_review_queued_before_a_restart_goes_once_its_lead_is_free() {
     let mut w = World::new();
-    crew();
     w.session("L").prompt("lead");
-    w.hub().review("L", "E", "/relay:review E").unwrap();
+    let key = w.hub().queued_teammate("L", "a1");
+    w.hub().review("L", &key, "review a1").unwrap();
     w.relaunch();
-    assert_eq!(w.hub().queued_reviews(), ["E"], "the queue is saved");
+    assert_eq!(w.hub().queued_reviews(), [key], "the queue is saved");
     w.session("L").stop("Done with that.");
     w.advance(1500);
-    assert_eq!(w.terminal.typed("L"), ["/relay:review E"]);
-}
-
-#[test]
-fn a_packet_set_aside_stays_set_aside_after_a_restart() {
-    let mut w = World::new();
-    crew();
-    w.session("L").prompt("lead").stop("Waiting.");
-    assert!(w.snapshot().0["reviews"]["E"].is_object());
-    w.hub().set_aside("E").unwrap();
-    w.relaunch();
-    assert!(w.snapshot().0["reviews"]["E"].is_null(), "{}", w.snapshot().0["reviews"]);
+    assert_eq!(w.terminal.typed("L"), ["review a1"]);
 }
 
 #[test]

@@ -23,7 +23,7 @@ const TERM_CLICKS = [
 
 const STATUS_CLICKS = [
   // Tell me when it's done (the line under the chat, or ⋯: done with the menu too).
-  rule("[data-act=watch]", (wt) => { moreFor = handoffArm = null; setWatch(wt.dataset.sid, wt.dataset.on === "1"); }),
+  rule("[data-act=watch]", (wt) => { moreFor = null; setWatch(wt.dataset.sid, wt.dataset.on === "1"); }),
   // A session's ring → its switch: the status list on (or off again) for this session (statuslist.rs).
   rule("[data-act=status-session]", (el) => invoke("status_session", { sessionId: el.dataset.sid, on: el.dataset.on === "1" }).catch((x) => toast(String(x)))),
   // The list above the chat (status_panel.js): the ring puts its line away or brings it back, the line opens the
@@ -33,8 +33,6 @@ const STATUS_CLICKS = [
     statusPanelFlip(el.dataset.sid, el.dataset.act === "status-open" ? "open" : "away");
     renderMain();
   }),
-  // …relay's buttons on its line: Start relay, and a lead's Stop relay.
-  rule("[data-act=status-relay], [data-act=status-relay-stop]", (el) => setRelayMode(el.dataset.sid, el.dataset.act === "status-relay")),
   // …and Start / Stop background agents (statuslist.rs): the ∥ steps run as agents while it's on.
   rule("[data-act=status-background]", (el) => invoke("background_session", { sessionId: el.dataset.sid, on: !backgroundOn(el.dataset.sid) }).catch((x) => toast(String(x)))),
 ];
@@ -49,33 +47,31 @@ const QUEUE_CLICKS = [
   rule("[data-act=held-now]", (hn) => sendHeldNow(hn.dataset.sid)),
 ];
 
-/** The ⋯ menu's item `cmd` for session `sid` (a Handoff takes a second click to arm). */
+/** The ⋯ menu's item `cmd` for session `sid`. */
 function moreCommand(cmd, sid) {
-  if (cmd === "handoff" && handoffArm !== sid) { handoffArm = sid; return renderMain(); }
-  moreFor = handoffArm = null;
-  if (cmd === "relay-on") return setRelayMode(sid, true);
+  moreFor = null;
   renderMain();
   invoke("session_command", { sessionId: sid, action: cmd }).then((m) => toast(m), (e) => toast(`Couldn't: ${e}`));
 }
 /** ⋯ → Restart. Its "/" commands are read again after (a skill added since shows up): the Mac forgets its list too. */
 function moreRestart(sid) {
-  moreFor = handoffArm = null;
+  moreFor = null;
   renderMain();
   return invoke("restart_session", { sessionId: sid }).then((m) => { cmdLists.delete(sid); cmdMissed.delete(sid); if (m) toast(m); }, (e) => toast(`Couldn't restart: ${e}`));
 }
 const MORE_MENU_CLICKS = [
   // The ⋯ menu: toggle it, run an item, or close it on a click anywhere else.
-  rule("[data-more]", (mb) => { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; handoffArm = newProjFor = null; movingProj = mcpPicking = false; renderMain(); }),
+  rule("[data-more]", (mb) => { moreFor = moreFor === mb.dataset.more ? null : mb.dataset.more; newProjFor = null; movingProj = mcpPicking = false; renderMain(); }),
   rule("[data-move-ask]", () => { movingProj = true; renderMain(); }),
   // ⋯ → Fork: this conversation as a new session too, starting with nothing said.
-  rule(".more-menu [data-fork]", (fk) => { moreFor = handoffArm = null; forkBtw(fk.dataset.fork, null); }),
+  rule(".more-menu [data-fork]", (fk) => { moreFor = null; forkBtw(fk.dataset.fork, null); }),
   rule("[data-new-proj]", (np) => { newProjFor = np.dataset.newProj; newProjNote = ""; draft(`newproj:${newProjFor}`).text = ""; renderMain(); document.querySelector(".pm-new-in")?.focus(); }),
-  rule("[data-move-proj]", (mvp) => { moreFor = handoffArm = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); renderMain(); }),
+  rule("[data-move-proj]", (mvp) => { moreFor = null; movingProj = false; moveToProject(mvp.dataset.sid, mvp.dataset.moveProj); renderMain(); }),
   rule("[data-restart]", (rsb) => moreRestart(rsb.dataset.restart)),
   rule("[data-cmd]", (mc) => moreCommand(mc.dataset.cmd, mc.dataset.sid)),
-  (t) => { if (moreFor && !t.closest(".more-wrap")) { moreFor = handoffArm = newProjFor = null; movingProj = mcpPicking = false; renderMain(); } return false; },
+  (t) => { if (moreFor && !t.closest(".more-wrap")) { moreFor = newProjFor = null; movingProj = mcpPicking = false; renderMain(); } return false; },
   // Decide later: done with the menu too.
-  (t) => { if (t.closest(".more-menu [data-park]")) moreFor = handoffArm = null; return false; },
+  (t) => { if (t.closest(".more-menu [data-park]")) moreFor = null; return false; },
 ];
 
 /** `key` in `set` taken out if it's there, else put in. */

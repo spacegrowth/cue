@@ -2,7 +2,6 @@
 //! as a slow write holds it, an answer, a star or a queued review changes the store and lets it go, and the
 //! write lands once the database is free. Each of those paths, with the database free, saves what it did.
 
-use crate::leads::{install_index, reported_exec, Member};
 use crate::testing::World;
 use serde_json::json;
 use std::sync::mpsc;
@@ -88,17 +87,16 @@ fn starring_a_parked_session_lets_the_store_go_before_it_is_saved() {
 #[test]
 fn a_review_queued_behind_its_busy_lead_is_saved_and_taken_off_once_sent() {
     let w = World::new();
-    let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "lead".into(), ..Default::default() };
-    install_index([("L".to_string(), lead), ("E1".to_string(), Member { name: "E1-topic".into(), id: "relay-E1".into(), ready_late: true, ..reported_exec() })].into());
     let l = w.session("L");
     l.prompt("lead");
+    let key = w.hub().queued_teammate("L", "a1");
     let release = hold_db();
     let queued = {
-        let hub = w.hub().clone();
-        std::thread::spawn(move || hub.review("L", "E1", "/relay:review E1"))
+        let (hub, key) = (w.hub().clone(), key.clone());
+        std::thread::spawn(move || hub.review("L", &key, "review a1"))
     };
     let hub = w.hub().clone();
-    let in_store = soon(|| hub.queued_reviews() == ["E1"]);
+    let in_store = soon(|| hub.queued_reviews() == [key.clone()]);
     let saving = !queued.is_finished();
     release.send(()).unwrap();
     assert!(in_store && saving, "queued in the store while its save waited (queued {in_store}, saving {saving})");
@@ -106,19 +104,19 @@ fn a_review_queued_behind_its_busy_lead_is_saved_and_taken_off_once_sent() {
     assert_eq!(crate::db::review_queue().len(), 1, "saved, so a restart keeps it");
     l.stop("Done.");
     w.advance(1500);
-    assert_eq!(w.terminal.typed("L"), ["/relay:review E1"]);
+    assert_eq!(w.terminal.typed("L"), ["review a1"]);
     assert!(crate::db::review_queue().is_empty(), "sent: off the saved queue too");
 }
 
 #[test]
 fn a_moot_queued_review_is_dropped_from_the_saved_queue() {
     let w = World::new();
-    let lead = Member { role: "lead".into(), plugin: "relay".into(), name: "lead".into(), ..Default::default() };
-    install_index([("L".to_string(), lead), ("E1".to_string(), reported_exec())].into());
     let l = w.session("L");
     l.prompt("lead");
-    w.hub().review("L", "E1", "/relay:review E1").unwrap();
-    install_index(Default::default());
+    let key = w.hub().queued_teammate("L", "a1");
+    w.hub().review("L", &key, "review a1").unwrap();
+    // Back at work: no longer waiting for its review.
+    w.hub().set_teammate_state("L", "a1", "working");
     w.hub().drain_reviews();
     assert!(crate::db::review_queue().is_empty());
     assert!(w.terminal.typed("L").is_empty());
@@ -130,29 +128,28 @@ fn a_moot_queued_review_is_dropped_from_the_saved_queue() {
 #[test]
 fn a_queue_and_a_drain_saved_in_either_order_leave_no_stale_row() {
     let w = World::new();
-    let execs: Vec<String> = (0..10).map(|i| format!("E{i}")).collect();
-    install_index(execs.iter().map(|e| (e.clone(), reported_exec())).collect());
-    for (i, exec) in execs.iter().enumerate() {
+    for i in 0..10 {
         let lead = format!("L{i}");
         w.session(&lead).prompt("lead");
+        let exec = w.hub().queued_teammate(&lead, "a");
         let hub = w.hub().clone();
         let release = hold_db();
         let queueing = {
             let (hub, lead, exec) = (hub.clone(), lead.clone(), exec.clone());
-            std::thread::spawn(move || hub.review(&lead, &exec, "/relay:review"))
+            std::thread::spawn(move || hub.review(&lead, &exec, "review"))
         };
-        assert!(soon(|| hub.queued_reviews().contains(exec)), "{exec} queued in the store");
+        assert!(soon(|| hub.queued_reviews().contains(&exec)), "{exec} queued in the store");
         // Its lead comes free and the queue drains, its save waiting on the database too.
         hub.mark_state(&hub.session_origin(&lead).unwrap(), "waiting");
         let draining = {
             let hub = hub.clone();
             std::thread::spawn(move || hub.drain_reviews())
         };
-        assert!(soon(|| !hub.queued_reviews().contains(exec)), "{exec} taken off the queue in the store");
+        assert!(soon(|| !hub.queued_reviews().contains(&exec)), "{exec} taken off the queue in the store");
         release.send(()).unwrap();
         queueing.join().unwrap().unwrap();
         draining.join().unwrap();
-        assert!(crate::db::review_queue().iter().all(|(e, ..)| e != exec), "{exec}: sent, yet still saved as queued");
+        assert!(crate::db::review_queue().iter().all(|(e, ..)| *e != exec), "{exec}: sent, yet still saved as queued");
     }
 }
 

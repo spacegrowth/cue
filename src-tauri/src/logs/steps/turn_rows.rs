@@ -34,10 +34,9 @@ pub struct TurnRow {
     /// Its prompt and, when corrected, your next one: the start of each, for Insights' examples.
     pub prompt: String,
     pub correction: String,
-    /// Reads and searches it ran itself, background agents and relay executors it started.
+    /// Reads and searches it ran itself, background agents it started.
     pub looks: u64,
     pub agents: u64,
-    pub relay: u64,
     /// The areas of the project it edited (area_of), each once, one per line.
     pub areas: String,
     /// The context Claude Code compacted it at on its own (its log's compact_boundary; 0: it didn't).
@@ -161,7 +160,6 @@ fn row(turns: &[Turn], i: usize, b: &Beside) -> TurnRow {
         correction: next_yours().filter(|next| reads_as_correction(&next.prompt)).map(|next| snippet(&next.prompt)).unwrap_or_default(),
         looks: t.work.looks,
         agents: t.work.agents,
-        relay: t.work.relay,
         areas: {
             let mut a: Vec<String> = t.work.edited.iter().filter_map(|f| area_of(&b.cwd, f)).collect();
             a.sort();

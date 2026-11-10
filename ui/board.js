@@ -372,10 +372,9 @@ const talking = (it) => talkGap(it) !== null && !talkStale(it);
 // as it waits. A card you moved to the bottom (↓) stays below the rest, in the order you moved them.
 const newestFirst = (a, b) => (!!a.back_ms - !!b.back_ms) || (a.back_ms ? a.back_ms - b.back_ms : b.created_ms - a.created_ms);
 const needsYou = () => { const all = [...groups().decide, ...groups().yours]; return [...all.filter(talking).sort((a, b) => a.created_ms - b.created_ms), ...all.filter((i) => !talking(i)).sort(newestFirst)]; };
-/** "3 agents": a session's agents, any kind (agents.js agentPill), beside its state, on any of its cards; a relay
- *  agent that needs you names itself instead. A click opens the session on its Agents tab (app/clicks_chat.js). A lead's crew
- *  line (cardCrew) has its count, so its card's pill only names one that needs you. `tree`: the card holds its tree. */
-const bgPill = (s, { count = crewOf(s?.session_id)?.role !== "lead", tree = false } = {}) => agentPill(s?.session_id, { count, tree });
+/** "3 agents": a session's agents, any kind (agents.js agentPill), beside its state, on any of its cards; an agent
+ *  that needs you names itself instead. A click opens the session on its Agents tab (app/clicks_chat.js). */
+const bgPill = (s) => agentPill(s?.session_id);
 /** A Waiting card's top line: who it is (dot, mark, name, machine, state, agents) and, at its right end, its time and
  *  buttons. When both don't fit (a narrow Waiting column) the time and buttons take a line of their own, right-aligned
  *  under it, before the name would shorten to a few letters or a button be cut off. */
@@ -442,7 +441,6 @@ function laterRow({ sid, s, it }) {
   return `<div class="nrow later ${on}" ${it ? `data-big="${esc(it.id)}"` : `data-session="${esc(sid)}"`}>
     ${cardTop(`${projDot(it?.project || s.project, s.state === "working")}${badge(it?.harness || s.harness)}${nameSpan(sid, it?.project || s.project)}${machTag(it?.machine || s.machine)}${what ? `<span class="dim">${what}</span>` : ""}${bgPill(s)}`,
       `<span class="age">${ago(it?.created_ms ?? s.since_ms)}</span>${starBtn(sid)}<button class="park-btn back" data-park="${esc(sid)}:0">↩ Waiting</button>`)}
-    ${cardCrew(sid)}
     ${aboutCardText(sid) || (text ? `<div class="nrow-text">${esc(text)}</div>` : "")}${insCardLine(sid)}</div>`;
 }
 const backBtn = (it) => `<button class="back-btn" data-act="back" data-id="${esc(it.id)}" aria-label="Move to bottom">↓</button>`;
@@ -462,19 +460,11 @@ function needRow(it, ghost, open = false) {
   // An interrupted turn (Esc) waits at "What should Claude do instead?": say so, and offer Continue.
   if (it.interrupted) quick = `<div class="nrow-acts"><button class="btn primary" data-act="continue" data-id="${esc(it.id)}">Continue</button></div>`;
   return `<div class="nrow ${open ? "on" : ""} ${it.kind === "waiting" ? "turn" : "ask"} ${answering.has(it.id) ? "answering" : ""}" data-big="${esc(it.id)}">
-    ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id), { tree: crewOf(it.session_id)?.role === "lead" })}`,
+    ${cardTop(`${projDot(it.project, sessionOf(it.session_id)?.state === "working")}${badge(it.harness)}${nameSpan(it.session_id, it.project)}${mateTitle(it)}${machTag(it.machine)}${it.kind !== "waiting" ? `<span class="dim">${esc(verb(it))}</span>` : it.interrupted ? `<span class="dim intr">interrupted</span>` : ""}${mateOfAsk(it) ? "" : bgPill(sessionOf(it.session_id))}`,
       `<span class="age">${ago(it.created_ms)}</span>${starBtn(it.session_id)}${it.kind === "waiting" ? backBtn(it) + parkBtn(it.session_id) : ""}${clearX(it)}`)}
-    ${talkNote(it)}${cardCrew(it.session_id)}
-    ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}${crewOf(it.session_id)?.role === "lead" ? teamTree(it.session_id) : ""}</div>`;
+    ${talkNote(it)}
+    ${(it.kind === "waiting" && aboutCardText(it.session_id)) || `<div class="nrow-text ${isBash(it) ? "mono" : ""}">${isBash(it) ? cmdWords(plain(summary(it))) : esc(plain(summary(it)))}</div>`}${insCardLine(it.session_id, it.kind !== "waiting")}${quick}</div>`;
 }
-/** A lead whose team needs you while it has nothing waiting itself: a slim card holding the team's tree.
- *  Its title line opens the lead; a row in the tree opens that executor. */
-function teamHead(lead, open) {
-  const s = sessionOf(lead);
-  return `<div class="nrow ask team-head ${open ? "on" : ""}"><div class="nrow-top" data-session="${esc(lead)}" role="button">${projDot(s.project, s.state === "working")}${badge(s.harness)}${nameSpan(lead, s.project)}<span class="dim">its team needs you</span></div>
-    ${cardCrew(lead)}${teamTree(lead)}</div>`;
-}
-
 /** Why a session is idle (shown under Sessions → Idle); "" when it's working. */
 // ---------- usage limits ----------
 /** A limit that has lifted (its reset time passed, or another turn went through). */
@@ -721,39 +711,21 @@ function dragColGrip(e) {
 }
 let lastGripPress = {};
 document.addEventListener("pointerdown", dragColGrip);
-/** A lead's team is one tree under the lead, wherever its card is: in Waiting (its own card, or the slim one for a
- *  team that needs you), else in Sessions, working or idle. Its executors are in that tree whatever their own
- *  project is, busy ones too, not on cards of their own. An executor's card goes into its lead's tree (when Cue has
- *  the lead); a lead with nothing of its own waiting still gets a card (`heads`), where its executor's would have
- *  been. Only while the lead still lists it: an executor that left its team (closed, or handed to another lead) can
- *  still name the old lead, whose card would then hold an empty tree and its own card none. */
-function boardTeams(needs, working) {
-  const listed = (sid, lead) => (crewOf(lead)?.executors || []).some((e) => e.session_id === sid);
-  const leadOf = (i) => { const m = crewOf(i.session_id); return m?.role === "executor" && sessionOf(m.lead) && listed(i.session_id, m.lead) ? m.lead : null; };
-  const teamLeads = new Set(needs.map(leadOf).filter(Boolean));
-  const heads = [...teamLeads].filter((l) => !needs.some((i) => i.session_id === l))
-    .map((l) => ({ _team: l, created_ms: Math.max(...needs.filter((i) => leadOf(i) === l).map((i) => i.created_ms)) }));
-  const waitTree = new Set([...needs.filter((i) => crewOf(i.session_id)?.role === "lead").map((i) => i.session_id), ...teamLeads]);
-  const sessTree = new Set(working.filter((s) => crewOf(s.session_id)?.role === "lead" && !waitTree.has(s.session_id)).map((s) => s.session_id));
-  const inTree = (sid) => { const m = crewOf(sid); return m?.role === "executor" && (waitTree.has(m.lead) || sessTree.has(m.lead)) && listed(sid, m.lead); };
-  return { leadOf, heads, sessTree, inTree };
-}
-
 /** Waiting's rows. Conversations first (when there are any, under their own heading): the cards that came back,
  *  then the sessions still working on your message (5 minutes on, under Sessions only). Then newest first. A card
  *  you just answered fades out in the group it was in, unless its session is back at work there. `count` is
  *  everything under WAITING, as drawn: In conversation, Newest first, and Need to decide (a parked one asking you
  *  is in Waiting already: once). */
 function waitingRows(b) {
-  const { needs, later, working, teams, isOpen } = b;
+  const { needs, later, working, isOpen } = b;
   const live = new Set(needs.map((i) => i.id));
   // A ghost fades in once: every later render (they come often while sessions work) draws it still.
   const ghostRows = [...ghosts.values()].filter((g) => !live.has(g.it.id)).map((g) => { const fresh = !g.shown; g.shown = true; return { ...g.it, _ghost: fresh ? "fresh" : "shown" }; });
-  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && !teams.inTree(s.session_id) && !teams.sessTree.has(s.session_id) && workingOnYours(s));
+  const talkWork = working.filter((s) => s.state === "working" && !idleNote(s) && workingOnYours(s));
   const talkSids = new Set(talkWork.map((x) => x.session_id));
-  const rows = [...needs.filter((i) => !teams.leadOf(i)), ...teams.heads, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
-  const inTalk = (i) => !i._team && talking(i);
-  const draw = (list) => list.map((i) => (i._team ? teamHead(i._team, isOpen(i._team)) : needRow(i, i._ghost, isOpen(i.session_id)))).join("");
+  const rows = [...needs, ...ghostRows.filter((g) => !talkSids.has(g.session_id))].sort(newestFirst);
+  const inTalk = (i) => talking(i);
+  const draw = (list) => list.map((i) => needRow(i, i._ghost, isOpen(i.session_id))).join("");
   const talks = rows.filter(inTalk).sort((a, c) => a.created_ms - c.created_ms), rest = rows.filter((i) => !inTalk(i)), count = (list) => list.filter((i) => !i._ghost).length;
   // The add-on's rows that wait on you sit in Waiting with the rest.
   const more = addOn.waiting();
@@ -769,20 +741,19 @@ function sessionNote(s) {
   const i = state.items.find((x) => x.session_id === s.session_id);
   return i ? (i.kind === "waiting" ? "your turn" : "asks you") : preStart(s) ? "needs you in its terminal" : idleNote(s);
 }
-/** A session's card under Sessions. A lead's card holds its tree (`tree`): only its top part opens the lead (a
- *  row opens that executor, and the tree's buttons are their own). */
-function sessionCard(s, open, tree) {
+/** A session's card under Sessions. */
+function sessionCard(s, open) {
   const go = `data-session="${esc(s.session_id)}"`;
   const doing = preStart(s) ? `Not started: ${preStart(s)}` : s.compacting_ms ? "Compacting…" : s.state === "working" && s.doing ? s.doing : "";
-  return `<div class="working click ${tree ? "team" : ""} ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${tree ? "" : go}>${tree ? `<div class="team-top" ${go} role="button">` : ""}
-      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${roleTag(s.session_id) || oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s, { count: true, tree: !!tree })}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
+  return `<div class="working click ${idleNote(s) ? "on-agent" : ""} ${open ? "on" : ""}" ${go}>
+      <div class="card-head">${projDot(s.project, (s.state === "working" || s.compacting_ms) && !cutOff(s) && !preStart(s))}${nameSpan(s.session_id, s.project)}${oddAgent(s.harness)}${machTag(s.machine)}${bgPill(s)}<span class="grow"></span><span class="age" style="color:inherit">${idleNote(s) && s.state !== "limited" && !state.items.some((x) => x.session_id === s.session_id) ? "idle " : ""}${ago(s.since_ms)}</span>${starBtn(s.session_id)}${isStarred(s.session_id) && !cutOff(s) ? "" : hideX(s)}</div>
       ${addOn.cardLine(s.session_id)}${sessionNote(s) ? `<div class="agent-note">${esc(sessionNote(s))}</div>` : ""}${aboutCardText(s.session_id)}
       ${s.queued || s.held ? ((q) => `<div class="queued-note">${s.held ? "Kept" : "Queued"}: “${esc(q.length > 80 ? q.slice(0, 80) + "…" : q)}”</div>`)((s.held || s.queued).text) : ""}
-      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${tree ? `</div>${tree}` : ""}${handOutHtml(s)}</div>`;
+      ${bar(s.session_id)}${doing ? `<div class="doing">${esc(doing)}</div>` : ""}${s.prompt ? `<div class="prompt">› ${esc(s.prompt)}</div>` : ""}${handOutHtml(s)}</div>`;
 }
 /** Sessions' cards: working, then out of usage, then idle, each under its heading. */
-function workColumn(shown, isOpen, sessTree) {
-  const card = (s) => sessionCard(s, isOpen(s.session_id), sessTree.has(s.session_id) ? teamTree(s.session_id) : "");
+function workColumn(shown, isOpen) {
+  const card = (s) => sessionCard(s, isOpen(s.session_id));
   const busy = shown.filter((s) => !idleNote(s)), idle = shown.filter((s) => idleNote(s) && s.state !== "limited"), outs = shown.filter((s) => s.state === "limited");
   return (busy.length ? `<div class="col-sub">WORKING · ${busy.length}</div>${busy.map(card).join("")}` : "")
     + (outs.length ? `<div class="col-sub lim">${outs.every((s) => lifted(s.limit)) ? "READY TO RESEND" : "OUT OF USAGE"} · ${outs.length}</div>${outs.map(card).join("")}` : "")
@@ -830,7 +801,7 @@ function starredDrawer(isOpen) {
   const starNeeds = stars.filter((s) => state.items.some((i) => i.session_id === s.session_id)).length;
   return drawerHtml("starred", "STARRED", stars.length ? `${stars.length}${starNeeds ? ` · ${starNeeds} need${starNeeds === 1 ? "s" : ""} you` : ""}` : "", () => stars.length ? `<div class="card recent">${stars.map((s) => (s.parked_ms ? starParkedEntry(s, isOpen(s.session_id)) : starEntry(s, isOpen(s.session_id)))).join("")}</div>` : `<div class="quiet-line">Star a session (★ on its card) to keep it here.</div>`);
 }
-/** The Sessions column: its cards (`workCol`; `count`: they and the executors in its leads' trees), then the drawers. */
+/** The Sessions column: its cards (`workCol`; `count`: how many), then the drawers. */
 function sessionsColumn(b, workCol, count) {
   return `<div class="col split col-sessions ${DRAWERS.some(drawerOpen) ? "" : "drawers-shut"}">
       <div class="sec sec-sessions"><div class="col-head col-tools"><span class="grow"></span>${colReset("sessions")}<button class="collapse-x" data-collapse="sessions" aria-label="Fold Sessions">»</button></div><div class="sec-body">${workCol}</div></div>
@@ -848,13 +819,11 @@ function boardView() {
   // something never moves a row, so the lists don't shift under your pointer.
   const openSid = quietOpen || active?.sid || null;
   const isOpen = (sid) => !!openSid && sid === openSid;
-  const teams = boardTeams(needs, working);
-  const b = { needs, later, working, teams, isOpen };
+  const b = { needs, later, working, isOpen };
   const wait = waitingRows(b);
-  const shown = working.filter((s) => !teams.inTree(s.session_id));
-  const sessCount = shown.length + working.filter((s) => teams.inTree(s.session_id) && teams.sessTree.has(crewOf(s.session_id).lead)).length;
+  const shown = working, sessCount = shown.length;
   // Drawn in this order: Waiting's cards, Sessions' cards, Need to decide, then Sessions' drawers.
-  const workCol = workColumn(shown, isOpen, teams.sessTree);
+  const workCol = workColumn(shown, isOpen);
   const waitingCol = waitingColumn(b, wait), sessionsCol = sessionsColumn(b, workCol, sessCount);
   // Fixed layout: every column stays where it is (nothing jumps as the queue changes).
   const coll = (name) => (focus ? !focusShown.has(name) : collapsed.has(name));
@@ -872,15 +841,14 @@ function boardView() {
 // ---------- sheets ----------
 /** The Active pane's title: the session's name with ✎ to rename it (an input while you do), and its
  *  project beside it once it has a name of its own. */
-/** Under the Active header: an executor's lead on the left, the session's folder (~ for your home)
- *  on the right, under the buttons. One small line. */
-function subHead(cwd, crew, sid, titleOf = sid) {
+/** Under the Active header: the session's folder (~ for your home) on the right, under the buttons. One small line. */
+function subHead(cwd, sid, titleOf = sid) {
   // The star sits after the folder: the title row is full.
   // Too long: cut in the middle (~/develop…/web-app), so the folder's own name always shows.
   const path = homeless(cwd), cutAt = Math.max(path.lastIndexOf("/"), 0);
   const folder = cwd ? `<span class="ap-cwd sel"><span class="cwd-head">${esc(path.slice(0, cutAt))}</span><span class="cwd-tail">${esc(path.slice(cutAt))}</span></span>${sid ? starBtn(sid) : ""}` : "";
   const meta = titleOf ? metaInline(titleOf) : "";
-  return folder || crew || meta ? `<div class="ap-sub">${meta}${crew}${folder}</div>` : "";
+  return folder || meta ? `<div class="ap-sub">${meta}${folder}</div>` : "";
 }
 function nameHead(sid, project) {
   if (sid && renaming === sid) return `<input class="rename-in" data-text="rename:${esc(sid)}" maxlength="60" placeholder="Name this session" spellcheck="false" value="${esc(draft(`rename:${sid}`).text)}"/>`;

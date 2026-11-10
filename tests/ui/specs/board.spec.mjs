@@ -1,56 +1,9 @@
-// The rest of the board: relay's review cards, parking and resuming, stars, the project switcher, search, and
+// The rest of the board: parking and resuming, stars, the project switcher, search, and
 // Settings switches. Each checks the call the window made and what it shows once Cue's state comes back.
 import { test, expect } from "./cue.mjs";
 import { compareShot } from "./shots.mjs";
 
 const openCard = (page, id) => page.locator(`.nrow[data-big="${id}"]`).click();
-
-test.describe("relay's review cards", () => {
-  test.beforeEach(async ({ cue, page }) => { await cue.open("relay-review"); await openCard(page, "n1"); });
-  /** The lead's review row about executor `name`. */
-  const rv = (page, name) => page.locator(".active-pane .rv-row").filter({ hasText: name });
-
-  test("Commit types \"commit it\" into the lead", async ({ cue, page }) => {
-    await rv(page, "tz-fix").getByRole("button", { name: "Commit" }).click();
-    expect((await cue.called("send_to_session", { sessionId: "relay" })).args).toMatchObject({ text: "commit it", now: false });
-  });
-
-  test("Send fixes types \"send the fixes\" into the lead", async ({ cue, page }) => {
-    await rv(page, "tz-fix").getByRole("button", { name: "Send fixes" }).click();
-    expect((await cue.called("send_to_session", { sessionId: "relay" })).args.text).toBe("send the fixes");
-  });
-
-  test("Review asks relay to review that executor's packet", async ({ cue, page }) => {
-    await rv(page, "export-csv").getByRole("button", { name: "Review" }).click();
-    await cue.called("crew_action", { sessionId: "x-miss", action: "review" });
-  });
-
-  test("Set aside (in the row's ⋯ menu) sets that packet aside", async ({ cue, page }) => {
-    await rv(page, "export-csv").locator("[data-rv-more]").click();
-    await page.locator('.rv-menu [data-crew="aside"]').click();
-    await cue.called("crew_action", { sessionId: "x-miss", action: "aside" });
-  });
-});
-
-// A lead on auto mode reviews each report on its own (world-relay-auto: lead "lead", its executor fills reported).
-test.describe("a relay lead on auto mode", () => {
-  test.beforeEach(async ({ cue }) => { await cue.open("world-relay-auto"); });
-
-  test("its reported executor has no card in Waiting and no Review anywhere: its lead is on it", async ({ page }) => {
-    const waiting = page.locator(".col-waiting .nrow[data-big]");
-    await expect(waiting).toHaveCount(1);   // the lead's own finished turn, not the executor's
-    await expect(waiting.locator(".tn").filter({ hasText: "fills" })).toContainText("its lead is reviewing it");
-    await expect(page.locator('[data-crew="review"]')).toHaveCount(0);
-  });
-
-  test("the lead's chat shows the packet as being reviewed, with no Review button", async ({ page }) => {
-    await page.locator(".col-waiting .nrow[data-big]").click();
-    const row = page.locator(".active-pane .rv-row").filter({ hasText: "fills" });
-    await expect(row).toContainText("its lead is reviewing it");
-    await expect(row.getByRole("button", { name: "Review" })).toHaveCount(0);
-    await expect(page.locator('[data-crew="review"]')).toHaveCount(0);
-  });
-});
 
 test.describe("parking", () => {
   test("⋯ → Park parks the open session and it moves under Parked", async ({ cue, page }) => {

@@ -2,7 +2,7 @@
 //! ends with its agents still at work, their reports coming in after it, the list's switches following a session
 //! into the one that carries on from it, and what the prompt hook hands a session from a big or malformed reply.
 
-use crate::testing::{Crew, World};
+use crate::testing::World;
 use serde_json::{json, Value};
 
 const LIST: &str = "**Where we are**\n✓ built it\n→ testing it\nWaiting on you: nothing";
@@ -66,19 +66,6 @@ fn the_list_and_background_agents_follow_a_session_into_the_one_that_carries_on(
     assert_eq!(status_sessions(&w, "status"), ["old", "new"]);
     assert_eq!(status_sessions(&w, "background"), ["old", "new"]);
     assert!(!crate::statuslist::carry_over("old", "new"), "once: on already");
-}
-
-#[test]
-fn a_relay_lead_that_takes_over_gets_the_list_but_not_background_agents() {
-    let w = World::new();
-    Crew::default().successor("L2", "L1", 1_000).install();
-    w.hub().set_setting("status.sessions", json!(["L1"])).unwrap();
-    w.hub().set_setting("background.sessions", json!(["L1"])).unwrap();
-    crate::statuslist::carry_over("L1", "L2");
-    w.hub().redraw();
-    w.settle();
-    assert_eq!(status_sessions(&w, "status"), ["L1", "L2"]);
-    assert_eq!(status_sessions(&w, "background"), ["L1"], "a lead hands its steps to executors itself");
 }
 
 #[test]

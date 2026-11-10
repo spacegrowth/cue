@@ -46,12 +46,9 @@ const SCENARIOS = {
   "board-empty": () => Object.assign(world(), { sessions: [], items: [], history: [], parked: [], ended: [] }),
   "board-waiting": () => world(),
   "many-sessions": () => many(world()),
-  "relay-review": () => world("crew=1&rq=1"),
   "status-list": () => statusList(world()),
   "terminal": () => inTmux(world()),
   "parked-ended": () => world("park=1&live=1"),
-  // A relay lead on build-box whose executor dns-cutover runs in a tmux session of its own there; Cue holds it too.
-  "crew-remote": () => world("crew=1&remote=1&held=1"),
 };
 
 for (const [name, make] of Object.entries(SCENARIOS)) {

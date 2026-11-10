@@ -1,4 +1,4 @@
-// Cue UI core — the Tauri bridge (its invoke, kept in order: invoke.js), the window's state, and the helpers every view shares (formatting, markdown, names, crews, caches).
+// Cue UI core — the Tauri bridge (its invoke, kept in order: invoke.js), the window's state, and the helpers every view shares (formatting, markdown, names, caches).
 const T = window.__TAURI__;
 
 let state = { items: [], history: [], sessions: [], settings: {}, connections: {}, window_ms: 1800000, now_ms: Date.now() };
@@ -125,12 +125,11 @@ const machTag = (m) => m ? `<span class="mach"><span>${esc(machShort(m))}</span>
 /** The same label in full, at the head of a line of text (Parked's rows). */
 const machLead = (m) => m ? `<span class="mach lead">${esc(machName(m))}</span>` : "";
 /** What Cue calls a session: the name you gave it, else its folder's name, else its project. */
-// ([Lead] / [Exec], which relay puts in front of a name, isn't shown: the LEAD / EXEC tag says it.)
 // A session that has stopped (parked or closed) keeps its name: its record as it was.
 const recordOf = (sid) => sessionOf(sid) || parkedOf(sid) || closedOf(sid);
 /** A folder's last part ("…/cue-mini" → "cue-mini"). */
 const baseName = (p) => String(p || "").split("/").filter(Boolean).pop() || "";
-const nameOf = (sid, project) => String(recordOf(sid)?.name || "").replace(/^\[(?:ex-)?(?:Exec|Lead)\]\s*/i, "") || baseName(recordOf(sid)?.cwd) || project;
+const nameOf = (sid, project) => String(recordOf(sid)?.name || "") || baseName(recordOf(sid)?.cwd) || project;
 const findItem = (id) => state.items.find((i) => i.id === id) || fullItem(state.history.find((i) => i.id === id));
 /** History's rows come brief (hub/kept_history.rs: no conversation, the request cut to a line): a row opened
  *  asks Cue for its card in full, once, and is drawn again with it. Until then (and if it's gone) the row stands in.
@@ -177,14 +176,6 @@ function parkedActive() {
   return c ? { ...c, kind: "closed", at: c.ended_ms } : null;
 }
 
-// ---------- leads and executors (claude-relay, pi-lead) ----------
-/** A session's place in a relay / pi-lead crew: { role: "lead"|"executor", name, lead, lead_name, … }, or undefined. */
-const crewOf = (sid) => state.crew?.[sid];
-/** A lead that handed off (relay's handoff) and is still open: { to, name, at_ms, executors } (the lead that
- *  took over), or undefined. It isn't leading any more. */
-const handoffOf = (sid) => state.handoffs?.[sid];
-/** A lead's predecessor, while that one is still open and handed off to it: its session id, else "". */
-const predecessorOf = (sid) => { const p = crewOf(sid)?.predecessor; return p && handoffOf(p)?.to === sid && sessionOf(p) ? p : ""; };
 // ---------- a project: the git repository a folder is in (every worktree of it too), else the folder ----------
 /** A folder's project: its repository's name, as Cue read it ("cue" for any worktree of cue), else the folder's name. */
 const projOf = (cwd) => state.projects?.[cwd]?.name || baseName(cwd);
@@ -420,212 +411,9 @@ let pjNewOpen = false, pjNewNote = "";
 /** The project whose × was clicked once: it now reads Remove, and a second click removes it. */
 let pjDelArm = null;
 const inProj = (project) => !projFilter || project === projFilter;
-/** A lead no longer: one a new lead took over from, or one relay stepped down (it names it "[ex-Lead] …"). */
-const exLead = (sid) => !crewOf(sid) && (!!handoffOf(sid) || /^\[ex-Lead\]/i.test(recordOf(sid)?.name || (state.live || []).find((q) => q.session_id === sid)?.name || ""));
-const roleTag = (sid, live = false) => { const m = crewOf(sid); if (exLead(sid)) return `<span class="role was">EX-LEAD</span>`; return m ? `<span class="role ${m.role}">${m.role === "lead" ? "LEAD" : "RELAY"}</span>${m.role === "lead" ? autoToggle(sid, m, live) : ""}` : ""; };
-/** An executor's lead: a link when Cue has that session, else its name. */
-const leadLink = (m) => sessionOf(m.lead) ? `<button class="crew-lead" data-session="${esc(m.lead)}">${esc(m.lead_name || "its lead")}</button>` : `<b>${esc(m.lead_name || "its lead")}</b>`;
-const pkt = (n) => n ? `packet ${n}` : "";
-/** Under an executor's name: whose it is, which packet, and whether anyone's listening. */
-function crewLine(sid, verdict = true) {
-  const m = crewOf(sid);
-  if (m?.role !== "executor") return "";
-  const bits = [pkt(m.packet), exState({ ...m, session_id: sid }).word].filter(Boolean).map(esc);
-  const orphan = m.lead_armed === false ? ` · <span class="crew-warn">its lead isn't running</span>` : "";
-  const vf = verdict && reported(m.status) && m.verify ? ` ${verifyTag(m.verify)}` : "";
-  return `<div class="crew-line">of ${leadLink(m)}${bits.length ? " · " + bits.join(" · ") : ""}${vf}${orphan}</div>`;
-}
-/** On a Waiting card, under the top row (which is full): the role tag, then a relay agent's lead
- *  ("RELAY of ● agent-relay · packet 3 · working"), a lead's agents ("LEAD 3 agents"), or
- *  that it doesn't lead anymore ("EX-LEAD not leading anymore"). */
-function cardCrew(sid) {
-  const m = crewOf(sid);
-  if (m?.role === "executor") return crewLine(sid, false).replace('<div class="crew-line">', `<div class="crew-line">${roleTag(sid)} `);
-  if (exLead(sid)) return `<div class="crew-line">${roleTag(sid)} ${handoffOf(sid) ? "relay handoff to a new lead" : "not leading anymore"}</div>`;
-  if (m?.role !== "lead") return "";
-  const n = agentCount(sid).n;
-  return `<div class="crew-line">${roleTag(sid)} ${n ? `${n} agent${n === 1 ? "" : "s"}` : "no agents right now"}</div>`;
-}
-/** An executor that's done its packet and is waiting on its lead's review. */
-const reported = (status) => status === "reported" || status === "idle";
-/** A relay / pi-lead button: Review types the command into the lead; Diff opens a page. */
-const crewBtn = (sid, action, label, primary = false, short = "") => `<button class="btn ${primary ? "primary" : ""}" data-crew="${action}" data-crew-sid="${esc(sid)}">${short ? lbl(label, short) : esc(label)}</button>`;
-/** Diff: relay's diff page comes from relay's command, here or on its machine; pi-lead writes its page on the
- *  machine it runs on and Cue can't bring that one here, so a pi-lead executor on another machine has no Diff. */
-const diffBtn = (sid, m) => m?.plugin === "pilead" && m.machine ? "" : crewBtn(sid, "diff", "Diff");
-/** Where a packet waiting on you stands in its review (Cue tells every screen, see reviewcard.js): "review queued"
- *  while it waits for its lead, "in review" once your review is typed in, "reviewed" once one ran, and with its lead
- *  on auto mode (it reviews reports on its own) that the lead is on it: never a Review button for that one. Else "". */
-const REVIEW_WORDS = { queued: "review queued", reviewing: "in review", reviewed: "reviewed", auto: "its lead is reviewing it" };
-const reviewWord = (sid) => REVIEW_WORDS[state.reviews?.[sid]?.state] || "";
-/** A report relay never woke its lead for: ready a while, unseen, its lead listening and free. Cue says so
- *  instead of "waiting for review"; Review in lead stays. */
-const missedWake = (sid) => !!state.reviews?.[sid]?.missed;
-/** An executor whose agent exited before it reported (stalled: it never got past a trust prompt, say; dead:
- *  its process is gone): nothing will ever report, so its row says so and offers Close. */
-const stalled = (status) => status === "stalled" || status === "dead";
-const stalledWord = (status) => status === "dead" ? "stopped: its agent is gone" : "stuck: its agent exited";
-/** relay's auto mode beside a lead's LEAD tag: a switch in its chat (`live`: click to flip it),
- *  and on cards and rows just "auto" while it's on. In the chat, hover says what it means. */
-const autoToggle = (sid, m, live = false) => {
-  if (m?.plugin !== "relay") return "";
-  const why = m.auto ? "Goes ahead on routine steps without asking. Commits still wait for you." : "Waits for you at every step.";
-  return live ? `<button class="auto-tg ${m.auto ? "on" : ""}" data-crew="${m.auto ? "auto-off" : "auto-on"}" data-crew-sid="${esc(sid)}"><i></i>auto</button>`
-    : m.auto ? `<span class="auto-tag">auto</span>` : "";
-};
-/** A button label with a shorter form the chat's header switches to when the pane is narrow (see .active-pane in the CSS). */
-const lbl = (long, short) => `<span class="l-long">${esc(long)}</span><span class="l-short">${esc(short)}</span>`;
-/** relay verify's verdict on a reported executor: just ✓ or ✕, what it means on hover. It checks
- *  that every file the report says it changed is staged, not that the work is right. */
-function verifyTag(v) {
-  if (!v?.verdict) return "";
-  if (v.verdict === "COUNTS-MATCH") return `<span class="vf ok" title="Report matches what's staged">✓</span>`;
-  const why = v.verdict === "MALFORMED" ? "its report's summary is missing or broken" : v.note || "its report lists changes that aren't staged";
-  return `<span class="vf bad" title="Report doesn't match (relay verify): ${esc(why)}">✕</span>`;
-}
-/** The verdict as a small tag (the executor tag's look): MATCH, or MISMATCH / MALFORMED in the warning color. */
-const verdictTag = (v) => !v?.verdict ? "" : `<span class="role vt${v.verdict === "COUNTS-MATCH" ? "" : " bad"}">${esc(v.verdict === "COUNTS-MATCH" ? "MATCH" : v.verdict)}</span>`;
-/** Under an executor's name in the tree: its report's first line once it has reported, else its packet's goal. One line. */
-const goalLine = (e) => { const t = e.outcome || e.goal; return t ? `<div class="tn-g">${esc(t)}</div>` : ""; };
-async function crewAct(sid, action) {
-  try {
-    toast(await invoke("crew_action", { sessionId: sid, action }));
-    // The review happens in the lead: show it there, so its answer arrives in front of you.
-    const lead = action === "review" ? crewOf(sid)?.lead : null;
-    if (lead && sessionOf(lead) && active?.sid !== lead) setActive(null, lead);
-  } catch (e) { toast(`Couldn't ${action === "close-left" ? "close them" : action.startsWith("hand:") ? "hand them over" : action}: ${e}`); }
-}
-// ---------- teams: a lead and its executors, shown as one ----------
-// A lead's executors are its relay agents (agents.js: one list with its other agents). On an executor's title line,
-// "for <lead> ›"; then one card for where you are: an executor's packet, or what the team needs from you in the
-// lead's. On the board, a lead's card holds its executors as a small tree.
-/** An executor by its session id: its own crew record (a session Cue holds), else its line on its lead's
- *  executor list (one Cue doesn't hold, on another machine say), with its lead filled in. Null for anything else. */
-function execOf(sid) {
-  const m = crewOf(sid);
-  if (m?.role === "executor") return m;
-  for (const [lead, lm] of Object.entries(state.crew || {})) {
-    const e = (lm.executors || []).find((x) => x.session_id === sid);
-    if (e) return { ...e, role: "executor", lead, lead_name: lm.name, lead_armed: true };
-  }
-  return null;
-}
-/** An executor on another machine that runs in a tmux session of its own: its terminal attaches to that
- *  session (never its lead's), whether or not Cue holds the session. */
-const execTerm = (sid) => { const e = sid && execOf(sid); return e?.machine && e.tmux_session ? e : null; };
-/** Where a row in a lead's tree goes: a remote executor's own terminal, else its chat when Cue has it. */
-const exGo = (sid) => execTerm(sid) ? `data-exec-term="${esc(sid)}" role="button"` : sessionOf(sid) ? `data-session="${esc(sid)}"` : "";
-/** The team a session is in: its lead (session id, name) and executors, or null. */
-function teamOf(sid) {
-  const m = execOf(sid) || crewOf(sid);
-  if (!m) return null;
-  const lead = m.role === "lead" ? sid : m.lead, lm = crewOf(lead);
-  const ex = lm?.executors?.length ? lm.executors : m.role === "executor" ? [{ ...m, session_id: sid }] : [];
-  return { lead, leadName: lm?.name || m.lead_name || "its lead", ex };
-}
-/** Something an executor asks you (a permission or a question): you, not its lead, answer that. */
-const asksOf = (sid) => state.items.find((i) => i.session_id === sid && i.kind !== "waiting");
-/** What a working session is doing right now ("Running: cargo test"), from its transcript, and since
- *  when: Cue reads it every few seconds, so it follows the agent step by step. Empty when unknown. */
-const liveStep = (sid) => { const s = sessionOf(sid); return s?.state === "working" && s.doing && !preStart(s) ? { what: s.doing, at: s.doing_ms } : null; };
 /** Before Claude Code starts, its terminal can sit on a screen of its own (no hook comes until it's past
- *  it): what that is in words, for a session (`trust_ms` / `enter_ms`) or a machine's executor (`setup`). */
-const preStart = (s) => s?.trust_ms || s?.setup === "trust" ? "asking whether you trust its folder" : s?.enter_ms || s?.setup === "enter" ? "waiting for Enter in its terminal" : "";
-/** An executor's state as any agent's (agents.js agentState): its word ("needs you", "working", "stuck", "done",
- *  "idle", "stopped") and the class its chip or dot takes. */
-function exState(e) {
-  const s = sessionOf(e.session_id);
-  const st = agentState({ relay: true, status: e.status, asks: !!asksOf(e.session_id) || !!preStart(e) || !!preStart(s), quiet: !!s?.stuck_ms });
-  return { state: st, word: AGENT_WORDS[st], cls: AGENT_CLS[st] };
-}
-/** Where the lead a handoff opened is now: "open" (a session in Cue), "quiet" (running, Cue hasn't heard
- *  from it yet), "ended" (on this Mac: Resume brings it back), or "" (ended on another machine). */
-function newLeadAt(ho) {
-  if (sessionOf(ho.to)) return "open";
-  if ((state.live || []).some((q) => q.session_id === ho.to)) return "quiet";
-  return ho.machine ? "" : "ended";
-}
-/** The button to the lead that has the work now: open it, take it in, or resume it. */
-function newLeadBtn(ho, cls = "btn primary") {
-  const at = newLeadAt(ho), name = bareName(ho.name) || "new lead";
-  if (at === "open") return `<button class="${cls}" data-session="${esc(ho.to)}">Open new lead</button>`;
-  if (at === "quiet") return `<button class="${cls}" data-sv="quiet" data-sid="${esc(ho.to)}">Open new lead</button>`;
-  if (at === "ended") return `<button class="${cls}" data-resume="${esc(ho.to)}" data-name="${esc(name)}">Resume new lead</button>`;
-  return "";
-}
-/** On a relay agent's title line (after its RELAY tag): "for <lead> ›", which opens its lead's chat, or that its lead
- *  isn't running. A lead's (any session's) agents are agents.js agentChips. */
-function teamChips(sid) {
-  const t = teamOf(sid), m = t && execOf(sid);
-  if (!m) return "";
-  const lead = sessionOf(t.lead) ? `<button class="tm-chip" data-session="${esc(t.lead)}"><span class="tm-n">for ${esc(t.leadName)}</span> <span class="tm-sub">›</span></button>` : `<span class="tm-chip gone"><span class="tm-n">${esc(t.leadName)}</span> <span class="tm-sub">lead · not running</span></span>`;
-  return `<span class="tm-chips">${lead}</span>`;
-}
-/** relay verify's verdict, in words: it checks every file the report lists is staged, not that the work is right. */
-const verifyWords = (v) => !v?.verdict ? "" : v.verdict === "COUNTS-MATCH" ? "its report matches what's staged"
-  : `<span class="crew-warn">its report doesn't match what's staged${v.verdict === "MALFORMED" ? " (its summary is missing or broken)" : v.note ? ` (${esc(v.note)})` : ""}</span>`;
-/** An executor's chat: its packet (what it's for), where it stands, and Diff / Review once it's done. */
-function packetCard(sid, m = crewOf(sid)) {
-  if (m?.role !== "executor") return "";
-  const lead = esc(m.lead_name || "its lead");
-  let st, acts = "";
-  if (reported(m.status)) {
-    const asked = reviewWord(sid);
-    st = [m.outcome ? `Done: ${esc(m.outcome)}` : "Done", asked === "reviewed" ? `reviewed by ${lead}` : state.reviews?.[sid]?.state === "auto" ? `${lead} is reviewing it` : asked ? `${asked} with ${lead}` : missedWake(sid) ? `${lead} hasn't picked this up` : "waiting for review", verifyWords(m.verify)].filter(Boolean).join(" · ");
-    acts = diffBtn(sid, m) + (m.lead_armed && !asked ? crewBtn(sid, "review", "Review in lead", true) : "");
-  } else {
-    const now = liveStep(sid);
-    const pre = preStart(m) || preStart(sessionOf(sid));
-    st = pre ? `Not started: ${pre}. Open its terminal to answer it` : now ? `${esc(now.what)} · when it reports, ${lead} reviews it` : m.status === "busy" ? `Working on it · when it reports, ${lead} reviews it` : esc(exState(m).word || m.status || "");
-  }
-  const gone = m.lead_armed === false ? `<div class="crew-warn">Its lead (${lead}) isn't running, so ${reported(m.status) ? "its report reaches no one" : "no one will review this"}.</div>` : "";
-  return `<div class="team-card"><div class="tc-h">PACKET${m.packet ? ` ${m.packet}` : ""}</div>${m.goal ? `<div class="tc-goal">${esc(m.goal.charAt(0).toUpperCase() + m.goal.slice(1))}</div>` : ""}
-    <div class="tc-st">${st}</div>${gone}${acts ? `<div class="tc-acts">${acts}</div>` : ""}</div>`;
-}
-/** A lead's chat: the notes about its lead role (a handoff, the lead it took over from) and its plan. What its relay
- *  agents ask and the packets they finished are on their agent rows (agents.js), as any agent's are. */
-function leadCard(sid) {
-  const m = crewOf(sid);
-  const ho = !m && handoffOf(sid);
-  if (ho) {
-    const at = newLeadAt(ho), via = ho.hops > 1 ? ` It has been handed off ${ho.hops} times since; this goes to the latest lead.` : "";
-    const where = at === "open" || at === "quiet" ? "This one isn't leading anymore; its relay agents report to the new lead now."
-      : at === "ended" ? "That lead has ended too. Resume it to pick up where it stopped." : `That lead has ended${ho.machine ? ` on ${esc(ho.machine)}` : ""}.`;
-    return `<div class="team-card"><div class="tc-row"><span><b>Relay handoff:</b> a new lead took over${ho.at_ms ? ` ${ago(ho.at_ms)} ago` : ""}. ${where}${via}</span><span class="tc-acts">${newLeadBtn(ho)}${closeBtn(sid)}</span></div></div>`;
-  }
-  // Stepped down with no handoff in relay's records: say so, rather than leave you looking for one.
-  if (exLead(sid)) return `<div class="team-card"><div class="tc-row"><span><b>Not leading anymore.</b> relay stepped this one down without a handoff, so no new lead took over from it.</span></div></div>`;
-  if (m?.role !== "lead") return "";
-  // The lead it took over from, while that one is still open: name it, and Close it from here.
-  const pred = predecessorOf(sid);
-  const took = pred ? `<div class="tc-row"><span>Took over in a relay handoff from <button class="crew-lead" data-session="${esc(pred)}">the previous lead</button>${m.started_ms ? ` ${ago(m.started_ms)} ago` : ""}. That one's still open, but it isn't leading anymore.</span><span class="tc-acts">${closeBtn(pred)}</span></div>` : "";
-  // Its plan: what it sends next, and how many wait. (Auto mode is the switch beside its LEAD tag.)
-  const plan = m.plan_queued ? `<span class="crew-plan">Next: <b>${esc(m.plan_next)}</b> · ${m.plan_queued} more queued</span>` : "";
-  // Nothing to say: no card at all.
-  if (!took && !plan) return "";
-  return `<div class="team-card">${took}${plan ? `<div class="tc-foot">${plan}</div>` : ""}</div>`;
-}
-/** On the board, inside a lead's card: its executors as a tree. What needs you, with its buttons; what's
- *  done, with Diff / Review; the rest, one line each (past five, a count). */
-const TREE_BUSY = 5;
-function teamTree(lead) {
-  const openSid = quietOpen || active?.sid;
-  const ex = crewOf(lead)?.executors || [];
-  if (!ex.length) return "";
-  const busy = [], rows = [];
-  for (const e of ex) {
-    const ask = asksOf(e.session_id), on = e.session_id === openSid ? "on" : "";
-    if (ask) rows.push(`<div class="tn need ${on}" data-big="${esc(ask.id)}"><div class="tn-t"><b>${esc(e.name)}</b><span class="tn-need">needs you</span></div><div class="tn-x">${esc(verb(ask))} <span class="${isBash(ask) ? "mono" : ""}">${esc(plain(summary(ask)))}</span></div>${ask.kind === "permission" ? `<div class="tn-acts"><button class="btn deny" data-act="deny" data-id="${esc(ask.id)}">Deny</button><button class="btn primary" data-act="allow" data-id="${esc(ask.id)}">Allow</button></div>` : ""}</div>`);
-    else if (reported(e.status) && reviewWord(e.session_id)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done · ${reviewWord(e.session_id)}</span>${verdictTag(e.verify)}</div>${goalLine(e)}</div>`);
-    else if (reported(e.status)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>✓ done, ${missedWake(e.session_id) ? "not picked up" : "waiting for review"}</span>${verdictTag(e.verify)}</div>${goalLine(e)}<div class="tn-acts">${diffBtn(e.session_id, e)}${crewBtn(e.session_id, "review", "Review in lead", true)}</div></div>`);
-    else if (stalled(e.status)) rows.push(`<div class="tn ${on}" ${exGo(e.session_id)}><div class="tn-t"><b>${esc(e.name)}</b><span>${stalledWord(e.status)}</span></div>${goalLine(e)}<div class="tn-acts">${crewBtn(e.session_id, "close", "Close")}</div></div>`);
-    else busy.push(e);
-  }
-  const line = (e) => `<div class="tn ${e.session_id === openSid ? "on" : ""}" ${exGo(e.session_id)}><div class="tn-t">${e.status === "busy" && exState(e).cls === "busy" ? `<span class="dot-live"></span>` : ""}<b>${esc(e.name)}</b>${(() => { const st = liveStep(e.session_id); return st ? `<span class="tn-x">${esc(st.what)}</span><span class="tn-age" data-ago="${st.at}">${ago(st.at)}</span>` : `<span class="tn-x">${esc(exState(e).word)}</span>`; })()}</div>${goalLine(e)}</div>`;
-  // A big team: five working lines, then a count.
-  const more = busy.length > TREE_BUSY ? [`<div class="tn"><div class="tn-t tn-x">+${busy.length - TREE_BUSY} more working</div></div>`] : [];
-  return `<div class="team-tree">${[...rows, ...busy.slice(0, TREE_BUSY).map(line), ...more].join("")}</div>`;
-}
+ *  it): what that is in words (`trust_ms` / `enter_ms`). */
+const preStart = (s) => s?.trust_ms ? "asking whether you trust its folder" : s?.enter_ms ? "waiting for Enter in its terminal" : "";
 const finishedText = (it) => it.message || it.context?.at(-1)?.text || "Finished. Your turn.";
 /** The message as one plain line of prose, for previews (no markdown punctuation). */
 const plain = (s) => String(s ?? "").replace(/```[\s\S]*?```/g, " ").replace(/[`*#]/g, "").replace(/^\s*(>\s?)+/gm, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
@@ -850,7 +638,7 @@ function barLabels(sid) {
 const barKey = (sid) => {
   const from = now() - (state.window_ms || 1800000);
   const faint = (sessionOf(sid)?.segments || []).some((g) => g.kind === "idle" && (g.end_ms ?? now()) > from);
-  const word = crewOf(sid)?.role === "executor" ? "waiting on its lead" : "not on you";
+  const word = "not on you";
   return `<div class="bar-key"><span>30 min ago</span><span class="grow"></span><span><i class="sw w"></i>working</span><span><i class="sw z"></i>waiting on you</span>${faint ? `<span><i class="sw i"></i>${word}</span>` : ""}<span class="grow"></span><span>now</span></div>`;
 };
 

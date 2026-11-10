@@ -36,26 +36,13 @@ assert.ok(!open.includes("so far)") && !statusPanelHtml(long, { ...sw, spent: "x
 assert.ok(statusPanelHtml(short, sw, { open: true, slide: true }).includes("st-drawer st-inv slide"), "just opened: it slides down");
 assert.ok(!statusPanelHtml(short, sw, { open: true }).includes(" slide\""), "otherwise not (a redraw doesn't slide it again)");
 
-// Relay mode, on the line (open or not) while relay's skills are there: Start relay; a lead gets Stop relay only
-// (relay hands its steps to executors itself: no Run on relay).
 const head = (h) => h.slice(h.indexOf("st-head"), h.indexOf("st-drawer") < 0 ? undefined : h.indexOf("st-drawer"));
-const relayOff = statusPanelHtml(short, { ...sw, relay: { on: false } }, {});
-assert.ok(head(relayOff).includes('data-act="status-relay"') && head(relayOff).includes(">Start relay<") && !relayOff.includes("Enable relay") && !relayOff.includes("status-relay-run"), "not a lead: Start relay on the line");
-const relayOn = statusPanelHtml(short, { ...sw, relay: { on: true } }, { open: true });
-assert.ok(head(relayOn).includes(">Stop relay<") && !relayOn.includes("Run on relay") && !relayOn.includes("status-relay-run") && !relayOn.includes('data-act="status-relay"'), "a lead: Stop relay only on the line");
-const manySteps = L("✓ a\n→ b\n○ c\n○ d\n○ e");
-assert.ok(!statusPanelHtml(manySteps, { ...sw, relay: { on: true } }, { open: true }).includes("Run on relay"), "however many steps are left: no Run on relay");
-assert.ok(!statusPanelHtml(short, sw, { open: true }).includes("status-relay"), "no relay for the session: no switch");
-
-// Background agents, on the line beside relay's: Start / Stop; on, a count and a live dot; none for a relay lead.
-const bgOff = statusPanelHtml(short, { ...sw, relay: { on: false }, background: { on: false, n: 0, live: false } }, {});
+// Background agents, on the line: Start / Stop; on, a count and a live dot.
+const bgOff = statusPanelHtml(short, { ...sw, background: { on: false, n: 0, live: false } }, {});
 assert.ok(head(bgOff).includes('data-act="status-background"') && head(bgOff).includes(">Start background agents<") && !head(bgOff).includes("Stop background agents") && !head(bgOff).includes("st-agents"), "off: Start, no count");
-const bgOn = statusPanelHtml(short, { ...sw, relay: { on: false }, background: { on: true, n: 2, live: true } }, {});
+const bgOn = statusPanelHtml(short, { ...sw, background: { on: true, n: 2, live: true } }, {});
 assert.ok(head(bgOn).includes(">Stop background agents<") && head(bgOn).includes('<span class="st-agents"><span class="dot-live"></span>2 agents</span>'), "on: Stop, and \"N agents\" with a live dot");
 assert.ok(head(statusPanelHtml(short, { ...sw, background: { on: true, n: 1, live: false } }, {})).includes('<span class="st-agents">1 agent</span>'), "none working: the count without the dot; one is singular");
-assert.ok(head(statusPanelHtml(short, { ...sw, background: { on: false, n: 0, live: false } }, {})).includes(">Start background agents<"), "no relay skills for the session: still there");
-const underRelay = statusPanelHtml(short, { ...sw, relay: { on: true }, background: { on: true, n: 2, live: true } }, {});
-assert.ok(!underRelay.includes("background") && !underRelay.includes("st-agents") && head(underRelay).includes(">Stop relay<"), "hidden while relay is on for the session");
 assert.ok(!statusPanelHtml(short, sw, {}).includes("status-background"), "a session with no background switch (pi, Codex): none");
 
 // Nothing: put away, off for the session, or no list.

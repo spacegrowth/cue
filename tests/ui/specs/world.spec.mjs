@@ -91,7 +91,7 @@ test("fifty sessions: the seventeen finished are cards, the thirty-three at work
   expect(new Set(ids).size, "no session twice").toBe(33);
 });
 
-test("a turn its relay lead drove, and a session out of usage, aren't cards for you", async ({ cue, page }) => {
+test("a turn another agent drove, and a session out of usage, aren't cards for you", async ({ cue, page }) => {
   await cue.open("world-many-sessions");
   await expect(page.locator(".sec-waiting .nrow[data-big]")).toHaveCount(4);
   await expect(page.locator(".sec-waiting")).not.toContainText("Report written.");

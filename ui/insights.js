@@ -192,9 +192,7 @@ function handoffDue(sid, s) {
 /** Its hand-off skills: the one you chose for this machine and agent, else one named exactly /handoff; none: Cue's own. */
 function handoffSkills(sid, s) {
   const cmds = cmdList(sid), chosen = insSkills()[insSkillKey(s)];
-  // Relay's skills work only in a relay lead (its ⋯ menu's Relay handoff… asks the same), so never offer them elsewhere.
-  const fits = (c) => !c.name.startsWith("relay:") || (crewOf(sid)?.role === "lead" && crewOf(sid)?.plugin === "relay");
-  return chosen === CUE_HANDOFF ? [] : (chosen ? cmds.filter((c) => c.name === chosen) : cmds.filter((c) => c.name === "handoff")).filter(fits);
+  return chosen === CUE_HANDOFF ? [] : chosen ? cmds.filter((c) => c.name === chosen) : cmds.filter((c) => c.name === "handoff");
 }
 /** How many times the open session has grown from its start, when a fresh session is due (handoffDue): for the
  *  header's meta line. 0 otherwise. */
@@ -527,10 +525,10 @@ function insSent(sid, text, now_) {
   if (c && c.tokens >= CACHE_MIN_TOKENS && c.until_ms > now() && insShownOnce.has(`cache:${sid}`)) {
     insLog(sid, "cache", "acted", "", c.tokens);
   }
-  // A hand-off skill sent, bare or with your instructions after it (not "… resume", not relay's, which opens
-  // the next lead itself): remembered on the Mac until it continues in a new session.
+  // A hand-off skill sent, bare or with your instructions after it (not "… resume"): remembered on the Mac until it
+  // continues in a new session.
   const ho = /^\/(\S*hand-?off)(?:\s+(?!resume\b)[\s\S]*)?$/i.exec(text.trim());
-  if (ho && !ho[1].startsWith("relay:")) invoke("handoff_sent", { sessionId: sid, skill: ho[1], resume: takesResume(sid, ho[1]) }).catch(() => {});
+  if (ho) invoke("handoff_sent", { sessionId: sid, skill: ho[1], resume: takesResume(sid, ho[1]) }).catch(() => {});
 }
 /** The skill picker for a nudge's command: opened (its host's commands read again, so a skill added a moment ago
  *  is in the list) or closed. */
@@ -670,7 +668,7 @@ function insFindSkills(fresh) {
 function insPicker(k, h, a, chosen) {
   if (insChoosing !== k) return "";
   const all = a === "claude" ? insHostCmds[h.key] : [];
-  // Every command it has (the list scrolls), as its "/" menu has them; relay's say they work only in a relay lead.
+  // Every command it has (the list scrolls), as its "/" menu has them.
   const choices = (all || []).filter((c) => c.kind !== "cue" && c.name !== "compact")
     .sort((x, y) => (x.kind === "skill" ? 0 : 1) - (y.kind === "skill" ? 0 : 1) || x.name.localeCompare(y.name));
   const q = insQuery.trim().toLowerCase().replace(/^\//, "");
@@ -679,7 +677,7 @@ function insPicker(k, h, a, chosen) {
   const empty = a !== "claude" ? "" : `<div class="ins-pop-empty dim">${all === null ? "Reading its commands…" : choices.length ? "Nothing matches." : "No commands found."}</div>`;
   return `<div class="ins-pop down" role="dialog" aria-label="Choose the hand-off skill">
       <input id="ins-search" class="ins-search" data-ins-search="${esc(k)}" value="${esc(insQuery)}" placeholder="Search ${esc(h.name)}'s ${esc(agentName(a))} commands…" autocomplete="off" spellcheck="false">
-      <div class="ins-pop-list">${cueRow}${shown.length ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${c.name.startsWith("relay:") ? "In a relay lead only. " : ""}${esc(insShort(c.desc || ""))}</span></button>`).join("") : empty}</div>
+      <div class="ins-pop-list">${cueRow}${shown.length ? shown.map((c) => `<button class="ins-pop-row ${c.name === chosen ? "on" : ""}" data-act="ins-skill" data-key="${esc(k)}" data-name="${esc(c.name)}"><span class="mono">/${esc(c.name)}</span><span class="dim">${esc(insShort(c.desc || ""))}</span></button>`).join("") : empty}</div>
       <div class="ins-pop-foot"><span class="grow"></span><span class="dim">Esc to close</span></div>
     </div>`;
 }

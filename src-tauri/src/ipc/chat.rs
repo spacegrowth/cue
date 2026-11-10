@@ -1,11 +1,9 @@
-//! The chat of a session: its box (sending, interrupting, commands), steps and log, search, crew actions.
+//! The chat of a session: its box (sending, interrupting, commands), steps and log, search.
 
 use super::{blocking, with_hub};
 use crate::db;
 use crate::commands;
-use crate::leads;
 use crate::model;
-use crate::server;
 use crate::logs::transcript;
 use crate::logs::steps;
 use crate::logs::live;
@@ -15,7 +13,7 @@ use crate::hub::Hub;
 use std::sync::Arc;
 use tauri::State;
 
-/// The chat's ⋯ menu: Compact, or a relay lead's Hand off (typed into the session; opens no window).
+/// The chat's ⋯ menu: Compact (typed into the session; opens no window).
 #[tauri::command]
 pub(crate) async fn session_command(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
     with_hub(&hub, move |h| h.session_command(&session_id, &action)).await?
@@ -513,54 +511,6 @@ pub(crate) async fn session_log_page(session_id: String, before_ms: u64, limit: 
     blocking(move || db::session_log_page(&session_id, before_ms, limit.unwrap_or(30).min(200))).await
 }
 
-/// A relay / pi-lead button (Review, Diff, Auto): type the command into the lead, open the page, or run relay.
-#[tauri::command]
-pub(crate) async fn crew_action(hub: State<'_, Arc<Hub>>, session_id: String, action: String) -> Result<String, String> {
-    with_hub(&hub, move |h| run_crew_action(&h, &session_id, &action)).await?
-}
-
-/// What a relay / pi-lead button does.
-pub(crate) fn run_crew_action(h: &Hub, session_id: &str, action: &str) -> Result<String, String> {
-    // Executors whose lead is gone, all of them at once: closed by relay, or handed to a lead that's running.
-    if action == "close-left" {
-        let left = leads::close_left_behind(session_id)?;
-        let failed: Vec<String> = left.iter().filter_map(|(sid, name, cmd)| cmd.run().and_then(|_| super::sessions::end_if_still_here(h, sid)).err().map(|e| format!("{name}: {e}"))).collect();
-        return if failed.is_empty() { Ok(format!("Closed {} executor{}", left.len(), if left.len() == 1 { "" } else { "s" })) } else { Err(failed.join("; ")) };
-    }
-    if let Some(to) = action.strip_prefix("hand:") {
-        let cmds = leads::hand_left_behind(session_id, to)?;
-        for cmd in &cmds {
-            cmd.run()?;
-        }
-        return Ok(format!("Handed {} executor{} to {}", cmds.len(), if cmds.len() == 1 { "" } else { "s" }, leads::name_of(to)));
-    }
-    if action == "aside" {
-        return h.set_aside(session_id);
-    }
-    match leads::act(session_id, action)? {
-        // One review at a time per lead: refused while it's busy (see Hub::review).
-        leads::Act::Send { to, text } if action == "review" => h.review(&to, session_id, &text),
-        leads::Act::Send { to, text } => h.send_to_session(&to, &text, &[], false).map(|_| format!("Sent {text}")),
-        leads::Act::Run(cmd, done) => cmd.run().map(|_| done),
-        // relay writes the page there and prints its path: bring it here and open it.
-        leads::Act::RemoteDiff(cmd) => {
-            let said = cmd.run()?;
-            let path = said.lines().rev().map(str::trim).find(|l| l.ends_with(".html")).ok_or("relay didn't say where it wrote the page")?.to_string();
-            let page = leads::Cmd { bin: "cat".into(), args: vec![path.clone()], machine: cmd.machine.clone() }.run()?;
-            let dir = server::cue_dir().join("diffs");
-            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-            // The file's name here is made of the crew id and the page's name, both from relay's output
-            // on the machine: only plain characters, so they can't name a path outside diffs/.
-            let plain = |s: &str| s.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')).collect::<String>();
-            let name = std::path::Path::new(&path).file_name().map(|n| plain(&n.to_string_lossy())).filter(|n| n.ends_with(".html") && n.len() > 5).unwrap_or_else(|| "diff.html".into());
-            let here = dir.join(format!("{}-{name}", plain(&cmd.args.get(1).cloned().unwrap_or_default())));
-            std::fs::write(&here, page).map_err(|e| e.to_string())?;
-            std::process::Command::new("/usr/bin/open").arg(&here).status().map(|_| "Opened in your browser".into()).map_err(|e| e.to_string())
-        }
-        leads::Act::Open(page) => std::process::Command::new("open").arg(&page).status().map(|_| "Opened in your browser".into()).map_err(|e| e.to_string()),
-    }
-}
-
 /// "Go to tab" in the Sessions view: also for a session Cue hasn't heard from (quiet, or Pi that only connected).
 #[tauri::command]
 pub(crate) async fn focus_live(hub: State<'_, Arc<Hub>>, session_id: String) -> Result<String, String> {
@@ -629,7 +579,7 @@ mod subfolders_tests {
     #[test]
     fn the_folders_in_what_you_typed_that_start_with_the_rest_in_your_own_form() {
         let home = std::env::temp_dir().join(format!("cue-subfolders-{}", std::process::id()));
-        for d in ["dev/cue-mini", "dev/cue-mac", "dev/Cue-Old", "dev/relay", "dev/.hidden"] {
+        for d in ["dev/cue-mini", "dev/cue-mac", "dev/Cue-Old", "dev/release", "dev/.hidden"] {
             std::fs::create_dir_all(home.join(d)).unwrap();
         }
         std::fs::write(home.join("dev/cue-notes.txt"), "").unwrap();
@@ -638,7 +588,7 @@ mod subfolders_tests {
         assert_eq!(subfolders("~/dev/cue", &h, 12), vec!["~/dev/cue-mac", "~/dev/cue-mini", "~/dev/Cue-Old"]);
         assert_eq!(subfolders("~/dev/", &h, 2), vec!["~/dev/cue-mac", "~/dev/cue-mini"]);
         assert_eq!(subfolders("~/dev/.h", &h, 12), vec!["~/dev/.hidden"]);
-        assert_eq!(subfolders(&format!("{h}/dev/rel"), &h, 12), vec![format!("{h}/dev/relay")]);
+        assert_eq!(subfolders(&format!("{h}/dev/rel"), &h, 12), vec![format!("{h}/dev/release")]);
         assert!(subfolders("dev/cue", &h, 12).is_empty());
         assert!(subfolders("~/nowhere/x", &h, 12).is_empty());
         std::fs::remove_dir_all(&home).unwrap();

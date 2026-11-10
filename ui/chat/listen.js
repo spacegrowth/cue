@@ -307,7 +307,7 @@ function playSample(id) {
   if (window.speechSynthesis) speechSynthesis.cancel();
   if (same) return;
   // Your Mac's voice: said by it, the same words as the natural voices' samples.
-  if (!id) { if (window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance("Packet three is done and staged. Here's what changed, and what I'd check before you commit.")); return; }
+  if (!id) { if (window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance("Step three is done and staged. Here's what changed, and what I'd check before you commit.")); return; }
   const a = new Audio(`voices/${id}.m4a`);
   voiceSample = { id, a };
   a.play().catch(() => toast("Couldn't play the sample"));

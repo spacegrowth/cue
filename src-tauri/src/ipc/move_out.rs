@@ -91,9 +91,6 @@ fn hosted_there(h: &Arc<Hub>, o: &Origin) -> Result<String, String> {
 /// of your terminal app. The resume line is made first: one Cue couldn't resume is never ended.
 fn in_cues_terminal(h: &Arc<Hub>, o: &Origin) -> Result<String, String> {
     let line = resume_line_here(o)?;
-    if crate::leads::close_plan(&o.session_id).is_some() {
-        return Err("relay runs it: close it through relay instead".into());
-    }
     let (label, star) = (label(h, o), h.session_star(&o.session_id));
     super::end_session(h, &o.session_id)?;
     // Its end drops Cue's record of it: let that land before the new one is made.
