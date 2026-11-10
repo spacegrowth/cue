@@ -217,3 +217,19 @@ https://claude.ai/artifact/NHGzaVDABY7aveRuqjM1Js):
   It says so plainly: "Committed N files to team/<name> (<sha>); your folder stays on main."
 - **Shell-write credit** (§7): files a teammate writes through Bash are its files, from its worktree's `git status`
   when it has one, else read off its commands and marked *via shell*.
+
+**Crew reviews in the chat, and a crew that tidies itself (2026-11-10).**
+- What Cue sends a lead for its crew (a review request, Send fixes, Stop, the quiet nudges, a hand-out) is drawn as one
+  quiet line ("Cue asked for docs's review · what it asked"), never as your message. The lead's reply that is a
+  review is one line: "docs reviewed: send fixes · 1 should-fix · 2 notes", with the button it calls for (only on that
+  member's current review) and Open ›, which opens the crew with its findings under its row. ⋯ → Full review shows the
+  lead's whole reply (kept on the member as `review`). A queued review is a quiet line with Skip.
+- Which reply is a review: after Cue's request for X, up to your own next message or Cue's next review request, the
+  reply that is X's saved review word for word, else the last one with a Recommendation line. Verdict: the words after
+  "Recommendation:". Counts: should-fix (with must-fix, blocker) and notes (with nit, question, or no kind). Every
+  window that draws a crew is held to the same cases: `tests/fixtures/crew-review.json`.
+- The crew tidies itself (hub/team.rs `team_tidy`, at most once a minute, off the tick's thread): a member that stopped
+  having written nothing is set aside at once; a finished one whose files are all committed since it started, by
+  Commit or by you outside Cue, leaves as committed ("Committed outside Cue", its commit); one whose files are clean
+  with nothing committed since it started leaves as set aside ("Its changes are gone"). Files git can't speak for
+  (outside a repo, ignored) keep it in the crew. Never a loop's crew, never on another machine.

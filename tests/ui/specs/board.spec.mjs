@@ -175,6 +175,17 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator(".crew-menu")).toHaveCount(0);
   });
 
+  test("Cue's review request is one quiet line, the review one line, and Open › shows its findings under its row", async ({ page }) => {
+    await expect(page.locator(".cv-you", { hasText: "Review your teammate" })).toHaveCount(0);
+    const asked = page.locator(".cue-said", { hasText: "Cue asked for handoff's review" });
+    await expect(asked).toHaveCount(1);
+    await asked.locator("[data-cue-said]").click();
+    await expect(page.locator(".cue-said-text", { hasText: "Review your teammate handoff's work" })).toHaveCount(1);
+    const line = page.locator(".cv-review", { hasText: "handoff reviewed" });
+    await line.locator("[data-crew-open]").click();
+    await expect(page.locator(".crew-dock .mt-under", { hasText: "hub/handoff.rs:40" })).toBeVisible();
+  });
+
   test("/crew is one of the lead's commands, in Cue", async ({ page }) => {
     await page.locator('textarea[data-text="s:lead"]').fill("/cre");
     await expect(page.locator('.cmd-row[data-cmd-name="crew"]')).toContainText("in Cue");

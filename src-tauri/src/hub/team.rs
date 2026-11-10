@@ -19,6 +19,53 @@ fn resume_words(name: &str) -> String {
     format!("Your teammate {name} has gone quiet. Ask it where it is and to carry on with its part, with SendMessage (to: \"{name}\").")
 }
 
+/// How often finished crew members are looked at for work committed (or thrown away) outside Cue.
+const TIDY_MS: u64 = 60_000;
+
+/// Where a finished crew member's work ended up, when it's settled.
+enum Settled {
+    /// Every one of its files is committed, and at least one in a commit since it started (that commit, short).
+    Committed(String),
+    /// Every file is clean, but nothing was committed since it started: its changes were thrown away.
+    Gone,
+}
+
+/// Its files, each asked of the git repo it's in (a crew member can work outside its lead's folder): None while any
+/// has uncommitted changes, or git can't say (not in a repo, or ignored there; then it stays for you to see to).
+fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
+    let folder = std::path::Path::new(t.folder(lead_cwd));
+    let since = t.started_ms / 1000;
+    let mut newest: Option<(u64, String)> = None;
+    for f in &t.files {
+        let p = if std::path::Path::new(f).is_absolute() { std::path::PathBuf::from(f) } else { folder.join(f) };
+        let mut dir = p.parent()?.to_path_buf();
+        while !dir.is_dir() {
+            dir = dir.parent()?.to_path_buf();
+        }
+        let dir = dir.to_string_lossy().to_string();
+        let path = p.to_string_lossy().to_string();
+        let filters = crate::safe_git::no_repo_filters("", &dir);
+        let (out, code) = crate::safe_git::run("", &dir, &filters, &["status", "--porcelain=v1", "--untracked-files=all", "--", &path]).ok()?;
+        if code != 0 || !out.trim().is_empty() {
+            return None;
+        }
+        // An ignored file is always "clean" to git: there's no telling whether its work was kept.
+        if crate::safe_git::run("", &dir, &filters, &["check-ignore", "-q", "--", &path]).is_ok_and(|(_, c)| c == 0) {
+            return None;
+        }
+        let (log, code) = crate::safe_git::run("", &dir, &filters, &["log", "-1", "--format=%ct %h", "--", &path]).ok()?;
+        if code != 0 {
+            return None;
+        }
+        if let Some((at, sha)) = log.trim().split_once(' ').and_then(|(a, s)| Some((a.parse::<u64>().ok()?, s.to_string()))) {
+            if at >= since && newest.as_ref().is_none_or(|(n, _)| at > *n) {
+                newest = Some((at, sha));
+            }
+        }
+    }
+    Some(newest.map_or(Settled::Gone, |(_, sha)| Settled::Committed(sha)))
+}
+
 /// The most of a diff the window is handed.
 const DIFF_LIMIT: usize = 200_000;
 
@@ -66,6 +113,15 @@ impl Hub {
             for t in &ended {
                 let c = changes(&machine, &cwd, t).ok();
                 h.write(|st| st.sessions.with_teammate(&sid, &t.call, |m| finished_files(m, c.as_ref())));
+            }
+            // Stopped having written nothing: nothing to review or commit, so it leaves the crew (set aside).
+            for t in &ended {
+                h.write(|st| st.sessions.with_teammate(&sid, &t.call, |m| {
+                    if m.state == "stopped" && m.files.is_empty() {
+                        m.state = "aside".into();
+                        m.step = "Stopped having written nothing".into();
+                    }
+                }));
             }
             h.changed();
             // Its review runs by itself: there's nothing for you to decide before it (docs/dev/cue-teams.md §5).
@@ -124,6 +180,7 @@ impl Hub {
                 m.state = "reviewed".into();
                 m.findings = findings;
                 m.recommendation = recommendation;
+                m.review = text.to_string();
             });
             Some((t.call, clean && st.sessions.crew_commit(lead) == "clean"))
         });
@@ -240,6 +297,62 @@ impl Hub {
         }
         LAST.store(now, std::sync::atomic::Ordering::Relaxed);
         self.team_quiet_check(now);
+        self.team_tidy_tick(now);
+    }
+
+    /// At most every TIDY_MS, a tidy pass off the tick's thread (`team_tidy`).
+    fn team_tidy_tick(&self, now: u64) {
+        static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let last = LAST.load(std::sync::atomic::Ordering::Relaxed);
+        if now >= last && now - last < TIDY_MS {
+            return;
+        }
+        LAST.store(now, std::sync::atomic::Ordering::Relaxed);
+        self.later(0, |h| {
+            if h.team_tidy() {
+                h.changed();
+            }
+        });
+    }
+
+    /// The crew tidied: a member that stopped having written nothing is set aside; a finished one whose files are all
+    /// committed since it started (by Cue's Commit, or by you elsewhere) leaves as committed; one whose files are clean
+    /// with nothing committed since it started (its changes thrown away) is set aside. Never a loop's crew (a loop
+    /// commits its own) and never one on another machine (SHORTCUT: git there is a remote call per file each pass;
+    /// upgrade: one `git status` per folder through cue-host). Runs git: call it off the hub's threads. Whether it
+    /// changed anything.
+    pub(crate) fn team_tidy(&self) -> bool {
+        let leads: Vec<(Origin, Vec<Teammate>)> = self.read(|st| {
+            st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| matches!(t.state.as_str(), "done" | "reviewed" | "stopped"))).map(|s| (s.origin.clone(), s.team.clone())).collect()
+        });
+        let mut changed = false;
+        for (origin, team) in leads {
+            #[cfg(feature = "ext")]
+            if self.ext_leads_loop(&origin.session_id) {
+                continue;
+            }
+            for t in team.iter().filter(|t| matches!(t.state.as_str(), "done" | "reviewed" | "stopped")) {
+                let left = if t.files.is_empty() {
+                    (t.state == "stopped").then(|| ("aside", String::new(), "Stopped having written nothing".to_string()))
+                } else if origin.machine.is_empty() {
+                    match settled(&origin.cwd, t) {
+                        Some(Settled::Committed(sha)) => Some(("committed", sha, "Committed outside Cue".to_string())),
+                        Some(Settled::Gone) => Some(("aside", String::new(), "Its changes are gone: nothing left to commit".to_string())),
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                let Some((state, sha, why)) = left else { continue };
+                self.write(|st| st.sessions.with_teammate(&origin.session_id, &t.call, |m| {
+                    m.state = state.into();
+                    m.commit = sha;
+                    m.step = why;
+                }));
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// The quiet teammates seen to as of `now` (the tick's work, unthrottled).

@@ -78,3 +78,24 @@ assert.equal(ctx.mateTitle({ session_id: "L", agent_id: "" }), "", "the lead's o
 assert.equal(ctx.mateTitle({ session_id: "L", agent_id: "someone-else" }), "", "an agent not in its team");
 
 console.log("team ok");
+
+// ---- Cue's own words to a lead, and a review's one line: every case both windows are held to ----
+const cases = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "fixtures/crew-review.json"), "utf8"));
+for (const c of cases.said) {
+  const got = ctx.cueSaid(c.text);
+  if (c.words === null) assert.equal(got, null, `yours, not Cue's: ${c.text}`);
+  else assert.deepEqual([got?.words, got?.name, got?.review], [c.words, c.name, c.review], c.text);
+}
+assert.match(ctx.cueSaid("Review your teammate docs's work with a fork").html, /Cue asked for <b>docs<\/b>'s review/, "the name in bold");
+assert.equal(ctx.cueSaid("Review your teammate <img>'s work with a fork").html.includes("<img>"), false, "a name is escaped");
+for (const c of cases.reviews) assert.deepEqual(ctx.reviewSays(c.text), { verdict: c.verdict, counts: c.counts }, c.text);
+for (const c of cases.replies) {
+  const got = ctx.reviewReplies(c.chat, (name) => c.member?.name === name ? c.member.review : "");
+  assert.deepEqual(Object.fromEntries([...got].map(([k, v]) => [String(k), v])), c.reviews, c.about);
+}
+world.sessions.L.team.push({ call: "c9", agent_id: "id-docs", name: "docs", state: "reviewed", findings: ["1. d.md:1 — note — fine"], recommendation: "commit", review: "1. d.md:1 — note — fine\nRecommendation: commit" });
+const line = ctx.reviewLine("L", "docs", "1. d.md:1 — note — fine\nRecommendation: commit");
+assert.match(line, /<b>docs<\/b> reviewed: <b class="rv-ok">commit<\/b> · 1 note/);
+assert.match(line, /data-mt-act="commit"[^>]*>Commit</, "its current review: the button it calls for");
+assert.match(line, /data-crew-open="L\|id-docs">Open ›/);
+assert.doesNotMatch(ctx.reviewLine("L", "docs", "an older review\nRecommendation: send fixes"), /data-mt-act/, "an older review of it: no button");

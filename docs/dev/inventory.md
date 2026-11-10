@@ -19,7 +19,7 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 | Lock acquisitions | 264 |
 | Lock-graph edges | 51 |
 | Spawn sites | 91 |
-| External calls: fs / db / process / notify / login / socket | 364 / 142 / 48 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 365 / 142 / 48 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -465,7 +465,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (364)
+### fs (365)
 
 | In | Call | Times |
 |---|---|---|
@@ -567,6 +567,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
 | `hub/team.rs::remove_file` | remove_file | 1 |
+| `hub/team.rs::settled` | Path::is_dir | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | read_dir | 4 |
 | `ipc/chat.rs::mcp_apply_clear_for` | read | 1 |

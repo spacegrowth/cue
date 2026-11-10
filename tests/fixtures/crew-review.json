@@ -1,0 +1,244 @@
+{
+  "_about": "How a crew's chat reads, in one place for every Cue window that draws it: what Cue sends a lead (drawn as one quiet line, never as yours), how a review reads (verdict and counts), and which of the lead's replies is a crew member's review. Words are plain text; a window may bold the name.",
+  "said": [
+    {
+      "text": "Review your teammate docs's work with a fork (one Agent call, not in the background): read the diff…",
+      "words": "Cue asked for docs's review",
+      "name": "docs",
+      "review": true
+    },
+    {
+      "text": "Review your teammate docs’s work with a fork",
+      "words": "Cue asked for docs's review",
+      "name": "docs",
+      "review": true
+    },
+    {
+      "text": "Send your teammate rows its review's findings with SendMessage (to: \"rows\") and let it fix them",
+      "words": "Cue sent rows's findings back to it",
+      "name": "rows",
+      "review": false
+    },
+    {
+      "text": "Your teammate hub (carried over from the session before you) can't be messaged: start a new background teammate",
+      "words": "Cue asked to start hub again with its fixes",
+      "name": "hub",
+      "review": false
+    },
+    {
+      "text": "Stop your teammate hub now (TaskStop, task id a1), and say so.",
+      "words": "Cue asked to stop hub",
+      "name": "hub",
+      "review": false
+    },
+    {
+      "text": "Your teammate hub has gone quiet. Ask it where it is and to carry on with its part",
+      "words": "Cue asked hub where it is",
+      "name": "hub",
+      "review": false
+    },
+    {
+      "text": "(Cue) Your teammate hub has gone quiet. Ask it where it is",
+      "words": "Cue asked hub where it is",
+      "name": "hub",
+      "review": false
+    },
+    {
+      "text": "(Cue) Your teammate hub has been quiet for 20 min with nothing running. Ask it where it is",
+      "words": "Cue asked hub where it is",
+      "name": "hub",
+      "review": false
+    },
+    {
+      "text": "Your teammate hub has been quiet for 20 min with nothing running. Wake it once",
+      "words": "Cue asked hub where it is",
+      "name": "hub",
+      "review": false
+    },
+    {
+      "text": "Hand this to a new teammate: one named background teammate with `isolation: \"worktree\"`.\n\nShow the spend on each card\nand more",
+      "words": "Cue handed out a task · Show the spend on each card",
+      "name": "",
+      "review": false
+    },
+    {
+      "text": "please review the docs",
+      "words": null
+    },
+    {
+      "text": "Review your teammate's work",
+      "words": null
+    }
+  ],
+  "reviews": [
+    {
+      "text": "1. a.rs:1 — should-fix — x\n2. b.rs:2 — note — y\n3. c.rs:3 — note — z\nRecommendation: send fixes.",
+      "verdict": "send fixes",
+      "counts": "1 should-fix · 2 notes"
+    },
+    {
+      "text": "1. a.rs:1 — must-fix — x\n2. b.rs:2 — blocker — y\n3. c.rs:3 — nit — z\nRecommendation: send fixes",
+      "verdict": "send fixes",
+      "counts": "2 should-fix · 1 note"
+    },
+    {
+      "text": "1. d.md:1 — note — fine\n**Recommendation:** commit",
+      "verdict": "commit",
+      "counts": "1 note"
+    },
+    {
+      "text": "Nothing to change.\nRecommendation: commit (it reads well)",
+      "verdict": "commit",
+      "counts": ""
+    },
+    {
+      "text": "1. a.rs:1 — question — why this?\nRecommendation: fix first",
+      "verdict": "fix first",
+      "counts": "1 note"
+    },
+    {
+      "text": "Looked at it; fine.",
+      "verdict": "",
+      "counts": ""
+    }
+  ],
+  "replies": [
+    {
+      "about": "the reply right after Cue's request",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "reviews": {
+        "1": "docs"
+      }
+    },
+    {
+      "about": "a short line first, then the review: the reply with a Recommendation line",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "Launching a fork to review docs."
+        },
+        {
+          "role": "agent",
+          "text": "1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "reviews": {
+        "2": "docs"
+      }
+    },
+    {
+      "about": "the member's saved review wins over a later Recommendation line",
+      "member": {
+        "name": "docs",
+        "review": "first\nRecommendation: send fixes"
+      },
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "first\nRecommendation: send fixes"
+        },
+        {
+          "role": "agent",
+          "text": "a note after\nRecommendation: commit"
+        }
+      ],
+      "reviews": {
+        "1": "docs"
+      }
+    },
+    {
+      "about": "your own next message ends the span",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "you",
+          "text": "also check the tests"
+        },
+        {
+          "role": "agent",
+          "text": "Recommendation: commit"
+        }
+      ],
+      "reviews": {}
+    },
+    {
+      "about": "no Recommendation line and no saved review: no review line",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "Working on it."
+        }
+      ],
+      "reviews": {}
+    },
+    {
+      "about": "two reviews in a row, each its own",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "Recommendation: commit"
+        },
+        {
+          "role": "you",
+          "text": "Review your teammate rows's work with a fork"
+        },
+        {
+          "role": "agent",
+          "text": "1. r.rs:1 — should-fix — x\nRecommendation: send fixes"
+        }
+      ],
+      "reviews": {
+        "1": "docs",
+        "3": "rows"
+      }
+    },
+    {
+      "about": "Cue's other messages don't end the span; only yours, or another review request",
+      "chat": [
+        {
+          "role": "you",
+          "text": "Review your teammate docs's work with a fork"
+        },
+        {
+          "role": "you",
+          "text": "Stop your teammate hub now (TaskStop, task id a1), and say so."
+        },
+        {
+          "role": "agent",
+          "text": "Stopped hub. 1. d.md:1 — note — fine\nRecommendation: commit"
+        }
+      ],
+      "reviews": {
+        "2": "docs"
+      }
+    }
+  ]
+}

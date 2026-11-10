@@ -282,6 +282,7 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
     let t = mate(&w, &sid, "rows");
     assert_eq!((t["state"].as_str(), t["recommendation"].as_str()), (Some("reviewed"), Some("send fixes")));
     assert_eq!(t["findings"].as_array().unwrap().len(), 2);
+    assert!(t["review"].as_str().unwrap().ends_with("Recommendation: send fixes."), "its whole review, for ⋯ → Full review");
     w.hub().team_action(&sid, "agentA", "fixes").unwrap();
     w.settle();
     let fixes = &w.hosted.sent().last().unwrap().1.clone();
@@ -768,4 +769,49 @@ fn a_stuck_teammate_gets_its_lead_nudged_once_a_quiet_stretch_and_resume_asks_th
     let again = mate(&w, &sid, "parser")["step_ms"].as_u64().unwrap() + crate::sessions::quiet::QUIET_MS;
     w.hub().team_quiet_check(again);
     assert_eq!(quiet_nudges(&w, &sid).len(), 2);
+}
+
+/// `writes`, but the crew member ends stopped (by you, or with its lead's interrupt), not done.
+fn writes_then_stops(call: &str, id: &str, name: &str, files: &[String]) -> Vec<HostedEvent> {
+    let mut es = writes(call, id, name, files);
+    if let Some(HostedEvent::Task { detail, .. }) = es.last_mut() {
+        detail["status"] = json!("stopped");
+    }
+    es
+}
+
+#[test]
+fn a_crew_member_that_stopped_having_written_nothing_leaves_the_crew_by_itself() {
+    let w = World::new();
+    repo(&w);
+    let sid = lead(&w, "three mocks");
+    says(&w, &sid, writes_then_stops("toolu_A", "agentA", "mock-a", &[]));
+    let t = mate(&w, &sid, "mock-a");
+    assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("aside"), Some("Stopped having written nothing")));
+}
+
+#[test]
+fn the_tidy_lets_work_committed_outside_cue_or_thrown_away_leave_the_crew_and_keeps_what_waits_on_you() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "three parts");
+    let f = |n: &str| dir.join(n).to_string_lossy().to_string();
+    says(&w, &sid, writes_then_stops("toolu_A", "agentA", "rows", &[f("a.txt")]));
+    says(&w, &sid, writes_then_stops("toolu_B", "agentB", "hub", &[f("b.txt")]));
+    says(&w, &sid, writes_then_stops("toolu_C", "agentC", "docs", &[f("shared.txt")]));
+    says(&w, &sid, writes_then_stops("toolu_D", "agentD", "notes", &[f("ignored.txt")]));
+    assert!(!w.hub().team_tidy(), "all four still have their work: three uncommitted, one where git can't tell (ignored)");
+    // You commit rows's file yourself, and throw hub's away.
+    git(&dir, &["add", "a.txt"]);
+    git(&dir, &["commit", "-q", "-m", "rows by hand"]);
+    std::fs::remove_file(dir.join("b.txt")).unwrap();
+    assert!(w.hub().team_tidy());
+    let rows = mate(&w, &sid, "rows");
+    assert_eq!((rows["state"].as_str(), rows["step"].as_str()), (Some("committed"), Some("Committed outside Cue")));
+    assert_eq!(rows["commit"].as_str().unwrap(), git(&dir, &["rev-parse", "--short", "HEAD"]).trim(), "the commit it went in");
+    let hub = mate(&w, &sid, "hub");
+    assert_eq!((hub["state"].as_str(), hub["step"].as_str()), (Some("aside"), Some("Its changes are gone: nothing left to commit")));
+    assert_eq!(mate(&w, &sid, "docs")["state"], "stopped", "its work still waits on you");
+    assert_eq!(mate(&w, &sid, "notes")["state"], "stopped", "an ignored file: git can't say whether its work was kept, so it stays");
+    assert!(!w.hub().team_tidy(), "nothing more to tidy");
 }

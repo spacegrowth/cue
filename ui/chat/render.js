@@ -115,8 +115,15 @@ function chatHtml(it, s, harness, paged = false) {
   // A tracked session you come back to: "Since you looked" where the new part starts (about.js), no call.
   const since = sid ? aboutSince(sid, ex) : null;
   if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
+  const team = s?.team || [];
+  const reviews = reviewReplies(ex, (name) => team.find((m) => m.name === name)?.review || "");
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
+    // What Cue sent the lead for its crew: one quiet line, never your bubble (team.js).
+    const cue = e.role === "you" && cueSaid(e.text);
+    if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text);
+    // A crew member's review (the lead's reply to Cue's request): one line, its findings under the member's row.
+    if (reviews.has(n) && sid) return reviewLine(sid, reviews.get(n), stripStatus(e.text));
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
     if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
     if (e.role === "you") {
@@ -145,7 +152,7 @@ function chatHtml(it, s, harness, paged = false) {
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
-  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cv-you queued review-q" data-key="${esc(K(`rq:${q.exec}`))}"><div class="cv-you-text" style="${qPhase()}">Review ${esc(q.name)}</div><div class="cv-meta">Queued in Cue · it goes when this lead is free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Remove</button></div></div>`);
+  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cue-said review-q" data-key="${esc(K(`rq:${q.exec}`))}"><span><b>${esc(q.name)}</b>'s review waits for the lead to be free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Skip</button></span></div>`);
   // A kept message that couldn't be sent says so (and why), rather than promising it goes when the turn ends.
   const heldWhy = s?.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
   if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, qPhase(), true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);

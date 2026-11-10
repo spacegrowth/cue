@@ -88,6 +88,9 @@ pub struct Teammate {
     pub findings: Vec<String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub recommendation: String,
+    /// The lead's whole reply that was its review, word for word (its ⋯ → Full review).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub review: String,
     /// When your Review went to the lead: the lead's next reply you started is its review.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub review_ms: u64,
@@ -294,6 +297,7 @@ pub fn back_at_work(t: &mut Teammate, now: u64) {
     t.ended_ms = 0;
     t.findings.clear();
     t.recommendation.clear();
+    t.review.clear();
     t.review_ms = 0;
     t.commit.clear();
     t.stat.clear();
