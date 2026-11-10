@@ -45,11 +45,11 @@
   }
   /** Your last message to it, sent but not yet taken (the chat in Cue rings it): it counts as at work. */
   const onItsWay = (s) => { const you = (s?.thread || []).filter((e) => e.role === "you").pop(); return !!you?.pending && now() - you.at_ms <= TALK_MS; };
-  /** Sessions at work (or about to be: a message of yours on its way) with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
+  /** Sessions at work (or about to be: a message of yours on its way; or a lead waiting on its own agents, "agent") with nothing waiting on you, newest to start first (the rail's dots: five at most). A message to one is
    *  queued (it reads it when it finishes its current step). */
   function working() {
     const waiting = new Set(state.items.map((i) => i.session_id));
-    return state.sessions.filter((s) => (s.state === "working" || onItsWay(s)) && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
+    return state.sessions.filter((s) => (s.state === "working" || s.state === "agent" || onItsWay(s)) && !s.later_ms && !waiting.has(s.session_id)).sort((a, b) => b.since_ms - a.since_ms);
   }
   /** The tabs, five at most: the sessions in conversation with you (one back within a few minutes of your message,
    *  or at work on what you said in the last few minutes), oldest first, then what waits on you, then what's at
@@ -110,7 +110,8 @@
 
 
   // ---------- the chat: the whole conversation, the ask on top, a box at the foot ----------
-  const msg = (e, sid) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && e.text ? `<div class="m-agent msg">${md(e.text, { pathsOf: sid })}</div>` : "";
+  // A reply's "Where we are" list is left out, as in Cue's chat (status.js): at the foot of the reply it was all you saw.
+  const msg = (e, sid) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && stripStatus(e.text).trim() ? `<div class="m-agent msg">${md(stripStatus(e.text), { pathsOf: sid })}</div>` : "";
   function threadHtml(sid) {
     const it = itemFor(sid);
     const all = sessionOf(sid)?.thread || it?.thread || [];
