@@ -86,7 +86,7 @@ const SCREENS = {
   },
   "team-handout": {
     scenario: "world-team",
-    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await dropOn(p, ".working[data-session='lead']", "Show the team's spend on the lead's card: ui/team.js and ui/board.js"); },
+    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await p.locator(".working[data-session='lead']").waitFor(); await dropOn(p, ".working[data-session='lead']", "Show the team's spend on the lead's card: ui/team.js and ui/board.js"); },
     done: (p) => p.locator(".ho .ho-by", { hasText: "rows is changing it" }).waitFor(),
   },
   // Gone quiet (src-tauri/src/sessions/quiet.rs). team-quiet: hub stuck 20 minutes (Resume / Stop), rows 20 minutes into

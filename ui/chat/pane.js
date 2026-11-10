@@ -91,6 +91,8 @@ function activeChat(a, full) {
   const { it, s, sid, harness } = a;
   return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"));
 }
+/** The crew's pill on its own, right-aligned above the foot, while an ask's card stands where the box (and its pill) was. */
+const crewAlone = (a) => a.pending && a.it?.kind !== "waiting" && crewStrip(a.sid) ? `<div class="crew-alone">${crewStrip(a.sid)}</div>` : "";
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs
  *  and the box; N still works). */
@@ -104,7 +106,7 @@ function openPane(a, full) {
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full)}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewDock(sid) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewDock(sid) + crewAlone(a) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 function activePane() {
   if (quietOpen) return quietPane();

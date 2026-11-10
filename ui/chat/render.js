@@ -136,9 +136,10 @@ function chatHtml(it, s, harness, paged = false) {
     const long = e.text.length > 280 || e.text.split("\n").length > 4;
     const folded = !recent.has(n) && long && !openMsgs.has(key);
     const follow = it?.followup && e.text === it.message && !hookInChat(sid, ex.findLast((y) => y.role === "you" && y.at_ms < e.at_ms)?.at_ms ?? 0) ? followHtml(it) : "";
-    fwdMsgs.set(key, { text: e.text, from: project, fromSid: sid });
+    fwdMsgs.set(key, { text: addOn.plain(e.text), from: project, fromSid: sid });
+    const said = addOn.reply(sid, stripStatus(e.text));
     return `<div class="cv-agent ${folded ? "folded" : ""} ${n === lastAgent ? "last" : ""}"><div class="cv-meta">${esc(agentName(harness))}${machTag(it?.machine || s?.machine)} · ${ago(e.at_ms)} ago${n === lastAgent ? toldMeta(s) : ""}</div>
-      <div class="msg cv-text">${md(stripStatus(e.text), { runIn: s?.session_id })}</div>${thumbs(e.images)}${localImages(e.text)}
+      <div class="msg cv-text">${md(said.text, { runIn: s?.session_id })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
@@ -413,6 +414,7 @@ function quietTurn(sid, t, live, latest, harness = "claude") {
   // Its reply: the words after its last step (the steps leave a finished turn's last words to the chat).
   const tail = [];
   if (!live) for (let k = t.items.length - 1; k >= 0 && t.items[k].t === "say"; k--) tail.unshift(t.items[k]);
-  const reply = tail.length ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(stripStatus(tail.map((x) => x.text).join("\n\n")))}</div></div>` : "";
+  const said = tail.length ? addOn.reply(sid, stripStatus(tail.map((x) => x.text).join("\n\n"))) : null;
+  const reply = said ? `<div class="cv-agent" data-key="a:${t.at_ms}"><div class="cv-meta">${esc(agentName(harness))} · ${ago(tail.at(-1).at_ms)} ago</div><div class="msg cv-text">${md(said.text)}</div>${said.after}</div>` : "";
   return you + stepsBlock(sid, t, live, latest) + reply;
 }

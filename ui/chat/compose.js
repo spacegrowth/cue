@@ -341,7 +341,9 @@ const suggestionFor = (sid) => {
 /** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
+  // A hosted lead's crew, at the row's right end: "Crew 4 · 1 ready ▴", opening its rows above the box (team.js).
+  const crew = sid ? crewStrip(sid) : "";
+  return phrases().length || place || crew ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}${crew ? `<span class="quick-r">${crew}</span>` : ""}</div>` : "";
 };
 /** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). */
 function takeSuggestion(key) {

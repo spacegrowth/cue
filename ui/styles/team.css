@@ -4,7 +4,9 @@
 .crew-dock { margin: 0 16px 6px; display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-height: 0; }
 .active-pane:has(.crew-dock.open) .ap-chat { min-height: 160px; }
 .active-pane:has(.crew-dock.open) > :not(.crew-dock, .ap-chat) { flex-shrink: 0; }
-.crew-strip { flex: none; align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; }
+.quick-r { margin-left: auto; display: inline-flex; }
+.crew-alone { display: flex; justify-content: flex-end; margin: 0 16px 6px; }
+.crew-strip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; }
 .crew-strip:hover, .crew-strip.on { background: var(--panel); }
 .crew-need { color: var(--deny); }
 .mt-wrap { position: relative; display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-height: 0; }

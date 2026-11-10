@@ -18,6 +18,12 @@ const addOn = {
   waitingChips: () => [],
   /** A card at the top of a session's chat. */
   chatTop: (sid) => "",
+  /** A reply of session `sid` as drawn: its text (the add-on may take a block of its own out of it) and anything it
+   *  draws after it (a card for that block). */
+  reply: (sid, text) => ({ text, after: "" }),
+  /** A reply's text with the add-on's own blocks taken out, for what reads or passes a reply on (Listen, Read, Send
+   *  to…): no side effects, cheap. */
+  plain: (text) => text,
   /** Items in a session's ⋯ menu. */
   chatMenu: (sid, s) => "",
   /** Click rules as app/delegate.js walks them ((target, event) → true when taken), tried before the Board's own. */

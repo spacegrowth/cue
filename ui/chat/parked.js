@@ -100,7 +100,7 @@ function parkedPane(p) {
   const K = keyer();
   const rows = shown.map((e) => keyed(e.role === "you"
     ? `<div class="cv-you"><div class="cv-you-text">${linkify(esc(e.text)).replace(/\n/g, "<br>")}</div>${thumbs(e.images)}<div class="cv-meta">You · ${ago(e.at_ms)} ago</div></div>`
-    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(stripStatus(e.text))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
+    : `<div class="cv-agent"><div class="cv-meta">${esc(e.role === "peer" ? e.from || "another agent" : agentName(harness))}${machTag(p.machine)} · ${ago(e.at_ms)} ago</div><div class="msg cv-text">${md(addOn.plain(stripStatus(e.text)))}</div></div>`, K(`${e.role[0]}:${e.at_ms}`))).join("");
   const where = p.machine ? ` on ${esc(machShort(p.machine))}` : "";
   const line = w
     ? `<div class="cv-status" data-key="line"><span class="dot-live"></span>Resuming${where}…</div>`

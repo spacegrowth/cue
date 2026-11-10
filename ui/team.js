@@ -1,7 +1,7 @@
 // ---------- a hosted lead's team: its teammates as rows in its chat (docs/dev/cue-teams.md §4) ----------
 // Cue keeps the team from the lead's stream (hub/team.rs: state.sessions[].team); this draws it. On the lead's title
-// line, a chip for each crew member that needs you; above the message box, a one-line strip ("Crew 3 · 1 ready ▴")
-// that opens the crew above it: one row per crew member (its mark, its name, its state, how long, its newest step or
+// line, a chip for each crew member that needs you; inside the message box, top right, "Crew 3 · 1 ready ▴", which
+// opens the crew above the box: one row per crew member (its mark, its name, its state, how long, its newest step or
 // its summary, the buttons its state needs). A finished one is reviewed by itself (hub/team.rs review_on_finish).
 // A committed or set-aside teammate leaves the team. Asks from a teammate are titled "<lead> › <teammate>".
 
@@ -122,20 +122,26 @@ function mateMenuHtml(sid, t) {
   return `<div class="more-menu rv-menu mt-menu">${review}${onRow ? "" : `<button data-mt-act="diff" data-mt-sid="${s}" data-mt-agent="${a}">Diff</button>`}<button data-mt-asked="${esc(mateKey(sid, t))}">What it was asked</button><button class="mt-aside" data-mt-act="aside" data-mt-sid="${s}" data-mt-agent="${a}">Set aside</button></div>`;
 }
 
-/** Above the lead's message box: the strip, "Crew 3 · 1 needs you · 1 ready ▴", and while it's open the crew above it,
- *  its rows in one group that scrolls past a few, and why a Commit is held. "" when it has no crew. */
-function crewDock(sid) {
+/** Inside the lead's message box, top right (compose.js quickRow): "Crew 4 · 1 needs you · 1 ready ▴", which opens its
+ *  rows above the box. "" when it has no crew. */
+function crewStrip(sid) {
   const list = mateList(sid);
   if (!list.length) return "";
   const open = mateOpenLeads.has(sid);
   const need = list.filter((t) => mateAsk(sid, t)).length, ready = list.filter((t) => t.state === "reviewed").length;
   const words = [`Crew ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
-  const strip = `<button class="crew-strip ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
-  if (!open) return `<div class="crew-dock" data-key="crew-dock">${strip}</div>`;
+  return `<button class="crew-strip ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
+}
+
+/** Above the lead's message box, while its strip is open: its crew's rows in one group that scrolls past a few, and why
+ *  a Commit is held. "" when it has no crew or it's closed. */
+function crewDock(sid) {
+  const list = mateList(sid);
+  if (!list.length || !mateOpenLeads.has(sid)) return "";
   const menu = list.find((t) => mateKey(sid, t) === mateMenu);
   const held = list.find((t) => t.state === "reviewed" && (t.also || []).length);
   const heldLine = held ? `<div class="mt-held">Commit on <b>${esc(held.name)}</b> is held: <b>${esc(held.also[0])}</b> has uncommitted changes in one of its files.</div>` : "";
-  return `<div class="crew-dock open" data-key="crew-dock"><div class="mt-wrap"><div class="mt-rows" data-scroll-key="mt:${esc(sid)}">${list.map((t) => mateRow(sid, t)).join("")}</div>${menu ? mateMenuHtml(sid, menu) : ""}${heldLine}</div>${strip}</div>`;
+  return `<div class="crew-dock open" data-key="crew-dock"><div class="mt-wrap"><div class="mt-rows" data-scroll-key="mt:${esc(sid)}">${list.map((t) => mateRow(sid, t)).join("")}</div>${menu ? mateMenuHtml(sid, menu) : ""}${heldLine}</div></div>`;
 }
 
 /** The open team's rows, when they have to scroll (a short pane gives the chat its room first): the box ends under the

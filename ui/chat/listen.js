@@ -334,7 +334,7 @@ function listenNext() {
   const next = all[all.findIndex((r) => r.key === l.key) + 1];
   if (!next) return listenStop();
   if (readerView?.key === l.key) readerView = { sid, key: next.key };
-  listening = { ...l, key: next.key, i: 0, n: 0, html: md(stripStatus(next.text)), follow: true };
+  listening = { ...l, key: next.key, i: 0, n: 0, html: md(addOn.plain(stripStatus(next.text))), follow: true };
   renderMain();
   listenSay();
 }

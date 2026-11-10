@@ -38,15 +38,15 @@ let chips = ctx.mateChips("L");
 assert.match(chips, /data-big="a1"><span class="tm-n">hub<\/span> <span class="tm-sub">· needs you/, "a chip for the crew member that asks, opening its ask");
 assert.doesNotMatch(chips, /data-mt-open/, "the crew opens from its strip, not the title");
 assert.equal(ctx.mateChips("nobody"), "");
-let dock = ctx.crewDock("L");
-assert.match(dock, /data-mt-open="L" aria-expanded="false">Crew 4 · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▴/, "counts those still in it (committed and set aside left), who needs you, who's ready");
-assert.doesNotMatch(dock, /mt-row/, "closed: the strip only");
-assert.equal(ctx.crewDock("nobody"), "", "no crew, no strip");
+assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="false">Crew 4 · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▴/, "counts those still in it (committed and set aside left), who needs you, who's ready");
+assert.equal(ctx.crewDock("L"), "", "closed: no rows above the box");
+assert.equal(ctx.crewStrip("nobody"), "", "no crew, no strip");
 
-// ---- the rows, open above the strip ----
+// ---- the rows, open above the box ----
 ctx.mateOpenLeads.add("L");
+assert.match(ctx.crewStrip("L"), /crew-strip on.*▾/s);
 const g = ctx.crewDock("L");
-assert.match(g, /class="crew-dock open".*mt-rows.*crew-strip on/s, "the rows above the strip");
+assert.match(g, /class="crew-dock open".*mt-rows/s, "the rows above the box");
 const row = (name) => g.split('<div class="mt-row').find((r) => r.includes(`>${name}</button>`)) || "";
 assert.match(row("hub"), /needs you/);
 assert.match(row("hub"), /Allow: cargo test --features ext/, "what it asks, on its row");
