@@ -187,7 +187,7 @@ function handoffDue(sid, s) {
   // Cue's own hand-off.
   const handoffs = handoffSkills(sid, s);
   const remind = Math.ceil((m.context * 1.25) / 50000) * 50000;
-  return { m, early, grew, share, window, handoffs, remind, why: pick.why };
+  return { m, early, grew, share, window, handoffs, remind, why: pick.why, keep: !!pick.keep };
 }
 /** Its hand-off skills: the one you chose for this machine and agent, else one named exactly /handoff; none: Cue's own. */
 function handoffSkills(sid, s) {
@@ -224,7 +224,7 @@ function handoffPick(sid, s, f) {
   if (brk) return { brk, why: landed === "committed" ? "Its work is committed, so a fresh session starts clean from here." : "Its tests passed with nothing edited since, so this piece looks done." };
   if (compacted) return { brk, why: "It has compacted before: another summary of a summary loses more, so a written note is safer." };
   if (areas >= 3) return { brk, why: `It has worked across ${areas} areas: a fresh session for what's next keeps them apart.` };
-  if (failing || editedSince) return { brk, why: failing ? "It's in the middle of a fix (its tests are failing): ⋯ → Compact keeps it going in place instead." : "It's in the middle of a change: ⋯ → Compact keeps it going in place instead." };
+  if (failing || editedSince) return { brk, keep: true, why: failing ? "It's in the middle of a fix (its tests are failing): Compact keeps it going in place." : "It's in the middle of a change: Compact keeps it going in place." };
   return { brk, why: "" };
 }
 
@@ -246,44 +246,43 @@ function freshState(sid, s) {
 }
 const hhmm = (ms) => { const t = new Date(ms); return `${t.getHours()}:${String(t.getMinutes()).padStart(2, "0")}`; };
 
-/** The plan under the title row's Fresh session chip, by state (freshState): why, what will happen, numbered, and
- *  the buttons that do it. Past its point: Continue in a fresh session (the hand-off skill, your click being the
- *  message, or Cue's own ask when it has none) and Remind me. Cache gone: From a note or From its last reply. A note
- *  ready: Open fresh or Keep going here. A note that didn't continue: Continue. Every way closes this one. */
+/** The plan under the title row's Fresh session chip, by state (freshState): a head (what's wrong, and how full its
+ *  window is), then one row per way on, each with its own button: one click does it, nothing is pre-selected
+ *  (the way Cue would pick has a "suggested" tag). Past its point: Hand off, Compact, Remind me. Cache gone:
+ *  Hand off, Compact, Fresh from its last reply. A note ready: Open fresh or Keep going here. A note that didn't
+ *  continue: Continue. Hand off and a fresh session close this one (Closed keeps it). */
 function handoffPlan(sid, s, f) {
-  const closes = "<li>This one closes. Closed keeps it, chat and all.</li>";
-  const skill = () => {
+  const row = (name, desc, attrs, label, tag = false) => `<div class="ins-way"><div><div class="ins-way-n">${name}${tag ? ` <span class="ins-tag-s">suggested</span>` : ""}</div><div class="ins-way-d">${desc}</div></div><button class="btn small" ${attrs} data-sid="${esc(sid)}">${label}</button></div>`;
+  const handoff = (cost, tag) => {
     const h = handoffSkills(sid, s)[0];
-    return { go: h ? `data-act="ins-fill" data-ins-cmd="/${esc(h.name)}"` : `data-act="ins-cue"`, as: h ? `, as its <span class="mono">/${esc(h.name)}</span> writes it` : "" };
+    const go = h ? `data-act="ins-fill" data-ins-cmd="/${esc(h.name)}"` : `data-act="ins-cue"`;
+    return row(`Hand off${h ? ` <span class="mono">/${esc(h.name)}</span>` : ""}`, `Note of where things stand, then a fresh session from it; this one closes${cost}`, go, "Hand off", tag);
   };
-  const btn = (attrs, label, primary) => `<button class="btn${primary ? " primary" : ""}" ${attrs} data-sid="${esc(sid)}">${label}</button>`;
-  let why, steps, acts;
+  const compact = (cost, tag) => canCompact(sid) ? row(`Compact <span class="mono">/compact</span>`, `Keeps this session, sums up its chat in place${cost}`, `data-act="ins-compact"`, "Compact", tag) : "";
+  const meter = (share, left, right) => `<div class="ins-meter"><i style="width:${Math.min(100, Math.round(share * 100))}%"></i></div><div class="ins-axis"><span>${left}</span><span>${right}</span></div>`;
+  const m = stepFeeds.get(sid)?.meta, share = m?.context ? m.context / (m.window || HANDOFF.window) : 0;
+  let head, ways;
   if (f.kind === "note") {
     const c = cacheOf(sid), left = c ? c.until_ms - now() : 0;
-    why = `<b>Hand-off note ready</b>${f.ho.note_ms ? ` (written ${hhmm(f.ho.note_ms)})` : ""}. ${left > 0 ? `Its cache lasts ${Math.max(1, Math.ceil(left / 60000))} more min, so keeping going here is still cheap.` : `Its cache is gone: keeping going here ${c ? coldCost(c, "").replace(/^ /, "") : "re-writes all of its context"}.`}`;
-    steps = `<li>Open fresh: a new session opens here from the note, small.</li>${closes}`;
-    acts = btn(`data-act="ins-continue"`, "Open fresh", true) + btn(`data-act="ins-keep"`, "Keep going here");
+    head = `<div class="ins-plan-t">Hand-off note ready${f.ho.note_ms ? ` · written ${hhmm(f.ho.note_ms)}` : ""}</div><div class="ins-plan-s">${left > 0 ? `Its cache lasts ${Math.max(1, Math.ceil(left / 60000))} more min, so keeping going here is still cheap.` : `Its cache is gone: keeping going here ${c ? coldCost(c, "").replace(/^ /, "") : "re-writes all of its context"}.`}</div>`;
+    ways = row("Open fresh", "A new session opens here from the note, small; this one closes", `data-act="ins-continue"`, "Open", true)
+      + row("Keep going here", "The note is set aside", `data-act="ins-keep"`, "Keep going");
   } else if (f.kind === "stuck") {
-    why = "<b>Its hand-off note is written,</b> but the fresh session didn't open.";
-    steps = `<li>A fresh session opens here from that note.</li>${closes}`;
-    acts = btn(`data-act="ins-continue"`, "Continue in a fresh session", true);
+    head = `<div class="ins-plan-t">Its hand-off note is written</div><div class="ins-plan-s">But the fresh session didn't open.</div>`;
+    ways = row("Continue", "A fresh session opens here from that note; this one closes", `data-act="ins-continue"`, "Continue");
   } else if (f.kind === "cold") {
-    const k = skill();
-    why = `<b>Its cache is gone:</b> ${coldCost(f.cw.c, "its next reply")}. A fresh session starts small.`;
-    steps = `<li><b>From a note:</b> it writes where things stand first${k.as} (that one reply re-writes its context), then a fresh session opens from it.</li><li><b>From its last reply:</b> a fresh session opens now from what it last said. Nothing is re-written.</li>${closes}`;
-    acts = btn(k.go, "From a note", true) + btn(`data-act="ins-fresh"`, "From its last reply");
+    const c = f.cw.c, cold = " · 1 cold reply";
+    head = `<div class="ins-plan-t">Cache gone · ${esc(insTok(c.tokens))} to re-write</div>${share ? meter(share, `${Math.round(share * 100)}% of its window`, c.cold_x > 1 ? `next reply ≈ ${c.cold_x} warm` : "") : `<div class="ins-plan-s">${coldCost(c, "Its next reply")}.</div>`}`;
+    ways = handoff(cold, true) + compact(cold) + row("Fresh from its last reply", "Opens now, nothing re-written; this one closes · free", `data-act="ins-fresh"`, "Open");
   } else {
-    const d = f.d, h = d.handoffs[0];
-    const go = h ? `data-act="ins-fill" data-ins-cmd="/${esc(h.name)}"` : `data-act="ins-cue"`;
-    const note = h ? `as its <span class="mono">/${esc(h.name)}</span> writes it` : `<span class="mono">HANDOFF.md</span>`;
-    why = `<b>${Math.round(d.share * 100)}% of its window,</b> ${Math.round(d.grew)}× what it started with: a fresh session from a note stays sharp.${d.why ? ` ${esc(d.why)}` : ""}`;
-    steps = `<li>It writes a short note of where things stand, ${note}.</li><li>A fresh session opens here from that note, back near ${esc(insTok(d.early))}.</li>${closes}`;
-    acts = btn(go, "Continue in a fresh session", true) + `<button class="btn" data-act="ins-later" data-sid="${esc(sid)}" data-at="${d.remind}">Remind me at ${esc(insTok(d.remind))}</button>`;
+    const d = f.d;
+    head = `<div class="ins-plan-t">${Math.round(d.share * 100)}% of its window · ${Math.round(d.grew)}× its start</div>${meter(d.share, d.why ? esc(d.why) : "A fresh session from a note stays sharp.", `fresh ≈ ${esc(insTok(d.early))}`)}`;
+    ways = handoff("", !d.keep) + compact("", d.keep)
+      + row("Not now", `Ask again at ${esc(insTok(d.remind))}`, `data-act="ins-later" data-at="${d.remind}"`, "Remind me");
   }
   return `<div class="ins-pop ins-plan down" role="dialog" aria-label="Fresh session">
-    <div class="ins-why">${why}</div>
-    <ol class="ins-plan-steps">${steps}</ol>
-    ${insBusy.has(sid) ? `<div class="ins-acts">${insBusyNote(sid)}</div>` : `<div class="ins-acts">${acts}<span class="dim">Nothing goes until you click.</span></div>`}
+    <div class="ins-plan-head">${head}</div>
+    ${insBusy.has(sid) ? `<div class="ins-acts">${insBusyNote(sid)}</div>` : `<div class="ins-ways">${ways}</div>`}
     ${insHideRow(sid)}
   </div>`;
 }
@@ -352,7 +351,7 @@ function handoffStatus(sid, s) {
 }
 
 /** At the foot of the plan: hide every nudge for a day or a week, or turn them off (Settings turns them back on). */
-const insHideRow = (sid) => `<div class="ins-acts ins-hide"><span class="dim">Hide nudges</span><button class="btn small" data-act="ins-snooze" data-sid="${esc(sid)}" data-days="1">For a day</button><button class="btn small" data-act="ins-snooze" data-sid="${esc(sid)}" data-days="7">For a week</button><button class="btn small" data-act="ins-off" data-sid="${esc(sid)}">Turn off</button></div>`;
+const insHideRow = (sid) => `<div class="ins-hide"><span class="dim">Hide nudges</span><span class="ins-seg"><button data-act="ins-snooze" data-sid="${esc(sid)}" data-days="1">Day</button><button data-act="ins-snooze" data-sid="${esc(sid)}" data-days="7">Week</button><button data-act="ins-off" data-sid="${esc(sid)}">Off</button></span></div>`;
 
 // ---------- the cache runs out: the next reply re-writes the whole context ----------
 
