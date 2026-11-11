@@ -162,25 +162,30 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
   }, text);
 
-  test("the Crew chip at the top right opens its two settings, and each goes to the lead", async ({ cue, page }) => {
+  test("the Teammates chip at the top right opens its two settings, and each goes to the lead", async ({ cue, page }) => {
     await expect(page.locator(".foot .team-sw")).toHaveCount(0);
     await page.locator('.ap-head [data-crew-menu="lead"]').click();
     await page.locator('[data-team-sw="lead"][data-team-mode="off"]').click();
     expect((await cue.called("team_mode", { sessionId: "lead" })).args.mode).toBe("off");
     await expect(page.locator(".team-sw button.on").first()).toHaveText("Never");
-    await expect(page.locator('.ap-head [data-crew-menu="lead"]')).toContainText("Crew: never");
-    await page.locator('[data-crew-commit="lead"][data-crew-mode="clean"]').click();
-    expect((await cue.called("crew_commit", { sessionId: "lead" })).args.mode).toBe("clean");
+    await expect(page.locator('.ap-head [data-crew-menu="lead"]')).toContainText("Teammates: never");
+    await expect(page.locator(".team-sw").nth(1).locator("button.on")).toHaveText("Handle it");
+    await page.locator('[data-crew-commit="lead"][data-crew-mode="wait"]').click();
+    expect((await cue.called("crew_commit", { sessionId: "lead" })).args.mode).toBe("wait");
+    await expect(page.locator(".crew-foot")).toContainText("waits for your Commit or Send fixes");
     await page.locator(".ap-chat").first().click();
     await expect(page.locator(".crew-menu")).toHaveCount(0);
   });
 
-  test("Cue's review request is one quiet line, the review one line, and Open › shows its findings under its row", async ({ page }) => {
-    await expect(page.locator(".cv-you", { hasText: "Review your teammate" })).toHaveCount(0);
-    const asked = page.locator(".cue-said", { hasText: "Cue asked for handoff's review" });
+  test("Cue's review request is Cue's bubble on the right, the review one line, and Open › shows its findings under its row", async ({ page }) => {
+    await expect(page.locator(".cv-you:not(.cue-you)", { hasText: "Review your teammate" })).toHaveCount(0);
+    const asked = page.locator(".cue-you", { hasText: "Asked for handoff's review" });
     await expect(asked).toHaveCount(1);
-    await asked.locator("[data-cue-said]").click();
-    await expect(page.locator(".cue-said-text", { hasText: "Review your teammate handoff's work" })).toHaveCount(1);
+    await expect(asked.locator(".cv-meta")).toHaveText(/^Cue · /);
+    await expect(asked.locator(".cv-voice-line")).toHaveCount(0);
+    await asked.locator("[data-ask-open]").click();
+    await expect(asked.locator("[data-ask-open]")).toHaveText("− What Cue sent");
+    await expect(asked.locator(".cv-voice-line", { hasText: "Review your teammate handoff's work" })).toHaveCount(1);
     const line = page.locator(".cv-review", { hasText: "handoff reviewed" });
     await line.locator("[data-crew-open]").click();
     await expect(page.locator(".crew-dock .mt-under", { hasText: "hub/handoff.rs:40" })).toBeVisible();

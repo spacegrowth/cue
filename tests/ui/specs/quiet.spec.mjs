@@ -25,7 +25,9 @@ test("a stuck teammate's row says so and offers Resume and Stop; a long run is l
   await page.locator('.nrow[data-big="n1793984390004"]').click();
   // hub's ask answered first (as the team-open screen does), so its row is its own line.
   await page.locator('.act-card [data-act="allow"]').click();
-  await page.locator("[data-mt-open]").first().click();
+  // Open already (one waits on you, so they opened by themselves); a click only if not.
+  const tab = page.locator("[data-mt-open]").first();
+  if ((await tab.getAttribute("aria-expanded")) !== "true") await tab.click();
   await cue.change((st, ago) => {
     const lead = st.sessions.find((s) => s.session_id === "lead");
     const at = (n) => lead.team.find((t) => t.name === n);

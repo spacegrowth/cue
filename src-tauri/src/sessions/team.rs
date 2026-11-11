@@ -94,6 +94,10 @@ pub struct Teammate {
     /// When your Review went to the lead: the lead's next reply you started is its review.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub review_ms: u64,
+    /// How many times its findings went back to it (by you or by Cue): with the lead handling reviews itself, after
+    /// `AUTO_FIX_ROUNDS` the next review waits for you.
+    #[serde(default, skip_serializing_if = "is_zero32")]
+    pub fix_rounds: u32,
     /// The commit its files went into.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub commit: String,
@@ -104,6 +108,10 @@ pub struct Teammate {
 }
 
 fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+fn is_zero32(n: &u32) -> bool {
     *n == 0
 }
 
@@ -481,7 +489,8 @@ impl Sessions {
 
     pub fn set_crew_commit(&mut self, sid: &str, mode: &str) -> bool {
         let Some(s) = self.0.get_mut(sid) else { return false };
-        s.crew_commit = if mode == "clean" { mode.to_string() } else { String::new() };
+        // "" (the default): Cue handles a review itself; "wait": every review waits for you.
+        s.crew_commit = if mode == "wait" { mode.to_string() } else { String::new() };
         true
     }
 

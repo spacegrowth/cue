@@ -140,8 +140,9 @@ impl Hub {
     /// What happens to a crew member's work once its review is clean: "clean" commits it on a branch of its own,
     /// "wait" leaves Commit to you.
     pub fn set_crew_commit(&self, sid: &str, mode: &str) -> Result<(), String> {
-        if !matches!(mode, "clean" | "wait") {
-            return Err(format!("“{mode}” isn't a Crew setting"));
+        // "auto": Cue handles each review itself (the default; "clean", its old name, too); "wait": ask you every time.
+        if !matches!(mode, "auto" | "clean" | "wait") {
+            return Err(format!("“{mode}” isn't a teammates setting"));
         }
         if !self.write(|st| st.sessions.set_crew_commit(sid, mode)) {
             return Err("that session is gone".into());

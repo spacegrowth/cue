@@ -28,7 +28,12 @@ const openTerminal = async (page) => {
 
 /** world-team's ask (hub, a teammate of the lead), and its lead's chat with the team open. */
 const TEAM_ASK = "n1793984390004";
-const openTeam = async (page) => { await openCard(page, TEAM_ASK); await page.locator("[data-mt-open]").click(); };
+/** The teammates over the box, open or closed as `open` says (they open by themselves while one waits on you). */
+const showTeam = async (page, open = true) => {
+  const b = page.locator("[data-mt-open]").first();
+  if ((await b.getAttribute("aria-expanded")) !== String(open)) await b.click();
+};
+const openTeam = async (page) => { await openCard(page, TEAM_ASK); await showTeam(page); };
 /** Text dropped on `sel`, as a selection dragged there drops it. */
 const dropOn = (page, sel, text) => page.evaluate(([sel, text]) => {
   const dt = new DataTransfer();
@@ -55,11 +60,11 @@ const SCREENS = {
   // team open, hub's row "needs you" and its card titled "cue › hub". team-open: that ask answered, every row in its
   // state. team-review: handoff's findings open. team-diff: skill's diff under its row. team-commit-main: Commit on docs
   // refused (its folder is on main), the reason under its row.
-  "team-closed": { scenario: "world-team", setup: (p) => openCard(p, TEAM_ASK), done: (p) => p.locator(".active-pane [data-mt-open]").waitFor() },
+  "team-closed": { scenario: "world-team", setup: async (p) => { await openCard(p, TEAM_ASK); await showTeam(p, false); }, done: (p) => p.locator(".active-pane [data-mt-open]").waitFor() },
   "team-ask": { scenario: "world-team", setup: (p) => openTeam(p), done: async (p) => { await p.locator(".mt-row.need").waitFor(); await p.locator(".act-card .act-head .mt-of").waitFor(); } },
   "team-open": {
     scenario: "world-team",
-    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await p.locator("[data-mt-open]").click(); },
+    setup: async (p) => { await openCard(p, TEAM_ASK); await p.locator('.act-card [data-act="allow"]').click(); await showTeam(p); },
     done: async (p) => { await p.locator(".mt-row").nth(4).waitFor(); await expect(p.locator(".mt-row.need")).toHaveCount(0); },
   },
   "team-review": {
@@ -74,7 +79,8 @@ const SCREENS = {
   },
   "team-commit-main": {
     scenario: "world-team",
-    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
+    // docs's review says commit with a note, so its row offers Send fixes; Commit anyway is under ⋯.
+    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-more="lead|id-docs"]').click(); await p.locator('.mt-menu [data-mt-act="commit"][data-mt-agent="id-docs"]').click(); },
     done: async (p) => { await p.locator(".mt-note", { hasText: "is on main" }).waitFor(); await p.locator('.mt-note [data-mt-act="branch"]').waitFor(); },
   },
   // How work goes out to the crew (ui/team_send.js). team-switch: the Crew menu open at the top right, split on Always.
@@ -96,7 +102,7 @@ const SCREENS = {
     setup: async (p) => {
       await openCard(p, TEAM_ASK);
       await p.locator('.act-card [data-act="allow"]').click();
-      await p.locator("[data-mt-open]").click();
+      await showTeam(p);
       await p.evaluate((ago) => {
         const st = CueBridge.world.state, lead = st.sessions.find((s) => s.session_id === "lead"), at = (n) => lead.team.find((t) => t.name === n);
         Object.assign(at("hub"), { quiet: "stuck", step_ms: st.now_ms - ago });

@@ -30,30 +30,33 @@ enum Settled {
     Gone,
 }
 
-/// Its files, each asked of the git repo it's in (a crew member can work outside its lead's folder): None while any
+/// Its files, asked of the git repo each is in (a crew member can work outside its lead's folder): None while any
 /// has uncommitted changes, or git can't say (not in a repo, or ignored there; then it stays for you to see to).
 fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
-    let folder = std::path::Path::new(t.folder(lead_cwd));
     let since = t.started_ms / 1000;
     let mut newest: Option<(u64, String)> = None;
-    for f in &t.files {
-        let p = if std::path::Path::new(f).is_absolute() { std::path::PathBuf::from(f) } else { folder.join(f) };
-        let mut dir = p.parent()?.to_path_buf();
-        while !dir.is_dir() {
-            dir = dir.parent()?.to_path_buf();
+    for r in repos("", lead_cwd, t, false) {
+        if r.top.is_empty() {
+            return None;
         }
-        let dir = dir.to_string_lossy().to_string();
-        let path = p.to_string_lossy().to_string();
-        let filters = crate::safe_git::no_repo_filters("", &dir);
-        let (out, code) = crate::safe_git::run("", &dir, &filters, &["status", "--porcelain=v1", "--untracked-files=all", "--", &path]).ok()?;
+        let dir = r.top.as_str();
+        let filters = crate::safe_git::no_repo_filters("", dir);
+        let git = |args: &[&str]| crate::safe_git::run("", dir, &filters, args).ok();
+        let with = |head: &[&'static str]| -> Vec<String> { head.iter().map(|s| s.to_string()).chain(["--".to_string()]).chain(r.paths.iter().cloned()).collect() };
+        let run = |head: &[&'static str]| {
+            let args = with(head);
+            git(&args.iter().map(String::as_str).collect::<Vec<_>>())
+        };
+        let (out, code) = run(&["status", "--porcelain=v1", "--untracked-files=all"])?;
         if code != 0 || !out.trim().is_empty() {
             return None;
         }
         // An ignored file is always "clean" to git: there's no telling whether its work was kept.
-        if crate::safe_git::run("", &dir, &filters, &["check-ignore", "-q", "--", &path]).is_ok_and(|(_, c)| c == 0) {
+        if run(&["check-ignore", "-q"]).is_some_and(|(_, c)| c == 0) {
             return None;
         }
-        let (log, code) = crate::safe_git::run("", &dir, &filters, &["log", "-1", "--format=%ct %h", "--", &path]).ok()?;
+        // The newest commit with any of its files in this repo.
+        let (log, code) = run(&["log", "-1", "--format=%ct %h"])?;
         if code != 0 {
             return None;
         }
@@ -175,20 +178,26 @@ impl Hub {
         let filed = self.write(|st| {
             let t = st.sessions.team(lead).into_iter().filter(|t| t.state == "reviewing").min_by_key(|t| t.review_ms)?;
             let (findings, recommendation) = read_review(text);
-            let clean = recommendation == "commit";
+            let next = auto_next(&st.sessions.crew_commit(lead), &recommendation, findings.len(), t.fix_rounds);
             st.sessions.with_teammate(lead, &t.call, |m| {
                 m.state = "reviewed".into();
                 m.findings = findings;
                 m.recommendation = recommendation;
                 m.review = text.to_string();
             });
-            Some((t.call, clean && st.sessions.crew_commit(lead) == "clean"))
+            Some((t.call, next))
         });
-        let Some((call, commit)) = filed else { return };
+        let Some((call, next)) = filed else { return };
         self.changed();
-        if commit {
-            let lead = lead.to_string();
-            self.later(0, move |h| h.commit_when_clean(&lead, &call));
+        let lead = lead.to_string();
+        match next {
+            AutoNext::Commit => self.later(0, move |h| h.commit_when_clean(&lead, &call)),
+            AutoNext::Fixes => self.later(0, move |h| {
+                if let Err(e) = h.team_action(&lead, &call, "fixes") {
+                    h.set_teammate(&lead, &call, |m| m.step = format!("Fixes not sent by themselves: {e}"));
+                }
+            }),
+            AutoNext::Ask => {}
         }
     }
 
@@ -221,6 +230,26 @@ impl Hub {
         }
     }
 
+    /// Send fixes to a teammate carried over a handoff: its process ended with its old lead, so the lead starts a new one
+    /// under its name with the findings.
+    fn fixes_carried_over(&self, lead: &str, t: &Teammate) -> Result<String, String> {
+        let text = format!(
+            "Your teammate {name} (carried over from the session before you) can't be messaged: start a new background teammate named \"{name}\" (Agent tool, `name: \"{name}\"`, `run_in_background: true`{iso}) to fix its review's findings in its files, and don't fix them yourself.\nWhat it was asked: {what}\nIts files: {files}\nThe findings:\n{}",
+            if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
+            name = t.name,
+            iso = if t.worktree.is_empty() { "" } else { ", `isolation: \"worktree\"`" },
+            what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
+            files = if t.files.is_empty() { "(none)".to_string() } else { t.files.join(", ") },
+        );
+        self.send_to_session(lead, &text, &[], false)?;
+        self.set_teammate(lead, &t.call, |m| {
+            m.fix_rounds += 1;
+            m.step = "Fixes sent: its lead starts it again".into();
+            m.step_ms = now_ms();
+        });
+        Ok(format!("Asked its lead to start {} again with the fixes", t.name))
+    }
+
     /// One of a teammate's buttons: review, diff, commit, fixes (Send fixes), stop, aside (Set aside). What to say,
     /// or why not; Diff answers with the diff itself.
     pub fn team_action(&self, lead: &str, agent: &str, action: &str) -> Result<String, String> {
@@ -233,22 +262,7 @@ impl Hub {
             "commit" => self.commit_teammate(lead, &origin, &t, false),
             // Commit refused on main (or a detached HEAD): a new branch made for it there, then the commit.
             "branch" => self.commit_teammate(lead, &origin, &t, true),
-            "fixes" if !t.from.is_empty() => {
-                let text = format!(
-                    "Your teammate {name} (carried over from the session before you) can't be messaged: start a new background teammate named \"{name}\" (Agent tool, `name: \"{name}\"`, `run_in_background: true`{iso}) to fix its review's findings in its files, and don't fix them yourself.\nWhat it was asked: {what}\nIts files: {files}\nThe findings:\n{}",
-                    if t.findings.is_empty() { "(the review listed none: ask it to check its work against what it was asked)".to_string() } else { t.findings.join("\n") },
-                    name = t.name,
-                    iso = if t.worktree.is_empty() { "" } else { ", `isolation: \"worktree\"`" },
-                    what = if t.what.is_empty() { first(&t.asked) } else { t.what.clone() },
-                    files = if t.files.is_empty() { "(none)".to_string() } else { t.files.join(", ") },
-                );
-                self.send_to_session(lead, &text, &[], false)?;
-                self.set_teammate(lead, &t.call, |m| {
-                    m.step = "Fixes sent: its lead starts it again".into();
-                    m.step_ms = now_ms();
-                });
-                Ok(format!("Asked its lead to start {} again with the fixes", t.name))
-            }
+            "fixes" if !t.from.is_empty() => self.fixes_carried_over(lead, &t),
             "fixes" => {
                 let text = format!(
                     "Send your teammate {name} its review's findings with SendMessage (to: \"{name}\") and let it fix them; don't fix them yourself:\n{}",
@@ -258,6 +272,7 @@ impl Hub {
                 self.send_to_session(lead, &text, &[], false)?;
                 self.set_teammate(lead, &t.call, |m| {
                     crate::sessions::team::back_at_work(m, now_ms());
+                    m.fix_rounds += 1;
                     m.step = "Fixes sent through its lead".into();
                     m.step_ms = now_ms();
                 });
@@ -429,7 +444,7 @@ impl Hub {
         if t.agent_id.is_empty() || t.working() {
             return Err(format!("{} is still working", t.name));
         }
-        let files = changes(&origin.machine, &origin.cwd, t).map(|c| c.files).unwrap_or_else(|_| t.files.clone());
+        let files = changes(&origin.machine, &origin.cwd, t).map(|c| c.files()).unwrap_or_else(|_| t.files.clone());
         let place = if t.worktree.is_empty() { String::new() } else { format!(" in its worktree {}", t.worktree) };
         let text = format!(
             "Review your teammate {name}'s work with a fork (one Agent call, not in the background): read the diff of its files{place} against what it was asked, run its tests, and reply with only numbered findings (`1. file:line — should-fix — what`) and a last line `Recommendation: commit` or `Recommendation: send fixes`. Don't change, commit or message anything.\nWhat it was asked: {what}\nIts files: {files}",
@@ -457,7 +472,8 @@ impl Hub {
 
     /// Commit: the teammate's files only, `git commit --only -- <its files>`, in its worktree when it has one; held
     /// while another teammate in the same folder has uncommitted changes in one of them. Nothing of any other
-    /// teammate's goes in, staged or not.
+    /// teammate's goes in, staged or not. Files in more than one repository: each repo's are committed in that repo,
+    /// with the same message, and what happened is said per repo.
     /// `branch`: on main, master or a detached HEAD, the commit goes on a new branch crew/<name> made at HEAD
     /// (`commit_to_new_branch`); the folder stays where it is.
     fn commit_teammate(&self, lead: &str, origin: &Origin, t: &Teammate, branch: bool) -> Result<String, String> {
@@ -468,78 +484,110 @@ impl Hub {
             return Err(format!("Held: {other} has uncommitted changes in one of {}'s files", t.name));
         }
         let c = changes(&origin.machine, &origin.cwd, t)?;
-        if c.files.is_empty() {
-            return Err(format!("{} has nothing to commit", t.name));
+        let todo: Vec<&RepoChanges> = c.repos.iter().filter(|r| !r.files.is_empty()).collect();
+        if todo.is_empty() {
+            let outside = if c.unread.is_empty() { String::new() } else { format!(" in git ({} not in a git repository git can read)", c.unread.join(", ")) };
+            return Err(format!("{} has nothing to commit{outside}", t.name));
         }
-        let dir = t.folder(&origin.cwd);
         let m = origin.machine.as_str();
-        let filters = crate::safe_git::no_repo_filters(m, dir);
-        let git = |args: &[&str]| crate::safe_git::run(m, dir, &filters, args);
-        // Never on the main line: a teammate's work goes on a branch of its own (its worktree's, or one you made).
-        let on = git(&["symbolic-ref", "--short", "-q", "HEAD"]).map(|(o, _)| o.trim().to_string()).unwrap_or_default();
-        if let Some(why) = not_on(&on) {
-            if !branch {
-                return Err(why);
+        let single = todo.len() == 1;
+        let mut said: Vec<String> = vec![];
+        let mut shas: Vec<String> = vec![];
+        let mut failed = false;
+        for r in todo {
+            let place = if single { String::new() } else { format!("In {}: ", r.name()) };
+            match commit_in(m, &r.top, t, &r.files, branch) {
+                Ok((line, sha)) => {
+                    said.push(format!("{place}{line}"));
+                    shas.push(sha);
+                }
+                Err(e) => {
+                    failed = true;
+                    said.push(format!("{place}{e}"));
+                }
             }
-            return self.commit_to_new_branch(lead, origin, t, &c.files, &on);
         }
-        let made = if branch { on } else { String::new() };
-        let paths: Vec<&str> = c.files.iter().map(String::as_str).collect();
-        let add: Vec<&str> = ["add", "-A", "--"].into_iter().chain(paths.iter().copied()).collect();
-        let (_, code) = git(&add)?;
-        if code != 0 {
-            return Err(format!("git couldn't add {}'s files", t.name));
+        // One repo's commit failed: said as such, beside what the others committed (Commit again does the rest).
+        if failed {
+            return Err(said.join("\n"));
         }
-        let subject = if t.what.is_empty() { format!("{}'s work", t.name) } else { t.what.clone() };
-        let message = if t.summary.is_empty() { subject } else { format!("{subject}\n\n{}", t.summary) };
-        let commit: Vec<&str> = ["commit", "--only", "-q", "-m", message.as_str(), "--"].into_iter().chain(paths.iter().copied()).collect();
-        let (_, code) = git(&commit)?;
-        if code != 0 {
-            return Err(format!("git didn't commit {}'s files (its hooks, or nothing to commit)", t.name));
-        }
-        let sha = git(&["rev-parse", "--short", "HEAD"]).map(|(o, _)| o.trim().to_string()).unwrap_or_default();
-        let n = c.files.len();
+        let sha = shas.join(" ");
         self.set_teammate(lead, &t.call, |mate| {
             mate.state = "committed".into();
-            mate.commit = sha.clone();
+            mate.commit = sha;
         });
-        let on = if made.is_empty() { String::new() } else { format!(" on {made}") };
-        Ok(format!("Committed {}'s {n} file{}{on} ({sha})", t.name, if n == 1 { "" } else { "s" }))
+        Ok(said.join("\n"))
     }
+}
 
-    /// Make a branch and commit, for a folder on main, master or a detached HEAD (often the main checkout, where
-    /// other sessions keep uncommitted work): crew/<name> made at HEAD with `files` committed on it, through a
-    /// temporary index. The folder's HEAD, index and files stay as they are; the branch appears only once its commit
-    /// is made, so a failure leaves none.
-    fn commit_to_new_branch(&self, lead: &str, origin: &Origin, t: &Teammate, files: &[String], on: &str) -> Result<String, String> {
-        let dir = t.folder(&origin.cwd);
-        let m = origin.machine.as_str();
-        let filters = crate::safe_git::no_repo_filters(m, dir);
-        let git = |args: &[&str]| crate::safe_git::run(m, dir, &filters, args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o.trim().to_string());
-        let head = git(&["rev-parse", "-q", "--verify", "HEAD^{commit}"]).ok_or("Not committed: its folder has no commit yet to make a branch from")?;
-        let git_dir = git(&["rev-parse", "--absolute-git-dir"]).ok_or("Not committed: git couldn't find the folder's repository")?;
-        let made = free_branch(&t.name, |b| git(&["rev-parse", "--verify", "-q", &format!("refs/heads/{b}")]).is_some());
-        let index = format!("{}/cue-team-index-{}", git_dir.trim_end_matches('/'), now_ms());
-        let with_index = |args: &[&str]| crate::safe_git::run_env(m, dir, &filters, &[("GIT_INDEX_FILE", index.as_str())], args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o.trim().to_string());
-        let subject = if t.what.is_empty() { format!("{}'s work", t.name) } else { t.what.clone() };
-        let message = if t.summary.is_empty() { subject } else { format!("{subject}\n\n{}", t.summary) };
-        let add: Vec<&str> = ["add", "-A", "--"].into_iter().chain(files.iter().map(String::as_str)).collect();
-        let made_it = with_index(&["read-tree", &head])
-            .and_then(|_| with_index(&add))
-            .and_then(|_| with_index(&["write-tree"]))
-            .and_then(|tree| git(&["commit-tree", &tree, "-p", &head, "-m", &message]))
-            .and_then(|commit| git(&["update-ref", "-m", "cue: make a branch and commit", &format!("refs/heads/{made}"), &commit, ""]).map(|_| commit));
-        remove_file(m, &index);
-        let commit = made_it.ok_or_else(|| format!("Not committed: git couldn't commit {}'s files on a new branch, so none was made", t.name))?;
-        let sha: String = commit.chars().take(7).collect();
-        self.set_teammate(lead, &t.call, |mate| {
-            mate.state = "committed".into();
-            mate.commit = sha.clone();
-        });
-        let n = files.len();
-        let stays = if on.is_empty() { "its detached HEAD".to_string() } else { on.to_string() };
-        Ok(format!("Committed {n} file{} to {made} ({sha}); your folder stays on {stays}.", if n == 1 { "" } else { "s" }))
+/// Teammate `t`'s `files` (paths from the top of the repo at `dir`) committed there: on the branch it's on, or, on
+/// main, master or a detached HEAD, refused (`branch` false) or on a new branch (`commit_to_new_branch`). What to
+/// say, and the commit (short).
+fn commit_in(m: &str, dir: &str, t: &Teammate, files: &[String], branch: bool) -> Result<(String, String), String> {
+    let filters = crate::safe_git::no_repo_filters(m, dir);
+    let git = |args: &[&str]| crate::safe_git::run(m, dir, &filters, args);
+    // Never on the main line: a teammate's work goes on a branch of its own (its worktree's, or one you made).
+    let on = git(&["symbolic-ref", "--short", "-q", "HEAD"]).map(|(o, _)| o.trim().to_string()).unwrap_or_default();
+    if let Some(why) = not_on(&on) {
+        if !branch {
+            return Err(why);
+        }
+        return commit_to_new_branch(m, dir, t, files, &on);
     }
+    let made = if branch { on } else { String::new() };
+    let paths: Vec<&str> = files.iter().map(String::as_str).collect();
+    let add: Vec<&str> = ["add", "-A", "--"].into_iter().chain(paths.iter().copied()).collect();
+    let (_, code) = git(&add)?;
+    if code != 0 {
+        return Err(format!("git couldn't add {}'s files", t.name));
+    }
+    let message = commit_message(t);
+    let commit: Vec<&str> = ["commit", "--only", "-q", "-m", message.as_str(), "--"].into_iter().chain(paths.iter().copied()).collect();
+    let (_, code) = git(&commit)?;
+    if code != 0 {
+        return Err(format!("git didn't commit {}'s files (its hooks, or nothing to commit)", t.name));
+    }
+    let sha = git(&["rev-parse", "--short", "HEAD"]).map(|(o, _)| o.trim().to_string()).unwrap_or_default();
+    let n = files.len();
+    let on = if made.is_empty() { String::new() } else { format!(" on {made}") };
+    Ok((format!("Committed {}'s {n} file{}{on} ({sha})", t.name, if n == 1 { "" } else { "s" }), sha))
+}
+
+/// The message a teammate's commit gets: what it was asked (short), and its last words.
+fn commit_message(t: &Teammate) -> String {
+    let subject = if t.what.is_empty() { format!("{}'s work", t.name) } else { t.what.clone() };
+    if t.summary.is_empty() {
+        subject
+    } else {
+        format!("{subject}\n\n{}", t.summary)
+    }
+}
+
+/// Make a branch and commit, for a repo on main, master or a detached HEAD (often the main checkout, where other
+/// sessions keep uncommitted work): crew/<name> made at HEAD with `files` committed on it, through a temporary
+/// index. The folder's HEAD, index and files stay as they are; the branch appears only once its commit is made, so a
+/// failure leaves none. What to say, and the commit (short).
+fn commit_to_new_branch(m: &str, dir: &str, t: &Teammate, files: &[String], on: &str) -> Result<(String, String), String> {
+    let filters = crate::safe_git::no_repo_filters(m, dir);
+    let git = |args: &[&str]| crate::safe_git::run(m, dir, &filters, args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o.trim().to_string());
+    let head = git(&["rev-parse", "-q", "--verify", "HEAD^{commit}"]).ok_or("Not committed: its folder has no commit yet to make a branch from")?;
+    let git_dir = git(&["rev-parse", "--absolute-git-dir"]).ok_or("Not committed: git couldn't find the folder's repository")?;
+    let made = free_branch(&t.name, |b| git(&["rev-parse", "--verify", "-q", &format!("refs/heads/{b}")]).is_some());
+    let index = format!("{}/cue-team-index-{}", git_dir.trim_end_matches('/'), now_ms());
+    let with_index = |args: &[&str]| crate::safe_git::run_env(m, dir, &filters, &[("GIT_INDEX_FILE", index.as_str())], args).ok().filter(|(_, code)| *code == 0).map(|(o, _)| o.trim().to_string());
+    let message = commit_message(t);
+    let add: Vec<&str> = ["add", "-A", "--"].into_iter().chain(files.iter().map(String::as_str)).collect();
+    let made_it = with_index(&["read-tree", &head])
+        .and_then(|_| with_index(&add))
+        .and_then(|_| with_index(&["write-tree"]))
+        .and_then(|tree| git(&["commit-tree", &tree, "-p", &head, "-m", &message]))
+        .and_then(|commit| git(&["update-ref", "-m", "cue: make a branch and commit", &format!("refs/heads/{made}"), &commit, ""]).map(|_| commit));
+    remove_file(m, &index);
+    let commit = made_it.ok_or_else(|| format!("Not committed: git couldn't commit {}'s files on a new branch, so none was made", t.name))?;
+    let sha: String = commit.chars().take(7).collect();
+    let n = files.len();
+    let stays = if on.is_empty() { "its detached HEAD".to_string() } else { on.to_string() };
+    Ok((format!("Committed {n} file{} to {made} ({sha}); your folder stays on {stays}.", if n == 1 { "" } else { "s" }), sha))
 }
 
 /// Remove `path` (a scratch file Cue made) here or on that machine; gone already is fine.
@@ -569,19 +617,48 @@ fn not_on(branch: &str) -> Option<String> {
     }
 }
 
-/// What a teammate changed, as git has it now: its files with changes (in a worktree, everything changed there), their
-/// diff and its size.
+/// What a teammate changed, as git has it now, per repository its files are in: their diff and its size.
+#[derive(Default)]
 struct Changes {
-    files: Vec<String>,
+    repos: Vec<RepoChanges>,
     diff: String,
     added: u64,
     removed: u64,
+    /// Its files git couldn't say about (in no git repository, or git failed there), as the stream gave them.
+    unread: Vec<String>,
+}
+
+/// One repository's part of a teammate's changes.
+struct RepoChanges {
+    /// The repo's top folder.
+    top: String,
+    /// What its paths are shown under: "" in the teammate's own folder's repo, else the repo's folder name.
+    label: String,
+    /// Its files with changes, from the repo's top (in a worktree of its own, everything changed there).
+    files: Vec<String>,
+    /// Those of the teammate's files (as the stream gave them) git says changed.
+    changed: Vec<String>,
+    /// Its own worktree, read whole.
+    whole: bool,
+}
+
+impl RepoChanges {
+    /// The repo's folder name.
+    fn name(&self) -> &str {
+        self.top.trim_end_matches('/').rsplit('/').next().unwrap_or(&self.top)
+    }
 }
 
 impl Changes {
+    /// Every file with changes, as shown: from its repo's top in the teammate's own repo, else with the repo's
+    /// folder name first ("other-repo/mac/ui/addon.js").
+    fn files(&self) -> Vec<String> {
+        self.repos.iter().flat_map(|r| r.files.iter().map(move |f| if r.label.is_empty() { f.clone() } else { format!("{}/{f}", r.label) })).collect()
+    }
+
     /// "2 files +140 −0".
     fn stat(&self) -> String {
-        let n = self.files.len();
+        let n: usize = self.repos.iter().map(|r| r.files.len()).sum();
         if n == 0 {
             return String::new();
         }
@@ -603,8 +680,8 @@ fn worktree_files(machine: &str, lead_cwd: &str, t: &Teammate) -> Option<Vec<Str
 }
 
 /// What a teammate that just finished keeps from git's look at its changes (`c`; None when git couldn't say): their
-/// size; in its own worktree, every file changed there; in the lead's folder, its files read off its shell commands
-/// that didn't change after all (a command that failed, a file put back) let go.
+/// size; in its own worktree, every file changed there; elsewhere, its files read off its shell commands that didn't
+/// change after all (a command that failed, a file put back) let go.
 fn finished_files(m: &mut Teammate, c: Option<&Changes>) {
     let Some(c) = c else {
         m.stat.clear();
@@ -612,10 +689,10 @@ fn finished_files(m: &mut Teammate, c: Option<&Changes>) {
     };
     m.stat = c.stat();
     if has_worktree(m) {
-        add_files(m, c.files.iter().cloned(), false);
+        add_files(m, c.repos.iter().filter(|r| r.whole).flat_map(|r| r.files.iter().cloned()), false);
     } else {
-        // git's paths are from the repository's top, the row's from the lead's folder (which may be under it).
-        let changed = |f: &String| c.files.iter().any(|g| g == f || g.ends_with(&format!("/{f}")));
+        // A file git couldn't read stays: there's no telling.
+        let changed = |f: &String| c.unread.contains(f) || c.repos.iter().any(|r| r.changed.contains(f));
         let unchanged: Vec<String> = m.via_shell.iter().filter(|f| !changed(f)).cloned().collect();
         m.files.retain(|f| !unchanged.contains(f));
         m.via_shell.retain(|f| !unchanged.contains(f));
@@ -650,24 +727,163 @@ fn status(machine: &str, dir: &str, only: &[&str]) -> Result<(Vec<String>, Vec<S
     Ok((files, untracked))
 }
 
-/// `t`'s changes now. Its files as the stream says them (its own edits), or, in a worktree of its own, whatever changed
-/// there (its shell commands' changes too). New files count as all added.
+/// The top folder of the git repository folder `dir` is in, None when it's in none. Here, the nearest folder of it
+/// that exists is asked (a file's folder may be gone); on a machine, `dir` as it is (nothing there is looked up from
+/// this Mac).
+fn repo_top(machine: &str, dir: &str) -> Option<String> {
+    let dir = if machine.is_empty() {
+        let mut d = std::path::PathBuf::from(dir);
+        while !d.is_dir() {
+            d = d.parent()?.to_path_buf();
+        }
+        d.to_string_lossy().to_string()
+    } else {
+        dir.to_string()
+    };
+    let (out, code) = crate::safe_git::run(machine, &dir, &[], &["rev-parse", "--show-toplevel"]).ok()?;
+    let top = out.trim();
+    (code == 0 && !top.is_empty()).then(|| top.to_string())
+}
+
+/// One git repository some of a teammate's files are in (or none).
+struct Repo {
+    /// Its top folder; "" for files in no git repository.
+    top: String,
+    /// What its paths are shown under: "" in the teammate's own folder's repo, else the repo's folder name.
+    label: String,
+    /// The teammate's files in it, as the stream gave them (absolute, or relative to its folder).
+    given: Vec<String>,
+    /// The same, absolute: what git is handed, run in `top`.
+    paths: Vec<String>,
+    /// Its own worktree, read whole: everything changed there is its (its files there aren't listed).
+    whole: bool,
+}
+
+/// `t`'s files grouped by the git repository each is in: its own folder's repo first, then the others, then those in
+/// none. `whole`: a teammate in a worktree of its own has that worktree read whole.
+fn repos(machine: &str, lead_cwd: &str, t: &Teammate, whole: bool) -> Vec<Repo> {
+    let folder = t.folder(lead_cwd).trim_end_matches('/');
+    let home = repo_top(machine, folder);
+    let whole = whole && !t.worktree.is_empty();
+    let mut out: Vec<Repo> = vec![];
+    if let Some(top) = home.as_ref().filter(|_| whole) {
+        out.push(Repo { top: top.clone(), label: String::new(), given: vec![], paths: vec![], whole: true });
+    }
+    // Each folder asked once.
+    let mut asked: Vec<(String, Option<String>)> = vec![];
+    for f in &t.files {
+        let inside = !f.starts_with('/');
+        let abs = if inside { format!("{folder}/{f}") } else { f.clone() };
+        let top = if inside {
+            home.clone()
+        } else {
+            let parent = match abs.rsplit_once('/') {
+                Some(("", _)) | None => "/".to_string(),
+                Some((d, _)) => d.to_string(),
+            };
+            match asked.iter().find(|(d, _)| *d == parent) {
+                Some((_, top)) => top.clone(),
+                None => {
+                    let top = repo_top(machine, &parent);
+                    asked.push((parent, top.clone()));
+                    top
+                }
+            }
+        };
+        if whole && top.is_some() && top == home {
+            continue;
+        }
+        let top = top.unwrap_or_default();
+        let i = match out.iter().position(|r| r.top == top && !r.whole) {
+            Some(i) => i,
+            None => {
+                let mine = top.is_empty() || Some(&top) == home.as_ref();
+                let label = if mine { String::new() } else { top.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string() };
+                out.push(Repo { top, label, given: vec![], paths: vec![], whole: false });
+                out.len() - 1
+            }
+        };
+        out[i].given.push(f.clone());
+        out[i].paths.push(abs);
+    }
+    out.sort_by_key(|r| (r.top.is_empty(), !r.label.is_empty()));
+    out
+}
+
+/// `path` (absolute) from the top of the repo at `top`, when it's in it. A Mac's /tmp and /var are /private/tmp and
+/// /private/var to git (the folder resolved), while a path may come as it was given.
+fn from_top(top: &str, path: &str) -> Option<String> {
+    let bare = |p: &str| p.strip_prefix("/private").filter(|r| r.starts_with('/')).unwrap_or(p).to_string();
+    let (top, path) = (bare(top), bare(path));
+    path.strip_prefix(top.trim_end_matches('/')).and_then(|r| r.strip_prefix('/')).map(str::to_string)
+}
+
+/// `t`'s changes now, per repository its files are in. Its files as the stream says them (its own edits), or, in a
+/// worktree of its own, whatever changed there (its shell commands' changes too). New files count as all added. A
+/// file in no repository is said so in the diff; an error only when git failed and nothing else could be said.
 fn changes(machine: &str, lead_cwd: &str, t: &Teammate) -> Result<Changes, String> {
-    let dir = t.folder(lead_cwd);
+    let mut c = Changes::default();
+    if t.worktree.is_empty() && t.files.is_empty() {
+        return Ok(c);
+    }
+    let mut failed: Option<String> = None;
+    let mut outside = false;
+    for r in repos(machine, lead_cwd, t, true) {
+        if r.top.is_empty() {
+            for f in &r.given {
+                c.diff.push_str(&format!("{f}: not in a git repository\n"));
+            }
+            c.unread.extend(r.given);
+            outside = true;
+            continue;
+        }
+        match repo_changes(machine, &r) {
+            Ok((part, diff, added, removed)) => {
+                c.diff.push_str(&diff);
+                c.added += added;
+                c.removed += removed;
+                c.repos.push(part);
+            }
+            Err(e) => {
+                c.diff.push_str(&format!("{}: {e}\n", if r.label.is_empty() { r.top.as_str() } else { r.label.as_str() }));
+                c.unread.extend(r.given);
+                failed = Some(e);
+            }
+        }
+    }
+    if let Some(e) = failed {
+        if c.repos.is_empty() && !outside {
+            return Err(e);
+        }
+    }
+    if c.diff.len() > DIFF_LIMIT {
+        let mut cut = DIFF_LIMIT;
+        while !c.diff.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        c.diff.truncate(cut);
+        c.diff.push_str("\n… (cut here: the rest is in git)\n");
+    }
+    Ok(c)
+}
+
+/// One repo's part of a teammate's changes: what changed, its diff (paths under the repo's label when it has one),
+/// lines added and removed.
+fn repo_changes(machine: &str, r: &Repo) -> Result<(RepoChanges, String, u64, u64), String> {
+    let dir = r.top.as_str();
     let filters = crate::safe_git::no_repo_filters(machine, dir);
     let git = |args: &[&str]| crate::safe_git::run(machine, dir, &filters, args);
-    let mine: Vec<&str> = t.files.iter().map(String::as_str).collect();
-    if t.worktree.is_empty() && mine.is_empty() {
-        return Ok(Changes { files: vec![], diff: String::new(), added: 0, removed: 0 });
-    }
+    let only: Vec<&str> = r.paths.iter().map(String::as_str).collect();
     // What git says changed: under its files only, or anywhere in its own worktree.
-    let (files, untracked) = status(machine, dir, if t.worktree.is_empty() { &mine } else { &[] })?;
+    let (files, untracked) = status(machine, dir, if r.whole { &[] } else { &only })?;
     let tracked: Vec<&str> = files.iter().filter(|f| !untracked.contains(f)).map(String::as_str).collect();
+    let prefixes = if r.label.is_empty() { vec![] } else { vec![format!("--src-prefix=a/{}/", r.label), format!("--dst-prefix=b/{}/", r.label)] };
+    let prefixes: Vec<&str> = prefixes.iter().map(String::as_str).collect();
     let mut diff = String::new();
     let (mut added, mut removed) = (0, 0);
     if !tracked.is_empty() {
         let q = crate::safe_git::QUIET_DIFF;
-        let args: Vec<&str> = ["diff", "HEAD"].into_iter().chain(q).chain(["--"]).chain(tracked.iter().copied()).collect();
+        let args: Vec<&str> = ["diff", "HEAD"].into_iter().chain(q).chain(prefixes.iter().copied()).chain(["--"]).chain(tracked.iter().copied()).collect();
         diff.push_str(&git(&args)?.0);
         let args: Vec<&str> = ["diff", "HEAD", "--numstat", "--"].into_iter().chain(tracked.iter().copied()).collect();
         for l in git(&args)?.0.lines() {
@@ -677,19 +893,49 @@ fn changes(machine: &str, lead_cwd: &str, t: &Teammate) -> Result<Changes, Strin
         }
     }
     for f in &untracked {
-        let (d, _) = git(&["diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", f])?;
+        let args: Vec<&str> = ["diff", "--no-index", "--no-color", "--no-ext-diff"].into_iter().chain(prefixes.iter().copied()).chain(["--", "/dev/null", f.as_str()]).collect();
+        let (d, _) = git(&args)?;
         added += d.lines().filter(|l| l.starts_with('+') && !l.starts_with("+++")).count() as u64;
         diff.push_str(&d);
     }
-    if diff.len() > DIFF_LIMIT {
-        let mut cut = DIFF_LIMIT;
-        while !diff.is_char_boundary(cut) {
-            cut -= 1;
-        }
-        diff.truncate(cut);
-        diff.push_str("\n… (cut here: the rest is in git)\n");
+    // Which of its files (as given) changed: by path from the top, else by the end of the path.
+    let changed = r
+        .given
+        .iter()
+        .zip(&r.paths)
+        .filter(|(_, abs)| match from_top(dir, abs) {
+            Some(rel) => files.contains(&rel),
+            None => files.iter().any(|g| abs.ends_with(&format!("/{g}"))),
+        })
+        .map(|(g, _)| g.clone())
+        .collect();
+    let part = RepoChanges { top: r.top.clone(), label: r.label.clone(), files, changed, whole: r.whole };
+    Ok((part, diff, added, removed))
+}
+
+/// How many times Cue sends a teammate its findings by itself before the next review waits for you.
+pub(crate) const AUTO_FIX_ROUNDS: u32 = 2;
+
+/// What Cue does by itself once a teammate's review is in.
+#[derive(Debug, PartialEq)]
+enum AutoNext {
+    Commit,
+    Fixes,
+    Ask,
+}
+
+/// With the lead handling reviews (`crew_commit` "", the default; "wait": ask you every time): a review that asks for
+/// fixes, or says commit but lists findings (notes too: nothing is dropped), goes back to the teammate, up to
+/// `AUTO_FIX_ROUNDS` times; a clean commit is committed to its branch. Anything else waits for you.
+fn auto_next(crew_commit: &str, recommendation: &str, findings: usize, fix_rounds: u32) -> AutoNext {
+    if crew_commit == "wait" {
+        return AutoNext::Ask;
     }
-    Ok(Changes { files, diff, added, removed })
+    let commit = recommendation.starts_with("commit");
+    if recommendation.contains("fix") || (commit && findings > 0) {
+        return if fix_rounds < AUTO_FIX_ROUNDS { AutoNext::Fixes } else { AutoNext::Ask };
+    }
+    if commit { AutoNext::Commit } else { AutoNext::Ask }
 }
 
 fn first(s: &str) -> String {

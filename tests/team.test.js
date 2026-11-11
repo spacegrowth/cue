@@ -38,7 +38,31 @@ let chips = ctx.mateChips("L");
 assert.match(chips, /data-big="a1"><span class="tm-n">hub<\/span> <span class="tm-sub">· needs you/, "a chip for the crew member that asks, opening its ask");
 assert.doesNotMatch(chips, /data-mt-open/, "the crew opens from its strip, not the title");
 assert.equal(ctx.mateChips("nobody"), "");
-assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="false"><span class="dot-live"><\/span>Teammates · 2 working · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▴/, "a live dot and how many work now, who needs you, who's ready");
+assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="true"><span class="dot-live"><\/span>Teammates · 2 working · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▾/, "a live dot and how many work now, who needs you, who's ready; open, as some wait on you");
+// A teammate waiting on you (handoff: reviewed; hub: asks) opens them over the box, once; closed, they stay closed
+// until another starts waiting.
+ctx.mateOpenLeads.clear(); ctx.mateSeenWaiting.clear();
+assert.equal(ctx.mateOpenLeads.has("L"), false);
+ctx.crewStrip("L");
+assert.equal(ctx.mateOpenLeads.has("L"), true, "opened for the ones waiting on you");
+ctx.mateOpenLeads.delete("L");
+ctx.crewStrip("L");
+assert.equal(ctx.mateOpenLeads.has("L"), false, "closed by you: stays closed");
+assert.match(ctx.crewWaitLine("L"), /Waiting on you: <b>hub<\/b> asks you something and 1 more/, "the line under the chat names who waits on you");
+const ready = world.sessions.L.team.find((t) => t.name === "skill");
+ready.state = "reviewed";
+ctx.crewStrip("L");
+assert.equal(ctx.mateOpenLeads.has("L"), true, "another ready: open again");
+ready.state = "done";
+ctx.mateOpenLeads.delete("L");
+const saved = world.items; world.items = [];
+const states = world.sessions.L.team.map((t) => t.state);
+world.sessions.L.team.forEach((t) => { if (t.state === "reviewed") t.state = "done"; });
+assert.match(ctx.crewWaitLine("L"), /dot-live.*Teammates working: hub, rows/, "none waits on you: who's at work, by name");
+world.sessions.L.team.forEach((t) => { if (t.state === "working") t.state = "done"; });
+assert.equal(ctx.crewWaitLine("L"), "", "neither: no line of its own");
+world.sessions.L.team.forEach((t, i) => { t.state = states[i]; });
+world.items = saved;
 assert.equal(ctx.crewDock("L"), "", "closed: no rows above the box");
 const idle = world.sessions.L.team.map((t) => t.state);
 world.sessions.L.team.forEach((t) => { if (t.state === "working") t.state = "done"; });
@@ -63,8 +87,29 @@ assert.match(row("skill"), /data-mt-act="diff"/);
 assert.doesNotMatch(row("skill"), /data-mt-act="review"/, "finished: reviewed by itself, no Review button");
 assert.match(row("handoff"), /reviewed · 2 findings/);
 assert.match(row("handoff"), /also changed by rows/);
-assert.match(row("handoff"), /class="btn primary held"[^>]*data-mt-act="commit"[^>]*aria-disabled="true"/, "Commit held while another teammate shares a file");
-assert.match(row("handoff"), /data-mt-act="fixes"/);
+// handoff's review says commit but lists 2 findings: they go back first (nothing dropped), so Send fixes is its button
+// and Commit anyway is in ⋯, held as Commit would be while rows shares a file.
+assert.match(row("handoff"), /class="btn primary "[^>]*data-mt-act="fixes"[^>]*>Send fixes</, "commit with findings: the findings first");
+assert.doesNotMatch(row("handoff"), /data-mt-act="commit"/);
+{
+  const h = world.sessions.L.team.find((t) => t.name === "handoff");
+  assert.match(ctx.mateMenuHtml("L", h), /data-mt-act="commit"[^>]*aria-disabled="true"[^>]*>Commit anyway</, "Commit anyway in ⋯, held");
+  const findings = h.findings;
+  h.findings = [];
+  let r2 = ctx.crewDock("L").split('<div class="mt-row').find((r) => r.includes(">handoff</button>")) || "";
+  assert.match(r2, /class="btn primary held"[^>]*data-mt-act="commit"[^>]*aria-disabled="true"/, "a clean commit: only Commit, held while another teammate shares a file");
+  assert.doesNotMatch(r2, /data-mt-act="fixes"/);
+  assert.match(ctx.mateMenuHtml("L", h), /data-mt-act="fixes"[^>]*>Send fixes</, "Send fixes in ⋯");
+  assert.doesNotMatch(ctx.mateMenuHtml("L", h), /Commit anyway/);
+  h.findings = findings;
+  h.recommendation = "send fixes";
+  r2 = ctx.crewDock("L").split('<div class="mt-row').find((r) => r.includes(">handoff</button>")) || "";
+  assert.match(r2, /class="btn primary "[^>]*data-mt-act="fixes"[^>]*>Send fixes</, "said send fixes: only Send fixes");
+  h.recommendation = "";
+  r2 = ctx.crewDock("L").split('<div class="mt-row').find((r) => r.includes(">handoff</button>")) || "";
+  assert.match(r2, /data-mt-act="commit".*data-mt-act="fixes"/s, "said neither: both");
+  h.recommendation = "commit";
+}
 assert.match(g, /Commit on <b>handoff<\/b> is held: <b>rows<\/b>/);
 assert.doesNotMatch(g, /gone|away/, "committed and set aside: out of the team");
 assert.doesNotMatch(g, /left:|border-left/, "no stripes");
@@ -93,6 +138,11 @@ for (const c of cases.said) {
 }
 assert.match(ctx.cueSaid("Review your teammate docs's work with a fork").html, /Cue asked for <b>docs<\/b>'s review/, "the name in bold");
 assert.equal(ctx.cueSaid("Review your teammate <img>'s work with a fork").html.includes("<img>"), false, "a name is escaped");
+// Drawn as Cue's bubble on the right: named Cue in its meta line, its words without "Cue", the text folded behind addedNote.
+ctx.addedNote = (key, label, line) => `<note ${key}|${label}|${line}>`;
+const bubble = ctx.cueSaidLine(ctx.cueSaid("Review your teammate docs's work with a fork"), "L:1", "Review your teammate docs's work with a fork", "2m ago");
+assert.match(bubble, /^<div class="cv-you cue-you"><div class="cv-you-text">Asked for <b>docs<\/b>'s review<note L:1\|What Cue sent\|Review your teammate docs's work with a fork><\/div><div class="cv-meta">Cue · 2m ago<\/div><\/div>$/);
+assert.doesNotMatch(ctx.cueSaidLine({ html: "Cue will ask for <b>x</b>'s review" }, "", "", "waits"), /<note/, "nothing sent yet: nothing to unfold");
 for (const c of cases.reviews) assert.deepEqual(ctx.reviewSays(c.text), { verdict: c.verdict, counts: c.counts }, c.text);
 for (const c of cases.lines) {
   const p = ctx.reviewLineParts(c.team, "docs", c.text);
@@ -105,6 +155,6 @@ for (const c of cases.replies) {
 world.sessions.L.team.push({ call: "c9", agent_id: "id-docs", name: "docs", state: "reviewed", findings: ["1. d.md:1 — note — fine"], recommendation: "commit", review: "1. d.md:1 — note — fine\nRecommendation: commit" });
 const line = ctx.reviewLine("L", "docs", "1. d.md:1 — note — fine\nRecommendation: commit");
 assert.match(line, /<b>docs<\/b> reviewed: <b class="rv-ok">commit<\/b> · 1 note/);
-assert.match(line, /data-mt-act="commit"[^>]*>Commit</, "its current review: the button it calls for");
+assert.match(line, /data-mt-act="fixes"[^>]*>Send fixes</, "its current review says commit with a note: the note goes back first");
 assert.match(line, /data-crew-open="L\|id-docs">Open ›/);
 assert.doesNotMatch(ctx.reviewLine("L", "docs", "an older review\nRecommendation: send fixes"), /data-mt-act/, "an older review of it: no button");

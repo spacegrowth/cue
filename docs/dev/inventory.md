@@ -567,7 +567,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `hub/hosted.rs::written_on_machine` | metadata | 1 |
 | `hub/ports.rs::hosts` | Path::is_file | 1 |
 | `hub/team.rs::remove_file` | remove_file | 1 |
-| `hub/team.rs::settled` | Path::is_dir | 1 |
+| `hub/team.rs::repo_top` | Path::is_dir | 1 |
 | `ipc/chat.rs::codex_log` | Path::is_file | 1 |
 | `ipc/chat.rs::codex_log` | read_dir | 4 |
 | `ipc/chat.rs::mcp_apply_clear_for` | read | 1 |

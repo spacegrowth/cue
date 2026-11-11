@@ -80,13 +80,13 @@ button.mt-name:hover { text-decoration: underline; }
 .ho-acts { display: flex; gap: 6px; padding-top: 2px; }
 .ho-acts .btn { height: 28px; padding: 0 11px; font-size: 12px; }
 
-/* What Cue sends a lead for its crew, as one quiet line in the chat (never your bubble), and a crew member's review
-   as one line: its verdict, the button it calls for, Open › (ui/team.js cueSaidLine, reviewLine). */
-.cue-said { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 10px 0; color: var(--muted); font-size: 12px; }
-.cue-said > button, .cue-said > span { padding: 0; color: inherit; font: inherit; }
-.cue-said b { color: var(--ink); font-weight: 650; }
-.cue-said-what { text-decoration: underline; }
-.cue-said-text { align-self: stretch; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); color: var(--ink); white-space: pre-wrap; user-select: text; }
+/* What Cue sends a lead for its crew: a bubble on the right like yours, a quieter fill, named Cue in its meta line, the
+   exact text behind "+ What Cue sent" (ui/team.js cueSaidLine). A crew member's review is one line: its verdict, the
+   button it calls for, Open › (reviewLine). */
+.cue-you .cv-you-text { background: var(--panel-2); }
+.cue-you .cv-you-text b { font-weight: 650; }
+.cue-you .cv-voice-note { color: var(--muted); }
+.cue-you .cv-voice-line { white-space: pre-wrap; }
 .cv-review { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
 .cv-review .stx-ic { flex: none; }
 .cv-review-w { flex: 1; min-width: 0; color: var(--ink); }

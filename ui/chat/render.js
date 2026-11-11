@@ -127,9 +127,9 @@ function chatHtml(it, s, harness, paged = false) {
   const reviews = reviewReplies(ex, (name) => [...team].reverse().find((m) => m.name === name)?.review || "");
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
-    // What Cue sent the lead for its crew: one quiet line, never your bubble (team.js).
+    // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js).
     const cue = e.role === "you" && cueSaid(e.text);
-    if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text);
+    if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, `${ago(e.at_ms)} ago`);
     // A crew member's review (the lead's reply to Cue's request): one line, its findings under the member's row.
     if (reviews.has(n) && sid) return reviewLine(sid, reviews.get(n), stripStatus(e.text));
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
@@ -159,8 +159,8 @@ function chatHtml(it, s, harness, paged = false) {
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
   for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}${runHereBtn(o.via, s)}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
-  // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
-  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cue-said review-q" data-key="${esc(K(`rq:${q.exec}`))}"><span><b>${esc(q.name)}</b>'s review waits for the lead to be free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Skip</button></span></div>`);
+  // Reviews you asked for while this lead was busy: each goes, in order, once it's free (Skip takes one back).
+  for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(keyed(cueSaidLine({ html: `Cue will ask for <b>${esc(q.name)}</b>'s review` }, "", "", `waits for the lead to be free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Skip</button>`), K(`rq:${q.exec}`)));
   // A kept message that couldn't be sent says so (and why), rather than promising it goes when the turn ends.
   const heldWhy = s?.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
   if (s?.held) rows.push(`<div class="cv-you queued held" data-key="held">${yourBubble(s.held, `${s.session_id}:held`, qPhase(), true)}${thumbs(s.held.images)}<div class="cv-meta">${heldWhy ? `Couldn't send it: ${esc(heldWhy.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="q-now" data-act="held-edit" data-sid="${esc(s.session_id)}" title="Back into the box to change it (Esc)">Edit</button> · <button class="q-now" data-act="held-now" data-sid="${esc(s.session_id)}">Send now <kbd>⌘↵</kbd></button></div></div>`);
@@ -258,6 +258,9 @@ function whereNow(it, s) {
   // count since the turn started, so a long think doesn't look stuck.
   if (s?.state === "working") return `<div class="cv-status"><span class="dot-live"></span><span class="cv-what">Working${s.prompt ? ` on: ${esc(s.prompt.length > 120 ? s.prompt.slice(0, 120) + "…" : s.prompt)}` : ""}</span><span class="dim"> · <span data-ago="${s.since_ms}">${ago(s.since_ms)}</span></span>${tipFor(it, s, "working")}</div>`;
   if (s?.state === "waiting" || s?.state === "deciding") return `<div class="cv-status"><i class="sw z live"></i>Waiting on you · ${ago(s.since_ms)}${tipFor(it, s, "waiting")}</div>`;
+  // A lead whose teammates wait on you, or that waits on teammates at work: named, not "1 background agent".
+  const crew = s?.state === "agent" && s.session_id ? crewWaitLine(s.session_id) : "";
+  if (crew) return `<div class="cv-status">${/^<span class="cv-what">Waiting on you/.test(crew) ? `<i class="sw z live"></i>` : ""}${crew}${tipFor(it, s, "working")}</div>`;
   if (s?.state === "agent") return `<div class="cv-status">${s.helpers ? `<span class="dot-live"></span><span class="cv-what">Waiting on ${esc(s.driven_by)}</span>` : `<span class="cv-what">Idle, waiting on ${esc(s.driven_by || "another agent")}</span>`}${tipFor(it, s, "working")}</div>`;
   if (s?.state === "limited" && s.limit) {
     const l = s.limit, what = s.prompt ? `“${esc(s.prompt.length > 80 ? s.prompt.slice(0, 80) + "…" : s.prompt)}”` : "Your last message";

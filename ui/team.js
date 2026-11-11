@@ -20,6 +20,35 @@ const mateList = (sid) => (sessionOf(sid)?.team || []).filter((t) => t.state !==
 const mateAsk = (sid, t) => !!t.agent_id && (state.items || []).find((i) => i.session_id === sid && i.kind !== "waiting" && i.agent_id === t.agent_id) || null;
 const mateKey = (sid, t) => `${sid}|${t.agent_id || t.call}`;
 
+/** The teammates of a lead that wait on you: ready (reviewed, its verdict waiting for your Commit or Send fixes) or
+ *  asking you something. */
+const mateWaits = (sid) => mateList(sid).filter((t) => t.state === "reviewed" || mateAsk(sid, t));
+/** Per lead, the teammates already seen waiting on you ("sid|agent"): a new one opens the teammates over the box once;
+ *  closed after that, they stay closed until another starts waiting. */
+// SHORTCUT: noticed while the tab or the rows are drawn (crewStrip, crewDock), not when the state arrives: fine while
+// every draw of a lead's chat draws its tab; if one ever doesn't, it opens on the next draw that does. Upgrade path:
+// call mateOpenOnWait for each lead from the "state" event handler and drop it from the two draws.
+const mateSeenWaiting = new Set();
+function mateOpenOnWait(sid) {
+  for (const t of mateWaits(sid)) {
+    const k = mateKey(sid, t);
+    if (mateSeenWaiting.has(k)) continue;
+    mateSeenWaiting.add(k);
+    mateOpenLeads.add(sid);
+  }
+}
+/** The line under the lead's chat while a teammate waits on you ("Waiting on you: docs is ready for review"),
+ *  or while it waits on teammates at work ("Teammates working: mac-loops"); "" when neither. */
+function crewWaitLine(sid) {
+  const wait = mateWaits(sid);
+  if (wait.length) {
+    const t = wait[0], more = wait.length > 1 ? ` and ${wait.length - 1} more` : "";
+    return `<span class="cv-what">Waiting on you: <b>${esc(t.name)}</b> ${mateAsk(sid, t) ? "asks you something" : "is ready for review"}${more}</span>`;
+  }
+  const working = mateList(sid).filter((t) => t.state === "working");
+  return working.length ? `<span class="dot-live"></span><span class="cv-what">Teammates working: ${working.map((t) => esc(t.name)).join(", ")}</span>` : "";
+}
+
 /** Its state's word after its name. */
 function mateWord(t, ask) {
   if (ask) return `<span class="tm-chip need small">needs you</span>`;
@@ -69,7 +98,12 @@ function mateActs(sid, t, ask) {
   switch (t.state) {
     case "working": return t.quiet === "stuck" ? mateBtn(sid, t, "resume", "Resume", true) + mateBtn(sid, t, "stop", "Stop") : mateBtn(sid, t, "stop", "Stop");
     case "queued": case "reviewing": return mateBtn(sid, t, "diff", "Diff");
-    case "reviewed": return mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0) + mateBtn(sid, t, "fixes", "Send fixes");
+    // Reviewed: the one its review recommends (the other is in ⋯); both when it said neither.
+    case "reviewed": {
+      const commit = mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0);
+      const rec = mateRec(t);
+      return rec === "fixes" ? mateBtn(sid, t, "fixes", "Send fixes", true) : rec === "commit" ? commit : commit + mateBtn(sid, t, "fixes", "Send fixes");
+    }
     // Stopped (by you, or with its lead's interrupt): what it changed, if anything; nothing to review in nothing.
     case "stopped": return (t.files || []).length ? mateBtn(sid, t, "diff", "Diff") : mateBtn(sid, t, "aside", "Set aside");
     // Finished: its review is queued by itself (a loop's has Review in ⋯).
@@ -116,16 +150,26 @@ function mateRow(sid, t) {
 }
 
 /** The ⋯ menu: Diff when the row doesn't show it, what it was asked, Set aside. */
+/** What a reviewed teammate's review recommends: "fixes", "commit", or "" when it said neither. */
+// A commit that lists findings (notes too) calls for its fixes first: nothing it found is dropped.
+const mateRec = (t) => { const k = verdictKind(t.recommendation); return k === "commit" && (t.findings || []).length ? "fixes" : k; };
+/** A review's verdict as what it calls for: "fixes" (send fixes), "commit", or "" (neither). */
+const verdictKind = (verdict) => /fix/.test(verdict || "") ? "fixes" : /^commit/.test(verdict || "") ? "commit" : "";
+
 function mateMenuHtml(sid, t) {
   const onRow = ["queued", "reviewing", "done", "stopped"].includes(t.state) && !mateAsk(sid, t);
   const a = esc(t.agent_id || t.call), s = esc(sid);
   const review = t.state === "done" || t.state === "stopped" ? `<button data-mt-act="review" data-mt-sid="${s}" data-mt-agent="${a}">Review</button>` : "";
-  return `<div class="more-menu rv-menu mt-menu">${review}${onRow ? "" : `<button data-mt-act="diff" data-mt-sid="${s}" data-mt-agent="${a}">Diff</button>`}${t.review ? `<button data-mt-full="${esc(mateKey(sid, t))}">Full review</button>` : ""}<button data-mt-asked="${esc(mateKey(sid, t))}">What it was asked</button><button class="mt-aside" data-mt-act="aside" data-mt-sid="${s}" data-mt-agent="${a}">Set aside</button></div>`;
+  // Reviewed: the button its review didn't recommend.
+  const rec = t.state === "reviewed" ? mateRec(t) : "";
+  const other = rec === "fixes" ? `<button data-mt-act="commit" data-mt-sid="${s}" data-mt-agent="${a}" ${(t.also || []).length ? `aria-disabled="true"` : ""}>Commit anyway</button>` : rec === "commit" ? `<button data-mt-act="fixes" data-mt-sid="${s}" data-mt-agent="${a}">Send fixes</button>` : "";
+  return `<div class="more-menu rv-menu mt-menu">${other}${review}${onRow ? "" : `<button data-mt-act="diff" data-mt-sid="${s}" data-mt-agent="${a}">Diff</button>`}${t.review ? `<button data-mt-full="${esc(mateKey(sid, t))}">Full review</button>` : ""}<button data-mt-asked="${esc(mateKey(sid, t))}">What it was asked</button><button class="mt-aside" data-mt-act="aside" data-mt-sid="${s}" data-mt-agent="${a}">Set aside</button></div>`;
 }
 
 /** "Crew 4 · 1 needs you · 1 ready ▴", which opens its rows above the box: `tab`, as the tab on the box's top-right
  *  corner (compose.js quickRow); else a pill of its own (above an ask's card). "" when it has no crew. */
 function crewStrip(sid, tab = false) {
+  mateOpenOnWait(sid);
   const list = mateList(sid);
   if (!list.length) return "";
   const open = mateOpenLeads.has(sid);
@@ -139,6 +183,7 @@ function crewStrip(sid, tab = false) {
 /** Above the lead's message box, while its strip is open: its crew's rows in one group that scrolls past a few, and why
  *  a Commit is held. "" when it has no crew or it's closed. */
 function crewDock(sid) {
+  mateOpenOnWait(sid);
   const list = mateList(sid);
   if (!list.length || !mateOpenLeads.has(sid)) return "";
   const menu = list.find((t) => mateKey(sid, t) === mateMenu);
@@ -173,10 +218,10 @@ function mateChips(sid) {
 }
 
 // ---------- Cue's own words to a lead, and its crew's reviews, in the chat ----------
-// What Cue sends a lead for its crew (hub/team.rs, team_out.rs) is drawn as one quiet line, never as yours; the lead's
+// What Cue sends a lead for its crew (hub/team.rs, team_out.rs) is drawn as Cue's bubble on the right, never as yours; the lead's
 // reply to a review is one line (its verdict, its button, Open ›), its findings under the crew member's row.
 
-/** What Cue sends a lead, by how it starts: the quiet line's words for it (plain), from the crew member's name and,
+/** What Cue sends a lead, by how it starts: its few words for it (plain), from the crew member's name and,
  *  for a task handed out, the task's first line. The cases both windows are held to: tests/fixtures/crew-review.json. */
 const CUE_SAID = [
   [/^Review your teammate (.+?)['’]s work with a fork/, (n) => `Cue asked for ${n}'s review`, "review"],
@@ -198,12 +243,12 @@ function cueSaid(text) {
   }
   return null;
 }
-/** Cue's lines whose words are unfolded. */
-const cueSaidOpen = new Set();
-/** Its quiet line in the chat; "what it asked" unfolds the words Cue sent. */
-function cueSaidLine(said, key, text) {
-  const open = cueSaidOpen.has(key);
-  return `<div class="cue-said"><button data-cue-said="${esc(key)}">${said.html} · <span class="cue-said-what">${open ? "fold" : "what it asked"}</span></button>${open ? `<div class="cue-said-text">${esc(text)}</div>` : ""}</div>`;
+/** Cue's words for its own bubble, where "Cue" is already its name: "Asked for <b>docs</b>'s review". */
+const cueWords = (html) => html.replace(/^Cue (.)/, (_, c) => c.toUpperCase());
+/** Cue's message as a bubble on the right, where yours are, named Cue: its few words, and "+ What Cue sent" unfolds
+ *  the exact text (addedNote, opened by `key`). `meta`: what follows "Cue ·" (when it went, or that it waits). */
+function cueSaidLine(said, key, text, meta) {
+  return `<div class="cv-you cue-you"><div class="cv-you-text">${cueWords(said.html)}${text ? addedNote(key, "What Cue sent", text) : ""}</div><div class="cv-meta">Cue · ${meta}</div></div>`;
 }
 /** A review's Recommendation line: it starts the line ("**Recommendation**:" and "**Recommendation:**" both), and what
  *  follows it up to . ( , ; or * is the verdict. */
@@ -244,8 +289,9 @@ function reviewLineParts(team, name, text) {
   const { verdict, counts } = reviewSays(text);
   const current = !!t && t.state === "reviewed" && (t.review || "").trim() === String(text).trim();
   // Send fixes for a verdict with "fix" in it, Commit for one that starts with "commit", nothing on a guess.
-  const button = !current ? "" : /fix/.test(verdict) ? "fixes" : /^commit/.test(verdict) ? "commit" : "";
-  const suffix = !t ? "not in the crew" : t.state === "committed" ? "committed" : t.state === "aside" ? "set aside" : "";
+  // A commit that lists anything (notes too) calls for its fixes first, as the row does (mateRec).
+  const kind = verdictKind(verdict), button = !current ? "" : kind === "commit" && counts ? "fixes" : kind;
+  const suffix = !t ? "not one of its teammates now" : t.state === "committed" ? "committed" : t.state === "aside" ? "set aside" : "";
   const words = [`${name} reviewed: ${verdict || "no verdict"}`, counts, suffix].filter(Boolean).join(" · ");
   return { words, verdict, counts, suffix, button, open: !!t && !suffix, member: t };
 }
@@ -256,7 +302,7 @@ function reviewLine(sid, name, text) {
   const btn = p.button === "fixes" ? mateBtn(sid, t, "fixes", "Send fixes", true) : p.button === "commit" ? mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0) : "";
   const open = p.open ? `<button class="btn" data-crew-open="${esc(mateKey(sid, t))}">Open ›</button>` : "";
   // Amber for a verdict with "fix" in it, green for commit, plain for anything else.
-  const tone = /fix/.test(p.verdict) ? "rv-fix" : /^commit/.test(p.verdict) ? "rv-ok" : "";
+  const tone = { fixes: "rv-fix", commit: "rv-ok" }[verdictKind(p.verdict)] || "";
   return `<div class="cv-review"><i class="stx-ic k-team">${PERSON_ICON}</i><span class="cv-review-w"><b>${esc(name)}</b> reviewed: <b class="${tone}">${esc(p.verdict || "no verdict")}</b>${p.counts ? ` · ${esc(p.counts)}` : ""}${p.suffix ? ` · <span class="dim">${esc(p.suffix)}</span>` : ""}</span>${btn}${open}</div>`;
 }
 
@@ -288,7 +334,7 @@ if (typeof document !== "undefined") {
     const t = e.target;
     // The ⋯ menu closes on any click but its own button (one of its items runs as it closes).
     const closeMenu = mateMenu && !t.closest?.("[data-mt-more]");
-    const el = t.closest?.("[data-mt-open], [data-mt-act], [data-mt-more], [data-mt-fold], [data-mt-asked], [data-mt-full], [data-crew-open], [data-cue-said]");
+    const el = t.closest?.("[data-mt-open], [data-mt-act], [data-mt-more], [data-mt-fold], [data-mt-asked], [data-mt-full], [data-crew-open]");
     if (closeMenu) mateMenu = null;
     if (!el) { if (closeMenu) renderMain(); return; }
     e.stopPropagation();
@@ -297,10 +343,9 @@ if (typeof document !== "undefined") {
     if (d.mtMore) { mateMenu = closeMenu || mateMenu === d.mtMore ? null : d.mtMore; return renderMain(); }
     // A review's line in the chat: Open › opens the crew above the box with its findings under its row.
     if (d.crewOpen) { const lead = d.crewOpen.split("|")[0]; mateOpenLeads.add(lead); mateUnder.set(d.crewOpen, "findings"); mateShow = d.crewOpen; return renderMain(); }
-    if (d.cueSaid) { cueSaidOpen.has(d.cueSaid) ? cueSaidOpen.delete(d.cueSaid) : cueSaidOpen.add(d.cueSaid); return renderMain(); }
     const fold = d.mtFold || d.mtAsked || d.mtFull, what = d.mtFold ? "findings" : d.mtFull ? "review" : "asked";
     if (fold) { if (mateUnder.get(fold) === what) mateUnder.delete(fold); else { mateUnder.set(fold, what); mateShow = fold; } return renderMain(); }
-    if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: someone else in the crew has uncommitted changes in one of its files");
+    if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: another teammate has uncommitted changes in one of its files");
     renderMain();
     mateAct(d.mtSid, d.mtAgent, d.mtAct);
   }, true);

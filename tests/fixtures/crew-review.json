@@ -1,5 +1,5 @@
 {
-  "_about": "How a crew's chat reads, in one place for every Cue window that draws it: what Cue sends a lead (drawn as one quiet line, never as yours), how a review reads (verdict and counts), and which of the lead's replies is a crew member's review. Words are plain text; a window may bold the name.",
+  "_about": "How a crew's chat reads, in one place for every Cue window that draws it: what Cue sends a lead (drawn as Cue's bubble on the right, never as yours; a window may drop the leading \"Cue\" from the words when the bubble already names Cue), how a review reads (verdict and counts), and which of the lead's replies is a crew member's review. Words are plain text; a window may bold the name.",
   "said": [
     {
       "text": "Review your teammate docs's work with a fork (one Agent call, not in the background): read the diff…",
@@ -291,7 +291,7 @@
       "reviews": {}
     }
   ],
-  "_lines": "A review's one line: its plain words (a window may bold the name and verdict), the button it calls for (\"fixes\", \"commit\" or none), and whether Open › shows. `team`: the lead's crew; a name shared by two members means the latest. The button: \"fixes\" when the verdict has \"fix\" in it, \"commit\" when it starts with \"commit\", none otherwise.",
+  "_lines": "A review's one line: its plain words (a window may bold the name and verdict), the button it calls for (\"fixes\", \"commit\" or none), and whether Open › shows. `team`: the lead's crew; a name shared by two members means the latest. The button: \"fixes\" when the verdict has \"fix\" in it, or starts with \"commit\" but the review lists anything (notes too: nothing is dropped); \"commit\" for a commit that lists nothing; none otherwise.",
   "lines": [
     {
       "about": "its current review, send fixes",
@@ -308,7 +308,7 @@
       "open": true
     },
     {
-      "about": "its current review, commit",
+      "about": "its current review, commit with a note: the note goes back first",
       "team": [
         {
           "name": "docs",
@@ -318,6 +318,20 @@
       ],
       "text": "1. d.md:1 — note — fine\nRecommendation: commit",
       "words": "docs reviewed: commit · 1 note",
+      "button": "fixes",
+      "open": true
+    },
+    {
+      "about": "its current review, a clean commit",
+      "team": [
+        {
+          "name": "docs",
+          "state": "reviewed",
+          "review": "Recommendation: commit"
+        }
+      ],
+      "text": "Recommendation: commit",
+      "words": "docs reviewed: commit",
       "button": "commit",
       "open": true
     },
@@ -381,7 +395,7 @@
       "about": "not in the crew at all",
       "team": [],
       "text": "1. d.md:1 — note — fine\nRecommendation: commit",
-      "words": "docs reviewed: commit · 1 note · not in the crew",
+      "words": "docs reviewed: commit · 1 note · not one of its teammates now",
       "button": null,
       "open": false
     },
@@ -401,7 +415,7 @@
       ],
       "text": "1. d.md:1 — note — fine\nRecommendation: commit",
       "words": "docs reviewed: commit · 1 note",
-      "button": "commit",
+      "button": "fixes",
       "open": true
     },
     {
