@@ -15,9 +15,9 @@ use super::*;
 
 /// Claude Code's commands that need its terminal whatever it reports: signing in and out, and its own settings
 /// screens.
-const CLAUDE_ALWAYS: [&str; 8] = ["login", "logout", "config", "theme", "terminal-setup", "doctor", "ide", "vim"];
+const CLAUDE_ALWAYS: [&str; 9] = ["login", "logout", "config", "theme", "terminal-setup", "doctor", "ide", "vim", "design-login"];
 /// What each of `CLAUDE_ALWAYS` does, for the `/` menu: Claude Code's headless list (commands.rs) leaves them out.
-const CLAUDE_ALWAYS_DESC: [&str; 8] = [
+const CLAUDE_ALWAYS_DESC: [&str; 9] = [
     "Sign in to Claude Code",
     "Sign out of Claude Code",
     "Claude Code's settings",
@@ -26,6 +26,7 @@ const CLAUDE_ALWAYS_DESC: [&str; 8] = [
     "Check Claude Code's install",
     "Connect Claude Code to your editor",
     "Turn vim keys on or off",
+    "Sign in to Claude Design",
 ];
 /// Pi's commands that change Pi itself (its sign-in and settings), not a session: done in Pi in a terminal.
 const PI_SCREENS: [&str; 7] = ["login", "logout", "settings", "scoped-models", "hotkeys", "changelog", "trust"];
@@ -119,6 +120,7 @@ mod tests {
     fn claude_codes_screens_open_in_a_terminal_and_its_headless_commands_go_to_it() {
         assert_eq!(own("claude", "config", "/config", &[]), terminal("claude /config", ""));
         assert_eq!(own("claude", "login", "/login", &[]), terminal("claude /login", ""));
+        assert_eq!(own("claude", "design-login", "/design-login", &[]), terminal("claude /design-login", ""), "its browser sign-in needs a terminal too");
         assert_eq!(own("claude", "statusline", "/statusline", &["statusline".into()]), terminal("claude /statusline", ""), "what Claude reported at start");
         assert_eq!(own("claude", "compact", "/compact", &[]), None);
     }
@@ -130,6 +132,7 @@ mod tests {
         assert!(names.contains(&"login") && names.contains(&"config") && names.contains(&"statusline"));
         assert_eq!(names.iter().filter(|n| **n == "config").count(), 1);
         assert!(s.iter().find(|(n, _)| n == "login").is_some_and(|(_, d)| !d.is_empty()));
+        assert!(s.iter().find(|(n, _)| n == "design-login").is_some_and(|(_, d)| d == "Sign in to Claude Design"), "in the / menu, said plainly");
     }
 
     #[test]
