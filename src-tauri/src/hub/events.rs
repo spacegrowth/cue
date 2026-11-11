@@ -62,7 +62,7 @@ impl Hub {
 
     /// Claude Code is summarizing the conversation (PreCompact: /compact typed anywhere, or its context
     /// filled up). Until it's done the session isn't waiting on you, whatever it said last.
-    fn on_compacting(&self, sid: &str) {
+    pub(super) fn on_compacting(&self, sid: &str) {
         self.write(|st| {
             if st.sessions.compacting_since(sid) == 0 {
                 st.sessions.set_compacting(sid, now_ms());

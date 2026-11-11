@@ -94,6 +94,8 @@ pub enum HostedEvent {
     ToolResult { id: String, output: Value, failed: bool, agent: Option<String> },
     /// A background agent or task started, moved on or finished: Claude's own event, kept whole.
     Task { what: String, detail: Value },
+    /// It's summarizing the conversation (`/compact`, or its context filled up); `done`: finished.
+    Compacting { done: bool },
     /// The plan's usage, as the status line reports it (`five_hour` / `seven_day`, each with
     /// `used_percentage` and `resets_at` in seconds): a hosted session has no status line to say it.
     Rates(Value),

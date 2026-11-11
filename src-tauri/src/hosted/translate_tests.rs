@@ -152,6 +152,17 @@ fn a_rate_limit_event_reports_the_plans_usage_as_the_status_line_would() {
 }
 
 #[test]
+fn compacting_is_said_as_it_starts_and_once_it_is_done() {
+    // The lines as Claude Code 2.1.322 sends them for `/compact` (trimmed).
+    let mut t = Translator::default();
+    let start = t.step(&wire::parse(r#"{"type":"system","subtype":"status","status":"compacting","session_id":"d1"}"#));
+    assert_eq!(start, vec![HostedEvent::Compacting { done: false }]);
+    let done = t.step(&wire::parse(r#"{"type":"system","subtype":"status","status":null,"compact_result":"success","session_id":"d1"}"#));
+    assert_eq!(done, vec![HostedEvent::Compacting { done: true }]);
+    assert_eq!(t.step(&wire::parse(r#"{"type":"system","subtype":"status","status":null,"session_id":"d1"}"#)), vec![], "another status says nothing");
+}
+
+#[test]
 fn a_prompt_suggestion_says_what_you_d_likely_type_next() {
     // The line as Claude Code 2.1.319 sends it after the turn's result (initialize asked for them).
     let mut t = Translator::default();

@@ -167,6 +167,7 @@ impl Hub {
             HostedEvent::NotTaken { text, why } => self.hosted_not_taken(&origin, &text, &why),
             HostedEvent::Said { .. } | HostedEvent::ToolCall { .. } | HostedEvent::ToolResult { .. } | HostedEvent::Task { .. } => self.hosted_at_work(origin),
             HostedEvent::Rates(rl) => self.set_rates(&rl),
+            HostedEvent::Compacting { done } => self.hosted_compacting(&origin.session_id, done),
             HostedEvent::Suggested { text } => self.hosted_suggested(&origin, &text),
             HostedEvent::Ask(a) => self.hosted_ask(origin, a),
             HostedEvent::TurnEnded { text, failed, cost_usd, unprompted } => {
@@ -220,6 +221,25 @@ impl Hub {
 
     /// Claude's guess at what you'd type next. Only for a session back at its prompt: a turn already under way has
     /// moved past it.
+    /// Compacting: not waiting on you meanwhile, and what you send is kept for when it's done. Done: noted, and
+    /// a message kept for it goes now (unless a turn has started).
+    fn hosted_compacting(&self, sid: &str, done: bool) {
+        if !done {
+            return self.on_compacting(sid);
+        }
+        let send_kept = self.write(|st| {
+            if st.sessions.compacting_since(sid) == 0 {
+                return false;
+            }
+            st.sessions.set_compacted(sid, now_ms());
+            st.sessions.held(sid).is_some() && st.sessions.state(sid).as_deref() != Some("working")
+        });
+        self.changed();
+        if send_kept {
+            self.send_held_soon(sid, 0);
+        }
+    }
+
     fn hosted_suggested(&self, origin: &Origin, text: &str) {
         if self.write(|st| st.sessions.set_suggestion(&origin.session_id, text)) {
             self.changed();

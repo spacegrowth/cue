@@ -163,6 +163,26 @@ fn a_message_sent_mid_turn_is_kept_in_cue_and_goes_when_the_turn_ends() {
     assert!(w.snapshot().session(&sid)["held"].is_null());
 }
 
+/// `/compact` at its prompt: it says it's compacting, so it isn't waiting on you; what you send meanwhile is
+/// kept in Cue and goes once it's done.
+#[test]
+fn compacting_shows_as_such_and_what_you_send_meanwhile_goes_when_it_is_done() {
+    let w = World::new();
+    let sid = running(&w, "go");
+    turn_ends(&w, &sid, "Done.");
+    w.hosted_says(&sid, HostedEvent::Compacting { done: false });
+    assert!(w.snapshot().session(&sid)["compacting_ms"].as_u64().unwrap_or(0) > 0, "{}", w.snapshot().session(&sid));
+    let before = w.hosted.sent().len();
+    w.send_to(&sid, "yes");
+    assert_eq!(w.hosted.sent().len(), before, "not handed over mid-compact");
+    assert_eq!(w.snapshot().session(&sid)["held"]["text"], "yes");
+    w.hosted_says(&sid, HostedEvent::Compacting { done: true });
+    w.settle();
+    let s = w.snapshot();
+    assert_eq!(s.session(&sid)["compacting_ms"].as_u64().unwrap_or(0), 0);
+    assert_eq!(w.hosted.sent().last(), Some(&(sid.clone(), "yes".to_string())), "sent once it's done");
+}
+
 #[test]
 fn a_message_kept_mid_turn_can_be_taken_back() {
     let w = World::new();

@@ -67,7 +67,7 @@ impl Translator {
                 }
                 es
             }
-            Inbound::System(v) => task(v).into_iter().collect(),
+            Inbound::System(v) => task(v).or_else(|| compacting(v)).into_iter().collect(),
             Inbound::Assistant(v) => {
                 self.in_turn = true;
                 assistant(v)
@@ -147,6 +147,18 @@ fn assistant(v: &Value) -> Vec<HostedEvent> {
 fn task(v: &Value) -> Option<HostedEvent> {
     let what = text(v, "subtype");
     (what.starts_with("task_") || what == "background_tasks_changed").then(|| HostedEvent::Task { what, detail: v.clone() })
+}
+
+/// A `status` line about compacting: "compacting" as it starts; no status and a `compact_result` once it's done.
+fn compacting(v: &Value) -> Option<HostedEvent> {
+    if text(v, "subtype") != "status" {
+        return None;
+    }
+    match v.get("status").and_then(Value::as_str) {
+        Some("compacting") => Some(HostedEvent::Compacting { done: false }),
+        None if v.get("compact_result").is_some() => Some(HostedEvent::Compacting { done: true }),
+        _ => None,
+    }
 }
 
 /// A request from Claude: an ask Cue shows you, or one it refuses for not knowing its kind.
