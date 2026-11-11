@@ -71,10 +71,12 @@ impl Hub {
         }
     }
 
-    /// Take a queued review back (× on its line in the lead's chat).
+    /// Take a queued review back (Skip on Cue's bubble in the lead's chat): its teammate is done again, with Review
+    /// in its ⋯ for when you want it.
     pub fn unqueue_review(&self, exec: &str) {
         self.write(|st| st.review_queue.retain(|q| q.exec != exec));
         self.save_queued_review(exec);
+        self.team_review_sent(exec, false);
         self.changed();
     }
 
