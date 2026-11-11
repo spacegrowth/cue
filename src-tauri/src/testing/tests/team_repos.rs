@@ -187,3 +187,33 @@ fn the_tidy_sees_a_teammates_files_in_another_repo_committed_there_as_committed(
     let there = git(&other.0, &["rev-parse", "--short", "HEAD"]);
     assert_eq!((hub["state"].as_str(), hub["commit"].as_str()), (Some("committed"), Some(there.trim())), "all its files in the other repo, committed there");
 }
+
+#[test]
+fn scratch_and_ignored_files_dont_keep_a_committed_member_and_commit_on_committed_work_lets_it_go() {
+    let w = World::new();
+    let dir = repo(&w);
+    std::fs::write(dir.join(".gitignore"), "shots/\n").unwrap();
+    git(&dir, &["add", ".gitignore"]);
+    git(&dir, &["commit", "-q", "-m", "ignore shots"]);
+    std::fs::create_dir_all(dir.join("shots")).unwrap();
+    std::fs::write(dir.join("shots/look.png"), "png").unwrap();
+    let scratch = beside(&w, "scratch-notes.txt");
+    std::fs::write(&scratch, "notes\n").unwrap();
+    let sid = lead(&w, "work and screenshots");
+    let files = [dir.join("a.txt").to_string_lossy().to_string(), dir.join("shots/look.png").to_string_lossy().to_string(), scratch.to_string_lossy().to_string()];
+    says(&w, &sid, writes_then_stops("toolu_A", "agentA", "rows", &files));
+    says(&w, &sid, writes_then_stops("toolu_B", "agentB", "hub", &[dir.join("b.txt").to_string_lossy().to_string()]));
+    assert!(!w.hub().team_tidy(), "a.txt not committed yet");
+    // Committed by hand: its screenshot (ignored) and its notes (in no repo) don't keep it.
+    git(&dir, &["add", "a.txt"]);
+    git(&dir, &["commit", "-q", "-m", "rows by hand"]);
+    assert!(w.hub().team_tidy());
+    assert_eq!(mate(&w, &sid, "rows")["state"], "committed");
+    // Commit on work already committed elsewhere: it leaves as committed, not "nothing to commit".
+    git(&dir, &["add", "b.txt"]);
+    git(&dir, &["commit", "-q", "-m", "hub by hand"]);
+    let said = w.hub().team_action(&sid, "agentB", "commit").unwrap();
+    assert!(said.contains("already committed"), "{said}");
+    assert_eq!(mate(&w, &sid, "hub")["state"], "committed");
+    let _ = std::fs::remove_file(&scratch);
+}

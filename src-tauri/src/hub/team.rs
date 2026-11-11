@@ -35,13 +35,27 @@ enum Settled {
 fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
     let since = t.started_ms / 1000;
     let mut newest: Option<(u64, String)> = None;
-    for r in repos("", lead_cwd, t, false) {
+    // Whether any of its files is one git keeps: a member whose files are all scratch (in no repository, or ignored)
+    // can't be told committed from thrown away, and stays for you.
+    let mut kept = false;
+    for mut r in repos("", lead_cwd, t, false) {
+        // Files in no repository (scratch, screenshots in /tmp): nothing of git's to settle; the rest decide.
         if r.top.is_empty() {
-            return None;
+            continue;
         }
-        let dir = r.top.as_str();
-        let filters = crate::safe_git::no_repo_filters("", dir);
-        let git = |args: &[&str]| crate::safe_git::run("", dir, &filters, args).ok();
+        let dir = r.top.clone();
+        let filters = crate::safe_git::no_repo_filters("", &dir);
+        let git = |args: &[&str]| crate::safe_git::run("", &dir, &filters, args).ok();
+        // Ignored files are always "clean" to git (build output, screenshots): left out, the rest decide.
+        let ignored: Vec<String> = {
+            let args: Vec<String> = ["check-ignore", "--"].iter().map(|s| s.to_string()).chain(r.paths.iter().cloned()).collect();
+            git(&args.iter().map(String::as_str).collect::<Vec<_>>()).map(|(out, _)| out.lines().map(str::to_string).collect()).unwrap_or_default()
+        };
+        r.paths.retain(|p| !ignored.iter().any(|i| i == p || p.ends_with(&format!("/{i}"))));
+        if r.paths.is_empty() {
+            continue;
+        }
+        kept = true;
         let with = |head: &[&'static str]| -> Vec<String> { head.iter().map(|s| s.to_string()).chain(["--".to_string()]).chain(r.paths.iter().cloned()).collect() };
         let run = |head: &[&'static str]| {
             let args = with(head);
@@ -49,10 +63,6 @@ fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
         };
         let (out, code) = run(&["status", "--porcelain=v1", "--untracked-files=all"])?;
         if code != 0 || !out.trim().is_empty() {
-            return None;
-        }
-        // An ignored file is always "clean" to git: there's no telling whether its work was kept.
-        if run(&["check-ignore", "-q"]).is_some_and(|(_, c)| c == 0) {
             return None;
         }
         // The newest commit with any of its files in this repo.
@@ -65,6 +75,9 @@ fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
                 newest = Some((at, sha));
             }
         }
+    }
+    if !kept {
+        return None;
     }
     Some(newest.map_or(Settled::Gone, |(_, sha)| Settled::Committed(sha)))
 }
@@ -495,6 +508,15 @@ impl Hub {
         let unread = c.unread.iter().map(|f| format!("{f}: git couldn't read its repository, not committed"));
         let left: Vec<String> = unread.chain(c.outside.iter().map(|f| format!("{f}: not in a git repository, not committed"))).collect();
         if todo.is_empty() {
+            // Its work committed already (by you, elsewhere; this Mac's git only): it leaves as committed, as the tidy has it.
+            if let (true, Some(Settled::Committed(sha))) = (origin.machine.is_empty(), settled(&origin.cwd, t)) {
+                self.set_teammate(lead, &t.call, |m| {
+                    m.state = "committed".into();
+                    m.commit = sha.clone();
+                    m.step = "Committed outside Cue".into();
+                });
+                return Ok(format!("{}'s work is already committed ({sha})", t.name));
+            }
             let why = if left.is_empty() { String::new() } else { format!("\n{}", left.join("\n")) };
             return Err(format!("{} has nothing to commit in git{why}", t.name));
         }
