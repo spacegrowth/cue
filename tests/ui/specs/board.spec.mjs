@@ -162,13 +162,13 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     for (const type of ["dragover", "drop"]) el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
   }, text);
 
-  test("the Teammates chip at the top right opens its two settings, and each goes to the lead", async ({ cue, page }) => {
+  test("the Cue Crew chip at the top right opens its two settings, and each goes to the lead", async ({ cue, page }) => {
     await expect(page.locator(".foot .team-sw")).toHaveCount(0);
     await page.locator('.ap-head [data-crew-menu="lead"]').click();
     await page.locator('[data-team-sw="lead"][data-team-mode="off"]').click();
     expect((await cue.called("team_mode", { sessionId: "lead" })).args.mode).toBe("off");
     await expect(page.locator(".team-sw button.on").first()).toHaveText("Never");
-    await expect(page.locator('.ap-head [data-crew-menu="lead"]')).toContainText("Teammates: never");
+    await expect(page.locator('.ap-head [data-crew-menu="lead"]')).toContainText("Cue Crew: never");
     await expect(page.locator(".team-sw").nth(1).locator("button.on")).toHaveText("Handle it");
     await page.locator('[data-crew-commit="lead"][data-crew-mode="wait"]').click();
     expect((await cue.called("crew_commit", { sessionId: "lead" })).args.mode).toBe("wait");
@@ -189,6 +189,18 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     const line = page.locator(".cv-review", { hasText: "handoff reviewed" });
     await line.locator("[data-crew-open]").click();
     await expect(page.locator(".crew-dock .mt-under", { hasText: "hub/handoff.rs:40" })).toBeVisible();
+  });
+
+  test("a review waiting for the lead is Cue's bubble too, and Skip takes it off the queue", async ({ cue, page }) => {
+    await cue.change((st) => { st.review_queue = { lead: [{ exec: "id-skill", name: "skill" }] }; });
+    const waits = page.locator(".cue-you", { hasText: "Will ask for skill's review" });
+    await expect(waits).toHaveCount(1);
+    await expect(waits.locator(".cv-you-text b")).toHaveText("skill");
+    await expect(waits.locator(".cv-meta")).toHaveText("Cue · waits for the lead to be free · Skip");
+    await expect(waits.locator("[data-ask-open]")).toHaveCount(0);
+    await waits.locator('[data-act="unqueue-review"]').click();
+    expect((await cue.called("unqueue_review")).args.exec).toBe("id-skill");
+    await expect(waits).toHaveCount(0);
   });
 
   test("/crew is one of the lead's commands, in Cue", async ({ page }) => {

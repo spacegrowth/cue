@@ -6,7 +6,7 @@
 // teammate. Cue adds the words; the lead does the rest.
 
 /** Cue's own command: the message after it goes with the Team switch On, this once (hub/team_out.rs with_team). */
-const TEAM_CMD = { name: "crew", kind: "cue", hint: "[what to do]", desc: "Split this message among teammates: each independent part to its own" };
+const TEAM_CMD = { name: "crew", kind: "cue", hint: "[what to do]", desc: "Split this message among the crew: each independent part to its own" };
 /** A hosted Claude Code session: the only kind that leads a team. */
 const isTeamLead = (sid) => { const s = sid && sessionOf(sid); return !!s?.hosted && s.harness === "claude"; };
 /** /team in a lead's command list (compose.js cmdList), unless its own list has one. */
@@ -31,17 +31,17 @@ const TEAM_MODES = [["auto", "Auto"], ["on", "Always"], ["off", "Never"]];
 const CREW_COMMITS = [["auto", "Handle it"], ["wait", "Ask me"]];
 /** The lead whose Crew menu is open. */
 let crewMenuFor = null;
-/** Top right of a hosted Claude lead's head, beside ⋯: "Teammates: auto ▾", opening its two settings (split work into
- *  teammates; what happens once a teammate's review, which runs by itself, comes back). Nothing in the message box. */
+/** Top right of a hosted Claude lead's head, beside ⋯: "Cue Crew: auto ▾", opening its two settings (split work into
+ *  the crew; what happens once a crew member's review, which runs by itself, comes back). Nothing in the message box. */
 function crewChip(sid) {
   if (!isTeamLead(sid)) return "";
   const m = teamMode(sid), open = crewMenuFor === sid;
   const seg = (list, cur, attrs) => `<span class="team-sw" role="group">${list.map(([v, label]) => `<button class="${cur === v ? "on" : ""}" ${attrs(v)} aria-pressed="${cur === v}">${label}</button>`).join("")}</span>`;
   const foot = crewCommit(sid) === "wait" ? "Each review waits for your Commit or Send fixes. Pushing stays yours."
-    : "Fixes and notes go back to the teammate, up to 2 times; a clean review is committed to its branch. You're asked after that. Pushing stays yours.";
-  const menu = !open ? "" : `<div class="crew-menu"><div class="crew-q">Split work into teammates</div>${seg(TEAM_MODES, m, (v) => `data-team-sw="${esc(sid)}" data-team-mode="${v}"`)}<div class="crew-q">When a review comes back</div>${seg(CREW_COMMITS, crewCommit(sid), (v) => `data-crew-commit="${esc(sid)}" data-crew-mode="${v}"`)}<div class="crew-foot">${foot}</div></div>`;
+    : "Fixes and notes go back to the crew member, up to 2 times; a clean review is committed to its branch. You're asked after that. Pushing stays yours.";
+  const menu = !open ? "" : `<div class="crew-menu"><div class="crew-q">Split work into the crew</div>${seg(TEAM_MODES, m, (v) => `data-team-sw="${esc(sid)}" data-team-mode="${v}"`)}<div class="crew-q">When a review comes back</div>${seg(CREW_COMMITS, crewCommit(sid), (v) => `data-crew-commit="${esc(sid)}" data-crew-mode="${v}"`)}<div class="crew-foot">${foot}</div></div>`;
   const word = { auto: "auto", on: "always", off: "never" }[m] || "auto";
-  return `<span class="crew-pick"><button class="tm-chip ${open ? "on" : ""}" data-crew-menu="${esc(sid)}">Teammates: ${word} <span class="tm-sub">▾</span></button>${menu}</span>`;
+  return `<span class="crew-pick"><button class="tm-chip ${open ? "on" : ""}" data-crew-menu="${esc(sid)}">Cue Crew: ${word} <span class="tm-sub">▾</span></button>${menu}</span>`;
 }
 async function setCrewCommit(sid, mode) {
   crewCommitNow.set(sid, mode);
@@ -71,7 +71,7 @@ function handOutHtml(s) {
     : files.length ? `<div class="ho-cap">Files it would likely touch</div>${files.map((f) => `<div class="ho-f"><span class="mono">${esc(f.path)}</span>${f.by ? `<span class="ho-by">${esc(f.by)}</span>` : `<span class="ho-dim">free</span>`}</div>`).join("")}`
     : `<div class="ho-dim">It names no files: the lead settles what it touches.</div>`;
   const go = p?.overlap ? "Send anyway" : "Hand out";
-  return `<div class="ho" data-ho="${esc(s.session_id)}"><div class="ho-title">Hand to ${esc(nameOf(s.session_id, s.project))}'s teammates</div><div class="ho-task">${esc(task)}</div>${list}<div class="ho-acts"><button class="btn primary" data-ho-go ${p ? "" : "disabled"}>${go}</button><button class="btn" data-ho-cancel>Cancel</button></div></div>`;
+  return `<div class="ho" data-ho="${esc(s.session_id)}"><div class="ho-title">Hand to ${esc(nameOf(s.session_id, s.project))}'s crew</div><div class="ho-task">${esc(task)}</div>${list}<div class="ho-acts"><button class="btn primary" data-ho-go ${p ? "" : "disabled"}>${go}</button><button class="btn" data-ho-cancel>Cancel</button></div></div>`;
 }
 
 /** The lead card under the pointer, while something with text is dragged: its session, when it's a hosted lead. */

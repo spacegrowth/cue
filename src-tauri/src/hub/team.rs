@@ -169,8 +169,9 @@ impl Hub {
 
     /// The lead's turn ended with `text`: a reply to your Review is that teammate's review (the oldest under review; one
     /// review at a time goes to a lead). A turn nothing of yours started (a teammate finishing) isn't one.
-    /// SHORTCUT: the next prompted reply is taken as the review; a lead that runs the fork in the background files its
-    /// "started" line instead. Upgrade: match the fork's own Agent call (its task_notification) to the review sent.
+    /// SHORTCUT: the next prompted reply with a Recommendation line is taken as the review (one without is some other
+    /// reply: a hook's re-prompt, a "started it" line); a review that never says Recommendation leaves its teammate under
+    /// review. Upgrade: match the fork's own Agent call (its task_notification) to the review sent.
     pub(super) fn team_reply(&self, lead: &str, text: &str, unprompted: bool) {
         if unprompted {
             return;
@@ -178,6 +179,11 @@ impl Hub {
         let filed = self.write(|st| {
             let t = st.sessions.team(lead).into_iter().filter(|t| t.state == "reviewing").min_by_key(|t| t.review_ms)?;
             let (findings, recommendation) = read_review(text);
+            // Not a review: the lead's other replies while one is under review (one prompted by a hook's feedback,
+            // say) have no Recommendation line; the teammate stays under review for the one that does.
+            if recommendation.is_empty() {
+                return None;
+            }
             let next = auto_next(&st.sessions.crew_commit(lead), &recommendation, findings.len(), t.fix_rounds);
             st.sessions.with_teammate(lead, &t.call, |m| {
                 m.state = "reviewed".into();
@@ -485,9 +491,12 @@ impl Hub {
         }
         let c = changes(&origin.machine, &origin.cwd, t)?;
         let todo: Vec<&RepoChanges> = c.repos.iter().filter(|r| !r.files.is_empty()).collect();
+        // Its files git couldn't read, or that are in no repository: never committed, and said so.
+        let unread = c.unread.iter().map(|f| format!("{f}: git couldn't read its repository, not committed"));
+        let left: Vec<String> = unread.chain(c.outside.iter().map(|f| format!("{f}: not in a git repository, not committed"))).collect();
         if todo.is_empty() {
-            let outside = if c.unread.is_empty() { String::new() } else { format!(" in git ({} not in a git repository git can read)", c.unread.join(", ")) };
-            return Err(format!("{} has nothing to commit{outside}", t.name));
+            let why = if left.is_empty() { String::new() } else { format!("\n{}", left.join("\n")) };
+            return Err(format!("{} has nothing to commit in git{why}", t.name));
         }
         let m = origin.machine.as_str();
         let single = todo.len() == 1;
@@ -507,8 +516,10 @@ impl Hub {
                 }
             }
         }
-        // One repo's commit failed: said as such, beside what the others committed (Commit again does the rest).
-        if failed {
+        said.extend(left);
+        // One repo's commit failed, or one couldn't be read: said as such, beside what the others committed, and it
+        // stays uncommitted (Commit again does the rest).
+        if failed || !c.unread.is_empty() {
             return Err(said.join("\n"));
         }
         let sha = shas.join(" ");
@@ -624,8 +635,10 @@ struct Changes {
     diff: String,
     added: u64,
     removed: u64,
-    /// Its files git couldn't say about (in no git repository, or git failed there), as the stream gave them.
+    /// Its files in a repository git failed to read, as the stream gave them.
     unread: Vec<String>,
+    /// Its files in no git repository, as the stream gave them.
+    outside: Vec<String>,
 }
 
 /// One repository's part of a teammate's changes.
@@ -643,9 +656,13 @@ struct RepoChanges {
 }
 
 impl RepoChanges {
-    /// The repo's folder name.
+    /// What the repo is called when said: its label, else its folder name.
     fn name(&self) -> &str {
-        self.top.trim_end_matches('/').rsplit('/').next().unwrap_or(&self.top)
+        if self.label.is_empty() {
+            folder_name(&self.top)
+        } else {
+            &self.label
+        }
     }
 }
 
@@ -691,8 +708,8 @@ fn finished_files(m: &mut Teammate, c: Option<&Changes>) {
     if has_worktree(m) {
         add_files(m, c.repos.iter().filter(|r| r.whole).flat_map(|r| r.files.iter().cloned()), false);
     } else {
-        // A file git couldn't read stays: there's no telling.
-        let changed = |f: &String| c.unread.contains(f) || c.repos.iter().any(|r| r.changed.contains(f));
+        // A file git couldn't read, or that's in no repository, stays: there's no telling.
+        let changed = |f: &String| c.unread.contains(f) || c.outside.contains(f) || c.repos.iter().any(|r| r.changed.contains(f));
         let unchanged: Vec<String> = m.via_shell.iter().filter(|f| !changed(f)).cloned().collect();
         m.files.retain(|f| !unchanged.contains(f));
         m.via_shell.retain(|f| !unchanged.contains(f));
@@ -798,7 +815,7 @@ fn repos(machine: &str, lead_cwd: &str, t: &Teammate, whole: bool) -> Vec<Repo> 
             Some(i) => i,
             None => {
                 let mine = top.is_empty() || Some(&top) == home.as_ref();
-                let label = if mine { String::new() } else { top.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string() };
+                let label = if mine { String::new() } else { folder_name(&top).to_string() };
                 out.push(Repo { top, label, given: vec![], paths: vec![], whole: false });
                 out.len() - 1
             }
@@ -806,8 +823,26 @@ fn repos(machine: &str, lead_cwd: &str, t: &Teammate, whole: bool) -> Vec<Repo> 
         out[i].given.push(f.clone());
         out[i].paths.push(abs);
     }
+    tell_apart(&mut out, home.as_deref());
     out.sort_by_key(|r| (r.top.is_empty(), !r.label.is_empty()));
     out
+}
+
+/// The last folder of `path` ("app" for /work/app).
+fn folder_name(path: &str) -> &str {
+    path.trim_end_matches('/').rsplit('/').next().unwrap_or(path)
+}
+
+/// Two repos with the same folder name (two checkouts called "app"): each labelled one that shares its name with
+/// another repo (its own folder's repo, `home`, too) gets its parent folder first ("work/app").
+fn tell_apart(repos: &mut [Repo], home: Option<&str>) {
+    let tops: Vec<String> = repos.iter().map(|r| r.top.clone()).filter(|t| !t.is_empty()).chain(home.map(str::to_string)).collect();
+    for r in repos.iter_mut().filter(|r| !r.label.is_empty()) {
+        if tops.iter().any(|t| *t != r.top && folder_name(t) == r.label) {
+            let parent = r.top.trim_end_matches('/').rsplit_once('/').map_or("", |(p, _)| folder_name(p));
+            r.label = format!("{parent}/{}", r.label);
+        }
+    }
 }
 
 /// `path` (absolute) from the top of the repo at `top`, when it's in it. A Mac's /tmp and /var are /private/tmp and
@@ -827,14 +862,12 @@ fn changes(machine: &str, lead_cwd: &str, t: &Teammate) -> Result<Changes, Strin
         return Ok(c);
     }
     let mut failed: Option<String> = None;
-    let mut outside = false;
     for r in repos(machine, lead_cwd, t, true) {
         if r.top.is_empty() {
             for f in &r.given {
                 c.diff.push_str(&format!("{f}: not in a git repository\n"));
             }
-            c.unread.extend(r.given);
-            outside = true;
+            c.outside.extend(r.given);
             continue;
         }
         match repo_changes(machine, &r) {
@@ -852,7 +885,7 @@ fn changes(machine: &str, lead_cwd: &str, t: &Teammate) -> Result<Changes, Strin
         }
     }
     if let Some(e) = failed {
-        if c.repos.is_empty() && !outside {
+        if c.repos.is_empty() && c.outside.is_empty() {
             return Err(e);
         }
     }

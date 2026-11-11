@@ -38,7 +38,7 @@ function mateOpenOnWait(sid) {
   }
 }
 /** The line under the lead's chat while a teammate waits on you ("Waiting on you: docs is ready for review"),
- *  or while it waits on teammates at work ("Teammates working: mac-loops"); "" when neither. */
+ *  or while it waits on teammates at work ("Crew working: mac-loops"); "" when neither. */
 function crewWaitLine(sid) {
   const wait = mateWaits(sid);
   if (wait.length) {
@@ -46,7 +46,7 @@ function crewWaitLine(sid) {
     return `<span class="cv-what">Waiting on you: <b>${esc(t.name)}</b> ${mateAsk(sid, t) ? "asks you something" : "is ready for review"}${more}</span>`;
   }
   const working = mateList(sid).filter((t) => t.state === "working");
-  return working.length ? `<span class="dot-live"></span><span class="cv-what">Teammates working: ${working.map((t) => esc(t.name)).join(", ")}</span>` : "";
+  return working.length ? `<span class="dot-live"></span><span class="cv-what">Crew working: ${working.map((t) => esc(t.name)).join(", ")}</span>` : "";
 }
 
 /** Its state's word after its name. */
@@ -174,9 +174,9 @@ function crewStrip(sid, tab = false) {
   if (!list.length) return "";
   const open = mateOpenLeads.has(sid);
   const need = list.filter((t) => mateAsk(sid, t)).length, ready = list.filter((t) => t.state === "reviewed").length;
-  // Any at work: a live dot and how many ("Teammates · 2 working"); none: how many there are.
+  // Any at work: a live dot and how many ("Cue Crew · 2 working"); none: how many there are.
   const working = list.filter((t) => t.state === "working").length;
-  const words = [working ? `<span class="dot-live"></span>Teammates · ${working} working` : `Teammates ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
+  const words = [working ? `<span class="dot-live"></span>Cue Crew · ${working} working` : `Cue Crew ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
   return `<button class="${tab ? "tplace-btn crew-tab" : "crew-strip"} ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
 }
 
@@ -291,7 +291,7 @@ function reviewLineParts(team, name, text) {
   // Send fixes for a verdict with "fix" in it, Commit for one that starts with "commit", nothing on a guess.
   // A commit that lists anything (notes too) calls for its fixes first, as the row does (mateRec).
   const kind = verdictKind(verdict), button = !current ? "" : kind === "commit" && counts ? "fixes" : kind;
-  const suffix = !t ? "not one of its teammates now" : t.state === "committed" ? "committed" : t.state === "aside" ? "set aside" : "";
+  const suffix = !t ? "not in the crew now" : t.state === "committed" ? "committed" : t.state === "aside" ? "set aside" : "";
   const words = [`${name} reviewed: ${verdict || "no verdict"}`, counts, suffix].filter(Boolean).join(" · ");
   return { words, verdict, counts, suffix, button, open: !!t && !suffix, member: t };
 }
@@ -345,7 +345,7 @@ if (typeof document !== "undefined") {
     if (d.crewOpen) { const lead = d.crewOpen.split("|")[0]; mateOpenLeads.add(lead); mateUnder.set(d.crewOpen, "findings"); mateShow = d.crewOpen; return renderMain(); }
     const fold = d.mtFold || d.mtAsked || d.mtFull, what = d.mtFold ? "findings" : d.mtFull ? "review" : "asked";
     if (fold) { if (mateUnder.get(fold) === what) mateUnder.delete(fold); else { mateUnder.set(fold, what); mateShow = fold; } return renderMain(); }
-    if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: another teammate has uncommitted changes in one of its files");
+    if (el.getAttribute("aria-disabled") === "true") return toast("Commit is held: another crew member has uncommitted changes in one of its files");
     renderMain();
     mateAct(d.mtSid, d.mtAgent, d.mtAct);
   }, true);

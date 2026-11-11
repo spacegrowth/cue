@@ -8,7 +8,7 @@ use crate::testing::{Transcript, World};
 use serde_json::{json, Value};
 
 /// A hosted lead started with `message`, which Claude has taken (its turn under way): its id.
-fn lead(w: &World, message: &str) -> String {
+pub(super) fn lead(w: &World, message: &str) -> String {
     crate::config::set("hosted.on", json!(true)).unwrap();
     let opts = StartOpts { hosted: true, perm: "auto".into(), ..Default::default() };
     let r = start_session_with(w.hub(), "claude", &w.home().to_string_lossy(), message, "cue-teams", &opts).unwrap();
@@ -27,7 +27,7 @@ fn lines(fixture: &str) -> Vec<Vec<HostedEvent>> {
 }
 
 /// Lead `sid` says `events`, in order (a fixture's own Ask included).
-fn says(w: &World, sid: &str, events: impl IntoIterator<Item = HostedEvent>) {
+pub(super) fn says(w: &World, sid: &str, events: impl IntoIterator<Item = HostedEvent>) {
     for e in events {
         w.hosted_says(sid, e);
     }
@@ -38,7 +38,7 @@ fn team(w: &World, sid: &str) -> Vec<Value> {
     w.snapshot().session(sid)["team"].as_array().cloned().unwrap_or_default()
 }
 
-fn mate(w: &World, sid: &str, name: &str) -> Value {
+pub(super) fn mate(w: &World, sid: &str, name: &str) -> Value {
     team(w, sid).into_iter().find(|t| t["name"] == name).unwrap_or_else(|| panic!("no teammate {name}"))
 }
 
@@ -162,7 +162,7 @@ fn a_worktree_teammates_commit_is_made_in_its_worktree_and_the_leads_folder_is_l
 }
 
 /// Teammate `name`, started by call `call` as agent `id` in the lead's own folder, writes `files` (absolute) and finishes.
-fn writes(call: &str, id: &str, name: &str, files: &[String]) -> Vec<HostedEvent> {
+pub(super) fn writes(call: &str, id: &str, name: &str, files: &[String]) -> Vec<HostedEvent> {
     let agent = Some(call.to_string());
     let mut es = vec![
         HostedEvent::ToolCall { id: call.into(), name: "Agent".into(), input: json!({ "name": name, "description": format!("{name}'s part"), "prompt": format!("Write {name}'s file"), "run_in_background": true }), agent: None },
@@ -177,14 +177,14 @@ fn writes(call: &str, id: &str, name: &str, files: &[String]) -> Vec<HostedEvent
     es
 }
 
-fn git(dir: &std::path::Path, args: &[&str]) -> String {
+pub(super) fn git(dir: &std::path::Path, args: &[&str]) -> String {
     let o = std::process::Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
     assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
     String::from_utf8_lossy(&o.stdout).to_string()
 }
 
 /// The World's folder as a git repository with one commit on main, switched to a branch of its own (where Commit goes).
-fn repo(w: &World) -> std::path::PathBuf {
+pub(super) fn repo(w: &World) -> std::path::PathBuf {
     let dir = main_repo(w);
     git(&dir, &["switch", "-q", "-c", "team-work"]);
     dir
@@ -284,6 +284,12 @@ fn review_goes_to_the_free_lead_its_reply_is_the_teammates_review_and_send_fixes
     w.hosted_says(&sid, HostedEvent::Taken { text: review.clone() });
     w.hosted_says(&sid, HostedEvent::TurnEnded { text: "hub finished".into(), failed: false, cost_usd: 0.0, unprompted: true });
     assert_eq!(mate(&w, &sid, "rows")["state"], "reviewing");
+    // A prompted reply that isn't a review (a hook's feedback asked for an audit, in numbered lines): no Recommendation
+    // line, so it's not taken as rows's review.
+    w.hosted_says(&sid, HostedEvent::TurnEnded { text: "1. Shape: one comment line.\n2. Assumptions: none.".into(), failed: false, cost_usd: 0.0, unprompted: false });
+    w.settle();
+    let t = mate(&w, &sid, "rows");
+    assert_eq!((t["state"].as_str(), t["findings"].as_array().map(Vec::len)), (Some("reviewing"), None), "still waiting for its review: {t}");
     w.hosted_says(&sid, HostedEvent::TurnEnded { text: "1. a.txt:1 — should-fix — say more\n2. a.txt:1 — note — fine otherwise\nRecommendation: send fixes.".into(), failed: false, cost_usd: 0.0, unprompted: false });
     w.settle();
     let t = mate(&w, &sid, "rows");
@@ -794,7 +800,7 @@ fn a_stuck_teammate_gets_its_lead_nudged_once_a_quiet_stretch_and_resume_asks_th
 }
 
 /// `writes`, but the crew member ends stopped (by you, or with its lead's interrupt), not done.
-fn writes_then_stops(call: &str, id: &str, name: &str, files: &[String]) -> Vec<HostedEvent> {
+pub(super) fn writes_then_stops(call: &str, id: &str, name: &str, files: &[String]) -> Vec<HostedEvent> {
     let mut es = writes(call, id, name, files);
     if let Some(HostedEvent::Task { detail, .. }) = es.last_mut() {
         detail["status"] = json!("stopped");
@@ -836,137 +842,4 @@ fn the_tidy_lets_work_committed_outside_cue_or_thrown_away_leave_the_crew_and_ke
     assert_eq!(mate(&w, &sid, "docs")["state"], "stopped", "its work still waits on you");
     assert_eq!(mate(&w, &sid, "notes")["state"], "stopped", "an ignored file: git can't say whether its work was kept, so it stays");
     assert!(!w.hub().team_tidy(), "nothing more to tidy");
-}
-
-/// A second git repository beside the World's folder (`<home>-<name>`), one commit on main, switched to a branch of
-/// its own when `branch`; removed when dropped. Its folder name is what its paths are shown under.
-struct OtherRepo(std::path::PathBuf);
-
-impl OtherRepo {
-    fn new(w: &World, name: &str, branch: bool) -> Self {
-        let dir = beside(w, name);
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("mac/ui")).unwrap();
-        git(&dir, &["init", "-q", "-b", "main"]);
-        git(&dir, &["config", "user.email", "t@example.com"]);
-        git(&dir, &["config", "user.name", "T"]);
-        std::fs::write(dir.join("mac/ui/tracked.js"), "old\n").unwrap();
-        git(&dir, &["add", "."]);
-        git(&dir, &["commit", "-q", "-m", "start"]);
-        if branch {
-            git(&dir, &["switch", "-q", "-c", "other-work"]);
-        }
-        OtherRepo(dir)
-    }
-    fn label(&self) -> String {
-        self.0.file_name().unwrap().to_string_lossy().to_string()
-    }
-    fn file(&self, rel: &str) -> String {
-        self.0.join(rel).to_string_lossy().to_string()
-    }
-}
-
-impl Drop for OtherRepo {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-/// A folder beside the World's (`<home>-<name>`), outside its repo.
-fn beside(w: &World, name: &str) -> std::path::PathBuf {
-    w.home().with_file_name(format!("{}-{name}", w.home().file_name().unwrap().to_string_lossy()))
-}
-
-fn plus_lines(diff: &str) -> Vec<&str> {
-    diff.lines().filter(|l| l.starts_with("+++")).collect()
-}
-
-#[test]
-fn a_teammate_with_files_in_two_repos_shows_both_diffs_and_counts_and_commit_commits_each_in_its_own_repo() {
-    let w = World::new();
-    let dir = repo(&w);
-    let other = OtherRepo::new(&w, "other-repo", true);
-    let sid = lead(&w, "work across two repos");
-    let files = [dir.join("a.txt").to_string_lossy().to_string(), other.file("mac/ui/addon.js"), other.file("mac/ui/tracked.js")];
-    says(&w, &sid, writes("toolu_A", "agentA", "rows", &files));
-    let label = other.label();
-    let diff = w.hub().team_action(&sid, "agentA", "diff").unwrap();
-    let mut seen = plus_lines(&diff);
-    seen.sort();
-    let mut want = ["+++ b/a.txt".to_string(), format!("+++ b/{label}/mac/ui/addon.js"), format!("+++ b/{label}/mac/ui/tracked.js")];
-    want.sort();
-    assert_eq!(seen, want, "each repo's diff, the other repo's paths under its folder name:\n{diff}");
-    assert_eq!(mate(&w, &sid, "rows")["stat"], "3 files +3 −1", "counted across both repos");
-    let r = w.hub().team_action(&sid, "agentA", "commit").unwrap();
-    let home = dir.file_name().unwrap().to_string_lossy().to_string();
-    assert!(r.contains(&format!("In {home}: Committed rows's 1 file")) && r.contains(&format!("In {label}: Committed rows's 2 files")), "{r}");
-    assert_eq!(git(&dir, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "rows's part\n\na.txt");
-    assert_eq!(git(&other.0, &["show", "--name-only", "--format=%s", "HEAD"]).trim(), "rows's part\n\nmac/ui/addon.js\nmac/ui/tracked.js", "the same message, in its own repo");
-    assert_eq!(git(&other.0, &["status", "--porcelain"]).trim(), "");
-    assert_eq!(mate(&w, &sid, "rows")["state"], "committed");
-}
-
-#[test]
-fn a_commit_that_fails_in_one_repo_says_which_and_keeps_what_the_other_committed() {
-    let w = World::new();
-    let dir = repo(&w);
-    let other = OtherRepo::new(&w, "other-repo", false);
-    let sid = lead(&w, "work across two repos");
-    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string(), other.file("mac/ui/addon.js")]));
-    let label = other.label();
-    let home = dir.file_name().unwrap().to_string_lossy().to_string();
-    let r = w.hub().team_action(&sid, "agentA", "commit").unwrap_err();
-    assert!(r.contains(&format!("In {home}: Committed rows's 1 file")), "the one that went through, said so: {r}");
-    assert!(r.contains(&format!("In {label}: Not committed: its folder is on main")) && r.contains("Make a branch and commit"), "{r}");
-    assert_eq!(git(&dir, &["rev-list", "--count", "HEAD"]).trim(), "2", "committed in the lead's repo");
-    assert_eq!(git(&other.0, &["rev-list", "--count", "HEAD"]).trim(), "1", "nothing on the other's main");
-    assert_ne!(mate(&w, &sid, "rows")["state"], "committed", "work still waits in one repo");
-    // Make a branch and commit: only what's left, in the repo that's on main.
-    let r = w.hub().team_action(&sid, "agentA", "branch").unwrap();
-    assert!(r.starts_with("Committed 1 file to crew/rows") && r.ends_with("your folder stays on main."), "{r}");
-    assert_eq!(git(&other.0, &["show", "--name-only", "--format=", "crew/rows"]).trim(), "mac/ui/addon.js");
-    assert_eq!(mate(&w, &sid, "rows")["state"], "committed");
-}
-
-#[test]
-fn a_file_in_no_repo_is_said_so_in_the_diff_instead_of_failing_it() {
-    let w = World::new();
-    let dir = repo(&w);
-    let loose = beside(&w, "loose");
-    std::fs::create_dir_all(&loose).unwrap();
-    let outside = loose.join("notes.txt").to_string_lossy().to_string();
-    let more = loose.join("more.txt").to_string_lossy().to_string();
-    let sid = lead(&w, "one inside, one outside");
-    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string(), outside.clone()]));
-    says(&w, &sid, writes("toolu_B", "agentB", "hub", &[more.clone()]));
-    let diff = w.hub().team_action(&sid, "agentA", "diff").unwrap();
-    assert_eq!(plus_lines(&diff), ["+++ b/a.txt"], "{diff}");
-    assert!(diff.contains(&format!("{outside}: not in a git repository")), "{diff}");
-    let only_outside = w.hub().team_action(&sid, "agentB", "diff").unwrap();
-    assert_eq!(only_outside.trim(), format!("{more}: not in a git repository"), "not \"No changes.\"");
-    let r = w.hub().team_action(&sid, "agentB", "commit");
-    assert!(r.as_ref().is_err_and(|e| e.contains("nothing to commit") && e.contains("not in a git repository")), "{r:?}");
-    let _ = std::fs::remove_dir_all(&loose);
-}
-
-#[test]
-fn the_tidy_sees_a_teammates_files_in_another_repo_committed_there_as_committed() {
-    let w = World::new();
-    let dir = repo(&w);
-    let other = OtherRepo::new(&w, "other-repo", true);
-    let sid = lead(&w, "work across two repos");
-    says(&w, &sid, writes_then_stops("toolu_A", "agentA", "rows", &[dir.join("a.txt").to_string_lossy().to_string(), other.file("mac/ui/addon.js")]));
-    says(&w, &sid, writes_then_stops("toolu_B", "agentB", "hub", &[other.file("mac/ui/tracked.js")]));
-    assert!(!w.hub().team_tidy());
-    git(&dir, &["add", "a.txt"]);
-    git(&dir, &["commit", "-q", "-m", "rows by hand, here"]);
-    assert!(!w.hub().team_tidy(), "rows's file in the other repo still uncommitted");
-    git(&other.0, &["add", "mac/ui/addon.js", "mac/ui/tracked.js"]);
-    git(&other.0, &["commit", "-q", "-m", "by hand, there"]);
-    assert!(w.hub().team_tidy());
-    let rows = mate(&w, &sid, "rows");
-    assert_eq!((rows["state"].as_str(), rows["step"].as_str()), (Some("committed"), Some("Committed outside Cue")));
-    let hub = mate(&w, &sid, "hub");
-    let there = git(&other.0, &["rev-parse", "--short", "HEAD"]);
-    assert_eq!((hub["state"].as_str(), hub["commit"].as_str()), (Some("committed"), Some(there.trim())), "all its files in the other repo, committed there");
 }
