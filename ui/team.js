@@ -130,7 +130,9 @@ function crewStrip(sid, tab = false) {
   if (!list.length) return "";
   const open = mateOpenLeads.has(sid);
   const need = list.filter((t) => mateAsk(sid, t)).length, ready = list.filter((t) => t.state === "reviewed").length;
-  const words = [`Crew ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
+  // Any at work: a live dot and how many ("Teammates · 2 working"); none: how many there are.
+  const working = list.filter((t) => t.state === "working").length;
+  const words = [working ? `<span class="dot-live"></span>Teammates · ${working} working` : `Teammates ${list.length}`, need ? `<span class="crew-need">${need} needs you</span>` : "", ready ? `${ready} ready` : ""].filter(Boolean).join(" · ");
   return `<button class="${tab ? "tplace-btn crew-tab" : "crew-strip"} ${open ? "on" : ""}" data-mt-open="${esc(sid)}" aria-expanded="${open}">${words}<span class="tm-sub">${open ? "▾" : "▴"}</span></button>`;
 }
 

@@ -38,8 +38,13 @@ let chips = ctx.mateChips("L");
 assert.match(chips, /data-big="a1"><span class="tm-n">hub<\/span> <span class="tm-sub">· needs you/, "a chip for the crew member that asks, opening its ask");
 assert.doesNotMatch(chips, /data-mt-open/, "the crew opens from its strip, not the title");
 assert.equal(ctx.mateChips("nobody"), "");
-assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="false">Crew 4 · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▴/, "counts those still in it (committed and set aside left), who needs you, who's ready");
+assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="false"><span class="dot-live"><\/span>Teammates · 2 working · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▴/, "a live dot and how many work now, who needs you, who's ready");
 assert.equal(ctx.crewDock("L"), "", "closed: no rows above the box");
+const idle = world.sessions.L.team.map((t) => t.state);
+world.sessions.L.team.forEach((t) => { if (t.state === "working") t.state = "done"; });
+assert.match(ctx.crewStrip("L"), />Teammates 4 · /, "none at work: how many, no dot");
+assert.doesNotMatch(ctx.crewStrip("L"), /dot-live/);
+world.sessions.L.team.forEach((t, i) => { t.state = idle[i]; });
 assert.equal(ctx.crewStrip("nobody"), "", "no crew, no strip");
 
 // ---- the rows, open above the box ----

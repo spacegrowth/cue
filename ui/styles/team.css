@@ -7,6 +7,9 @@
 /* As the corner tab: the place tab's shape (terminal.css .tplace-btn); who needs you stays readable on its colour. */
 .crew-tab { display: inline-flex; align-items: center; gap: 4px; }
 .crew-tab .tm-sub { color: inherit; opacity: 0.8; }
+/* Any teammate at work: the live dot, in the tab's own ink. */
+.crew-tab .dot-live, .crew-strip .dot-live { width: 6px; height: 6px; flex: none; margin-right: 2px; }
+.crew-tab .dot-live { background: currentColor; }
 .crew-tab .crew-need { color: inherit; text-decoration: underline; }
 .crew-alone { display: flex; justify-content: flex-end; margin: 0 16px 6px; }
 .crew-strip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; }
