@@ -158,3 +158,19 @@ assert.match(line, /<b>docs<\/b> reviewed: <b class="rv-ok">commit<\/b> · 1 not
 assert.match(line, /data-mt-act="fixes"[^>]*>Send fixes</, "its current review says commit with a note: the note goes back first");
 assert.match(line, /data-crew-open="L\|id-docs">Open ›/);
 assert.doesNotMatch(ctx.reviewLine("L", "docs", "an older review\nRecommendation: send fixes"), /data-mt-act/, "an older review of it: no button");
+
+// ---- a finished member whose files Cue never saw (shell commands outside the lead's folder) ----
+{
+  world.sessions.U = { session_id: "U", team: [
+    { call: "c-u1", agent_id: "u1", name: "board", state: "reviewed", recommendation: "commit", started_ms: NOW - 9 * M, files: [] },
+    { call: "c-u2", agent_id: "u2", name: "mock", state: "done", started_ms: NOW - 9 * M, files: [] },
+    { call: "c-u3", agent_id: "u3", name: "fixer", state: "reviewed", recommendation: "send fixes", findings: ["1. a — should-fix — b"], started_ms: NOW - 9 * M, files: [] },
+  ] };
+  const rowOf = (name) => { ctx.mateOpenLeads.add("U"); return ctx.crewDock("U").split('<div class="mt-row').find((r) => r.includes(`>${name}</button>`)) || ""; };
+  assert.match(rowOf("board"), /data-mt-act="aside"[^>]*>Set aside</, "reviewed, files unknown: Set aside, not a Commit that can't work");
+  assert.doesNotMatch(rowOf("board"), /data-mt-act="commit"|data-mt-act="diff"/);
+  assert.match(rowOf("board"), /doesn&#39;t know which files it changed|doesn't know which files it changed/, "says why");
+  assert.match(rowOf("mock"), /class="btn primary "[^>]*data-mt-act="aside"/, "done, files unknown: Set aside, not Diff");
+  assert.match(rowOf("fixer"), /data-mt-act="fixes".*data-mt-act="aside"/s, "its review asks for fixes: Send fixes still goes to it, Set aside beside");
+  delete world.sessions.U;
+}

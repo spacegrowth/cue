@@ -217,3 +217,14 @@ fn scratch_and_ignored_files_dont_keep_a_committed_member_and_commit_on_committe
     assert_eq!(mate(&w, &sid, "hub")["state"], "committed");
     let _ = std::fs::remove_file(&scratch);
 }
+
+#[test]
+fn commit_on_a_member_whose_files_cue_never_saw_says_so_and_how_to_let_it_go() {
+    let w = World::new();
+    let _dir = repo(&w);
+    let sid = lead(&w, "work done with shell commands elsewhere");
+    says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
+    let said = w.hub().team_action(&sid, "agentA", "commit").unwrap_err();
+    assert!(said.contains("doesn't know which files board changed") && said.contains("then Set aside"), "{said}");
+    assert!(!w.hub().team_tidy(), "nothing it can tell: it stays for you to set aside");
+}

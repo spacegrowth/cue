@@ -517,6 +517,8 @@ impl Hub {
                 });
                 return Ok(format!("{}'s work is already committed ({sha})", t.name));
             }
+            // Files Cue never saw (written with shell commands outside its lead's folder): nothing here to commit.
+            if t.files.is_empty() && t.worktree.is_empty() { return Err(format!("Cue doesn't know which files {} changed (it wrote them with shell commands outside this folder), so it can't commit them: commit them yourself, then Set aside", t.name)); }
             let why = if left.is_empty() { String::new() } else { format!("\n{}", left.join("\n")) };
             return Err(format!("{} has nothing to commit in git{why}", t.name));
         }

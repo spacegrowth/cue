@@ -86,9 +86,14 @@ function mateLine(t, ask) {
   else if (t.state === "reviewing") parts.push("a fork reads its files' diff against what it was asked");
   else if (t.state === "reviewed") { if (t.recommendation) parts.push(`recommendation: ${t.recommendation}`); if (t.stat) parts.push(t.stat); }
   else { if (t.summary) parts.push(t.summary); if (t.stat) parts.push(t.stat); else if (files) parts.push(`${files} file${files === 1 ? "" : "s"}${via}`); }
+  if (mateUnknownFiles(t)) parts.push(UNKNOWN_FILES);
   return parts.map(esc).join(" · ");
 }
 
+/** Finished, and Cue never saw which files it changed (it wrote them with shell commands outside its lead's folder):
+ *  nothing Cue can diff or commit. Commit them yourself; Set aside lets it go. */
+const mateUnknownFiles = (t) => ["done", "reviewed"].includes(t.state) && !(t.files || []).length && !t.worktree && !t.stat;
+const UNKNOWN_FILES = "Cue doesn't know which files it changed: commit them yourself, then Set aside";
 /** One button of a teammate's. */
 const mateBtn = (sid, t, act, label, primary = false, held = false) =>
   `<button class="btn ${primary ? "primary" : ""} ${held ? "held" : ""}" data-mt-act="${act}" data-mt-sid="${esc(sid)}" data-mt-agent="${esc(t.agent_id || t.call)}" ${held ? `aria-disabled="true"` : ""}>${label}</button>`;
@@ -99,7 +104,9 @@ function mateActs(sid, t, ask) {
     case "working": return t.quiet === "stuck" ? mateBtn(sid, t, "resume", "Resume", true) + mateBtn(sid, t, "stop", "Stop") : mateBtn(sid, t, "stop", "Stop");
     case "queued": case "reviewing": return mateBtn(sid, t, "diff", "Diff");
     // Reviewed: the one its review recommends (the other is in ⋯); both when it said neither.
+    // Files Cue never saw: nothing to commit or diff here; Send fixes still goes to it when its review asks.
     case "reviewed": {
+      if (mateUnknownFiles(t)) return (mateRec(t) === "fixes" ? mateBtn(sid, t, "fixes", "Send fixes", true) : "") + mateBtn(sid, t, "aside", "Set aside", mateRec(t) !== "fixes");
       const commit = mateBtn(sid, t, "commit", "Commit", true, (t.also || []).length > 0);
       const rec = mateRec(t);
       return rec === "fixes" ? mateBtn(sid, t, "fixes", "Send fixes", true) : rec === "commit" ? commit : commit + mateBtn(sid, t, "fixes", "Send fixes");
@@ -107,7 +114,7 @@ function mateActs(sid, t, ask) {
     // Stopped (by you, or with its lead's interrupt): what it changed, if anything; nothing to review in nothing.
     case "stopped": return (t.files || []).length ? mateBtn(sid, t, "diff", "Diff") : mateBtn(sid, t, "aside", "Set aside");
     // Finished: its review is queued by itself (a loop's has Review in ⋯).
-    default: return mateBtn(sid, t, "diff", "Diff");
+    default: return mateUnknownFiles(t) ? mateBtn(sid, t, "aside", "Set aside", true) : mateBtn(sid, t, "diff", "Diff");
   }
 }
 
