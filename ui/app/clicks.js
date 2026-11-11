@@ -8,6 +8,8 @@ const ACTS = {
   "test-notify": () => invoke("test_notification").then(toast).catch((e) => toast(`Couldn't send: ${e}`)),
   "open-history": () => { view = "history"; sheet = null; renderMain(); },
   "shell-new": () => openShell(""),
+  // "Not sent" for an agent's own screen (/login, /design-login): Cue's terminal, in its folder, running it.
+  "run-here": (el) => openShell(el.dataset.cwd, { line: el.dataset.line }),
   "open-search": () => openFind(),
   shells: () => toggleShells(),
   "load-older": (el) => loadOlder(el.dataset.sid),

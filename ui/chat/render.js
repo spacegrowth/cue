@@ -100,6 +100,14 @@ const OPEN_REPLIES = 3;
 /** Agent: full-width prose. You: a compact tinted bubble on the right. Older agent turns fold to 3 lines.
  *  Another session: a striped bubble saying which one (sent by its agent, or forwarded by you). */
 /** `paged`: the Active pane's chat, which loads earlier messages as you scroll up. */
+/** "Not sent" for one of the agent's own screens, which Cue says to run in a terminal: a button that does, in Cue's
+ *  own terminal in the session's folder (on this Mac only: one on a machine is run there). */
+function runHereBtn(via, s) {
+  const line = /run (.+?) in a terminal in /.exec(via)?.[1];
+  if (!line || !s?.cwd || s.machine) return "";
+  return ` <button class="cv-pill run-here" data-act="run-here" data-line="${esc(line)}" data-cwd="${esc(s.cwd)}">Run it in a terminal</button>`;
+}
+
 function chatHtml(it, s, harness, paged = false) {
   const ex = conversation(it, s);
   const lastAgent = ex.map((e) => e.role).lastIndexOf("agent");
@@ -149,7 +157,7 @@ function chatHtml(it, s, harness, paged = false) {
       <div class="msg cv-text">${md(said.text, { runIn: s?.session_id })}</div>${said.after}${thumbs(e.images)}${localImages(e.text)}
       <div class="cv-acts">${sid ? listenBtn(key) : ""}${long && paged && sid ? `<button class="cv-pill" data-read="${esc(key)}">${BOOK_ICON}Read</button>` : ""}${!recent.has(n) && long ? `<button class="cv-more" data-msg="${esc(key)}">${folded ? "Show all" : "Fold"}</button>` : ""}${n === lastAgent ? actReplyHtml(s, e.at_ms) : ""}<button class="cv-fwd" data-fwd="${esc(key)}">↗ Send to…</button></div>${follow}</div>`;
   })(), K(`${e.role[0]}:${e.at_ms}`))), chose.concat(ran, restarts));
-  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
+  for (const o of outbox) if (o.sid === (s?.session_id || it?.session_id) && !landed(o)) rows.push(`<div class="cv-you ${o.via ? "" : "sending"}" data-key="${esc(K(`out:${o.at}`))}"><div class="cv-you-text">${esc(o.text).replace(/\n/g, "<br>")}</div>${o.images.length ? `<div class="thumbs">${o.images.map((im) => `<span class="thumb"><img src="${esc(im.data)}" alt=""/></span>`).join("")}</div>` : ""}<div class="cv-meta" data-sid="${esc(o.sid)}">${/^kept in Cue/.test(o.via || "") ? "Kept in Cue · it goes when this turn ends" : /^not sent: /.test(o.via || "") ? `Not sent · ${esc(o.via.slice(10))}${runHereBtn(o.via, s)}` : o.via ? `Sent · via ${esc(o.via)}` : esc(sendingMeta(o.sid))}</div></div>`);
   // Sent while it worked: Cue keeps it until the turn ends. Yours to take back (Edit, Esc) or send now.
   // Reviews you asked for while this lead was busy: each goes, in order, once it's free (× takes one back).
   for (const q of (s && state.review_queue?.[s.session_id]) || []) rows.push(`<div class="cue-said review-q" data-key="${esc(K(`rq:${q.exec}`))}"><span><b>${esc(q.name)}</b>'s review waits for the lead to be free · <button class="q-now" data-act="unqueue-review" data-exec="${esc(q.exec)}">Skip</button></span></div>`);

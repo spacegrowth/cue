@@ -17,6 +17,7 @@ CueBridge.area("chat", (w) => {
       { value: "haiku", label: "Haiku 4.5", desc: "Fastest for quick answers" }] }),
     cmd("effort", "Set effort level for model usage", { hint: "<low|medium|high|xhigh|max|auto>", args: ["low", "medium", "high", "xhigh", "max", "auto"].map((v) => ({ value: v, label: v, desc: "" })) }),
     cmd("rename", "Rename the current conversation", { hint: "[name]", args: [] }),
+    cmd("design-login", "Sign in to Claude Design", { kind: "terminal" }),
     skill("commit-push-merge", "Land in-flight work: commit, push, and merge"),
     skill("relay:spawn", "Start an executor on a packet"),
     skill("relay:verify", "Check an executor's report against what it staged"),

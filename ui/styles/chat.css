@@ -554,3 +554,5 @@ button.bg-pill:hover { background: color-mix(in srgb, currentColor 24%, transpar
 .btw-ask { padding: 6px 10px; }
 .btw-ask textarea { width: 100%; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--panel-2); color: var(--ink); font: 13px/1.4 var(--sans); outline: none; }
 .btw-ask textarea:focus { border-color: var(--accent); }
+/* "Not sent" for an agent's own screen: Run it in a terminal, beside the words. */
+.cv-you .cv-meta .run-here { display: inline-flex; margin: 4px 0 0 6px; vertical-align: middle; }

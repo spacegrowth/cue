@@ -227,3 +227,18 @@ test("⋯ → Move to terminal waits while the session works", async ({ cue, pag
   await expect(item).toBeDisabled();
   await expect(item).toContainText("When this turn ends");
 });
+
+test("One of Claude Code's own screens, not sent from a hosted session: Run it opens Cue's terminal in its folder, running the line", async ({ cue, page }) => {
+  await hosted(cue);
+  const notSent = () => "not sent: /design-login is one of Claude Code's own screens, which only its terminal shows. To use it, run claude /design-login in a terminal in ~/code/agent-relay";
+  await cue.override("send_to_session", notSent);
+  await cue.override("reply", notSent);
+  await openCard(page, "n1");
+  await box(page, "relay").pressSequentially("/design-login");
+  await box(page, "relay").press("Enter");
+  await page.locator(".active-pane .run-here").click();
+  const cwd = (await cue.called("shell_open")).args.cwd;
+  expect(cwd).toBe("/Users/me/code/agent-relay");
+  const typed = await cue.called("term_write", { data: "claude /design-login\r" });
+  expect(typed.args.sessionId).toMatch(/^shell:/);
+});
