@@ -56,8 +56,9 @@ const agentChipsOf = (list) => ({ needs: agentGroups(list).needs });
 /** The names of a session's own agents (background agents, teammates) asking you. */
 const helperNeeds = (sid) => helperAsks(sid).map((i) => i.agent_name || "an agent");
 function agentCount(sid) {
-  // Its crew at work is counted in its strip, not here.
-  const s = sessionOf(sid), crew = (s?.team || []).filter((t) => t.state === "working").length;
+  // Its crew, at work or finished, is in its own tab, not here: the count leaves out every member, as the list does
+  // (agentsOf), so the tab never says "6" over an empty list.
+  const s = sessionOf(sid), crew = (s?.team || []).filter((t) => t.agent_id).length;
   return { n: Math.max(0, (s?.agents || 0) - crew), needs: helperNeeds(sid) };
 }
 

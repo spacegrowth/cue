@@ -114,3 +114,7 @@ console.log("agents ok");
 world.sessions = { L: { session_id: "L", agents: 2, team: [{ agent_id: "x0", name: "job 0", state: "working" }] } };
 assert.deepEqual(ctx.agentsOf("L").map((a) => a.id), ["x1", "x2", "x3", "x4"], "a crew member isn't listed again as an agent");
 assert.equal(ctx.agentCount("L").n, 1, "nor counted in the agents chip while it works");
+world.sessions.L.team[0].state = "committed";
+assert.equal(ctx.agentCount("L").n, 1, "nor once it's finished: the count says what the list shows");
+world.sessions = { L: { session_id: "L", agents: 6, team: ["a", "b", "c", "d", "e", "f"].map((n) => ({ agent_id: n, name: n, state: "reviewed" })) } };
+assert.equal(ctx.agentCount("L").n, 0, "six finished crew members and nothing else: no agents to count");
