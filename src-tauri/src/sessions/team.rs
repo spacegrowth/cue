@@ -98,6 +98,14 @@ pub struct Teammate {
     /// `AUTO_FIX_ROUNDS` the next review waits for you.
     #[serde(default, skip_serializing_if = "is_zero32")]
     pub fix_rounds: u32,
+    /// When its lead was asked to commit its work (files Cue never saw: written with shell commands outside the
+    /// lead's folder): the lead's next reply without a Recommendation line says what it committed. 0: not asked.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub commit_asked_ms: u64,
+    /// Why it waits on you, when Cue couldn't settle it by itself (its lead didn't say it committed it); "" when it
+    /// doesn't. Cleared once it leaves the crew (committed or set aside) or its lead is asked again.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub needs: String,
     /// The commit its files went into.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub commit: String,
@@ -408,6 +416,30 @@ pub fn read_review(text: &str) -> (Vec<String>, String) {
     (findings, recommendation)
 }
 
+/// What a lead's reply to "commit your teammate's work" says it committed for teammate `name`: its
+/// `Committed <name>: <short sha>` lines' commits (none: `Committed <name>: nothing`), or None when it says neither.
+/// `alone` (the only teammate asked): a bare `Committed: …` line is its too.
+pub fn read_committed(text: &str, name: &str, alone: bool) -> Option<Vec<String>> {
+    let mut shas: Vec<String> = vec![];
+    let mut nothing = false;
+    for l in text.lines() {
+        let l = l.trim().trim_start_matches(['-', '*', '`', ' ']);
+        let Some((k, v)) = l.split_once(':') else { continue };
+        let k = k.trim_matches(['*', '`', ' ']);
+        let Some(who) = k.get(..9).filter(|c| c.eq_ignore_ascii_case("committed")).map(|_| k[9..].trim_matches(['*', '`', ' '])) else { continue };
+        if !(who.eq_ignore_ascii_case(name) || (who.is_empty() && alone)) {
+            continue;
+        }
+        let word = v.trim().trim_matches(['*', '`', ' ']).split(|c: char| c.is_whitespace() || matches!(c, '`' | '*' | ',' | ';' | '(' | ')')).next().unwrap_or("").trim_end_matches('.');
+        if word.eq_ignore_ascii_case("nothing") {
+            nothing = true;
+        } else if (4..=40).contains(&word.len()) && word.chars().all(|c| c.is_ascii_hexdigit()) {
+            shas.push(word.to_lowercase());
+        }
+    }
+    (nothing || !shas.is_empty()).then_some(shas)
+}
+
 fn str_of(v: &Value, k: &str) -> String {
     v.get(k).and_then(Value::as_str).unwrap_or("").to_string()
 }
@@ -454,6 +486,10 @@ impl Sessions {
         let s = self.0.get_mut(sid)?;
         let t = s.team.iter_mut().find(|t| (!t.agent_id.is_empty() && t.agent_id == agent) || t.call == agent)?;
         let r = f(t);
+        // Settled (committed, set aside) or back at work: nothing of it waits on you any more.
+        if !t.in_team() || t.working() {
+            t.needs.clear();
+        }
         mark_shared(&mut s.team);
         Some(r)
     }

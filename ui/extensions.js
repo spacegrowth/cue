@@ -46,14 +46,14 @@ function extFrame(e) {
   return f;
 }
 
-/** The row under the activity bar: Chat, Actions (actions.js), Agents and Scripts (background.js), then a tab
- *  per extension that has one. */
+/** The row under the activity bar: Chat, Actions (actions.js), Agents and Scripts (background.js), Diff (diff.js),
+ *  then a tab per extension that has one. */
 function sessTabs(sid) {
   const tabs = extTabs();
   if (!sid) return "";
   const on = extOn(sid);
   const ran = on && extRan.get(on);
-  return `<div class="stabs"><button class="stab ${on || actTabOn.has(sid) || bgTabOn.has(sid) || aboutTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${actTabBtn(sid)}${bgTabBtn(sid)}${tabs.map((e) => {
+  return `<div class="stabs"><button class="stab ${on || diffOn(sid) || actTabOn.has(sid) || bgTabOn.has(sid) || aboutTabOn.has(sid) ? "" : "on"}" data-stab="" data-sid="${esc(sid)}">Chat</button>${actTabBtn(sid)}${bgTabBtn(sid)}${diffTabBtn(sid)}${tabs.map((e) => {
     const b = extBadges.get(`${e.name}|${sid}`);
     return `<button class="stab ${on === e.name ? "on" : ""}" data-stab="${esc(e.name)}" data-sid="${esc(sid)}">${esc(e.tab)}${b ? `<span class="stab-n">${esc(b)}</span>` : ""}</button>`;
   }).join("")}${aboutTabBtn(sid)}<span class="grow"></span>${ran ? `<span class="stab-ran">ran <code>${esc(ran)}</code></span>` : ""}</div>`;
@@ -67,7 +67,7 @@ function placeExt() {
   const slot = name && document.querySelector(".active-pane [data-ext-slot]");
   const covered = !!(sheet || lightbox);
   const chat = document.querySelector(".active-pane [data-chat]");
-  if (chat) chat.style.display = slot || document.querySelector(".active-pane [data-act-slot], .active-pane [data-bg-slot], .active-pane [data-about-slot]") ? "none" : "";
+  if (chat) chat.style.display = slot || document.querySelector(".active-pane [data-act-slot], .active-pane [data-bg-slot], .active-pane [data-about-slot], .active-pane [data-diff-slot]") ? "none" : "";
   for (const [n, f] of extFrames) if (n !== name || !slot || covered) f.hidden = true;
   extNotify();
   if (!slot || covered) return;
@@ -127,7 +127,7 @@ function xtSettings() {
         <button class="toggle ${e.enabled ? "on" : ""}" data-act="xt-toggle" data-name="${esc(e.name)}" data-on="${e.enabled ? "" : "1"}" role="switch" aria-checked="${!!e.enabled}" aria-label="${esc(e.title || e.name)}"><span></span></button></div>
       <div class="xt-body"><div class="xt-can"><div class="xt-k">${e.enabled ? "It can" : "Switching it on lets it"}</div><ul>${can}</ul></div>${more}${confirm}
         <div class="xt-log"><div class="xt-k">Last it did</div>${lines.length ? lines.map(xtLine).join("") : `<div class="xt-none">Nothing yet</div>`}</div>
-        <div class="xt-folder">${e.builtin ? "Comes with Cue, and updates with it" : `${e.replaces_builtin ? "Your copy, used in place of the one that comes with Cue: " : ""}<code>${esc(e.folder || "")}</code>`}</div></div></div>`;
+        <div class="xt-folder"><code>${esc(e.folder || "")}</code></div></div></div>`;
   }).join("");
   return `<div class="xt-intro">An extension is a folder with a <code>manifest.json</code> and its own page, in <code>${esc(extRoot)}</code>. Nothing in it runs until you switch it on here, and switching it on is what allows what it asks for. Every command it runs is listed under it.
       <div class="xt-intro-btns"><button class="btn" data-act="xt-folder">Open the folder</button><button class="btn" data-act="xt-rescan">Look again</button></div></div>

@@ -1,7 +1,0 @@
-{
-  "title": "Diff",
-  "tab": "Diff",
-  "version": "0.4.1",
-  "entry": "index.html",
-  "capabilities": ["sessions.read", "git.read"]
-}

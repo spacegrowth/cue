@@ -26,7 +26,7 @@ const mate = (name, state, o = {}) => ({ call: `call-${name}`, agent_id: `id-${n
 world.sessions.L = { session_id: "L", team: [
   mate("hub", "working", { step: "Running: cargo test" }),
   mate("rows", "working", { step: "Editing teamcard.js", files: ["ui/teamcard.js", "ui/core.js", "ui/x.js"], via_shell: ["ui/x.js"] }),
-  mate("skill", "done", { ended_ms: NOW - 2 * M, summary: "team skill written, 12 tests pass", stat: "2 files +140 −0" }),
+  mate("skill", "done", { ended_ms: NOW - 2 * M, summary: "team skill written, 12 tests pass", stat: "2 files +140 −0", files: ["skills/team/SKILL.md", "skills/team/review.md"] }),
   mate("handoff", "reviewed", { findings: ["1. hub/handoff.rs:40 — should-fix — the list is cut at 8", "2. ui/core.js:212 — note — commit after rows"], recommendation: "commit", stat: "3 files +88 −12", also: ["rows"] }),
   mate("gone", "committed"),
   mate("away", "aside"),
@@ -38,7 +38,7 @@ let chips = ctx.mateChips("L");
 assert.match(chips, /data-big="a1"><span class="tm-n">hub<\/span> <span class="tm-sub">· needs you/, "a chip for the crew member that asks, opening its ask");
 assert.doesNotMatch(chips, /data-mt-open/, "the crew opens from its strip, not the title");
 assert.equal(ctx.mateChips("nobody"), "");
-assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="true"><span class="dot-live"><\/span>Cue Crew · 2 working · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▾/, "a live dot and how many work now, who needs you, who's ready; open, as some wait on you");
+assert.match(ctx.crewStrip("L"), /data-mt-open="L" aria-expanded="true"><span class="dot-live"><\/span>Cue Crew · 4 · 2 working · <span class="crew-need">1 needs you<\/span> · 1 ready<span class="tm-sub">▾/, "a live dot and how many work while any does, how many are in it (committed and set aside left), who needs you, who's ready; open, as some wait on you");
 // A teammate waiting on you (handoff: reviewed; hub: asks) opens them over the box, once; closed, they stay closed
 // until another starts waiting.
 ctx.mateOpenLeads.clear(); ctx.mateSeenWaiting.clear();
@@ -66,7 +66,7 @@ world.items = saved;
 assert.equal(ctx.crewDock("L"), "", "closed: no rows above the box");
 const idle = world.sessions.L.team.map((t) => t.state);
 world.sessions.L.team.forEach((t) => { if (t.state === "working") t.state = "done"; });
-assert.match(ctx.crewStrip("L"), />Cue Crew 4 · /, "none at work: how many, no dot");
+assert.match(ctx.crewStrip("L"), />Cue Crew · 4 · /, "none at work: how many, no dot");
 assert.doesNotMatch(ctx.crewStrip("L"), /dot-live/);
 world.sessions.L.team.forEach((t, i) => { t.state = idle[i]; });
 assert.equal(ctx.crewStrip("nobody"), "", "no crew, no strip");
@@ -75,7 +75,9 @@ assert.equal(ctx.crewStrip("nobody"), "", "no crew, no strip");
 ctx.mateOpenLeads.add("L");
 assert.match(ctx.crewStrip("L"), /crew-strip on.*▾/s);
 const g = ctx.crewDock("L");
-assert.match(g, /class="crew-dock open".*mt-rows/s, "the rows above the box");
+assert.match(g, /class="crew-dock open" data-key="crew-dock"><div class="crew-drawer" data-crew-drawer="L"><div class="crew-bar" data-mt-open="L" role="button" aria-expanded="true"><span class="crew-bar-w"><span class="dot-live"><\/span>Cue Crew · 4 · 2 working · <span class="crew-need">1 needs you<\/span> · 1 ready<\/span><button class="crew-close" data-mt-open="L">Close <span class="tm-sub">▾<\/span><\/button><\/div>.*mt-rows/s, "the drawer's title bar: the tab's words, Close ▾; the rows under it");
+assert.doesNotMatch(g, /title="/, "no hover text");
+assert.doesNotMatch(g, /Set aside|data-mt-act="aside"/, "no Set aside: Cue clears members by itself");
 const row = (name) => g.split('<div class="mt-row').find((r) => r.includes(`>${name}</button>`)) || "";
 assert.match(row("hub"), /needs you/);
 assert.match(row("hub"), /Allow: cargo test --features ext/, "what it asks, on its row");
@@ -119,7 +121,25 @@ ctx.mateUnder.set("L|id-handoff", "findings");
 const open = ctx.crewDock("L");
 assert.match(open, /<span class="mono">hub\/handoff.rs:40<\/span> · the list is cut at 8 <span class="rv-k">should-fix<\/span>/);
 ctx.mateMenu = "L|id-rows";
-assert.match(ctx.crewDock("L"), /mt-menu"><button data-mt-act="diff"[^>]*>Diff<\/button><button data-mt-asked="L\|id-rows">What it was asked<\/button><button class="mt-aside" data-mt-act="aside"/, "working: Diff in ⋯");
+assert.match(ctx.crewDock("L"), /mt-menu"><button data-mt-act="diff"[^>]*>Diff<\/button><button data-mt-asked="L\|id-rows">What it was asked<\/button><\/div>/, "working: Diff in ⋯, no Set aside");
+// No files Cue knows (hub's asked its question before writing any): no Diff, on its row or in ⋯.
+const hub = world.sessions.L.team[0], hubAsk = world.items;
+world.items = [];
+ctx.mateMenu = "L|id-hub";
+assert.doesNotMatch(ctx.crewDock("L").split('<div class="mt-row').find((r) => r.includes(">hub</button>")), /data-mt-act="diff"/, "no files: no Diff");
+hub.worktree = "/work/cue-hub";
+assert.match(ctx.crewDock("L"), /mt-menu"><button data-mt-act="diff"/, "a worktree of its own: Diff reads it whole");
+delete hub.worktree;
+world.items = hubAsk;
+ctx.mateMenu = null;
+// Diff opens the session's Diff tab on that member's files (diff.js diffShowMember), nothing under its row.
+const shown = [];
+ctx.diffShowMember = (...a) => shown.push(a);
+ctx.mateAct("L", "id-skill", "diff");
+assert.deepEqual(shown, [["L", "id-skill", "skill"]]);
+assert.doesNotMatch(ctx.crewDock("L"), /mt-diff|Reading its diff/);
+for (const t of world.sessions.L.team) assert.doesNotMatch(ctx.mateMenuHtml("L", t), /aside/i, `no Set aside in ${t.name}'s ⋯`);
+ctx.mateMenu = null;
 
 // ---- asks titled with the teammate ----
 assert.equal(ctx.mateOfAsk(world.items[0]), "hub");
@@ -159,18 +179,33 @@ assert.match(line, /data-mt-act="fixes"[^>]*>Send fixes</, "its current review s
 assert.match(line, /data-crew-open="L\|id-docs">Open ›/);
 assert.doesNotMatch(ctx.reviewLine("L", "docs", "an older review\nRecommendation: send fixes"), /data-mt-act/, "an older review of it: no button");
 
-// ---- a finished member whose files Cue never saw (shell commands outside the lead's folder) ----
+// ---- a finished member whose files Cue never saw (shell commands outside the lead's folder); one the hub says needs you ----
 {
   world.sessions.U = { session_id: "U", team: [
     { call: "c-u1", agent_id: "u1", name: "board", state: "reviewed", recommendation: "commit", started_ms: NOW - 9 * M, files: [] },
-    { call: "c-u2", agent_id: "u2", name: "mock", state: "done", started_ms: NOW - 9 * M, files: [] },
+    { call: "c-u2", agent_id: "u2", name: "mock", state: "done", started_ms: NOW - 9 * M, ended_ms: NOW - M, files: [] },
     { call: "c-u3", agent_id: "u3", name: "fixer", state: "reviewed", recommendation: "send fixes", findings: ["1. a — should-fix — b"], started_ms: NOW - 9 * M, files: [] },
+    { call: "c-u4", agent_id: "u4", name: "quiet", state: "stopped", started_ms: NOW - 9 * M, files: [] },
+    { call: "c-u5", agent_id: "u5", name: "lint", state: "done", started_ms: NOW - 9 * M, files: ["a.js"], stat: "1 file +2 −0", needs: "Its lead didn't say it committed it" },
   ] };
-  const rowOf = (name) => { ctx.mateOpenLeads.add("U"); return ctx.crewDock("U").split('<div class="mt-row').find((r) => r.includes(`>${name}</button>`)) || ""; };
-  assert.match(rowOf("board"), /data-mt-act="aside"[^>]*>Set aside</, "reviewed, files unknown: Set aside, not a Commit that can't work");
-  assert.doesNotMatch(rowOf("board"), /data-mt-act="commit"|data-mt-act="diff"/);
-  assert.match(rowOf("board"), /doesn&#39;t know which files it changed|doesn't know which files it changed/, "says why");
-  assert.match(rowOf("mock"), /class="btn primary "[^>]*data-mt-act="aside"/, "done, files unknown: Set aside, not Diff");
-  assert.match(rowOf("fixer"), /data-mt-act="fixes".*data-mt-act="aside"/s, "its review asks for fixes: Send fixes still goes to it, Set aside beside");
+  // Files Cue never saw alone don't wait on you (Cue handles them): no drawer by itself, no line.
+  world.sessions.V = { session_id: "V", team: [{ call: "c-v", agent_id: "v1", name: "solo", state: "done", started_ms: NOW - 9 * M, files: [] }] };
+  ctx.crewStrip("V");
+  assert.equal(ctx.mateOpenLeads.has("V"), false, "files unknown: not waiting on you, stays closed");
+  assert.equal(ctx.crewWaitLine("V"), "");
+  delete world.sessions.V;
+  ctx.crewStrip("U");
+  assert.equal(ctx.mateOpenLeads.has("U"), true, "they wait on you: the drawer opens by itself");
+  const d = ctx.crewDock("U");
+  const rowOf = (name) => d.split('<div class="mt-row').find((r) => r.includes(`>${name}</button>`)) || "";
+  assert.match(rowOf("board"), /class="btn primary "[^>]*data-mt-act="commit"[^>]*>Commit</, "reviewed, files unknown: Commit (its lead commits them)");
+  assert.match(rowOf("mock"), /class="btn primary "[^>]*data-mt-act="commit"[^>]*>Commit</, "done, files unknown: Commit, not Diff");
+  assert.doesNotMatch(rowOf("mock"), /data-mt-act="diff"/);
+  assert.match(rowOf("mock"), />8m · Cue doesn&#39;t know which files it changed: Commit asks its lead to commit them<|>8m · Cue doesn't know which files it changed: Commit asks its lead to commit them</, "says why");
+  assert.match(rowOf("fixer"), /class="btn primary "[^>]*data-mt-act="fixes"[^>]*>Send fixes</, "its review asks for fixes: Send fixes, one button");
+  assert.doesNotMatch(rowOf("quiet"), /data-mt-act=/, "stopped having written nothing: no button (Cue clears it)");
+  assert.match(rowOf("lint"), /tm-chip need small">needs you<.*· Its lead didn(&#39;|')t say it committed it/s, "the hub's needs: needs you, and what it needs");
+  assert.match(ctx.crewStrip("U"), /<span class="crew-need">1 needs you<\/span> · 2 ready/, "needs counts in needs you");
+  assert.doesNotMatch(d, /aside/i, "no Set aside anywhere");
   delete world.sessions.U;
 }

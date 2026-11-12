@@ -14,12 +14,12 @@ How many calls the analysis followed, and how many it couldn't that may be crate
 
 | What | Count |
 |---|---|
-| `#[tauri::command]` | 158 (3 sync) |
+| `#[tauri::command]` | 159 (3 sync) |
 | Lock declarations (static or field) | 111 |
 | Lock acquisitions | 264 |
 | Lock-graph edges | 51 |
 | Spawn sites | 91 |
-| External calls: fs / db / process / notify / login / socket | 365 / 142 / 48 / 4 / 1 / 4 |
+| External calls: fs / db / process / notify / login / socket | 360 / 142 / 48 / 4 / 1 / 4 |
 | External calls reachable under the hub's store | 0 |
 
 Modules declared but not in this checkout (not analysed): btw.rs: mod ext, db/mod.rs: mod ext, changes.rs: mod ext, hub/mod.rs: mod ext, lib.rs: mod ext.
@@ -44,6 +44,7 @@ Sync commands run on the main thread. "Hands work to": the threads or pools its 
 | `actions_running` | async | `actions/mod.rs::actions_running` | actions::off |
 | `project_for_folder` | async | `actions/mod.rs::project_for_folder` | actions::off |
 | `actions_prompt_set` | async | `actions/mod.rs::actions_prompt_set` | actions::off |
+| `diff_git` | async | `extensions.rs::diff_git` | ipc::blocking |
 | `ext_git` | async | `extensions.rs::ext_git` | ipc::blocking |
 | `ext_program` | async | `extensions.rs::ext_program` | ipc::blocking |
 | `ext_list` | async | `extensions.rs::ext_list` | ipc::blocking |
@@ -465,7 +466,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 
 ## External calls
 
-### fs (365)
+### fs (360)
 
 | In | Call | Times |
 |---|---|---|
@@ -518,8 +519,7 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `db/schema.rs::keep_aside` | rename | 2 |
 | `db/schema.rs::open` | create_dir_all | 1 |
 | `extensions.rs::activity` | read_to_string | 1 |
-| `extensions.rs::builtin_root` | Path::is_dir | 3 |
-| `extensions.rs::dir_of` | Path::is_file | 2 |
+| `extensions.rs::dir_of` | Path::is_file | 1 |
 | `extensions.rs::ext_reveal` | create_dir_all | 1 |
 | `extensions.rs::file_in` | Path::canonicalize | 2 |
 | `extensions.rs::file_in` | Path::is_file | 1 |
@@ -533,7 +533,6 @@ What the store's holders reach while they hold it (0 allowed for now in `lint-al
 | `extensions.rs::stamp` | Path::is_dir | 1 |
 | `extensions.rs::stamp` | Path::metadata | 1 |
 | `extensions.rs::stamp` | read_dir | 1 |
-| `extensions.rs::with_status` | Path::is_file | 1 |
 | `hook.rs::put_executable` | Permissions::from_mode | 1 |
 | `hook.rs::put_executable` | create_dir_all | 1 |
 | `hook.rs::put_executable` | read_to_string | 1 |

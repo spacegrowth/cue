@@ -173,8 +173,100 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await page.locator('[data-crew-commit="lead"][data-crew-mode="wait"]').click();
     expect((await cue.called("crew_commit", { sessionId: "lead" })).args.mode).toBe("wait");
     await expect(page.locator(".crew-foot")).toContainText("waits for your Commit or Send fixes");
-    await page.locator(".ap-chat").first().click();
+    await page.locator(".ap-chat").first().click({ position: { x: 20, y: 20 } });
     await expect(page.locator(".crew-menu")).toHaveCount(0);
+  });
+
+  test("the crew is a drawer on the box: its title bar is the tab, opened; Close, the bar, the tab and Esc toggle it", async ({ page }) => {
+    // Opened by itself: hub asked and handoff is ready (they wait on you).
+    const drawer = page.locator(".crew-drawer");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.locator(".crew-bar")).toHaveText(/^Cue Crew · 5 · 2 working · 2 ready\s*Close ▾$/);
+    await expect(drawer.locator(".crew-bar .dot-live"), "a live dot while any member works").toHaveCount(1);
+    await expect(page.locator(".crew-tab"), "the tab isn't shown while its drawer is open").toBeHidden();
+    expect(await page.locator(".ap-chat").first().evaluate((el) => getComputedStyle(el).opacity)).not.toBe("1");
+    const box = await page.locator(".foot .field").boundingBox(), d = await drawer.boundingBox();
+    expect(Math.abs(d.y + d.height - box.y), "it stands on the box's top edge").toBeLessThan(2);
+    await expect(drawer.locator("[title]"), "no hover text").toHaveCount(0);
+    await drawer.locator(".crew-close").click();
+    await expect(drawer).toHaveCount(0);
+    await expect(page.locator(".crew-tab")).toBeVisible();
+    await expect(page.locator(".crew-tab")).toHaveText(/^Cue Crew · 5 · 2 working · 2 ready▴$/);
+    await page.locator(".crew-tab").click();
+    await expect(drawer).toBeVisible();
+    await drawer.locator(".crew-bar-w").click();
+    await expect(drawer, "a click on its title bar closes it").toHaveCount(0);
+    await page.locator(".crew-tab").click();
+    // Esc goes to a box with text in it; an empty box (or none focused) gives it to the drawer.
+    const text = page.locator('textarea[data-text="s:lead"]');
+    await text.fill("hello");
+    await text.press("Escape");
+    await expect(drawer).toBeVisible();
+    await text.fill("");
+    await text.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    await page.locator(".crew-tab").click();
+    await page.locator(".ap-chat").first().click({ position: { x: 20, y: 20 } });
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+  });
+
+  test("open, the chat's newest message sits just above the drawer; closed, at the chat's end, nothing jumps", async ({ page }) => {
+    const drawer = page.locator(".crew-drawer");
+    await expect(drawer).toBeVisible();
+    // The chat's last message's bottom, the drawer's top, the chat's bottom, and whether the chat is at its end.
+    const where = () => page.evaluate(() => {
+      const chat = document.querySelector(".active-pane .ap-chat"), last = [...chat.children].filter((e) => e.offsetHeight).at(-1);
+      const d = document.querySelector(".crew-drawer");
+      return { last: last.getBoundingClientRect().bottom, drawer: d ? d.getBoundingClientRect().top : null, chat: chat.getBoundingClientRect().bottom, end: chat.scrollHeight - chat.scrollTop - chat.clientHeight < 2 };
+    });
+    const open = await where();
+    expect(open.end, "the chat at its end").toBe(true);
+    expect(open.last, "its newest message isn't under the drawer").toBeLessThanOrEqual(open.drawer);
+    expect(open.drawer - open.last, "just above it").toBeLessThan(24);
+    await drawer.locator(".crew-close").click();
+    await expect(drawer).toHaveCount(0);
+    const closed = await where();
+    expect(closed.end, "closed: still at its end").toBe(true);
+    expect(closed.chat - closed.last, "its newest message at the chat's foot, no gap left where the drawer was").toBeLessThan(24);
+    await page.locator(".crew-tab").click();
+    await expect(drawer).toBeVisible();
+    expect(await where(), "open again: just where it was").toEqual(open);
+  });
+
+  test("the drawer opens by itself once when a member starts waiting on you; closed, it stays closed", async ({ cue, page }) => {
+    const drawer = page.locator(".crew-drawer");
+    await drawer.locator(".crew-close").click();
+    await cue.change((st) => { const lead = st.sessions.find((s) => s.session_id === "lead"); lead.team.find((t) => t.name === "rows").step = "Editing ui/a.js"; });
+    await expect(page.locator(".crew-tab")).toBeVisible();
+    await expect(drawer, "nothing new waits: stays closed").toHaveCount(0);
+    await cue.change((st) => { const lead = st.sessions.find((s) => s.session_id === "lead"); lead.team.find((t) => t.name === "skill").state = "reviewed"; });
+    await expect(drawer, "skill is ready: open again").toBeVisible();
+  });
+
+  test("no Set aside anywhere; files Cue never saw: Commit; what the hub says it needs shows as needs you", async ({ cue, page }) => {
+    await cue.change((st) => {
+      const lead = st.sessions.find((s) => s.session_id === "lead"), at = (n) => lead.team.find((t) => t.name === n);
+      Object.assign(at("skill"), { files: [], stat: "", worktree: "" });
+      Object.assign(at("rows"), { state: "done", needs: "Its lead didn't say it committed it" });
+    });
+    const drawer = page.locator(".crew-drawer");
+    const skill = drawer.locator(".mt-row", { hasText: "skill" });
+    await expect(skill.locator(".mt-line")).toContainText("Cue doesn't know which files it changed: Commit asks its lead to commit them");
+    await expect(skill.locator("[data-mt-act]")).toHaveText(["Commit"]);
+    const rows = drawer.locator(".mt-row", { hasText: "rows" }).first();
+    await expect(rows.locator(".tm-chip.need")).toHaveText("needs you");
+    await expect(rows.locator(".mt-line")).toContainText("Its lead didn't say it committed it");
+    await expect(drawer.locator(".crew-bar")).toContainText("1 needs you");
+    for (const more of await drawer.locator("[data-mt-more]").all()) {
+      await more.click();
+      await expect(page.locator(".mt-menu")).toBeVisible();
+      await expect(page.locator(".mt-menu")).not.toContainText("Set aside");
+      await page.keyboard.press("Escape");
+    }
+    await expect(page.locator(".active-pane"), "no Set aside anywhere").not.toContainText("Set aside");
+    await skill.locator('[data-mt-act="commit"]').click();
+    expect((await cue.called("team_action", { action: "commit" })).args).toMatchObject({ sessionId: "lead", agent: "id-skill" });
   });
 
   test("Cue's review request is Cue's bubble on the right, the review one line, and Open › shows its findings under its row", async ({ page }) => {
@@ -191,6 +283,27 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(page.locator(".crew-dock .mt-under", { hasText: "hub/handoff.rs:40" })).toBeVisible();
   });
 
+  test("a crew member's Diff opens the lead's Diff tab on its files, and ✕ goes back to the whole diff", async ({ cue, page }) => {
+    const crew = page.locator("[data-mt-open]").first();
+    if ((await crew.getAttribute("aria-expanded")) !== "true") await crew.click();
+    await expect(page.locator('.mt-row [data-mt-act="stop"]').first()).toBeVisible();
+    await expect(page.locator('[data-mt-act="diff"][data-mt-agent="id-hub"]'), "hub has no files Cue knows: no Diff").toHaveCount(0);
+    await page.locator('[data-mt-act="diff"][data-mt-agent="id-skill"]').click();
+    expect((await cue.called("team_action", { action: "diff" })).args.agent).toBe("id-skill");
+    await expect(page.locator(".stab.on")).toHaveText("Diff");
+    await expect(page.locator(".dv-chip")).toHaveText(/^skill's 2 files/);
+    await expect(page.locator(".dv-file .dv-path")).toHaveText(["skills/team/SKILL.md", "skills/team/review.md"]);
+    await expect(page.locator(".dv-repo"), "one repo: no repo on each file").toHaveCount(0);
+    await expect(page.locator(".mt-diff")).toHaveCount(0);
+    await page.locator("[data-dv-all]").click();
+    await expect(page.locator(".dv-chip")).toHaveCount(0);
+    await expect(page.locator(".dv-seg")).toBeVisible();
+    await expect(page.locator(".dv-file")).toHaveCount(0);
+    // Chat, and the Diff tab goes: the lead has no changes of its own.
+    await page.locator('.stab[data-stab=""]').click();
+    await expect(page.locator('.stab[data-stab=":diff"]')).toHaveCount(0);
+  });
+
   test("a review waiting for the lead is Cue's bubble too, and Skip takes it off the queue", async ({ cue, page }) => {
     await cue.change((st) => { st.review_queue = { lead: [{ exec: "id-skill", name: "skill" }] }; });
     const waits = page.locator(".cue-you", { hasText: "Will ask for skill's review" });
@@ -198,6 +311,8 @@ test.describe("a hosted lead's crew: the Crew switch, /crew, a task dropped on t
     await expect(waits.locator(".cv-you-text b")).toHaveText("skill");
     await expect(waits.locator(".cv-meta")).toHaveText("Cue · waits for the lead to be free · Skip");
     await expect(waits.locator("[data-ask-open]")).toHaveCount(0);
+    // The crew's drawer (open by itself) stands over the chat's foot: put it away to reach the bubble.
+    await page.locator(".crew-drawer .crew-close").click();
     await waits.locator('[data-act="unqueue-review"]').click();
     expect((await cue.called("unqueue_review")).args.exec).toBe("id-skill");
     await expect(waits).toHaveCount(0);

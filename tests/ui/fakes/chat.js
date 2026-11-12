@@ -22,6 +22,16 @@ CueBridge.area("chat", (w) => {
     skill("relay:spawn", "Start an executor on a packet"),
     skill("relay:verify", "Check an executor's report against what it staged"),
   ];
+  /** A crew member's diff as hub/team.rs writes it: its own repo's files from its top, another repo's (its folder's
+   *  first two levels) under that repo's name. */
+  const mateDiff = (agent) => {
+    const t = (w.state.sessions || []).flatMap((s) => s.team || []).find((x) => x.agent_id === agent || x.call === agent);
+    const files = t?.files?.length ? t.files : [`${agent}.txt`];
+    return files.map((f) => {
+      const p = f.startsWith("/") ? f.replace(/^\/[^/]+\//, "") : f;
+      return `diff --git a/${p} b/${p}\nnew file mode 100644\n--- /dev/null\n+++ b/${p}\n@@ -0,0 +1,2 @@\n+# ${p.split("/").pop()}\n+${t?.name || agent} wrote this\n`;
+    }).join("");
+  };
   const menu = () => w.q.get("ins") === "cue" ? [compact]
     : w.q.get("ins") === "1" ? [compact, skill("relay:handoff", "Hand this lead off to a fresh successor: it writes its notes and opens the next one")]
     : fullMenu;
@@ -63,9 +73,10 @@ CueBridge.area("chat", (w) => {
     // Earlier messages, a page at a time: 75 made-up ones from Cue's log, 40 more from the transcript.
     session_log_page: (a) => before(page(75, w.now() - 3 * H, "Earlier message"), a),
     transcript_page: (a) => before(page(40, w.now() - 9 * H, "From the transcript"), a),
-    // A hosted lead's teammate's buttons (ipc/team.rs): Diff answers with a diff, Commit is refused as on main (the
-    // scenario's folder), the rest say what was done.
-    team_action: ({ agent, action }) => action === "commit" ? Promise.reject("Not committed: its folder is on main. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one") : action === "branch" ? `Committed 1 file to team/${agent} (c71e04b); your folder stays on main.` : action === "diff" ? `diff --git a/${agent}.txt b/${agent}.txt\nnew file mode 100644\n--- /dev/null\n+++ b/${agent}.txt\n@@ -0,0 +1 @@\n+${agent} wrote this` : `${action}: ${agent}`,
+    // A hosted lead's teammate's buttons (ipc/team.rs): Diff answers with a diff of its files (one in another repo
+    // under that repo's name, as the hub writes it), Commit is refused as on main (the scenario's folder), the rest say
+    // what was done.
+    team_action: ({ agent, action }) => action === "commit" ? Promise.reject("Not committed: its folder is on main. Cue commits a teammate's work only on a branch of its own: Make a branch and commit puts it on a new one") : action === "branch" ? `Committed 1 file to team/${agent} (c71e04b); your folder stays on main.` : action === "diff" ? mateDiff(agent) : `${action}: ${agent}`,
     // The Team switch, and a task dropped on a lead (ipc/team.rs): the files it names, those world-team's rows is
     // changing marked.
     team_mode: () => null,

@@ -105,7 +105,7 @@ function openPane(a, full) {
     ${sid ? addOn.chatTop(sid) : ""}
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
-    ${activeChat(a, full)}${extSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
+    ${activeChat(a, full)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
     ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewDock(sid) + crewAlone(a) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 function activePane() {
@@ -133,6 +133,6 @@ function activePane() {
     ${chatBox(`m|${sid}`, chatHtml(it, s, harness, true))}${foot}${restartCover(rs, nameOf(sid, project))}</div>`;
   // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.
   if (reading) return `<div class="active-pane reading ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
-    ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
+    ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${diffSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
   return openPane({ it, s, sid, harness, project, pending, ch, pill, foot, onMachine }, full);
 }

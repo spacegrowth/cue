@@ -2,6 +2,7 @@
 //! with a manifest.json and its HTML, served at cueext://localhost/<name>/… and shown in a sandboxed
 //! frame. The page talks to Cue only through messages to the window, which checks the manifest's
 //! capabilities. The one thing an extension can have Cue do outside its page is read git (git.read).
+//! Cue's own Diff tab (ui/diff.js) reads git through the same read-only operations (diff_git).
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -15,34 +16,13 @@ const PAGE_CSP: &str = "default-src 'none'; script-src cueext://localhost; style
 const SDK_JS: &str = include_str!("../../ui/ext-sdk/cue.js");
 const SDK_CSS: &str = include_str!("../../ui/ext-sdk/cue.css");
 
-/// The extensions that come with Cue: in the app (Contents/Resources/extensions), so they update with it.
-/// A development build run from this checkout uses the checkout's extensions/. CUE_BUILTIN_EXTENSIONS
-/// overrides it (empty: none; tests use that).
-pub fn builtin_root() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("CUE_BUILTIN_EXTENSIONS") {
-        return Some(PathBuf::from(p)).filter(|p| !p.as_os_str().is_empty() && p.is_dir());
-    }
-    let exe = std::env::current_exe().ok()?;
-    let bundled = exe.parent().map(|d| d.join("../Resources/extensions")).filter(|p| p.is_dir());
-    #[cfg(debug_assertions)]
-    let r = bundled.or_else(|| Some(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../extensions"))).filter(|p| p.is_dir()));
-    #[cfg(not(debug_assertions))]
-    let r = bundled;
-    r
-}
-
-/// Where extension `name` lives: your extensions folder first (a copy there takes the place of one that
-/// comes with Cue), else Cue's own. And whether it's Cue's own.
-fn dir_of(name: &str) -> Option<(PathBuf, bool)> {
+/// Where extension `name` lives: its folder in your extensions folder.
+fn dir_of(name: &str) -> Option<PathBuf> {
     if !valid_name(name) {
         return None;
     }
-    let mine = root().join(name);
-    if mine.join("manifest.json").is_file() {
-        return Some((mine, false));
-    }
-    let b = builtin_root()?.join(name);
-    b.join("manifest.json").is_file().then_some((b, true))
+    let dir = root().join(name);
+    dir.join("manifest.json").is_file().then_some(dir)
 }
 
 /// Changes whenever any of the extension's files does (their names, sizes and times): its page reloads then.
@@ -84,7 +64,7 @@ pub fn manifest(name: &str) -> Option<Value> {
     if !valid_name(name) {
         return None;
     }
-    let text = std::fs::read_to_string(dir_of(name)?.0.join("manifest.json")).ok()?;
+    let text = std::fs::read_to_string(dir_of(name)?.join("manifest.json")).ok()?;
     let mut m: Value = serde_json::from_str(&text).ok()?;
     m["name"] = json!(name);
     if m["entry"].as_str().is_none() {
@@ -116,26 +96,25 @@ fn with_status(mut m: Value) -> Value {
     m["enabled"] = json!(on && pending_caps.is_empty() && pending_programs.is_empty());
     m["pending_capabilities"] = json!(pending_caps);
     m["pending_programs"] = json!(pending_programs);
-    if let Some((dir, builtin)) = dir_of(&name) {
+    if let Some(dir) = dir_of(&name) {
         m["folder"] = json!(dir.display().to_string());
-        m["builtin"] = json!(builtin);
-        // Yours, in place of one that comes with Cue.
-        m["replaces_builtin"] = json!(!builtin && builtin_root().is_some_and(|b| b.join(&name).join("manifest.json").is_file()));
         m["stamp"] = json!(stamp(&dir));
     }
     m
 }
 
+/// Diff came with Cue as an extension until it became Cue's own tab: what you approved for it then goes, so a
+/// folder of yours named diff asks afresh (kept while such a folder is there: that approval is for it).
+fn forget_old_diff() {
+    if dir_of("diff").is_none() && !crate::config::load()["extensions"]["diff"].is_null() {
+        let _ = crate::config::update_with("extensions.diff", |_| Ok((Some(Value::Null), ())));
+    }
+}
+
 pub fn list() -> Vec<Value> {
-    // Yours and Cue's own, each name once (yours wins: dir_of looks there first).
-    let mut names: Vec<String> = [Some(root()), builtin_root()]
-        .into_iter()
-        .flatten()
-        .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten())
-        .filter_map(|e| e.file_name().to_str().map(String::from))
-        .collect();
+    forget_old_diff();
+    let mut names: Vec<String> = std::fs::read_dir(root()).into_iter().flatten().flatten().filter_map(|e| e.file_name().to_str().map(String::from)).collect();
     names.sort();
-    names.dedup();
     let mut out: Vec<Value> = names.iter().filter_map(|n| manifest(n)).map(with_status).collect();
     out.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     out
@@ -196,7 +175,7 @@ fn reply(status: u16, kind: &str, body: Vec<u8>) -> Response<Vec<u8>> {
 /// and a symlink only if it stays within the folder).
 fn file_in(name: &str, rel: &str) -> Option<PathBuf> {
     enabled(name)?;
-    let dir = dir_of(name)?.0.canonicalize().ok()?;
+    let dir = dir_of(name)?.canonicalize().ok()?;
     let mut p = dir.clone();
     for seg in rel.split('/') {
         if seg.is_empty() || seg.starts_with('.') {
@@ -280,22 +259,32 @@ fn edited_one(machine: &str, abs: &str, filters: &mut std::collections::HashMap<
     }
 }
 
-/// A git.read operation for extension `ext` in the session folder `folder` (here, or on `machine`):
-///   toplevel             the repo's top folder
-///   diff {against}       tracked changes against HEAD or a commit
-///   untracked            files git doesn't track and isn't told to ignore
-///   new_file {path}      one such file's whole content, as a diff
-///   edited {transcript}  every file the session edited (from its log), each with its uncommitted changes
+/// A git.read operation for extension `ext` in the session folder `folder` (here, or on `machine`): see read_git.
 pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Option<&str>, path: Option<&str>, transcript: Option<&str>) -> Result<Value, String> {
     let m = enabled(ext).ok_or_else(|| format!("{ext} isn't switched on"))?;
     if !has(&m, "capabilities", "git.read") {
         return Err(format!("{ext} didn't ask to read git"));
     }
+    read_git(Some(ext), op, folder, machine, against, path, transcript)
+}
+
+/// Read-only git in the session folder `folder` (here, or on `machine`), for an extension (`ext`: its runs are logged
+/// in extensions.log) or for Cue's own Diff tab (None):
+///   toplevel             the repo's top folder
+///   diff {against}       tracked changes against HEAD or a commit
+///   untracked            files git doesn't track and isn't told to ignore
+///   new_file {path}      one such file's whole content, as a diff
+///   edited {transcript}  every file the session edited (from its log), each with its uncommitted changes
+fn read_git(ext: Option<&str>, op: &str, folder: &str, machine: &str, against: Option<&str>, path: Option<&str>, transcript: Option<&str>) -> Result<Value, String> {
     if folder.is_empty() || !folder.starts_with('/') {
         return Err("that session has no folder".into());
     }
     let start = Instant::now();
-    let done = |what: &str, code: i32| log(&format!("{ext} [{}{folder}] git.read {what} -> {code}", if machine.is_empty() { String::new() } else { format!("{machine}:") }));
+    let done = |what: &str, code: i32| {
+        if let Some(ext) = ext {
+            log(&format!("{ext} [{}{folder}] git.read {what} -> {code}", if machine.is_empty() { String::new() } else { format!("{machine}:") }));
+        }
+    };
     let extra = safe_git::no_repo_filters(machine, folder);
     let plain = |rest: &[&str], what: &str| -> Result<Value, String> {
         let (out, code) = safe_git::run(machine, folder, &extra, rest)?;
@@ -334,6 +323,12 @@ pub fn git_read(ext: &str, op: &str, folder: &str, machine: &str, against: Optio
         }
         _ => Err(format!("no such git.read operation: {op}")),
     }
+}
+
+/// Cue's own Diff tab: the same read-only git, for the session it shows.
+#[tauri::command]
+pub async fn diff_git(op: String, folder: String, machine: Option<String>, against: Option<String>, path: Option<String>, transcript: Option<String>) -> Result<Value, String> {
+    crate::ipc::blocking(move || read_git(None, &op, &folder, machine.as_deref().unwrap_or(""), against.as_deref(), path.as_deref(), transcript.as_deref())).await?
 }
 
 #[tauri::command]
@@ -377,8 +372,8 @@ fn installed(program: &str) -> Option<PathBuf> {
         .map(|d| Path::new(d).join(program))
         .find(|p| p.is_file())?;
     let real = found.canonicalize().ok()?;
-    let theirs: Vec<PathBuf> = [Some(root()), builtin_root()].into_iter().flatten().filter_map(|d| d.canonicalize().ok()).collect();
-    (!theirs.iter().any(|d| real.starts_with(d))).then_some(found)
+    let theirs = root().canonicalize().ok();
+    (!theirs.is_some_and(|d| real.starts_with(d))).then_some(found)
 }
 
 /// Run `program args…` for extension `ext` in `cwd` (a folder here), within every rule above.
@@ -519,13 +514,17 @@ mod tests {
         let ext = dir.join("extensions/demo");
         std::fs::create_dir_all(&ext).unwrap();
         std::env::set_var("CUE_HOME", &dir);
-        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
         let write = |caps: &str| std::fs::write(ext.join("manifest.json"), format!(r#"{{"title":"Demo","tab":"Demo","capabilities":[{caps}]}}"#)).unwrap();
         std::fs::write(ext.join("index.html"), "<p>hi</p>").unwrap();
         write(r#""sessions.read""#);
         let page = || serve(Request::builder().uri("cueext://localhost/demo/index.html").body(vec![]).unwrap()).status();
         let folder = std::env::temp_dir().display().to_string();
         let read = || git_read("demo", "toplevel", &folder, "", None, None, None);
+
+        // Diff's approval from when it was an extension that came with Cue: gone once it's Cue's own tab.
+        crate::config::update_with("extensions.diff", |_| Ok((Some(json!({ "on": true, "capabilities": ["sessions.read", "git.read"] })), ()))).unwrap();
+        assert_eq!(list().len(), 1);
+        assert!(crate::config::load()["extensions"]["diff"].is_null());
 
         // New: off, its page isn't served and it can't read git.
         assert_eq!(list()[0]["enabled"], json!(false));
@@ -553,7 +552,6 @@ mod tests {
         assert!(activity("demo", 10).iter().any(|l| l.ends_with("switched off in Settings")));
 
         std::env::remove_var("CUE_HOME");
-        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -564,7 +562,6 @@ mod tests {
         let ext = dir.join("extensions/tools");
         std::fs::create_dir_all(&ext).unwrap();
         std::env::set_var("CUE_HOME", &dir);
-        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
         std::fs::write(ext.join("manifest.json"), r#"{"tab":"T","capabilities":["programs.run"],"programs":["git","bash","ls"]}"#).unwrap();
         // A program it brings along, named like an installed one would be.
         std::fs::write(ext.join("mytool"), "#!/bin/sh\necho brought\n").unwrap();
@@ -588,47 +585,6 @@ mod tests {
         assert!(run("git", &["--version"]).is_err(), "off");
 
         std::env::remove_var("CUE_HOME");
-        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn cues_own_extensions_are_listed_and_a_copy_of_yours_takes_their_place() {
-        let _one = crate::db::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("cue-ext-builtin-{}", std::process::id()));
-        let (mine, own) = (dir.join("home/extensions"), dir.join("app/extensions"));
-        for d in [own.join("tool"), own.join("other")] {
-            std::fs::create_dir_all(&d).unwrap();
-            std::fs::write(d.join("manifest.json"), r#"{"title":"Cue's","tab":"T"}"#).unwrap();
-            std::fs::write(d.join("index.html"), "v1").unwrap();
-        }
-        std::env::set_var("CUE_HOME", dir.join("home"));
-        std::env::set_var("CUE_BUILTIN_EXTENSIONS", &own);
-        let get = |n: &str| list().into_iter().find(|e| e["name"] == n).unwrap();
-
-        // Cue's own: listed, marked as such, off until switched on, served once it is.
-        assert_eq!(list().len(), 2);
-        assert_eq!((get("tool")["builtin"].clone(), get("tool")["enabled"].clone()), (json!(true), json!(false)));
-        enable("tool", true).unwrap();
-        assert_eq!(serve(Request::builder().uri("cueext://localhost/tool/index.html").body(vec![]).unwrap()).into_body(), b"v1");
-
-        // A change to its files changes its stamp (its page reloads).
-        let before = get("tool")["stamp"].clone();
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        std::fs::write(own.join("tool/index.html"), "v2, longer").unwrap();
-        assert_ne!(get("tool")["stamp"], before);
-
-        // Your copy of the same name takes its place, and says so.
-        std::fs::create_dir_all(mine.join("tool")).unwrap();
-        std::fs::write(mine.join("tool/manifest.json"), r#"{"title":"Mine","tab":"T"}"#).unwrap();
-        std::fs::write(mine.join("tool/index.html"), "mine").unwrap();
-        let t = get("tool");
-        assert_eq!((t["title"].clone(), t["builtin"].clone(), t["replaces_builtin"].clone()), (json!("Mine"), json!(false), json!(true)));
-        assert_eq!(list().len(), 2);
-        assert_eq!(serve(Request::builder().uri("cueext://localhost/tool/index.html").body(vec![]).unwrap()).into_body(), b"mine");
-
-        std::env::remove_var("CUE_HOME");
-        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -649,12 +605,14 @@ mod tests {
         // And a filter: .gitattributes picks it, the repo's own config says what it runs.
         sh("printf '*.txt filter=evil\n' > .gitattributes && git config filter.evil.clean 'touch ran-clean; cat' && git config filter.evil.process 'touch ran-process; false'");
         std::env::set_var("CUE_HOME", &home);
-        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
         let folder = repo.canonicalize().unwrap().display().to_string();
         let read = |op: &str, against: Option<&str>, path: Option<&str>, t: Option<&str>| git_read("r", op, &folder, "", against, path, t);
 
-        // Off: nothing.
+        // Off: nothing. Cue's own Diff tab reads it with no extension, and logs nothing in extensions.log.
         assert!(read("toplevel", None, None, None).unwrap_err().contains("isn't switched on"));
+        assert_eq!(read_git(None, "toplevel", &folder, "", None, None, None).unwrap()["stdout"].as_str().unwrap().trim(), folder);
+        assert!(read_git(None, "diff", &folder, "", Some("--output=/tmp/x"), None, None).is_err());
+        assert!(!std::fs::read_to_string(home.join("extensions.log")).unwrap_or_default().contains("toplevel"));
         enable("r", true).unwrap();
         assert_eq!(read("toplevel", None, None, None).unwrap()["stdout"].as_str().unwrap().trim(), folder);
         let d = read("diff", Some("HEAD"), None, None).unwrap();
@@ -679,7 +637,6 @@ mod tests {
         assert!(!repo.join("ran-clean").exists() && !repo.join("ran-process").exists(), "nor while reading edits");
 
         std::env::remove_var("CUE_HOME");
-        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

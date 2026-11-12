@@ -1,15 +1,33 @@
-/* A hosted lead's crew above its message box (ui/team.js crewDock): a one-line strip, and while it's open the rows
-   above it, one per crew member. Sized to its rows; in a short pane it gives way (its rows scroll) before the chat
-   does, which keeps room for a few lines while it's open. */
-.crew-dock { margin: 0 16px 6px; display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-height: 0; }
-.active-pane:has(.crew-dock.open) .ap-chat { min-height: 160px; }
-.active-pane:has(.crew-dock.open) > :not(.crew-dock, .ap-chat) { flex-shrink: 0; }
+/* A hosted lead's crew (ui/team.js crewDock): a drawer pulled up from the tab on the message box. The dock takes no room
+   of its own (the box never moves): the drawer stands on the box's top edge, over the chat, which dims behind it. Its
+   title bar is the tab, opened, in the tab's colours; an edge in the same ink, a shadow upward, rounded top corners.
+   At most about half the pane (placeTeamRows); its rows scroll inside it past that. */
+.crew-dock { position: relative; height: 0; flex: none; z-index: 6; }
+/* left/right/bottom: the foot's padding (board.css .foot), so its edges meet the box's. */
+.crew-drawer { position: absolute; left: 12px; right: 12px; bottom: -10px; max-height: 50vh; display: flex; flex-direction: column; box-sizing: border-box; border: 1.5px solid var(--accent); border-bottom: 0; border-radius: 12px 12px 0 0; background: var(--panel); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14); overflow: hidden; }
+/* No box under it (an ask's card stands there): it ends on its own edge, just above the card. */
+.crew-dock:not(:has(~ .foot .field)) .crew-drawer { bottom: 4px; border-bottom: 1.5px solid var(--accent); border-radius: 12px; }
+.crew-bar { flex: none; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 12px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer; }
+.crew-bar-w { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.crew-bar .crew-need { color: inherit; text-decoration: underline; }
+.crew-close { margin-left: auto; flex: none; height: 24px; padding: 0 8px; border-radius: 6px; color: inherit; font-weight: 600; opacity: 0.85; }
+.crew-close:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 14%, transparent); }
+.crew-close .tm-sub { color: inherit; }
+.crew-drawer .mt-wrap { gap: 0; }
+.crew-drawer .mt-rows { max-height: none; border: 0; border-radius: 0; background: var(--panel); }
+.crew-drawer .mt-held { padding: 6px 12px 8px; border-top: 1px solid var(--line); }
+.crew-drawer .mt-menu { top: 4px; right: 8px; }
+/* Open: the chat behind it dims; the tab (or the pill over an ask's card) isn't shown, its title bar being the tab. */
+.ap-chat { transition: opacity 0.15s; }
+.active-pane:has(.crew-dock.open) .ap-chat { opacity: 0.55; padding-bottom: calc(10px + var(--crew-cover, 0px)); }
+.crew-tab.on { visibility: hidden; }
+.crew-alone:has(.crew-strip.on) { display: none; }
 /* As the corner tab: the place tab's shape (terminal.css .tplace-btn); who needs you stays readable on its colour. */
 .crew-tab { display: inline-flex; align-items: center; gap: 4px; }
 .crew-tab .tm-sub { color: inherit; opacity: 0.8; }
-/* Any teammate at work: the live dot, in the tab's own ink. */
-.crew-tab .dot-live, .crew-strip .dot-live { width: 6px; height: 6px; flex: none; margin-right: 2px; }
-.crew-tab .dot-live { background: currentColor; }
+/* Any member at work: the live dot, in the tab's own ink. */
+.crew-tab .dot-live, .crew-strip .dot-live, .crew-bar .dot-live { width: 6px; height: 6px; flex: none; margin-right: 2px; }
+.crew-tab .dot-live, .crew-bar .dot-live { background: currentColor; }
 .crew-tab .crew-need { color: inherit; text-decoration: underline; }
 .crew-alone { display: flex; justify-content: flex-end; margin: 0 16px 6px; }
 .crew-strip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; }
@@ -39,11 +57,9 @@ button.mt-name:hover { text-decoration: underline; }
 .mt-under .mono { font-family: var(--mono); font-size: 12px; }
 .mt-note { color: var(--deny); }
 .mt-asked { white-space: pre-wrap; max-height: 180px; overflow-y: auto; }
-.mt-diff { margin: 0; max-height: 260px; overflow: auto; font: 11.5px/1.45 var(--mono); white-space: pre; color: var(--ink); }
 .mt-held { font-size: 12px; color: var(--muted); }
 .mt-held b { color: var(--ink); }
 .mt-menu { top: 0; right: 0; min-width: 180px; }
-.mt-menu .mt-aside { border-top: 1px solid var(--line); }
 /* An ask's title: "<lead> › <teammate>". On a card's top line the lead's name is as wide as its words (its usual
    minimum width would leave a second gap before the ›). */
 .mt-of { white-space: nowrap; }

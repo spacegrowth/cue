@@ -1,7 +1,8 @@
 //! A hosted lead's teammate whose files are in more than one git repository (or in none): its Diff, counts, Commit
-//! and the tidy, each per repo, against real git folders.
+//! and the tidy, each per repo, against real git folders; and one whose files Cue never saw, committed by its lead.
 
 use super::team::{git, lead, mate, repo, says, writes, writes_then_stops};
+use crate::hosted::HostedEvent;
 use crate::testing::World;
 
 /// A second git repository beside the World's folder (`<home>-<name>`), one commit on main, switched to a branch of
@@ -218,13 +219,147 @@ fn scratch_and_ignored_files_dont_keep_a_committed_member_and_commit_on_committe
     let _ = std::fs::remove_file(&scratch);
 }
 
+/// The lead's turn ends with `text`, a reply to something of yours.
+fn replies(w: &World, sid: &str, text: &str) {
+    w.hosted_says(sid, HostedEvent::TurnEnded { text: text.into(), failed: false, cost_usd: 0.0, unprompted: false });
+    w.settle();
+}
+
+/// What lead `sid` was sent asking it to commit a member's work.
+fn commit_asks(w: &World, sid: &str) -> Vec<String> {
+    w.hosted.sent().into_iter().filter(|(s, t)| s == sid && t.starts_with("Commit your teammate ")).map(|(_, t)| t).collect()
+}
+
 #[test]
-fn commit_on_a_member_whose_files_cue_never_saw_says_so_and_how_to_let_it_go() {
+fn commit_on_a_member_whose_files_cue_never_saw_asks_its_lead_and_its_committed_line_marks_it_committed() {
     let w = World::new();
     let _dir = repo(&w);
     let sid = lead(&w, "work done with shell commands elsewhere");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
-    let said = w.hub().team_action(&sid, "agentA", "commit").unwrap_err();
-    assert!(said.contains("doesn't know which files board changed") && said.contains("then Set aside"), "{said}");
-    assert!(!w.hub().team_tidy(), "nothing it can tell: it stays for you to set aside");
+    let said = w.hub().team_action(&sid, "agentA", "commit").unwrap();
+    assert_eq!(said, "Asked its lead to commit board's work");
+    let t = mate(&w, &sid, "board");
+    assert!(t["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0) && t["step"] == "Asked its lead to commit it", "{t}");
+    assert!(w.hub().team_action(&sid, "agentA", "commit").is_err(), "asked once");
+    assert!(!w.hub().team_tidy(), "the tidy leaves it alone while its lead commits it");
+    // The lead was busy: the ask is kept for its turn's end, so that turn's reply isn't the answer.
+    replies(&w, &sid, "started board");
+    assert!(mate(&w, &sid, "board")["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0), "still asked");
+    let asks = commit_asks(&w, &sid);
+    assert_eq!(asks.len(), 1, "sent once the lead was free: {:?}", w.hosted.sent());
+    assert!(asks[0].starts_with("Commit your teammate board's work now: the files it changed") && asks[0].contains("make a branch crew/board first") && asks[0].ends_with("End your reply with a line `Committed board: <short sha>` for each commit, or `Committed board: nothing` if there was nothing to commit."), "{}", asks[0]);
+    w.hosted_says(&sid, HostedEvent::Taken { text: asks[0].clone() });
+    replies(&w, &sid, "Committed the board files on crew/board.\nCommitted board: abc1234\nCommitted board: def5678");
+    let t = mate(&w, &sid, "board");
+    assert_eq!((t["state"].as_str(), t["commit"].as_str(), t["step"].as_str()), (Some("committed"), Some("abc1234"), Some("Committed by its lead")), "{t}");
+    assert!(t["commit_asked_ms"].is_null());
+}
+
+#[test]
+fn committed_nothing_sets_it_aside_a_reply_without_either_leaves_it_to_you_and_a_review_meanwhile_is_still_a_review() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "three parts");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_C", "agentC", "rows", &[dir.join("a.txt").to_string_lossy().to_string()]));
+    says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
+    says(&w, &sid, writes("toolu_B", "agentB", "notes", &[]));
+    // Asked while the lead works: it goes at the turn's end, and the lead's next reply is its answer.
+    w.hub().team_action(&sid, "agentA", "commit").unwrap();
+    replies(&w, &sid, "all three finished");
+    assert_eq!(commit_asks(&w, &sid).len(), 1);
+    replies(&w, &sid, "Nothing of board's was left to commit.\nCommitted board: nothing");
+    let t = mate(&w, &sid, "board");
+    assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("aside"), Some("Nothing to commit")), "{t}");
+    // Asked while the lead is free: it goes at once.
+    w.hub().team_action(&sid, "agentB", "commit").unwrap();
+    assert_eq!(commit_asks(&w, &sid).len(), 2);
+    replies(&w, &sid, "I couldn't find notes's files.\nThey may be gone.");
+    let t = mate(&w, &sid, "notes");
+    assert_eq!(t["step"], "Its lead didn't say it committed: I couldn't find notes's files.", "{t}");
+    assert!(t["commit_asked_ms"].is_null(), "no longer waiting on its lead: yours");
+    assert_eq!(t["needs"], "Its lead didn't say it committed it", "waiting on you, in the data: {t}");
+    // A review under way, and notes asked again meanwhile: the review's reply files as rows's review, and notes
+    // stays asked.
+    w.advance(60_000);
+    w.hub().drain_reviews();
+    w.settle();
+    assert_eq!(mate(&w, &sid, "rows")["state"], "reviewing");
+    w.hub().team_action(&sid, "agentB", "commit").unwrap();
+    assert!(mate(&w, &sid, "notes")["needs"].is_null(), "asked again: its lead's again, not yours");
+    replies(&w, &sid, "1. a.txt:1 — should-fix — say more\nRecommendation: send fixes");
+    let rows = mate(&w, &sid, "rows");
+    assert_eq!((rows["state"].as_str(), rows["recommendation"].as_str()), (Some("reviewed"), Some("send fixes")), "{rows}");
+    assert!(mate(&w, &sid, "notes")["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0), "the review wasn't its answer");
+    // Its ask goes now; the lead again says nothing of it: yours, until something settles it.
+    replies(&w, &sid, "Still can't find them.");
+    assert_eq!(mate(&w, &sid, "notes")["needs"], "Its lead didn't say it committed it");
+    w.hub().team_action(&sid, "agentB", "aside").unwrap();
+    let t = mate(&w, &sid, "notes");
+    assert_eq!((t["state"].as_str(), t["needs"].is_null()), (Some("aside"), true), "set aside, nothing waits on you: {t}");
+}
+
+#[test]
+fn handled_by_cue_a_clean_review_of_a_member_whose_files_cue_never_saw_asks_its_lead_to_commit_it() {
+    let w = World::new();
+    let _dir = repo(&w);
+    let sid = lead(&w, "one part, done with shell commands elsewhere");
+    says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
+    replies(&w, &sid, "started board");
+    w.hub().drain_reviews();
+    w.settle();
+    assert_eq!(mate(&w, &sid, "board")["state"], "reviewing");
+    replies(&w, &sid, "Recommendation: commit");
+    let asks = commit_asks(&w, &sid);
+    assert_eq!(asks.len(), 1, "asked by itself: {:?}", w.hosted.sent());
+    let t = mate(&w, &sid, "board");
+    assert_eq!((t["state"].as_str(), t["step"].as_str()), (Some("reviewed"), Some("Asked its lead to commit it")), "{t}");
+    replies(&w, &sid, "Committed: 0a1b2c3");
+    assert_eq!(mate(&w, &sid, "board")["state"], "committed");
+}
+
+#[test]
+fn two_asks_joined_for_a_busy_lead_are_each_settled_by_the_line_naming_it_and_a_review_reply_answers_too() {
+    let w = World::new();
+    let _dir = repo(&w);
+    let sid = lead(&w, "three parts, done with shell commands elsewhere");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    for (call, id, name) in [("toolu_A", "agentA", "board"), ("toolu_B", "agentB", "notes"), ("toolu_C", "agentC", "rows")] {
+        says(&w, &sid, writes(call, id, name, &[]));
+    }
+    // Both asked while the lead works: kept, joined into one message for its turn's end.
+    w.hub().team_action(&sid, "agentA", "commit").unwrap();
+    w.hub().team_action(&sid, "agentB", "commit").unwrap();
+    replies(&w, &sid, "all three finished");
+    let sent = w.hosted.sent().last().unwrap().1.clone();
+    assert!(sent.contains("Commit your teammate board's") && sent.contains("Commit your teammate notes's"), "one message: {sent}");
+    w.hosted_says(&sid, HostedEvent::Taken { text: sent });
+    replies(&w, &sid, "Done.\nCommitted board: abc1234\nCommitted notes: def5678");
+    let (board, notes) = (mate(&w, &sid, "board"), mate(&w, &sid, "notes"));
+    assert_eq!((board["state"].as_str(), board["commit"].as_str()), (Some("committed"), Some("abc1234")), "{board}");
+    assert_eq!((notes["state"].as_str(), notes["commit"].as_str()), (Some("committed"), Some("def5678")), "{notes}");
+    // A reply with a Recommendation line: its Committed line answers the ask; saying nothing of it leaves it asked.
+    w.hub().team_action(&sid, "agentC", "commit").unwrap();
+    w.hosted_says(&sid, HostedEvent::Taken { text: commit_asks(&w, &sid).last().unwrap().clone() });
+    replies(&w, &sid, "1. x.rs:1 — note — fine\nRecommendation: commit");
+    assert!(mate(&w, &sid, "rows")["commit_asked_ms"].as_u64().is_some_and(|ms| ms > 0), "a review saying nothing of it is no answer");
+    assert!(mate(&w, &sid, "rows")["needs"].is_null());
+    replies(&w, &sid, "Recommendation: commit\nCommitted rows: 0a1b2c3");
+    let rows = mate(&w, &sid, "rows");
+    assert_eq!((rows["state"].as_str(), rows["commit"].as_str()), (Some("committed"), Some("0a1b2c3")), "{rows}");
+}
+
+#[test]
+fn a_leads_committed_lines_are_read_by_name_with_their_markdown_and_anything_else_is_neither() {
+    use crate::sessions::team::read_committed;
+    let both = "Done.\n**Committed board:** `abc1234`\n- Committed Board: DEF5678.\nCommitted notes: 1234567";
+    assert_eq!(read_committed(both, "board", false), Some(vec!["abc1234".to_string(), "def5678".to_string()]));
+    assert_eq!(read_committed(both, "notes", false), Some(vec!["1234567".to_string()]));
+    assert_eq!(read_committed(both, "rows", false), None, "another's lines aren't its");
+    assert_eq!(read_committed("Committed notes: nothing", "notes", false), Some(vec![]));
+    assert_eq!(read_committed("Committed: abc1234", "board", true), Some(vec!["abc1234".to_string()]), "a bare line, when it's the only one asked");
+    assert_eq!(read_committed("Committed: abc1234", "board", false), None, "a bare line, with two asked");
+    assert_eq!(read_committed("Committed board: the files, on crew/board", "board", true), None, "no sha");
+    assert_eq!(read_committed("I committed it as abc1234", "board", true), None);
 }

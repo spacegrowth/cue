@@ -72,10 +72,23 @@ const SCREENS = {
     setup: async (p) => { await openTeam(p); await p.locator('[data-mt-fold="lead|id-handoff"]').click(); },
     done: (p) => p.locator(".mt-under .rv-k").first().waitFor(),
   },
+  // team-diff: skill's Diff (one of its files in another repo, site) opens the lead's Diff tab on its files, each
+  // labelled with its repo. session-diff: a session's Diff tab, its count on the tab.
   "team-diff": {
     scenario: "world-team",
-    setup: async (p) => { await openTeam(p); await p.locator('[data-mt-act="diff"][data-mt-agent="id-skill"]').click(); },
-    done: (p) => p.locator(".mt-diff", { hasText: "skill wrote this" }).waitFor(),
+    setup: async (p) => {
+      await openTeam(p);
+      await p.evaluate(() => { CueBridge.world.session("lead").team.find((t) => t.name === "skill").files.push("/work/site/docs/team.md"); CueBridge.world.changed(0); });
+      await p.locator(".mt-row", { hasText: "3 files" }).waitFor();
+      await p.locator('[data-mt-act="diff"][data-mt-agent="id-skill"]').click();
+    },
+    done: async (p) => { await p.locator(".dv-chip", { hasText: "skill's 3 files" }).waitFor(); await p.locator(".dv-repo", { hasText: "site" }).waitFor(); },
+  },
+  "session-diff": {
+    scenario: "board-waiting",
+    flags: "diff=1",
+    setup: async (p) => { await openCard(p, "n1"); await p.locator('[data-stab=":diff"]', { hasText: "2 +6 −1" }).click(); },
+    done: (p) => p.locator(".dv-file[open] .dv-lines .a", { hasText: "fmt(total)" }).waitFor(),
   },
   "team-commit-main": {
     scenario: "world-team",

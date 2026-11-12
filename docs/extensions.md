@@ -1,8 +1,8 @@
 # Extensions
 
 An extension brings a page of its own: as a tab in the open session, beside Chat, or in the Extensions
-panel (the button beside the terminal's in the top bar) for what isn't about one chat, or both. Cue comes with
-one, [Diff](../extensions/diff), which shows what a session changed: switch it on in the **Extensions** panel (the button in the top bar). The extensions that come with Cue update with it.
+panel (the button beside the terminal's in the top bar) for what isn't about one chat, or both. (What a session
+changed is Cue's own Diff tab, not an extension.)
 
 ## Install one
 
@@ -20,8 +20,7 @@ Settings also lists the last commands each one ran (all of them are in `extensio
 folder).
 
 To update one you added, copy the new version over the old folder. Cue notices changed files and
-reloads its page (when you come back to Cue, open Settings, or click **Look again**). A folder in your
-extensions folder with the same name as one that comes with Cue is used in its place.
+reloads its page (when you come back to Cue, open Settings, or click **Look again**).
 
 ## Make one
 
@@ -175,4 +174,3 @@ A session looks like this:
 
 Put the folder in Cue's extensions folder, click **Look again**, switch it on, and open a session.
 After you change its files, come back to Cue (or click **Look again**) and its page reloads.
-[Diff](../extensions/diff) is a complete example.

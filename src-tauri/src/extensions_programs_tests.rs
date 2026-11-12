@@ -16,7 +16,6 @@ impl Tools {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("extensions/tools")).unwrap();
         std::env::set_var("CUE_HOME", &dir);
-        std::env::set_var("CUE_BUILTIN_EXTENSIONS", "");
         let manifest = json!({"tab": "T", "capabilities": ["programs.run"], "programs": programs});
         std::fs::write(dir.join("extensions/tools/manifest.json"), manifest.to_string()).unwrap();
         enable("tools", true).unwrap();
@@ -31,7 +30,6 @@ impl Tools {
 impl Drop for Tools {
     fn drop(&mut self) {
         std::env::remove_var("CUE_HOME");
-        std::env::remove_var("CUE_BUILTIN_EXTENSIONS");
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }

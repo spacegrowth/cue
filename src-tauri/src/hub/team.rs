@@ -7,6 +7,7 @@ use super::*;
 use crate::hosted::HostedEvent;
 use crate::sessions::quiet::Quiet;
 use crate::sessions::team::{add_files, read_review, Teammate};
+use super::team_tidy::{commit_reply, settled, Settled};
 
 /// A teammate's review in Review's queue goes by this key: `team:<lead>:<agent id>`.
 const KEY: &str = "team:";
@@ -17,69 +18,6 @@ const QUIET_CHECK_MS: u64 = 15_000;
 /// What its lead is asked when you Resume a quiet teammate.
 fn resume_words(name: &str) -> String {
     format!("Your teammate {name} has gone quiet. Ask it where it is and to carry on with its part, with SendMessage (to: \"{name}\").")
-}
-
-/// How often finished crew members are looked at for work committed (or thrown away) outside Cue.
-const TIDY_MS: u64 = 60_000;
-
-/// Where a finished crew member's work ended up, when it's settled.
-enum Settled {
-    /// Every one of its files is committed, and at least one in a commit since it started (that commit, short).
-    Committed(String),
-    /// Every file is clean, but nothing was committed since it started: its changes were thrown away.
-    Gone,
-}
-
-/// Its files, asked of the git repo each is in (a crew member can work outside its lead's folder): None while any
-/// has uncommitted changes, or git can't say (not in a repo, or ignored there; then it stays for you to see to).
-fn settled(lead_cwd: &str, t: &Teammate) -> Option<Settled> {
-    let since = t.started_ms / 1000;
-    let mut newest: Option<(u64, String)> = None;
-    // Whether any of its files is one git keeps: a member whose files are all scratch (in no repository, or ignored)
-    // can't be told committed from thrown away, and stays for you.
-    let mut kept = false;
-    for mut r in repos("", lead_cwd, t, false) {
-        // Files in no repository (scratch, screenshots in /tmp): nothing of git's to settle; the rest decide.
-        if r.top.is_empty() {
-            continue;
-        }
-        let dir = r.top.clone();
-        let filters = crate::safe_git::no_repo_filters("", &dir);
-        let git = |args: &[&str]| crate::safe_git::run("", &dir, &filters, args).ok();
-        // Ignored files are always "clean" to git (build output, screenshots): left out, the rest decide.
-        let ignored: Vec<String> = {
-            let args: Vec<String> = ["check-ignore", "--"].iter().map(|s| s.to_string()).chain(r.paths.iter().cloned()).collect();
-            git(&args.iter().map(String::as_str).collect::<Vec<_>>()).map(|(out, _)| out.lines().map(str::to_string).collect()).unwrap_or_default()
-        };
-        r.paths.retain(|p| !ignored.iter().any(|i| i == p || p.ends_with(&format!("/{i}"))));
-        if r.paths.is_empty() {
-            continue;
-        }
-        kept = true;
-        let with = |head: &[&'static str]| -> Vec<String> { head.iter().map(|s| s.to_string()).chain(["--".to_string()]).chain(r.paths.iter().cloned()).collect() };
-        let run = |head: &[&'static str]| {
-            let args = with(head);
-            git(&args.iter().map(String::as_str).collect::<Vec<_>>())
-        };
-        let (out, code) = run(&["status", "--porcelain=v1", "--untracked-files=all"])?;
-        if code != 0 || !out.trim().is_empty() {
-            return None;
-        }
-        // The newest commit with any of its files in this repo.
-        let (log, code) = run(&["log", "-1", "--format=%ct %h"])?;
-        if code != 0 {
-            return None;
-        }
-        if let Some((at, sha)) = log.trim().split_once(' ').and_then(|(a, s)| Some((a.parse::<u64>().ok()?, s.to_string()))) {
-            if at >= since && newest.as_ref().is_none_or(|(n, _)| at > *n) {
-                newest = Some((at, sha));
-            }
-        }
-    }
-    if !kept {
-        return None;
-    }
-    Some(newest.map_or(Settled::Gone, |(_, sha)| Settled::Committed(sha)))
 }
 
 /// The most of a diff the window is handed.
@@ -181,7 +119,8 @@ impl Hub {
     }
 
     /// The lead's turn ended with `text`: a reply to your Review is that teammate's review (the oldest under review; one
-    /// review at a time goes to a lead). A turn nothing of yours started (a teammate finishing) isn't one.
+    /// review at a time goes to a lead). A turn nothing of yours started (a teammate finishing) isn't one. A reply
+    /// without a Recommendation line may be the answer to Cue's ask to commit a member's work (`commit_reply`).
     /// SHORTCUT: the next prompted reply with a Recommendation line is taken as the review (one without is some other
     /// reply: a hook's re-prompt, a "started it" line); a review that never says Recommendation leaves its teammate under
     /// review. Upgrade: match the fork's own Agent call (its task_notification) to the review sent.
@@ -189,14 +128,18 @@ impl Hub {
         if unprompted {
             return;
         }
+        let (findings, recommendation) = read_review(text);
+        // Its `Committed <name>: …` lines answer Cue's asks to commit a member's work, a review's too; a reply that
+        // isn't a review (no Recommendation line) and says nothing of an ask leaves that member to you.
+        let review = !recommendation.is_empty();
+        if self.write(|st| commit_reply(st, lead, text, review)) {
+            self.changed();
+        }
+        if !review {
+            return;
+        }
         let filed = self.write(|st| {
             let t = st.sessions.team(lead).into_iter().filter(|t| t.state == "reviewing").min_by_key(|t| t.review_ms)?;
-            let (findings, recommendation) = read_review(text);
-            // Not a review: the lead's other replies while one is under review (one prompted by a hook's feedback,
-            // say) have no Recommendation line; the teammate stays under review for the one that does.
-            if recommendation.is_empty() {
-                return None;
-            }
             let next = auto_next(&st.sessions.crew_commit(lead), &recommendation, findings.len(), t.fix_rounds);
             st.sessions.with_teammate(lead, &t.call, |m| {
                 m.state = "reviewed".into();
@@ -334,61 +277,6 @@ impl Hub {
         self.team_tidy_tick(now);
     }
 
-    /// At most every TIDY_MS, a tidy pass off the tick's thread (`team_tidy`).
-    fn team_tidy_tick(&self, now: u64) {
-        static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let last = LAST.load(std::sync::atomic::Ordering::Relaxed);
-        if now >= last && now - last < TIDY_MS {
-            return;
-        }
-        LAST.store(now, std::sync::atomic::Ordering::Relaxed);
-        self.later(0, |h| {
-            if h.team_tidy() {
-                h.changed();
-            }
-        });
-    }
-
-    /// The crew tidied: a member that stopped having written nothing is set aside; a finished one whose files are all
-    /// committed since it started (by Cue's Commit, or by you elsewhere) leaves as committed; one whose files are clean
-    /// with nothing committed since it started (its changes thrown away) is set aside. Never a loop's crew (a loop
-    /// commits its own) and never one on another machine (SHORTCUT: git there is a remote call per file each pass;
-    /// upgrade: one `git status` per folder through cue-host). Runs git: call it off the hub's threads. Whether it
-    /// changed anything.
-    pub(crate) fn team_tidy(&self) -> bool {
-        let leads: Vec<(Origin, Vec<Teammate>)> = self.read(|st| {
-            st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| matches!(t.state.as_str(), "done" | "reviewed" | "stopped"))).map(|s| (s.origin.clone(), s.team.clone())).collect()
-        });
-        let mut changed = false;
-        for (origin, team) in leads {
-            #[cfg(feature = "ext")]
-            if self.ext_leads_loop(&origin.session_id) {
-                continue;
-            }
-            for t in team.iter().filter(|t| matches!(t.state.as_str(), "done" | "reviewed" | "stopped")) {
-                let left = if t.files.is_empty() {
-                    (t.state == "stopped").then(|| ("aside", String::new(), "Stopped having written nothing".to_string()))
-                } else if origin.machine.is_empty() {
-                    match settled(&origin.cwd, t) {
-                        Some(Settled::Committed(sha)) => Some(("committed", sha, "Committed outside Cue".to_string())),
-                        Some(Settled::Gone) => Some(("aside", String::new(), "Its changes are gone: nothing left to commit".to_string())),
-                        None => None,
-                    }
-                } else {
-                    None
-                };
-                let Some((state, sha, why)) = left else { continue };
-                self.write(|st| st.sessions.with_teammate(&origin.session_id, &t.call, |m| {
-                    m.state = state.into();
-                    m.commit = sha;
-                    m.step = why;
-                }));
-                changed = true;
-            }
-        }
-        changed
-    }
-
     /// The quiet teammates seen to as of `now` (the tick's work, unthrottled).
     pub(crate) fn team_quiet_check(&self, now: u64) {
         let leads: Vec<(Origin, Vec<Teammate>)> = self.read(|st| st.sessions.all().into_iter().filter(|s| s.team.iter().any(Teammate::working)).map(|s| (s.origin.clone(), s.team.clone())).collect());
@@ -502,6 +390,10 @@ impl Hub {
         if let Some(other) = t.also.first() {
             return Err(format!("Held: {other} has uncommitted changes in one of {}'s files", t.name));
         }
+        // Files Cue never saw (shell commands outside its lead's folder): its lead commits them (`commit_reply`).
+        if t.files.is_empty() && t.worktree.is_empty() {
+            return self.ask_lead_to_commit(lead, t);
+        }
         let c = changes(&origin.machine, &origin.cwd, t)?;
         let todo: Vec<&RepoChanges> = c.repos.iter().filter(|r| !r.files.is_empty()).collect();
         // Its files git couldn't read, or that are in no repository: never committed, and said so.
@@ -517,8 +409,6 @@ impl Hub {
                 });
                 return Ok(format!("{}'s work is already committed ({sha})", t.name));
             }
-            // Files Cue never saw (written with shell commands outside its lead's folder): nothing here to commit.
-            if t.files.is_empty() && t.worktree.is_empty() { return Err(format!("Cue doesn't know which files {} changed (it wrote them with shell commands outside this folder), so it can't commit them: commit them yourself, then Set aside", t.name)); }
             let why = if left.is_empty() { String::new() } else { format!("\n{}", left.join("\n")) };
             return Err(format!("{} has nothing to commit in git{why}", t.name));
         }
@@ -635,7 +525,7 @@ fn remove_file(machine: &str, path: &str) {
 }
 
 /// A branch for teammate `name`'s commit that isn't taken (`taken`): crew/<name>, else crew/<name>-2, -3….
-fn free_branch(name: &str, taken: impl Fn(&str) -> bool) -> String {
+pub(super) fn free_branch(name: &str, taken: impl Fn(&str) -> bool) -> String {
     let slug: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let slug = slug.trim_matches('-');
     let base = format!("crew/{}", if slug.is_empty() { "member" } else { slug });
@@ -787,22 +677,22 @@ fn repo_top(machine: &str, dir: &str) -> Option<String> {
 }
 
 /// One git repository some of a teammate's files are in (or none).
-struct Repo {
+pub(super) struct Repo {
     /// Its top folder; "" for files in no git repository.
-    top: String,
+    pub(super) top: String,
     /// What its paths are shown under: "" in the teammate's own folder's repo, else the repo's folder name.
     label: String,
     /// The teammate's files in it, as the stream gave them (absolute, or relative to its folder).
     given: Vec<String>,
     /// The same, absolute: what git is handed, run in `top`.
-    paths: Vec<String>,
+    pub(super) paths: Vec<String>,
     /// Its own worktree, read whole: everything changed there is its (its files there aren't listed).
     whole: bool,
 }
 
 /// `t`'s files grouped by the git repository each is in: its own folder's repo first, then the others, then those in
 /// none. `whole`: a teammate in a worktree of its own has that worktree read whole.
-fn repos(machine: &str, lead_cwd: &str, t: &Teammate, whole: bool) -> Vec<Repo> {
+pub(super) fn repos(machine: &str, lead_cwd: &str, t: &Teammate, whole: bool) -> Vec<Repo> {
     let folder = t.folder(lead_cwd).trim_end_matches('/');
     let home = repo_top(machine, folder);
     let whole = whole && !t.worktree.is_empty();
@@ -995,6 +885,6 @@ fn auto_next(crew_commit: &str, recommendation: &str, findings: usize, fix_round
     if commit { AutoNext::Commit } else { AutoNext::Ask }
 }
 
-fn first(s: &str) -> String {
+pub(super) fn first(s: &str) -> String {
     s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(200).collect()
 }
