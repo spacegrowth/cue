@@ -74,6 +74,12 @@
       "words": "Cue asked for docs's review",
       "name": "docs",
       "review": true
+    },
+    {
+      "text": "Commit your teammate docs's work now: the files it changed, in the git repository where it changed them…",
+      "words": "Cue asked to commit docs's work",
+      "name": "docs",
+      "review": false
     }
   ],
   "reviews": [

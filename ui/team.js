@@ -255,6 +255,7 @@ const CUE_SAID = [
   [/^Send your teammate (.+?) its review['’]s findings with SendMessage/, (n) => `Cue sent ${n}'s findings back to it`],
   [/^Your teammate (.+?) \(carried over from the session before you\) can['’]t be messaged/, (n) => `Cue asked to start ${n} again with its fixes`],
   [/^Stop your teammate (.+?) now/, (n) => `Cue asked to stop ${n}`],
+  [/^Commit your teammate (.+?)['’]s work now/, (n) => `Cue asked to commit ${n}'s work`],
   [/^(?:\(Cue\) )?Your teammate (.+?) has (?:gone quiet\.|been quiet for)/, (n) => `Cue asked ${n} where it is`],
   [/^Hand this to a new teammate:/, (n, text) => { const task = String(text).split(/\n\s*\n/)[1]?.trim().split("\n")[0] || ""; return `Cue handed out a task${task ? ` · ${task}` : ""}`; }],
 ];
