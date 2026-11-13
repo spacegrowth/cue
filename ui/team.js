@@ -264,12 +264,18 @@ function crewTray(sid) {
   return `<div class="crew-tray open" data-key="crew-tray" data-crew-tray="${esc(sid)}">${head}<div class="crew-body" data-scroll-key="crew:${esc(sid)}">${body}</div>${menu ? mateMenuHtml(sid, menu) : ""}</div>`;
 }
 
-/** After each draw: the open tray's body at most about half its pane (it scrolls inside past that), the open menu under
- *  the name that opened it, and what just opened under a row scrolled into the body, its row with it. */
+/** The least of the chat a tray leaves in view above it, in a short pane (the mini window's). */
+const TRAY_LEAVES = 80;
+/** After each draw: the open tray's body at most about half its pane (it scrolls inside past that; in a short pane,
+ *  never so tall that the chat above it goes), the open menu under the name that opened it, and what just opened
+ *  under a row scrolled into the body, its row with it. */
 function placeTeamRows() {
   for (const tray of document.querySelectorAll(".crew-tray.open")) {
     const pane = tray.closest(".active-pane"), body = tray.querySelector(".crew-body");
-    if (pane && body) body.style.maxHeight = `${Math.max(120, Math.round(pane.clientHeight / 2) - tray.querySelector(".crew-head").offsetHeight)}px`;
+    const head = tray.querySelector(".crew-head").offsetHeight;
+    // What's under the tray in the pane's flow: the box, or the ask's card.
+    const under = [...(pane?.children || [])].filter((el) => el.compareDocumentPosition(tray) & Node.DOCUMENT_POSITION_PRECEDING && getComputedStyle(el).position !== "absolute").reduce((n, el) => n + el.offsetHeight, 0);
+    if (pane && body) body.style.maxHeight = `${Math.max(60, Math.min(Math.max(120, Math.round(pane.clientHeight / 2) - head), pane.clientHeight - under - head - TRAY_LEAVES))}px`;
     const menu = tray.querySelector(".mt-menu"), name = menu && [...tray.querySelectorAll(".crew-body [data-mt-more]")].find((b) => b.dataset.mtMore === menu.dataset.mtMenu);
     if (menu && name) {
       const t = tray.getBoundingClientRect(), r = name.getBoundingClientRect();

@@ -109,6 +109,10 @@ function landed(o) {
   if ((s.thread || []).some(mine) || mine({ role: "you", ...s.queued })) return true;
   return !!o.via && (s.thread || []).some((e) => e.role === "you" && e.at_ms >= o.at - 1000);
 }
+/** What a session's thread now shows, out of the outbox (with each new state, in both windows: app.js, mini.js). */
+function dropLanded() {
+  for (let n = outbox.length - 1; n >= 0; n--) if (outbox[n].via && landed(outbox[n])) outbox.splice(n, 1);
+}
 // ---------- by the way: side questions about the open session, in a panel under its btw button ----------
 // A copy of the conversation answers (see btw.rs): the session keeps working and its chat never shows them.
 const btwLog = new Map();   // sid -> [{ q, a, err }]: this window's, newest last

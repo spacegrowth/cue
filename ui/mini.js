@@ -5,13 +5,20 @@
 // what needs you in the Waiting column's order (in conversation first, then newest first), five at most, and
 // open any of them into its whole chat with a box to answer it. The window's size follows what it shows
 // (mini_shape); it takes the keyboard only once you click into its box (mini_key), and gives it back after.
+// The open chat is Cue's own: mini.html loads the main window's scripts (all but its draw and its boot, app.js), and
+// the chat, what's under it and their buttons are drawn and handled by the same code as in Cue's window (chat/pane.js
+// paneArgs, activeChat, paneFoot; app/clicks.js CHAT_CLICKS). This file is the frame around it: the tabs, ⤢ In Cue,
+// ×, the size and place, the pointer and the keyboard.
 // Everything lives inside one strict block: its names stay its own (core.js's state, view, active… are the main
-// window's, and a second top-level declaration of one would stop this script from running at all).
+// window's, and a second top-level declaration of one would stop this script from running at all). The one name it
+// gives the page is renderMain (and render): what Cue's chat code calls to redraw is this window's paint.
 "use strict";
 {
   const NOTCH = location.hash === "#notch";
   const MAX = 5;                      // rows at most; the rest are counted, and open in Cue
-  const CAP = NOTCH ? 0.33 : 0.45;    // the open chat's height at most, as a share of the screen's
+  // The open chat's height at most, as a share of the screen's: at the notch, enough on a 14" laptop for the chat to
+  // show a few lines over the crew's line and Cue's box (with its quick phrases).
+  const CAP = NOTCH ? 0.5 : 0.45;
   const WIDTH = NOTCH ? { chat: 560 } : { quiet: 36, chat: 420 };   // the rail: its tab, then its panel
   // The notch: the one the island grows out of (Cue measures it; a display without one gets Cue's own, as tall as
   // its menu bar), how far it widens either side when something needs you, and its shoulders' curve.
@@ -24,7 +31,7 @@
   // The side edge Cue put this display's tab on (where you dragged it; Cue keeps that for each display and
   // says which side with each mini_shape): the arrow and the panel's side follow it.
   const pos = { left: false };
-  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, sized: "", sending: false, typed: {}, images: {}, draftT: {}, done: new Set(), note: "" };
+  const m = { shape: "quiet", open: null, keyed: false, over: false, timer: 0, sized: "" };
 
   // ---------- what needs you, in the Waiting column's order ----------
   /** Back within a few minutes of your last message to it, and not sat there longer than that (board.js talking). */
@@ -65,19 +72,8 @@
     // In conversation first, then what waits on you, then what's only at work.
     return [...talk, ...rest(items), ...rest(works)].slice(0, MAX);
   }
-  const doing = (s) => s.doing || (s.prompt ? `› ${s.prompt}` : "working");
   const asks = (it) => it.kind !== "waiting";
   const itemFor = (sid) => state.items.filter((i) => i.session_id === sid).sort((a, b) => asks(b) - asks(a))[0];
-  const name = (it) => nameOf(it.session_id, it.project);
-  /** What a finished turn came back with, without cutting any of it short: its size and what's in it. */
-  function shapeOf(text) {
-    const t = String(text || "");
-    const words = plain(t).split(" ").filter(Boolean).length;
-    const bits = [words > 60 ? `${words} words` : ""];
-    if (/```/.test(t)) bits.push("code");
-    if (/^\s*\|.*\|\s*$/m.test(t)) bits.push("a table");
-    return bits.filter(Boolean).join(" · ");
-  }
   const dotCls = (it) => asks(it) ? "ask" : "turn";
 
   // ---------- drawing ----------
@@ -94,7 +90,7 @@
    *  conversation, striped while it's your turn otherwise (mini.css). A click switches; each
    *  keeps what you typed in it. */
   function tabsHtml() {
-    return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-open="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
+    return tabList().map((t) => `<button class="m-tab ${t.sid === m.open ? "on" : ""} ${t.talk ? "talk" : ""}" data-mopen="${esc(t.sid)}"><i class="m-dot ${t.cls}"></i>${esc(nameOf(t.sid, t.project))}</button>`).join("");
   }
   function islandHtml() {
     // Left: what waits on you, counted, steady. Right: how many are at work, its dot blinking (a blink is always
@@ -108,79 +104,62 @@
     return `<div class="m-panel m-island peek"><span class="m-wing">${left}</span><span class="g"></span><span class="m-wing">${right}</span></div>`;
   }
 
-
-  // ---------- the chat: the whole conversation, the ask on top, a box at the foot ----------
-  // A reply's "Where we are" list is left out, as in Cue's chat (status.js): at the foot of the reply it was all you saw.
-  const msg = (e, sid) => e.role === "you" ? (e.pending ? youHtml(e.text, "pending", now() - e.at_ms > 30000 ? "Cue hasn't seen it take this yet" : "Waiting for it to take this") : `<div class="m-you">${esc(e.text)}</div>`) : e.role === "agent" && stripStatus(e.text).trim() ? `<div class="m-agent msg">${md(stripStatus(e.text), { pathsOf: sid })}</div>` : "";
-  function threadHtml(sid) {
-    const it = itemFor(sid);
-    const all = sessionOf(sid)?.thread || it?.thread || [];
-    const s = sessionOf(sid);
-    // What you queued shows once, as queued, not also as the thread's copy of it (chat/thread.js does the same).
-    const q = s?.queued?.text?.trim() || "";
-    const isQueued = (e) => !!q && e.role === "you" && Math.abs(e.at_ms - s.queued.at_ms) < 60000 && (e.text.trim() === q || (q.length >= 20 && e.text.includes(q)));
-    const msgs = (all.length ? all : it ? [{ role: "agent", text: finishedText(it) }] : []).filter((e) => !isQueued(e));
-    return (msgs.map((e) => msg(e, sid)).join("") || `<div class="m-quiet">Nothing said yet.</div>`) + waitingHtml(s) + nowHtml(sid);
-  }
-  /** Your messages still on their way, as the chat in Cue shows them: kept in Cue until the turn ends, or queued
-   *  in the agent until it finishes its current step. */
-  /** Your message not taken yet, as the chat in Cue shows it: an outline with a ring going round it, and under
-   *  it what's happening to it (and its buttons). `cls`: pending (sent, not taken yet), queued or held. */
-  function youHtml(text, cls, note) {
-    return `<div class="m-you-wait ${cls}"><div class="m-you">${esc(text)}</div><div class="m-you-meta">${note}</div></div>`;
-  }
-  function waitingHtml(s) {
-    if (!s) return "";
-    const sid = esc(s.session_id);
-    const why = s.held?.unsent ? (s.held.delivery || []).map((d) => d.what).filter((w) => w.startsWith("couldn't send: ")).pop() : "";
-    const held = s.held?.text ? youHtml(s.held.text, "held", `${why ? `Couldn't send it: ${esc(why.slice(15))}` : "Kept in Cue · it goes when this turn ends"} · <button class="m-qnow" data-held-edit="${sid}">Edit</button> · <button class="m-qnow" data-held-now="${sid}">Send now</button>`) : "";
-    const queued = s.queued?.text ? youHtml(s.queued.text, "queued", `Queued · it reads this when it finishes the current step · <button class="m-qnow" data-queued-now="${sid}">Send now</button>`) : "";
-    return held + queued;
-  }
-  /** At work: what it's doing now, last in the chat, so its last reply isn't read as the answer to you. */
-  function nowHtml(sid) {
-    const s = sessionOf(sid);
-    if (s?.state !== "working") return "";
-    return `<div class="m-now"><i class="m-dot work"></i><span class="m-now-what">${esc(doing(s))}</span><span class="m-age">${ago(s.since_ms)}</span></div>`;
-  }
-  function askHtml(sid) {
-    const it = itemFor(sid);
-    if (!it || !asks(it)) return "";
-    const answered = m.done.has(it.id);
-    const act = it.kind === "permission" && !inTerminal(it)
-      ? `<button class="m-btn" data-allow="${esc(it.id)}" ${answered ? "disabled" : ""}>Allow</button><button class="m-btn deny" data-deny="${esc(it.id)}" ${answered ? "disabled" : ""}>Deny</button>`
-      : `<button class="m-btn" data-cue="${esc(sid)}">Answer in Cue</button>`;
-    return `<div class="m-ask"><b>${esc(verb(it))}</b><div class="m-cmd">${esc(summary(it))}</div><div class="m-acts">${act}</div></div>`;
-  }
-  function chatHtml() {
-    const sid = m.open;
-    const it = itemFor(sid);
-    const s = sessionOf(sid);
+  // ---------- the chat: the frame's head, then Cue's own chat (chat/pane.js) ----------
+  /** The head: at the notch the tabs, then the open session's state, ⤢ In Cue and ×; on the rail one bar (dragged
+   *  by it) with the tabs, ⤢ and ⇥. */
+  function headHtml(sid) {
+    const it = itemFor(sid), s = sessionOf(sid);
+    if (!NOTCH) return `<div class="m-bar" data-bar><div class="m-tabs">${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
     const tag = it ? `<span class="m-tag ${dotCls(it)}">${asks(it) ? "ASKING" : "YOUR TURN"}</span>` : s?.state === "working" ? `<span class="m-tag work">WORKING</span>` : "";
-    const head = NOTCH ? `<div class="m-tabs" data-tabs>${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`
-      : `<div class="m-bar" data-bar><div class="m-tabs" data-tabs>${tabsHtml()}</div><button class="m-pipbtn" data-cue="${esc(sid)}" aria-label="Open in Cue">⤢</button><button class="m-pipbtn" data-close aria-label="Tuck it away">⇥</button></div>`;
-    return `<div class="m-panel m-chat">${head}
-      <div data-ask>${askHtml(sid)}</div><div class="m-thread" data-thread>${threadHtml(sid)}</div>
-      <div class="m-foot">${NOTCH ? "" : quickHtml()}<div class="m-send"><textarea class="m-box" data-box rows="1" placeholder="${s?.state === "working" && !it ? "Queue a message for" : "Reply to"} ${esc(nameOf(sid, s?.project || it?.project))}…">${esc(m.typed[sid] || "")}</textarea>
-      <button class="m-btn" data-send ${m.sending ? "disabled" : ""}>Send ↵</button></div><div class="m-quiet m-note" data-note>${esc(m.note)}</div></div></div>`;
+    return `<div class="m-tabs">${tabsHtml()}</div><div class="m-chat-head">${tag}<span class="g"></span><button class="m-link" data-cue="${esc(sid)}">⤢ In Cue</button><button class="m-link" data-close aria-label="Close">×</button></div>`;
+  }
+  /** The open chat's panel: its head, and the pane drawPane fills. */
+  const panelHtml = () => `<div class="m-panel m-chat"><div class="m-head" data-head>${headHtml(m.open)}</div><div class="active-pane" data-pane></div></div>`;
+  /** What Cue's window shows in its pane for the open session (chat/pane.js openPane), but its head, tabs and
+   *  terminal: the light along the top while it works, the chat (its steps, Cue's bubbles, a crew's reviews folded
+   *  into them, what it's doing now, your held and queued messages), the reply being read out, the crew's tray and
+   *  the box (its quick phrases, its "/" menu) or the ask's card; a picture opened full size over it. */
+  function paneHtml(cur) {
+    const a = paneArgs(cur);
+    const { full } = fullView(a.sid, a.it, a.s, a.harness);
+    return `${sweep(a.sid, a.s)}${activeChat(a, full)}${paneFoot(a, full)}${lightboxHtml()}`;
+  }
+  /** The box with the cursor, where it was in it, and how it was scrolled: put back after a draw. */
+  function caretNow() {
+    const el = document.activeElement;
+    return el?.dataset?.text && root.contains(el) ? { key: el.dataset.text, at: [el.selectionStart, el.selectionEnd], top: el.scrollTop } : null;
+  }
+  function caretBack(c) {
+    const el = c && root.querySelector(`[data-text="${CSS.escape(c.key)}"]`);
+    if (!el) return;
+    if (el !== document.activeElement) { el.focus(); if (el.setSelectionRange) el.setSelectionRange(...c.at); }
+    el.scrollTop = c.top;
+  }
+  /** The pane drawn afresh, as Cue's window draws its own (app/render.js renderMain): the chat's element lifted out
+   *  and put back (chat/patch.js), so it keeps its scroll, its selection and what's fading in; the box keeps the
+   *  cursor; the chat stays at its end if it was; the crew's tray and a reply read out placed after. */
+  function drawPane() {
+    const pane = root.querySelector("[data-pane]");
+    if (!pane || !m.open) return;
+    if (active?.sid !== m.open) active = { id: itemFor(m.open)?.id || null, sid: m.open };
+    const cur = current(), old = document.querySelector("[data-chat]"), caret = caretNow();
+    const was = { oldChat: old, chatPinned: !!old && old.scrollHeight - old.scrollTop - old.clientHeight < 24 };
+    const lifted = liftChat();
+    pane.className = `active-pane ${cur?.s?.state === "working" || cur?.s?.compacting_ms ? "busy" : ""}`;
+    pane.innerHTML = cur ? paneHtml(cur) : "";
+    const kept = settleChat(lifted);
+    pane.querySelectorAll("textarea[data-text]").forEach(grow);
+    scrollChat(document.querySelector("[data-chat]"), was, lifted, kept);
+    if (listening) listenFollow(listening);
+    placeTeamRows();
+    listenKeep(m.open);
+    caretBack(caret);
   }
 
-  /** `el` shows `html`, touched only when that changed: a redraw of the same chat (state comes several times a
+  /** `el` shows `html`, touched only when that changed: a redraw of the same head (state comes several times a
    *  second) doesn't rebuild it under the pointer, which reset the cursor each time. */
   const drawn = new WeakMap();   // element -> the html it was last given
   const put = (el, html) => { if (el && drawn.get(el) !== html) { el.innerHTML = html; drawn.set(el, html); } };
-  /** Your quick phrases (Settings, the same list as Cue's chat), on the rail only (the notch keeps to the box): a
-   *  click adds one after what you've typed and sends it at once, as in Cue (chat/compose.js sendPhrase). */
-  const quickHtml = () => {
-    const list = state.settings?.quick?.phrases || [];
-    return list.length ? `<div class="m-quick">${list.map((p) => `<button class="m-qp" data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}</div>` : "";
-  };
-  function sendPhrase(p) {
-    const box = root.querySelector("[data-box]");
-    if (!box || m.sending) return;
-    box.value = box.value.trim() ? `${box.value.trimEnd()} ${p}` : p;
-    send();
-  }
   // ---------- size and place ----------
   /** The window as big as what it shows: the panel's own size, the chat no taller than its share of the screen. */
   function fit() {
@@ -229,7 +208,7 @@
     p.style.opacity = "0.999";
     requestAnimationFrame(() => {
       p.style.opacity = "";
-      const t = root.querySelector("[data-thread]");
+      const t = root.querySelector("[data-chat]");
       if (!t) return;
       const y = t.scrollTop, atEnd = t.scrollHeight - y - t.clientHeight < 24;
       t.scrollTop = y > 0 ? y - 1 : y + 1;
@@ -245,10 +224,11 @@
     paint();
   }
   function shapeHtml() {
-    if (m.shape === "chat" && m.open) return chatHtml();
+    if (m.shape === "chat" && m.open) return panelHtml();
     return NOTCH ? islandHtml() : tuckHtml();
   }
-  /** Draw what the shape shows. A chat you're typing in keeps its box: only the ask and the thread are redrawn. */
+  /** Draw what the shape shows. The same session's chat, drawn again: its head (only when that changed) and its pane
+   *  (drawPane: the chat's element and the box's cursor live on). */
   function paint() {
     // A new shape slides in (mini.css .m-enter); a redraw of the same one doesn't move.
     // The notch's opens out of the notch instead: drawn shut (the notch's size), opened once the window has its
@@ -265,32 +245,30 @@
     const drawnOpen = m.drawnOpen;
     m.drawnOpen = m.open;
     document.body.className = `mini ${NOTCH ? "notch" : "rail"}${pos.left ? " side-left" : ""} s-${m.shape}${m.entering ? " m-enter" : ""}${m.shut ? " m-shut" : ""}${m.leaving ? " m-leave" : ""}${m.dragging ? " m-drag" : ""}`;
-    const box = root.querySelector("[data-box]");
-    // The same session's chat, redrawn: only its ask, its messages and the dots (the box you're typing in stays).
-    // Another session (a dot clicked): drawn whole.
-    if (m.shape === "chat" && box && root.querySelector(".m-chat") && m.open === drawnOpen) {
-      const t = root.querySelector("[data-thread]");
-      const atEnd = t.scrollHeight - t.scrollTop - t.clientHeight < 24;
-      put(root.querySelector("[data-ask]"), askHtml(m.open));
-      put(t, threadHtml(m.open));
-      if (atEnd) t.scrollTop = t.scrollHeight;
-      root.querySelector("[data-send]").disabled = m.sending;
-      root.querySelector("[data-note]").textContent = m.note || "";
-      put(root.querySelector("[data-tabs]"), tabsHtml());
+    if (m.shape === "chat" && root.querySelector(".m-chat") && m.open === drawnOpen) {
+      put(root.querySelector("[data-head]"), headHtml(m.open));
+      drawPane();
     } else {
       const html = shapeHtml();
       if (drawn.get(root) !== html) {
         root.innerHTML = html;
         drawn.set(root, html);
-        if (m.shape === "chat") toLatest();
+        if (m.shape === "chat") { drawPane(); toLatest(); }
       }
     }
     fit();
   }
+  /** Cue's chat code redraws by calling renderMain (and render): here that's this window's paint, held while you
+   *  drag out a selection, press a button or type through an input method, as Cue's window holds its own
+   *  (app/render.js renderMain; window.js lets it go). */
+  globalThis.renderMain = globalThis.render = () => {
+    if (dragSelecting() || (mouseDown && onPress) || composing) { heldDraw = true; return; }
+    paint();
+  };
   /** The end of the chat: what it's doing now, under its last reply. Again on the next frame, once the window
    *  has its full height and the reply its final layout (scrolled before that, it stopped short of the end). */
   function toLatest() {
-    const end = () => { const t = root.querySelector("[data-thread]"); if (t) t.scrollTop = t.scrollHeight; };
+    const end = () => { const t = root.querySelector("[data-chat]"); if (t) t.scrollTop = t.scrollHeight; };
     end();
     requestAnimationFrame(() => { end(); requestAnimationFrame(end); });
     setTimeout(end, 250);   // opened from the tab: the window grows to the panel's height a moment later
@@ -310,25 +288,32 @@
    *  main one; the keyboard goes back to the app you were in when it folds). */
   function openChat(sid) {
     m.open = sid;
+    active = { id: itemFor(sid)?.id || null, sid };
     invoke("mini_reading", { sessionId: sid }).catch(() => {});
-    m.note = "";
     m.shape = "chat";
     paint();
-    invoke("mini_key", { on: true }).then(() => { m.keyed = true; root.querySelector("[data-box]")?.focus(); }, () => {});
+    loadSteps(sid);   // now, not on the next tick
+    invoke("mini_key", { on: true }).then(() => { m.keyed = true; focusComposer(); }, () => {});
   }
   /** Fold the chat back to the notch or the rail; `giveBack`: hand the keyboard back too (not needed when it
-   *  already went, by a click outside). What you typed is kept for when you open it again. */
+   *  already went, by a click outside). What you typed is kept (the session's draft, as in Cue's chat). */
   function closeChat(giveBack = true) {
     if (m.shape !== "chat" || m.leaving) return;
     if (giveBack && m.keyed) invoke("mini_key", { on: false }).catch(() => {});
     m.keyed = false;
-    const fold = () => { m.leaving = false; m.shut = false; document.body.classList.remove("m-leave", "m-shut"); m.open = null; invoke("mini_reading", { sessionId: null }).catch(() => {}); go("quiet"); };
+    const fold = () => { m.leaving = false; m.shut = false; document.body.classList.remove("m-leave", "m-shut"); m.open = null; active = null; invoke("mini_reading", { sessionId: null }).catch(() => {}); go("quiet"); };
     // It goes back first (the rail's panel into the edge, the notch's chat into the notch); then the window is the
     // tab or the island again.
     m.leaving = true;
     if (NOTCH) m.shut = true;
     document.body.classList.add("m-leave", ...(NOTCH ? ["m-shut"] : []));
     setTimeout(fold, NOTCH ? 220 : 160);
+  }
+  /** Esc: a background agent's view or a reply in the reader goes back to the chat; else the chat folds. */
+  function escKey() {
+    if (helperView && helperViewed(m.open)) return closeHelperView();
+    if (readerShown()) return closeReader();
+    closeChat();
   }
   /** The rail dragged anywhere, the tab or the panel by its bar (the window itself moves, mini_drag): let go, it
    *  takes the nearer side edge of the display it's over, at that height, and stays there from then on. A drag is
@@ -360,78 +345,42 @@
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
   }
-  /** The message Cue kept, back in the box to change (it doesn't go when the turn ends any more). */
-  async function heldEdit(sid) {
-    const h = await invoke("unhold_message", { sessionId: sid }).catch(() => null);
-    if (!h) return;
-    const box = root.querySelector("[data-box]");
-    const typed = (box?.value || m.typed[sid] || "").trim();
-    m.typed[sid] = typed ? `${h.text}\n\n${typed}` : h.text;
-    if (box) { box.value = m.typed[sid]; box.focus(); }
-    keepDraft(sid);
-    paint();
+  const inCue = (sid, doc) => invoke("mini_open_in_cue", { sessionId: sid || null, ...(doc ? { doc } : {}) }).catch(() => {});
+  /** A link in the chat: a markdown file in Cue's reader, for the session that named it (as a click in Cue's own chat
+   *  does); anything else where it opens. */
+  function openLink(link, e) {
+    e.preventDefault();
+    const path = link.dataset.path, sid = link.dataset.sid || m.open;
+    if (path && sid && isDocPath(path)) return inCue(sid, path);
+    invoke("open_link", { url: link.dataset.href || path }).catch(() => {});
   }
-  async function answer(id, behavior) {
-    if (m.done.has(id)) return;   // one click: it can't go twice
-    m.done.add(id);
-    paint();
-    await invoke("respond", { id, decision: { behavior } }).catch((e) => { m.done.delete(id); m.note = String(e); paint(); });
-  }
-  async function send() {
-    const sid = m.open, box = root.querySelector("[data-box]");
-    const text = box?.value.trim();
-    if (!sid || !text || m.sending) return;
-    const it = state.items.find((i) => i.session_id === sid && i.kind === "waiting");
-    m.sending = true;
-    paint();
-    try {
-      // Sent: nothing to say under the box (the thread shows your message and whether it's been taken).
-      await (it ? invoke("reply", { id: it.id, text }) : invoke("send_to_session", { sessionId: sid, text }));
-      m.typed[sid] = "";
-      m.images[sid] = [];
-      box.value = "";
-      keepDraft(sid);
-      m.note = "";
-    } catch (e) {
-      m.note = String(e);
-    }
-    m.sending = false;
-    paint();
+  /** The frame's own buttons (the rail's tab, a tab, ⤢ In Cue, ×), a link, and a terminal's button (the terminal is in
+   *  Cue's window); then the chat's, as in Cue's window. */
+  const CLICKS_HERE = [
+    rule("[data-out]", () => { clearTimeout(m.timer); const sid = first(); if (sid) openChat(sid); }),
+    rule("[data-mopen]", (t) => openChat(t.dataset.mopen)),
+    rule("[data-cue]", (t) => inCue(t.dataset.cue)),
+    rule("[data-close]", () => closeChat()),
+    rule("a[data-href], a[data-path]", openLink),
+    rule("[data-act=term], [data-act=term-open], [data-act=term-card]", () => inCue(m.open)),
+    ...CHAT_CLICKS,
+  ];
+  /** Keys in the chat: its box's own ("/" menu, ↑ for what you sent, Enter sends, ⌘↵ sends what waits now), a picture
+   *  shown full size, and Esc (escKey). The crew's tray takes its Esc first (team.js crewEsc). */
+  function keyHere(e) {
+    if (keyInBox(e) || keyLightbox(e)) return;
+    if (e.key === "Escape") { e.preventDefault(); return escKey(); }
+    if (keyTyping(e)) return;
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && m.open && sendWaitingNow(m.open)) e.preventDefault();
   }
   function bind() {
-    root.addEventListener("click", (e) => {
-      const link = e.target.closest("a[data-href], a[data-path]");
-      if (link) {
-        e.preventDefault();
-        // A markdown file: in Cue's reader, for the session that named it (as a click in Cue's own chat does).
-        const path = link.dataset.path, sid = link.dataset.sid;
-        if (path && sid && /\.(md|markdown)$/i.test(path)) invoke("mini_open_in_cue", { sessionId: sid, doc: path }).catch(() => {});
-        else invoke("open_link", { url: link.dataset.href || path }).catch(() => {});
-        return;
-      }
-      const t = e.target.closest("button, [data-open]");
-      if (!t) return;
-      if (t.dataset.out !== undefined) { clearTimeout(m.timer); const sid = first(); if (sid) openChat(sid); }
-      else if (t.dataset.open !== undefined) openChat(t.dataset.open);
-      else if (t.dataset.cue !== undefined) invoke("mini_open_in_cue", { sessionId: t.dataset.cue || null }).catch(() => {});
-      else if (t.dataset.close !== undefined) closeChat();
-      else if (t.dataset.allow) answer(t.dataset.allow, "allow");
-      else if (t.dataset.deny) answer(t.dataset.deny, "deny");
-      else if (t.dataset.send !== undefined) send();
-      else if (t.dataset.phrase) sendPhrase(t.dataset.phrase);
-      else if (t.dataset.queuedNow) invoke("send_queued_now", { sessionId: t.dataset.queuedNow }).then(() => { m.note = "Sent now: it stopped its step and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
-      else if (t.dataset.heldNow) invoke("send_held_now", { sessionId: t.dataset.heldNow }).then(() => { m.note = "Sent now: it stopped its turn and reads it next"; paint(); }, (err) => { m.note = String(err); paint(); });
-      else if (t.dataset.heldEdit) heldEdit(t.dataset.heldEdit);
-      else if (t.dataset.copyCode !== undefined) invoke("copy_text", { text: codeText(t) }).then(() => { m.note = "Copied"; paint(); }, () => {});
-    });
-    root.addEventListener("focusin", (e) => { if (e.target.matches("[data-box]")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
-    // A click anywhere outside takes the keyboard elsewhere: the open chat folds away, as a menu would.
-    window.addEventListener("blur", () => closeChat(false));
-    root.addEventListener("input", (e) => { if (e.target.matches("[data-box]")) { m.typed[m.open] = e.target.value; grow(e.target); keepDraft(m.open); } });
-    root.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { e.preventDefault(); closeChat(); }
-      else if (e.key === "Enter" && !e.shiftKey && e.target.matches("[data-box]")) { e.preventDefault(); send(); }
-    });
+    bindChat(root);
+    delegate(root, "click", CLICKS_HERE);
+    root.addEventListener("focusin", (e) => { if (!m.keyed && e.target.matches("textarea, input")) { m.keyed = true; invoke("mini_key", { on: true }).catch(() => {}); } });
+    // A click anywhere outside takes the keyboard elsewhere: the open chat folds away, as a menu would. Not for Finder's
+    // picker (📎 in the box, chat/patch.js pickImages): the pictures land in the box that opened it.
+    window.addEventListener("blur", () => { if (!picking) closeChat(false); });
+    root.addEventListener("keydown", keyHere);
     // Hover opens the first session's chat after a short pause (a pointer passing by doesn't); the dots switch.
     // Leaving folds it back, unless you've clicked into it (then a click outside or Esc does).
     // Where there are no dots to point at (the notch's island), hovering opens the first session's chat.
@@ -452,7 +401,7 @@
     if (m.shape === "quiet") m.timer = setTimeout(() => { const sid = first(); if (sid) openChat(sid); }, HOVER_MS);
   }
   /** Something typed in the open chat's box (kept: the chat doesn't fold under it). */
-  const typing = () => !!root.querySelector("[data-box]")?.value.trim();
+  const typing = () => [...root.querySelectorAll("textarea[data-text]")].some((t) => t.value.trim());
   /** It left: an open chat with nothing typed in it folds, the keyboard back to the app you were in. With
    *  something typed it stays (Send, Esc or a click outside). */
   function pointerOut() {
@@ -461,27 +410,6 @@
     root.querySelector(".m-tuck")?.classList.remove("over");
     clearTimeout(m.timer);
     if (m.shape === "chat" && !typing()) m.timer = setTimeout(() => { if (!typing()) closeChat(true); }, LEAVE_MS);
-  }
-  /** What you type is that session's draft, kept in Cue's database as Cue's own chat keeps it (the same key,
-   *  "s:<session>"), so it's still there after a restart; saved half a second after you stop. Its images, if
-   *  Cue's chat has any for it, are kept as they are. */
-  function keepDraft(sid) {
-    clearTimeout(m.draftT[sid]);   // one wait per session: switching sessions doesn't drop the last one's save
-    m.draftT[sid] = setTimeout(() => invoke("set_draft", { key: `s:${sid}`, text: m.typed[sid] || "", images: m.images[sid] || [] }).catch(() => {}), 500);
-  }
-  async function loadDrafts() {
-    const saved = await invoke("get_drafts").catch(() => ({}));
-    for (const [k, d] of Object.entries(saved || {})) {
-      if (!k.startsWith("s:")) continue;
-      m.typed[k.slice(2)] = d.text || "";
-      m.images[k.slice(2)] = d.images || [];
-    }
-  }
-  /** The box grows with what you type: 5 lines on the rail, 3 at the notch, then it scrolls. */
-  function grow(box) {
-    const line = 19.5, most = NOTCH ? 3 : 5;
-    box.style.height = "auto";
-    box.style.height = `${Math.min(box.scrollHeight, line * most + 14)}px`;
   }
   function theme() {
     // The notch is always Cue's dark theme (in your Color), light mode or not: it hangs from the notch.
@@ -493,20 +421,28 @@
     projFilter = "";
     projTheme();
   }
+  /** Cue's state, as the main window takes it (app.js setState): its clock, what's landed out of the outbox. */
   function take(s) {
     state = s;
+    if (s.now_ms) clockSkew = s.now_ms - Date.now();
+    dropLanded();
     theme();
-    paint();
+    renderMain();
   }
 
   async function boot() {
     bind();
-    await loadDrafts();
+    await loadDrafts();   // the drafts Cue's chat keeps (window.js): what you typed to a session, here or there
     take(await invoke("get_state"));
     await T.event.listen("state", (e) => take(e.payload));
-    // Ages move on with no new state: once a minute is enough for "4m". In a chat, only its tabs: one stops
-    // blinking when its few minutes in conversation are up (the box you're typing in isn't touched).
-    setInterval(() => { if (m.shape !== "chat") paint(); else put(root.querySelector("[data-tabs]"), tabsHtml()); }, 60000);
+    // The mic in the box (chat/compose.js), and a reply read out in a natural voice (chat/listen.js), as in Cue.
+    await T.event.listen("dictation", (e) => onDictation(e.payload));
+    await T.event.listen("speak", (e) => { if (listening || kokoroAt) kokoroLine(e.payload); });
+    // Ages move on with no new state: once a minute is enough for "4m". In a chat, only its head (its tabs: one
+    // stops blinking when its few minutes in conversation are up), its live counts every second, its steps as Cue's.
+    setInterval(() => { if (m.shape !== "chat") paint(); else put(root.querySelector("[data-head]"), headHtml(m.open)); }, 60000);
+    setInterval(() => { if (m.shape === "chat") followSteps(); }, 500);
+    setInterval(() => { if (m.shape === "chat") tickAges(); }, 1000);
     // Cue's window came forward or went back, maybe on another display: placed again, on that one.
     // These two are this window's own (a tab on each display): T.event.listen would hear every window's.
     const own = T.webviewWindow?.getCurrentWebviewWindow?.() || T.event;

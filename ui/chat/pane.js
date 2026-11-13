@@ -115,7 +115,26 @@ function openPane(a, full) {
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewTray(sid) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${termDock(sid)}${paneFoot(a, full)}${sid ? continueCover(sid) : ""}</div>`;
+}
+/** Under the chat: the full view's own foot, or the reply being read out, the crew's tray and the box (or the ask's
+ *  card). The mini window shows this under its chat too (mini.js). */
+function paneFoot(a, full) {
+  const { sid, foot } = a;
+  return full ? full.foot : listenLine(sid) + (sid ? crewTray(sid) : "") + foot;
+}
+/** What the pane draws for open card or session `cur` (current()): its item and session, its agent, project, whether
+ *  it waits on you, the head's pill and the foot. The mini window draws the same chat from it (mini.js). */
+function paneArgs(cur) {
+  const { it, s } = cur;
+  const pending = isPending(it);
+  const harness = it?.harness || s?.harness;
+  const project = it?.project || s?.project;
+  const sid = s?.session_id || it?.session_id;
+  const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
+  const pill = activePill(it, s, pending, ch);
+  const foot = activeFoot(it, s, pending, harness, project, sid);
+  return { it, s, sid, harness, project, pending, ch, pill, foot, onMachine: machTag(s?.machine || it?.machine) };
 }
 function activePane() {
   if (quietOpen) return quietPane();
@@ -123,17 +142,10 @@ function activePane() {
   if (pk) return parkedPane(pk);
   const cur = current();
   if (!cur) return emptyPane();
-  const { it, s } = cur;
-  const pending = isPending(it);
-  const harness = it?.harness || s?.harness;
-  const project = it?.project || s?.project;
-  const sid = s?.session_id || it?.session_id;
-  noteLooked(sid);
-  const ch = pending && it.kind === "waiting" && !it.interrupted ? s?.changes : null;
-  const pill = activePill(it, s, pending, ch);
-  const foot = activeFoot(it, s, pending, harness, project, sid);
+  noteLooked(cur.s?.session_id || cur.it?.session_id);
+  const a = paneArgs(cur);
+  const { it, s, sid, harness, project, foot, onMachine } = a;
   const { full, reading } = fullView(sid, it, s, harness);
-  const onMachine = machTag(s?.machine || it?.machine);
   // Restarting (after an MCP change): covered until it's back, with nothing to press meanwhile.
   const rs = sid && state.restarting?.[sid];
   if (rs) return `<div class="active-pane restarting">
@@ -143,5 +155,5 @@ function activePane() {
   // A reply in the reader: the pane is the reader's (its bar names the session), the box out of the way.
   if (reading) return `<div class="active-pane reading ${s?.state === "working" || s?.compacting_ms ? "busy" : ""}">${sweep(sid, s)}
     ${full.bar + chatBox(full.forKey, full.body)}${extSlot(sid)}${diffSlot(sid)}${full.foot}${continueCover(sid)}</div>`;
-  return openPane({ it, s, sid, harness, project, pending, ch, pill, foot, onMachine }, full);
+  return openPane(a, full);
 }

@@ -39,7 +39,4 @@ const SETTING_CLICKS = [
   rule("button[data-ext-pick]", (xp) => setExtPick(xp.dataset.extPick, xp.dataset.val)),
   rule("[data-ext-open]", (xo) => { extPickOpen = extPickOpen === xo.dataset.extOpen ? null : xo.dataset.extOpen; renderMain(); }),
   rule("[data-set]", (setBtn) => setSetting(setBtn.dataset.set, JSON.parse(setBtn.dataset.val))),
-  // 📎 on a box: Finder's picker, for that box.
-  rule("[data-attach]", (at) => { picker.dataset.key = at.dataset.attach; picker.value = ""; picker.click(); }),
-  rule("[data-unattach]", (un) => { const [key, n] = un.dataset.unattach.split(/:(?=\d+$)/); draft(key).images.splice(+n, 1); renderMain(); }),
 ];

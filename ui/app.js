@@ -50,7 +50,7 @@ function setState(s) {
   for (const [sid, on] of starNow) if (!!sessionOf(sid)?.starred_ms === on || !sessionOf(sid)) starNow.delete(sid);   // Cue says so now
   // First launch: an installed agent isn't connected yet, and you haven't closed the setup screen.
   if (!setupShown && s.settings && !s.settings.setup?.done && ["claude", "codex", "pi"].some((h) => s.connections?.[h]?.present && !s.connections[h].ok)) { setupShown = true; sheet = "setup"; }
-  for (let n = outbox.length - 1; n >= 0; n--) if (outbox[n].via && landed(outbox[n])) outbox.splice(n, 1);
+  dropLanded();
   if (s.now_ms) clockSkew = s.now_ms - Date.now();
   applyTheme();
   render();
@@ -113,27 +113,7 @@ async function boot() {
   moveOldParked();
   moveOldStars();
   setInterval(render, 15000); // keep ages and bars moving
-  // The open session's steps: every 0.5 s while it works, else every 2 s (only new lines are read;
-  // nothing new answers with just a version).
-  setInterval(() => {
-    const cur = current();
-    const q = quietOpen && (state.live || []).find((x) => x.session_id === quietOpen);
-    const sid = q ? q.session_id : cur?.s?.session_id || cur?.it?.session_id;
-    if (!sid || document.hidden) return;
-    const f = stepFeeds.get(sid);
-    const working = q ? q.status === "busy" : cur?.s?.state === "working";
-    // Not "working" can still be working: a stop hook or a finished background task sends it back to
-    // work without a new prompt. So it's checked every 2 s anyway (nothing new costs next to nothing).
-    if (!f || working || Date.now() - f.at > 2000) loadSteps(sid);
-  }, 500);
-  // The live "what it's doing · 3s" counts every second, without redrawing everything.
-  setInterval(() => {
-    document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
-    // The going-cold chip counts down; once its soonest goes cold, the chip redraws without it.
-    let coldDone = false;
-    document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
-    if (coldDone) renderMain();
-    document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
-  }, 1000);
+  setInterval(followSteps, 500);
+  setInterval(tickAges, 1000);
 }
 boot().catch(showRenderError);

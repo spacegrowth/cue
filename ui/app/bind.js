@@ -66,10 +66,11 @@ function onChatScroll(e) {
   if (sid) loadOlder(sid);
 }
 
-function bindMain() {
-  bindTips();
+/** A chat's listeners, for the chat drawn in `root` (the main window's #app, the mini window's #mini): earlier
+ *  messages as you scroll up, a reply read out that stops following when you scroll, the "/" commands read as you
+ *  go into a box, and typing, pasting and dropping pictures into a box (app/inputs.js). */
+function bindChat(root) {
   document.body.append(picker);
-  document.addEventListener("scroll", placeForward, true);   // the send-to menu follows its button
   document.addEventListener("scroll", onChatScroll, true);
   for (const type of ["wheel", "touchmove", "pointerdown", "keydown"]) document.addEventListener(type, noteChatMove, { capture: true, passive: true });
   for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, releaseChat, { capture: true, passive: true });
@@ -78,13 +79,19 @@ function bindMain() {
   // a reply being read out stops scrolling it along (chat/listen.js listenScrolled).
   document.addEventListener("wheel", (e) => { const c = e.target.closest?.("[data-chat], .rdv-scroll"); if (c) listenScrolled(c); }, { passive: true, capture: true });
   document.addEventListener("pointerdown", (e) => { if (e.target.matches?.("[data-chat], .rdv-scroll")) listenScrolled(e.target); }, true);
-  const app = document.getElementById("app");
-  document.addEventListener("mousedown", (e) => { downInLive = !!e.target.closest?.(".lv-wrap"); }, true);
   // Into a session's box: start reading its "/" commands now (that takes a few seconds the first
   // time in a folder), so they're usually in by the time you type "/".
-  app.addEventListener("focusin", (e) => { const sid = sidOfKey(e.target.dataset?.text || ""); if (sid) cmdList(sid); });
+  root.addEventListener("focusin", (e) => { const sid = sidOfKey(e.target.dataset?.text || ""); if (sid) cmdList(sid); });
+  bindInputs(root);
+}
+
+function bindMain() {
+  bindTips();
+  document.addEventListener("scroll", placeForward, true);   // the send-to menu follows its button
+  const app = document.getElementById("app");
+  bindChat(app);
+  document.addEventListener("mousedown", (e) => { downInLive = !!e.target.closest?.(".lv-wrap"); }, true);
   delegate(app, "click", CLICKS);
-  bindInputs(app);
   // Coming back to Cue: the cursor goes to the text box unless you were somewhere else in it.
   window.addEventListener("focus", () => { if (!sheet && !lightbox && document.activeElement === document.body) focusComposer(); });
   document.addEventListener("keydown", keyDeleteAsk, true);

@@ -252,3 +252,12 @@ async function loadDrafts() {
     if (Object.keys(old).length) saveDrafts();
   } catch { /* nothing to move */ }
 }
+/** The live "what it's doing · 3s" counts, every second, without redrawing everything; the going-cold chip counts
+ *  down, and redraws without it once its soonest goes cold. Both windows tick it (app.js, mini.js). */
+function tickAges() {
+  document.querySelectorAll("[data-ago]").forEach((el) => { el.textContent = ago(+el.dataset.ago); });
+  let coldDone = false;
+  document.querySelectorAll("[data-cold-in]").forEach((el) => { if (+el.dataset.coldIn <= now()) coldDone = true; else el.textContent = coldIn(+el.dataset.coldIn); });
+  if (coldDone) renderMain();
+  document.querySelectorAll("[data-helper-span]").forEach((el) => { el.textContent = helperSpan({ started_ms: +el.dataset.helperSpan }); });
+}

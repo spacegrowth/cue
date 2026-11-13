@@ -70,8 +70,15 @@ function clickAct(t) {
 }
 
 const CLICKS = [
-  ...OVERLAY_CLOSERS, ...BTW_CLICKS, ...PROJECT_CLICKS, ...TERM_CLICKS, ...STATUS_CLICKS, ...QUEUE_CLICKS, ...SETUP_CLICKS,
+  ...OVERLAY_CLOSERS, ...BTW_CLICKS, ...PROJECT_CLICKS, ...TERM_CLICKS, ...CATCH_UP_CLICKS, ...STATUS_CLICKS, ...QUEUE_CLICKS, ...SETUP_CLICKS,
   ...MORE_MENU_CLICKS, ...UPDATE_CLICKS, ...THREAD_CLICKS, ...LISTEN_CLICKS, ...READER_CLICKS, ...READ_CLICKS, ...BOX_CLICKS, ...DRAWER_CLICKS,
   ...FIND_CLICKS, ...CARD_CLICKS, ...MESSAGE_CLICKS, ...USAGE_CLICKS, ...SETTING_CLICKS, ...CHAT_FOOT_CLICKS, ...LIVE_CLICKS,
   ...START_CLICKS, ...PARKED_CLICKS, ...BOARD_CLICKS, clickAct,
+];
+/** The clicks of a session's chat, what's under it (its ask's card, the crew's tray, the box) and a picture opened
+ *  from it, in CLICKS' order: the mini window's (mini.js), so its chat's buttons do what they do here. */
+const CHAT_CLICKS = [
+  ...OVERLAY_CLOSERS, ...CATCH_UP_CLICKS, ...STATUS_CLICKS, ...QUEUE_CLICKS, ...MORE_MENU_CLICKS, ...THREAD_CLICKS, ...LISTEN_CLICKS,
+  ...READER_CLICKS, ...BOX_CLICKS, ...CARD_CLICKS, ...MESSAGE_CLICKS, ...USAGE_CLICKS, ...CHAT_FOOT_CLICKS, ...START_CLICKS,
+  ...FOLD_CLICKS, ...ANSWER_CLICKS, clickAct,
 ];

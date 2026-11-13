@@ -143,6 +143,18 @@ function answerTerminal(tp) {
   if (it) active = { id: it.id, sid: it.session_id };
   return invoke("answer_terminal", { id: tp.dataset.id, n: +tp.dataset.tpick }).then((r) => toast(r)).catch((e) => toast(`Couldn't answer it: ${e}`));
 }
+/** A long reply's Show all / Fold, and a review folded into Cue's bubble: the chat's own, in both windows (clicks.js CHAT_CLICKS). */
+const FOLD_CLICKS = [
+  rule("[data-msg]", (mo) => { flipIn(openMsgs, mo.dataset.msg); renderMain(); }),
+  rule("[data-ask-open]", (va) => { flipIn(openAsks, va.dataset.askOpen); renderMain(); }),
+];
+/** An ask's answers on its card: a question's steps and choices, a terminal's numbered choice, Always…. */
+const ANSWER_CLICKS = [
+  rule("[data-qstep]", (qs) => { const [id, n] = qs.dataset.qstep.split(/:(?=\d+$)/); qStep[id] = +n; renderMain(); }),
+  rule("[data-tpick]", answerTerminal),
+  rule("[data-pick]", (pk) => { const [qi, oi] = pk.dataset.pick.split(":").map(Number); const it = findItem(pk.dataset.id); return it && pick(it, qi, oi); }),
+  rule("[data-always]", (al) => { const it = findItem(al.dataset.id); return it && respond(it, { behavior: "allow_always", permission: it.suggestions[+al.dataset.always] }); }),
+];
 const BOARD_CLICKS = [
   // The add-on's first: a button of its on a session's card is its own, not the card's.
   ...addOn.clicks,
@@ -152,13 +164,9 @@ const BOARD_CLICKS = [
   rule("[data-hgroup]", (hg) => { flipIn(histOpenGroups, hg.dataset.hgroup); renderMain(); }),
   rule("[data-hrow]", (hr) => { histOpen = histOpen === hr.dataset.hrow ? null : hr.dataset.hrow; renderMain(); }),
   rule("[data-detail]", (dt) => setActive(dt.dataset.detail, null, true)),
-  rule("[data-msg]", (mo) => { flipIn(openMsgs, mo.dataset.msg); renderMain(); }),
-  rule("[data-ask-open]", (va) => { flipIn(openAsks, va.dataset.askOpen); renderMain(); }),
+  ...FOLD_CLICKS,
   rule("[data-big]", (big) => setActive(big.dataset.big), (big, t) => !t.closest("button")),
-  rule("[data-qstep]", (qs) => { const [id, n] = qs.dataset.qstep.split(/:(?=\d+$)/); qStep[id] = +n; renderMain(); }),
-  rule("[data-tpick]", answerTerminal),
-  rule("[data-pick]", (pk) => { const [qi, oi] = pk.dataset.pick.split(":").map(Number); const it = findItem(pk.dataset.id); return it && pick(it, qi, oi); }),
-  rule("[data-always]", (al) => { const it = findItem(al.dataset.id); return it && respond(it, { behavior: "allow_always", permission: it.suggestions[+al.dataset.always] }); }),
+  ...ANSWER_CLICKS,
   rule("[data-collapse]", (cbtn) => collapseSection(cbtn.dataset.collapse)),
   rule("[data-open-section]", (obtn) => openSection(obtn.dataset.openSection)),
   rule("[data-col-reset]", (crst) => resetCol(crst.dataset.colReset)),

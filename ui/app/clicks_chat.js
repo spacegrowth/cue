@@ -17,6 +17,8 @@ const TERM_CLICKS = [
     return termSid === tm.dataset.sid ? termObj?.focus() : openTerm(tm.dataset.sid);
   }),
   rule("[data-act=btw], [data-act=btw-close]", (bw) => { if (bw.dataset.act === "btw" && btwFor !== bw.dataset.sid) { tipUsed("btw"); return openBtw(bw.dataset.sid); } btwFor = null; renderMain(); }),
+];
+const CATCH_UP_CLICKS = [
   // Catch me up above the box: asks once; Got it folds it away.
   rule("[data-act=catch-up], [data-act=catch-up-got]", (cu) => cu.dataset.act === "catch-up" ? askCatchUp(cu.dataset.sid) : gotCatchUp(cu.dataset.sid)),
 ];
@@ -142,6 +144,9 @@ const BOX_CLICKS = [
   rule("[data-cmd-refresh]", (cr) => { cmdList(sidOfKey(cr.dataset.cmdRefresh), true); renderMain(); document.querySelector(`[data-text="${CSS.escape(cr.dataset.cmdRefresh)}"]`)?.focus(); }),
   rule("[data-cmd-pick]", (cp) => pickCmd(cp.dataset.cmdPick, cp.dataset.cmdName, false)),
   rule("[data-astext]", sendAsText),
+  // 📎 on a box: Finder's picker, for that box; × on a picture takes it off.
+  rule("[data-attach]", (at) => pickImages(at.dataset.attach)),
+  rule("[data-unattach]", (un) => { const [key, n] = un.dataset.unattach.split(/:(?=\d+$)/); draft(key).images.splice(+n, 1); renderMain(); }),
 ];
 
 /** A path opens on a click, as a link does (settings.rs how_to_open: its app, as text, or shown in Finder).

@@ -78,7 +78,7 @@ const viewHtml = () => (view === "history" ? historyView() : view === "insights"
 /** What sits over the window: Move to Cue, a delete to confirm, a picture full size, Send to, a sheet, the live
  *  list in the middle of the window, an action's output. */
 function overlaysHtml() {
-  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightbox ? `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>` : ""}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}${trustAsk ? trustDialog() : ""}`;
+  return `${moving ? movingDialog() : ""}${deleteAsk ? deleteDialog() : ""}${quitAsk ? quitDialog() : ""}${lightboxHtml()}${sheet === "forward" && forward ? forwardPop() : ""}${sheet && sheet !== "forward" ? `<div class="scrim" data-act="close-sheet">${sheet === "convo" && convo ? convoSheet() : sheet === "setup" ? setupSheet() : actSheet()}</div>` : ""}${liveOpen && liveSpot ? `<div class="scrim spot-scrim"><span class="lv-wrap spot">${livePop(liveRows())}</span></div>` : ""}${actOverlay()}${trustAsk ? trustDialog() : ""}`;
 }
 /** The window drawn afresh, the open chat lifted out first so it can go back in (chat/patch.js liftChat). */
 function drawWindow() {
@@ -207,22 +207,6 @@ function revealAfterDraw(was) {
   }
   histShown = view === "history" ? histOpen : null;
 }
-/** The chat jumps to its end when you open something else; a new row follows only if you were at the end.
- *  New target: jump to the end. Same chat, you were at the end (within 24 px, measured before the patch): stay
- *  there (an image added to the box, or a step landing, mustn't push the last lines out of view). Scrolled up to
- *  read: a row arriving leaves your place alone. */
-function scrollChat(chat, was, lifted, kept) {
-  const key = chat ? `${active?.id}|${active?.sid}` : null;
-  // Back from a background agent's or script's view (chat/helpers.js closeHelperView): the end, whatever the view's scroll was.
-  if (chat && chatToEnd) { pinChatEnd(chat); holdChat = null; }
-  // A reply just opened in the reader (chat/reader.js readerPane): its start, wherever the chat was.
-  else if (chat && !kept && chat.dataset.chatFor?.startsWith("r|")) { chat.scrollTop = 0; holdChat = null; }
-  else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
-  else if (chat && (key !== activeKey || was.chatPinned)) chat.scrollTop = chat.scrollHeight;
-  // Drawn afresh for the same chat (its steps feed was replaced): where you were.
-  else if (chat && !kept && was.oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
-  activeKey = key;
-}
 /** Which chat is open, and the window's color, told to an add-on (once each time either changes). */
 function tellChatOpen(chat) {
   const openNow = chat ? active?.sid || null : null, swatch = themeIdx(), hue = swatch === OWN ? ownHue() : null;
@@ -268,6 +252,3 @@ document.addEventListener("click", (e) => {
   const sc = pill.list;
   sc?.scrollTo({ top: sc.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 }, true);
-picker.addEventListener("change", () => attach(picker.dataset.key, [...picker.files]));
-// Closed Finder's picker without one: back to the box you were adding to.
-picker.addEventListener("cancel", () => document.querySelector(`[data-text="${CSS.escape(picker.dataset.key)}"]`)?.focus());

@@ -16,6 +16,15 @@ class Cue {
     await this.page.locator('#app [data-view="board"]').waitFor();
   }
 
+  /** Opens the mini window (tests/ui/mini.html) on `scenario` as `shape` ("notch" or "rail"), the clock as open()
+   *  sets it. Resolves once it has drawn its first shape. */
+  async openMini(scenario, shape, { flags = "", frozen = false } = {}) {
+    if (frozen) await this.page.clock.setFixedTime(NOW);
+    else await this.page.clock.install({ time: NOW });
+    await this.page.goto(`mini.html?scenario=${scenario}&latency=0&still=1${flags ? `&${flags}` : ""}#${shape}`);
+    await this.page.locator("#mini .m-panel").waitFor();
+  }
+
   /** The calls of `cmd` so far, each { cmd, args, result | error }. */
   calls(cmd) { return this.page.evaluate((c) => CueBridge.called(c), cmd); }
 

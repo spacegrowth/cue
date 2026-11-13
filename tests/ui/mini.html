@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cue</title>
+</head>
+<body class="mini">
+  <div id="mini"></div>
+  <!-- The real mini window (ui/mini.html: #notch or #rail, as the app opens it) on the fake bridge, its state from
+       tests/ui/scenarios/<scenario>.json, as app.html opens the main window. -->
+  <script src="bridge.js"></script>
+  <script src="load.js"></script>
+  <script>
+    const scenario = new URLSearchParams(location.search).get("scenario") || "world-team";
+    CueUI.load(() => CueBridge.start(async () => {
+      const r = await fetch(`scenarios/${encodeURIComponent(scenario)}.json`);
+      if (!r.ok) throw new Error(`no scenario ${scenario}`);
+      return r.json();
+    }), "mini.html");
+  </script>
+</body>
+</html>

@@ -144,6 +144,9 @@ function thumbs(paths) {
   return `<div class="thumbs">${srcs.map((src, n) => `<button class="thumb" data-lightbox='${esc(JSON.stringify({ srcs, i: n }))}' aria-label="Open image ${n + 1}"><img src="${esc(src)}" alt=""/></button>`).join("")}</div>`;
 }
 
+/** A picture opened full size (← → between its set), over the window; "" when none is. */
+const lightboxHtml = () => !lightbox ? "" : `<div class="lightbox" data-act="close-lightbox"><img src="${esc(lightbox.srcs[lightbox.i])}" alt=""/>${lightbox.srcs.length > 1 ? `<div class="lb-count">${lightbox.i + 1} / ${lightbox.srcs.length} · ← →</div>` : ""}</div>`;
+
 /** Images a message names by absolute path (`in backticks`, which may hold spaces, or bare),
  *  shown under it. The window can't load them itself; image_data hands them over. */
 const localImgs = new Map();   // path -> data: URL, null while loading, false if unreadable

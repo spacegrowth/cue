@@ -31,67 +31,26 @@ body.mini { overflow: hidden; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { .m-tuck.work .m-live, .m-tab .m-dot.work { animation: none; } }
 /* At work, at the notch and on the rail's tab: the dot blinks, as in the tabs. A blink is always work. */
 .m-island .m-dot.work, .m-tuck.work .m-live { animation: m-blink 1s steps(1, end) infinite; }
-/* Your message not taken yet, as in Cue's chat (chat.css .cv-you.queued): no fill, a dim outline with a brighter
-   arc going round it until it goes, and what's happening to it underneath. */
-.m-you-wait { align-self: flex-end; max-width: 85%; display: flex; flex-direction: column; align-items: flex-end; }
-.m-you-wait .m-you { max-width: 100%; position: relative; background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
-@property --qa { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-@keyframes m-qtrace { to { --qa: 360deg; } }
-.m-you-wait .m-you::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: conic-gradient(from var(--qa), transparent 0 78%, var(--accent) 95%, transparent 100%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
-  animation: m-qtrace 4s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .m-you-wait .m-you::after { display: none; } .m-you-wait .m-you { box-shadow: inset 0 0 0 1px var(--accent); } }
-.m-you-meta { margin: 3px 2px 0; font-size: 11px; color: var(--muted); text-align: right; }
-.m-qnow { border: 0; background: none; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; text-decoration-color: var(--line); cursor: pointer; }
-.m-qnow:hover { text-decoration-color: currentColor; }
 .m-link { font-size: 12px; font-weight: 600; border-radius: 8px; padding: 3px 8px; }
-.m-btn { font-size: 12px; font-weight: 650; border-radius: 8px; padding: 5px 12px; background: var(--accent); color: var(--on-accent); }
-.m-btn.deny { background: transparent; color: var(--deny); box-shadow: inset 0 0 0 1px var(--line); }
-.m-btn:disabled { opacity: .45; cursor: default; }
-
-/* ---------- the rail ---------- */
-.m-age { font: 11px var(--mono); opacity: .7; }
 
 /* ---------- the chat (both shapes) ---------- */
 /* The chat is its window's full width, fixed (mini.js sets --chat-w): never wider (a long line wraps or scrolls
    inside), and not laid out at the tab's width in the moment before the window grows. */
 .m-chat { width: var(--chat-w, 100%); flex: none; display: flex; flex-direction: column; height: var(--cap, 440px); overflow: hidden; box-sizing: border-box; }
-.m-now { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 12px; color: var(--muted); }   /* a quiet status line, not a box: only the reply box is one */
-.m-now-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-head { display: contents; }
+/* Under the head, Cue's own chat (mini.js drawPane; chat.css and the rest): its pane flat in the panel, not a card of
+   its own, its padding a step tighter for the narrower width. */
+/* Not a size container (sessions.css): its narrow rules are for the pane's head, which isn't drawn here, and Chromium
+   crashed on the kept chat's move out of a size container and back (chat/patch.js liftChat, with moveBefore). */
+.m-chat .active-pane { border-radius: 0; box-shadow: none; background: transparent; color: inherit; overflow: clip; container-type: normal; }
+.m-chat .ap-chat { padding: 12px 16px 8px; }
+/* Send to… opens over Cue's window, which this isn't, and the tips teach that window's keys: they're there in Cue. */
+.mini .cv-fwd, .mini .cv-tip:not(.on) { display: none; }
+/* The box grows to 3 lines at the notch, 5 on the rail, then scrolls (Cue's own goes to about 8). */
+.notch .m-chat textarea[data-text] { max-height: 72px; }
+.rail .m-chat textarea[data-text] { max-height: 112px; }
 .m-chat-head { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; flex: none; border-bottom: 1px solid var(--line); }
 .m-chat-head .m-link { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
-.m-ask { margin: 10px 12px 0; padding: 9px 11px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--deny); display: flex; flex-direction: column; gap: 7px; flex: none; }
-.m-cmd { font: 12px/1.45 var(--mono); background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 7px 10px; white-space: pre-wrap; word-break: break-word; max-height: 96px; overflow: auto; user-select: text; -webkit-user-select: text; }
-.m-acts { display: flex; gap: 8px; }
-.m-thread { overflow-wrap: anywhere; flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 10px 16px; display: flex; flex-direction: column; gap: 9px; user-select: text; -webkit-user-select: text; }
-.m-you { align-self: flex-end; max-width: 85%; background: var(--panel-2); border-radius: 10px; padding: 7px 10px; white-space: pre-wrap; }
-.m-agent p, .m-agent ul, .m-agent ol, .m-agent .md-table, .m-agent .code-wrap { margin: 0 0 8px; }
-.m-agent ul, .m-agent ol { padding-left: 18px; }
-.m-agent h4 { margin: 6px 0 4px; font-size: 13px; }
-.m-agent pre { margin: 0; background: var(--slab); color: var(--on-slab); border-radius: 8px; padding: 8px 10px; font: 11.5px/1.5 var(--mono); overflow-x: auto; }
-.m-agent pre.long { max-height: 220px; overflow: auto; }
-.m-agent .code-more { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.m-agent code { font: 12px var(--mono); }
-.m-agent table { border-collapse: collapse; font-size: 12px; }
-.m-agent th, .m-agent td { border-bottom: 1px solid var(--line); padding: 3px 10px 3px 0; text-align: left; }
-.m-agent blockquote { margin: 0 0 8px; padding-left: 10px; color: var(--muted); box-shadow: inset 2px 0 0 var(--line); }
-/* Links as Cue's chat shows them (chat.css .msg a): a web link underlined, a file path in the accent with no
-   underline until you point at it. */
-.m-agent a { overflow-wrap: anywhere; }
-.m-agent a[data-path] { text-decoration: none; cursor: pointer; }
-.m-agent a[data-path]:hover { text-decoration: underline; }
-.m-foot { flex: none; border-top: 1px solid var(--line); padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; }
-.m-box { width: 100%; resize: none; border: 0; border-radius: 10px; padding: 7px 10px; font: inherit; line-height: 19.5px; color: inherit; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); outline: none; overflow-y: auto; }
-.m-box:focus { box-shadow: 0 0 0 2px var(--sel), inset 0 0 0 1px var(--accent); }
-.m-quick { display: flex; flex-wrap: wrap; gap: 6px; }
-.m-qp { font-size: 12px; background: var(--panel-2); border-radius: var(--pill-radius); padding: 3px 10px; }
-.m-qp:hover { background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
-/* The box with Send at its right; under them, only when there's something to say, what happened to a send. */
-.m-send { display: flex; align-items: flex-end; gap: 8px; }
-.m-send .m-box { flex: 1; min-width: 0; width: auto; }
-.m-send .m-btn { flex: none; height: 33.5px; }
-.m-note:empty { display: none; }
 .m-quiet { font-size: 12px; color: var(--muted); }
 
 /* ---------- the notch: the notch itself opens, all one black shape ---------- */
@@ -122,10 +81,9 @@ body.mini { overflow: hidden; font-size: 13px; }
 .notch .m-island .m-dot { width: 8px; height: 8px; }
 .notch .m-chat { width: var(--chat-w); border-radius: 0 0 28px 28px; padding-top: var(--nh); }
 .notch .m-chat-head .m-link { box-shadow: none; background: var(--panel-2); color: var(--ink); }
-.notch .m-tabs, .notch .m-chat-head, .notch .m-foot { border-color: var(--line); }
+.notch .m-tabs, .notch .m-chat-head { border-color: var(--line); }
 /* More tabs than fit: they scroll sideways, the last fading out at the edge rather than cut. */
 .notch .m-tabs { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
-.notch .m-box { background: var(--panel-2); box-shadow: none; }
 
 /* Opening: drawn shut (.m-shut: clipped to the notch's own size), then opened once the window is its full size
    (mini.js opened), so the black shape grows out of the notch with a little spring in a window that's already big

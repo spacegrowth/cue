@@ -165,6 +165,22 @@ function homeFocus() {
 // Focus let go to nothing (Tab past the last control, an element that blurs as it closes): home.
 document.addEventListener("focusout", (e) => { if (!e.relatedTarget) homeFocus(); });
 
+/** The chat jumps to its end when you open something else; a new row follows only if you were at the end.
+ *  New target: jump to the end. Same chat, you were at the end (within 24 px, measured before the patch): stay
+ *  there (an image added to the box, or a step landing, mustn't push the last lines out of view). Scrolled up to
+ *  read: a row arriving leaves your place alone. Both windows place their chat with it (app/render.js, mini.js). */
+function scrollChat(chat, was, lifted, kept) {
+  const key = chat ? `${active?.id}|${active?.sid}` : null;
+  // Back from a background agent's or script's view (chat/helpers.js closeHelperView): the end, whatever the view's scroll was.
+  if (chat && chatToEnd) { pinChatEnd(chat); holdChat = null; }
+  // A reply just opened in the reader (chat/reader.js readerPane): its start, wherever the chat was.
+  else if (chat && !kept && chat.dataset.chatFor?.startsWith("r|")) { chat.scrollTop = 0; holdChat = null; }
+  else if (chat && holdChat != null) { chat.scrollTop = chat.scrollHeight - holdChat; holdChat = null; }
+  else if (chat && (key !== activeKey || was.chatPinned)) chat.scrollTop = chat.scrollHeight;
+  // Drawn afresh for the same chat (its steps feed was replaced): where you were.
+  else if (chat && !kept && was.oldChat?.dataset.chatFor === chat.dataset.chatFor && lifted.top != null) chat.scrollTop = lifted.top;
+  activeKey = key;
+}
 /** Text boxes grow with their content, up to ~8 lines, then scroll. */
 const BOX_MAX = 180;   // the text box's tallest (px); past it, it scrolls (styles/board.css says the same)
 function grow(el) {
@@ -187,6 +203,20 @@ function grow(el) {
   if (pinned) chat.scrollTop = chat.scrollHeight;
 }
 const picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", multiple: true, hidden: true });
+/** Finder's picker is open (the window lost focus to it, not to another app: the mini window stays open, mini.js). */
+let picking = false;
+/** 📎 on box `key`: Finder's picker, for that box. */
+function pickImages(key) {
+  picker.dataset.key = key;
+  picker.value = "";
+  picking = true;
+  picker.click();
+}
+picker.addEventListener("change", () => { picking = false; attach(picker.dataset.key, [...picker.files]); });
+// Closed Finder's picker without one: back to the box you were adding to.
+picker.addEventListener("cancel", () => { picking = false; document.querySelector(`[data-text="${CSS.escape(picker.dataset.key)}"]`)?.focus(); });
+// The window has its focus back: the panel closed, whether or not it said so (a dismissed panel may send no cancel).
+addEventListener("focus", () => { picking = false; });
 async function attach(key, files) {
   for (const f of files.slice(0, 6)) {
     if (f.size > 15 * 1024 * 1024) { toast(`${f.name} is over 15 MB`); continue; }

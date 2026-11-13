@@ -221,3 +221,16 @@ function stepLine(sid, x, all, plain = false) {
     <i class="stx-ic k-${esc(x.kind)}">${STEP_ICON[x.kind] || "•"}</i><span class="stx-what">${esc(x.verb)}${x.subject ? ` <span class="${x.mono ? "mono" : ""}">${esc(x.subject)}</span>` : ""}</span>
     <span class="stx-res">${stepResult(x)}</span><span class="stx-chev">${x.done && !plain ? (open ? "⌄" : "›") : ""}</span></button>${open ? keyed(stepDetailHtml(k, x), `d:${x.id}`) : ""}`;
 }
+/** The open session's steps (or a quiet one's), every 0.5 s while it works, else every 2 s (only new lines are read;
+ *  nothing new answers with just a version). Both windows tick it (app.js, mini.js). */
+function followSteps() {
+  const cur = current();
+  const q = quietOpen && (state.live || []).find((x) => x.session_id === quietOpen);
+  const sid = q ? q.session_id : cur?.s?.session_id || cur?.it?.session_id;
+  if (!sid || document.hidden) return;
+  const f = stepFeeds.get(sid);
+  const working = q ? q.status === "busy" : cur?.s?.state === "working";
+  // Not "working" can still be working: a stop hook or a finished background task sends it back to
+  // work without a new prompt. So it's checked every 2 s anyway (nothing new costs next to nothing).
+  if (!f || working || Date.now() - f.at > 2000) loadSteps(sid);
+}
