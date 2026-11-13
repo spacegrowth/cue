@@ -2,12 +2,16 @@
    foot's padding, board.css .foot), the same 1.5px accent edge, the border shared: the box's top corners go square
    under it. Closed, one line on panel-2; open, the same tray grows upward, its body white, scrolling inside past about
    half the pane (placeTeamRows). */
-.crew-tray { position: relative; flex: none; margin: 8px 12px 0; display: flex; flex-direction: column; border: 1.5px solid var(--accent); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--panel-2); color: var(--ink); }
+.crew-tray { position: relative; flex: none; margin: 8px 12px 0; display: flex; flex-direction: column; border: 1.5px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--panel-2); color: var(--ink); }
 .crew-tray + .foot { padding-top: 0; border-top: 0; }
-.crew-tray + .foot .field, .crew-tray + .foot .field:focus-within { border-radius: 0 0 8px 8px; box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* One edge for the tray and the box under it: quiet (the line colour) until you're in the box, then the accent, as
+ *  the box alone does (board.css .field). */
+.crew-tray + .foot .field { border-radius: 0 0 8px 8px; box-shadow: inset 0 0 0 1.5px var(--line); }
+.crew-tray + .foot .field:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.crew-tray:has(+ .foot .field:focus-within) { border-color: var(--accent); }
 .crew-tray + .foot .cmd-slot { bottom: 100%; }
 /* No box under it (the lead's own ask stands there): it ends on its own edge. */
-.crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--accent); border-radius: 10px; margin-bottom: 8px; }
+.crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
 .crew-tray:not(:has(+ .foot .field)) .crew-body { border-radius: 0 0 9px 9px; }
 .crew-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer; border-radius: 9px 9px 0 0; }
 .crew-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
