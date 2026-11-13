@@ -102,3 +102,18 @@ fn a_message_typed_after_a_restart_goes_to_the_session_as_before() {
     assert_eq!(w.terminal.typed("a"), ["now the tests"]);
     assert_eq!(w.snapshot().state("a"), "working", "its prompt hook, through the new Cue");
 }
+
+#[test]
+fn the_plans_usage_is_back_after_a_relaunch_and_a_window_that_reset_meanwhile_is_not() {
+    let mut w = World::new();
+    let soon = crate::model::now_ms() / 1000 + 3600;
+    w.hub().set_rates(&serde_json::json!({
+        "five_hour": { "used_percentage": 12.0, "resets_at": 1 },
+        "seven_day": { "used_percentage": 91.0, "resets_at": soon },
+    }));
+    assert_eq!(w.snapshot().0["usage"]["seven_day"]["pct"], 91.0);
+    w.relaunch();
+    let usage = &w.snapshot().0["usage"];
+    assert_eq!(usage["seven_day"]["pct"], 91.0, "kept across the restart: {usage}");
+    assert!(usage["five_hour"].is_null(), "reset long ago: its number is over: {usage}");
+}

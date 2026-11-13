@@ -115,6 +115,9 @@ impl Hub {
             changed
         });
         if changed {
+            if let Some(r) = self.read(|st| st.rates.clone()) {
+                crate::usage::save_rates(&r);
+            }
             self.changed();
         }
     }

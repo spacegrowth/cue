@@ -136,6 +136,32 @@ pub struct Window {
     pub resets_ms: Option<u64>,
 }
 
+/// Where the last usage Cue had is kept, so the meter is back at once after a restart (an install, say) instead of
+/// waiting for a session to report it again.
+fn rates_file() -> std::path::PathBuf {
+    crate::server::cue_dir().join("rates.json")
+}
+
+/// The usage Cue last had, as kept at `rates_file`: a window that has reset since is dropped, its number being over.
+pub fn saved_rates(now: u64) -> Option<Rates> {
+    let mut r: Rates = serde_json::from_slice(&std::fs::read(rates_file()).ok()?).ok()?;
+    let live = |w: &Option<Window>| w.as_ref().is_some_and(|w| w.resets_ms.is_some_and(|t| t > now));
+    if !live(&r.five_hour) {
+        r.five_hour = None;
+    }
+    if !live(&r.seven_day) {
+        r.seven_day = None;
+    }
+    (r.five_hour.is_some() || r.seven_day.is_some()).then_some(r)
+}
+
+/// Keeps `r` for the next start (`saved_rates`).
+pub fn save_rates(r: &Rates) {
+    if let Ok(b) = serde_json::to_vec(r) {
+        let _ = std::fs::write(rates_file(), b);
+    }
+}
+
 /// The plan's usage as of the last status line Cue was sent.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Rates {

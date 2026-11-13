@@ -238,6 +238,7 @@ impl Hub {
         st.sessions.restore(sessions);
         st.items = waiting;
         st.parked = crate::db::parked();
+        st.rates = crate::usage::saved_rates(now_ms());
         st.review_queue = crate::db::review_queue().into_iter().map(|(exec, lead, text, at_ms)| QueuedReview { exec, lead, text, at_ms }).collect();
         // Ids keep counting from the clock so they never collide with ids in saved history.
         st.next = now_ms();
