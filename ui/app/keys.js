@@ -179,7 +179,8 @@ function keyTyping(e) {
 /** The open card's own keys, while it's pending: A allow, D deny, G go to it, R reply another way, 1–9 a choice.
  *  Nothing pending on screen: R still jumps to the message box. */
 function keyOnCard(e) {
-  const it = current()?.it;
+  // The card under the chat (a crew member's open ask yields to the lead's own, chat/pane.js shownAsk).
+  const it = shownAsk(current()?.it);
   if (!isPending(it)) {
     if (e.key === "r") { e.preventDefault(); document.querySelector(".active-pane textarea[data-text]")?.focus(); }
     return;

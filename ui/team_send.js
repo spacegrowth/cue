@@ -1,7 +1,7 @@
 // ---------- how work goes out to a hosted lead's team (hub/team_out.rs; docs/dev/cue-teams.md §6) ----------
-// The Crew chip at the top right of a hosted Claude lead (split work: Auto, the lead decides; Always; Never; and whether
-// a crew member's work is committed once its review, which runs by itself, is clean), Cue's own /crew (Always for one
-// message), and a task handed out by drag: text dropped on a hosted
+// The crew's mode on its tray ("Handle it ▾" / "Ask me ▾", team.js crewTray), opening its two settings (split work:
+// Auto, the lead decides; Always; Never; and what happens once a crew member's review, which runs by itself, comes
+// back), Cue's own /crew (Always for one message), and a task handed out by drag: text dropped on a hosted
 // lead's card under Sessions shows the files it names, with who already changes each, before it goes as a new
 // teammate. Cue adds the words; the lead does the rest.
 
@@ -29,19 +29,31 @@ function crewCommit(sid) {
 }
 const TEAM_MODES = [["auto", "Auto"], ["on", "Always"], ["off", "Never"]];
 const CREW_COMMITS = [["auto", "Handle it"], ["wait", "Ask me"]];
-/** The lead whose Crew menu is open. */
+/** Where the crew mode menu is open: the lead's id (on its tray's line), or "more:<lead>" (in its ⋯ menu). */
 let crewMenuFor = null;
-/** Top right of a hosted Claude lead's head, beside ⋯: "Cue Crew: auto ▾", opening its two settings (split work into
- *  the crew; what happens once a crew member's review, which runs by itself, comes back). Nothing in the message box. */
-function crewChip(sid) {
-  if (!isTeamLead(sid)) return "";
-  const m = teamMode(sid), open = crewMenuFor === sid;
+/** The crew's two settings: split work into the crew, and what happens once a crew member's review, which runs by
+ *  itself, comes back. */
+function crewMenuHtml(sid) {
+  const commit = crewCommit(sid);
   const seg = (list, cur, attrs) => `<span class="team-sw" role="group">${list.map(([v, label]) => `<button class="${cur === v ? "on" : ""}" ${attrs(v)} aria-pressed="${cur === v}">${label}</button>`).join("")}</span>`;
-  const foot = crewCommit(sid) === "wait" ? "Each review waits for your Commit or Send fixes. Pushing stays yours."
+  const foot = commit === "wait" ? "Each review waits for your Commit or Send fixes. Pushing stays yours."
     : "Fixes and notes go back to the crew member, up to 2 times; a clean review is committed to its branch. You're asked after that. Pushing stays yours.";
-  const menu = !open ? "" : `<div class="crew-menu"><div class="crew-q">Split work into the crew</div>${seg(TEAM_MODES, m, (v) => `data-team-sw="${esc(sid)}" data-team-mode="${v}"`)}<div class="crew-q">When a review comes back</div>${seg(CREW_COMMITS, crewCommit(sid), (v) => `data-crew-commit="${esc(sid)}" data-crew-mode="${v}"`)}<div class="crew-foot">${foot}</div></div>`;
-  const word = { auto: "auto", on: "always", off: "never" }[m] || "auto";
-  return `<span class="crew-pick"><button class="tm-chip ${open ? "on" : ""}" data-crew-menu="${esc(sid)}">Cue Crew: ${word} <span class="tm-sub">▾</span></button>${menu}</span>`;
+  return `<div class="crew-menu"><div class="crew-q">Split work into the crew</div>${seg(TEAM_MODES, teamMode(sid), (v) => `data-team-sw="${esc(sid)}" data-team-mode="${v}"`)}<div class="crew-q">When a review comes back</div>${seg(CREW_COMMITS, commit, (v) => `data-crew-commit="${esc(sid)}" data-crew-mode="${v}"`)}<div class="crew-foot">${foot}</div></div>`;
+}
+/** The mode's word: "Handle it" or "Ask me". */
+const crewModeWord = (sid) => (CREW_COMMITS.find(([v]) => v === crewCommit(sid)) || CREW_COMMITS[0])[1];
+/** On the crew's tray line, beside its caret: "Handle it ▾" or "Ask me ▾", opening (upward) the crew's settings. */
+function crewMode(sid) {
+  if (!isTeamLead(sid)) return "";
+  const open = crewMenuFor === sid;
+  return `<span class="crew-pick"><button class="crew-mode ${open ? "on" : ""}" data-crew-menu="${esc(sid)}" aria-expanded="${open}">${crewModeWord(sid)} <span class="tm-sub">▾</span></button>${open ? crewMenuHtml(sid) : ""}</span>`;
+}
+/** ⋯ → "Cue Crew: Handle it" for a hosted Claude lead, opening the same settings there, so a lead with no crew yet
+ *  (no tray) can set them too. "" for any other session. */
+function crewMoreItem(sid) {
+  if (!isTeamLead(sid)) return "";
+  const open = crewMenuFor === `more:${sid}`;
+  return `<span class="crew-pick crew-in-more"><button data-crew-menu="more:${esc(sid)}" aria-expanded="${open}">Cue Crew: ${crewModeWord(sid)}<span>How work splits into the crew, and what happens when a review comes back</span></button>${open ? crewMenuHtml(sid) : ""}</span>`;
 }
 async function setCrewCommit(sid, mode) {
   crewCommitNow.set(sid, mode);
@@ -118,7 +130,7 @@ if (typeof document !== "undefined") {
     if (text) dropOnLead(at.sid, text);
   });
   document.addEventListener("click", (e) => {
-    // The Crew menu closes on a click anywhere outside it.
+    // The crew mode menu closes on a click anywhere outside it.
     if (crewMenuFor && !e.target.closest?.(".crew-pick")) { crewMenuFor = null; renderMain(); }
     const el = e.target.closest?.("[data-crew-menu], [data-crew-commit], [data-team-sw], [data-ho-go], [data-ho-cancel], [data-ho]");
     if (!el) return;

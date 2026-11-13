@@ -124,14 +124,19 @@ function chatHtml(it, s, harness, paged = false) {
   const since = sid ? aboutSince(sid, ex) : null;
   if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
   const team = s?.team || [];
+  // A crew member's review (the lead's reply to Cue's request) folds into that request's bubble: not a message of its
+  // own (its findings and buttons are on the member's row in the crew's tray, team.js).
   const reviews = reviewReplies(ex, (name) => [...team].reverse().find((m) => m.name === name)?.review || "");
+  const reviewAt = new Map();   // the request's index → its review
+  for (const [k, name] of reviews) {
+    for (let n = k - 1; n >= 0; n--) if (ex[n].role === "you" && cueSaid(ex[n].text)?.review) { reviewAt.set(n, { name, text: stripStatus(ex[k].text), team }); break; }
+  }
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js).
     const cue = e.role === "you" && cueSaid(e.text);
-    if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, `${ago(e.at_ms)} ago`);
-    // A crew member's review (the lead's reply to Cue's request): one line, its findings under the member's row.
-    if (reviews.has(n) && sid) return reviewLine(sid, reviews.get(n), stripStatus(e.text));
+    if (cue) return cueSaidLine(cue, `${sid}:${e.at_ms}`, e.text, `${ago(e.at_ms)} ago`, reviewAt.get(n));
+    if (reviews.has(n)) return "";
     const fwd = e.role === "you" && FORWARDED.exec(e.text);
     if (fwd) return peerBubble(fwd[2], "forwarded by you", e.at_ms, fwd[1], fwd[3]);
     if (e.role === "you") {
@@ -327,6 +332,7 @@ function moreMenu(sid, s, closable = false) {
   const items = !open ? "" : `<div class="more-menu">
       <button data-cmd="compact" data-sid="${esc(sid)}" ${busy ? "disabled" : ""}>Compact<span>${busy ? "When this turn ends" : "Summarize the conversation to free up context"}</span></button>
       ${tellItem(sid, s)}
+      ${crewMoreItem(sid)}
       ${handoffMenu(sid, s)}
       ${addOn.chatMenu(sid, s)}
       <button data-move-ask="${esc(sid)}">Move to project…<span>Show its folder's sessions under another project in Cue; the agent stays in its folder</span></button>

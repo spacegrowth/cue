@@ -24,7 +24,7 @@ test("a stuck teammate's row says so and offers Resume and Stop; a long run is l
   await cue.open("world-team", { frozen: true });
   await page.locator('.nrow[data-big="n1793984390004"]').click();
   // hub's ask answered first (as the team-open screen does), so its row is its own line.
-  await page.locator('.act-card [data-act="allow"]').click();
+  await page.locator('.mt-row.need [data-act="allow"]').click();
   // Open already (one waits on you, so they opened by themselves); a click only if not.
   const tab = page.locator("[data-mt-open]").first();
   if ((await tab.getAttribute("aria-expanded")) !== "true") await tab.click();
@@ -34,10 +34,10 @@ test("a stuck teammate's row says so and offers Resume and Stop; a long run is l
     Object.assign(at("hub"), { quiet: "stuck", step_ms: st.now_ms - ago });
     Object.assign(at("rows"), { quiet: "tool", step_ms: st.now_ms - ago });
   }, 20 * M);
-  const hub = page.locator(".mt-row", { hasText: "hub" }).first();
+  const hub = page.locator(".mt-one", { hasText: "hub" }).first();
   await expect(hub.locator(".mt-line")).toContainText("quiet for 20m — looks stuck");
   await expect(hub.locator("[data-mt-act]")).toHaveText(["Resume", "Stop"]);
-  await expect(page.locator(".mt-row", { hasText: "rows" }).first().locator(".mt-line")).toContainText("Running: node tests/team.test.js for 20m");
+  await expect(page.locator(".mt-one", { hasText: "rows" }).first().locator(".mt-line")).toContainText("Running: node tests/team.test.js for 20m");
   await hub.locator('[data-mt-act="resume"]').click();
   expect((await cue.called("team_action", { action: "resume" })).args).toMatchObject({ sessionId: "lead" });
 });

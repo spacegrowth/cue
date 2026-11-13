@@ -27,13 +27,25 @@ test("A finished turn's box says where the reply goes: typed into its terminal, 
   await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
 });
 
-test("A hosted Claude lead's Crew settings are at the top right, never in its reply box; a terminal session has none", async ({ cue, page }) => {
+test("A hosted Claude lead's crew settings are on its crew's tray, never in the head or the reply box; no crew, no tray", async ({ cue, page }) => {
   await openCard(page, "n1");
   await expect(page.locator(".active-pane [data-crew-menu]")).toHaveCount(0);
   await cue.change((st) => { Object.assign(st.sessions.find((s) => s.session_id === "relay"), { hosted: true, harness: "claude" }); });
   await expect(box(page, "relay")).toHaveAttribute("placeholder", "Reply to agent-relay…");
+  await expect(page.locator(".crew-tray"), "no crew yet: no tray").toHaveCount(0);
+  // No crew yet: ⋯ → Cue Crew: Handle it opens the same settings.
+  await page.locator('.ap-head [data-more="relay"]').click();
+  await page.locator('.more-menu [data-crew-menu="more:relay"]').click();
+  await expect(page.locator(".more-menu [data-crew-menu]")).toContainText("Cue Crew: Handle it");
+  await page.locator('.more-menu [data-crew-commit="relay"][data-crew-mode="wait"]').click();
+  expect((await cue.called("crew_commit", { sessionId: "relay" })).args.mode).toBe("wait");
+  await expect(page.locator(".more-menu [data-crew-menu]")).toContainText("Cue Crew: Ask me");
+  await expect(page.locator(".more-menu .crew-menu"), "it stays open while you pick").toBeVisible();
+  await page.locator(".ap-chat").first().click({ position: { x: 20, y: 20 } });
+  await expect(page.locator(".more-menu")).toHaveCount(0);
+  await cue.change((st) => { st.sessions.find((s) => s.session_id === "relay").team = [{ call: "c1", agent_id: "a1", name: "docs", state: "working", started_ms: st.now_ms, files: [] }]; });
   await expect(page.locator(".active-pane .foot .team-sw")).toHaveCount(0);
-  await page.locator('.ap-head [data-crew-menu="relay"]').click();
+  await page.locator('.crew-tray [data-crew-menu="relay"]').click();
   await page.locator('.active-pane [data-team-sw="relay"][data-team-mode="on"]').click();
   expect((await cue.called("team_mode", { sessionId: "relay" })).args.mode).toBe("on");
 });

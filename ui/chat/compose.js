@@ -341,10 +341,7 @@ const suggestionFor = (sid) => {
 /** The quick phrases, with (at the right) where the session runs when it's a terminal app's. */
 const quickRow = (attrs, sid = "") => {
   const place = placeTab(sid);
-  // A hosted lead's crew: a tab on the box's top-right corner, as a terminal session's "Open iTerm ↗" is ("Crew 4 ·
-  // 1 ready ▴"), opening its rows above the box (team.js). A hosted session has no place tab, so they never meet.
-  const crew = sid && !place ? crewStrip(sid, true) : "";
-  return phrases().length || place || crew ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}${crew ? `<span class="tplace">${crew}</span>` : ""}</div>` : "";
+  return phrases().length || place ? `<div class="quick">${phrases().map((p) => `<button class="qp" ${attrs} data-phrase="${esc(p)}">${esc(p)}</button>`).join("")}${place}</div>` : "";
 };
 /** Tab in an empty box with a suggestion: the suggestion, typed in for you (Enter sends it, or edit it first). */
 function takeSuggestion(key) {

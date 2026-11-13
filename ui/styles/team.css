@@ -1,83 +1,94 @@
-/* A hosted lead's crew (ui/team.js crewDock): a drawer pulled up from the tab on the message box. The dock takes no room
-   of its own (the box never moves): the drawer stands on the box's top edge, over the chat, which dims behind it. Its
-   title bar is the tab, opened, in the tab's colours; an edge in the same ink, a shadow upward, rounded top corners.
-   At most about half the pane (placeTeamRows); its rows scroll inside it past that. */
-.crew-dock { position: relative; height: 0; flex: none; z-index: 6; }
-/* left/right/bottom: the foot's padding (board.css .foot), so its edges meet the box's. */
-.crew-drawer { position: absolute; left: 12px; right: 12px; bottom: -10px; max-height: 50vh; display: flex; flex-direction: column; box-sizing: border-box; border: 1.5px solid var(--accent); border-bottom: 0; border-radius: 12px 12px 0 0; background: var(--panel); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14); overflow: hidden; }
-/* No box under it (an ask's card stands there): it ends on its own edge, just above the card. */
-.crew-dock:not(:has(~ .foot .field)) .crew-drawer { bottom: 4px; border-bottom: 1.5px solid var(--accent); border-radius: 12px; }
-.crew-bar { flex: none; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 12px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 650; white-space: nowrap; cursor: pointer; }
-.crew-bar-w { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.crew-bar .crew-need { color: inherit; text-decoration: underline; }
-.crew-close { margin-left: auto; flex: none; height: 24px; padding: 0 8px; border-radius: 6px; color: inherit; font-weight: 600; opacity: 0.85; }
-.crew-close:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 14%, transparent); }
-.crew-close .tm-sub { color: inherit; }
-.crew-drawer .mt-wrap { gap: 0; }
-.crew-drawer .mt-rows { max-height: none; border: 0; border-radius: 0; background: var(--panel); }
-.crew-drawer .mt-held { padding: 6px 12px 8px; border-top: 1px solid var(--line); }
-.crew-drawer .mt-menu { top: 4px; right: 8px; }
-/* Open: the chat behind it dims; the tab (or the pill over an ask's card) isn't shown, its title bar being the tab. */
-.ap-chat { transition: opacity 0.15s; }
-.active-pane:has(.crew-dock.open) .ap-chat { opacity: 0.55; padding-bottom: calc(10px + var(--crew-cover, 0px)); }
-.crew-tab.on { visibility: hidden; }
-.crew-alone:has(.crew-strip.on) { display: none; }
-/* As the corner tab: the place tab's shape (terminal.css .tplace-btn); who needs you stays readable on its colour. */
-.crew-tab { display: inline-flex; align-items: center; gap: 4px; }
-.crew-tab .tm-sub { color: inherit; opacity: 0.8; }
-/* Any member at work: the live dot, in the tab's own ink. */
-.crew-tab .dot-live, .crew-strip .dot-live, .crew-bar .dot-live { width: 6px; height: 6px; flex: none; margin-right: 2px; }
-.crew-tab .dot-live, .crew-bar .dot-live { background: currentColor; }
-.crew-tab .crew-need { color: inherit; text-decoration: underline; }
-.crew-alone { display: flex; justify-content: flex-end; margin: 0 16px 6px; }
-.crew-strip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--pill-radius); border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 12px; font-weight: 650; white-space: nowrap; }
-.crew-strip:hover, .crew-strip.on { background: var(--panel); }
+/* A hosted lead's crew (ui/team.js crewTray): a tray on top of the message box, one object with it. Same width (the
+   foot's padding, board.css .foot), the same 1.5px accent edge, the border shared: the box's top corners go square
+   under it. Closed, one line on panel-2; open, the same tray grows upward, its body white, scrolling inside past about
+   half the pane (placeTeamRows). */
+.crew-tray { position: relative; flex: none; margin: 8px 12px 0; display: flex; flex-direction: column; border: 1.5px solid var(--accent); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--panel-2); color: var(--ink); }
+.crew-tray + .foot { padding-top: 0; border-top: 0; }
+.crew-tray + .foot .field, .crew-tray + .foot .field:focus-within { border-radius: 0 0 8px 8px; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.crew-tray + .foot .cmd-slot { bottom: 100%; }
+/* No box under it (the lead's own ask stands there): it ends on its own edge. */
+.crew-tray:not(:has(+ .foot .field)) { border-bottom: 1.5px solid var(--accent); border-radius: 10px; margin-bottom: 8px; }
+.crew-tray:not(:has(+ .foot .field)) .crew-body { border-radius: 0 0 9px 9px; }
+.crew-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 12px; font-size: 12.5px; font-weight: 700; white-space: nowrap; cursor: pointer; border-radius: 9px 9px 0 0; }
+.crew-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .crew-need { color: var(--deny); }
-.mt-wrap { position: relative; display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-height: 0; }
-.mt-cap, .mt-held { flex: none; }
-.mt-cap { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.mt-rows { position: relative; --mt-row: 50px; flex: 0 1 auto; min-height: var(--mt-row); max-height: calc(var(--mt-row) * 6.5); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); font-size: 12.5px; }
-.mt-row { display: flex; align-items: center; gap: 10px; min-height: var(--mt-row); padding: 6px 8px 6px 12px; box-sizing: border-box; }
-.mt-row + .mt-row, .mt-under + .mt-row { border-top: 1px solid var(--line); }
-.mt-row.need { cursor: pointer; }
-.mt-row .stx-ic { flex: none; }
-.mt-mid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mt-top { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
-.mt-name { font-weight: 650; color: var(--ink); font-size: 13px; padding: 0; white-space: nowrap; }
-button.mt-name:hover { text-decoration: underline; }
-.mt-st { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.mt-st.b { color: var(--ink); font-weight: 650; }
-.mt-fold { display: inline-flex; align-items: center; gap: 6px; padding: 0; cursor: pointer; }
-.mt-fold:hover .mt-st { text-decoration: underline; }
-.mt-also { color: var(--amber); font-size: 12px; font-weight: 650; white-space: nowrap; }
-.mt-line { color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mt-row .btn { flex: none; height: 28px; padding: 0 11px; font-size: 12px; }
-.mt-row .btn.held { opacity: 0.45; cursor: default; }
-.mt-under { display: flex; flex-direction: column; gap: 4px; margin: 0 12px 10px 42px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); line-height: 1.45; color: var(--ink); font-size: 12.5px; user-select: text; }
-.mt-under .mono { font-family: var(--mono); font-size: 12px; }
+.crew-mu { color: var(--muted); font-weight: 600; }
+.crew-dot, .crew-head .dot-live { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.crew-mode { height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--muted); font-size: 12px; font-weight: 600; }
+.crew-mode:hover, .crew-mode.on { color: var(--ink); }
+.crew-car { flex: none; width: 22px; height: 24px; border-radius: 6px; color: var(--muted); font-weight: 700; }
+.crew-car:hover { color: var(--ink); background: var(--panel); }
+.crew-body { border-top: 1px solid var(--line); background: var(--panel); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 4px; font-size: 12.5px; }
+/* The chat behind an open tray steps back. */
+.ap-chat { transition: opacity 0.15s; }
+.active-pane:has(.crew-tray .crew-body) .ap-chat { opacity: 0.55; }
+
+/* Its groups: Needs you (red), Ready, Working, in small caps; the finished ones folded into "N done ›". */
+.mt-grp { padding: 9px 12px 2px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.mt-grp.red { color: var(--deny); }
+/* A row: its name and line on the left, its one button (Deny and Allow for an ask) on the right; under it, what it asks,
+   its findings or its files. Every button one width, so a group's line up. */
+.mt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding: 7px 12px; }
+.mt-row + .mt-row { border-top: 1px solid var(--line); }
+.mt-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-n i { margin-left: 6px; font-style: normal; font-weight: 500; color: var(--muted); }
+.mt-name { padding: 0; font-weight: 700; font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+button.mt-name:hover, .mt-name.on { text-decoration: underline; text-underline-offset: 2px; }
+.mt-btns { grid-row: 1; grid-column: 2; display: flex; gap: 6px; align-items: center; }
+/* With a one-line sub-line (its files) the button centres on both lines, as the mock's clean row. */
+.mt-row:has(> .mt-l) .mt-btns { grid-row: 1 / 3; }
+.mt-btns:empty { display: none; }
+.mt-b { width: 92px; height: 28px; padding: 0; justify-content: center; font-size: 12px; }
+.mt-b.held, .mt-lk.held { opacity: 0.45; cursor: default; }
+.mt-redir { width: 32px; height: 28px; padding: 0; justify-content: center; font-size: 12px; }
+.mt-l { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.mt-ask { grid-column: 1 / 3; min-width: 0; margin-top: 4px; }
+.mt-ask .code-wrap, .mt-ask .slab { margin: 0; }
+.mt-ask .row-btns { margin-top: 6px; }
+.mt-fx { grid-column: 1 / 3; margin: 4px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.45; user-select: text; }
+.mt-fx li { margin: 2px 0; }
+.mt-fx code { font: 11.5px var(--mono); }
+.mt-fx em { font-style: normal; font-weight: 600; color: var(--amber); }
+/* Working and finished: one line each, a plain action at its end. */
+.mt-one { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 2px 12px; font-size: 12px; }
+.mt-one .mt-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.mt-one code { font: 11.5px var(--mono); color: var(--ink); }
+.mt-lk { flex: none; padding: 2px 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.mt-lk:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+.mt-one .mt-lk + .mt-lk { margin-left: 4px; }
+/* The finished ones, out of the way at the bottom: "N done ›", unfolding to one line each. */
+.mt-done { margin-top: 4px; padding-top: 2px; border-top: 1px solid var(--line); }
+.mt-done-line { display: block; margin: 0 12px; padding: 4px 0; }
+/* What opened under a row from its menu (its full review, what it was asked), why a button didn't go: plain text. */
+.mt-under { grid-column: 1 / 3; margin: 4px 0 2px; color: var(--ink); font-size: 12px; line-height: 1.45; user-select: text; }
+.mt-one + .mt-under { margin: 0 12px 6px; }
+.mt-review { max-height: 260px; overflow-y: auto; }
+.mt-asked { white-space: pre-wrap; max-height: 160px; overflow-y: auto; color: var(--muted); }
 .mt-note { color: var(--deny); }
-.mt-asked { white-space: pre-wrap; max-height: 180px; overflow-y: auto; }
-.mt-held { font-size: 12px; color: var(--muted); }
-.mt-held b { color: var(--ink); }
-.mt-menu { top: 0; right: 0; min-width: 180px; }
+/* Commit refused on main: the reason, and Make a branch and commit (ui/team.js mateUnderHtml). */
+.mt-note.offer { color: var(--ink); }
+.mt-note-acts { display: flex; gap: 6px; padding-top: 4px; }
+.mt-note-acts .mt-b { width: auto; padding: 0 11px; }
+/* The menu a member's name opens, under its name (placeTeamRows). */
+.crew-tray .mt-menu { top: 0; left: 0; right: auto; min-width: 180px; z-index: 31; }
 /* An ask's title: "<lead> › <teammate>". On a card's top line the lead's name is as wide as its words (its usual
    minimum width would leave a second gap before the ›). */
 .mt-of { white-space: nowrap; }
 .nrow-top .proj:has(+ .mt-of) { min-width: 0; }
-/* Commit refused on main: the reason, and Make a branch and commit (ui/team.js mateUnderHtml). */
-.mt-note.offer { color: var(--ink); }
-.mt-note-acts { display: flex; gap: 6px; padding-top: 4px; }
-.mt-note-acts .btn { height: 28px; padding: 0 11px; font-size: 12px; }
 
-/* The Crew chip at the top right of a hosted lead's head, and its menu (ui/team_send.js crewChip): two segmented
-   choices, split work (Auto · Always · Never) and what a clean review does (Wait for me · Commit to its branch). */
+/* The crew's mode on its tray line, and its menu (ui/team_send.js crewMode), opening upward: two segmented choices,
+   split work (Auto · Always · Never) and what happens when a review comes back (Handle it · Ask me). */
 .crew-pick { position: relative; display: inline-flex; flex: none; }
-.crew-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 300px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: 12.5px; cursor: default; }
+.crew-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 300px; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.18); color: var(--ink); font-size: 12.5px; font-weight: 400; white-space: normal; cursor: default; }
+/* In the ⋯ menu: an item like the others, its settings opening under it, in the menu's flow. */
+.crew-in-more { display: flex; flex-direction: column; }
+.crew-in-more .crew-menu { position: static; width: auto; margin: 2px 4px 6px; box-shadow: 0 0 0 1px var(--line); }
+.crew-in-more .team-sw button { display: inline-flex; flex-direction: row; align-items: center; height: 26px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.crew-in-more .team-sw button.on { color: var(--ink); background: var(--panel); }
 .crew-q { margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .crew-menu .team-sw { align-self: flex-start; }
 .crew-foot { margin-top: 2px; color: var(--muted); font-size: 12px; }
 .team-sw { flex: none; display: inline-flex; align-items: center; gap: 1px; height: 30px; padding: 2px; box-sizing: border-box; border-radius: 8px; background: var(--panel-2); font-size: 11.5px; font-weight: 600; }
-.team-sw-l { padding: 0 6px 0 6px; color: var(--muted); }
 .team-sw button { height: 26px; padding: 0 8px; border-radius: 6px; color: var(--muted); }
 .team-sw button:hover { color: var(--ink); }
 .team-sw button.on { color: var(--ink); background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
@@ -97,16 +108,9 @@ button.mt-name:hover { text-decoration: underline; }
 .ho-acts .btn { height: 28px; padding: 0 11px; font-size: 12px; }
 
 /* What Cue sends a lead for its crew: a bubble on the right like yours, a quieter fill, named Cue in its meta line, the
-   exact text behind "+ What Cue sent" (ui/team.js cueSaidLine). A crew member's review is one line: its verdict, the
-   button it calls for, Open › (reviewLine). */
+   exact text behind "+ What Cue sent", and for a review request the lead's review behind its own line (ui/team.js
+   cueSaidLine). */
 .cue-you .cv-you-text { background: var(--panel-2); }
 .cue-you .cv-you-text b { font-weight: 650; }
 .cue-you .cv-voice-note { color: var(--muted); }
 .cue-you .cv-voice-line { white-space: pre-wrap; }
-.cv-review { display: flex; align-items: center; gap: 10px; margin: 10px 0; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
-.cv-review .stx-ic { flex: none; }
-.cv-review-w { flex: 1; min-width: 0; color: var(--ink); }
-.cv-review .btn { flex: none; height: 28px; padding: 0 11px; font-size: 12px; }
-.rv-fix { color: var(--amber); }
-.rv-ok { color: var(--ok, var(--accent)); }
-.mt-review { max-height: 320px; overflow-y: auto; }

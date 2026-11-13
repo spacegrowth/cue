@@ -44,9 +44,7 @@ function activePill(it, s, pending, ch) {
  *  asked: your box stays (cursor and text intact), and sending waits until you've answered, so nothing gets typed
  *  into its prompt. */
 function askFoot(it, sid, harness) {
-  // A teammate's ask: titled "<lead> › <teammate>" (team.js).
-  const who = mateOfAsk(it) ? `${esc(nameOf(sid, it.project))} ${mateTitle(it)}` : esc(agentName(harness));
-  const head = (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${who} ${esc(verb(it))}`) + machTag(it.machine);
+  const head = (inTerminal(it) ? esc(it.message || `${agentName(harness)} ${verb(it)}`) : `${esc(agentName(harness))} ${esc(verb(it))}`) + machTag(it.machine);
   let foot = `<div class="act-card"><div class="act-head">${head}</div>${inTerminal(it) && !it.tool_name ? "" : requestBody(it)}${it.kind !== "question" ? whyLine(it) : ""}${decisionButtons(it)}</div>`;
   const key = `s:${sid}`;
   if (document.activeElement?.dataset?.text === key || draft(key).text.trim() || draft(key).images.length) {
@@ -54,14 +52,27 @@ function askFoot(it, sid, harness) {
   }
   return foot;
 }
+/** The ask whose card is under the chat for open item `it`: a crew member's ask is on its row in the tray, so the
+ *  card is the lead's own pending ask if it has one; else `it`. The card's keys (A, D…) act on this one. */
+function shownAsk(it) {
+  if (!it || it.kind === "waiting" || !mateOfAsk(it)) return it;
+  return state.items.find((i) => i.session_id === it.session_id && i.kind !== "waiting" && !mateOfAsk(i)) || it;
+}
 /** Under the chat: an ask's card, a reply box for a finished turn, or the session's box. Working: what you send
  *  waits for its current step (Queue, ↵), or stops it and goes now (⌘↵; the queued message says so, with Send
  *  now). Pi takes it straight into its queue (read at its next step); for the others Cue keeps it until the turn
  *  ends. */
 function activeFoot(it, s, pending, harness, project, sid) {
-  if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
+  // A crew member's ask is answered on its row in the crew's tray (team.js), which opens for it: the box stays, unless
+  // the lead itself asks something too, whose card stands there as it would.
+  const crewAsk = pending && it.kind !== "waiting" && !!s && !!mateOfAsk(it);
+  if (crewAsk) {
+    crewOpenForAsk(it);
+    const own = shownAsk(it);
+    if (own !== it) return askFoot(own, sid, harness);
+  } else if (pending && it.kind !== "waiting") return askFoot(it, sid, harness);
   // A hosted session has no terminal: the reply goes straight to it.
-  if (pending) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
+  if (pending && !crewAsk) return `<div class="foot">${field(it, s?.hosted ? `Reply to ${project}…` : `Reply to ${project} (typed into its terminal)…`, "Send")}</div>`;
   if (!s) return "";
   const busy = s.state === "working";
   const after = harness === "pi" ? "it reads this after its current step" : "Cue keeps it and sends it when this turn ends";
@@ -81,7 +92,7 @@ function activeHead(a) {
   const { it, s, sid, harness, project, pending, ch } = a;
   const closable = sid && svClosable({ sid, st: pending && it.kind !== "waiting" ? "asks" : s?.state || "idle" });
   return `<div class="ap-head">${s?.watch_ms ? watchMark(project) : projBtn(project, "ap")}${badge(harness)}${nameHead(sid, project)}${a.onMachine}${a.pill}${sid ? agentChips(sid) + titleChips(sid) : ""}${ch ? `<button class="btn small commit-btn" data-act="commit" data-id="${esc(it.id)}">Commit</button>` : ""}<span class="grow"></span>
-      ${sid ? crewChip(sid) + moreMenu(sid, s, closable) : ""}
+      ${sid ? moreMenu(sid, s, closable) : ""}
       ${s && harness === "claude" ? `<button class="btn btw-btn ${btwFor === sid ? "on" : ""}" data-act="btw" data-sid="${esc(sid)}">btw</button>` : ""}
       ${s?.state === "working" ? `<button class="btn deny" data-act="interrupt" data-sid="${esc(sid)}" title="Stop it mid-turn (Esc twice)">Stop</button>` : ""}
       ${closable ? closeBtn(sid) : ""}${focus && s?.state !== "working" ? `<span class="esc-hint">esc</span>` : ""}</div>`;
@@ -91,8 +102,6 @@ function activeChat(a, full) {
   const { it, s, sid, harness } = a;
   return full ? full.bar + chatBox(full.forKey, full.body) : chatBox(`m|${sid || it?.id}`, chatHtml(it, s, harness, true) + keyed(renameNotice(s), "rename") + (sid && s ? catchUpBar(sid, it, s) : "") + keyed(statusLine(it, s), "status"));
 }
-/** The crew's pill on its own, right-aligned above the foot, while an ask's card stands where the box (and its pill) was. */
-const crewAlone = (a) => a.pending && a.it?.kind !== "waiting" && crewStrip(a.sid) ? `<div class="crew-alone">${crewStrip(a.sid)}</div>` : "";
 /** The pane for an open card or session. At work (a turn, or compacting): a light sweeps along the top edge, as
  *  in its terminal tab. Not while it waits. The Next bar (nextBar) is hidden for now (it read as part of the terminal tabs
  *  and the box; N still works). */
@@ -106,7 +115,7 @@ function openPane(a, full) {
     ${sid ? `<div class="ap-bar">${barLabels(sid)}${bar(sid)}${barKey(sid)}</div>` : ""}
     ${sessTabs(sid)}${sid ? statusPanel(a.it, s) : ""}
     ${activeChat(a, full)}${extSlot(sid)}${diffSlot(sid)}${aboutSlot(sid)}${actSlot(sid)}${bgSlot(sid)}
-    ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewDock(sid) + crewAlone(a) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
+    ${termDock(sid)}${full ? full.foot : listenLine(sid) + (sid ? crewTray(sid) : "") + foot}${sid ? continueCover(sid) : ""}</div>`;
 }
 function activePane() {
   if (quietOpen) return quietPane();
