@@ -93,7 +93,7 @@ impl Hub {
     /// changed anything.
     pub(crate) fn team_tidy(&self) -> bool {
         let leads: Vec<(Origin, Vec<Teammate>)> = self.read(|st| {
-            st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| matches!(t.state.as_str(), "done" | "reviewed" | "stopped"))).map(|s| (s.origin.clone(), s.team.clone())).collect()
+            st.sessions.all().into_iter().filter(|s| s.team.iter().any(|t| matches!(t.state.as_str(), "done" | "reviewing" | "reviewed" | "stopped"))).map(|s| (s.origin.clone(), s.team.clone())).collect()
         });
         let mut changed = false;
         for (origin, team) in leads {
@@ -102,7 +102,7 @@ impl Hub {
                 continue;
             }
             // One whose lead was asked to commit it waits for the lead's reply (`commit_reply`).
-            for t in team.iter().filter(|t| matches!(t.state.as_str(), "done" | "reviewed" | "stopped") && t.commit_asked_ms == 0) {
+            for t in team.iter().filter(|t| matches!(t.state.as_str(), "done" | "reviewing" | "reviewed" | "stopped") && t.commit_asked_ms == 0) {
                 let left = if t.files.is_empty() {
                     (t.state == "stopped").then(|| ("aside", String::new(), "Stopped having written nothing".to_string()))
                 } else if origin.machine.is_empty() {

@@ -898,11 +898,14 @@ pub(super) fn first(s: &str) -> String {
 
 /// The crew member a review reply is about, of `team`'s members under review: the one the turn's ask named ("Review
 /// your teammate <name>'s work", the last of the turn's `asks`), else the one asked longest ago. Named, the members
-/// asked before it whose answer never came (lost to a reply after it, say) are `stale`: they wait no more.
+/// asked before it whose answer never came (lost to a reply after it, say) are `stale`: they wait no more. Named but
+/// no longer under review: None.
 pub(super) fn reviewed_member(team: &[Teammate], asks: &[String]) -> Option<(Teammate, Vec<String>)> {
     let reviewing: Vec<&Teammate> = team.iter().filter(|t| t.state == "reviewing").collect();
     let named = asks.iter().rev().find_map(|a| a.trim_start().strip_prefix("Review your teammate ")?.split_once("'s work").map(|(n, _)| n.to_string()));
-    if let Some(t) = named.and_then(|n| reviewing.iter().find(|t| t.name == n)) {
+    if let Some(name) = named {
+        // Named, but no longer under review (its work committed meanwhile, say): nobody else's review.
+        let t = reviewing.iter().find(|t| t.name == name)?;
         let stale = reviewing.iter().filter(|o| o.call != t.call && o.review_ms <= t.review_ms).map(|o| o.call.clone()).collect();
         return Some(((*t).clone(), stale));
     }
@@ -927,5 +930,6 @@ mod tests {
         let (t, stale) = reviewed_member(&team, &["Go ahead".to_string()]).unwrap();
         assert_eq!((t.name.as_str(), stale.len()), ("loops-board", 0), "no ask named one: the one asked longest ago, nothing let go");
         assert!(reviewed_member(&[mate("hub", "done", 0)], &asks).is_none());
+        assert!(reviewed_member(&[mate("docs", "reviewing", 30)], &asks).is_none(), "rows's review, rows no longer under review: not docs's");
     }
 }
