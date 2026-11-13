@@ -40,10 +40,10 @@ pub(crate) async fn forget_session(hub: State<'_, Arc<Hub>>, session_id: String)
     with_hub(&hub, move |h| h.forget(&session_id)).await
 }
 
-/// × on a queued review in its lead's chat: take it back.
+/// Skip on a queued review (its member's row in the crew tray): take it back, unless it went meanwhile.
 #[tauri::command]
 pub(crate) async fn unqueue_review(hub: State<'_, Arc<Hub>>, exec: String) -> Result<(), String> {
-    with_hub(&hub, move |h| h.unqueue_review(&exec)).await
+    with_hub(&hub, move |h| h.unqueue_review(&exec)).await?
 }
 
 #[tauri::command]

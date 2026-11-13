@@ -80,13 +80,28 @@ impl Hub {
         }
     }
 
-    /// Take a queued review back (Skip on Cue's bubble in the lead's chat): its teammate is done again, with Review
-    /// in its ⋯ for when you want it.
-    pub fn unqueue_review(&self, exec: &str) {
-        self.write(|st| st.review_queue.retain(|q| q.exec != exec));
+    /// Take a queued review back (Skip on its member's row in the crew tray): its teammate is done again, with Review
+    /// in its menu for when you want it. Decided in one step with the queue: a Skip that comes after the review went
+    /// (its member under review now) or after it was dropped (back at work) changes nothing, and says so.
+    pub fn unqueue_review(&self, exec: &str) -> Result<(), String> {
+        let taken = self.write(|st| {
+            let before = st.review_queue.len();
+            st.review_queue.retain(|q| q.exec != exec);
+            let taken = st.review_queue.len() < before;
+            if let Some((lead, agent)) = super::team::teammate_key(exec).filter(|_| taken) {
+                st.sessions.with_teammate(lead, agent, |m| {
+                    m.state = "done".into();
+                    m.review_ms = 0;
+                });
+            }
+            taken
+        });
+        if !taken {
+            return Err("Its review isn't waiting any more".into());
+        }
         self.save_queued_review(exec);
-        self.team_review_sent(exec, false);
         self.changed();
+        Ok(())
     }
 
     /// Send each lead its next queued review once it's free (its turn ended, nothing asked, not
@@ -279,7 +294,7 @@ mod tests {
         let again = Hub::new(None);
         assert_eq!(again.read(|st| st.review_queue.iter().map(|q| q.exec.clone()).collect::<Vec<_>>()), ["team:L:a1", "team:L:a2"]);
         // × takes one back, for good.
-        again.unqueue_review("team:L:a1");
+        again.unqueue_review("team:L:a1").unwrap();
         assert_eq!(Hub::new(None).read(|st| st.review_queue.len()), 1);
         // A teammate the team no longer has waiting is dropped, not sent.
         again.drain_reviews();

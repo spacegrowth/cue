@@ -227,7 +227,7 @@ fn replies(w: &World, sid: &str, text: &str) {
 
 /// Skip on member `agent`'s queued review (its row's Skip): Commit is what these cases are about.
 fn skip_review(w: &World, sid: &str, agent: &str) {
-    w.hub().unqueue_review(&format!("team:{sid}:{agent}"));
+    w.hub().unqueue_review(&format!("team:{sid}:{agent}")).unwrap();
 }
 
 /// What lead `sid` was sent asking it to commit a member's work.

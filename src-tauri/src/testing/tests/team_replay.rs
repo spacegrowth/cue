@@ -267,6 +267,34 @@ fn a_member_under_review_keeps_waiting_while_its_lead_asks_you_something_or_comp
     assert_eq!((t["state"].as_str(), t["recommendation"].as_str()), (Some("reviewed"), Some("commit")), "the review that came is its: {t}");
 }
 
+/// Skip that comes too late (clicked on a row drawn before its review went, or before the member was resumed) changes
+/// nothing: the member stays under review (or at work), and the review that comes is still its.
+#[test]
+fn a_skip_after_the_review_went_or_the_member_was_resumed_changes_nothing() {
+    let w = World::new();
+    let dir = repo(&w);
+    let sid = lead(&w, "two parts");
+    w.hub().set_crew_commit(&sid, "wait").unwrap();
+    says(&w, &sid, writes("toolu_A", "agentA", "rows", &[path(&dir, "a.txt")]));
+    says(&w, &sid, writes("toolu_B", "agentB", "docs", &[path(&dir, "b.txt")]));
+    ends(&w, &sid, "started both", false);
+    next_review(&w, &sid);
+    assert_eq!(state(&w, &sid, "rows"), "reviewing");
+    let said = w.hub().unqueue_review(&format!("team:{sid}:agentA"));
+    assert_eq!(said, Err("Its review isn't waiting any more".to_string()));
+    assert_eq!(state(&w, &sid, "rows"), "reviewing", "still under review");
+    ends(&w, &sid, "Recommendation: commit", false);
+    assert_eq!(state(&w, &sid, "rows"), "reviewed", "its review isn't lost");
+    // docs is resumed by its lead while its review waits: the review is dropped, and a late Skip leaves it at work.
+    assert_eq!(state(&w, &sid, "docs"), "queued");
+    says(&w, &sid, [HostedEvent::Task { what: "task_started".into(), detail: json!({ "task_type": "local_agent", "task_id": "agentB", "tool_use_id": "toolu_send" }) }]);
+    w.advance(60_000);
+    w.hub().drain_reviews();
+    w.settle();
+    assert!(w.hub().unqueue_review(&format!("team:{sid}:agentB")).is_err());
+    assert_eq!(state(&w, &sid, "docs"), "working");
+}
+
 /// A member left "queued" with no review in Review's queue (an older Cue's queue lost, say) stops being counted at work.
 #[test]
 fn a_member_queued_with_no_review_in_the_queue_is_done_again_at_the_next_tidy() {
@@ -343,7 +371,7 @@ fn a_committed_line_from_the_lead_with_no_ask_out_commits_the_member_and_no_ask_
     assert!(sent(&w, &sid, "Commit your teammate board").is_empty());
     // In a turn a teammate's finish started, too; and once Commit waits for the lead to be free, the line settles it.
     says(&w, &sid, writes("toolu_B", "agentB", "notes", &[]));
-    w.hub().unqueue_review(&format!("team:{sid}:agentB"));
+    w.hub().unqueue_review(&format!("team:{sid}:agentB")).unwrap();
     w.hosted_says(&sid, HostedEvent::Taken { text: "go on".into() });
     let said = w.hub().team_action(&sid, "agentB", "commit").unwrap();
     assert_eq!(said, "Cue asks its lead to commit notes's work once it's free");
@@ -366,7 +394,7 @@ fn a_commit_ask_waits_on_the_members_row_not_in_the_chat_and_goes_once_the_lead_
     let sid = lead(&w, "one part, done with shell commands elsewhere");
     w.hub().set_crew_commit(&sid, "wait").unwrap();
     says(&w, &sid, writes("toolu_A", "agentA", "board", &[]));
-    w.hub().unqueue_review(&format!("team:{sid}:agentA"));
+    w.hub().unqueue_review(&format!("team:{sid}:agentA")).unwrap();
     w.hub().team_action(&sid, "agentA", "commit").unwrap();
     let t = mate(&w, &sid, "board");
     assert_eq!(t["step"], "Cue asks its lead to commit it when it's free", "{t}");
