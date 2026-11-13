@@ -124,7 +124,7 @@ impl Hub {
     /// SHORTCUT: the next prompted reply with a Recommendation line is taken as the review (one without is some other
     /// reply: a hook's re-prompt, a "started it" line); a review that never says Recommendation leaves its teammate under
     /// review. Upgrade: match the fork's own Agent call (its task_notification) to the review sent.
-    pub(super) fn team_reply(&self, lead: &str, text: &str, unprompted: bool) {
+    pub(super) fn team_reply(&self, lead: &str, text: &str, asks: &[String], unprompted: bool) {
         if unprompted {
             return;
         }
@@ -139,7 +139,14 @@ impl Hub {
             return;
         }
         let filed = self.write(|st| {
-            let t = st.sessions.team(lead).into_iter().filter(|t| t.state == "reviewing").min_by_key(|t| t.review_ms)?;
+            let (t, stale) = reviewed_member(&st.sessions.team(lead), asks)?;
+            for call in stale {
+                st.sessions.with_teammate(lead, &call, |m| {
+                    m.state = "done".into();
+                    m.review_ms = 0;
+                    m.step = "Its review didn't come back".into();
+                });
+            }
             let next = auto_next(&st.sessions.crew_commit(lead), &recommendation, findings.len(), t.fix_rounds);
             st.sessions.with_teammate(lead, &t.call, |m| {
                 m.state = "reviewed".into();
@@ -887,4 +894,38 @@ fn auto_next(crew_commit: &str, recommendation: &str, findings: usize, fix_round
 
 pub(super) fn first(s: &str) -> String {
     s.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").chars().take(200).collect()
+}
+
+/// The crew member a review reply is about, of `team`'s members under review: the one the turn's ask named ("Review
+/// your teammate <name>'s work", the last of the turn's `asks`), else the one asked longest ago. Named, the members
+/// asked before it whose answer never came (lost to a reply after it, say) are `stale`: they wait no more.
+pub(super) fn reviewed_member(team: &[Teammate], asks: &[String]) -> Option<(Teammate, Vec<String>)> {
+    let reviewing: Vec<&Teammate> = team.iter().filter(|t| t.state == "reviewing").collect();
+    let named = asks.iter().rev().find_map(|a| a.trim_start().strip_prefix("Review your teammate ")?.split_once("'s work").map(|(n, _)| n.to_string()));
+    if let Some(t) = named.and_then(|n| reviewing.iter().find(|t| t.name == n)) {
+        let stale = reviewing.iter().filter(|o| o.call != t.call && o.review_ms <= t.review_ms).map(|o| o.call.clone()).collect();
+        return Some(((*t).clone(), stale));
+    }
+    reviewing.into_iter().min_by_key(|t| t.review_ms).map(|t| (t.clone(), vec![]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reviewed_member;
+    use crate::sessions::team::Teammate;
+
+    fn mate(name: &str, state: &str, review_ms: u64) -> Teammate {
+        Teammate { call: format!("call-{name}"), name: name.into(), state: state.into(), review_ms, ..Default::default() }
+    }
+
+    #[test]
+    fn a_review_is_the_named_members_and_the_ones_asked_before_it_whose_answer_never_came_wait_no_more() {
+        let team = [mate("loops-board", "reviewing", 10), mate("rows", "reviewing", 20), mate("docs", "reviewing", 30), mate("hub", "done", 0)];
+        let asks = ["Fix the tray.".to_string(), "Review your teammate rows's work with a fork (one Agent call…)".to_string()];
+        let (t, stale) = reviewed_member(&team, &asks).unwrap();
+        assert_eq!((t.name.as_str(), stale), ("rows", vec!["call-loops-board".to_string()]), "docs, asked after it, still waits");
+        let (t, stale) = reviewed_member(&team, &["Go ahead".to_string()]).unwrap();
+        assert_eq!((t.name.as_str(), stale.len()), ("loops-board", 0), "no ask named one: the one asked longest ago, nothing let go");
+        assert!(reviewed_member(&[mate("hub", "done", 0)], &asks).is_none());
+    }
 }

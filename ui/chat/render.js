@@ -108,6 +108,18 @@ function runHereBtn(via, s) {
   return ` <button class="cv-pill run-here" data-act="run-here" data-line="${esc(line)}" data-cwd="${esc(s.cwd)}">Run it in a terminal</button>`;
 }
 
+/** A crew member's review (the lead's reply to Cue's request) folds into that request's bubble: not a message of its
+ *  own (its findings and buttons are on the member's row in the crew's tray, team.js). `reviews`: the replies folded
+ *  (index → name); `reviewAt`: the request's index → its review. */
+function reviewFolds(ex, team) {
+  const reviews = reviewReplies(ex, (name) => [...team].reverse().find((m) => m.name === name)?.review || "");
+  const reviewAt = new Map();
+  for (const [k, name] of reviews) {
+    for (let n = k - 1; n >= 0; n--) if (ex[n].role === "you" && cueSaid(ex[n].text)?.review) { reviewAt.set(n, { name, text: stripStatus(ex[k].text), team }); break; }
+  }
+  return { reviews, reviewAt };
+}
+
 function chatHtml(it, s, harness, paged = false) {
   const ex = conversation(it, s);
   const lastAgent = ex.map((e) => e.role).lastIndexOf("agent");
@@ -123,14 +135,7 @@ function chatHtml(it, s, harness, paged = false) {
   // A tracked session you come back to: "Since you looked" where the new part starts (about.js), no call.
   const since = sid ? aboutSince(sid, ex) : null;
   if (since) restarts.push({ at: since.at, html: keyed(since.html, "since") });
-  const team = s?.team || [];
-  // A crew member's review (the lead's reply to Cue's request) folds into that request's bubble: not a message of its
-  // own (its findings and buttons are on the member's row in the crew's tray, team.js).
-  const reviews = reviewReplies(ex, (name) => [...team].reverse().find((m) => m.name === name)?.review || "");
-  const reviewAt = new Map();   // the request's index → its review
-  for (const [k, name] of reviews) {
-    for (let n = k - 1; n >= 0; n--) if (ex[n].role === "you" && cueSaid(ex[n].text)?.review) { reviewAt.set(n, { name, text: stripStatus(ex[k].text), team }); break; }
-  }
+  const { reviews, reviewAt } = reviewFolds(ex, s?.team || []);
   const rows = withSteps(sid, s, ex, ex.map((e, n) => keyed((() => {
     if (e.role === "peer") return peerBubble(e.from || "another agent", "", e.at_ms, e.text);
     // What Cue sent the lead for its crew: Cue's bubble on the right, never yours (team.js).

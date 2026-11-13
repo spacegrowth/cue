@@ -406,6 +406,14 @@ pub fn carried_note(team: &[Teammate]) -> String {
     format!("The team from the session before you. Their processes ended with it, so they can't be messaged; the user reviews and commits their work in Cue.\n{}", lines.join("\n"))
 }
 
+/// The reply Cue reads its asks' answers from (a review, `Committed <name>:` lines), out of a turn's texts `parts`:
+/// the last one that answers one, since the lead can say something else after it (a stop hook's audit, say); else
+/// the turn's last words `last`.
+pub fn answer_in<'a>(parts: impl DoubleEndedIterator<Item = &'a str>, last: &'a str) -> &'a str {
+    let committed = |l: &str| l.trim().trim_start_matches(['-', '*', '`', ' ']).get(..9).is_some_and(|k| k.eq_ignore_ascii_case("committed")) && l.contains(':');
+    parts.rev().find(|t| !read_review(t).1.is_empty() || t.lines().any(committed)).unwrap_or(last)
+}
+
 /// A review's numbered findings (a few lines) and what it recommends, from the lead's reply.
 pub fn read_review(text: &str) -> (Vec<String>, String) {
     let said = |l: &str| l.split_once(':').filter(|(k, _)| k.trim_matches(['*', ' ']).eq_ignore_ascii_case("recommendation")).map(|(_, v)| v.trim_matches(['*', ' ']).split(['.', '(', ',', ';']).next().unwrap_or("").trim().to_lowercase());
@@ -544,7 +552,18 @@ impl Sessions {
 
 #[cfg(test)]
 mod tests {
-    use super::relative;
+    use super::{answer_in, relative};
+
+    #[test]
+    fn cues_answer_is_the_last_reply_of_the_turn_that_answers_an_ask_not_a_hooks_audit_after_it() {
+        let review = "1. a.rs:1 — note — fine\nRecommendation: commit";
+        let commit = "Done.\nCommitted rows: abc1234";
+        let audit = "1–12: N/A, no edits.";
+        assert_eq!(answer_in(["Looking.", review, audit].into_iter(), audit), review);
+        assert_eq!(answer_in([commit, audit].into_iter(), audit), commit);
+        assert_eq!(answer_in(["one", "two"].into_iter(), "two"), "two", "answering nothing: the last words");
+        assert_eq!(answer_in([].into_iter(), "last"), "last");
+    }
 
     #[test]
     fn a_file_is_kept_relative_to_the_folder_the_agent_resolved_too() {

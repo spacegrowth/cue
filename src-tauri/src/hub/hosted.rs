@@ -189,8 +189,9 @@ impl Hub {
                 if failed {
                     self.failed(origin, "error", &text);
                 } else {
-                    self.team_reply(&origin.session_id, &text, unprompted);
                     let turn = turn_parts(&origin.transcript_path, &text);
+                    let answer = crate::sessions::team::answer_in(turn.iter().map(|p| p.text.as_str()), &text);
+                    self.team_reply(&origin.session_id, answer, &crate::hook::turn_asks(&origin.transcript_path), unprompted);
                     self.event(origin, "stopped", text, turn, "");
                 }
                 #[cfg(feature = "ext")]

@@ -273,6 +273,25 @@ pub(crate) fn final_turn(p: &Value) -> Vec<Value> {
     parts
 }
 
+/// What was said to the session in the final turn of `transcript`, in order: its prompt and what was typed while it
+/// ran (Cue's asks among them); never Claude Code's own notes (a task's notification, a stop hook's feedback).
+pub(crate) fn turn_asks(transcript: &str) -> Vec<String> {
+    if transcript.is_empty() {
+        return vec![];
+    }
+    let entries = read_tail(transcript);
+    let start = turn_start(&entries).min(entries.len());
+    entries[start..]
+        .iter()
+        .filter(|e| !entry_flag(e, "isSidechain"))
+        .filter_map(|e| match entry_kind(e) {
+            "user" => user_text(e).filter(|t| !t.trim().is_empty() && !crate::logs::transcript::harness_text(t)),
+            "attachment" if crate::logs::transcript::yours_mid_turn(e) => e.pointer("/attachment/prompt").and_then(Value::as_str).map(str::to_string),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The text of a "user" entry; None when it carries tool results, not something said.
 fn user_text(e: &Value) -> Option<String> {
     match e.pointer("/message/content") {
